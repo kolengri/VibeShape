@@ -50,5 +50,6 @@ describe("ModelingSketchViewportStack", () => {
 
     expect(activeSketchDisplayForCamera(display, "normal")).toBeNull()
     expect(activeSketchDisplayForCamera(display, "orbit")).toBe(display)
+    expect(activeSketchDisplayForCamera(display, "orbit", true)).toBeNull()
   })
 })

@@ -348,6 +348,12 @@ The SPK-001 technical release bundle is also generated locally. `bun run occt:bu
 
 ## Viewport interaction coverage
 
+Spatial sketch regression coverage creates lines on XY, XZ, and YZ in isometric view and verifies
+their sketch-local coordinates after returning to Normal to sketch and reopening. Separate coverage
+exercises orbit, pointer-centered zoom, pan, point dragging, secondary context actions, and edge-on
+placement rejection. Camera movement must not mutate authored geometry, and active geometry must
+have only one rendering owner. Run these flows in Chromium, Firefox, and WebKit locally.
+
 Orbit-view external-reference coverage requires the viewer hit stack to retain deterministic order, preview
 the cycled candidate, support forward and reverse grave-accent navigation, commit with Enter or pointer
 activation, and clear with Escape. Browser coverage proves point-versus-line Select Other disambiguation in

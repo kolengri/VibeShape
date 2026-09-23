@@ -171,6 +171,20 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 
 ## Direct manipulation and keyboard adapters
 
+The sketch projection store is a transient bridge between the analytical SVG editor and the
+Three.js viewport. Normal mode publishes sketch bounds to align the camera. Orbit editing publishes
+the camera's normalized support-plane affine transform in the opposite direction; camera publications
+must never trigger normal-mode camera alignment. SVG drawing and HTML annotation anchors use the
+forward transform, and pointer positions use its inverse. The viewer rejects near-edge-on projection
+before accepting drawing input. Orthographic zoom, pan, standard views, resize, and support changes
+all invalidate the projection without mutating the draft or invoking the solver.
+
+OrbitControls temporarily binds to the active sketch SVG, with primary/touch input reserved for
+editing and middle/secondary input reserved for navigation. Cleanup restores the canvas binding;
+primary pointer cancellation and release outside the canvas cannot leave navigation disabled.
+Graphical Use, Pierce, and Intersection retain their separate 3D picking ownership. This bridge is
+viewer/UI state only and introduces no document schema, worker protocol, or persistence changes.
+
 History reorder uses `@dnd-kit/react` and `@dnd-kit/dom` for pointer, touch, keyboard sensors,
 collision feedback, and accessible drag interaction. The application translates a drop into the
 existing revisioned `org.vibeshape.history.move-item` command. Preview is disposable; neither the

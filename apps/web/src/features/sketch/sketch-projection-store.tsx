@@ -1,5 +1,9 @@
-import type { ViewerFrame, ViewerSketchProjectionBounds } from "@vibeshape/viewer/three-viewport"
-import { createContext, type ReactNode, useContext, useState } from "react"
+import type {
+  ViewerFrame,
+  ViewerSketchPlaneProjection,
+  ViewerSketchProjectionBounds,
+} from "@vibeshape/viewer/three-viewport"
+import { createContext, type ReactNode, useContext, useState, useSyncExternalStore } from "react"
 import { createStore } from "zustand/vanilla"
 
 export type SketchProjection = Readonly<{
@@ -9,6 +13,10 @@ export type SketchProjection = Readonly<{
 
 type SketchProjectionStore = Readonly<{
   projection: SketchProjection | null
+  cameraProjection: ViewerSketchPlaneProjection | null
+  navigationElement: HTMLElement | SVGSVGElement | null
+  publishCameraProjection: (projection: ViewerSketchPlaneProjection | null) => void
+  setNavigationElement: (element: HTMLElement | SVGSVGElement | null) => void
   clear: () => void
   publish: (projection: SketchProjection) => void
 }>
@@ -18,6 +26,10 @@ export type SketchProjectionStoreApi = ReturnType<typeof createSketchProjectionS
 export function createSketchProjectionStore() {
   return createStore<SketchProjectionStore>((set) => ({
     projection: null,
+    cameraProjection: null,
+    navigationElement: null,
+    publishCameraProjection: (cameraProjection) => set({ cameraProjection }),
+    setNavigationElement: (navigationElement) => set({ navigationElement }),
     clear: () => set({ projection: null }),
     publish: (projection) => set({ projection }),
   }))
@@ -34,4 +46,14 @@ export function SketchProjectionProvider({ children }: Readonly<{ children: Reac
 
 export function useSketchProjectionStoreApi() {
   return useContext(SketchProjectionContext)
+}
+
+const subscribeWithoutProvider = () => () => undefined
+
+export function useSketchCameraProjection() {
+  const store = useSketchProjectionStoreApi()
+  return useSyncExternalStore(
+    store?.subscribe ?? subscribeWithoutProvider,
+    () => store?.getState().cameraProjection ?? null,
+  )
 }

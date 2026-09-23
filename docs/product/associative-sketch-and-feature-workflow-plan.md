@@ -255,9 +255,11 @@ Analytical sketch interaction layer
   tool cursors and manipulators
 ```
 
-The normal-to-sketch orthographic view remains the default, but the user can orbit to inspect the sketch
-in context and return with **Normal to sketch**. Sketch points are always computed by ray/plane
-intersection against the active support; camera orientation does not change sketch coordinates.
+The normal-to-sketch orthographic view remains the default, but the user can orbit while drawing and
+editing the sketch in context, then return with **Normal to sketch**. The current orthographic viewer
+uses the inverse support-plane affine projection, equivalent to ray/plane intersection, to compute
+sketch-local positions. Camera orientation never changes authored coordinates, and near-edge-on
+projections reject placement until the user chooses a usable angle.
 
 While editing:
 

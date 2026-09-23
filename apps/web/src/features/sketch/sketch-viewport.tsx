@@ -194,6 +194,13 @@ import {
   materializeExternalSketchCandidate,
 } from "./external-sketch-points"
 import {
+  cameraAwareSketchBounds,
+  projectSketchPlanePoint,
+  type SketchScreenBounds,
+  sketchPlaneSvgTransform,
+  unprojectSketchPlanePoint,
+} from "./sketch-camera-projection"
+import {
   defaultCircularSketchPatternDefinition,
   SketchCircularPatternForm,
 } from "./sketch-circular-pattern-form"
@@ -224,7 +231,7 @@ import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
 } from "./sketch-linear-pattern-form"
-import { useSketchProjectionStoreApi } from "./sketch-projection-store"
+import { useSketchCameraProjection, useSketchProjectionStoreApi } from "./sketch-projection-store"
 import {
   isSketchConstraintEditorTool,
   isSketchModificationTool,
@@ -321,12 +328,7 @@ type SketchSolveScheduler = {
   timer: number | null
 }
 
-type SketchBounds = Readonly<{
-  height: number
-  minX: number
-  minY: number
-  width: number
-}>
+type SketchBounds = SketchScreenBounds
 type DisplayPoint = Readonly<{
   construction: boolean
   id: SketchEntityId
@@ -1005,6 +1007,15 @@ function pointerToSketchPoint(
   rectangle: Readonly<{ left: number; top: number; width: number; height: number }>,
   bounds: SketchBounds,
 ): SketchPoint2 {
+  if (bounds.cameraProjection) {
+    return unprojectSketchPlanePoint(
+      {
+        x: (pointer.clientX - rectangle.left) / rectangle.width,
+        y: (pointer.clientY - rectangle.top) / rectangle.height,
+      },
+      bounds.cameraProjection,
+    )
+  }
   const scale = Math.min(
     bounds.width > 0 ? rectangle.width / bounds.width : 0,
     bounds.height > 0 ? rectangle.height / bounds.height : 0,
@@ -3463,6 +3474,10 @@ function constraintAnnotationPosition(
   bounds: SketchBounds,
   viewport: SketchViewportSize,
 ): CSSProperties {
+  if (bounds.cameraProjection) {
+    const position = projectSketchPlanePoint(point, bounds.cameraProjection)
+    return { left: position.x * viewport.width, top: position.y * viewport.height }
+  }
   const horizontal = (point.x - bounds.minX) / bounds.width
   const vertical = (bounds.minY + bounds.height - point.y) / bounds.height
   if (viewport.width <= 0 || viewport.height <= 0) {
@@ -3621,6 +3636,24 @@ function editConstraintAnnotation(
   onEditDimension(glyph.id, glyph.point)
 }
 
+function constraintAnnotationDragPoint(
+  drag: ConstraintAnnotationDrag,
+  bounds: SketchBounds,
+  rectangle: DOMRect | undefined,
+) {
+  const deltaX = drag.lastClientX - drag.clientX
+  const deltaY = drag.lastClientY - drag.clientY
+  if (bounds.cameraProjection && rectangle) {
+    const start = unprojectSketchPlanePoint({ x: 0, y: 0 }, bounds.cameraProjection)
+    const end = unprojectSketchPlanePoint(
+      { x: deltaX / rectangle.width, y: deltaY / rectangle.height },
+      bounds.cameraProjection,
+    )
+    return { x: drag.point.x + end.x - start.x, y: drag.point.y + end.y - start.y }
+  }
+  return { x: drag.point.x + deltaX / drag.scale, y: drag.point.y - deltaY / drag.scale }
+}
+
 function beginConstraintAnnotationDrag({
   bounds,
   cleanupRef,
@@ -3696,10 +3729,7 @@ function beginConstraintAnnotationDrag({
     dragRef.current = null
     drag.element.style.translate = ""
     if (Math.hypot(deltaX, deltaY) >= 3 && Number.isFinite(drag.scale) && drag.scale > 0) {
-      onPositionChange(drag.id, {
-        x: drag.point.x + deltaX / drag.scale,
-        y: drag.point.y - deltaY / drag.scale,
-      })
+      onPositionChange(drag.id, constraintAnnotationDragPoint(drag, bounds, overlayRectangle))
     }
     cleanup()
   }
@@ -8254,6 +8284,7 @@ function handleSketchWheel(input: {
   setBounds: Dispatch<SetStateAction<SketchBounds>>
   svg: SVGSVGElement | null
 }) {
+  if (input.bounds.cameraProjection !== undefined) return
   input.event.preventDefault()
   if (!input.svg) return
   const focus = pointerToSketchPoint(input.event, input.svg.getBoundingClientRect(), input.bounds)
@@ -8277,6 +8308,7 @@ function handleSketchCanvasPointerDown(input: {
   const { event } = input
   event.currentTarget.focus()
   if (event.button === 1 || event.button === 2) {
+    if (input.bounds.cameraProjection !== undefined) return
     event.preventDefault()
     if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
     input.setPanGesture({
@@ -8886,26 +8918,28 @@ function useConstraintRelatedEntityHighlight(sketch: SketchRecord) {
   return { entityIds, onChange }
 }
 
-function SketchDrawingView({
-  configuration,
-  handlers,
-  sketch,
-  state,
-  svgRef,
-}: SketchDrawingViewProps) {
-  const markerScale = sketchMarkerScale(state.bounds, state.viewportSize)
-  const inferenceSources = useMemo(
-    () => inferenceSourceEntityIds(state.inference),
-    [state.inference],
-  )
-  const constraintHighlight = useConstraintRelatedEntityHighlight(sketch)
+function useSketchContextMenu(
+  configuration: SketchDrawingConfiguration,
+  planeUnavailable: boolean,
+) {
   const contextTargetRef = useRef<readonly SketchEntityId[]>([])
   const secondaryPointerGestureRef = useRef<SecondaryPointerGesture | null>(null)
   const replayingContextMenuRef = useRef(false)
   const [contextEntityIds, setContextEntityIds] = useState<readonly SketchEntityId[]>([])
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const handlePointerDownCapture = (event: PointerEvent<SVGSVGElement>) => {
+    if (planeUnavailable && event.button === 0) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (event.button !== 2) return
+    contextTargetRef.current = sketchContextActionEntityIds({
+      draft: configuration.draft,
+      editorTool: configuration.editorTool,
+      selectedEntityIds: configuration.selectedEntityIds,
+      target: event.target,
+    })
     secondaryPointerGestureRef.current = {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -8945,6 +8979,10 @@ function SketchDrawingView({
     )
   }
   const handleContextMenuCapture = (event: MouseEvent<SVGSVGElement>) => {
+    const secondaryTarget =
+      secondaryPointerGestureRef.current || replayingContextMenuRef.current
+        ? contextTargetRef.current
+        : null
     if (
       consumeSecondaryContextMenu({
         contextTargetRef,
@@ -8954,12 +8992,14 @@ function SketchDrawingView({
       })
     )
       return
-    const entityIds = sketchContextActionEntityIds({
-      draft: configuration.draft,
-      editorTool: configuration.editorTool,
-      selectedEntityIds: configuration.selectedEntityIds,
-      target: event.target,
-    })
+    const entityIds =
+      secondaryTarget ??
+      sketchContextActionEntityIds({
+        draft: configuration.draft,
+        editorTool: configuration.editorTool,
+        selectedEntityIds: configuration.selectedEntityIds,
+        target: event.target,
+      })
     contextTargetRef.current = entityIds
     if (entityIds.length === 0) event.preventDefault()
   }
@@ -8973,24 +9013,71 @@ function SketchDrawingView({
     setContextEntityIds(target)
     setContextMenuOpen(true)
   }
+  return {
+    contextEntityIds,
+    contextMenuOpen,
+    handleContextMenuOpenChange,
+    handlePointerDownCapture,
+    handlePointerMoveCapture,
+    handlePointerUpCapture,
+    handleContextMenuCapture,
+  }
+}
+
+function sketchDrawingCanvasAttributes(
+  configuration: SketchDrawingConfiguration,
+  state: SketchDrawingViewProps["state"],
+) {
+  return {
+    "aria-label": configuration.ariaLabel,
+    className: cn(
+      "size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      usesSketchCrosshairCursor(configuration.editorTool) && "cursor-crosshair",
+    ),
+    "data-sketch-dragging-point-id": state.draggingPointId ?? undefined,
+    "data-sketch-modification-tool": isSketchModificationTool(configuration.editorTool)
+      ? configuration.editorTool
+      : undefined,
+    "data-sketch-trim-gesture": trimGestureAttribute(state.trimGestureActive),
+    "data-sketch-spatial": state.bounds.cameraProjection === undefined ? undefined : "true",
+    "data-sketch-plane-available": state.bounds.cameraProjection === null ? "false" : "true",
+    role: "img" as const,
+    tabIndex: state.editable ? 0 : undefined,
+    viewBox: `${state.bounds.minX} ${-state.bounds.minY - state.bounds.height} ${state.bounds.width} ${state.bounds.height}`,
+  }
+}
+
+function SketchDrawingView({
+  configuration,
+  handlers,
+  sketch,
+  state,
+  svgRef,
+}: SketchDrawingViewProps) {
+  const t = useTranslations("app.sketch.viewport")
+  const planeUnavailable = state.bounds.cameraProjection === null
+  const markerScale = sketchMarkerScale(state.bounds, state.viewportSize)
+  const inferenceSources = useMemo(
+    () => inferenceSourceEntityIds(state.inference),
+    [state.inference],
+  )
+  const constraintHighlight = useConstraintRelatedEntityHighlight(sketch)
+  const {
+    contextEntityIds,
+    contextMenuOpen,
+    handleContextMenuOpenChange,
+    handlePointerDownCapture,
+    handlePointerMoveCapture,
+    handlePointerUpCapture,
+    handleContextMenuCapture,
+  } = useSketchContextMenu(configuration, planeUnavailable)
   return (
     <div className="relative size-full">
       <ContextMenu open={contextMenuOpen} onOpenChange={handleContextMenuOpenChange}>
         <ContextMenuTrigger asChild>
           <svg
             ref={svgRef}
-            aria-label={configuration.ariaLabel}
-            className={`size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring ${usesSketchCrosshairCursor(configuration.editorTool) ? "cursor-crosshair" : ""}`}
-            data-sketch-dragging-point-id={state.draggingPointId ?? undefined}
-            data-sketch-modification-tool={
-              isSketchModificationTool(configuration.editorTool)
-                ? configuration.editorTool
-                : undefined
-            }
-            data-sketch-trim-gesture={trimGestureAttribute(state.trimGestureActive)}
-            role="img"
-            tabIndex={state.editable ? 0 : undefined}
-            viewBox={`${state.bounds.minX} ${-state.bounds.minY - state.bounds.height} ${state.bounds.width} ${state.bounds.height}`}
+            {...sketchDrawingCanvasAttributes(configuration, state)}
             onKeyDown={handlers.onKeyDown}
             onPointerDownCapture={handlePointerDownCapture}
             onPointerDown={handlers.onCanvasPointerDown}
@@ -9004,96 +9091,104 @@ function SketchDrawingView({
             onWheel={handlers.onWheel}
           >
             <title>{configuration.ariaLabel}</title>
-            <SketchOriginPlaneReferences
-              activePlane={sketch.plane}
-              bounds={state.bounds}
-              visibility={configuration.originPlaneVisibility}
-            />
-            <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
-              <line
-                x1={state.bounds.minX}
-                y1={0}
-                x2={state.bounds.minX + state.bounds.width}
-                y2={0}
-                vectorEffect="non-scaling-stroke"
+            <g
+              data-sketch-plane-projection=""
+              visibility={planeUnavailable ? "hidden" : undefined}
+              transform={sketchPlaneSvgTransform(state.bounds, state.viewportSize)}
+            >
+              {state.bounds.cameraProjection === undefined ? (
+                <SketchOriginPlaneReferences
+                  activePlane={sketch.plane}
+                  bounds={state.bounds}
+                  visibility={configuration.originPlaneVisibility}
+                />
+              ) : null}
+              <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
+                <line
+                  x1={state.bounds.minX}
+                  y1={0}
+                  x2={state.bounds.minX + state.bounds.width}
+                  y2={0}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <line
+                  x1={0}
+                  y1={state.bounds.minY}
+                  x2={0}
+                  y2={state.bounds.minY + state.bounds.height}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+              <StableProfileRegions
+                editable={state.editable}
+                editorTool={configuration.editorTool}
+                profiles={state.annotationProfiles}
+                selectedProfile={configuration.selectedProfile}
+                sketch={sketch}
+                solution={state.annotationSolution}
+                onSelect={configuration.onProfileSelect}
               />
-              <line
-                x1={0}
-                y1={state.bounds.minY}
-                x2={0}
-                y2={state.bounds.minY + state.bounds.height}
-                vectorEffect="non-scaling-stroke"
+              <SketchExternalReferenceLayer
+                configuration={configuration}
+                markerScale={markerScale}
+                onSelect={handlers.onSelection}
+                state={state}
               />
+              <StableSketchGeometry
+                draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
+                editable={state.editable}
+                markerScale={markerScale}
+                selectedEntityIds={configuration.selectedEntityIds}
+                presentation={state.geometry}
+                tool={configuration.editorTool}
+                onCurveAction={
+                  isSketchModificationTool(configuration.editorTool)
+                    ? handlers.onCurveAction
+                    : ignoreCurveAction
+                }
+                onPointPointerDown={handlers.onPointPointerDown}
+                onSelect={handlers.onSelection}
+                onTarget={handlers.appendAt}
+                pending={state.pending}
+                preselectedEntityId={state.preselectedEntityId}
+              />
+              <SketchInferenceSourceHighlight
+                entityIds={inferenceSources}
+                markerScale={markerScale}
+                presentation={state.geometry}
+              />
+              <SketchConstraintRelatedEntityHighlight
+                entityIds={constraintHighlight.entityIds}
+                markerScale={markerScale}
+                presentation={state.geometry}
+              />
+              <DraggedSketchGeometry
+                dragTarget={state.dragTarget}
+                presentation={state.geometry}
+                selectedEntityIds={configuration.selectedEntityIds}
+              />
+              <SketchTransformPresentation
+                bounds={state.bounds}
+                entityIds={configuration.selectedEntityIds}
+                geometry={state.geometry}
+                transform={state.transform}
+                viewportSize={state.viewportSize}
+                onStart={handlers.onTransformStart}
+              />
+              <SketchLinearPatternPresentation
+                entityIds={configuration.selectedEntityIds}
+                geometry={state.geometry}
+                pattern={state.linearPattern}
+              />
+              <SketchCircularPatternPresentation
+                entityIds={configuration.selectedEntityIds}
+                geometry={state.geometry}
+                pattern={state.circularPattern}
+              />
+              <SketchDimensionPlacementPreview value={state.dimensionPreview} />
+              <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
+              <InferenceGlyph bounds={state.bounds} inference={state.inference} />
             </g>
-            <StableProfileRegions
-              editable={state.editable}
-              editorTool={configuration.editorTool}
-              profiles={state.annotationProfiles}
-              selectedProfile={configuration.selectedProfile}
-              sketch={sketch}
-              solution={state.annotationSolution}
-              onSelect={configuration.onProfileSelect}
-            />
-            <SketchExternalReferenceLayer
-              configuration={configuration}
-              markerScale={markerScale}
-              onSelect={handlers.onSelection}
-              state={state}
-            />
-            <StableSketchGeometry
-              draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
-              editable={state.editable}
-              markerScale={markerScale}
-              selectedEntityIds={configuration.selectedEntityIds}
-              presentation={state.geometry}
-              tool={configuration.editorTool}
-              onCurveAction={
-                isSketchModificationTool(configuration.editorTool)
-                  ? handlers.onCurveAction
-                  : ignoreCurveAction
-              }
-              onPointPointerDown={handlers.onPointPointerDown}
-              onSelect={handlers.onSelection}
-              onTarget={handlers.appendAt}
-              pending={state.pending}
-              preselectedEntityId={state.preselectedEntityId}
-            />
-            <SketchInferenceSourceHighlight
-              entityIds={inferenceSources}
-              markerScale={markerScale}
-              presentation={state.geometry}
-            />
-            <SketchConstraintRelatedEntityHighlight
-              entityIds={constraintHighlight.entityIds}
-              markerScale={markerScale}
-              presentation={state.geometry}
-            />
-            <DraggedSketchGeometry
-              dragTarget={state.dragTarget}
-              presentation={state.geometry}
-              selectedEntityIds={configuration.selectedEntityIds}
-            />
-            <SketchTransformPresentation
-              bounds={state.bounds}
-              entityIds={configuration.selectedEntityIds}
-              geometry={state.geometry}
-              transform={state.transform}
-              viewportSize={state.viewportSize}
-              onStart={handlers.onTransformStart}
-            />
-            <SketchLinearPatternPresentation
-              entityIds={configuration.selectedEntityIds}
-              geometry={state.geometry}
-              pattern={state.linearPattern}
-            />
-            <SketchCircularPatternPresentation
-              entityIds={configuration.selectedEntityIds}
-              geometry={state.geometry}
-              pattern={state.circularPattern}
-            />
-            <SketchDimensionPlacementPreview value={state.dimensionPreview} />
-            <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
-            <InferenceGlyph bounds={state.bounds} inference={state.inference} />
           </svg>
         </ContextMenuTrigger>
         <SketchSelectionContextMenu
@@ -9105,15 +9200,27 @@ function SketchDrawingView({
           selectedEntityIds={configuration.selectedEntityIds}
         />
       </ContextMenu>
-      <SketchDrawingAnnotations
-        configuration={configuration}
-        dimensionLabelPositions={state.dimensionLabelPositions}
-        onEditDimension={handlers.onEditDimension}
-        onDimensionPositionChange={handlers.onDimensionPositionChange}
-        onRelatedEntitiesChange={constraintHighlight.onChange}
-        sketch={sketch}
-        state={state}
-      />
+      {planeUnavailable ? (
+        <p
+          className={cn(
+            "pointer-events-none absolute inset-x-3 top-20 text-center text-sm text-muted-foreground",
+            SAFE_VIEWPORT_REGION,
+          )}
+          role="status"
+        >
+          {t("planeEdgeOn")}
+        </p>
+      ) : (
+        <SketchDrawingAnnotations
+          configuration={configuration}
+          dimensionLabelPositions={state.dimensionLabelPositions}
+          onEditDimension={handlers.onEditDimension}
+          onDimensionPositionChange={handlers.onDimensionPositionChange}
+          onRelatedEntitiesChange={constraintHighlight.onChange}
+          sketch={sketch}
+          state={state}
+        />
+      )}
       <SketchExternalInferenceInstruction candidate={state.externalInferenceCandidate} />
       <SketchUseInstruction editorTool={configuration.editorTool} />
       <SketchMirrorInstruction
@@ -10710,23 +10817,40 @@ function useSketchDrawingCanvas(
   sketch: SketchRecord,
   solution: SolvedSketchWire | null,
   projectionFrame: ViewerFrame | null | undefined,
+  spatial: boolean,
 ) {
   const geometry = useMemo(
     () => createSketchGeometryPresentation(sketch, solution),
     [sketch, solution],
   )
   const viewport = useSketchCanvasViewport(geometry)
+  const cameraProjection = useSketchCameraProjection()
+  const projectionStore = useSketchProjectionStoreApi()
+  useLayoutEffect(() => {
+    if (!spatial || !projectionStore) return
+    projectionStore.getState().setNavigationElement(viewport.svgRef.current)
+    return () => projectionStore.getState().setNavigationElement(null)
+  }, [projectionStore, spatial, viewport.svgRef])
   usePublishSketchProjection(viewport.bounds, projectionFrame)
-  return { geometry, ...viewport }
+  const bounds = useMemo(
+    () =>
+      spatial
+        ? cameraAwareSketchBounds(viewport.bounds, cameraProjection, viewport.viewportSize)
+        : viewport.bounds,
+    [spatial, viewport.bounds, cameraProjection, viewport.viewportSize],
+  )
+  return { geometry, ...viewport, bounds }
 }
 
 function SketchDrawing({
   configuration,
   projectionFrame,
+  spatial,
   sketch,
 }: {
   configuration: SketchDrawingConfiguration
   projectionFrame?: ViewerFrame | null
+  spatial: boolean
   sketch: SketchRecord
 }) {
   const {
@@ -10748,6 +10872,7 @@ function SketchDrawing({
     trimDisplay.sketch,
     trimDisplay.solution,
     projectionFrame,
+    spatial,
   )
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
@@ -10846,6 +10971,7 @@ function SketchDrawing({
       suppressed,
     })
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (spatial && (event.buttons > 1 || bounds.cameraProjection === null)) return
     if (
       consumeTrimPointerMove({
         bounds,
@@ -10899,6 +11025,7 @@ function SketchDrawing({
     })
   }
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (spatial && event.button !== 0) return
     if (transform.consumeCanvasPointerDown(event)) return
     if (circularPattern.consumeCanvasPointerDown(event)) return
     if (linearPattern.consumeCanvasPointerDown(event)) return
@@ -11302,11 +11429,13 @@ function SketchViewportContent({
   configuration,
   emptyMessage,
   projectionFrame,
+  spatial,
 }: {
   activeSketch: SketchRecord | null
   configuration: SketchDrawingConfiguration
   emptyMessage: string
   projectionFrame?: ViewerFrame | null
+  spatial: boolean
 }) {
   if (!activeSketch) {
     return (
@@ -11325,6 +11454,7 @@ function SketchViewportContent({
       key={activeSketch.id}
       configuration={configuration}
       projectionFrame={projectionFrame ?? null}
+      spatial={spatial}
       sketch={activeSketch}
     />
   )
@@ -12064,16 +12194,58 @@ function useSketchViewportSolveModel({
   }
 }
 
+function SketchViewportChrome({
+  state,
+  actions,
+  spatial,
+  plane,
+}: Readonly<{
+  state: SketchViewportState
+  actions: SketchViewportActions
+  spatial: boolean
+  plane: SketchRecord["plane"] | null
+}>) {
+  return (
+    <>
+      <div
+        className={cn(
+          "absolute right-3 flex flex-col items-end gap-1",
+          spatial ? "top-14" : "top-3",
+          SAFE_VIEWPORT_RIGHT,
+        )}
+      >
+        <SketchExternalReferenceToolbar
+          draft={state.draft}
+          editorTool={state.editorTool}
+          modelCandidateCount={state.externalModelCandidates.length}
+          onEditorToolChange={actions.onEditorToolChange}
+          pierceCandidateCount={state.pierceCandidateCount ?? 0}
+          selectedEntityIds={state.selectedEntityIds}
+        />
+      </div>
+      <div className={cn("absolute bottom-3 right-3", SAFE_VIEWPORT_RIGHT)}>
+        <OriginPlaneVisibilityControls
+          onChange={actions.onOriginPlaneVisibilityChange}
+          visibility={state.originPlaneVisibility}
+        />
+      </div>
+      {spatial ? null : <SketchOrientation plane={plane} />}
+    </>
+  )
+}
+
 export function SketchViewport({
   actions,
   interactive = true,
   solveSketch = solveActiveSketch,
   overlay = false,
+  spatial = false,
   state,
 }: {
   actions: SketchViewportActions
   interactive?: boolean
   overlay?: boolean
+  spatial?: boolean
   solveSketch?: SketchSolveFunction
   state: SketchViewportState
 }) {
@@ -12173,6 +12345,7 @@ export function SketchViewport({
         emptyMessage={presentation.emptyMessage}
         configuration={drawingConfiguration}
         projectionFrame={state.projectionFrame ?? null}
+        spatial={spatial}
       />
       <SketchSolveOverlay
         active={activeSketch !== null}
@@ -12182,25 +12355,12 @@ export function SketchViewport({
         profileText={presentation.solve.profileText}
         status={presentation.solve.statusText}
       />
-      <div
-        className={cn("absolute right-3 top-3 flex flex-col items-end gap-1", SAFE_VIEWPORT_RIGHT)}
-      >
-        <SketchExternalReferenceToolbar
-          draft={draft}
-          editorTool={editorTool}
-          modelCandidateCount={externalModelCandidates.length}
-          onEditorToolChange={onEditorToolChange}
-          pierceCandidateCount={state.pierceCandidateCount ?? 0}
-          selectedEntityIds={selectedEntityIds}
-        />
-      </div>
-      <div className={cn("absolute bottom-3 right-3", SAFE_VIEWPORT_RIGHT)}>
-        <OriginPlaneVisibilityControls
-          onChange={onOriginPlaneVisibilityChange}
-          visibility={originPlaneVisibility}
-        />
-      </div>
-      <SketchOrientation plane={activeSketch?.plane ?? null} />
+      <SketchViewportChrome
+        state={state}
+        actions={actions}
+        spatial={spatial}
+        plane={activeSketch?.plane ?? null}
+      />
     </section>
   )
 }
