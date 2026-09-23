@@ -14,7 +14,9 @@ import {
 } from "@vibeshape/ui/components/dialog"
 import { FolderOpen } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { type ChangeEvent, useRef, useState } from "react"
+import { cn } from "@vibeshape/ui/lib/cn"
+import { useRef, useState } from "react"
+import { type DropEvent, type FileRejection, useDropzone } from "react-dropzone"
 import {
   activateLocalProject,
   createNewLocalProject,
@@ -76,10 +78,93 @@ function ProjectFileCard({
   )
 }
 
+function ProjectFileDropzone({
+  disabled,
+  loading,
+  onImport,
+  onRejected,
+}: {
+  disabled: boolean
+  loading: boolean
+  onImport: (files: readonly File[], input?: HTMLInputElement) => void
+  onRejected: (tooLarge: boolean) => void
+}) {
+  const t = useTranslations("app.projectFile")
+  const onDrop = (acceptedFiles: File[], fileRejections: FileRejection[], event: DropEvent) => {
+    if (fileRejections.length > 0) {
+      onRejected(fileRejections.some(({ file }) => file.size > VSHAPE_MAX_ARCHIVE_BYTES))
+      return
+    }
+    const input = event.target instanceof HTMLInputElement ? event.target : undefined
+    onImport(acceptedFiles, input)
+  }
+  const { getInputProps, getRootProps, isDragActive, open } = useDropzone({
+    accept: { [VSHAPE_MEDIA_TYPE]: [".vshape"] },
+    disabled,
+    maxFiles: 1,
+    maxSize: VSHAPE_MAX_ARCHIVE_BYTES,
+    multiple: false,
+    noClick: true,
+    onDrop,
+  })
+
+  return (
+    <section
+      className="grid content-start gap-3 rounded-md border bg-card p-4"
+      aria-labelledby="open-project-file-title"
+    >
+      <div className="grid gap-1">
+        <h3 id="open-project-file-title" className="text-sm font-medium">
+          {t("open.title")}
+        </h3>
+        <p className="text-xs text-muted-foreground">{t("open.dropDescription")}</p>
+      </div>
+      <div
+        {...getRootProps({
+          className: cn(
+            "grid min-h-24 place-items-center rounded-sm border border-dashed p-4 text-center text-sm transition-colors",
+            isDragActive ? "border-primary bg-primary/5" : "border-border",
+            disabled && "opacity-50",
+          ),
+          "aria-disabled": disabled,
+          "aria-label": t("open.dropTitle"),
+          role: "group",
+        })}
+      >
+        <input {...getInputProps({ "aria-label": t("open.inputLabel") })} />
+        <div className="grid justify-items-center gap-2">
+          <p>{t("open.dropTitle")}</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            isLoading={loading}
+            onClick={open}
+          >
+            {t("open.action")}
+          </Button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function feedbackForImport(code: string) {
   if (code === "document-already-exists") return "errors.alreadyExists"
   if (code === "resource-limit") return "errors.tooLarge"
   return "errors.openFailed"
+}
+
+function feedbackForFiles(files: readonly File[]) {
+  if (files.length !== 1) return "open.invalidFile"
+  const file = files[0]
+  if (!file?.name.toLowerCase().endsWith(".vshape")) return "open.invalidFile"
+  if (file.size > VSHAPE_MAX_ARCHIVE_BYTES) return "errors.tooLarge"
+  return null
+}
+
+function resetProjectFileInput(input: HTMLInputElement | undefined) {
+  if (input) input.value = ""
 }
 
 function localizedCopyName(sourceName: string, format: (name: string) => string) {
@@ -343,7 +428,7 @@ function ProjectLibrary({
 
 export function DocumentProjectDialog({ controller }: { controller: DocumentControllerState }) {
   const t = useTranslations("app.projectFile")
-  const inputRef = useRef<HTMLInputElement>(null)
+  const importInProgressRef = useRef(false)
   const [open, setOpen] = useState(false)
   const [activity, setActivity] = useState<ProjectActivity>("idle")
   const [feedback, setFeedback] = useState<ProjectFeedback | null>(null)
@@ -352,6 +437,42 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
   const listRequestRef = useRef(0)
   const disabled = controller.status !== "ready" || activity !== "idle"
+
+  const importFiles = async (files: readonly File[], input?: HTMLInputElement) => {
+    if (disabled || importInProgressRef.current) {
+      resetProjectFileInput(input)
+      return
+    }
+    const validationFeedback = feedbackForFiles(files)
+    if (validationFeedback) {
+      setFeedback({ key: validationFeedback, kind: "error" })
+      resetProjectFileInput(input)
+      return
+    }
+    const file = files[0]
+    if (!file) return
+
+    // State updates do not block a second event in the same render; claim the import synchronously.
+    importInProgressRef.current = true
+    setActivity("opening-file")
+    setFeedback({ key: "status.opening", kind: "status" })
+    try {
+      const imported = await importProjectBackup(new Uint8Array(await file.arrayBuffer()))
+      if (!imported.ok) {
+        setFeedback({ key: feedbackForImport(imported.diagnostic.code), kind: "error" })
+        return
+      }
+      setFeedback({ key: "status.switching", kind: "status" })
+      const activated = await activateLocalProject(imported.documentId)
+      if (!activated.ok) setFeedback({ key: "errors.switchFailed", kind: "error" })
+    } catch {
+      setFeedback({ key: "errors.openFailed", kind: "error" })
+    } finally {
+      resetProjectFileInput(input)
+      importInProgressRef.current = false
+      setActivity("idle")
+    }
+  }
 
   const loadProjects = async () => {
     const request = listRequestRef.current + 1
@@ -387,33 +508,6 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
       setFeedback({ key: "status.downloaded", kind: "status" })
       setOpen(false)
     } finally {
-      setActivity("idle")
-    }
-  }
-
-  const openFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget
-    const file = input.files?.[0]
-    if (!file) return
-    setActivity("opening-file")
-    setFeedback({ key: "status.opening", kind: "status" })
-    try {
-      if (file.size > VSHAPE_MAX_ARCHIVE_BYTES) {
-        setFeedback({ key: "errors.tooLarge", kind: "error" })
-        return
-      }
-      const imported = await importProjectBackup(new Uint8Array(await file.arrayBuffer()))
-      if (!imported.ok) {
-        setFeedback({ key: feedbackForImport(imported.diagnostic.code), kind: "error" })
-        return
-      }
-      setFeedback({ key: "status.switching", kind: "status" })
-      const activated = await activateLocalProject(imported.documentId)
-      if (!activated.ok) setFeedback({ key: "errors.switchFailed", kind: "error" })
-    } catch {
-      setFeedback({ key: "errors.openFailed", kind: "error" })
-    } finally {
-      input.value = ""
       setActivity("idle")
     }
   }
@@ -527,21 +621,17 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
               onAction={backup}
               title={t("backup.title")}
             />
-            <ProjectFileCard
-              action={t("open.action")}
-              description={t("open.description")}
-              disabled={disabled}
+            <ProjectFileDropzone
+              disabled={disabled || importInProgressRef.current}
               loading={activity === "opening-file"}
-              onAction={() => inputRef.current?.click()}
-              title={t("open.title")}
-            />
-            <input
-              ref={inputRef}
-              className="sr-only"
-              type="file"
-              accept={`.vshape,${VSHAPE_MEDIA_TYPE}`}
-              aria-label={t("open.inputLabel")}
-              onChange={openFile}
+              onImport={(files, input) => void importFiles(files, input)}
+              onRejected={(tooLarge) => {
+                if (disabled || importInProgressRef.current) return
+                setFeedback({
+                  key: tooLarge ? "errors.tooLarge" : "open.invalidFile",
+                  kind: "error",
+                })
+              }}
             />
           </div>
           {feedback?.kind === "error" ? (

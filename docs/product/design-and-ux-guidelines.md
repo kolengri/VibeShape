@@ -292,6 +292,24 @@ Every modeling command follows `Idle -> Preview -> Validating -> Committed` or r
 - Cancel restores the pre-command UI selection when it still exists and does not change the document.
 - Repeated commands require an explicit repeat or keep-active preference; they are not silently sticky.
 
+### Drag-and-drop policy
+
+- Prefer direct dragging where an object has a meaningful movable position: History order, local
+  file import, sketch handles, and feature manipulators. Do not invent an editable order for derived
+  bodies or a new persistence model merely to make every list draggable.
+- Collection reorder uses a visible grip, a destination preview, cancellation, and an explanation
+  for forbidden positions. Ordinary row selection and editing must not start a drag.
+- Provide both keyboard operation and a click/tap alternative without dragging. Pointer thresholds
+  and touch activation must preserve scrolling. Announce pickup, position, rejection, and completion.
+- Drop invokes one existing application command with stable IDs and its captured revision. Hover,
+  movement, invalid destinations, cancellation, and stale context never persist changes. Prevent
+  duplicate commits while a move is pending; preserve dependency constraints and read-only locks.
+- Geometry dragging remains with the sketch solver or feature preview owner, not a sortable-list
+  library. File dragging enters the same size-bounded validation path as the file picker.
+- Keep shortcut labels, discoverable help, and toolbar/palette bindings derived from the command
+  registry. Guard text input, composition, repeated events, and active modal interaction. Multiple
+  eligible commands with one binding fail closed rather than silently choosing the first.
+
 ### Escape Hierarchy
 
 `Escape` performs one visible level of cancellation at a time:

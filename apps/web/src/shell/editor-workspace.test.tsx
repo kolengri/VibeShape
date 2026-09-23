@@ -6,6 +6,9 @@ import { useEffect } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { activeSketchDisplayForCamera, ModelingSketchViewportStack } from "./editor-workspace"
 
+// These tests own stack lifecycle; real tree interactions are covered by model-tree and browser tests.
+vi.mock("./model-tree", () => ({ ModelTree: () => null }))
+
 afterEach(cleanup)
 
 function ModelingLifecycleProbe({ onUnmount }: { onUnmount: () => void }) {

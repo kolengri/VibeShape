@@ -50,9 +50,10 @@ import {
 } from "./features/sketch/sketch-tool"
 import { SketchToolbarPortalsProvider } from "./features/sketch/sketch-toolbar-portals"
 import { ApplicationBar } from "./shell/application-bar"
-import { EditorCommandPalette } from "./shell/command-palette"
+import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
+import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import {
   SketchShortcutToolbar,
   type SketchShortcutToolbarAnchor,
@@ -479,6 +480,7 @@ function resolveEditorApplicationCommands(
   session: EditorApplicationSession,
   sessionActions: EditorSessionActions,
   workspaceActions: EditorWorkspaceActions,
+  openShortcutHelp: () => void,
 ) {
   const profileCommandAvailable = sketchProfileCommandAvailable(
     session,
@@ -502,6 +504,7 @@ function resolveEditorApplicationCommands(
   }
   return resolveBuiltInEditorCommands({
     actions: {
+      openShortcutHelp,
       cancelActive: workspaceActions.closeTool,
       documentRedo: redoCommittedDocument,
       documentUndo: undoCommittedDocument,
@@ -594,13 +597,20 @@ function EditorWorkspaceComposition({
   )
 }
 
+function sketchShortcutAnchorAtPointer(event: PointerEvent): SketchShortcutToolbarAnchor | null {
+  const target = event.target
+  if (!(target instanceof Element) || !target.closest("[data-sketch-shortcut-surface]")) return null
+  return { x: event.clientX, y: event.clientY }
+}
+
 function EditorApplication({
   controller,
 }: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
   const session = useEditorApplicationSession()
   const sessionActions = useEditorSession((state) => state.actions)
   const workspaceActions = useEditorWorkspaceActions(controller)
-  const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null)
+  const commandPaletteFocus = useCommandPaletteFocus(sessionActions.setCommandPaletteOpen)
+  const shortcutHelp = useShortcutHelp()
   const sketchShortcutReturnFocusRef = useRef<HTMLElement | null>(null)
   const lastSketchPointerRef = useRef<SketchShortcutToolbarAnchor | null>(null)
   const [sketchShortcutAnchor, setSketchShortcutAnchor] = useState<SketchShortcutToolbarAnchor>({
@@ -609,30 +619,16 @@ function EditorApplication({
   })
   const [sketchShortcutToolbarOpen, setSketchShortcutToolbarOpen] = useState(false)
   const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
-  const setCommandPaletteOpenWithFocus = useCallback(
-    (open: boolean, returnFocusTarget?: HTMLElement) => {
-      if (open) {
-        commandPaletteReturnFocusRef.current =
-          returnFocusTarget ??
-          (document.activeElement instanceof HTMLElement ? document.activeElement : null)
-      }
-      sessionActions.setCommandPaletteOpen(open)
-    },
-    [sessionActions],
-  )
   const commands = resolveEditorApplicationCommands(
     controller,
     session,
     sessionActions,
     workspaceActions,
+    shortcutHelp.show,
   )
   useEffect(() => {
     const trackSketchPointer = (event: PointerEvent) => {
-      const target = event.target
-      lastSketchPointerRef.current =
-        target instanceof Element && target.closest("[data-sketch-shortcut-surface]")
-          ? { x: event.clientX, y: event.clientY }
-          : null
+      lastSketchPointerRef.current = sketchShortcutAnchorAtPointer(event)
     }
     document.addEventListener("pointermove", trackSketchPointer, { passive: true })
     return () => document.removeEventListener("pointermove", trackSketchPointer)
@@ -664,7 +660,7 @@ function EditorApplication({
     paletteOpen: session.commandPaletteOpen,
     sketchShortcutToolbarAvailable,
     sketchShortcutToolbarOpen,
-    onPaletteOpenChange: setCommandPaletteOpenWithFocus,
+    onPaletteOpenChange: commandPaletteFocus.setOpen,
     onSketchShortcutToolbarOpenChange: setSketchShortcutToolbarOpenWithAnchor,
   })
 
@@ -672,15 +668,22 @@ function EditorApplication({
     <main className="cad-shell bg-background text-[13px] text-foreground">
       <ApplicationBar
         controller={controller}
+        onOpenShortcutHelp={shortcutHelp.show}
         onOpenCommandPalette={(returnFocusTarget) =>
-          setCommandPaletteOpenWithFocus(true, returnFocusTarget)
+          commandPaletteFocus.setOpen(true, returnFocusTarget)
         }
+      />
+      <ShortcutHelpDialog
+        commands={commands}
+        open={shortcutHelp.open}
+        onOpenChange={shortcutHelp.setOpen}
+        returnFocusRef={shortcutHelp.returnFocusRef}
       />
       <EditorCommandPalette
         commands={commands}
         open={session.commandPaletteOpen}
-        returnFocusRef={commandPaletteReturnFocusRef}
-        onOpenChange={setCommandPaletteOpenWithFocus}
+        returnFocusRef={commandPaletteFocus.returnFocusRef}
+        onOpenChange={commandPaletteFocus.setOpen}
       />
       <SketchShortcutToolbar
         anchor={sketchShortcutAnchor}

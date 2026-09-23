@@ -169,6 +169,24 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 - Layout state such as panel sizes and theme is a local UI preference, not domain state.
 - Add a visual harness or Storybook only if it pays for itself; command-flow E2E remains mandatory.
 
+## Direct manipulation and keyboard adapters
+
+History reorder uses `@dnd-kit/react` and `@dnd-kit/dom` for pointer, touch, keyboard sensors,
+collision feedback, and accessible drag interaction. The application translates a drop into the
+existing revisioned `org.vibeshape.history.move-item` command. Preview is disposable; neither the
+library's optimistic order nor a DOM index becomes persisted identity. A Move position menu provides
+a non-dragging single-pointer alternative. Incomplete dependencies, editing, rollback, read-only
+state, and stale revisions remain blocked by the owning command boundary.
+
+The Projects dialog uses `react-dropzone` for native file dragging and file selection. Both routes
+enter the same bounded `.vshape` import pipeline. Accepting a file extension is not format validation.
+
+`@tanstack/hotkeys` owns key parsing/matching, while `EditorCommandDescriptor` remains the only
+command binding registry. The existing dispatcher retains selection eligibility, modal/input/IME
+guards, and single-command routing. It does not install a second global hotkey manager. The searchable
+shortcut help reads descriptors, including mode requirements; local interaction gestures are listed
+separately. See [the interaction audit](../product/direct-manipulation-and-shortcuts.md).
+
 ## Themes
 
 - `dark`, `light`, and `system`;

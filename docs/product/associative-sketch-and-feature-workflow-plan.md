@@ -451,11 +451,12 @@ session while keeping the strict version-0 command union unchanged.
 
 ### Slice 1 — understandable History and editing context
 
-Status: History presentation, editing context, and adjacent persisted reorder are implemented; the rollback cursor
+Status: History presentation, editing context, and persisted drag reorder are implemented; the rollback cursor
 remains transient. The model tree consumes authoritative schema-version-1 History when available, interleaves
-sketches, Datum Planes, and modeling features, and lists terminal solid results separately under Bodies. Icon-only
-earlier/later actions move one independent adjacent item, disable dependency-invalid directions before commit,
-and preserve the exact interleaving through undo, redo, and reload. During sketch editing, the active row exposes
+sketches, Datum Planes, and modeling features, and lists terminal solid results separately under Bodies. Dedicated
+drag grips support pointer, touch, and keyboard reordering; a position menu provides a click/tap alternative.
+Dependency-invalid positions cannot commit, and accepted moves preserve the exact interleaving through undo,
+redo, and reload. During sketch editing, the active row exposes
 a transient boundary and later rows remain visibly muted as final-result context. Graph failure disables both
 rollback and reorder claims and exposes a bounded status instead of guessing an order. Row icons distinguish
 sketches, datum geometry, and solid-producing features; compact support and profile-source summaries expose the

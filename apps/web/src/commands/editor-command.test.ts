@@ -29,6 +29,39 @@ const handler: EditorCommandHandler<null> = {
   ownerModuleId: descriptor.ownerModuleId,
 }
 
+it("publishes modeling and reference shortcuts on the shared descriptors", () => {
+  const shortcuts = Object.fromEntries(
+    builtInEditorCommandDescriptors.map((command) => [command.labelKey, command.shortcut]),
+  )
+  expect(shortcuts).toMatchObject({
+    openShortcutHelp: { key: "F1" },
+    createSketch: { key: "s", modifiers: ["shift"] },
+    createExtrusion: { key: "e" },
+    createRevolve: { key: "e", modifiers: ["shift"] },
+    measure: { key: "m", modifiers: ["shift"] },
+    sketchUse: { key: "u" },
+    sketchMirror: { key: "i" },
+    sketchNormalView: { key: "n" },
+    sketchOrbitView: { key: "n", modifiers: ["shift"] },
+  })
+})
+
+it("opens shortcut help through its registered handler even while the document is loading", () => {
+  const context = commandContext({ controller: { ...readyController(), status: "loading" } })
+  const openShortcutHelp = vi.fn()
+  const commands = resolveBuiltInEditorCommands({
+    ...context,
+    actions: { ...context.actions, openShortcutHelp },
+  })
+  const help = commands.find(
+    ({ descriptor }) => descriptor.id === editorCommandIds.openShortcutHelp,
+  )
+  expect(help?.eligibility.enabled).toBe(true)
+  help?.invoke()
+  expect(openShortcutHelp).toHaveBeenCalledOnce()
+  expect(context.actions.createSketch).not.toHaveBeenCalled()
+})
+
 function readyController(featureCount = 0) {
   return {
     status: "ready",

@@ -1,57 +1,87 @@
+import type { ParsedHotkey } from "@tanstack/hotkeys"
+import { matchesKeyboardEvent, parseHotkey } from "@tanstack/hotkeys"
 import { useEffect, useRef } from "react"
-import type { EditorCommandShortcut, ResolvedEditorCommand } from "./editor-command"
+import {
+  type EditorCommandShortcut,
+  editorCommandIds,
+  type ResolvedEditorCommand,
+} from "./editor-command"
+
+const parsedShortcuts = new WeakMap<EditorCommandShortcut, readonly ParsedHotkey[]>()
+const paletteShortcut: EditorCommandShortcut = { key: "k", modifiers: ["mod"] }
+const sketchShortcutToolbarShortcut: EditorCommandShortcut = { key: "s" }
+
+function getParsedShortcuts(shortcut: EditorCommandShortcut) {
+  const cached = parsedShortcuts.get(shortcut)
+  if (cached) return cached
+
+  const modifiers = new Set(shortcut.modifiers ?? [])
+  const prefixes = [
+    ...(modifiers.has("alt") ? ["Alt"] : []),
+    ...(modifiers.has("shift") ? ["Shift"] : []),
+  ]
+  const modPrefixes = modifiers.has("mod") ? [["Control"], ["Meta"]] : [[]]
+  const compiled = modPrefixes.map((modPrefix) =>
+    parseHotkey([...modPrefix, ...prefixes, shortcut.key].join("+")),
+  )
+  parsedShortcuts.set(shortcut, compiled)
+  return compiled
+}
 
 function hasTextInputTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false
   return (
-    target.matches("input, textarea, select, [contenteditable='true'], [role='textbox']") ||
-    target.closest("[contenteditable='true'], [role='textbox']") !== null
+    target.matches(
+      "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']",
+    ) ||
+    target.closest("[contenteditable]:not([contenteditable='false']), [role='textbox']") !== null
   )
 }
 
 function matchesShortcut(event: KeyboardEvent, shortcut: EditorCommandShortcut) {
-  const modifiers = new Set(shortcut.modifiers ?? [])
-  const modPressed = event.metaKey || event.ctrlKey
-  if (modPressed !== modifiers.has("mod")) return false
-  if (event.altKey !== modifiers.has("alt")) return false
-  if (event.shiftKey !== modifiers.has("shift")) return false
-  return event.key.toLowerCase() === shortcut.key.toLowerCase()
+  return getParsedShortcuts(shortcut).some(
+    (parsed) =>
+      matchesKeyboardEvent(event, parsed, "windows") || matchesKeyboardEvent(event, parsed, "mac"),
+  )
 }
 
 function isPaletteShortcut(event: KeyboardEvent) {
-  return (
-    !event.altKey &&
-    !event.shiftKey &&
-    (event.metaKey || event.ctrlKey) &&
-    event.key.toLowerCase() === "k"
-  )
+  return matchesShortcut(event, paletteShortcut)
 }
 
 function isSketchShortcutToolbarShortcut(event: KeyboardEvent) {
-  return (
-    !event.altKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.shiftKey &&
-    event.key.toLowerCase() === "s"
-  )
+  return matchesShortcut(event, sketchShortcutToolbarShortcut)
 }
 
 function shouldIgnoreEditorShortcut(event: KeyboardEvent) {
   return event.defaultPrevented || event.isComposing || event.repeat
 }
 
+function isInsideModal(event: KeyboardEvent) {
+  return (
+    event.target instanceof Element &&
+    event.target.closest(
+      '[role="alertdialog"], [role="dialog"][aria-modal="true"], [data-slot="dialog-content"]',
+    ) !== null
+  )
+}
+
 function matchingEditorCommand(event: KeyboardEvent, commands: readonly ResolvedEditorCommand[]) {
-  return commands.find(
+  const matches = commands.filter(
     ({ descriptor, eligibility }) =>
       eligibility.enabled &&
       descriptor.shortcut !== undefined &&
       matchesShortcut(event, descriptor.shortcut),
   )
+  return matches.length === 1 ? matches[0] : undefined
 }
 
 function canInvokeFromTarget(event: KeyboardEvent, command: ResolvedEditorCommand) {
-  return !hasTextInputTarget(event.target) || command.descriptor.shortcut?.key === "Escape"
+  return (
+    !hasTextInputTarget(event.target) ||
+    command.descriptor.shortcut?.key === "Escape" ||
+    command.descriptor.id === editorCommandIds.openShortcutHelp
+  )
 }
 
 function consumeSketchShortcutToolbarKey({
@@ -67,6 +97,7 @@ function consumeSketchShortcutToolbarKey({
 }) {
   if (open) {
     if (event.key === "Escape" || isSketchShortcutToolbarShortcut(event)) {
+      if (hasTextInputTarget(event.target)) return false
       event.preventDefault()
       onOpenChange(false)
       return true
@@ -111,13 +142,14 @@ export function useEditorCommandShortcuts({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnoreEditorShortcut(event) || isInsideModal(event)) return
       if (isPaletteShortcut(event)) {
         event.preventDefault()
         if (sketchShortcutToolbarOpen) onSketchShortcutToolbarOpenChange(false)
         onPaletteOpenChange(!paletteOpen)
         return
       }
-      if (shouldIgnoreEditorShortcut(event) || paletteOpen) return
+      if (paletteOpen) return
       if (
         consumeSketchShortcutToolbarKey({
           available: sketchShortcutToolbarAvailable,

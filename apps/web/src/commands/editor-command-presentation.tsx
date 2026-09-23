@@ -29,6 +29,7 @@ import {
   FlipHorizontal2,
   Grid2X2,
   InscribedPolygonIcon,
+  Keyboard,
   Layers3,
   Link2,
   Minus,
@@ -58,6 +59,7 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  keyboard: Keyboard,
   "aligned-rectangle": RectangleHorizontal,
   arc: PenLine,
   box: BoxIcon,

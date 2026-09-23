@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -11,6 +11,7 @@ import { i18n } from "../i18n"
 import { EditorCommandPalette } from "./command-palette"
 
 const actions = {
+  openShortcutHelp: vi.fn(),
   cancelActive: vi.fn(),
   createFillet: vi.fn(),
   createChamfer: vi.fn(),
@@ -122,5 +123,17 @@ describe("EditorCommandPalette", () => {
     expect(JSON.parse(localStorage.getItem("vibeshape.editor-command-recents.v1") ?? "[]")).toEqual(
       [editorCommandIds.createBox],
     )
+  })
+
+  it("retains recent ordering after invoking shortcut help and reopening the palette", async () => {
+    const user = userEvent.setup()
+    renderPalette()
+    await user.type(screen.getByRole("combobox", { name: "Search commands" }), "keyboard")
+    await user.click(screen.getByText("Keyboard shortcuts"))
+    expect(actions.openShortcutHelp).toHaveBeenCalledOnce()
+    cleanup()
+    renderPalette()
+    const workspace = screen.getByRole("group", { name: "Workspace" })
+    expect(within(workspace).getAllByRole("option")[0]?.textContent).toContain("Keyboard shortcuts")
   })
 })

@@ -1,4 +1,5 @@
 export const editorCommandIds = {
+  openShortcutHelp: "org.vibeshape.editor.shortcuts.help",
   cancelActive: "org.vibeshape.editor.cancel-active",
   documentUndo: "org.vibeshape.editor.document.undo",
   documentRedo: "org.vibeshape.editor.document.redo",
@@ -111,6 +112,7 @@ export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBas
   )
 
 export type EditorCommandIcon =
+  | "keyboard"
   | "aligned-rectangle"
   | "arc"
   | "box"
@@ -174,6 +176,7 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "openShortcutHelp"
   | "createHole"
   | "cancelActive"
   | "documentUndo"

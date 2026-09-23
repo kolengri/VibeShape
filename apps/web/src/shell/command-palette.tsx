@@ -8,7 +8,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@vibeshape/ui/components/command"
-import { type RefObject, useState } from "react"
+import { type RefObject, useCallback, useRef, useState } from "react"
 import { z } from "zod"
 import {
   type EditorCommandGroup,
@@ -26,6 +26,7 @@ const recentStorageKey = "vibeshape.editor-command-recents.v1"
 const recentCommandIdsSchema = z
   .array(
     z.enum([
+      editorCommandIds.openShortcutHelp,
       editorCommandIds.cancelActive,
       editorCommandIds.documentUndo,
       editorCommandIds.documentRedo,
@@ -66,6 +67,22 @@ const recentCommandIdsSchema = z
   .max(6)
 
 const groupOrder: readonly EditorCommandGroup[] = ["workspace", "modeling", "sketch", "history"]
+
+export function useCommandPaletteFocus(onOpenChange: (open: boolean) => void) {
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const setOpen = useCallback(
+    (open: boolean, returnFocusTarget?: HTMLElement) => {
+      if (open) {
+        returnFocusRef.current =
+          returnFocusTarget ??
+          (document.activeElement instanceof HTMLElement ? document.activeElement : null)
+      }
+      onOpenChange(open)
+    },
+    [onOpenChange],
+  )
+  return { returnFocusRef, setOpen }
+}
 
 function readRecentCommandIds(): readonly EditorCommandId[] {
   try {
