@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { CommandIcon } from "@vibeshape/ui/components/icons"
+import { CommandIcon, Keyboard } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { createLocalAutomationConnection } from "../automation/local-automation-connection"
@@ -82,9 +82,11 @@ function LocalAutomationStatus({
 export function ApplicationBar({
   controller,
   onOpenCommandPalette,
+  onOpenShortcutHelp,
 }: {
   controller: DocumentControllerState
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
+  onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const commandsT = useTranslations("app.commands")
@@ -126,6 +128,23 @@ export function ApplicationBar({
         </TooltipContent>
       </Tooltip>
       <DocumentProjectDialog controller={controller} />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            data-shortcut-help-trigger
+            aria-label={commandsT("shortcutHelp.title")}
+            onClick={(event) => onOpenShortcutHelp(event.currentTarget)}
+          >
+            <Keyboard aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {commandsT("shortcutHelp.title")} <kbd>F1</kbd>
+        </TooltipContent>
+      </Tooltip>
       <DocumentExportDialog controller={controller} />
     </header>
   )

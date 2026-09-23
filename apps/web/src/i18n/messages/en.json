@@ -50,6 +50,9 @@
         "action": "Download .vshape"
       },
       "open": {
+        "dropTitle": "Drop a .vshape project",
+        "dropDescription": "Or choose one project file to verify and import it into this browser.",
+        "invalidFile": "Choose one .vshape project file.",
         "title": "Open project file",
         "description": "Verify and import a .vshape project as a separate browser-stored document.",
         "action": "Choose .vshape",
@@ -251,6 +254,22 @@
       }
     },
     "commands": {
+      "shortcutHelp": {
+        "title": "Keyboard shortcuts",
+        "description": "Commands share the same selection and mode requirements as the toolbar. Typing in a field keeps normal text editing; Escape first closes the active menu or dialog.",
+        "close": "Close keyboard shortcuts",
+        "search": "Search shortcuts…",
+        "list": "Registered keyboard shortcuts",
+        "empty": "No matching shortcuts",
+        "palette": "Command palette",
+        "sketchToolbar": "Sketch shortcut toolbar",
+        "deleteSelection": "Delete selected sketch geometry",
+        "renameHistoryItem": "Rename the focused sketch or feature",
+        "history": "History tree",
+        "global": "Editor",
+        "sketch": "Sketch editing",
+        "dragHelp": "History: drag a grip to reorder, or focus it and press Space, use arrow keys, then Space to drop. Escape cancels. The Move menu also lets you choose a position without dragging. Dependencies limit available positions."
+      },
       "open": "Commands",
       "openShortcut": "Ctrl/Cmd+K",
       "palette": {
@@ -290,6 +309,10 @@
         "selectTwoSolids": "Create at least two eligible solids first."
       },
       "items": {
+        "openShortcutHelp": {
+          "label": "Keyboard shortcuts",
+          "keywords": "keyboard|shortcuts|help|hotkeys|drag and drop"
+        },
         "documentRedo": {
           "label": "Redo",
           "keywords": "redo document|restore change|history"
@@ -609,6 +632,18 @@
         "unsuppressFeature": "Unsuppress {feature}",
         "reorderHistory": "Reorder {item}",
         "moveHistoryEarlier": "Move {item} earlier",
+        "historyDragHandle": "Reorder {item}",
+        "historyDragInstructions": "Drag {item} to reorder History. Or press Space, use arrow keys, then Space to drop; Escape cancels.",
+        "historyDropPosition": "Move {item} to position {position}",
+        "historyMovePicker": "Move {item}",
+        "historyMoveToPosition": "Move to position",
+        "historyMoveUnavailable": "This position would break a History dependency.",
+        "historyMoveCancelled": "History reorder cancelled",
+        "historyMoved": "Moved {item} to position {position}",
+        "historyDragStarted": "Picked up {item}, position {position} of {count}",
+        "historyDragOver": "{item}, position {position} of {count}",
+        "historyDragInvalid": "Cannot move {item} to this position because it would break a History dependency",
+        "historyDragDropped": "Dropped {item} at position {position} of {count}",
         "moveHistoryLater": "Move {item} later",
         "showSketch": "Show {sketch}",
         "showAllSketches": "Show all sketches",

@@ -220,7 +220,11 @@ test.describe("native project file", () => {
 
     await page.getByRole("button", { name: "Project…" }).click()
     const currentProjectDialog = page.getByRole("dialog", { name: "Projects" })
-    await currentProjectDialog.getByLabel("Choose VibeShape project file").setInputFiles(backupPath)
+    await currentProjectDialog.getByLabel("Choose VibeShape project file").setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: "application/octet-stream",
+      buffer: backupBytes,
+    })
     await expect(currentProjectDialog.getByRole("alert")).toContainText(
       "This exact project already exists in this browser.",
     )
@@ -237,9 +241,25 @@ test.describe("native project file", () => {
 
     try {
       await importedPage.goto("http://127.0.0.1:4173/")
-      await expect(importedPage.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(importedPage.getByText("Saved in this browser", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
       await importedPage.getByRole("button", { name: "Project…" }).click()
-      await importedPage.getByLabel("Choose VibeShape project file").setInputFiles(backupPath)
+      const transfer = await importedPage.evaluateHandle(
+        (bytes) => {
+          const browser = globalThis as unknown as {
+            DataTransfer: new () => { items: { add: (file: File) => void } }
+          }
+          const data = new browser.DataTransfer()
+          data.items.add(new File([new Uint8Array(bytes)], "Calibration bracket.vshape"))
+          return data
+        },
+        [...backupBytes],
+      )
+      await importedPage
+        .getByLabel("Drop a .vshape project")
+        .dispatchEvent("drop", { dataTransfer: transfer })
+      await transfer.dispose()
 
       await expect(importedPage.getByText("Calibration bracket", { exact: true })).toBeVisible()
       await expect(importedPage.getByRole("treeitem", { name: "Box 1" })).toBeVisible({

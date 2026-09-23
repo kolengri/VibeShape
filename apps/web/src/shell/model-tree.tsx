@@ -1,3 +1,7 @@
+import { KeyboardSensor, PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom"
+import { SortableKeyboardPlugin } from "@dnd-kit/dom/sortable"
+import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react"
+import { isSortable, isSortableOperation, useSortable } from "@dnd-kit/react/sortable"
 import {
   type FeatureRecord,
   type HistoryItemRef,
@@ -11,8 +15,12 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
-  ArrowDown,
-  ArrowUp,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@vibeshape/ui/components/dropdown-menu"
+import {
   ChevronDown,
   CircleAlert,
   CirclePause,
@@ -20,12 +28,20 @@ import {
   Cuboid,
   Eye,
   EyeOff,
+  GripVertical,
   Layers3,
   PenLine,
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type FocusEvent, type KeyboardEvent, type ReactNode, useMemo, useState } from "react"
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { SemanticRenameResult } from "../components/semantic-rename-dialog"
 import type {
   DocumentControllerState,
@@ -34,8 +50,16 @@ import type {
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
+import { historyMovePositions, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
 import type { EditorWorkspaceName } from "./workspace"
+
+const HISTORY_POINTER_SENSOR = PointerSensor.configure({
+  activationConstraints: (event) =>
+    event.pointerType === "touch"
+      ? [new PointerActivationConstraints.Delay({ value: 250, tolerance: 6 })]
+      : [new PointerActivationConstraints.Distance({ value: 5 })],
+})
 
 type FeatureRenameHandler = (
   baseRevision: number,
@@ -53,6 +77,64 @@ type HistoryMoveHandler = (
   item: HistoryItemRef,
   historyAfter: HistoryItemRef | null,
 ) => Promise<DocumentMutationResult>
+
+type HistoryDragBoundary = Readonly<{
+  documentId: string
+  revision: number
+  rollbackIndex: number
+}>
+
+function historyDragContextIsCurrent(
+  boundary: HistoryDragBoundary | null,
+  report: DocumentControllerState["report"],
+  rollbackIndex: number,
+) {
+  return Boolean(
+    boundary &&
+      report &&
+      boundary.documentId === report.snapshot.id &&
+      boundary.revision === report.snapshot.revision &&
+      boundary.rollbackIndex === rollbackIndex,
+  )
+}
+
+function historyMoveIsAvailable(
+  controller: DocumentControllerState,
+  activeSketchId: SketchId | null,
+  activeFeatureId: FeatureRecord["id"] | null,
+  completeGraph: boolean,
+) {
+  return (
+    completeGraph &&
+    controller.status === "ready" &&
+    controller.report?.mode === "read-write" &&
+    activeSketchId === null &&
+    activeFeatureId === null
+  )
+}
+
+function resolveHistoryDrop(
+  event: DragEndEvent,
+  boundary: HistoryDragBoundary | null,
+  report: DocumentControllerState["report"],
+  rollbackIndex: number,
+  destinationIndex: number | null,
+  moveAvailable: boolean,
+) {
+  if (event.canceled || !isSortableOperation(event.operation)) return null
+  const { source, target } = event.operation
+  if (
+    !source ||
+    !target ||
+    destinationIndex === null ||
+    !historyDragContextIsCurrent(boundary, report, rollbackIndex) ||
+    !moveAvailable
+  ) {
+    return null
+  }
+  if (!boundary) return null
+  return { boundary, destinationIndex, source }
+}
 
 type SketchRenameHandler = (
   baseRevision: number,
@@ -791,146 +873,269 @@ type ModelTreeHistoryBranchProps = ModelTreeProps & {
 }
 
 type ModelTreeHistoryRowProps = ModelTreeHistoryBranchProps & {
+  busy: boolean
+  dragSourceKey: string | null
+  dragDestinationIndex: number | null
   index: number
   marker: boolean
+  onMoveToIndex: (sourceKey: string, index: number) => void
   rolledBack: boolean
   row: HistoryViewRow
 }
 
-function refsEqual(left: HistoryItemRef, right: HistoryItemRef) {
-  return left.kind === right.kind && left.id === right.id
+function historyRowDropPreview(
+  isDropTarget: boolean,
+  dragSourceKey: string | null,
+  dragDestinationIndex: number | null,
+  rows: readonly HistoryViewRow[],
+  graphComplete: boolean,
+) {
+  if (!isDropTarget || !dragSourceKey || dragDestinationIndex === null) return null
+  return proposeHistoryMoveToIndex(rows, dragSourceKey, dragDestinationIndex, graphComplete)
 }
 
-function adjacentHistoryMove(
+function historyRowInsertionClass(
+  dragSourceKey: string | null,
+  dragDestinationIndex: number | null,
   rows: readonly HistoryViewRow[],
-  index: number,
-  direction: "earlier" | "later",
-): Readonly<{ item: HistoryItemRef; historyAfter: HistoryItemRef | null }> | null {
-  const row = rows[index]
-  if (!row) return null
-  if (direction === "earlier") {
-    const previous = rows[index - 1]
-    if (!previous || row.dependencies.some((dependency) => refsEqual(dependency, previous.ref)))
-      return null
-    return { item: row.ref, historyAfter: rows[index - 2]?.ref ?? null }
+) {
+  const sourceIndex = dragSourceKey
+    ? rows.findIndex((candidate) => historyRefKey(candidate.ref) === dragSourceKey)
+    : -1
+  return sourceIndex >= 0 && dragDestinationIndex !== null && sourceIndex < dragDestinationIndex
+    ? "border-b-2"
+    : "border-t-2"
+}
+
+function historyRowDropFeedback(
+  row: HistoryViewRow,
+  rolledBack: boolean,
+  sortable: ReturnType<typeof useSortable>,
+  dragSourceKey: string | null,
+  dropMove: ReturnType<typeof proposeHistoryMoveToIndex>,
+  insertionClass: string,
+) {
+  return {
+    featureKind: row.kind === "feature" ? (row.datum ? "datum" : "modeling") : undefined,
+    invalid: sortable.isDropTarget && dragSourceKey !== null && !dropMove,
+    className: cn(
+      rolledBack && "opacity-60",
+      sortable.isDragSource && "opacity-60",
+      sortable.isDropTarget &&
+        (dropMove
+          ? cn(insertionClass, "border-primary")
+          : cn(insertionClass, "border-destructive")),
+    ),
   }
-  const next = rows[index + 1]
-  if (!next || next.dependencies.some((dependency) => refsEqual(dependency, row.ref))) return null
-  return { item: row.ref, historyAfter: next.ref }
+}
+
+function useHistoryRowSortable({
+  controller,
+  dragSourceKey,
+  dragDestinationIndex,
+  index,
+  locked,
+  row,
+  view,
+}: {
+  controller: DocumentControllerState
+  dragSourceKey: string | null
+  dragDestinationIndex: number | null
+  index: number
+  locked: boolean
+  row: HistoryViewRow
+  view: ModelTreeHistoryBranchProps["view"]
+}) {
+  const sortable = useSortable({
+    id: historyRefKey(row.ref),
+    index,
+    disabled: locked || !historyMoveIsAvailable(controller, null, null, true),
+    plugins: [SortableKeyboardPlugin],
+  })
+  const dropMove = historyRowDropPreview(
+    sortable.isDropTarget,
+    dragSourceKey,
+    dragDestinationIndex,
+    view.rows,
+    !view.graphFailed && !view.reorderUnavailable,
+  )
+  const insertionClass = historyRowInsertionClass(dragSourceKey, dragDestinationIndex, view.rows)
+  return { sortable, dropMove, insertionClass }
+}
+
+function historyRowReorderIsLocked(
+  rolledBack: boolean,
+  busy: boolean,
+  activeSketchId: SketchId | null,
+  activeFeatureId: FeatureRecord["id"] | null,
+  view: ModelTreeHistoryBranchProps["view"],
+) {
+  return (
+    rolledBack ||
+    busy ||
+    activeSketchId !== null ||
+    activeFeatureId !== null ||
+    view.reorderUnavailable
+  )
 }
 
 function HistoryReorderActions({
   controller,
-  index,
+  handleRef,
   label,
   locked,
-  onMove,
+  onMoveToIndex,
   rows,
+  sourceKey,
   t,
 }: {
   controller: DocumentControllerState
-  index: number
+  handleRef: (element: Element | null) => void
   label: string
   locked: boolean
-  onMove: HistoryMoveHandler
+  onMoveToIndex: (index: number) => void
   rows: readonly HistoryViewRow[]
+  sourceKey: string
   t: ReturnType<typeof useTranslations>
 }) {
-  const earlier = adjacentHistoryMove(rows, index, "earlier")
-  const later = adjacentHistoryMove(rows, index, "later")
+  const [open, setOpen] = useState(false)
   const unavailable =
     locked || controller.status !== "ready" || controller.report?.mode !== "read-write"
-  const action = (direction: "earlier" | "later", move: typeof earlier, icon: ReactNode) => {
-    const actionLabel = t(direction === "earlier" ? "moveHistoryEarlier" : "moveHistoryLater", {
-      item: label,
-    })
-    return (
+  const allowedPositions = open
+    ? new Set(historyMovePositions(rows, sourceKey, true))
+    : new Set<number>()
+  return (
+    <div className="flex shrink-0 items-center">
+      <span className="sr-only">{t("reorderHistory", { item: label })}</span>
       <Tooltip>
         <TooltipTrigger asChild>
+          <Button
+            ref={handleRef}
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={t("historyDragHandle", { item: label })}
+            aria-describedby="history-drag-instructions"
+            disabled={unavailable}
+            className="cursor-grab touch-none active:cursor-grabbing"
+          >
+            <GripVertical aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("historyDragInstructions", { item: label })}</TooltipContent>
+      </Tooltip>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label={actionLabel}
-            disabled={unavailable || !move}
-            onClick={() =>
-              move
-                ? onMove(controller.report?.snapshot.revision ?? 0, move.item, move.historyAfter)
-                : undefined
-            }
+            aria-label={t("historyMovePicker", { item: label })}
+            disabled={unavailable || rows.length < 2}
           >
-            {icon}
+            <ChevronDown aria-hidden="true" />
           </Button>
-        </TooltipTrigger>
-        <TooltipContent>{actionLabel}</TooltipContent>
-      </Tooltip>
-    )
-  }
-  return (
-    <fieldset className="flex shrink-0 items-center">
-      <legend className="sr-only">{t("reorderHistory", { item: label })}</legend>
-      {action("earlier", earlier, <ArrowUp aria-hidden="true" />)}
-      {action("later", later, <ArrowDown aria-hidden="true" />)}
-    </fieldset>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
+          {open &&
+            rows.map((candidate, position) => (
+              <DropdownMenuItem
+                key={historyRefKey(candidate.ref)}
+                disabled={!allowedPositions.has(position)}
+                title={!allowedPositions.has(position) ? t("historyMoveUnavailable") : undefined}
+                onSelect={() => onMoveToIndex(position)}
+              >
+                {t("historyDropPosition", { item: label, position: position + 1 })}
+              </DropdownMenuItem>
+            ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
 
-function SketchHistoryRow({
-  index,
+type HistoryRowFrameProps = Pick<
+  ModelTreeHistoryRowProps,
+  | "busy"
+  | "dragDestinationIndex"
+  | "dragSourceKey"
+  | "index"
+  | "marker"
+  | "onMoveToIndex"
+  | "rolledBack"
+  | "row"
+  | "t"
+  | "view"
+> & {
+  label: string
+  content: ReactNode
+  details?: ReactNode
+  controller: DocumentControllerState
+  activeSketchId: SketchId | null
+  activeFeatureId: FeatureRecord["id"] | null
+}
+
+function HistoryRowPresentation({
+  controller,
+  content,
+  details,
+  feedback,
+  handleRef,
+  label,
   marker,
+  onMoveToIndex,
+  reorderLocked,
   rolledBack,
   row,
+  sortableRef,
+  summaryLabels,
   t,
   view,
-  ...props
-}: ModelTreeHistoryRowProps) {
-  const label = (row.record as SketchRecord).label || t("unnamedSketch")
-  const reorderLocked =
-    rolledBack ||
-    props.activeSketchId !== null ||
-    props.activeFeatureId !== null ||
-    view.reorderUnavailable
+}: Pick<
+  HistoryRowFrameProps,
+  | "controller"
+  | "content"
+  | "details"
+  | "label"
+  | "marker"
+  | "onMoveToIndex"
+  | "rolledBack"
+  | "row"
+  | "t"
+  | "view"
+> & {
+  feedback: ReturnType<typeof historyRowDropFeedback>
+  handleRef: (element: Element | null) => void
+  reorderLocked: boolean
+  sortableRef: (element: Element | null) => void
+  summaryLabels: ReturnType<typeof selectModelTreeHistory>["labelsByRef"]
+}) {
   return (
     <div
+      ref={sortableRef}
       role="none"
       data-history-kind={row.kind}
       data-history-id={row.ref.id}
+      data-history-feature-kind={feedback.featureKind}
       data-history-rolled-back={rolledBack ? "true" : undefined}
-      className={rolledBack ? "opacity-60" : undefined}
+      data-history-drop-invalid={feedback.invalid ? "true" : undefined}
+      className={feedback.className}
     >
       <div className="flex min-w-0 items-start">
-        <div className="min-w-0 flex-1">
-          <SketchTreeItem
-            active={row.ref.id === props.activeSketchId}
-            controller={props.controller}
-            onActivate={props.onSketchActivate}
-            onSketchSupportRepair={props.onSketchSupportRepair}
-            onFeatureRename={props.onFeatureRename}
-            onSketchDeleted={props.onSketchDeleted}
-            onSketchRemove={props.onSketchRemove}
-            onSketchRename={props.onSketchRename}
-            onVisibilityChange={props.onSketchVisibilityChange}
-            renameBlocked={row.ref.id === props.sketchRenameBlockedId}
-            referenceHealth={row.referenceHealth}
-            supportHealth={row.supportHealth}
-            sketch={row.record as SketchRecord}
-            unnamedSketch={t("unnamedSketch")}
-            visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
-          />
-        </div>
+        <div className="min-w-0 flex-1">{content}</div>
         <HistoryReorderActions
-          controller={props.controller}
-          index={index}
+          controller={controller}
+          handleRef={handleRef}
           label={label}
           locked={reorderLocked}
-          onMove={props.onHistoryMove}
+          onMoveToIndex={(position) => onMoveToIndex(historyRefKey(row.ref), position)}
           rows={view.rows}
+          sourceKey={historyRefKey(row.ref)}
           t={t}
         />
       </div>
-      <HistorySummary labelsByRef={view.labelsByRef} row={row} t={t} />
-      <SketchReferenceHealthSummary health={row.referenceHealth} t={t} />
-      <SketchSupportHealthSummary health={row.supportHealth} t={t} />
+      <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />
+      {details}
       {marker && (
         <div role="status" className="px-2 text-[11px] text-muted-foreground">
           {t("rollbackMarker")}
@@ -940,57 +1145,175 @@ function SketchHistoryRow({
   )
 }
 
-function FeatureHistoryRow({
+function HistoryRowFrame({
+  busy,
+  dragDestinationIndex,
+  dragSourceKey,
   index,
+  marker,
+  onMoveToIndex,
+  rolledBack,
+  row,
+  t,
+  view,
+  label,
+  content,
+  details,
+  controller,
+  activeSketchId,
+  activeFeatureId,
+}: HistoryRowFrameProps) {
+  const reorderLocked = historyRowReorderIsLocked(
+    rolledBack,
+    busy,
+    activeSketchId,
+    activeFeatureId,
+    view,
+  )
+  const { sortable, dropMove, insertionClass } = useHistoryRowSortable({
+    controller,
+    dragDestinationIndex,
+    dragSourceKey,
+    index,
+    locked: reorderLocked,
+    row,
+    view,
+  })
+  const feedback = historyRowDropFeedback(
+    row,
+    rolledBack,
+    sortable,
+    dragSourceKey,
+    dropMove,
+    insertionClass,
+  )
+  return (
+    <HistoryRowPresentation
+      content={content}
+      controller={controller}
+      details={details}
+      feedback={feedback}
+      handleRef={sortable.handleRef}
+      label={label}
+      marker={marker}
+      onMoveToIndex={onMoveToIndex}
+      reorderLocked={reorderLocked}
+      rolledBack={rolledBack}
+      row={row}
+      sortableRef={sortable.ref}
+      summaryLabels={view.labelsByRef}
+      t={t}
+      view={view}
+    />
+  )
+}
+
+function SketchHistoryRow({
+  busy,
+  dragDestinationIndex,
+  dragSourceKey,
+  index,
+  marker,
+  onMoveToIndex,
   rolledBack,
   row,
   t,
   view,
   ...props
 }: ModelTreeHistoryRowProps) {
-  const label = (row.record as FeatureRecord).label ?? t("unnamedFeature")
-  const reorderLocked =
-    rolledBack ||
-    props.activeSketchId !== null ||
-    props.activeFeatureId !== null ||
-    view.reorderUnavailable
+  const sketch = row.record as SketchRecord
+  const label = sketch.label || t("unnamedSketch")
   return (
-    <div
-      role="none"
-      data-history-kind={row.kind}
-      data-history-feature-kind={row.datum ? "datum" : "modeling"}
-      data-history-id={row.ref.id}
-      className={rolledBack ? "opacity-60" : undefined}
-      data-history-rolled-back={rolledBack ? "true" : undefined}
-    >
-      <div className="flex min-w-0 items-start">
-        <div className="min-w-0 flex-1">
-          <FeatureTreeItem
-            active={row.ref.id === props.activeFeatureId}
-            controller={props.controller}
-            feature={row.record as FeatureRecord}
-            onActivate={props.onFeatureActivate}
-            onFeatureRename={props.onFeatureRename}
-            onPreselectionChange={props.onFeaturePreselectionChange}
-            onSuppressionChange={props.onFeatureSuppressionChange}
-            onVisibilityChange={props.onFeatureVisibilityChange}
-            onSketchRename={props.onSketchRename}
-            unnamedFeature={t("unnamedFeature")}
-            visible={!props.hiddenFeatureIds.includes(row.ref.id as FeatureRecord["id"])}
-          />
-        </div>
-        <HistoryReorderActions
+    <HistoryRowFrame
+      activeFeatureId={props.activeFeatureId}
+      activeSketchId={props.activeSketchId}
+      busy={busy}
+      controller={props.controller}
+      dragDestinationIndex={dragDestinationIndex}
+      dragSourceKey={dragSourceKey}
+      index={index}
+      label={label}
+      marker={marker}
+      onMoveToIndex={onMoveToIndex}
+      rolledBack={rolledBack}
+      row={row}
+      t={t}
+      view={view}
+      details={
+        <>
+          <SketchReferenceHealthSummary health={row.referenceHealth} t={t} />
+          <SketchSupportHealthSummary health={row.supportHealth} t={t} />
+        </>
+      }
+      content={
+        <SketchTreeItem
+          active={row.ref.id === props.activeSketchId}
           controller={props.controller}
-          index={index}
-          label={label}
-          locked={reorderLocked}
-          onMove={props.onHistoryMove}
-          rows={view.rows}
-          t={t}
+          onActivate={props.onSketchActivate}
+          onSketchSupportRepair={props.onSketchSupportRepair}
+          onFeatureRename={props.onFeatureRename}
+          onSketchDeleted={props.onSketchDeleted}
+          onSketchRemove={props.onSketchRemove}
+          onSketchRename={props.onSketchRename}
+          onVisibilityChange={props.onSketchVisibilityChange}
+          renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+          referenceHealth={row.referenceHealth}
+          supportHealth={row.supportHealth}
+          sketch={sketch}
+          unnamedSketch={t("unnamedSketch")}
+          visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
         />
-      </div>
-      <HistorySummary labelsByRef={view.labelsByRef} row={row} t={t} />
-    </div>
+      }
+    />
+  )
+}
+
+function FeatureHistoryRow({
+  busy,
+  dragDestinationIndex,
+  dragSourceKey,
+  index,
+  onMoveToIndex,
+  rolledBack,
+  row,
+  t,
+  view,
+  ...props
+}: ModelTreeHistoryRowProps) {
+  const feature = row.record as FeatureRecord
+  const label = feature.label ?? t("unnamedFeature")
+  return (
+    <HistoryRowFrame
+      activeFeatureId={props.activeFeatureId}
+      activeSketchId={props.activeSketchId}
+      busy={busy}
+      controller={props.controller}
+      dragDestinationIndex={dragDestinationIndex}
+      dragSourceKey={dragSourceKey}
+      index={index}
+      label={label}
+      marker={false}
+      onMoveToIndex={onMoveToIndex}
+      rolledBack={rolledBack}
+      row={row}
+      t={t}
+      view={view}
+      content={
+        <FeatureTreeItem
+          active={row.ref.id === props.activeFeatureId}
+          controller={props.controller}
+          feature={feature}
+          onActivate={props.onFeatureActivate}
+          onFeatureRename={props.onFeatureRename}
+          onPreselectionChange={props.onFeaturePreselectionChange}
+          onSuppressionChange={props.onFeatureSuppressionChange}
+          onVisibilityChange={props.onFeatureVisibilityChange}
+          onSketchRename={props.onSketchRename}
+          unnamedFeature={t("unnamedFeature")}
+          visible={!props.hiddenFeatureIds.includes(row.ref.id as FeatureRecord["id"])}
+        />
+      }
+    />
   )
 }
 
@@ -1005,6 +1328,108 @@ function HistoryGroup({
   rollbackIndex: number
 }) {
   const { t, view } = props
+  const [busy, setBusy] = useState(false)
+  const [dragSourceKey, setDragSourceKey] = useState<string | null>(null)
+  const [dragDestinationIndex, setDragDestinationIndex] = useState<number | null>(null)
+  const [announcement, setAnnouncement] = useState("")
+  const busyRef = useRef(false)
+  const dragDestinationIndexRef = useRef<number | null>(null)
+  const dragBoundaryRef = useRef<HistoryDragBoundary | null>(null)
+  const completeGraph = !view.graphFailed && !view.reorderUnavailable
+  const itemLabel = (key: string) => {
+    const row = view.rows.find((candidate) => historyRefKey(candidate.ref) === key)
+    if (!row) return ""
+    return row.record.label || t(row.kind === "sketch" ? "unnamedSketch" : "unnamedFeature")
+  }
+  const performMove = (move: ReturnType<typeof proposeHistoryMoveToIndex>, revision: number) => {
+    if (!move || busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    void props
+      .onHistoryMove(revision, move.item, move.historyAfter)
+      .then((result) => {
+        setAnnouncement(
+          result.ok
+            ? t("historyMoved", {
+                item: itemLabel(historyRefKey(move.item)),
+                position:
+                  move.rows.findIndex(
+                    (row) => historyRefKey(row.ref) === historyRefKey(move.item),
+                  ) + 1,
+              })
+            : t("historyMoveCancelled"),
+        )
+      })
+      .catch(() => setAnnouncement(t("historyMoveCancelled")))
+      .finally(() => {
+        busyRef.current = false
+        setBusy(false)
+      })
+  }
+  const moveToIndex = (sourceKey: string, index: number) => {
+    const report = props.controller.report
+    if (
+      !report ||
+      !historyMoveIsAvailable(
+        props.controller,
+        props.activeSketchId,
+        props.activeFeatureId,
+        completeGraph,
+      )
+    ) {
+      return
+    }
+    const move = proposeHistoryMoveToIndex(view.rows, sourceKey, index, completeGraph)
+    performMove(move, report.snapshot.revision)
+  }
+  const handleDragEnd = (event: DragEndEvent) => {
+    const destinationIndex = dragDestinationIndexRef.current
+    dragDestinationIndexRef.current = null
+    const boundary = dragBoundaryRef.current
+    dragBoundaryRef.current = null
+    setDragSourceKey(null)
+    setDragDestinationIndex(null)
+    const drop = resolveHistoryDrop(
+      event,
+      boundary,
+      props.controller.report,
+      rollbackIndex,
+      destinationIndex,
+      historyMoveIsAvailable(
+        props.controller,
+        props.activeSketchId,
+        props.activeFeatureId,
+        completeGraph,
+      ),
+    )
+    if (!drop) {
+      setAnnouncement(t("historyMoveCancelled"))
+      return
+    }
+    const { source } = drop
+    const move = proposeHistoryMoveToIndex(
+      view.rows,
+      String(source.id),
+      drop.destinationIndex,
+      completeGraph,
+    )
+    if (!move) {
+      setAnnouncement(
+        source.initialIndex === drop.destinationIndex
+          ? t("historyMoveCancelled")
+          : t("historyDragInvalid", { item: itemLabel(String(source.id)) }),
+      )
+      return
+    }
+    performMove(move, drop.boundary.revision)
+    setAnnouncement(
+      t("historyDragDropped", {
+        item: itemLabel(String(source.id)),
+        position: move.rows.findIndex((row) => historyRefKey(row.ref) === String(source.id)) + 1,
+        count: move.rows.length,
+      }),
+    )
+  }
   return (
     <div role="none">
       <ModelTreeGroupItem
@@ -1015,25 +1440,95 @@ function HistoryGroup({
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("items.history")}</legend>
+          <p id="history-drag-instructions" className="sr-only">
+            {t("historyDragInstructions", { item: t("items.history") })}
+          </p>
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            {announcement}
+          </div>
           {view.graphFailed && (
             <p role="status" className="px-2 text-xs text-muted-foreground">
               {t("historyUnavailable")}
             </p>
           )}
-          {view.rows.map((row, index) => {
-            const rowProps = {
-              ...props,
-              index,
-              row,
-              rolledBack: rollbackIndex >= 0 && index > rollbackIndex,
-              marker: rollbackIndex === index && index < view.rows.length - 1,
-            }
-            return row.kind === "sketch" ? (
-              <SketchHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
-            ) : (
-              <FeatureHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
-            )
-          })}
+          <DragDropProvider
+            sensors={[HISTORY_POINTER_SENSOR, KeyboardSensor]}
+            onDragStart={(event) => {
+              if (!isSortable(event.operation.source)) return
+              const source = event.operation.source
+              const report = props.controller.report
+              if (!report || !source) return
+              dragBoundaryRef.current = {
+                documentId: report.snapshot.id,
+                revision: report.snapshot.revision,
+                rollbackIndex,
+              }
+              dragDestinationIndexRef.current = source.initialIndex
+              setDragDestinationIndex(source.initialIndex)
+              setDragSourceKey(String(source.id))
+              setAnnouncement(
+                t("historyDragStarted", {
+                  item: itemLabel(String(source.id)),
+                  position: source.initialIndex + 1,
+                  count: view.rows.length,
+                }),
+              )
+            }}
+            onDragOver={(event) => {
+              if (!isSortableOperation(event.operation)) return
+              const { source, target } = event.operation
+              if (!source || !target) return
+              dragDestinationIndexRef.current = target.index
+              setDragDestinationIndex(target.index)
+              if (String(source.id) === String(target.id)) {
+                setAnnouncement(
+                  t("historyDragOver", {
+                    item: itemLabel(String(source.id)),
+                    position: source.initialIndex + 1,
+                    count: view.rows.length,
+                  }),
+                )
+                return
+              }
+              const move = proposeHistoryMoveToIndex(
+                view.rows,
+                String(source.id),
+                target.index,
+                completeGraph,
+              )
+              setAnnouncement(
+                move
+                  ? t("historyDragOver", {
+                      item: itemLabel(String(source.id)),
+                      position:
+                        move.rows.findIndex((row) => historyRefKey(row.ref) === String(source.id)) +
+                        1,
+                      count: move.rows.length,
+                    })
+                  : t("historyDragInvalid", { item: itemLabel(String(source.id)) }),
+              )
+            }}
+            onDragEnd={handleDragEnd}
+          >
+            {view.rows.map((row, index) => {
+              const rowProps = {
+                ...props,
+                busy,
+                dragDestinationIndex,
+                dragSourceKey,
+                index,
+                onMoveToIndex: moveToIndex,
+                row,
+                rolledBack: rollbackIndex >= 0 && index > rollbackIndex,
+                marker: rollbackIndex === index && index < view.rows.length - 1,
+              }
+              return row.kind === "sketch" ? (
+                <SketchHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
+              ) : (
+                <FeatureHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
+              )
+            })}
+          </DragDropProvider>
         </fieldset>
       )}
     </div>

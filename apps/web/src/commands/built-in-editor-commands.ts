@@ -27,6 +27,7 @@ type PartDesignCommand = NonNullable<ReturnType<typeof activePartDesignCommand>>
 
 export type BuiltInEditorCommandContext = Readonly<{
   actions: Readonly<{
+    openShortcutHelp?: () => void
     cancelActive: () => void
     documentRedo?: (baseRevision: number) => Promise<unknown>
     documentUndo?: (baseRevision: number) => Promise<unknown>
@@ -107,10 +108,19 @@ const constraintEditorCommandDescriptors: readonly EditorCommandDescriptor[] =
 
 const descriptors: readonly EditorCommandDescriptor[] = [
   {
+    group: "workspace",
+    icon: "keyboard",
+    id: editorCommandIds.openShortcutHelp,
+    labelKey: "openShortcutHelp",
+    ownerModuleId: editorOwner,
+    shortcut: { key: "F1" },
+  },
+  {
     group: "modeling",
     icon: "dimension",
     id: editorCommandIds.measure,
     labelKey: "measure",
+    shortcut: { key: "m", modifiers: ["shift"] },
     ownerModuleId: editorOwner,
     toolbarGroup: "model-primary",
   },
@@ -153,6 +163,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "sketch",
     id: editorCommandIds.createSketch,
     labelKey: "createSketch",
+    shortcut: { key: "s", modifiers: ["shift"] },
     ownerModuleId: sketchOwner,
     toolbarGroup: "model-primary",
   },
@@ -177,6 +188,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "extrude",
     id: editorCommandIds.createExtrusion,
     labelKey: "createExtrusion",
+    shortcut: { key: "e" },
     ownerModuleId: partDesignOwner,
     sketchPresentation: { shortcutOrder: 9 },
     toolbarGroup: "model-primary",
@@ -186,6 +198,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "revolve",
     id: editorCommandIds.createRevolve,
     labelKey: "createRevolve",
+    shortcut: { key: "e", modifiers: ["shift"] },
     ownerModuleId: partDesignOwner,
     sketchPresentation: { shortcutOrder: 10 },
     toolbarGroup: "model-primary",
@@ -253,6 +266,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "use-external-geometry",
     id: editorCommandIds.sketchUse,
     labelKey: "sketchUse",
+    shortcut: { key: "u" },
     ownerModuleId: sketchOwner,
     sketchPresentation: { shortcutOrder: 1 },
     toolbarGroup: "sketch-tools",
@@ -488,6 +502,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "mirror",
     id: editorCommandIds.sketchMirror,
     labelKey: "sketchMirror",
+    shortcut: { key: "i" },
     ownerModuleId: sketchOwner,
     toolbarGroup: "sketch-modify",
   },
@@ -547,6 +562,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "orbit-view",
     id: editorCommandIds.sketchOrbitView,
     labelKey: "sketchOrbitView",
+    shortcut: { key: "n", modifiers: ["shift"] },
     ownerModuleId: sketchOwner,
     toolbarGroup: "sketch-view",
   },
@@ -563,6 +579,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "normal-view",
     id: editorCommandIds.sketchNormalView,
     labelKey: "sketchNormalView",
+    shortcut: { key: "n" },
     ownerModuleId: sketchOwner,
     toolbarGroup: "sketch-view",
   },
@@ -691,6 +708,16 @@ function sketchToolHandler(
 }
 
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  {
+    execute: ({ actions }) => actions.openShortcutHelp?.(),
+    getEligibility: ({ actions }) =>
+      actions.openShortcutHelp
+        ? editorCommandEnabled()
+        : editorCommandDisabled("documentUnavailable"),
+    id: editorCommandIds.openShortcutHelp,
+    isToolbarVisible: () => false,
+    ownerModuleId: editorOwner,
+  },
   {
     execute: ({ actions }) => actions.measure?.(),
     getEligibility: (context) => {

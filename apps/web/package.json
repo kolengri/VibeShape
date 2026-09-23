@@ -17,6 +17,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@dnd-kit/dom": "catalog:",
+    "@dnd-kit/react": "catalog:",
+    "@tanstack/hotkeys": "catalog:",
     "@vibeshape/application": "workspace:*",
     "@vibeshape/automation-api": "workspace:*",
     "@vibeshape/automation-host": "workspace:*",
@@ -34,6 +37,7 @@
     "is-what": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-dropzone": "catalog:",
     "zod": "catalog:",
     "zustand": "catalog:"
   },

@@ -46,7 +46,11 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("button", { name: "Project…", exact: true }).click()
     const projects = page.getByRole("dialog", { name: "Projects", exact: true })
     await expectContained(projects, page)
-    await projects.getByRole("button", { name: /^Duplicate / }).click()
+    await projects
+      .getByRole("listitem")
+      .filter({ hasText: "Current" })
+      .getByRole("button", { name: /^Duplicate / })
+      .click()
     const copy = projects.getByRole("listitem").filter({ hasText: "Untitled project copy" })
     await copy.getByRole("button", { name: /^Delete / }).click()
     const confirmation = page.getByRole("alertdialog")
@@ -61,6 +65,17 @@ for (const theme of ["light", "dark"] as const) {
     await confirmation.getByRole("button", { name: "Keep project", exact: true }).click()
     await expect(confirmation).not.toBeVisible()
     await expect(copy).toBeVisible()
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click()
+    const help = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true })
+    await expectContained(help, page)
+    await help.getByRole("textbox", { name: "Search shortcuts…" }).fill("extrude")
+    await expect(help.getByText("Extrude", { exact: true })).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath("compact-shortcut-help.png") })
+    await page.keyboard.press("Escape")
+    await expect(
+      page.getByRole("button", { name: "Keyboard shortcuts", exact: true }),
+    ).toBeFocused()
   })
 }
 

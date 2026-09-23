@@ -146,7 +146,7 @@ The adjacent icon-only Units action opens the project display-unit dialog. Lengt
 
 `Project…` owns both the local-project library and the separate native-file flow. The library strictly reads bounded authoritative project summaries from both IndexedDB generations, marks the current project, and shows each name, semantic revision, localized modification time, and exact-revision isometric preview. A project without successful terminal geometry, with a stale preview, or with unavailable derived storage gets a labeled placeholder rather than a synthetic shape. `New project` closes the current session before creating a native v1 browser-stored document; `Open` closes it before switching by stable document ID. Both actions are single-flight, require clean lease release before navigation, and leave the current project selected when pre-switch validation fails. A complete legacy project is promoted on open only while this tab owns its writer lease; contention or lossy recovery opens a read-only projected document without changing the legacy authority. `Duplicate` verifies and replays the selected native or promoted complete history, assigns fresh document, command, and transaction identities, preserves History anchors plus document-scoped variable and feature identities and authored expressions, appends a localized bounded copy name, and atomically publishes a clean inactive v1 project without changing the current selection. It does not set the external-backup timestamp; an available preview copies afterward as non-authoritative best effort. `Delete` is available only for an inactive project, opens the shared accessible confirmation, states that the full browser history is permanent while exported `.vshape` files are unaffected, and remains open with a persistent error after a stale-revision or live-lease conflict. The deletion transaction removes both generations of project heads, events, snapshots, previews, recovery markers, and expired lease atomically. The External backup card downloads replay-proven `.vshape` v2 even when the model has no exportable solid because semantic History, variables, and features are the payload. The Open project file card verifies v0, v1, or v2 input, lifts older complete journals to the v2 persistence boundary, and switches only after atomic import succeeds. Checkpoint v2 archives remain exportable but cannot become writable local projects. A same-ID collision remains visible, preserves the browser copy, and directs the user to Local projects. Active-project deletion, explicit same-ID restore or copy-as-new import, backup reminders, and system-picker enhancement remain later work.
 
-Saved sketches and features expose persistent icon-only, tooltip-labeled Rename actions beside their model-tree labels. Focusing either tree item and pressing `F2` opens the identical dialog, so pointer and keyboard paths cannot diverge. A feature rename updates only its label through the ordinary revisioned feature-update command; a sketch rename updates only its label through the ordinary revisioned sketch-update command. Stable IDs, parameters, geometry, dependencies, and references remain unchanged. The currently edited sketch disables Rename until Finish or Cancel because committing its earlier draft would otherwise restore a stale label. Read-only documents disable all semantic rename actions with an explanatory tooltip. Validation, asynchronous locking, stale-revision recovery, and persistence-failure behavior are shared with project Rename. Every feature History row also separates transient eye visibility from persisted Suppress/Unsuppress intent. Suppression uses a distinct pause/play icon, commits exactly one revision, participates in downstream rebuild and document undo/redo, disables meaningless visibility toggling while suppressed, and keeps the row present with muted, struck-through presentation so it can always be restored. Every History row exposes separate icon-only earlier/later actions. An adjacent move is disabled at either end, while another task is active, in read-only mode, or when crossing that neighbor would place a dependency after its consumer. An accepted move records stable item-and-anchor intent as one versioned event, rebuilds once, participates in document undo/redo, and retains the exact interleaving after reload; feature and sketch storage-array order remains irrelevant.
+Saved sketches and features expose persistent icon-only, tooltip-labeled Rename actions beside their model-tree labels. Focusing either tree item and pressing `F2` opens the identical dialog, so pointer and keyboard paths cannot diverge. A feature rename updates only its label through the ordinary revisioned feature-update command; a sketch rename updates only its label through the ordinary revisioned sketch-update command. Stable IDs, parameters, geometry, dependencies, and references remain unchanged. The currently edited sketch disables Rename until Finish or Cancel because committing its earlier draft would otherwise restore a stale label. Read-only documents disable all semantic rename actions with an explanatory tooltip. Validation, asynchronous locking, stale-revision recovery, and persistence-failure behavior are shared with project Rename. Every feature History row also separates transient eye visibility from persisted Suppress/Unsuppress intent. Suppression uses a distinct pause/play icon, commits exactly one revision, participates in downstream rebuild and document undo/redo, disables meaningless visibility toggling while suppressed, and keeps the row present with muted, struck-through presentation so it can always be restored. Every History row exposes a dedicated drag grip and a Move position menu instead of earlier/later arrows. Pointer, touch, and keyboard sorting share the existing History command; the menu provides a click/tap alternative. Moves are disabled while another task or move is active, in read-only mode, or when the selected position would place a dependency after its consumer. Cancelled, stale, and rejected drags leave the canonical order unchanged. An accepted move records stable item-and-anchor intent as one versioned event, rebuilds once, participates in document undo/redo, and retains the exact interleaving after reload; feature and sketch storage-array order remains irrelevant.
 
 ## Flow 2: edit an early parameter
 
@@ -196,15 +196,27 @@ Error wording, persistence, focus behavior, and recovery actions follow the [fee
 | Command palette | `Ctrl/Cmd+K` |
 | Sketch shortcut toolbar | `S` while creating or editing a sketch |
 | Undo / redo | `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` |
-| Save/export native project | `Ctrl/Cmd+S` |
-| Fit view | `F` |
-| Delete selection | `Delete/Backspace`, guarded during text input |
+| Shortcut help | `F1` or the keyboard icon; searchable and generated from registered bindings |
+| Create sketch | `Shift+S` |
+| Extrude / revolve | `E` / `Shift+E`, when an eligible profile is available |
+| Measure | `Shift+M`, outside sketch editing |
+| Select / point / line | `V` / `P` / `L` in sketch editing |
+| Rectangle / center rectangle | `G` / `R` in sketch editing |
+| Circle / arc / tangent arc | `C` / `A` / `Shift+A` in sketch editing |
+| Trim / dimension / offset / construction | `M` / `D` / `O` / `X` in sketch editing |
+| Use external geometry / mirror | `U` / `I` in sketch editing |
+| Normal to sketch / orbit sketch | `N` / `Shift+N` |
+| Toggle all sketch visibility | `Shift+H` |
+| Delete selected sketch geometry | `Delete/Backspace`, guarded during text input |
+| Rename sketch or feature | `F2` on the focused History item |
 | Cancel command | `Escape` |
-| Apply command | `Enter` when focus is not in a multiline input |
-| Toggle orthographic | `O` |
-| Standard views | Numeric presets, finalized after usability testing |
+| Reorder History | Focus a grip, `Space`, arrows, `Space`; `Escape` cancels |
 
-Shortcuts become configurable in P1. macOS uses `Cmd`; Windows and Linux use `Ctrl`.
+The registered keymap is authoritative. Native backup/export, Fit view, and standard views currently
+use their named controls, not global shortcuts. Enter submits only the focused form or confirms a
+local interaction that advertises it; it is not a blanket Apply command. `O` means sketch Offset,
+not projection mode. Configurable bindings remain a follow-up. macOS labels use `Cmd`; Windows and
+Linux labels use `Ctrl`.
 
 The complete shortcut safety, toolbar navigation, escape hierarchy, and canvas-accessibility contract is defined in [Design and UX Guidelines](design-and-ux-guidelines.md#accessibility-contract).
 

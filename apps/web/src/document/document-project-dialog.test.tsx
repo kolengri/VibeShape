@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -60,6 +60,25 @@ function renderDialog() {
       </TooltipProvider>
     </I18nProvider>,
   )
+}
+
+function projectFile(name = "Bracket.vshape", bytes = new Uint8Array([1, 2, 3])) {
+  const file = new File([bytes], name, { type: "application/vnd.vibeshape.project+zip" })
+  Object.defineProperty(file, "arrayBuffer", {
+    configurable: true,
+    value: vi.fn(async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    ),
+  })
+  return file
+}
+
+function dropPayload(files: File[]) {
+  return {
+    files,
+    items: files.map((file) => ({ kind: "file", getAsFile: () => file })),
+    types: ["Files"],
+  }
 }
 
 beforeEach(() => {
@@ -262,12 +281,7 @@ describe("DocumentProjectDialog", () => {
     renderDialog()
     await user.click(screen.getByRole("button", { name: "Project…" }))
     const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
-    const file = new File([new Uint8Array([1, 2, 3])], "Bracket.vshape", {
-      type: "application/vnd.vibeshape.project+zip",
-    })
-    Object.defineProperty(file, "arrayBuffer", {
-      value: async () => new Uint8Array([1, 2, 3]).buffer,
-    })
+    const file = projectFile()
 
     await user.upload(input, file)
 
@@ -277,5 +291,107 @@ describe("DocumentProjectDialog", () => {
     expect(input.value).toBe("")
     await user.upload(input, file)
     expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(2)
+  })
+
+  it("imports a selected .vshape file and activates it through the validated project flow", async () => {
+    const user = userEvent.setup()
+    controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+    const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
+
+    await user.upload(input, projectFile())
+
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce())
+    expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId)
+  })
+
+  it("imports a dropped .vshape file through the same validation and activation flow", async () => {
+    controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
+    renderDialog()
+    await userEvent.setup().click(screen.getByRole("button", { name: "Project…" }))
+    const dropArea = screen.getByRole("group", { name: "Drop a .vshape project" })
+
+    fireEvent.drop(dropArea, {
+      dataTransfer: dropPayload([projectFile()]),
+    })
+
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce())
+    expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId)
+  })
+
+  it("rejects unsupported extensions and multiple dropped files without partial import", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+    const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
+
+    await user.upload(input, projectFile("notes.zip"))
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Choose one .vshape project file.",
+    )
+    expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
+
+    fireEvent.drop(screen.getByRole("group", { name: "Drop a .vshape project" }), {
+      dataTransfer: dropPayload([projectFile("one.vshape"), projectFile("two.vshape")]),
+    })
+    expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
+  })
+
+  it("keeps pending import feedback when a queued rejected drop resolves later", async () => {
+    let finishRead: ((value: ArrayBuffer) => void) | undefined
+    const pendingFile = projectFile()
+    Object.defineProperty(pendingFile, "arrayBuffer", {
+      configurable: true,
+      value: vi.fn(() => {
+        const rejectedFile = new File(["bad"], "rejected.zip", { type: "application/zip" })
+        fireEvent.drop(dropArea, { dataTransfer: dropPayload([rejectedFile]) })
+        return new Promise<ArrayBuffer>((resolve) => (finishRead = resolve))
+      }),
+    })
+    controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
+    renderDialog()
+    await userEvent.setup().click(screen.getByRole("button", { name: "Project…" }))
+    const dropArea = screen.getByRole("group", { name: "Drop a .vshape project" })
+    fireEvent.drop(dropArea, { dataTransfer: dropPayload([pendingFile]) })
+
+    await waitFor(() => expect(pendingFile.arrayBuffer).toHaveBeenCalledOnce())
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByRole("status").textContent).toContain("Verifying")
+    finishRead?.(new ArrayBuffer(3))
+    await waitFor(() => expect(controllerMocks.activateLocalProject).toHaveBeenCalledOnce())
+  })
+
+  it("rejects oversized files before reading and guards concurrent imports while extraction is pending", async () => {
+    const user = userEvent.setup()
+    let finishRead: ((value: ArrayBuffer) => void) | undefined
+    const pendingFile = projectFile()
+    Object.defineProperty(pendingFile, "arrayBuffer", {
+      configurable: true,
+      value: vi.fn(() => new Promise<ArrayBuffer>((resolve) => (finishRead = resolve))),
+    })
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+    const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
+
+    await user.upload(input, pendingFile)
+    fireEvent.drop(screen.getByRole("group", { name: "Drop a .vshape project" }), {
+      dataTransfer: dropPayload([projectFile()]),
+    })
+    expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
+    finishRead?.(new Uint8Array([1, 2, 3]).buffer)
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce())
+
+    const oversizedFile = projectFile()
+    Object.defineProperty(oversizedFile, "size", {
+      configurable: true,
+      value: 33 * 1024 * 1024,
+    })
+    await user.upload(input, oversizedFile)
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "This project exceeds the current 32 MiB archive limit.",
+    )
+    expect(oversizedFile.arrayBuffer).not.toHaveBeenCalled()
+    expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce()
   })
 })

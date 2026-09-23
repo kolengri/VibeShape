@@ -11,6 +11,7 @@ import {
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import { selectModelTreeHistory } from "./model-tree-history"
+import { proposeHistoryMove, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 
 const sketch = createEmptySketch({
   id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2603"),
@@ -253,5 +254,62 @@ describe("selectModelTreeHistory", () => {
     expect(view.graphFailed).toBe(false)
     expect(view.labelsByRef.size).toBe(features.length)
     expect(view.labelsByRef.get(`feature:${features.at(-1)?.id}`)).toBe("Feature 1999")
+  })
+})
+
+describe("History drag move proposals", () => {
+  it("creates an anchored proposal for a valid position without changing source rows", () => {
+    const view = selectModelTreeHistory(
+      { sketches: [sketch], features: [feature] },
+      undefined,
+      undefined,
+      [
+        { kind: "sketch", id: sketch.id },
+        { kind: "feature", id: feature.id },
+      ],
+    )
+    const before = [...view.rows]
+    const proposal = proposeHistoryMoveToIndex(
+      view.rows,
+      `feature:${feature.id}`,
+      0,
+      !view.reorderUnavailable,
+    )
+
+    expect(proposal?.item).toEqual({ kind: "feature", id: feature.id })
+    expect(proposal?.historyAfter).toBeNull()
+    expect(proposal?.rows.map((row) => row.ref)).toEqual([
+      { kind: "feature", id: feature.id },
+      { kind: "sketch", id: sketch.id },
+    ])
+    expect(view.rows).toEqual(before)
+  })
+
+  it("rejects no-op, dependency-breaking, missing-target, and incomplete-graph proposals", () => {
+    const { source, target } = brokenReferenceChain()
+    const view = selectModelTreeHistory(
+      { sketches: [source, target], features: [] },
+      undefined,
+      undefined,
+      [
+        { kind: "sketch", id: source.id },
+        { kind: "sketch", id: target.id },
+      ],
+    )
+    const dependencyRows = view.rows.map((row) =>
+      row.ref.id === target.id
+        ? { ...row, dependencies: [{ kind: "sketch" as const, id: source.id }] }
+        : row,
+    )
+
+    expect(
+      proposeHistoryMove(dependencyRows, `sketch:${target.id}`, `sketch:${source.id}`, true),
+    ).toBeNull()
+    expect(proposeHistoryMoveToIndex(dependencyRows, `sketch:${source.id}`, 1, true)).toBeNull()
+    expect(proposeHistoryMoveToIndex(view.rows, `sketch:${target.id}`, 1, true)).toBeNull()
+    expect(proposeHistoryMove(view.rows, `sketch:${target.id}`, "missing:target", true)).toBeNull()
+    expect(
+      proposeHistoryMove(view.rows, `sketch:${target.id}`, `sketch:${source.id}`, false),
+    ).toBeNull()
   })
 })

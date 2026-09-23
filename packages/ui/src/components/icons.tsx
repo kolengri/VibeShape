@@ -22,6 +22,8 @@ export {
   FlipHorizontal2,
   FolderOpen,
   Grid2X2,
+  GripVertical,
+  Keyboard,
   Layers3,
   Link2,
   ListFilter,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   boxFeatureType,
@@ -20,6 +20,45 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
 import { ModelTree } from "./model-tree"
+
+const sortableCallbacks = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock("@dnd-kit/react", () => ({
+  DragDropProvider: (props: Record<string, unknown>) => {
+    sortableCallbacks.current = props
+    return props.children as import("react").ReactNode
+  },
+}))
+vi.mock("@dnd-kit/dom", () => ({
+  KeyboardSensor: class {},
+  PointerActivationConstraints: {
+    Delay: class {},
+    Distance: class {},
+  },
+  PointerSensor: { configure: () => ({}) },
+}))
+vi.mock("@dnd-kit/dom/sortable", () => ({ SortableKeyboardPlugin: class {} }))
+vi.mock("@dnd-kit/react/sortable", () => ({
+  useSortable: () => ({
+    handleRef: () => undefined,
+    isDragSource: false,
+    isDragging: false,
+    isDropTarget: false,
+    ref: () => undefined,
+  }),
+  isSortable: (value: unknown) =>
+    typeof value === "object" && value !== null && "initialIndex" in value && "index" in value,
+  isSortableOperation: (operation: { source: unknown; target: unknown }) =>
+    operation.source !== null && operation.target !== null,
+}))
+
+type TestSortable = { id: string; index: number; initialIndex: number }
+type TestOperation = { source: TestSortable | null; target: TestSortable | null }
+type TestDragCallbacks = {
+  onDragStart: (event: { operation: TestOperation }) => void
+  onDragOver: (event: { operation: TestOperation }) => void
+  onDragEnd: (event: { operation: TestOperation; canceled: boolean }) => void
+}
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
 const feature = featureRecordSchema.parse({
@@ -340,6 +379,96 @@ function renderTree(options: RenderTreeOptions = {}) {
 }
 
 describe("ModelTree History presentation", () => {
+  it("captures a sortable source at drag start before a drop target exists", async () => {
+    const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
+    const semanticController = {
+      ...controller,
+      report: {
+        ...controllerReport,
+        historyItems: [
+          { kind: "sketch" as const, id: sketchId },
+          { kind: "feature" as const, id: featureId },
+        ],
+      },
+    } as unknown as DocumentControllerState
+    renderTree({ activeFeatureId: null, controller: semanticController, onHistoryMove })
+    const callbacks = sortableCallbacks.current as TestDragCallbacks
+    const source = { id: `feature:${featureId}`, index: 1, initialIndex: 1 }
+    const target = { id: `sketch:${sketchId}`, index: 0, initialIndex: 0 }
+
+    act(() => callbacks.onDragStart({ operation: { source, target: null } }))
+    act(() => callbacks.onDragOver({ operation: { source, target } }))
+    act(() => callbacks.onDragEnd({ operation: { source, target }, canceled: false }))
+
+    await waitFor(() => {
+      expect(onHistoryMove).toHaveBeenCalledWith(7, { kind: "feature", id: featureId }, null)
+    })
+    expect(screen.getByText("Moved Box 1 to position 1")).toBeTruthy()
+  })
+
+  it("locks reorder controls while a move is pending and releases them after rejection", async () => {
+    const user = userEvent.setup()
+    let rejectPending: ((error: Error) => void) | undefined
+    const onHistoryMove = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPending = reject
+          }),
+      )
+      .mockResolvedValue({ ok: true })
+    const semanticController = {
+      ...controller,
+      report: {
+        ...controllerReport,
+        historyItems: [
+          { kind: "sketch" as const, id: sketchId },
+          { kind: "feature" as const, id: featureId },
+        ],
+      },
+    } as unknown as DocumentControllerState
+    const { container } = renderTree({
+      activeFeatureId: null,
+      controller: semanticController,
+      onHistoryMove,
+    })
+
+    await user.click(screen.getByRole("button", { name: "Move Box 1" }))
+    await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "Reorder Profile" }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+      expect(
+        (screen.getByRole("button", { name: "Move Profile" }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+    })
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-history-id]")].map(
+        (element) => element.dataset.historyId,
+      ),
+    ).toEqual([sketchId, featureId])
+
+    await act(async () => {
+      rejectPending?.(new Error("Move rejected"))
+    })
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "Reorder Profile" }) as HTMLButtonElement).disabled,
+      ).toBe(false)
+      expect(
+        (screen.getByRole("button", { name: "Move Profile" }) as HTMLButtonElement).disabled,
+      ).toBe(false)
+    })
+    expect(screen.getByText("History reorder cancelled")).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Move Box 1" }))
+    await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
+    await waitFor(() => expect(onHistoryMove).toHaveBeenCalledTimes(2))
+    expect(screen.getByText("Moved Box 1 to position 1")).toBeTruthy()
+  })
+
   it("uses semantic History order and moves independent rows by stable identity", async () => {
     const user = userEvent.setup()
     const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
@@ -364,15 +493,16 @@ describe("ModelTree History presentation", () => {
         (element) => element.dataset.historyId,
       ),
     ).toEqual([sketchId, featureId])
-    expect(
-      (screen.getByRole("button", { name: "Move Profile earlier" }) as HTMLButtonElement).disabled,
-    ).toBe(true)
+    expect(screen.getByRole("button", { name: "Reorder Profile" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Move Profile earlier" })).toBeNull()
 
-    await user.click(screen.getByRole("button", { name: "Move Box 1 earlier" }))
+    await user.click(screen.getByRole("button", { name: "Move Box 1" }))
+    await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
     expect(onHistoryMove).toHaveBeenCalledWith(7, { kind: "feature", id: featureId }, null)
   })
 
-  it("blocks adjacent History moves across a declared dependency", () => {
+  it("blocks drag-picker destinations across a declared dependency", async () => {
+    const user = userEvent.setup()
     const fixture = controllerWithBrokenSketchReference()
     const report = fixture.controller.report
     if (!report) throw new Error("Expected a controller report.")
@@ -392,13 +522,12 @@ describe("ModelTree History presentation", () => {
 
     renderTree({ activeFeatureId: null, controller: dependencyController })
 
+    await user.click(screen.getByRole("button", { name: "Move Source" }))
     expect(
-      (screen.getByRole("button", { name: "Move Source later" }) as HTMLButtonElement).disabled,
-    ).toBe(true)
-    expect(
-      (screen.getByRole("button", { name: "Move Dependent earlier" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true)
+      screen
+        .getByRole("menuitem", { name: "Move Source to position 2" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
   })
 
   it("renders one graph-ordered History and terminal Bodies presentation", () => {
