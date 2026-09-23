@@ -23,7 +23,7 @@ function compactTaskPanelSnapshot() {
   )
 }
 
-function useCompactTaskPanel() {
+export function useCompactTaskPanel() {
   return useSyncExternalStore(subscribeToCompactTaskPanel, compactTaskPanelSnapshot, () => false)
 }
 

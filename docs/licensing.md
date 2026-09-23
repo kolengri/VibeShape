@@ -45,6 +45,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Bun | MIT | Pin the toolchain and link its source; it is normally not part of the browser distribution |
 | Tailwind CSS / Vite plugin | MIT | Include a third-party notice |
 | shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
+| react-resizable-panels 4.13.2 | MIT | Preserve its notice and locked dependency notices; shared source-owned UI wrappers retain upstream keyboard and separator accessibility behavior |
 | cmdk | MIT | Include a third-party notice; the command-palette runtime ships in the browser bundle |
 | Radix UI | MIT | Include a third-party notice |
 | Lucide React | ISC | Include a third-party notice |

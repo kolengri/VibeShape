@@ -59,6 +59,7 @@ import {
   type SketchShortcutToolbarAnchor,
 } from "./shell/sketch-shortcut-toolbar"
 import { StatusBar } from "./shell/status-bar"
+import { WorkspaceLayoutPreferencesProvider } from "./shell/workspace-layout-preferences"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
 type SketchPersistenceBeforeRevolveResult = SketchPersistenceBeforeExtrusionResult
@@ -719,9 +720,11 @@ export function App() {
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
-      <EditorSessionProvider key={controller.report?.snapshot.id ?? "loading"}>
-        <EditorApplication controller={controller} />
-      </EditorSessionProvider>
+      <WorkspaceLayoutPreferencesProvider>
+        <EditorSessionProvider key={controller.report?.snapshot.id ?? "loading"}>
+          <EditorApplication controller={controller} />
+        </EditorSessionProvider>
+      </WorkspaceLayoutPreferencesProvider>
     </DocumentDisplayUnitsProvider>
   )
 }

@@ -79,6 +79,12 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
 
+The application bar's **Workspace layout settings** popover provides independent model-tree and task-panel width, visibility, and background-opacity controls, plus **Reset layout**. Pointer and keyboard resizing use the shared `react-resizable-panels` adapter; separators provide an 8 px hit area. Widths are saved after interactive resizing, not on every pointer movement. A versioned, validated local-storage preference record survives document switches and reloads, but is not part of project history or exported files. Unavailable storage falls back to in-memory preferences.
+
+Panels are opaque by default. On desktop, explicitly lowering a panel's background opacity reveals the same 3D/sketch viewport beneath it; text, inputs, buttons, and focus indicators remain opaque. This is a user-controlled visibility option, not a decorative glass treatment. View controls stay inset into the unobscured central region, and panel interactions never fall through to the model. Resizing, hiding, and changing opacity preserve the mounted viewport and task form. Below 1024 px, the task panel remains the existing bottom sheet and both panel backgrounds stay opaque; desktop task width/visibility and opacity preferences are retained for the return to desktop.
+
+The Variables workspace remains inset with opaque panels so table controls cannot be covered. The rendered orientation axes follow the same safe-area offset as their DOM legend; observing that display-only offset schedules a redraw without replacing meshes, changing the camera, or rebuilding geometry.
+
 Task-panel forms MUST fit the 280 px minimum without horizontal scrolling. Grid, fieldset, and flex descendants use explicit `min-width: 0`; long semantic selections and graphical-pick prompts truncate visually while retaining their complete accessible name and tooltip.
 
 At widths below 1024 px, VibeShape MAY offer view, inspect, and export behavior, but it does not promise full authoring. It MUST explain the limitation instead of rendering an unusable compressed editor.
