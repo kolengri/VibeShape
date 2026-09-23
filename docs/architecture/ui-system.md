@@ -192,6 +192,15 @@ library's optimistic order nor a DOM index becomes persisted identity. A Move po
 a non-dragging single-pointer alternative. Incomplete dependencies, editing, rollback, read-only
 state, and stale revisions remain blocked by the owning command boundary.
 
+The whole History row is the pointer activation surface; nested action controls are excluded by the
+sensor's interactive-element policy, while the treeitem label is explicitly eligible. Keyboard sorting
+starts with Space on the existing treeitem rather than another focusable grip. Enter retains item
+activation, and the tree navigation handler honors sensor-prevented arrow events. See the
+[interaction contract](../product/direct-manipulation-and-shortcuts.md) for thresholds and gestures.
+The tree owns localized drag instructions and live announcements instead of the generic accessibility
+plugin, whose disabled activator attributes would incorrectly disable the whole row's other actions.
+The sortable wrapper is not a Tab stop; keyboard-drop focus returns to its existing treeitem.
+
 The Projects dialog uses `react-dropzone` for native file dragging and file selection. Both routes
 enter the same bounded `.vshape` import pipeline. Accepting a file extension is not format validation.
 

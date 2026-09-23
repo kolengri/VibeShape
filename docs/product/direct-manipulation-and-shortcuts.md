@@ -4,10 +4,17 @@ Date: 2026-09-23
 
 ## Scope and ownership
 
-The model tree's former earlier/later arrows are replaced by History drag grips. History already has
+The model tree's former earlier/later arrows are replaced by whole-row History dragging. History already has
 a revisioned move command, stable item/anchor references, dependency validation, undo, and replay.
 The UI adds an input method; it does not introduce another document order. A position menu remains
 available for users who cannot or do not want to drag.
+
+Drag a row's label or non-interactive surface; there is no separate grip. Mouse movement must exceed
+5 px before dragging starts, so clicks and small pointer jitter still open the item. Nested visibility,
+rename, suppression, delete, and position controls keep their own actions and never start a drag.
+With a row focused, Space starts or completes a keyboard move, arrows choose a position, and Escape
+cancels. Enter opens the item, F2 renames it, and ordinary arrows navigate the tree when not dragging.
+Touch retains the sensor's long-press activation and the position menu remains a click/tap alternative.
 
 Projects accepts one dropped `.vshape` file in its file card. Selection and dropping share local
 import, validation, error feedback, and activation. Files are not uploaded and existing projects are
@@ -21,7 +28,7 @@ bypass eligibility or create parallel implementations. See the current [keymap](
 
 | Concern | Choice | Reason and boundary |
 |---|---|---|
-| History sorting | `@dnd-kit/react` + `@dnd-kit/dom` 0.5.0 | React 19 peer compatibility, pointer/touch and keyboard sensors, dedicated handles. The modern packages avoid a new legacy core/sortable integration. |
+| History sorting | `@dnd-kit/react` + `@dnd-kit/dom` 0.5.0 | React 19 peer compatibility and configurable pointer/touch and keyboard sensors. The modern packages avoid a new legacy core/sortable integration. |
 | Key matching | `@tanstack/hotkeys` 0.9.0 | Reuse parsing and exact modifier matching without adding a second registry, React store, or global manager. Application guards and eligibility stay local. |
 | Native file drop | `react-dropzone` 20.1.2 | Handles external OS file dragging and a picker. A sortable list sensor is not a native-file import adapter. |
 
@@ -55,7 +62,8 @@ Official references: [dnd-kit quickstart](https://dndkit.com/react/quickstart/),
 
 ## Regression requirements
 
-Verify pointer and keyboard History moves, forbidden dependencies, cancellation, stale revisions,
+Verify whole-row pointer and keyboard History moves, click versus drag, independent nested actions,
+forbidden dependencies, cancellation, stale revisions,
 pending locks, click/tap alternative, undo/redo, reload, and unchanged geometry. Verify file picker
 and drop share bounded single-file import with invalid-file and retry coverage. Verify IME, repeat,
 text input, modal Escape, duplicate bindings, focused help, and current registry labels. Real browser
