@@ -68,6 +68,11 @@ and persistence path. Third-party extensions and MCP adapters never receive the 
 Persistent UI preferences use their existing schema-validated preference owners rather than the
 editor-session store. Zustand persistence middleware is not enabled for semantic or draft state.
 
+Committed viewport mesh presentation follows the feature snapshot and rebuild response identities,
+not the entire document-controller state. A save-status-only publication must not replace unchanged
+viewer meshes or recreate GPU geometry. Visibility, contextual hiding, and actual rebuild changes
+still invalidate the presentation; transient previews keep their separate ownership.
+
 Feature-save completion is scoped to the initiating tool generation. A late save may finish its
 ordinary document transaction but cannot close a newer sketch edit or a reopened feature task.
 Disposable feature-preview workers exist only while a preview-capable feature tool is active.

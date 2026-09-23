@@ -1237,9 +1237,12 @@ function useViewportMeshPresentation({
 >) {
   const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
   const hiddenIds = hiddenFeatureIds ?? EMPTY_IDS
+  const featureSnapshot = controller.report?.snapshot.features
+  const rebuild = controller.report?.rebuild
+  const rebuildResponse = rebuild?.ok ? rebuild.response : undefined
   const allCommittedMeshes = useMemo(
     () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
-    [controller],
+    [featureSnapshot, rebuild?.ok, rebuildResponse],
   )
   const allHiddenFeatureIds = useMemo(
     () => [...new Set([...hiddenIds, ...contextualIds])],
@@ -1247,7 +1250,7 @@ function useViewportMeshPresentation({
   )
   const committedMeshes = useMemo(
     () => viewerMeshes(controller, hiddenIds, contextualIds),
-    [contextualIds, controller, hiddenIds],
+    [contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
   )
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)

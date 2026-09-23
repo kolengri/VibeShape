@@ -36,6 +36,10 @@ The component detects the returned value instead of inspecting `Function.prototy
 
 The guard prevents accidental duplicate activation; it does not make a non-idempotent domain operation safe. Commands, persistence operations, imports, exports, and external side effects still require application-level eligibility, transaction, and idempotency rules.
 
+## Viewport-bounded overlays
+
+Shared `Dialog` and `AlertDialog` content must stay within the small viewport height with an outer gutter. Long content scrolls inside the overlay; its actions remain reachable by keyboard and scrolling. Feature-specific size overrides must preserve this contract. Command palettes keep their search field visible and shrink the scrollable results region instead of pushing content outside the dialog. Test compact effective viewport sizes in both themes, including Escape, focus restoration, and destructive-action cancellation.
+
 ## Form adapter contract
 
 TanStack Form integration uses `createFormHookContexts` and `createFormHook` once for the shared UI package.

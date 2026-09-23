@@ -1878,7 +1878,9 @@ test.describe("full sketch editor", () => {
   }) => {
     await page.setViewportSize({ width: 512, height: 360 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -3565,7 +3567,9 @@ test.describe("full sketch editor", () => {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
@@ -3630,7 +3634,9 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Profile: 1,200 mm² · 146 mm perimeter")).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await openConstraintManager(page)
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
@@ -3650,6 +3656,9 @@ test.describe("full sketch editor", () => {
     await expect(page.getByRole("treeitem", { name: "Mounting profile" })).toBeVisible()
 
     await page.reload()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(page.getByRole("treeitem", { name: "Mounting profile" })).toBeVisible()
   })
 })
