@@ -407,6 +407,9 @@ test.describe("selector-backed revolve", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.reload()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
