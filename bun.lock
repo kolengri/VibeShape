@@ -125,6 +125,7 @@
         "@vibeshape/domain": "workspace:*",
         "@vibeshape/formats": "workspace:*",
         "@vibeshape/geometry-worker": "workspace:*",
+        "@vibeshape/print-analysis": "workspace:*",
         "@vibeshape/protocol": "workspace:*",
         "@vibeshape/sketch-solver": "workspace:*",
         "is-what": "catalog:",
@@ -222,6 +223,9 @@
     "packages/print-analysis": {
       "name": "@vibeshape/print-analysis",
       "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/protocol": "workspace:*",
+      },
       "devDependencies": {
         "@vibeshape/typescript-config": "workspace:*",
       },

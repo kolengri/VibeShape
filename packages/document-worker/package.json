@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@vibeshape/print-analysis": "workspace:*",
     "@vibeshape/application": "workspace:*",
     "@vibeshape/domain": "workspace:*",
     "@vibeshape/formats": "workspace:*",

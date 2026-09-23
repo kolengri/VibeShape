@@ -95,6 +95,7 @@
           "domain",
           "formats",
           "geometry-worker",
+          "print-analysis",
           "protocol",
           "sketch-solver"
         ]
@@ -112,6 +113,8 @@
       { "from": "i18n", "allow": [] },
       // Protocol schemas are the dependency-free structured-clone boundary.
       { "from": "protocol", "allow": [] },
+      // Bounded print-copy generation consumes serializable contracts, never UI or persistence.
+      { "from": "print-analysis", "allow": ["protocol"] },
       // The geometry worker depends on contracts, never on UI or persistence.
       { "from": "geometry-worker", "allow": ["protocol", "test-models"] },
       // The sketch solver compiles pure domain records into the private native ABI.

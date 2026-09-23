@@ -6,6 +6,7 @@ import {
   documentWorkerDocumentIdSchema,
   documentWorkerRequestSchema,
   type GeometryExportFormat,
+  type PrintPreparationSettings,
 } from "@vibeshape/protocol"
 import {
   type DocumentWorkerClientErrorCode,
@@ -20,6 +21,7 @@ type DisposalResponse = Extract<DocumentWorkerTerminalResponse, { type: "documen
 type ExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
 type SketchResponse = Extract<DocumentWorkerTerminalResponse, { type: "sketchSolved" }>
 type SolveSketchRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
+type ExportOptions = DocumentWorkerRequestOptions & { printPreparation?: PrintPreparationSettings }
 
 export type DocumentWorkerRebuildInput = Readonly<{
   document: unknown
@@ -103,7 +105,7 @@ export class DocumentWorkerSession {
     return this.#enqueue(() => this.#rebuildWithRecovery(input, options))
   }
 
-  exportDocument(format: GeometryExportFormat, options: DocumentWorkerRequestOptions = {}) {
+  exportDocument(format: GeometryExportFormat, options: ExportOptions = {}) {
     return this.#enqueue(() => this.#exportWithRecovery(format, options))
   }
 
@@ -176,7 +178,7 @@ export class DocumentWorkerSession {
     }
   }
 
-  async #exportWithRecovery(format: GeometryExportFormat, options: DocumentWorkerRequestOptions) {
+  async #exportWithRecovery(format: GeometryExportFormat, options: ExportOptions) {
     this.#assertOpen()
     if (!this.#lastSuccessfulSnapshot) {
       throw new DocumentWorkerRequestError(
@@ -247,10 +249,7 @@ export class DocumentWorkerSession {
     return response
   }
 
-  async #exportOnce(
-    format: GeometryExportFormat,
-    options: DocumentWorkerRequestOptions,
-  ): Promise<ExportResponse> {
+  async #exportOnce(format: GeometryExportFormat, options: ExportOptions): Promise<ExportResponse> {
     const revision = this.#lastSuccessfulSnapshot?.document.revision
     if (revision === undefined) {
       throw new DocumentWorkerRequestError(
@@ -262,6 +261,7 @@ export class DocumentWorkerSession {
       ...this.#envelope(revision),
       type: "exportDocument",
       format,
+      ...(options.printPreparation ? { printPreparation: options.printPreparation } : {}),
     })
     if (request.type !== "exportDocument") {
       throw new TypeError("Document worker export request validation returned an invalid type.")

@@ -9,6 +9,20 @@ import { i18n } from "../i18n"
 import type { DocumentControllerState } from "./document-controller"
 import { DocumentExportDialog } from "./document-export-dialog"
 
+const mocks = vi.hoisted(() => ({
+  exportActiveDocument: vi.fn(),
+  downloadDocumentExport: vi.fn(),
+}))
+
+vi.mock("./document-controller", () => ({
+  exportActiveDocument: mocks.exportActiveDocument,
+}))
+
+vi.mock("./document-export", async () => {
+  const actual = await vi.importActual<typeof import("./document-export")>("./document-export")
+  return { ...actual, downloadDocumentExport: mocks.downloadDocumentExport }
+})
+
 class ResizeObserverMock {
   observe() {}
   unobserve() {}
@@ -18,6 +32,15 @@ class ResizeObserverMock {
 beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
 afterAll(() => vi.unstubAllGlobals())
 afterEach(cleanup)
+
+const readyWithSolid = {
+  mode: "read-write",
+  snapshot: { name: "Bracket" },
+  rebuild: {
+    ok: true,
+    response: { geometry: [{ geometry: { shape: { solidCount: 1 } } }] },
+  },
+} as unknown as DocumentControllerState["report"]
 
 const loading: DocumentControllerState = {
   status: "loading",
@@ -37,6 +60,21 @@ function dialog(controller: DocumentControllerState) {
 }
 
 describe("document export availability", () => {
+  it("shows a recoverable error when slicer preparation unexpectedly rejects", async () => {
+    mocks.exportActiveDocument.mockRejectedValueOnce(new Error("Worker unavailable"))
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.click(screen.getByRole("button", { name: "Open in OrcaSlicer" }))
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The slicer action could not finish.",
+    )
+    expect(screen.queryByText("Preparing 3MF for OrcaSlicer…")).toBeNull()
+    expect(
+      (screen.getByRole("button", { name: "Open in OrcaSlicer" }) as HTMLButtonElement).disabled,
+    ).toBe(false)
+  })
+
   it.each(["idle", "loading", "error"] as const)(
     "does not open a transient dialog while the document is %s",
     async (status) => {
@@ -71,5 +109,31 @@ describe("document export availability", () => {
     ).toBe(true)
     await user.click(screen.getByRole("button", { name: "Close" }))
     expect(screen.queryByRole("dialog", { name: "Export model" })).toBeNull()
+  })
+
+  it("releases export actions after a thrown failure and clears the error on reopen", async () => {
+    const user = userEvent.setup()
+    mocks.exportActiveDocument.mockRejectedValueOnce(new Error("worker disconnected"))
+    render(
+      dialog({
+        status: "ready",
+        report: readyWithSolid,
+        saveStatus: "saved",
+        diagnostic: null,
+      }),
+    )
+
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    const exportButton = screen.getByRole("button", { name: "Export STEP" })
+    await user.click(exportButton)
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The model could not be exported. Your saved document is unchanged.",
+    )
+    expect((exportButton as HTMLButtonElement).disabled).toBe(false)
+
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 })

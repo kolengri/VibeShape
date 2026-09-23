@@ -125,8 +125,11 @@ The reference bracket passes its parameter-change matrix. A symmetric ambiguous 
 
 ### Scope
 
-- Configurable print-quality adaptive tessellation and validation profiles.
-- Extend the implemented 3MF Core export with placement, progress, cancellation, and reports.
+- Extend the implemented 3MF Core export with configurable print-quality adaptive tessellation,
+  validation profiles, placement, progress, cancellation, and reports.
+- Harden the delivered disposable prepared-print flow: bounded X/Y placement, convex single-body
+  breakaway fins, prepared 3MF download, and prepared-file slicer handoff. This flow is explicitly
+  partial-coverage support preparation, not a general automatic-support system.
 - Printer and build-volume profiles.
 - P0 mesh and solid checks.
 - Overhang and build-volume overlays.
@@ -136,7 +139,9 @@ The reference bracket passes its parameter-change matrix. A symmetric ambiguous 
 
 ### Demo
 
-Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca, and retain dimensions within tolerance.
+Bracket and enclosure export to 3MF and STEP, optional bounded prepared fins, open in PrusaSlicer and
+Cura/Orca, and retain dimensions within tolerance. The current independent evidence is limited to
+mesh/manifold/bounds inspection; slicing, toolpaths, and physical-print success remain release gates.
 
 ## Phase 5 — alpha hardening (4–8 weeks)
 

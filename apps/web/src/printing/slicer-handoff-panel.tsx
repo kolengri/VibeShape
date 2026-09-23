@@ -143,6 +143,8 @@ export function SlicerHandoffPanel({
       }
       downloadDocumentExport(exported)
       setStatus(fallbackStatus(handoff, slicerName, t))
+    } catch {
+      setStatus({ message: t("actionFailed"), failed: true })
     } finally {
       onBusyChange(false)
     }

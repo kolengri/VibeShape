@@ -14,6 +14,7 @@ import {
 import { Download } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useState } from "react"
+import { PrintPreparationPanel } from "../printing/print-preparation-panel"
 import { SlicerHandoffPanel } from "../printing/slicer-handoff-panel"
 import type { DocumentControllerState } from "./document-controller"
 import { exportActiveDocument } from "./document-controller"
@@ -56,17 +57,21 @@ function useDocumentExportAction(closeDialog: () => void) {
 
   const runExport = async (format: GeometryExportFormat) => {
     setActivity({ pendingFormat: format, statusKey: formatCopy[format].pending, failed: false })
-    const result = await exportActiveDocument(format)
-    if (!result.ok) {
+    try {
+      const result = await exportActiveDocument(format)
+      if (!result.ok) {
+        setActivity({ pendingFormat: null, statusKey: "status.failed", failed: true })
+        return
+      }
+      downloadDocumentExport(result)
+      setActivity({ pendingFormat: null, statusKey: formatCopy[format].succeeded, failed: false })
+      closeDialog()
+    } catch {
       setActivity({ pendingFormat: null, statusKey: "status.failed", failed: true })
-      return
     }
-    downloadDocumentExport(result)
-    setActivity({ pendingFormat: null, statusKey: formatCopy[format].succeeded, failed: false })
-    closeDialog()
   }
 
-  return { activity, runExport }
+  return { activity, runExport, resetActivity: () => setActivity(idleActivity) }
 }
 
 function documentHasExportableGeometry(controller: DocumentControllerState) {
@@ -134,11 +139,18 @@ export function DocumentExportDialog({ controller }: { controller: DocumentContr
   const [open, setOpen] = useState(false)
   const [slicerPending, setSlicerPending] = useState(false)
   const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
-  const { activity, runExport } = useDocumentExportAction(() => setOpen(false))
+  const [printPending, setPrintPending] = useState(false)
+  const [showPreparation, setShowPreparation] = useState(false)
+  const { activity, runExport, resetActivity } = useDocumentExportAction(() => setOpen(false))
   const hasGeometry = documentHasExportableGeometry(controller)
-  const actionDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
+  const actionDisabled =
+    activity.pendingFormat !== null || slicerPending || printPending || !hasGeometry
   const changeDialogOpen = (nextOpen: boolean) => {
-    if (nextOpen) setSlicerStatus(null)
+    if (nextOpen) {
+      setSlicerStatus(null)
+      resetActivity()
+      setShowPreparation(false)
+    }
     setOpen(nextOpen)
   }
 
@@ -176,36 +188,56 @@ export function DocumentExportDialog({ controller }: { controller: DocumentContr
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
           </DialogHeader>
-          <SlicerHandoffPanel
-            disabled={actionDisabled}
-            onBusyChange={setSlicerPending}
-            onOpened={(message) => {
-              setSlicerStatus(message)
-              setOpen(false)
-            }}
-            prepareThreeMf={() => exportActiveDocument("3mf")}
-          />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <ExportFormatCard
-              format="3mf"
+          {!showPreparation ? (
+            <SlicerHandoffPanel
               disabled={actionDisabled}
-              loading={activity.pendingFormat === "3mf"}
-              onExport={runExport}
+              onBusyChange={setSlicerPending}
+              onOpened={(message) => {
+                setSlicerStatus(message)
+                setOpen(false)
+              }}
+              prepareThreeMf={() => exportActiveDocument("3mf")}
             />
-            <ExportFormatCard
-              format="step"
-              disabled={actionDisabled}
-              loading={activity.pendingFormat === "step"}
-              onExport={runExport}
-            />
-            <ExportFormatCard
-              format="stl"
-              disabled={actionDisabled}
-              loading={activity.pendingFormat === "stl"}
-              onExport={runExport}
-            />
-          </div>
+          ) : null}
+          {!showPreparation ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ExportFormatCard
+                format="3mf"
+                disabled={actionDisabled}
+                loading={activity.pendingFormat === "3mf"}
+                onExport={runExport}
+              />
+              <ExportFormatCard
+                format="step"
+                disabled={actionDisabled}
+                loading={activity.pendingFormat === "step"}
+                onExport={runExport}
+              />
+              <ExportFormatCard
+                format="stl"
+                disabled={actionDisabled}
+                loading={activity.pendingFormat === "stl"}
+                onExport={runExport}
+              />
+            </div>
+          ) : null}
           <ExportNotice hasGeometry={hasGeometry} failed={activity.failed} />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={actionDisabled}
+            aria-expanded={showPreparation}
+            onClick={() => setShowPreparation(!showPreparation)}
+          >
+            {t(showPreparation ? "originalExport" : "preparePrint")}
+          </Button>
+          {showPreparation ? (
+            <PrintPreparationPanel
+              key={`${controller.report?.snapshot.id}:${controller.report?.snapshot.revision}`}
+              disabled={activity.pendingFormat !== null || slicerPending || !hasGeometry}
+              onBusyChange={setPrintPending}
+            />
+          ) : null}
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
