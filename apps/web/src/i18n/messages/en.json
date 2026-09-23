@@ -686,7 +686,11 @@
         "missingSketchSupportSummary": "Needs repair: the support face is missing.",
         "ambiguousSketchSupportSummary": "Needs repair: the support face is ambiguous.",
         "unknownSketchSupportSummary": "Support status is unavailable while its source feature is unavailable.",
-        "profileFromSketch": "Profile from {sketch}",
+        "sourceProfile": "Source region {number} from {sketch}",
+        "sourceProfileHint": "Hover or focus to highlight the source. Click to locate its sketch in History.",
+        "sourceProfileLocateHint": "Click to locate the source sketch in History without leaving the current tool.",
+        "missingSourceSketch": "Missing sketch",
+        "sourceProfileUnavailable": "The source sketch is unavailable. Edit the feature to choose an existing source.",
         "supportedByFeature": "Supported by {feature}",
         "supportedByPlane": "Supported by {plane} plane",
         "rollbackMarker": "Edit point in History: later items are rolled back. Use Show final result for display-only context."

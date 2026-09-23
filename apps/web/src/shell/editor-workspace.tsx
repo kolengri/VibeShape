@@ -490,6 +490,7 @@ type WorkspaceContentProps = Readonly<{
     revolveManipulator: RevolveManipulator | null
     hiddenFeatureIds: readonly FeatureId[]
     hiddenSketchIds: readonly SketchId[]
+    historyProfilePreview: SketchProfileSelector | null
     idleOriginPlaneSelectionAvailable: boolean
     originPlaneVisibility: ViewerOriginPlaneVisibility
     preselectedBody?: ModelBodySelection | null
@@ -660,6 +661,7 @@ function ModelingWorkspaceContent({
       contextualHiddenFeatureIds={editVisibility.featureIds}
       hiddenFeatureIds={model.hiddenFeatureIds}
       hiddenSketchIds={hiddenSketchIds}
+      sketchProfilePreview={model.historyProfilePreview}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
         onChange: actions.onOriginPlaneVisibilityChange,
@@ -1961,7 +1963,15 @@ function editedSketchId(activeTool: ActiveSketchTool | null) {
   return null
 }
 
-function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
+function EditorModelTree({
+  props,
+  profilePreview,
+  onProfilePreview,
+}: {
+  props: EditorWorkspaceProps
+  profilePreview: SketchProfileSelector | null
+  onProfilePreview: ((profile: SketchProfileSelector | null) => void) | undefined
+}) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
   const repairSketchSupport = (sketchId: SketchId) => {
     actions.editSketch(sketchId)
@@ -1969,6 +1979,8 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
   }
   return (
     <ModelTree
+      onSourceProfilePreview={onProfilePreview}
+      sourcePreviewSketchId={profilePreview?.sketchId}
       activeWorkspace={workspace}
       activeFeatureId={activeFeatureId(activeTool)}
       activeSketchId={activeSketchId}
@@ -2045,6 +2057,7 @@ function workspaceBodySelectionActions(actions: EditorWorkspaceActions) {
 }
 
 function EditorContent({
+  historyProfilePreview,
   featureSelectionContext,
   featureProfileSelections,
   featureProfileHiddenSketchIds,
@@ -2057,6 +2070,7 @@ function EditorContent({
   onRevolveAxisChange,
   props,
 }: {
+  historyProfilePreview: SketchProfileSelector | null
   featureSelectionContext: GeometryViewportSketchContext | undefined
   featureProfileSelections: readonly SketchProfileSelector[]
   featureProfileHiddenSketchIds: readonly SketchId[]
@@ -2107,6 +2121,7 @@ function EditorContent({
       }}
       controller={controller}
       model={{
+        historyProfilePreview,
         featureSelectionContext,
         extrusionManipulator: extrusionManipulator(
           props.activeTool,
@@ -2308,20 +2323,22 @@ function useModelFeaturePicking(props: EditorWorkspaceProps) {
   }
 }
 
-export function EditorWorkspace(props: EditorWorkspaceProps) {
-  const review = useSyncExternalStore(
-    automationReviews.subscribe,
-    automationReviews.getSnapshot,
-    automationReviews.getSnapshot,
-  )
-  const { holePicking, edgeTreatmentPicking, viewportContext } = useModelFeaturePicking(props)
-  const taskPanelT = useTranslations("app.shell.taskPanel")
+function useHistorySourcePreview(props: EditorWorkspaceProps) {
+  const snapshot = props.controller.report?.snapshot
+  const [profile, setProfile] = useState<SketchProfileSelector | null>(null)
+  const enabled =
+    props.activeTool === null && props.activeSketchTool === null && props.workspace === "model"
+  useEffect(() => {
+    setProfile(null)
+  }, [props.activeTool, props.activeSketchTool, props.workspace, snapshot?.id, snapshot?.revision])
+  return { profile: enabled ? profile : null, onPreview: enabled ? setProfile : undefined }
+}
+
+function useWorkspaceFeaturePreview(props: EditorWorkspaceProps) {
   const { featurePreview, previewFeature, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
   )
-  const snapshot = props.controller.report?.snapshot
-  const featureProfileSelection = useProfileFeatureSelection(props.activeTool, snapshot)
   const acknowledgeExtrusionDistance = props.actions.acknowledgeExtrusionDistance
   const acknowledgeRevolveAngle = props.actions.acknowledgeRevolveAngle
   const onFeaturePreviewChange = useCallback(
@@ -2334,6 +2351,22 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
     },
     [acknowledgeExtrusionDistance, acknowledgeRevolveAngle, setPreviewFeature],
   )
+  return { featurePreview, previewFeature, onFeaturePreviewChange }
+}
+
+export function EditorWorkspace(props: EditorWorkspaceProps) {
+  const review = useSyncExternalStore(
+    automationReviews.subscribe,
+    automationReviews.getSnapshot,
+    automationReviews.getSnapshot,
+  )
+  const { holePicking, edgeTreatmentPicking, viewportContext } = useModelFeaturePicking(props)
+  const taskPanelT = useTranslations("app.shell.taskPanel")
+  const { featurePreview, previewFeature, onFeaturePreviewChange } =
+    useWorkspaceFeaturePreview(props)
+  const snapshot = props.controller.report?.snapshot
+  const historySourcePreview = useHistorySourcePreview(props)
+  const featureProfileSelection = useProfileFeatureSelection(props.activeTool, snapshot)
   const revolveAxisSelection = useRevolveAxisSelection(props.activeTool, snapshot)
   const revolveSelectionPurpose = useRevolveSelectionPurpose(props.activeTool)
   const revolveAxisCandidates = useRevolveAxisCandidates(
@@ -2384,7 +2417,13 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
     <SketchProjectionProvider>
       <WorkspacePanels
         allowTransparency={props.workspace !== "variables"}
-        modelTree={<EditorModelTree props={props} />}
+        modelTree={
+          <EditorModelTree
+            props={props}
+            profilePreview={historySourcePreview.profile}
+            onProfilePreview={historySourcePreview.onPreview}
+          />
+        }
         taskPanel={
           <ResponsiveTaskPanel
             activeTaskKey={taskPanelActivityKey(props, review)}
@@ -2412,6 +2451,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
         }
       >
         <EditorContent
+          historyProfilePreview={historySourcePreview.profile}
           featureSelectionContext={viewportContext}
           featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
           featureProfileSelections={featureProfileSelection.value}
