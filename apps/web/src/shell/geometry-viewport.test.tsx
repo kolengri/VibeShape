@@ -783,6 +783,35 @@ describe("GeometryViewport", () => {
     expect(port.dispose).toHaveBeenCalledOnce()
   })
 
+  it("does not replace viewer meshes for save-status-only controller updates", async () => {
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const { port, rerenderController } = renderViewport(controller)
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalledOnce())
+
+    for (const saveStatus of ["saving", "saved", "error"] as const) {
+      vi.mocked(port.setMeshes).mockClear()
+      rerenderController({ ...controller, saveStatus } as DocumentControllerState)
+      await act(async () => {})
+      expect(port.setMeshes).not.toHaveBeenCalled()
+    }
+
+    const replacementMesh = {
+      ...mesh,
+      positions: new Float32Array([0, 0, 0, 30, 0, 0, 0, 30, 0]),
+    }
+    const replacement = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh: replacementMesh } }],
+    )
+    rerenderController(replacement)
+    await waitFor(() =>
+      expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...replacementMesh }]),
+    )
+  })
+
   it("applies sketch projection updates imperatively without remounting the viewer", async () => {
     const frames: FrameRequestCallback[] = []
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

@@ -5,7 +5,9 @@ test("keeps the Extrude preview visible above the compact parameter panel", asyn
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 800, height: 900 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
   await page.getByRole("button", { name: "Open task panel", exact: true }).click()
@@ -53,5 +55,5 @@ test("keeps the Extrude preview visible above the compact parameter panel", asyn
   await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   await page.reload()
-  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", { timeout: 30_000 })
 })

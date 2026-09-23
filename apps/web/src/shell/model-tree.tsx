@@ -1273,7 +1273,7 @@ export function ModelTree(props: ModelTreeProps) {
         </Tooltip>
       </div>
       <div
-        className="mt-1 grid gap-0.5"
+        className="mt-1 grid grid-cols-1 gap-0.5"
         role="tree"
         aria-label={t("projectFeatures")}
         onFocusCapture={updateTreeTabStop}
