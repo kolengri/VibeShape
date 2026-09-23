@@ -383,6 +383,7 @@ function synchronizeViewportSketchContext(
     ),
   )
   synchronizeViewportSketchProjection(viewport, context)
+  synchronizeViewportSketchNavigation(viewport, context)
 }
 
 function activeSketchProjection(context: GeometryViewportSketchContext | null) {
@@ -401,6 +402,21 @@ function synchronizeViewportSketchProjection(
   }
   viewport.clearSketchProjection()
   if (context?.mode === "normal" && context.frame) viewport.orientToFrame(context.frame)
+}
+
+function synchronizeViewportSketchNavigation(
+  viewport: GeometryViewportPort,
+  context: GeometryViewportSketchContext | null,
+) {
+  if (context?.mode !== "orbit") {
+    viewport.setSketchPlaneProjection(null)
+    viewport.setSketchNavigationElement(null)
+    return
+  }
+  viewport.setSketchPlaneProjection(context.frame, (projection) =>
+    context.projectionStore?.getState().publishCameraProjection(projection),
+  )
+  viewport.setSketchNavigationElement(context.projectionStore?.getState().navigationElement ?? null)
 }
 
 function orbitReferenceSelection(context: GeometryViewportSketchContext | null) {
@@ -862,7 +878,7 @@ function ViewportControls({
   return (
     <div
       className={cn(
-        "absolute right-3 top-3 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
+        "absolute right-3 top-3 z-20 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
         SAFE_VIEWPORT_RIGHT,
       )}
     >
@@ -1242,7 +1258,10 @@ function useSketchProjectionSynchronization(
   useEffect(() => {
     const store = sketchContext?.projectionStore
     if (!store || sketchContext.mode !== "normal") return
-    const unsubscribe = store.subscribe(() => {
+    let projection = store.getState().projection
+    const unsubscribe = store.subscribe((state) => {
+      if (state.projection === projection) return
+      projection = state.projection
       if (frameRequestRef.current !== null) return
       frameRequestRef.current = window.requestAnimationFrame(() => {
         frameRequestRef.current = null
@@ -1256,6 +1275,23 @@ function useSketchProjectionSynchronization(
       window.cancelAnimationFrame(frameRequestRef.current)
       frameRequestRef.current = null
     }
+  }, [sketchContext, viewportRef])
+}
+
+function useSketchNavigationSynchronization(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  sketchContext: GeometryViewportSketchContext | undefined,
+) {
+  useEffect(() => {
+    const store = sketchContext?.projectionStore
+    if (!store || sketchContext.mode !== "orbit") return
+    let navigationElement = store.getState().navigationElement
+    const unsubscribe = store.subscribe((state) => {
+      if (state.navigationElement === navigationElement) return
+      navigationElement = state.navigationElement
+      viewportRef.current?.setSketchNavigationElement(navigationElement)
+    })
+    return unsubscribe
   }, [sketchContext, viewportRef])
 }
 
@@ -1467,6 +1503,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   useProjectThumbnail(props.controller, scene.allCommittedMeshes)
   useClearInvalidSelection(scene.meshes, props.selection, props.onSelectionChange)
   useSketchProjectionSynchronization(interaction.viewportRef, props.sketchContext)
+  useSketchNavigationSynchronization(interaction.viewportRef, props.sketchContext)
   const message = translatedViewportMessage(
     props.controller,
     interaction.rendererFailed,

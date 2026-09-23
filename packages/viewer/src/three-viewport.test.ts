@@ -21,6 +21,7 @@ import {
   viewerCameraPoseForFrame,
   viewerCameraPoseForStandardView,
   viewerFaceOrdinal,
+  viewerSketchPlaneProjection,
   viewerSketchProfileKey,
   viewerSketchProjectionTarget,
   viewerSketchProjectionViewHeight,
@@ -41,6 +42,107 @@ describe("Three viewport geometry", () => {
     sketchId,
     outerBoundaryEntityIds: [boundary],
     holeBoundaryEntityIds: [],
+  })
+
+  it("projects local coordinates through orthographic XY and XZ views", () => {
+    const xy = {
+      origin: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+    }
+    const top = viewerSketchPlaneProjection(xy, {
+      right: [1, 0, 0],
+      up: [0, 1, 0],
+      target: [0, 0, 0],
+      viewWidth: 200,
+      viewHeight: 100,
+    })
+    expect(top).toEqual({ a: 0.005, b: 0, c: 0, d: -0.01, e: 0.5, f: 0.5 })
+    expect(top && [top.a * 20 + top.c * 10 + top.e, top.b * 20 + top.d * 10 + top.f]).toEqual([
+      0.6, 0.4,
+    ])
+
+    const xz = {
+      origin: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 0, 1] as const,
+      normal: [0, -1, 0] as const,
+    }
+    expect(
+      viewerSketchPlaneProjection(xz, {
+        right: [1, 0, 0],
+        up: [0, 0, 1],
+        target: [0, 0, 0],
+        viewWidth: 200,
+        viewHeight: 100,
+      }),
+    ).toEqual({ a: 0.005, b: 0, c: 0, d: -0.01, e: 0.5, f: 0.5 })
+  })
+
+  it("accounts for offset planes and remains invertible in an isometric view", () => {
+    const frame = {
+      origin: [10, 20, 30] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+    }
+    const offset = viewerSketchPlaneProjection(frame, {
+      right: [1, 0, 0],
+      up: [0, 1, 0],
+      target: [0, 0, 0],
+      viewWidth: 200,
+      viewHeight: 100,
+    })
+    expect(offset?.e).toBeCloseTo(0.55)
+    expect(offset?.f).toBeCloseTo(0.3)
+
+    const iso = viewerSketchPlaneProjection(frame, {
+      right: [Math.SQRT1_2, -Math.SQRT1_2, 0],
+      up: [-1 / Math.sqrt(6), -1 / Math.sqrt(6), Math.sqrt(2 / 3)],
+      target: [10, 20, 30],
+      viewWidth: 200,
+      viewHeight: 100,
+    })
+    expect(iso).not.toBeNull()
+    if (!iso) throw new Error("Expected an invertible isometric sketch projection.")
+    const x = 12
+    const y = -7
+    const screenX = iso.a * x + iso.c * y + iso.e
+    const screenY = iso.b * x + iso.d * y + iso.f
+    const determinant = iso.a * iso.d - iso.b * iso.c
+    expect((iso.d * (screenX - iso.e) - iso.c * (screenY - iso.f)) / determinant).toBeCloseTo(x)
+    expect((-iso.b * (screenX - iso.e) + iso.a * (screenY - iso.f)) / determinant).toBeCloseTo(y)
+  })
+
+  it("rejects invalid and edge-on sketch-plane projections", () => {
+    const frame = {
+      origin: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+    }
+    expect(
+      viewerSketchPlaneProjection(frame, {
+        right: [1, 0, 0],
+        up: [0, 1e-4, Math.sqrt(1 - 1e-8)],
+        target: [0, 0, 0],
+        viewWidth: 100,
+        viewHeight: 100,
+      }),
+    ).toBeNull()
+    expect(
+      viewerSketchPlaneProjection(
+        { ...frame, origin: [Number.NaN, 0, 0] },
+        {
+          right: [1, 0, 0],
+          up: [0, 1, 0],
+          target: [0, 0, 0],
+          viewWidth: 100,
+          viewHeight: 100,
+        },
+      ),
+    ).toBeNull()
   })
 
   it("publishes only the latest translation sample per frame and flushes release synchronously", () => {

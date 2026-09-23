@@ -553,28 +553,26 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitViewport = page.locator("section[data-sketch-context-mode='orbit']")
     await expect(orbitViewport).toHaveAttribute("data-rendered-feature-count", "1")
-    await expect(orbitViewport).toHaveAttribute("data-rendered-sketch-count", "1")
+    await expect(orbitViewport).toHaveAttribute("data-rendered-sketch-count", "0")
     await expect(orbitViewport.locator("canvas")).toHaveAttribute(
       "data-test-viewport-identity",
       "persistent",
     )
-    const hiddenDrawing = page.locator("section[data-interactive='false']")
-    await expect(hiddenDrawing).toHaveAttribute("aria-hidden", "true")
-    await expect(hiddenDrawing).toHaveAttribute("inert", "")
-    await expect(hiddenDrawing).toHaveClass(/opacity-0/)
+    await expect(drawing).toBeVisible()
+    await expect(drawing).toHaveAttribute("data-sketch-spatial", "true")
     const orbitBounds = await orbitViewport.locator("canvas").boundingBox()
     if (!orbitBounds) throw new Error("The orbit context canvas is not visible.")
     await page.mouse.move(
       orbitBounds.x + orbitBounds.width / 2,
       orbitBounds.y + orbitBounds.height / 2,
     )
-    await page.mouse.down()
+    await page.mouse.down({ button: "middle" })
     await page.mouse.move(
       orbitBounds.x + orbitBounds.width / 2 + 80,
       orbitBounds.y + orbitBounds.height / 2 - 40,
       { steps: 8 },
     )
-    await page.mouse.up()
+    await page.mouse.up({ button: "middle" })
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(passiveViewport).toHaveAttribute("data-sketch-context-mode", "normal")
@@ -651,7 +649,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitContext = page.locator("section[data-sketch-context-mode='orbit']")
     await expect(orbitContext).toHaveAttribute("data-rendered-feature-count", "1")
-    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "1")
+    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "0")
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
@@ -663,7 +661,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
 
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
-    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "2")
+    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "1")
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
 

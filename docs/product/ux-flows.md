@@ -20,7 +20,7 @@ Desktop layout:
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-In sketch mode, the right panel shows constraints and dimensions while the viewport switches to an orthographic normal-to-plane view. In print mode, the model tree remains visible and the right panel becomes the analysis and export report.
+In sketch mode, the right panel shows constraints and dimensions while the viewport initially switches to an orthographic normal-to-plane view. Orbit 3D view and its standard-view menu preserve sketch editing on the same support plane, including in isometric view. Primary input draws or selects, middle drag orbits, secondary drag pans, and wheel zooms. A near-edge-on plane requires a different viewing angle before placement; Normal to sketch is the explicit return path. In print mode, the model tree remains visible and the right panel becomes the analysis and export report.
 
 The shell uses Tailwind CSS v4 and source-owned shadcn/Radix primitives from `@vibeshape/ui`. Toolbar, command palette, menu, and shortcut invoke the same application command. The model tree and viewport overlays remain specialized accessible CAD components rather than being forced into generic `Card` or `Table` components.
 

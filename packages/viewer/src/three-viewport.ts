@@ -61,6 +61,22 @@ function isFiniteViewerVector3(position: ViewerVector3): boolean {
   return position.length === 3 && position.every((value) => Number.isFinite(value))
 }
 
+function sameViewerSketchPlaneProjection(
+  left: ViewerSketchPlaneProjection | null | undefined,
+  right: ViewerSketchPlaneProjection | null,
+) {
+  if (left === right) return true
+  if (!left || !right) return false
+  return (
+    left.a === right.a &&
+    left.b === right.b &&
+    left.c === right.c &&
+    left.d === right.d &&
+    left.e === right.e &&
+    left.f === right.f
+  )
+}
+
 export function createLatestFramePublisher<Value>(
   publish: (value: Value) => void,
   schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame,
@@ -345,6 +361,73 @@ export type ViewerFrame = Readonly<{
   normal: ViewerVector3
 }>
 
+/** Maps sketch-local coordinates to normalized viewport coordinates. */
+export type ViewerSketchPlaneProjection = Readonly<{
+  a: number
+  b: number
+  c: number
+  d: number
+  e: number
+  f: number
+}>
+
+/** Orthographic camera basis and frustum size used by sketch-plane projection. */
+export type ViewerProjectionCamera = Readonly<{
+  right: ViewerVector3
+  up: ViewerVector3
+  target: ViewerVector3
+  viewWidth: number
+  viewHeight: number
+}>
+
+function validSketchProjectionCamera(camera: ViewerProjectionCamera) {
+  return (
+    [camera.right, camera.up, camera.target].every(finiteVector) &&
+    [camera.viewWidth, camera.viewHeight].every((size) => Number.isFinite(size) && size > 0) &&
+    Math.abs(dot(camera.right, camera.right) - 1) <= FRAME_TOLERANCE &&
+    Math.abs(dot(camera.up, camera.up) - 1) <= FRAME_TOLERANCE &&
+    Math.abs(dot(camera.right, camera.up)) <= FRAME_TOLERANCE
+  )
+}
+
+function canonicalProjectionCoordinate(value: number) {
+  return value === 0 ? 0 : value
+}
+
+/** Computes a stable normalized viewport transform for a sketch plane and orthographic camera. */
+export function viewerSketchPlaneProjection(
+  frame: ViewerFrame,
+  camera: ViewerProjectionCamera,
+): ViewerSketchPlaneProjection | null {
+  if (!isValidViewerFrame(frame) || !validSketchProjectionCamera(camera)) return null
+  const right = new Vector3(...camera.right)
+  const up = new Vector3(...camera.up)
+  const origin = new Vector3(...frame.origin).sub(new Vector3(...camera.target))
+  const a = right.dot(new Vector3(...frame.xAxis)) / camera.viewWidth
+  const c = right.dot(new Vector3(...frame.yAxis)) / camera.viewWidth
+  const b = -up.dot(new Vector3(...frame.xAxis)) / camera.viewHeight
+  const d = -up.dot(new Vector3(...frame.yAxis)) / camera.viewHeight
+  const e = 0.5 + right.dot(origin) / camera.viewWidth
+  const f = 0.5 - up.dot(origin) / camera.viewHeight
+  const relativeDeterminant = Math.abs((a * d - b * c) * camera.viewWidth * camera.viewHeight)
+  const values = [a, b, c, d, e, f]
+  if (
+    !values.every(Number.isFinite) ||
+    !Number.isFinite(relativeDeterminant) ||
+    relativeDeterminant < 1e-3
+  ) {
+    return null
+  }
+  return {
+    a: canonicalProjectionCoordinate(a),
+    b: canonicalProjectionCoordinate(b),
+    c: canonicalProjectionCoordinate(c),
+    d: canonicalProjectionCoordinate(d),
+    e: canonicalProjectionCoordinate(e),
+    f: canonicalProjectionCoordinate(f),
+  }
+}
+
 export type ViewerCameraPose = Readonly<{
   position: ViewerVector3
   target: ViewerVector3
@@ -382,6 +465,11 @@ export type GeometryViewport = Readonly<{
   clearSketchProjection: () => void
   orientToFrame: (frame: ViewerFrame) => boolean
   setSketchProjection: (frame: ViewerFrame, bounds: ViewerSketchProjectionBounds) => boolean
+  setSketchPlaneProjection: (
+    frame: ViewerFrame | null,
+    onChange?: (projection: ViewerSketchPlaneProjection | null) => void,
+  ) => void
+  setSketchNavigationElement: (element: HTMLElement | SVGSVGElement | null) => void
   setInteractionMode: (mode: ViewerInteractionMode) => void
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
@@ -1288,6 +1376,15 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
   #sketchProjection: Readonly<{ bounds: ViewerSketchProjectionBounds }> | null = null
+  #sketchPlaneFrame: ViewerFrame | null = null
+  #sketchPlaneProjectionCallback:
+    | ((projection: ViewerSketchPlaneProjection | null) => void)
+    | undefined
+  #lastSketchPlaneProjection: ViewerSketchPlaneProjection | null | undefined
+  #sketchNavigationElement: HTMLElement | SVGSVGElement | null = null
+  #sketchContextMenuControlsEnabled: boolean | null = null
+  #sketchNavigationControlsEnabledBeforePointer: boolean | null = null
+  #sketchNavigationPointerId: number | null = null
   #translationGizmoInteracting = false
   #axialGizmo: ViewerAxialGizmo | null = null
   #angularGizmo: ViewerAngularGizmo | null = null
@@ -1768,6 +1865,36 @@ class ThreeGeometryViewport implements GeometryViewport {
     return true
   }
 
+  setSketchPlaneProjection(
+    frame: ViewerFrame | null,
+    onChange?: (projection: ViewerSketchPlaneProjection | null) => void,
+  ) {
+    if (this.#disposed) return
+    this.#sketchPlaneFrame = frame && isValidViewerFrame(frame) ? frame : null
+    this.#sketchPlaneProjectionCallback = onChange
+    this.#lastSketchPlaneProjection = undefined
+    this.#publishSketchPlaneProjection()
+  }
+
+  setSketchNavigationElement(element: HTMLElement | SVGSVGElement | null) {
+    if (this.#disposed || element === this.#sketchNavigationElement) return
+    this.#removeSketchNavigationPointerGuard()
+    this.#controls.disconnect()
+    this.#sketchNavigationElement = element
+    if (element) {
+      this.#controls.connect(element)
+      element.addEventListener("pointerdown", this.#onSketchNavigationPointerDown, true)
+      element.addEventListener("pointerup", this.#onSketchNavigationPointerEnd, true)
+      element.addEventListener("pointercancel", this.#onSketchNavigationPointerEnd, true)
+      element.addEventListener("lostpointercapture", this.#onSketchNavigationPointerEnd, true)
+      element.addEventListener("contextmenu", this.#onSketchContextMenuCapture, true)
+      element.addEventListener("contextmenu", this.#onSketchContextMenuBubble)
+    } else {
+      this.#controls.mouseButtons.LEFT = MOUSE.ROTATE
+      this.#controls.connect(this.#canvas)
+    }
+  }
+
   setSketchProjection(frame: ViewerFrame, bounds: ViewerSketchProjectionBounds) {
     if (this.#disposed) return false
     this.#clearSketchReferencePicking()
@@ -1878,6 +2005,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#angularAnglePublisher.cancel()
     this.#clearSketchReferencePicking()
     this.#controls.removeEventListener("change", this.#onControlsChange)
+    this.#removeSketchNavigationPointerGuard()
+    this.#controls.disconnect()
+    this.#sketchNavigationElement = null
+    this.#sketchPlaneFrame = null
+    this.#sketchPlaneProjectionCallback = undefined
     this.#controls.dispose()
     this.#translationControls.removeEventListener("change", this.#onTranslationControlsChange)
     this.#translationControls.removeEventListener("objectChange", this.#onTranslationObjectChange)
@@ -1942,7 +2074,11 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #resize(width: number, height: number) {
-    if (this.#disposed || width <= 0 || height <= 0) return
+    if (this.#disposed) return
+    if (width <= 0 || height <= 0) {
+      this.#publishSketchPlaneProjection()
+      return
+    }
     this.#renderer.setSize(width, height, false)
     this.#updateProjection(width / height)
     this.#render()
@@ -2735,6 +2871,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     const width = this.#canvas.clientWidth
     const height = this.#canvas.clientHeight
+    this.#publishSketchPlaneProjection()
     if (width <= 0 || height <= 0) return
     const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
     if (angularHandle) {
@@ -2774,6 +2911,93 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.render(this.#orientationScene, this.#orientationCamera)
     this.#renderer.setScissorTest(false)
     this.#renderer.setViewport(0, 0, width, height)
+  }
+
+  #publishSketchPlaneProjection() {
+    const callback = this.#sketchPlaneProjectionCallback
+    if (!callback) return
+    const frame = this.#sketchPlaneFrame
+    const width = this.#canvas.clientWidth
+    const height = this.#canvas.clientHeight
+    let projection: ViewerSketchPlaneProjection | null = null
+    if (frame && width > 0 && height > 0 && isValidViewerFrame(frame)) {
+      this.#camera.updateMatrixWorld()
+      const right = new Vector3(1, 0, 0).applyQuaternion(this.#camera.quaternion)
+      const up = new Vector3(0, 1, 0).applyQuaternion(this.#camera.quaternion)
+      const viewWidth = (this.#camera.right - this.#camera.left) / this.#camera.zoom
+      const viewHeight = (this.#camera.top - this.#camera.bottom) / this.#camera.zoom
+      projection = viewerSketchPlaneProjection(frame, {
+        right: [right.x, right.y, right.z],
+        up: [up.x, up.y, up.z],
+        target: [this.#controls.target.x, this.#controls.target.y, this.#controls.target.z],
+        viewWidth,
+        viewHeight,
+      })
+    }
+    if (sameViewerSketchPlaneProjection(this.#lastSketchPlaneProjection, projection)) return
+    this.#lastSketchPlaneProjection = projection
+    callback(projection)
+  }
+
+  #onSketchNavigationPointerDown = (event: Event) => {
+    if (!(event instanceof PointerEvent)) return
+    if (event.button !== 0 && event.pointerType !== "touch") return
+    if (this.#sketchNavigationControlsEnabledBeforePointer !== null) {
+      this.#restoreSketchNavigationControls()
+    }
+    this.#sketchNavigationControlsEnabledBeforePointer = this.#controls.enabled
+    this.#sketchNavigationPointerId = event.pointerId
+    this.#controls.enabled = false
+    window.addEventListener("pointerup", this.#onSketchNavigationPointerEnd)
+    window.addEventListener("pointercancel", this.#onSketchNavigationPointerEnd)
+    window.addEventListener("blur", this.#onSketchNavigationBlur)
+  }
+
+  #onSketchNavigationPointerEnd = (event: Event) => {
+    if (!(event instanceof PointerEvent)) return
+    if (this.#sketchNavigationControlsEnabledBeforePointer === null) return
+    if (event.pointerId !== this.#sketchNavigationPointerId) return
+    this.#restoreSketchNavigationControls()
+  }
+
+  #onSketchNavigationBlur = () => {
+    this.#restoreSketchNavigationControls()
+  }
+
+  #onSketchContextMenuCapture = () => {
+    // OrbitControls normally prevents the browser menu. The SVG's own context-menu
+    // owner must receive an uncancelled event so Radix can open the sketch actions.
+    this.#sketchContextMenuControlsEnabled = this.#controls.enabled
+    this.#controls.enabled = false
+  }
+
+  #onSketchContextMenuBubble = () => {
+    if (this.#sketchContextMenuControlsEnabled === null) return
+    this.#controls.enabled = this.#sketchContextMenuControlsEnabled
+    this.#sketchContextMenuControlsEnabled = null
+  }
+
+  #restoreSketchNavigationControls() {
+    if (this.#sketchNavigationControlsEnabledBeforePointer === null) return
+    this.#controls.enabled = this.#sketchNavigationControlsEnabledBeforePointer
+    this.#sketchNavigationControlsEnabledBeforePointer = null
+    this.#sketchNavigationPointerId = null
+    window.removeEventListener("pointerup", this.#onSketchNavigationPointerEnd)
+    window.removeEventListener("pointercancel", this.#onSketchNavigationPointerEnd)
+    window.removeEventListener("blur", this.#onSketchNavigationBlur)
+  }
+
+  #removeSketchNavigationPointerGuard() {
+    const element = this.#sketchNavigationElement
+    if (!element) return
+    element.removeEventListener("pointerdown", this.#onSketchNavigationPointerDown, true)
+    element.removeEventListener("pointerup", this.#onSketchNavigationPointerEnd, true)
+    element.removeEventListener("pointercancel", this.#onSketchNavigationPointerEnd, true)
+    element.removeEventListener("lostpointercapture", this.#onSketchNavigationPointerEnd, true)
+    element.removeEventListener("contextmenu", this.#onSketchContextMenuCapture, true)
+    element.removeEventListener("contextmenu", this.#onSketchContextMenuBubble)
+    this.#onSketchContextMenuBubble()
+    this.#restoreSketchNavigationControls()
   }
 }
 

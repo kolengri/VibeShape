@@ -311,6 +311,8 @@ function renderViewport(
     clearSketchProjection: vi.fn(),
     orientToFrame: vi.fn(() => true),
     setSketchProjection: vi.fn(() => true),
+    setSketchPlaneProjection: vi.fn(),
+    setSketchNavigationElement: vi.fn(),
     setInteractionMode: vi.fn(),
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
@@ -853,6 +855,8 @@ describe("GeometryViewport", () => {
     expect(port.setSketchProjection).toHaveBeenLastCalledWith(frame, latestBounds)
     expect(port.setSketchReferenceCandidates).toHaveBeenCalledTimes(referenceCandidateCalls)
     expect(port.setInteractionMode).toHaveBeenCalledTimes(interactionModeCalls)
+    act(() => store.getState().publishCameraProjection({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }))
+    expect(frames).toHaveLength(0)
 
     rerenderSketchContext({ frame, mode: "orbit", projectionStore: store })
     expect(port.clearSketchProjection).toHaveBeenCalled()
@@ -864,6 +868,47 @@ describe("GeometryViewport", () => {
     expect(port.setSketchProjection).toHaveBeenLastCalledWith(frame, firstBounds)
     expect(createViewport).toHaveBeenCalledOnce()
     expect(port.dispose).not.toHaveBeenCalled()
+  })
+
+  it("observes the orbit sketch plane without aligning the camera and forwards its navigation element", async () => {
+    const frame = {
+      origin: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+    } as const
+    const store = createSketchProjectionStore()
+    const navigationElement = document.createElement("div")
+    store.getState().setNavigationElement(navigationElement)
+    const { port, rerenderSketchContext } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { frame, mode: "orbit", projectionStore: store },
+    )
+
+    await waitFor(() =>
+      expect(port.setSketchPlaneProjection).toHaveBeenCalledWith(frame, expect.any(Function)),
+    )
+    expect(port.setSketchNavigationElement).toHaveBeenCalledWith(navigationElement)
+    expect(port.orientToFrame).not.toHaveBeenCalled()
+
+    const projection = { a: 1, b: 0, c: 0, d: 1, e: 0.5, f: 0.5 }
+    const onProjectionChange = vi.mocked(port.setSketchPlaneProjection).mock.calls.at(-1)?.[1]
+    onProjectionChange?.(projection)
+    expect(store.getState().cameraProjection).toEqual(projection)
+    const planeProjectionCalls = vi.mocked(port.setSketchPlaneProjection).mock.calls.length
+
+    act(() => store.getState().setNavigationElement(null))
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    expect(port.setSketchPlaneProjection).toHaveBeenCalledTimes(planeProjectionCalls)
+
+    rerenderSketchContext({ frame, mode: "normal", projectionStore: store })
+    expect(port.setSketchPlaneProjection).toHaveBeenLastCalledWith(null)
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
   })
 
   it("routes graphical sketch-reference hover and selection through the persistent 3D viewer", async () => {

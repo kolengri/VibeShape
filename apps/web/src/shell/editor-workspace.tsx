@@ -576,7 +576,8 @@ function SketchWorkspaceContent({
         onSelectionChange: actions.onSketchSelectionChange,
         onUndo: actions.onSketchUndo,
       }}
-      interactive={sketch.cameraMode === "normal"}
+      interactive={sketch.cameraMode === "normal" || spatialOrbitSketchEditing(sketch)}
+      spatial={spatialOrbitSketchEditing(sketch)}
       overlay
     />
   )
@@ -626,7 +627,7 @@ function ModelingWorkspaceContent({
     sketchIds: readonly SketchId[]
   }>
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
-  sketchContext?: GeometryViewportSketchContext
+  sketchContext?: GeometryViewportSketchContext | undefined
 }) {
   const projectedSketchIds = useMemo(
     () =>
@@ -716,8 +717,18 @@ export function ModelingSketchViewportStack({
 export function activeSketchDisplayForCamera(
   display: SketchDisplayRecord | null,
   cameraMode: SketchCameraMode,
+  analyticalOrbitOverlayOwnsSketch = false,
 ) {
-  return cameraMode === "orbit" ? display : null
+  return cameraMode === "orbit" && !analyticalOrbitOverlayOwnsSketch ? display : null
+}
+
+function spatialOrbitSketchEditing(sketch: WorkspaceContentProps["sketch"]) {
+  return (
+    sketch.cameraMode === "orbit" &&
+    sketch.editorTool !== "use" &&
+    sketch.editorTool !== "pierce" &&
+    sketch.editorTool !== "intersection"
+  )
 }
 
 function useExternalSketchSolutions(
@@ -1266,7 +1277,10 @@ function WorkspaceContentView({
   const visibleActiveSketchDisplay = activeSketchDisplayForCamera(
     activeSketchDisplay,
     props.sketch.cameraMode,
+    sketchActive && spatialOrbitSketchEditing(props.sketch),
   )
+  const sketchOverlayContextGeometry =
+    props.sketch.cameraMode === "normal" ? externalContextGeometry : EMPTY_GEOMETRY
   return (
     <ModelingSketchViewportStack
       modeling={
@@ -1277,10 +1291,8 @@ function WorkspaceContentView({
           model={props.model}
           sketch={props.sketch}
           editVisibility={editVisibility}
-          {...(visibleActiveSketchDisplay
-            ? { activeSketchDisplay: visibleActiveSketchDisplay }
-            : {})}
-          {...(sketchContext ? { sketchContext } : {})}
+          activeSketchDisplay={visibleActiveSketchDisplay}
+          sketchContext={sketchContext}
         />
       }
       sketch={
@@ -1292,7 +1304,7 @@ function WorkspaceContentView({
           sketch={props.sketch}
           frame={frame}
           supportFeatures={supportFeatures}
-          externalContextGeometry={externalContextGeometry}
+          externalContextGeometry={sketchOverlayContextGeometry}
           externalModelCandidates={externalModelCandidates}
           externalPointCandidates={externalPointCandidates}
           pierceCandidates={pierceCandidates}
