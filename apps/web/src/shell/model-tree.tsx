@@ -1,4 +1,9 @@
-import { KeyboardSensor, PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom"
+import {
+  Accessibility,
+  KeyboardSensor,
+  PointerActivationConstraints,
+  PointerSensor,
+} from "@dnd-kit/dom"
 import { SortableKeyboardPlugin } from "@dnd-kit/dom/sortable"
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react"
 import { isSortable, isSortableOperation, useSortable } from "@dnd-kit/react/sortable"
@@ -28,7 +33,6 @@ import {
   Cuboid,
   Eye,
   EyeOff,
-  GripVertical,
   Layers3,
   PenLine,
 } from "@vibeshape/ui/components/icons"
@@ -55,10 +59,20 @@ import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
 import type { EditorWorkspaceName } from "./workspace"
 
 const HISTORY_POINTER_SENSOR = PointerSensor.configure({
+  preventActivation: (event, source) =>
+    event.target instanceof Element && event.target.closest('[role="treeitem"]')
+      ? false
+      : (PointerSensor.defaults.preventActivation?.(event, source) ?? true),
   activationConstraints: (event) =>
     event.pointerType === "touch"
       ? [new PointerActivationConstraints.Delay({ value: 250, tolerance: 6 })]
       : [new PointerActivationConstraints.Distance({ value: 5 })],
+})
+
+const HISTORY_KEYBOARD_SENSOR = KeyboardSensor.configure({
+  keyboardCodes: { ...KeyboardSensor.defaults.keyboardCodes, start: ["Space"] },
+  preventActivation: (event) =>
+    !(event.target instanceof Element) || event.target.getAttribute("role") !== "treeitem",
 })
 
 type FeatureRenameHandler = (
@@ -269,7 +283,10 @@ function FeatureTreeLabel({
       role="treeitem"
       tabIndex={-1}
       aria-selected={active}
-      onClick={() => onActivate(feature.id)}
+      aria-describedby="history-drag-instructions"
+      onClick={(event) => {
+        if (!event.defaultPrevented) onActivate(feature.id)
+      }}
       onFocus={() => onPreselectionChange(feature.id)}
       onBlur={() => onPreselectionChange(null)}
       onKeyDown={(event) => {
@@ -468,7 +485,10 @@ function SketchTreeLabelButton({
       role="treeitem"
       tabIndex={-1}
       aria-selected={active}
-      onClick={onActivate}
+      aria-describedby="history-drag-instructions"
+      onClick={(event) => {
+        if (!event.defaultPrevented) onActivate()
+      }}
       onKeyDown={(event) => {
         if (event.key !== "F2" || renameDisabled) return
         event.preventDefault()
@@ -981,7 +1001,6 @@ function historyRowReorderIsLocked(
 
 function HistoryReorderActions({
   controller,
-  handleRef,
   label,
   locked,
   onMoveToIndex,
@@ -990,7 +1009,6 @@ function HistoryReorderActions({
   t,
 }: {
   controller: DocumentControllerState
-  handleRef: (element: Element | null) => void
   label: string
   locked: boolean
   onMoveToIndex: (index: number) => void
@@ -1007,23 +1025,6 @@ function HistoryReorderActions({
   return (
     <div className="flex shrink-0 items-center">
       <span className="sr-only">{t("reorderHistory", { item: label })}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            ref={handleRef}
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={t("historyDragHandle", { item: label })}
-            aria-describedby="history-drag-instructions"
-            disabled={unavailable}
-            className="cursor-grab touch-none active:cursor-grabbing"
-          >
-            <GripVertical aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("historyDragInstructions", { item: label })}</TooltipContent>
-      </Tooltip>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -1080,7 +1081,6 @@ function HistoryRowPresentation({
   content,
   details,
   feedback,
-  handleRef,
   label,
   marker,
   onMoveToIndex,
@@ -1105,7 +1105,6 @@ function HistoryRowPresentation({
   | "view"
 > & {
   feedback: ReturnType<typeof historyRowDropFeedback>
-  handleRef: (element: Element | null) => void
   reorderLocked: boolean
   sortableRef: (element: Element | null) => void
   summaryLabels: ReturnType<typeof selectModelTreeHistory>["labelsByRef"]
@@ -1114,18 +1113,27 @@ function HistoryRowPresentation({
     <div
       ref={sortableRef}
       role="none"
+      tabIndex={-1}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget)
+          event.currentTarget.querySelector<HTMLElement>('[role="treeitem"]')?.focus()
+      }}
       data-history-kind={row.kind}
       data-history-id={row.ref.id}
       data-history-feature-kind={feedback.featureKind}
       data-history-rolled-back={rolledBack ? "true" : undefined}
       data-history-drop-invalid={feedback.invalid ? "true" : undefined}
-      className={feedback.className}
+      data-history-reorder-disabled={reorderLocked ? "true" : undefined}
+      className={cn(
+        feedback.className,
+        !reorderLocked &&
+          "cursor-grab active:cursor-grabbing [&_[role=treeitem]]:cursor-grab [&_[role=treeitem]]:active:cursor-grabbing",
+      )}
     >
       <div className="flex min-w-0 items-start">
         <div className="min-w-0 flex-1">{content}</div>
         <HistoryReorderActions
           controller={controller}
-          handleRef={handleRef}
           label={label}
           locked={reorderLocked}
           onMoveToIndex={(position) => onMoveToIndex(historyRefKey(row.ref), position)}
@@ -1163,13 +1171,9 @@ function HistoryRowFrame({
   activeSketchId,
   activeFeatureId,
 }: HistoryRowFrameProps) {
-  const reorderLocked = historyRowReorderIsLocked(
-    rolledBack,
-    busy,
-    activeSketchId,
-    activeFeatureId,
-    view,
-  )
+  const reorderLocked =
+    historyRowReorderIsLocked(rolledBack, busy, activeSketchId, activeFeatureId, view) ||
+    !historyMoveIsAvailable(controller, activeSketchId, activeFeatureId, true)
   const { sortable, dropMove, insertionClass } = useHistoryRowSortable({
     controller,
     dragDestinationIndex,
@@ -1193,7 +1197,6 @@ function HistoryRowFrame({
       controller={controller}
       details={details}
       feedback={feedback}
-      handleRef={sortable.handleRef}
       label={label}
       marker={marker}
       onMoveToIndex={onMoveToIndex}
@@ -1452,7 +1455,9 @@ function HistoryGroup({
             </p>
           )}
           <DragDropProvider
-            sensors={[HISTORY_POINTER_SENSOR, KeyboardSensor]}
+            // The tree owns localized announcements and selection semantics, even when reorder is locked.
+            plugins={(defaults) => defaults.filter((plugin) => plugin !== Accessibility)}
+            sensors={[HISTORY_POINTER_SENSOR, HISTORY_KEYBOARD_SENSOR]}
             onDragStart={(event) => {
               if (!isSortable(event.operation.source)) return
               const source = event.operation.source
@@ -1692,7 +1697,7 @@ function hierarchicalTreeTarget(key: string, current: HTMLElement) {
 }
 
 function moveTreeFocus(event: KeyboardEvent<HTMLElement>) {
-  if (!treeNavigationKeys.has(event.key)) return
+  if (event.defaultPrevented || !treeNavigationKeys.has(event.key)) return
   const current = (event.target as HTMLElement).closest<HTMLElement>('[role="treeitem"]')
   if (!current) return
   const items = visibleTreeItems(event.currentTarget)

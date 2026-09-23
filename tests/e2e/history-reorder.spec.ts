@@ -11,13 +11,11 @@ async function createBox(page: Page) {
 }
 
 async function dragHistoryItem(page: Page, source: string, destination: string) {
-  const sourceBounds = await page
-    .getByRole("button", { name: `Reorder ${source}`, exact: true })
-    .boundingBox()
+  const sourceBounds = await page.getByRole("treeitem", { name: source, exact: true }).boundingBox()
   const targetBounds = await page
-    .getByRole("button", { name: `Reorder ${destination}`, exact: true })
+    .getByRole("treeitem", { name: destination, exact: true })
     .boundingBox()
-  if (!sourceBounds || !targetBounds) throw new Error("History grips are not visible")
+  if (!sourceBounds || !targetBounds) throw new Error("History rows are not visible")
   await page.mouse.move(
     sourceBounds.x + sourceBounds.width / 2,
     sourceBounds.y + sourceBounds.height / 2,
@@ -50,6 +48,7 @@ test("reorders independent History items with undo, redo, and reload persistence
   await dragHistoryItem(page, "Box 2", "Box 1")
   await expect(page.getByText("Moved Box 2 to position 1", { exact: true })).toBeAttached()
   await expect(featureRows).toHaveText(["Box 2", "Box 1"])
+  await expect(page.getByRole("form", { name: "Edit box" })).toHaveCount(0)
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
 
   await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
@@ -79,21 +78,69 @@ test("reorders History by keyboard and cancels a second drag without changing th
   await createBox(page)
   await createBox(page)
   const rows = page.locator('[data-history-kind="feature"] [role="treeitem"]')
-  const grip = page.getByRole("button", { name: "Reorder Box 2", exact: true })
-  await grip.focus()
+  const row = page.getByRole("treeitem", { name: "Box 2", exact: true })
+  await row.focus()
   await page.keyboard.press("Space")
   await page.keyboard.press("ArrowUp")
+  await expect(row).toBeFocused()
   await page.keyboard.press("Space")
   await expect(page.getByText("Moved Box 2 to position 1", { exact: true })).toBeAttached()
   await expect(rows).toHaveText(["Box 2", "Box 1"])
-  await grip.focus()
+  await expect(row).toBeFocused()
+  await expect(page.locator('[data-history-id][tabindex="0"]')).toHaveCount(0)
   await page.keyboard.press("Space")
   await page.keyboard.press("ArrowDown")
   await page.keyboard.press("Escape")
   await expect(rows).toHaveText(["Box 2", "Box 1"])
+  await expect(row).toBeFocused()
   await expect(page.getByRole("form", { name: "Edit box" })).toHaveCount(0)
   await page.reload()
   await expect(rows).toHaveText(["Box 2", "Box 1"], { timeout: 30_000 })
+  await row.focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("form", { name: "Edit box" })).toBeVisible()
+  await expect(page.locator('[data-history-id][aria-disabled="true"]')).toHaveCount(0)
+})
+
+test("keeps row clicks, small pointer movement, rename, and visibility independent of dragging", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
+  await createBox(page)
+  await createBox(page)
+  const rows = page.locator('[data-history-kind="feature"] [role="treeitem"]')
+  const row = page.getByRole("treeitem", { name: "Box 2", exact: true })
+  await expect(page.getByRole("button", { name: "Reorder Box 2", exact: true })).toHaveCount(0)
+
+  const visibility = page.getByRole("button", { name: "Hide Box 2", exact: true })
+  const control = await visibility.boundingBox()
+  if (!control) throw new Error("Expected a visible visibility control")
+  await page.mouse.move(control.x + control.width / 2, control.y + control.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(control.x + control.width / 2, control.y - 45, { steps: 8 })
+  await page.mouse.up()
+  await expect(rows).toHaveText(["Box 1", "Box 2"])
+  await expect(page.getByText(/Picked up Box 2/)).toHaveCount(0)
+  await visibility.click()
+  await expect(page.getByRole("button", { name: "Show Box 2", exact: true })).toBeVisible()
+
+  await page.getByRole("button", { name: "Rename Box 2", exact: true }).click()
+  await expect(page.getByRole("dialog", { name: "Rename feature" })).toBeVisible()
+  await page.keyboard.press("Escape")
+
+  const bounds = await row.boundingBox()
+  if (!bounds) throw new Error("Expected a visible History row")
+  const x = bounds.x + bounds.width / 2
+  const y = bounds.y + bounds.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 2, y)
+  await page.mouse.up()
+  await expect(page.getByRole("form", { name: "Edit box" })).toBeVisible()
+  await expect(rows).toHaveText(["Box 1", "Box 2"])
 })
 
 test("rejects moving a dependent feature before its source without leaving a visual reorder", async ({
@@ -122,6 +169,38 @@ test("rejects moving a dependent feature before its source without leaving a vis
   await page.keyboard.press("Escape")
   await page.reload()
   await expect(rows).toHaveText(["Box 1", "Fillet 1"], { timeout: 30_000 })
+})
+
+test("reorders a History row after a touch long press", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Native touch input uses the Chromium input protocol")
+  await page.goto("/")
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
+  await createBox(page)
+  await createBox(page)
+  const source = await page.getByRole("treeitem", { name: "Box 2", exact: true }).boundingBox()
+  const target = await page.getByRole("treeitem", { name: "Box 1", exact: true }).boundingBox()
+  if (!source || !target) throw new Error("Expected visible History rows")
+  const client = await page.context().newCDPSession(page)
+  const x = source.x + source.width / 2
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y: source.y + source.height / 2 }],
+  })
+  await expect(page.getByText(/^(Picked up )?Box 2, position 2 of 2$/)).toBeAttached()
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x, y: target.y + target.height / 2 }],
+  })
+  await expect(page.getByText("Box 2, position 1 of 2", { exact: true })).toBeAttached()
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await expect(page.locator('[data-history-kind="feature"] [role="treeitem"]')).toHaveText([
+    "Box 2",
+    "Box 1",
+  ])
+  await expect(page.getByRole("form", { name: "Edit box" })).toHaveCount(0)
+  await client.detach()
 })
 
 test("opens searchable shortcut help and keeps modeling shortcuts out of dialogs", async ({

@@ -30,7 +30,8 @@ vi.mock("@dnd-kit/react", () => ({
   },
 }))
 vi.mock("@dnd-kit/dom", () => ({
-  KeyboardSensor: class {},
+  Accessibility: class {},
+  KeyboardSensor: { configure: () => ({}), defaults: { keyboardCodes: {} } },
   PointerActivationConstraints: {
     Delay: class {},
     Distance: class {},
@@ -40,7 +41,6 @@ vi.mock("@dnd-kit/dom", () => ({
 vi.mock("@dnd-kit/dom/sortable", () => ({ SortableKeyboardPlugin: class {} }))
 vi.mock("@dnd-kit/react/sortable", () => ({
   useSortable: () => ({
-    handleRef: () => undefined,
     isDragSource: false,
     isDragging: false,
     isDropTarget: false,
@@ -438,8 +438,11 @@ describe("ModelTree History presentation", () => {
     await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: "Reorder Profile" }) as HTMLButtonElement).disabled,
-      ).toBe(true)
+        screen
+          .getByRole("treeitem", { name: "Profile" })
+          .closest("[data-history-id]")
+          ?.getAttribute("data-history-reorder-disabled"),
+      ).toBe("true")
       expect(
         (screen.getByRole("button", { name: "Move Profile" }) as HTMLButtonElement).disabled,
       ).toBe(true)
@@ -455,8 +458,11 @@ describe("ModelTree History presentation", () => {
     })
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: "Reorder Profile" }) as HTMLButtonElement).disabled,
-      ).toBe(false)
+        screen
+          .getByRole("treeitem", { name: "Profile" })
+          .closest("[data-history-id]")
+          ?.getAttribute("data-history-reorder-disabled"),
+      ).toBeNull()
       expect(
         (screen.getByRole("button", { name: "Move Profile" }) as HTMLButtonElement).disabled,
       ).toBe(false)
@@ -493,7 +499,10 @@ describe("ModelTree History presentation", () => {
         (element) => element.dataset.historyId,
       ),
     ).toEqual([sketchId, featureId])
-    expect(screen.getByRole("button", { name: "Reorder Profile" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Reorder Profile" })).toBeNull()
+    expect(screen.getByRole("treeitem", { name: "Profile" }).getAttribute("aria-describedby")).toBe(
+      "history-drag-instructions",
+    )
     expect(screen.queryByRole("button", { name: "Move Profile earlier" })).toBeNull()
 
     await user.click(screen.getByRole("button", { name: "Move Box 1" }))
