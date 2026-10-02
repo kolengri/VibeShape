@@ -8,7 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { z } from "zod"
 import {
   assertDistributionPath,
@@ -180,7 +180,9 @@ async function build() {
   const output = packageOutput(dist)
   const commit = requireCommittedExecutableSource()
   const before = verifyControlledDist(dist)
-  mkdirSync(output, { recursive: true })
+  mkdirSync(dirname(output), { recursive: true })
+  // Only the process that exclusively created this directory may populate or remove it.
+  mkdirSync(output)
   try {
     await populatePackage(output, commit, dist, before)
   } catch (error) {
