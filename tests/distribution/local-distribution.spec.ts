@@ -149,6 +149,9 @@ test("the relocated package preserves saved work across stop, restart, backup re
     expect(body.shape.volume).toBeCloseTo(26400, 6)
     expect(body.shape.solidCount).toBe(1)
     await page.screenshot({ path: testInfo.outputPath("recovered-packaged-model.png") })
+    await page.getByRole("button", { name: "Disable AI session", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeVisible()
+    await page.goto("about:blank")
     await local.close()
     local = undefined
     await startEditor()

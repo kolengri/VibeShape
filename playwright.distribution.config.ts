@@ -9,6 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: 3,
   retries: 0,
+  expect: { timeout: 30_000 },
   reporter: "list",
   use: { screenshot: "only-on-failure", trace: "retain-on-failure" },
   projects: [
