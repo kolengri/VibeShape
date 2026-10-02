@@ -17,6 +17,8 @@ describe("local static editor boundary", () => {
     await writeFile(join(root, "index.html"), "<html><head></head><body></body></html>")
     await writeFile(join(root, "assets/worker-entry-Abc123_-.js"), "void 0")
     await writeFile(join(root, "assets/worker-entry-lookalike.js"), "void 0")
+    await writeFile(join(root, "license.txt"), "Local license notice")
+    await writeFile(join(root, "sources.tar.gz"), "source archive fixture")
     await writeFile(join(parent, "private.json"), "{}")
     await symlink(join(parent, "private.json"), join(root, "escape.json"))
     const origin = "http://127.0.0.1:43114"
@@ -33,6 +35,11 @@ describe("local static editor boundary", () => {
     ).not.toContain("'unsafe-eval'")
     expect((await get("/")).headers.get("content-security-policy")).not.toContain("'unsafe-eval'")
     expect((await get("/escape.json")).status).toBe(404)
+    expect((await get("/license.txt")).headers.get("content-type")).toBe(
+      "text/plain; charset=utf-8",
+    )
+    expect((await get("/sources.tar.gz")).headers.get("content-type")).toBe("application/gzip")
+    expect((await get("/sources.tar.gz")).headers.get("x-content-type-options")).toBe("nosniff")
     expect(
       (await server(new Request(`${origin}/`, { headers: { Host: "attacker.invalid" } }))).status,
     ).toBe(403)

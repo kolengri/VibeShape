@@ -21,6 +21,9 @@ const mimeTypes: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
+  ".txt": "text/plain; charset=utf-8",
+  ".tar": "application/x-tar",
+  ".gz": "application/gzip",
 }
 function staticRequestStatus(request: Request, origin: URL, url: URL) {
   if (url.origin !== origin.origin || request.headers.get("host") !== origin.host) return 403

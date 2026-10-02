@@ -537,6 +537,14 @@ export function createBrowserBroker({
       expire()
       return pair !== null
     },
+    readSession() {
+      expire()
+      return {
+        schemaVersion: 1 as const,
+        editorUrl: allowedOrigin,
+        paired: pair !== null,
+      }
+    },
     dispose() {
       disposed = true
       if (livenessTimer) clearInterval(livenessTimer)
