@@ -4,11 +4,19 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js"
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
 
-export async function createMcpTestClient(port: number) {
+export async function createMcpTestClient(
+  port: number,
+  launch?: { command: string; args: string[]; cwd?: string },
+) {
   const client = new Client({ name: "VibeShape integration client", version: "1.0" })
   const transport = new StdioClientTransport({
-    command: "bun",
-    args: [fileURLToPath(new URL("../src/index.ts", import.meta.url)), "--port", String(port)],
+    command: launch?.command ?? "bun",
+    args: [
+      ...(launch?.args ?? [fileURLToPath(new URL("../src/index.ts", import.meta.url))]),
+      "--port",
+      String(port),
+    ],
+    ...(launch?.cwd ? { cwd: launch.cwd } : {}),
     stderr: "pipe",
   })
   let stderr = ""

@@ -11,6 +11,9 @@ Production VibeShape is a set of static files, but it cannot run through `file:/
 The external agent owns natural-language reasoning. VibeShape exposes typed CAD tools over stdio;
 it does not require an embedded chat, model API key, or paid inference backend.
 See [MCP quickstart](mcp-quickstart.md) for client setup and the review workflow.
+For the relocatable local package, explicit editor/MCP launch, versioned installation and rollback,
+see [Local distribution](local-distribution.md). Packaging does not change the active MCP client
+or register a new one.
 
 Prepare a local build from the existing verified OCCT corresponding-source bundle:
 

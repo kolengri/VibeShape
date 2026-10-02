@@ -9,6 +9,27 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 describe("local static editor boundary", () => {
+  it("serves the standalone editor without advertising or exposing automation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vibeshape-editor-only-"))
+    roots.push(root)
+    const html = "<html><head></head><body>Editor</body></html>"
+    await writeFile(join(root, "index.html"), html)
+    const origin = "http://127.0.0.1:43114"
+    const standalone = await createStaticEditor({ directory: root, origin })
+    const request = (path: string) =>
+      new Request(`${origin}${path}`, {
+        headers: { Host: "127.0.0.1:43114" },
+      })
+    expect(await (await standalone(request("/"))).text()).toBe(html)
+    expect((await standalone(request("/__vibeshape/automation/status"))).status).toBe(404)
+    const api = vi.fn(async () => new Response("status"))
+    const connected = await createStaticEditor({ directory: root, origin, api })
+    expect(await (await connected(request("/"))).text()).toContain(
+      'name="vibeshape-local-automation"',
+    )
+    expect(await (await connected(request("/__vibeshape/automation/status"))).text()).toBe("status")
+    expect(api).toHaveBeenCalledTimes(1)
+  })
   it("scopes native evaluation to a hash-named worker and excludes lookalikes and escaping links", async () => {
     const parent = await mkdtemp(join(tmpdir(), "vibeshape-mcp-static-"))
     roots.push(parent)
