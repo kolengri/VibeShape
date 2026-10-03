@@ -114,6 +114,15 @@ export function SettingsDialog({
             </SelectField>
             <p className="text-xs text-muted-foreground">{t("exportDescription")}</p>
           </section>
+          <section className="grid gap-3 border-t pt-4" aria-label={t("about.title")}>
+            <h3 className="font-medium">{t("about.title")}</h3>
+            <p className="text-sm text-muted-foreground">{t("about.licenses")}</p>
+            <Button variant="link" className="w-fit px-0" asChild>
+              <a href="/sources/index.html" target="_blank" rel="noopener noreferrer">
+                {t("about.sources")}
+              </a>
+            </Button>
+          </section>
         </div>
         <DialogFooter className="shrink-0">
           <DialogClose asChild>

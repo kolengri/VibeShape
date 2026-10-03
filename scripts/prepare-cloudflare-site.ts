@@ -1,4 +1,12 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { z } from "zod"
 import {
@@ -16,13 +24,17 @@ const sourceArchives = [
   "solvespace-corresponding-source.tar.gz",
   "vibeshape-source.tar",
 ] as const
+const requiredNotices = [
+  "browser-licenses.txt",
+  "worker-licenses.txt",
+  "shadcn-LICENSE.txt",
+] as const
 
 function writeSourceArchive(directory: string, name: string, bytes: Uint8Array) {
   if (!sourceArchives.some((allowed) => allowed === name))
     throw new Error("Only the three corresponding-source archives may be split.")
   const paths: string[] = []
   if (bytes.byteLength <= maximumAssetBytes) {
-    writeFileSync(join(directory, name), bytes)
     paths.push(name)
   } else {
     for (let start = 0; start < bytes.byteLength; start += sourcePartBytes) {
@@ -35,12 +47,25 @@ function writeSourceArchive(directory: string, name: string, bytes: Uint8Array) 
   return { file: name, bytes: bytes.byteLength, sha256: distributionHash(bytes), paths }
 }
 
-function prepareSources(site: string, sourcePackage: string) {
+function prepareSources(site: string, sourcePackage: string, manifest: DistributionManifest) {
   const directory = join(site, "sources")
+  for (const name of requiredNotices) {
+    if (!existsSync(join(directory, name)) || !readFileSync(join(directory, name), "utf8").trim())
+      throw new Error(`The public build is missing third-party notices: ${name}`)
+  }
+  const applicationSource = manifest.files.find(
+    ({ path }) => path === "sources/vibeshape-source.tar",
+  )
+  if (!applicationSource) throw new Error("The verified application source archive is missing.")
   cpSync(
     join(sourcePackage, "sources/vibeshape-source.tar"),
     join(directory, "vibeshape-source.tar"),
   )
+  if (
+    distributionHash(readFileSync(join(directory, "vibeshape-source.tar"))) !==
+    applicationSource.sha256
+  )
+    throw new Error("The verified application source changed while staging.")
   const archives = sourceArchives.map((name) =>
     writeSourceArchive(directory, name, readFileSync(join(directory, name))),
   )
@@ -59,7 +84,7 @@ function prepareSources(site: string, sourcePackage: string) {
     join(directory, "index.html"),
     `<!doctype html><html lang="en"><meta charset="utf-8"><title>VibeShape sources</title>
 <h1>Corresponding source and licenses</h1><p>Large archives are split into ordered parts to fit the static host. Download every part and follow <a href="RECONSTRUCT.txt">reconstruction and SHA-256 instructions</a>. No source bytes are omitted.</p>
-<ul>${links.join("")}<li><a href="LICENSE.txt">VibeShape license</a></li><li><a href="OCCT-NOTICES.txt">Third-party notices</a></li><li><a href="OCCT-REPLACEMENT.txt">Kernel replacement instructions</a></li></ul></html>\n`,
+<ul>${links.join("")}<li><a href="LICENSE.txt">VibeShape license</a></li><li><a href="browser-licenses.txt">Browser dependency licenses</a></li><li><a href="worker-licenses.txt">Worker dependency licenses</a></li><li><a href="shadcn-LICENSE.txt">Copied UI component license</a></li><li><a href="OCCT-NOTICES.txt">OCCT and binding notices</a></li><li><a href="OCCT-REPLACEMENT.txt">Kernel replacement instructions</a></li></ul></html>\n`,
   )
   return archives
 }
@@ -72,12 +97,44 @@ function copyVerifiedWeb(source: string, site: string, manifest: DistributionMan
     cpSync(join(source, file.path), target)
     if (distributionHash(readFileSync(target)) !== file.sha256)
       throw new Error("The verified static package changed while staging.")
+    chmodSync(target, 0o644)
   }
   if (existsSync(join(site, "manifest.json")) || existsSync(join(site, "site-manifest.json")))
     throw new Error("The static input contains a reserved staging manifest.")
 }
 
-export function prepareCloudflareSite(sourcePackage: string, output: string) {
+function remoteEditorHeaders(headers: string, remoteMcpUrl: string | undefined) {
+  if (!remoteMcpUrl) return headers
+  const configured = z
+    .url()
+    .regex(
+      /^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\/mcp$/,
+      "The remote MCP endpoint must be an HTTPS /mcp URL on a DNS hostname.",
+    )
+    .parse(remoteMcpUrl)
+  const endpoint = new URL(configured)
+  const sections = headers.split("\n\n")
+  return sections
+    .map((section) => {
+      if (!["/", "/index", "/index.html"].includes(section.split("\n")[0] ?? "")) return section
+      return section
+        .replace(
+          "script-src 'self' 'wasm-unsafe-eval'",
+          "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com",
+        )
+        .replace(
+          "connect-src 'self'",
+          `connect-src 'self' ${endpoint.origin} wss://${endpoint.host}; frame-src https://challenges.cloudflare.com`,
+        )
+    })
+    .join("\n\n")
+}
+
+export function prepareCloudflareSite(
+  sourcePackage: string,
+  output: string,
+  remoteMcpUrl?: string,
+) {
   const source = assertDistributionPath(sourcePackage)
   const manifest = verifyDistribution(source)
   const site = assertDistributionPath(output)
@@ -87,9 +144,13 @@ export function prepareCloudflareSite(sourcePackage: string, output: string) {
   mkdirSync(site)
   try {
     copyVerifiedWeb(source, site, manifest)
-    const archives = prepareSources(site, source)
+    const archives = prepareSources(site, source, manifest)
     const config = resolve(import.meta.dirname, "../deployment/cloudflare")
-    for (const name of ["_headers", "404.html"]) cpSync(join(config, name), join(site, name))
+    cpSync(join(config, "404.html"), join(site, "404.html"))
+    writeFileSync(
+      join(site, "_headers"),
+      remoteEditorHeaders(readFileSync(join(config, "_headers"), "utf8"), remoteMcpUrl),
+    )
     const files = distributionInventory(site)
     if (files.length >= 20_000 || files.some(({ bytes }) => bytes > maximumAssetBytes))
       throw new Error("The Cloudflare site exceeds the static asset limits.")
@@ -99,6 +160,7 @@ export function prepareCloudflareSite(sourcePackage: string, output: string) {
       schemaVersion: 1,
       sourceCommit: manifest.sourceCommit,
       releaseId: manifest.releaseId,
+      ...(remoteMcpUrl ? { remoteMcpUrl } : {}),
       archives,
       files,
     }
@@ -114,7 +176,11 @@ if (import.meta.main) {
   const [source, output] = z
     .tuple([z.string().min(1), z.string().min(1)])
     .parse(process.argv.slice(2))
-  const report = prepareCloudflareSite(resolve(source), resolve(output))
+  const report = prepareCloudflareSite(
+    resolve(source),
+    resolve(output),
+    process.env.VITE_REMOTE_MCP_URL,
+  )
   console.log(
     `Prepared static Cloudflare site for ${report.sourceCommit}; no deployment was performed.`,
   )
