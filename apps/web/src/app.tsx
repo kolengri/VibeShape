@@ -32,6 +32,7 @@ import type {
   EditorSessionActions,
   EditorSessionState,
 } from "./editor-session/editor-session-store"
+import { effectiveHiddenSketchIds } from "./editor-session/sketch-visibility"
 import {
   activePartDesignCommand,
   editPartDesignTool,
@@ -59,6 +60,7 @@ import {
   type SketchShortcutToolbarAnchor,
 } from "./shell/sketch-shortcut-toolbar"
 import { StatusBar } from "./shell/status-bar"
+import { useViewerPreferences, ViewerPreferencesProvider } from "./shell/viewer-preferences"
 import { WorkspaceLayoutPreferencesProvider } from "./shell/workspace-layout-preferences"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
@@ -195,7 +197,27 @@ function preselectedConstraintForTool(
   return compatible ? compatible.definition : null
 }
 
+function useToggleAllSketchVisibility(controller: ReturnType<typeof useDocumentController>) {
+  const autoHideConsumedSketches = useViewerPreferences((state) => state.autoHideConsumedSketches)
+  const sessionActions = useEditorSession((state) => state.actions)
+  const sessionStore = useEditorSessionStoreApi()
+  return useCallback(
+    () =>
+      sessionActions.toggleAllSketchVisibility(
+        controller.report?.snapshot.sketches.map(({ id }) => id) ?? [],
+        effectiveHiddenSketchIds(
+          controller.report,
+          sessionStore.getState().sketchVisibilityOverrides,
+          autoHideConsumedSketches,
+          null,
+        ),
+      ),
+    [controller.report, sessionActions, sessionStore, autoHideConsumedSketches],
+  )
+}
+
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
+  const toggleAllSketchVisibility = useToggleAllSketchVisibility(controller)
   const hasSavedSketches = Boolean(controller.report?.snapshot.sketches.length)
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
@@ -339,13 +361,6 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     },
     [sessionActions, sessionStore],
   )
-  const toggleAllSketchVisibility = useCallback(
-    () =>
-      sessionActions.toggleAllSketchVisibility(
-        controller.report?.snapshot.sketches.map(({ id }) => id) ?? [],
-      ),
-    [controller.report?.snapshot.sketches, sessionActions],
-  )
 
   return useMemo(
     () =>
@@ -419,7 +434,7 @@ type EditorApplicationSession = Pick<
   | "commandPaletteOpen"
   | "extrusionDistanceRequest"
   | "hiddenFeatureIds"
-  | "hiddenSketchIds"
+  | "sketchVisibilityOverrides"
   | "originPlaneVisibility"
   | "preselectedBody"
   | "selectedBody"
@@ -439,7 +454,7 @@ function useEditorApplicationSession() {
       commandPaletteOpen: state.commandPaletteOpen,
       extrusionDistanceRequest: state.extrusionDistanceRequest,
       hiddenFeatureIds: state.hiddenFeatureIds,
-      hiddenSketchIds: state.hiddenSketchIds,
+      sketchVisibilityOverrides: state.sketchVisibilityOverrides,
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
       preselectedBody: state.preselectedBody,
@@ -562,6 +577,15 @@ function EditorWorkspaceComposition({
   sessionActions: EditorSessionActions
   workspaceActions: EditorWorkspaceActions
 }>) {
+  const autoHideConsumedSketches = useViewerPreferences((state) => state.autoHideConsumedSketches)
+  const hiddenSketchIds = effectiveHiddenSketchIds(
+    controller.report,
+    session.sketchVisibilityOverrides,
+    autoHideConsumedSketches,
+    isActiveSketchEditorTool(session.sketch.activeSketchTool)
+      ? session.sketch.activeSketchId
+      : null,
+  )
   return (
     <EditorWorkspace
       actions={workspaceActions}
@@ -571,7 +595,7 @@ function EditorWorkspaceComposition({
       controller={controller}
       extrusionDistanceRequest={session.extrusionDistanceRequest}
       hiddenFeatureIds={session.hiddenFeatureIds}
-      hiddenSketchIds={session.hiddenSketchIds}
+      hiddenSketchIds={hiddenSketchIds}
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
       preselectedFeatureId={session.preselectedFeatureId}
@@ -720,11 +744,16 @@ export function App() {
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
-      <WorkspaceLayoutPreferencesProvider>
-        <EditorSessionProvider key={controller.report?.snapshot.id ?? "loading"}>
-          <EditorApplication controller={controller} />
-        </EditorSessionProvider>
-      </WorkspaceLayoutPreferencesProvider>
+      <ViewerPreferencesProvider>
+        <WorkspaceLayoutPreferencesProvider>
+          <EditorSessionProvider
+            key={controller.report?.snapshot.id ?? "loading"}
+            documentId={controller.report?.snapshot.id}
+          >
+            <EditorApplication controller={controller} />
+          </EditorSessionProvider>
+        </WorkspaceLayoutPreferencesProvider>
+      </ViewerPreferencesProvider>
     </DocumentDisplayUnitsProvider>
   )
 }

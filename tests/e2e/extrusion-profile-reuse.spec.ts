@@ -53,6 +53,7 @@ test("reuses a hidden consumed sketch profile for an independent extrusion", asy
 }, testInfo) => {
   test.setTimeout(120_000)
   await createRectangleAndCircleExtrusion(page)
+  await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
   await page.getByRole("button", { name: "Hide Sketch 1", exact: true }).click()
   const viewport = page.getByRole("region", { name: "3D viewport" })
   await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
@@ -92,6 +93,7 @@ test("explains a selected model face and creates a sketch on its planar support"
 }, testInfo) => {
   test.setTimeout(120_000)
   await createRectangleAndCircleExtrusion(page)
+  await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
   await page.getByRole("button", { name: "Hide Sketch 1", exact: true }).click()
   await extrudeCommand(page).click()
   const viewport = page.getByRole("region", { name: "3D viewport" })

@@ -56,11 +56,11 @@ for (const operation of ["fillet", "chamfer"] as const) {
       .evaluate((element, dark) => element.classList.toggle("dark", dark), operation === "fillet")
     await page.screenshot({ path: test.info().outputPath(`selected-${operation}.png`) })
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "Project…" }).click()
+    await page.getByRole("button", { name: "File" }).click()
     const downloading = page.waitForEvent("download")
     await page
       .getByRole("dialog", { name: "Projects" })
-      .getByRole("button", { name: "Download .vshape" })
+      .getByRole("button", { name: "Save project (.vshape)" })
       .click()
     await expectSelectedNativeBackup(await downloading, `${title} 1`)
   })

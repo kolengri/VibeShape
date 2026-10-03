@@ -81,6 +81,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     expect(enableAutoApply).not.toHaveBeenCalled()
     await connection.enable()
     expect(connection.getSnapshot().autoApply).toBe(false)
+    expect(connection.getSnapshot().busy).toBe(false)
     expect(connection.enableAutoApply()).toBe(true)
     expect(enableAutoApply).toHaveBeenCalledWith(credential.actor)
     expect(connection.getSnapshot().autoApply).toBe(true)
@@ -109,9 +110,16 @@ describe("browser-owned local AI connection lifecycle", () => {
     )
     await vi.advanceTimersByTimeAsync(500)
     enableAutoApply.mockClear()
+    expect(connection.getSnapshot().busy).toBe(true)
     expect(connection.enableAutoApply()).toBe(false)
     expect(enableAutoApply).not.toHaveBeenCalled()
+    const originalRequest = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll" ? emptyPoll : originalRequest?.(path, ...args),
+    )
     pending.resolve(failedResult)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().busy).toBe(false)
   })
 
   it("revokes auto-apply when its captured project closes", async () => {
@@ -146,6 +154,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     const disconnected = connection.getSnapshot()
     connection.dispose()
     expect(disconnected.connected).toBe(false)
+    expect(disconnected.busy).toBe(false)
     expect(connection.getSnapshot()).toBe(disconnected)
     expect(listener).toHaveBeenCalledOnce()
     expect(dispose).toHaveBeenCalledOnce()

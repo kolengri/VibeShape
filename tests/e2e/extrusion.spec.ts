@@ -223,6 +223,7 @@ test.describe("selector-backed extrusion", () => {
       ).toHaveText("Box 1")
 
       await editForm.getByRole("button", { name: "Cancel" }).click()
+      await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
       await viewport
         .getByRole("combobox", { name: "Select saved profile" })
         .selectOption({ label: "Sketch 1 · Profile 1" })
@@ -690,6 +691,7 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
     await fitIsometricView(page)
+    await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()

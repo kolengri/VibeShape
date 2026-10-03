@@ -90,9 +90,9 @@ test("the relocated package preserves saved work across stop, restart, backup re
     const edit = page.getByRole("form", { name: "Edit box" })
     await expect(edit.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("22 mm")
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "Project…", exact: true }).click()
+    await page.getByRole("button", { name: "File", exact: true }).click()
     const downloadReady = page.waitForEvent("download")
-    await page.getByRole("button", { name: "Download .vshape", exact: true }).click()
+    await page.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
     const download = await downloadReady
     const backup = testInfo.outputPath("saved-model.vshape")
     await download.saveAs(backup)
@@ -109,7 +109,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     try {
       await recovered.goto(origin)
       await expect(recovered.getByText("Saved in this browser", { exact: true })).toBeVisible()
-      await recovered.getByRole("button", { name: "Project…", exact: true }).click()
+      await recovered.getByRole("button", { name: "File", exact: true }).click()
       await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
       await expect(recovered.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
       await expect(recovered.getByRole("region", { name: "3D viewport" })).toHaveAttribute(

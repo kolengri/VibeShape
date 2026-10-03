@@ -7,7 +7,7 @@ import type {
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
-import { replaceSketchSupport } from "@vibeshape/domain"
+import { replaceSketchSupport, sketchIdSchema } from "@vibeshape/domain"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -45,6 +45,7 @@ import {
   type SketchEditorTool,
 } from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "../shell/workspace"
+import type { SketchVisibilityOverrides } from "./sketch-visibility"
 
 function clearFeatureSelection(state: Draft<EditorSessionState>, featureId: FeatureId) {
   if (state.selection?.featureId === featureId) state.selection = null
@@ -83,6 +84,7 @@ export type EditorSessionState = Readonly<{
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
+  sketchVisibilityOverrides: SketchVisibilityOverrides
   originPlaneVisibility: ViewerOriginPlaneVisibility
   preselectedBody: ModelBodySelection | null
   selectedBody: ModelBodySelection | null
@@ -135,7 +137,10 @@ export type EditorSessionActions = Readonly<{
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setRevolveAngle: (featureId: FeatureId, angle: number) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
-  toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
+  toggleAllSketchVisibility: (
+    sketchIds: readonly SketchId[],
+    effectiveHiddenIds?: readonly SketchId[],
+  ) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchCameraMode: (mode: SketchCameraMode) => void
@@ -179,14 +184,17 @@ function createSketchState(): SketchEditorSessionState {
   }
 }
 
-function createEditorSessionState(): EditorSessionState {
+function createEditorSessionState(overrides: SketchVisibilityOverrides): EditorSessionState {
   return {
     activePartDesignTool: null,
     partDesignToolGeneration: 0,
     commandPaletteOpen: false,
     extrusionDistanceRequest: null,
     hiddenFeatureIds: [],
-    hiddenSketchIds: [],
+    hiddenSketchIds: Object.keys(overrides)
+      .filter((id) => !overrides[id])
+      .map((id) => sketchIdSchema.parse(id)),
+    sketchVisibilityOverrides: overrides,
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     preselectedBody: null,
     selectedBody: null,
@@ -297,10 +305,10 @@ function pushBoundedHistory(history: Draft<readonly SketchRecord[]>, sketch: Ske
   }
 }
 
-export function createEditorSessionStore() {
+export function createEditorSessionStore(overrides: SketchVisibilityOverrides = {}) {
   return createStore<EditorSessionStore>()(
     immer((set, get) => ({
-      ...createEditorSessionState(),
+      ...createEditorSessionState(overrides),
       actions: {
         acknowledgeExtrusionDistance: (featureId) =>
           set((state) => {
@@ -570,6 +578,7 @@ export function createEditorSessionStore() {
           }),
         setSketchVisibility: (sketchId, visible) =>
           set((state) => {
+            state.sketchVisibilityOverrides[sketchId] = visible
             state.hiddenSketchIds = visible
               ? state.hiddenSketchIds.filter((id) => id !== sketchId)
               : [...new Set([...state.hiddenSketchIds, sketchId])]
@@ -577,13 +586,14 @@ export function createEditorSessionStore() {
               closeSketch(state.sketch)
             }
           }),
-        toggleAllSketchVisibility: (sketchIds) =>
+        toggleAllSketchVisibility: (sketchIds, effectiveHiddenIds) =>
           set((state) => {
             const currentSketchIds = [...new Set(sketchIds)]
             if (currentSketchIds.length === 0) return
             const currentSketchIdSet = new Set(currentSketchIds)
-            const hiddenSketchIds = new Set(state.hiddenSketchIds)
+            const hiddenSketchIds = new Set(effectiveHiddenIds ?? state.hiddenSketchIds)
             const allHidden = currentSketchIds.every((id) => hiddenSketchIds.has(id))
+            for (const id of currentSketchIds) state.sketchVisibilityOverrides[id] = allHidden
             state.hiddenSketchIds = allHidden
               ? state.hiddenSketchIds.filter((id) => !currentSketchIdSet.has(id))
               : [...new Set([...state.hiddenSketchIds, ...currentSketchIds])]

@@ -138,3 +138,30 @@
     justify-content: flex-end;
   }
 }
+
+@media (width < 40rem) {
+  .workspace-viewport,
+  .workspace-panel--task {
+    left: 0;
+  }
+
+  .workspace-panel--tree {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: var(--workspace-sheet-height);
+    left: 0;
+    width: min(18rem, calc(100vw - 3rem));
+    height: auto;
+    visibility: hidden;
+    /* Hide descendant paint even when a child declares its own visibility. */
+    opacity: 0;
+    border-right: 1px solid var(--border);
+    box-shadow: 0.75rem 0 2rem color-mix(in oklab, black 24%, transparent);
+  }
+
+  .workspace-panel--tree[data-drawer-open="true"] {
+    visibility: visible;
+    opacity: 1;
+  }
+}

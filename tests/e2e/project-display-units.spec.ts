@@ -7,14 +7,15 @@ test.describe("project display units", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    await page.getByRole("button", { name: "Project units: mm, deg" }).click()
-    const dialog = page.getByRole("dialog", { name: "Project units" })
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
     await dialog.getByRole("combobox", { name: "Length unit" }).selectOption("in")
     await dialog.getByRole("combobox", { name: "Angle unit" }).selectOption("rad")
     await dialog.getByRole("button", { name: "Apply project units" }).dblclick()
+    await dialog.getByRole("button", { name: "Done", exact: true }).click()
     await expect(dialog).toHaveCount(0)
     await expect(page.getByText("Units: in · rad", { exact: true })).toBeVisible()
-    await expect(page.getByText("XY · in", { exact: true })).toBeVisible()
+    await expect(page.getByText("XYZ · in", { exact: true })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
@@ -46,7 +47,7 @@ test.describe("project display units", () => {
 
     await page.reload()
     await expect(page.getByText("Units: in · rad", { exact: true })).toBeVisible()
-    await expect(page.getByText("XY · in", { exact: true })).toBeVisible()
+    await expect(page.getByText("XYZ · in", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await expect(page.getByRole("cell", { name: "1 in" })).toBeVisible()
     await page.getByRole("treeitem", { name: "Box 1" }).click()

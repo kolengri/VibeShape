@@ -53,7 +53,7 @@ async function reopenHoleBackup(browser: Browser, file: string) {
   try {
     await page.goto("http://127.0.0.1:4173/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Project…" }).click()
+    await page.getByRole("button", { name: "File" }).click()
     await page.getByLabel("Choose VibeShape project file").setInputFiles(file)
     const hole = page.getByRole("treeitem", { name: "Hole 1", exact: true })
     await expect(hole).toBeVisible({ timeout: 30_000 })
@@ -150,11 +150,11 @@ for (const theme of ["light", "dark"] as const) {
     await expect(edit.getByRole("checkbox", { name: "Point 1", exact: true })).toBeChecked()
     await inspectCompactHoleTask(page, theme)
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "Project…" }).click()
+    await page.getByRole("button", { name: "File" }).click()
     const downloading = page.waitForEvent("download")
     await page
       .getByRole("dialog", { name: "Projects" })
-      .getByRole("button", { name: "Download .vshape" })
+      .getByRole("button", { name: "Save project (.vshape)" })
       .click()
     const file = await (await downloading).path()
     if (!file) throw new Error("Expected a native backup.")

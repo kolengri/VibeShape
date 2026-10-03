@@ -97,18 +97,22 @@ function ExportFormatCard({
   disabled,
   loading,
   onExport,
+  preferred,
 }: {
   format: GeometryExportFormat
+  preferred: boolean
   disabled: boolean
   loading: boolean
   onExport: (format: GeometryExportFormat) => Promise<void>
 }) {
   const t = useTranslations("app.export")
+  const settingsT = useTranslations("app.settings")
   const copy = formatCopy[format]
   return (
     <section className="grid content-start gap-3 rounded-md border bg-card p-4">
       <div className="grid gap-1">
         <h3 className="text-sm font-medium">{t(copy.title)}</h3>
+        {preferred ? <span className="text-xs text-primary">{settingsT("preferred")}</span> : null}
         <p className="text-xs text-muted-foreground">{t(copy.description)}</p>
       </div>
       <Button
@@ -134,7 +138,13 @@ function ExportNotice({ hasGeometry, failed }: { hasGeometry: boolean; failed: b
   )
 }
 
-export function DocumentExportDialog({ controller }: { controller: DocumentControllerState }) {
+export function DocumentExportDialog({
+  controller,
+  preferredFormat = "3mf",
+}: {
+  controller: DocumentControllerState
+  preferredFormat?: GeometryExportFormat
+}) {
   const t = useTranslations("app.export")
   const [open, setOpen] = useState(false)
   const [slicerPending, setSlicerPending] = useState(false)
@@ -201,24 +211,19 @@ export function DocumentExportDialog({ controller }: { controller: DocumentContr
           ) : null}
           {!showPreparation ? (
             <div className="grid gap-3 sm:grid-cols-3">
-              <ExportFormatCard
-                format="3mf"
-                disabled={actionDisabled}
-                loading={activity.pendingFormat === "3mf"}
-                onExport={runExport}
-              />
-              <ExportFormatCard
-                format="step"
-                disabled={actionDisabled}
-                loading={activity.pendingFormat === "step"}
-                onExport={runExport}
-              />
-              <ExportFormatCard
-                format="stl"
-                disabled={actionDisabled}
-                loading={activity.pendingFormat === "stl"}
-                onExport={runExport}
-              />
+              {[
+                preferredFormat,
+                ...(["3mf", "step", "stl"] as const).filter((format) => format !== preferredFormat),
+              ].map((format) => (
+                <ExportFormatCard
+                  key={format}
+                  format={format}
+                  preferred={format === preferredFormat}
+                  disabled={actionDisabled}
+                  loading={activity.pendingFormat === format}
+                  onExport={runExport}
+                />
+              ))}
             </div>
           ) : null}
           <ExportNotice hasGeometry={hasGeometry} failed={activity.failed} />

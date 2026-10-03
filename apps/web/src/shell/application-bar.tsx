@@ -3,14 +3,21 @@ import { Button } from "@vibeshape/ui/components/button"
 import { CommandIcon, Keyboard } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useEffect, useState, useSyncExternalStore } from "react"
+import { automationReviews } from "../automation/automation-review-controller"
 import { createLocalAutomationConnection } from "../automation/local-automation-connection"
-import type { DocumentControllerState } from "../document/document-controller"
-import { DocumentDisplayUnitsDialog } from "../document/document-display-units-dialog"
+import {
+  type DocumentControllerState,
+  getProjectActionBlock,
+  getProjectActiveWorkBlock,
+  registerProjectActionGuard,
+} from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
+import { useEditorSessionStoreApi } from "../editor-session/editor-session-provider"
 import { LocalAutomationStatus } from "./local-automation-status"
-import { WorkspaceLayoutSettings } from "./workspace-layout-settings"
+import { SettingsDialog } from "./settings-dialog"
+import { useViewerPreferences } from "./viewer-preferences"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -26,28 +33,6 @@ function saveStatusMessage(
   return messages[messageKey]
 }
 
-function LocalAutomationControl({ controller }: { controller: DocumentControllerState }) {
-  const [connection] = useState(createLocalAutomationConnection)
-  const current = useSyncExternalStore(
-    connection.subscribe,
-    connection.getSnapshot,
-    connection.getSnapshot,
-  )
-  useEffect(() => {
-    connection.start()
-    void connection.status()
-    return connection.dispose
-  }, [connection])
-  if (!current.available || controller.status !== "ready") return null
-  return (
-    <LocalAutomationStatus
-      key={`${controller.report?.snapshot.id}:${current.connected}`}
-      connection={connection}
-      current={current}
-    />
-  )
-}
-
 export function ApplicationBar({
   controller,
   onOpenCommandPalette,
@@ -59,6 +44,45 @@ export function ApplicationBar({
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const commandsT = useTranslations("app.commands")
+  const editorStore = useEditorSessionStoreApi()
+  useSyncExternalStore(editorStore.subscribe, editorStore.getState, editorStore.getState)
+  const [connection] = useState(createLocalAutomationConnection)
+  const current = useSyncExternalStore(
+    connection.subscribe,
+    connection.getSnapshot,
+    connection.getSnapshot,
+  )
+  useSyncExternalStore(
+    automationReviews.subscribe,
+    automationReviews.getSnapshot,
+    automationReviews.getSnapshot,
+  )
+  const preferredExportFormat = useViewerPreferences((state) => state.preferredExportFormat)
+  useEffect(() => {
+    connection.start()
+    void connection.status()
+    return connection.dispose
+  }, [connection])
+  useEffect(
+    () =>
+      registerProjectActionGuard(() => {
+        const state = editorStore.getState()
+        if (
+          (state.activePartDesignTool && state.activePartDesignTool.kind !== "measure") ||
+          state.sketch.activeSketchTool ||
+          state.sketch.draft
+        )
+          return "editor-draft"
+        if (connection.getSnapshot().busy) return "automation-busy"
+        return null
+      }),
+    [connection, editorStore],
+  )
+  const blockedReason = getProjectActionBlock()
+  const unitChangesBlocked =
+    controller.status !== "ready" ||
+    controller.saveStatus === "saving" ||
+    getProjectActiveWorkBlock() !== null
   const documentName = controller.report?.snapshot.name ?? t("untitledProject")
   const saveStatus = saveStatusMessage(controller, {
     loading: t("loading"),
@@ -72,9 +96,15 @@ export function ApplicationBar({
       <strong className="hidden truncate text-sm sm:block">VibeShape</strong>
       <span className="min-w-0 truncate text-muted-foreground">{documentName}</span>
       <DocumentRenameDialog controller={controller} />
-      <DocumentDisplayUnitsDialog controller={controller} />
-      <WorkspaceLayoutSettings />
-      <LocalAutomationControl controller={controller} />
+      <DocumentProjectDialog controller={controller} blockedReason={blockedReason} />
+      <SettingsDialog controller={controller} blocked={unitChangesBlocked} />
+      {current.available && controller.status === "ready" ? (
+        <LocalAutomationStatus
+          key={`${controller.report?.snapshot.id}:${current.connected}`}
+          connection={connection}
+          current={current}
+        />
+      ) : null}
       <span
         className="sr-only sm:not-sr-only sm:ml-auto sm:min-w-0 sm:truncate sm:text-xs sm:text-muted-foreground"
         role="status"
@@ -100,7 +130,6 @@ export function ApplicationBar({
           </kbd>
         </TooltipContent>
       </Tooltip>
-      <DocumentProjectDialog controller={controller} />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -119,7 +148,7 @@ export function ApplicationBar({
           {commandsT("shortcutHelp.title")} <kbd>F1</kbd>
         </TooltipContent>
       </Tooltip>
-      <DocumentExportDialog controller={controller} />
+      <DocumentExportDialog controller={controller} preferredFormat={preferredExportFormat} />
     </header>
   )
 }

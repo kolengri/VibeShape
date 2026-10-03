@@ -17,6 +17,7 @@ type Snapshot = Readonly<{
   available: boolean
   connected: boolean
   autoApply: boolean
+  busy: boolean
   client: LocalConnection["client"] | null
   error: boolean
 }>
@@ -35,6 +36,7 @@ export function createLocalAutomationConnection() {
     available: false,
     connected: false,
     autoApply: false,
+    busy: false,
     client: null,
     error: false,
   }
@@ -59,7 +61,8 @@ export function createLocalAutomationConnection() {
     generation += 1
     const current = pair
     if (current) closeLocal(current)
-    if (snapshot.connected) publish({ ...snapshot, connected: false, autoApply: false })
+    if (snapshot.connected)
+      publish({ ...snapshot, connected: false, autoApply: false, busy: false })
     if (current) await revokeCredential(current.credential)
   }
   async function fail(current: Pair) {
@@ -87,6 +90,7 @@ export function createLocalAutomationConnection() {
     }
     const controller = new AbortController()
     current.active = { work, controller }
+    publish({ ...snapshot, busy: true })
     let result: unknown
     try {
       result = await current.executor.execute(work.operation, controller.signal)
@@ -95,6 +99,9 @@ export function createLocalAutomationConnection() {
       result = localFailure("automation-failed", "The local automation request failed.", true)
     }
     if (pair !== current || controller.signal.aborted) return
+    await sendOperationResult(current, work, result)
+  }
+  async function sendOperationResult(current: Pair, work: LocalWork, result: unknown) {
     try {
       const response = await localAutomationRequest(
         "/result",
@@ -112,6 +119,7 @@ export function createLocalAutomationConnection() {
       await fail(current)
     } finally {
       current.active = null
+      if (pair === current) publish({ ...snapshot, busy: false })
     }
   }
   function progress(current: Pair) {
@@ -192,6 +200,7 @@ export function createLocalAutomationConnection() {
       available: true,
       connected: true,
       autoApply: false,
+      busy: false,
       client: credential.client,
       error: false,
     })

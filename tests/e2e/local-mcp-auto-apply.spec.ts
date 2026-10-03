@@ -265,9 +265,15 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     ).toMatchObject({ ok: true })
     const pendingSwitch = call(local, "commit_draft", { draftId: switching.draftId })
     await expect(review).toBeVisible()
-    await page.getByRole("button", { name: "Project…", exact: true }).click()
-    await page.getByRole("button", { name: "New project", exact: true }).click()
+    await page.getByRole("button", { name: "File", exact: true }).click()
+    await expect(page.getByRole("button", { name: "New project", exact: true })).toBeDisabled()
+    await page.getByRole("button", { name: "Close projects dialog", exact: true }).click()
+    await review.getByRole("button", { name: "Discard", exact: true }).click()
     expect(await pendingSwitch).toMatchObject({ ok: false })
+    await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "File", exact: true }).click()
+    await expect(page.getByRole("button", { name: "New project", exact: true })).toBeEnabled()
+    await page.getByRole("button", { name: "New project", exact: true }).click()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })

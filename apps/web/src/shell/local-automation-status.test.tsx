@@ -14,6 +14,7 @@ const manual: Props["current"] = {
   available: true,
   connected: true,
   autoApply: false,
+  busy: false,
   client: { name: "Test CAD client", version: "1" },
   error: false,
 }

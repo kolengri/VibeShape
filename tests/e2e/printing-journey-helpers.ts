@@ -232,11 +232,11 @@ function inspectThreeMf(bytes: Buffer) {
 }
 
 async function saveNativeBackup(page: Page, directory: string, revision: number) {
-  await page.getByRole("button", { name: "Project…" }).click()
+  await page.getByRole("button", { name: "File" }).click()
   const downloading = page.waitForEvent("download")
   await page
     .getByRole("dialog", { name: "Projects" })
-    .getByRole("button", { name: "Download .vshape" })
+    .getByRole("button", { name: "Save project (.vshape)" })
     .click()
   const backupPath = resolve(directory, "mounting-plate.vshape")
   await (await downloading).saveAs(backupPath)

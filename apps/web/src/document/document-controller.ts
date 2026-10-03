@@ -82,11 +82,17 @@ import type {
 } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
+import { automationReviews } from "../automation/automation-review-controller"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
-import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
+import { createProjectActionGuard } from "./project-action-guard"
+import {
+  copyPortableProjectV2,
+  formatProjectCopyName,
+  portableProjectV2FromArchive,
+} from "./versioned-project-file"
 
 const DATABASE_NAME = "vibeshape-product-v0"
 const DOCUMENT_STORAGE_KEY = "vibeshape-active-document-id"
@@ -130,7 +136,7 @@ export type ActiveAutomationInfo = Readonly<{
 }>
 
 export type ActiveProjectBackupResult =
-  | { ok: true; file: Uint8Array; documentName: string }
+  | { ok: true; file: Uint8Array; documentName: string; documentId: string; revision: number }
   | { ok: false; diagnostic: { code: string; message: string } }
 
 export type ProjectImportResult =
@@ -166,6 +172,51 @@ let session: PersistentDocumentSession | null = null
 let activeRepository: BrowserProjectRepository | null = null
 let startPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
+const projectActionGuard = createProjectActionGuard()
+export const registerProjectActionGuard = projectActionGuard.register
+
+export function getProjectActiveWorkBlock() {
+  const review = automationReviews.getSnapshot()
+  if (review && review.status !== "error") return "automation-busy" as const
+  return projectActionGuard.read()
+}
+
+export function getProjectActionBlock() {
+  if (state.status !== "ready" || !session || !activeRepository) return "unavailable" as const
+  if (state.saveStatus === "saving") return "saving" as const
+  if (state.saveStatus === "save-error") return "save-error" as const
+  return getProjectActiveWorkBlock()
+}
+
+function captureProjectAction() {
+  const blocked = getProjectActionBlock()
+  if (blocked || !session || !activeRepository) return null
+  const active = session
+  const repository = activeRepository
+  const { id, revision } = active.snapshot
+  return {
+    active,
+    repository,
+    id,
+    revision,
+    current: () =>
+      !getProjectActionBlock() &&
+      session === active &&
+      activeRepository === repository &&
+      active.snapshot.id === id &&
+      active.snapshot.revision === revision,
+  }
+}
+
+function projectActionUnavailable() {
+  return {
+    ok: false as const,
+    diagnostic: {
+      code: "project-action-blocked",
+      message: "Finish the active edit, save, or AI operation before using project files.",
+    },
+  }
+}
 
 function publish(next: DocumentControllerState) {
   state = { ...next, history: session?.history ?? { canUndo: false, canRedo: false } }
@@ -1106,33 +1157,54 @@ function unavailableProjectFileResult() {
 }
 
 export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupResult> {
-  if (!session || !activeRepository || state.status !== "ready" || !state.report) {
-    return unavailableProjectFileResult()
-  }
-  const portable = await activeRepository.exportPortableProjectV2(session.snapshot.id)
+  const action = captureProjectAction()
+  if (!action) return projectActionUnavailable()
+  const portable = await action.repository.exportPortableProjectV2(action.id)
   if (!portable.ok) return portable
+  if (!action.current() || portable.value.snapshot.revision !== action.revision)
+    return projectActionUnavailable()
   const archived = await writeVShapeV2({
     ...portable.value,
     exportedAt: new Date().toISOString(),
     createdBy: { application: "VibeShape", version: "0.0.0", build: null },
     engine: null,
   })
+  if (!action.current()) return projectActionUnavailable()
   return archived.ok
-    ? { ok: true, file: archived.value, documentName: session.snapshot.name }
+    ? {
+        ok: true,
+        file: archived.value,
+        documentName: action.active.snapshot.name,
+        documentId: action.id,
+        revision: action.revision,
+      }
     : archived
 }
 
-export async function importProjectBackup(bytes: Uint8Array): Promise<ProjectImportResult> {
-  if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
+export async function importProjectBackup(
+  bytes: Uint8Array,
+  formatCopyName: (name: string) => string,
+): Promise<ProjectImportResult> {
+  const action = captureProjectAction()
+  if (!action) return projectActionUnavailable()
   const decoded = await readVersionedVShape(bytes)
+  if (!action.current()) return projectActionUnavailable()
   if (!decoded.ok) return decoded
   const portable = portableProjectV2FromArchive(decoded.value)
   if (!portable.ok) return portable
-  const imported = await activeRepository.importPortableProjectV2({
-    ...portable.project,
-    exportedAt: portable.exportedAt,
-    importedAt: new Date().toISOString(),
+  const copiedAt = new Date().toISOString()
+  const copied = copyPortableProjectV2({
+    source: portable.project,
+    documentId: documentIdSchema.parse(browserUuidV7()),
+    name: formatProjectCopyName(portable.project.snapshot.name, formatCopyName),
+    issuedAt: copiedAt,
+    nextCommandId: browserUuidV7,
+    nextTransactionId: () => draftIdSchema.parse(browserUuidV7()),
   })
+  if (!copied.ok) return copied
+  if (!action.current()) return projectActionUnavailable()
+  const imported = await action.repository.copyPortableProjectV2({ ...copied.project, copiedAt })
+  if (!action.current()) return projectActionUnavailable()
   return imported.ok
     ? { ok: true, documentId: imported.value.documentId }
     : { ok: false, diagnostic: imported.diagnostic }
@@ -1175,10 +1247,17 @@ export async function saveActiveProjectThumbnail(
   return stored.ok ? { ok: true } : { ok: false, diagnostic: stored.diagnostic }
 }
 
-export async function activateLocalProject(documentIdInput: unknown): Promise<ProjectSwitchResult> {
-  if (!session || !activeRepository || state.status !== "ready") {
-    return unavailableProjectFileResult()
-  }
+export async function activateLocalProject(
+  documentIdInput: unknown,
+  expectedProject?: { documentId: string; revision: number },
+): Promise<ProjectSwitchResult> {
+  const action = captureProjectAction()
+  if (!action) return projectActionUnavailable()
+  if (
+    expectedProject &&
+    (action.id !== expectedProject.documentId || action.revision !== expectedProject.revision)
+  )
+    return projectActionUnavailable()
   const documentId = documentIdSchema.safeParse(documentIdInput)
   if (!documentId.success) {
     return {
@@ -1186,8 +1265,8 @@ export async function activateLocalProject(documentIdInput: unknown): Promise<Pr
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
   }
-  if (session.snapshot.id === documentId.data) return { ok: true }
-  const projects = await activeRepository.listProjects()
+  if (action.id === documentId.data) return { ok: true }
+  const projects = await action.repository.listProjects()
   if (!projects.ok) return { ok: false, diagnostic: projects.diagnostic }
   if (!projects.value.some((project) => project.documentId === documentId.data)) {
     return {
@@ -1195,7 +1274,12 @@ export async function activateLocalProject(documentIdInput: unknown): Promise<Pr
       diagnostic: { code: "document-not-found", message: "The local project does not exist." },
     }
   }
-  const closed = await session.close()
+  if (!action.current()) return projectActionUnavailable()
+  const closed = await action.active.close()
+  if (!action.current()) {
+    window.location.reload()
+    return projectActionUnavailable()
+  }
   session = null
   if (!closed.ok) {
     window.location.reload()
@@ -1216,8 +1300,13 @@ export async function activateLocalProject(documentIdInput: unknown): Promise<Pr
 }
 
 export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
-  if (!session || state.status !== "ready") return unavailableProjectFileResult()
-  const closed = await session.close()
+  const action = captureProjectAction()
+  if (!action) return projectActionUnavailable()
+  const closed = await action.active.close()
+  if (!action.current()) {
+    window.location.reload()
+    return projectActionUnavailable()
+  }
   session = null
   if (!closed.ok) {
     window.location.reload()

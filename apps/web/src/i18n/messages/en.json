@@ -6,7 +6,7 @@
     "projectFile": {
       "trigger": "Project…",
       "title": "Projects",
-      "description": "Create or open a browser-saved project. Use a .vshape file for a portable external backup.",
+      "description": "Edits are saved automatically in this browser. Save a .vshape file to keep an editable project outside this browser.",
       "closeLabel": "Close projects dialog",
       "close": "Close",
       "library": {
@@ -45,23 +45,24 @@
         }
       },
       "backup": {
-        "title": "External backup",
-        "description": "Download the document history, variable table, formulas, and model features without derived geometry.",
-        "action": "Download .vshape"
+        "title": "Save project (.vshape)",
+        "description": "Save editable history, variables, formulas, sketches, and features to a project file. This is separate from STEP, STL, or 3MF export.",
+        "action": "Save project (.vshape)"
       },
       "open": {
         "dropTitle": "Drop a .vshape project",
-        "dropDescription": "Or choose one project file to verify and import it into this browser.",
+        "dropDescription": "Verify the file and open a new editable copy. Existing local projects and the original file stay unchanged.",
         "invalidFile": "Choose one .vshape project file.",
-        "title": "Open project file",
-        "description": "Verify and import a .vshape project as a separate browser-stored document.",
-        "action": "Choose .vshape",
-        "inputLabel": "Choose VibeShape project file"
+        "title": "Open project (.vshape)",
+        "description": "Verify the file and open a new editable copy. Existing local projects and the original file stay unchanged.",
+        "action": "Open project (.vshape)",
+        "inputLabel": "Choose VibeShape project file",
+        "copyName": "{name} imported"
       },
       "status": {
-        "backingUp": "Preparing project backup…",
-        "downloaded": ".vshape download started",
-        "opening": "Verifying project file…",
+        "backingUp": "Preparing editable project file…",
+        "downloaded": "Project file download started",
+        "opening": "Verifying project file and creating a new copy…",
         "creating": "Creating a new local project…",
         "duplicating": "Duplicating local project…",
         "duplicated": "Local project duplicated",
@@ -71,11 +72,15 @@
         "backupFailed": "The project backup could not be created. Your browser-saved document is unchanged.",
         "openFailed": "This file is not a valid or supported VibeShape project.",
         "tooLarge": "This project exceeds the current 32 MiB archive limit.",
-        "alreadyExists": "This exact project already exists in this browser. Open it from Local projects; imports never overwrite an existing project.",
+        "alreadyExists": "The imported copy could not be added because its identity already exists. The existing project is unchanged; try opening the file again.",
         "switchFailed": "This local project could not be opened. The current project remains unchanged.",
         "newFailed": "A new local project could not be created. The current project remains unchanged.",
-        "duplicateFailed": "This local project could not be duplicated. Reload the project list and try again."
-      }
+        "duplicateFailed": "This local project could not be duplicated. Reload the project list and try again.",
+        "activeWork": "Finish or cancel the current edit, save, or AI operation before saving or opening a project file.",
+        "checkpoint": "This archive contains a checkpoint without complete editable history. It cannot be opened as a writable copy. The original file is unchanged.",
+        "saveError": "The latest edit could not be saved. Resolve the save error before saving a project file or switching projects."
+      },
+      "file": "File"
     },
     "projectRename": {
       "trigger": "Rename {name}",
@@ -1539,6 +1544,31 @@
         "renameConflict": "That variable name is already in use.",
         "renameFailed": "The variable could not be renamed. Your input is preserved."
       }
+    },
+    "settings": {
+      "appearance": "Appearance",
+      "autoHideConsumedSketches": "Automatically hide sketches used by successful Extrude features",
+      "autoHideDescription": "Manual visibility choices are preserved. Sketches remain visible while you edit them.",
+      "close": "Close settings",
+      "compactTreeDescription": "On small screens, use Show model tree above the task panel. Desktop panel widths and visibility are retained.",
+      "description": "Appearance, workspace, and export preferences are saved in this browser. Project units are saved in the project.",
+      "done": "Done",
+      "export": "Export preferences",
+      "exportDescription": "Shows this format first in Export. Choose export options before downloading.",
+      "exportFormat": "Preferred export format",
+      "hideModelTree": "Hide model tree",
+      "preferred": "Preferred",
+      "project": "Project units",
+      "projectBlocked": "Finish or cancel the current edit, save, or AI operation before changing project units.",
+      "showModelTree": "Show model tree",
+      "theme": {
+        "dark": "Dark",
+        "label": "Theme",
+        "light": "Light",
+        "system": "System"
+      },
+      "title": "Settings",
+      "workspace": "Workspace"
     }
   }
 }

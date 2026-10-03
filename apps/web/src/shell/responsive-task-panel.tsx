@@ -8,6 +8,8 @@ import {
 } from "@vibeshape/ui/components/tooltip"
 import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from "react"
 
+import { CompactModelTreeToggle } from "./compact-model-tree"
+
 const compactTaskPanelQuery = "(width < 64rem)"
 
 function subscribeToCompactTaskPanel(change: () => void) {
@@ -60,6 +62,7 @@ export function ResponsiveTaskPanel({
   return (
     <div className="responsive-task-panel min-h-0" data-expanded={panelExpanded}>
       <div className="responsive-task-panel__toggle border-b bg-panel px-2">
+        <CompactModelTreeToggle />
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>

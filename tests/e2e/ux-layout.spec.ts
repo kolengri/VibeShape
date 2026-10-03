@@ -24,17 +24,15 @@ for (const theme of ["light", "dark"] as const) {
       .locator("html")
       .evaluate((element, theme) => element.classList.toggle("dark", theme === "dark"), theme)
     await page.setViewportSize({ width: 512, height: 384 })
-    await page.getByRole("button", { name: "Project units: mm, deg", exact: true }).click()
-    const units = page.getByRole("dialog", { name: "Project units", exact: true })
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    const units = page.getByRole("dialog", { name: "Settings", exact: true })
     await expectContained(units, page)
-    await units.getByRole("button", { name: "Cancel", exact: true }).scrollIntoViewIfNeeded()
-    await expect(units.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport()
+    await units.getByRole("button", { name: "Done", exact: true }).scrollIntoViewIfNeeded()
+    await expect(units.getByRole("button", { name: "Done", exact: true })).toBeInViewport()
     await page.screenshot({ path: test.info().outputPath("compact-units.png") })
     await page.keyboard.press("Escape")
     await expect(units).not.toBeVisible()
-    await expect(
-      page.getByRole("button", { name: "Project units: mm, deg", exact: true }),
-    ).toBeFocused()
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused()
     await page.getByRole("button", { name: "Commands", exact: true }).click()
     await expectContained(page.getByRole("dialog"), page)
     await page.getByRole("combobox").press("End")
@@ -43,7 +41,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(lastAvailableCommand).toBeInViewport()
     await page.screenshot({ path: test.info().outputPath("compact-command-palette.png") })
     await page.keyboard.press("Escape")
-    await page.getByRole("button", { name: "Project…", exact: true }).click()
+    await page.getByRole("button", { name: "File", exact: true }).click()
     const projects = page.getByRole("dialog", { name: "Projects", exact: true })
     await expectContained(projects, page)
     await projects
@@ -66,16 +64,14 @@ for (const theme of ["light", "dark"] as const) {
     await expect(confirmation).not.toBeVisible()
     await expect(copy).toBeVisible()
     await page.keyboard.press("Escape")
-    await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click()
+    await page.keyboard.press("F1")
     const help = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true })
     await expectContained(help, page)
     await help.getByRole("textbox", { name: "Search shortcuts…" }).fill("extrude")
     await expect(help.getByText("Extrude", { exact: true })).toBeVisible()
     await page.screenshot({ path: test.info().outputPath("compact-shortcut-help.png") })
     await page.keyboard.press("Escape")
-    await expect(
-      page.getByRole("button", { name: "Keyboard shortcuts", exact: true }),
-    ).toBeFocused()
+    await expect(help).not.toBeVisible()
   })
 }
 
