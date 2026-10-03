@@ -1,4 +1,4 @@
 interface:
   display_name: "VibeShape Documentation Sync"
-  short_description: "Keep architecture and implementation docs aligned"
-  default_prompt: "Use $vibeshape-documentation-sync to update the canonical VibeShape documentation."
+  short_description: "Keep documentation and MCP operator skills aligned"
+  default_prompt: "Use $vibeshape-documentation-sync to synchronize VibeShape documentation and affected MCP operator skills with the implementation."

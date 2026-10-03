@@ -21,12 +21,19 @@ description: Select and run the smallest correct deterministic verification scop
 | TypeScript or TSX | Biome check, owning-workspace typecheck, focused tests |
 | CSS or tokens only | Biome check, production Vite build, both-theme visual review |
 | Domain or public package API | Owning and consumer typechecks plus unit/property tests |
+| MCP tool/resource contract or behavior available to agents | Focused schema/adapter checks and the operator contract check below |
 | Worker protocol | UI and worker typechecks, schema/contract tests, real worker smoke test |
 | Geometry, solver, topology | Fixture corpus, property matrix, memory check, affected browser smoke tests |
 | Persistence or native format | Migration/round-trip/recovery/corruption tests and old fixture corpus |
 | STEP, STL, or 3MF | Format tests and independent interoperability checks |
 | Vite, Tailwind, PWA, or assets | Production build, worker/WASM loading, offline/service-worker smoke test |
 | Dependencies or lockfile | `bun ci`, audit, licenses/SBOM impact, affected build/typecheck/tests |
+
+## MCP Operator Contract Check
+
+When an MCP tool/resource, exposed CAD behavior, or agent workflow changes, complete [MCP operator synchronization](../vibeshape-documentation-sync/SKILL.md#synchronize-mcp-operator-skills) before acceptance. Confirm the affected operator instructions describe the new behavior and local/remote availability, or record why existing instructions remain correct.
+
+If operator Markdown changed, require its regenerated bundle and `bun run skills:validate` alongside the relevant runtime checks. If only developer instructions changed, use the Markdown/project-skill row. A passing stale-bundle check does not establish semantic coverage, and an unchanged bundled JSON file does not excuse a missing operator update.
 
 ## Expected Commands After Scaffolding
 
