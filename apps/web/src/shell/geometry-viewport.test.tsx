@@ -1435,6 +1435,21 @@ describe("GeometryViewport", () => {
     expect(screen.getByRole("status").textContent).toBe("Unsaved extrusion preview")
   })
 
+  it.each([
+    ["loading", "Rebuilding unsaved feature preview…"],
+    ["ready", "Unsaved feature preview"],
+    ["error", "The unsaved feature could not be previewed. Adjust its dimensions or placement."],
+  ] as const)("labels exact primitive preview %s", (status, label) => {
+    renderViewport(readyController([], []), null, undefined, {
+      status,
+      kind: "primitive",
+      meshes: [],
+    })
+    expect(screen.getByText(label).getAttribute("role")).toBe(
+      status === "error" ? "alert" : "status",
+    )
+  })
+
   it("owns the imperative viewer lifecycle and exposes fit for rebuilt terminal geometry", async () => {
     const user = userEvent.setup()
     const controller = readyController(

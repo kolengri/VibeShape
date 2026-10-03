@@ -87,6 +87,9 @@ function commandContext(
       createHole: vi.fn(),
       createBox: vi.fn(),
       createCylinder: vi.fn(),
+      createSphere: vi.fn(),
+      createCone: vi.fn(),
+      createTorus: vi.fn(),
       createDatumPlane: vi.fn(),
       createExtrusion: vi.fn(),
       createRevolve: vi.fn(),
@@ -286,6 +289,42 @@ describe("editor command registry", () => {
     expect(context.actions.createSketch).toHaveBeenCalledOnce()
     expect(context.actions.createExtrusion).not.toHaveBeenCalled()
   })
+
+  it.each(["createSphere", "createCone", "createTorus"] as const)(
+    "owns %s across command surfaces and preserves feature creation eligibility",
+    async (key) => {
+      const context = commandContext()
+      const command = resolveBuiltInEditorCommands(context).find(
+        ({ descriptor }) => descriptor.id === editorCommandIds[key],
+      )
+      expect(command?.descriptor).toMatchObject({
+        ownerModuleId: "org.vibeshape.core.part-design",
+        toolbarGroup: "model-primitives",
+        labelKey: key,
+      })
+      expect(command?.eligibility).toEqual({ enabled: true })
+      await command?.invoke()
+      expect(context.actions[key]).toHaveBeenCalledOnce()
+
+      const controller = readyController()
+      if (!controller.report) throw new Error("The ready fixture must include a report.")
+      const blockedStates: Partial<BuiltInEditorCommandContext["state"]>[] = [
+        { controller: { ...controller, report: { ...controller.report, mode: "read-only" } } },
+        { controller: { ...controller, saveStatus: "saving" } },
+        { activePartDesignCommand: "sphere" },
+        { activeSketchTool: { kind: "select-sketch-plane" } },
+      ]
+      for (const state of blockedStates) {
+        const blockedContext = commandContext(state)
+        const blocked = resolveBuiltInEditorCommands(blockedContext).find(
+          ({ descriptor }) => descriptor.id === editorCommandIds[key],
+        )
+        expect(blocked?.eligibility.enabled).toBe(false)
+        await blocked?.invoke()
+        expect(blockedContext.actions[key]).not.toHaveBeenCalled()
+      }
+    },
+  )
 
   it("keeps sketch commands discoverable but disabled outside an active sketch", () => {
     const context = commandContext()

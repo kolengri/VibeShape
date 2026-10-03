@@ -177,6 +177,25 @@ function expectSuccessfulIdentity(result: ReturnType<typeof identity>) {
 }
 
 describe("feature content identity", () => {
+  it("keeps subtraction geometry identity unchanged when tool retention changes", () => {
+    const registry = partDesignRegistry()
+    const feature = booleanFeature(featureIds.e, [featureIds.a, featureIds.b])
+    const dependencies = [
+      { featureId: featureIds.a, contentHash: "a".repeat(64) },
+      { featureId: featureIds.b, contentHash: "b".repeat(64) },
+    ]
+    const legacy = expectSuccessfulIdentity(identity(registry, feature, dependencies))
+    for (const keepTools of [false, true]) {
+      const retained = expectSuccessfulIdentity(
+        identity(
+          registry,
+          { ...feature, parameters: { operation: "subtract", keepTools } },
+          dependencies,
+        ),
+      )
+      expect(retained.canonicalPayload).toBe(legacy.canonicalPayload)
+    }
+  })
   it("binds named bodies to canonical input slots without retaining source UUIDs", () => {
     const registry = partDesignRegistry()
     const feature = booleanFeature(featureIds.e, [featureIds.a, featureIds.b])

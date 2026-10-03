@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: vibeshape-cloudflare-production
-  cancel-in-progress: false
+  group: ${{ github.ref == 'refs/heads/main' && 'vibeshape-cloudflare-production' || format('vibeshape-cloudflare-production-{0}', github.ref) }}
+  cancel-in-progress: true
 
 jobs:
   verify:

@@ -23,3 +23,30 @@ export function LengthExpressionField(props: LengthExpressionFieldProps) {
     />
   )
 }
+
+type PrimitiveLengthField = Readonly<{
+  name: string
+  state: Readonly<{ value: string }>
+  handleBlur: () => void
+  handleChange: (value: string) => void
+}>
+
+export function TanStackLengthExpressionField({
+  field,
+  onBeforeChange,
+  ...props
+}: Omit<LengthExpressionFieldProps, "name" | "value" | "onBlur" | "onValueChange"> &
+  Readonly<{ field: PrimitiveLengthField; onBeforeChange: () => void }>) {
+  return (
+    <LengthExpressionField
+      {...props}
+      name={field.name}
+      value={field.state.value}
+      onBlur={field.handleBlur}
+      onValueChange={(value) => {
+        onBeforeChange()
+        field.handleChange(value)
+      }}
+    />
+  )
+}

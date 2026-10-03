@@ -7,6 +7,7 @@ import {
 import {
   boxFeatureParametersSchema,
   canonicalJson,
+  coneFeatureParametersSchema,
   cylinderFeatureParametersSchema,
   type DocumentSnapshot,
   type FeatureId,
@@ -21,6 +22,8 @@ import {
   type SketchId,
   type SketchProfileSelector,
   type SketchRecord,
+  sphereFeatureParametersSchema,
+  torusFeatureParametersSchema,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
@@ -174,6 +177,12 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-box",
   "create-cylinder",
   "edit-cylinder",
+  "create-sphere",
+  "edit-sphere",
+  "create-cone",
+  "edit-cone",
+  "create-torus",
+  "edit-torus",
 ])
 
 function isPreviewedFeatureToolActive(activeTool: ActivePartDesignTool | null) {
@@ -414,9 +423,19 @@ function primitiveManipulator(
   readOnly: boolean,
 ): PrimitiveManipulator | null {
   if (!isPrimitivePartDesignTool(activeTool) || !candidate || readOnly) return null
-  const schema = activeTool.kind.endsWith("box")
-    ? boxFeatureParametersSchema
-    : cylinderFeatureParametersSchema
+  const schemas = {
+    "create-box": boxFeatureParametersSchema,
+    "edit-box": boxFeatureParametersSchema,
+    "create-cylinder": cylinderFeatureParametersSchema,
+    "edit-cylinder": cylinderFeatureParametersSchema,
+    "create-sphere": sphereFeatureParametersSchema,
+    "edit-sphere": sphereFeatureParametersSchema,
+    "create-cone": coneFeatureParametersSchema,
+    "edit-cone": coneFeatureParametersSchema,
+    "create-torus": torusFeatureParametersSchema,
+    "edit-torus": torusFeatureParametersSchema,
+  } as const
+  const schema = schemas[activeTool.kind]
   const parameters = schema.safeParse(candidate.parameters)
   if (!parameters.success) return null
   const { origin } = parameters.data
@@ -1724,6 +1743,9 @@ export type EditorWorkspaceActions = Readonly<{
   createChamfer: () => void
   createBox: () => void
   createCylinder: () => void
+  createSphere: () => void
+  createCone: () => void
+  createTorus: () => void
   createDatumPlane: () => void
   createExtrusion: () => Promise<boolean>
   createRevolve: () => Promise<boolean>
@@ -2291,6 +2313,9 @@ function EditorTaskPanel({
       onCompleteTool={actions.completeTool}
       onCreateBox={actions.createBox}
       onCreateCylinder={actions.createCylinder}
+      onCreateSphere={actions.createSphere}
+      onCreateCone={actions.createCone}
+      onCreateTorus={actions.createTorus}
       onCreateExtrusion={actions.createExtrusion}
       onCreateRevolve={actions.createRevolve}
       onCreateSketch={actions.createSketch}

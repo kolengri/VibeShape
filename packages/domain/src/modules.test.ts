@@ -127,6 +127,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.compound",
+        "org.vibeshape.feature.part-design.cone",
         "org.vibeshape.feature.part-design.cylinder",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
@@ -144,6 +145,8 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
+        "org.vibeshape.feature.part-design.sphere",
+        "org.vibeshape.feature.part-design.torus",
         "org.vibeshape.feature.part-design.union",
       ])
     }

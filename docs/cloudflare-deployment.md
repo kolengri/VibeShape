@@ -26,7 +26,7 @@ session relay are a separate implementation; this workflow does not advertise th
 5. Pass an immutable, one-day Actions artifact to the separate publication job. That job installs
    no project dependencies, checks every asset hash and size against the build's manifest digest,
    rejects symlinks, confirms the source is still the current protected `main`, and publishes with
-   pinned Wrangler 4.136.3. Production publication is serialized and never cancelled mid-deploy.
+   pinned Wrangler 4.136.3. Production publication belongs to the workflow-wide concurrency group.
 
 When `VIBESHAPE_REMOTE_MCP_URL` is configured, the same verified build also creates a bundled relay
 artifact with an exact source/hash manifest. A separate `cloudflare-mcp-production` job checks its
@@ -34,8 +34,10 @@ account, Worker name, origin and current protected `main`, then publishes with W
 before the editor. Neither publication job installs project dependencies. Relay failure blocks the
 new editor deployment; an empty relay URL preserves the static-only path. PRs receive no deployment
 credentials. Configure the separately approved Worker token before activating this workflow version.
-The entire production workflow shares a non-cancelling concurrency group, so a newer run cannot
-publish its Worker while an older run is still publishing its editor.
+The entire production workflow shares one concurrency group per branch. A new push or manual dispatch
+cancels the previous run for that branch, including verification, build, publication and browser
+checks. Relay publication still precedes editor publication within each run. Cancellation does not
+roll back a Worker or Pages deployment already submitted to Cloudflare.
 
 The `cloudflare-production` GitHub environment owns publication credentials. Restrict it to `main`
 and obtain the owner's approval before initial activation. PRs and fork code never receive the token.

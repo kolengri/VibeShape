@@ -156,6 +156,89 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     }
   }
 
+  function createSphere(
+    opencascade: OpenCascadeInstance,
+    radius: number,
+    origin: Vector3,
+  ): Shape3D {
+    const point = new opencascade.gp_Pnt_3(...origin)
+    try {
+      const maker = new opencascade.BRepPrimAPI_MakeSphere_5(point, radius)
+      try {
+        return adoptOcctShape(maker.Solid(), castShape)
+      } finally {
+        maker.delete()
+      }
+    } finally {
+      point.delete()
+    }
+  }
+
+  function createTorus(
+    opencascade: OpenCascadeInstance,
+    majorRadius: number,
+    minorRadius: number,
+    origin: Vector3,
+  ): Shape3D {
+    const point = new opencascade.gp_Pnt_3(...origin)
+    try {
+      const direction = new opencascade.gp_Dir_4(0, 0, 1)
+      try {
+        const axis = new opencascade.gp_Ax2_3(point, direction)
+        try {
+          const maker = new opencascade.BRepPrimAPI_MakeTorus_5(axis, majorRadius, minorRadius)
+          try {
+            return adoptOcctShape(maker.Solid(), castShape)
+          } finally {
+            maker.delete()
+          }
+        } finally {
+          axis.delete()
+        }
+      } finally {
+        direction.delete()
+      }
+    } finally {
+      point.delete()
+    }
+  }
+
+  function createCone(
+    opencascade: OpenCascadeInstance,
+    radius: number,
+    height: number,
+    origin: Vector3,
+  ): Shape3D {
+    // The shipped kernel omits MakeCone; revolving this exact meridian retains a conical surface.
+    const owned: { delete(): void }[] = []
+    const own = <T extends { delete(): void }>(value: T) => {
+      owned.push(value)
+      return value
+    }
+    try {
+      const [x, y, z] = origin
+      const base = own(new opencascade.gp_Pnt_3(x, y, z))
+      const rim = own(new opencascade.gp_Pnt_3(x + radius, y, z))
+      const apex = own(new opencascade.gp_Pnt_3(x, y, z + height))
+      const baseEdge = own(own(new opencascade.BRepBuilderAPI_MakeEdge_3(base, rim)).Edge())
+      const slopeEdge = own(own(new opencascade.BRepBuilderAPI_MakeEdge_3(rim, apex)).Edge())
+      const axisEdge = own(own(new opencascade.BRepBuilderAPI_MakeEdge_3(apex, base)).Edge())
+      const wireMaker = own(
+        new opencascade.BRepBuilderAPI_MakeWire_4(baseEdge, slopeEdge, axisEdge),
+      )
+      const wire = own(wireMaker.Wire())
+      const faceMaker = own(new opencascade.BRepBuilderAPI_MakeFace_15(wire, true))
+      if (!faceMaker.IsDone()) throw new Error("The cone meridian could not form a planar face.")
+      const face = own(faceMaker.Face())
+      const direction = own(new opencascade.gp_Dir_4(0, 0, 1))
+      const axis = own(new opencascade.gp_Ax1_2(base, direction))
+      const maker = own(new opencascade.BRepPrimAPI_MakeRevol_1(face, axis, 2 * Math.PI, false))
+      return adoptOcctShape(maker.Shape(), castShape)
+    } finally {
+      for (const object of owned.reverse()) object.delete()
+    }
+  }
+
   function performCut(
     opencascade: OpenCascadeInstance,
     source: Shape3D,
@@ -321,6 +404,9 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
   return {
     createBox,
     createCylinder,
+    createSphere,
+    createCone,
+    createTorus,
     cutShapes,
     cutShapesWithHistory,
     cutShapesWithLineage,
@@ -335,6 +421,9 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
 export const {
   createBox: createOcctBox,
   createCylinder: createOcctCylinder,
+  createSphere: createOcctSphere,
+  createCone: createOcctCone,
+  createTorus: createOcctTorus,
   cutShapes: cutOcctShapes,
   cutShapesWithHistory: cutOcctShapesWithHistory,
   cutShapesWithLineage: cutOcctShapesWithLineage,

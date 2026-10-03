@@ -112,6 +112,13 @@ invoking Point on curve.
 
 ## Parametric 3D features
 
+The Primitives toolbar and command palette provide Box, Cylinder, Sphere, Cone, and Torus.
+Sphere uses a radius and center; Cone uses a base radius, height, and optional centered height;
+Torus uses a major radius and a smaller tube radius, centered on its placement origin with a Z axis.
+All five support expression-aware dimensions and signed placement, disposable exact preview,
+create/edit, committed undo/redo, and persisted reopening through the existing Part Design owner.
+Cone currently produces a pointed cone; truncated cones and horn or spindle tori are not supported.
+
 Dedicated sketch-point Hole is implemented under [ADR-0048](../adr/0048-sketch-point-holes.md).
 Create/edit supports graphical and keyboard center selection, one explicit solid target,
 variable-aware diameter/depth, forward/reverse direction, blind or directional through-all,

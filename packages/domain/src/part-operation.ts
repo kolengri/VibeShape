@@ -1,4 +1,5 @@
 import type { BodyReference } from "./body-reference"
+import { featureBodyDependencyIds } from "./feature-dependencies"
 import type { FeatureRecord, FeatureRecordV1 } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import {
@@ -6,11 +7,14 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  coneFeatureType,
   cylinderFeatureType,
   filletFeatureType,
   filletFeatureTypeV2,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
+  sphereFeatureType,
+  torusFeatureType,
 } from "./part-design"
 import {
   compoundBodyOutputRole,
@@ -30,7 +34,9 @@ export type PartOperation =
   | Readonly<{ kind: "unmanaged" }>
 
 const newTypes = new Set(
-  [boxFeatureType, cylinderFeatureType].map((descriptor) => featureTypeKey(descriptor.type)),
+  [boxFeatureType, cylinderFeatureType, sphereFeatureType, coneFeatureType, torusFeatureType].map(
+    (descriptor) => featureTypeKey(descriptor.type),
+  ),
 )
 const modifierTypes = new Set(
   [filletFeatureType, filletFeatureTypeV2, chamferFeatureType, chamferFeatureTypeV2].map(
@@ -78,7 +84,11 @@ export function classifyPartOperation(feature: FeatureRecordV1): PartOperation {
   return {
     kind: "modify",
     target,
-    consumed: isBoolean ? feature.dependencies.slice(1).map((id) => featureResultBody({ id })) : [],
+    consumed: isBoolean
+      ? featureBodyDependencyIds(legacy)
+          .slice(1)
+          .map((id) => featureResultBody({ id }))
+      : [],
   }
 }
 

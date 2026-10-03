@@ -49,6 +49,12 @@ stateDiagram-v2
 - An error preserves parameters and the failing selection.
 - Escape always cancels the active command before the document changes.
 
+Subtract offers current solid outputs when creating a feature and retains both saved inputs when
+editing. **Keep tool solid** leaves the selected tool available alongside the subtraction result;
+the default consumes it from the final model. Both choices retain the tool feature and dependency
+in History for subsequent edits. Retention changes body and authored-part consumption, not the
+cut geometry or its cached content identity. Suppression, deletion, and Undo restore source bodies.
+
 During sketch editing, the adjacent **Intersection** icon switches the orbitable 3D viewer into planar-face preselection. One eligible face creates an exact bounded read-only line on the active sketch plane and returns to Select. Parallel or coplanar faces are rejected before draft mutation, while exact OCCT failures remain fail-closed.
 
 Each compatible external-reference row exposes **Replace reference**. Activating it reuses the canvas-first Use broker, limits normal and orbit candidates to a compatible topology kind, and marks the action as pressed. Live model-backed candidates stay within the same producing feature. A reference intentionally orphaned by source-feature deletion may instead target compatible topology from another visible feature and becomes an ordinary live reference after the pick. Sketch-backed candidates may come from any earlier sketch, but a curve must retain both its source and projected analytical types. Picking one candidate preserves the reference ID, projected entity IDs, metadata, and dependent constraints, then returns to Select. Finishing and reopening the sketch retains the friendly source-and-geometry label for the replacement. Activating the pressed action again cancels repair without changing the draft.
@@ -151,6 +157,13 @@ Settings is one accessible modal with a scrollable body and visible Done action.
 Saved sketches and features expose persistent icon-only, tooltip-labeled Rename actions beside their model-tree labels. Focusing either tree item and pressing `F2` opens the identical dialog, so pointer and keyboard paths cannot diverge. A feature rename updates only its label through the ordinary revisioned feature-update command; a sketch rename updates only its label through the ordinary revisioned sketch-update command. Stable IDs, parameters, geometry, dependencies, and references remain unchanged. The currently edited sketch disables Rename until Finish or Cancel because committing its earlier draft would otherwise restore a stale label. Read-only documents disable all semantic rename actions with an explanatory tooltip. Validation, asynchronous locking, stale-revision recovery, and persistence-failure behavior are shared with project Rename. Every feature History row also separates transient eye visibility from persisted Suppress/Unsuppress intent. Suppression uses a distinct pause/play icon, commits exactly one revision, participates in downstream rebuild and document undo/redo, disables meaningless visibility toggling while suppressed, and keeps the row present with muted, struck-through presentation so it can always be restored. Every History row can be dragged by its label or non-interactive surface, without a separate grip. A Move position menu remains available instead of earlier/later arrows. Ordinary clicks still open the item, nested action buttons never start dragging, and Space starts keyboard sorting from the focused row while Enter opens it. Pointer, touch, and keyboard sorting share the existing History command; the menu provides a click/tap alternative. Moves are disabled while another task or move is active, in read-only mode, or when the selected position would place a dependency after its consumer. Cancelled, stale, and rejected drags leave the canonical order unchanged. An accepted move records stable item-and-anchor intent as one versioned event, rebuilds once, participates in document undo/redo, and retains the exact interleaving after reload; feature and sketch storage-array order remains irrelevant.
 
 ## Flow 2: edit an early parameter
+
+Sphere, Cone, and Torus use the same direct-primitive create/edit workflow as Box and Cylinder.
+Sphere's origin is its center. Cone's base lies at origin Z unless centered height is enabled;
+its apex points along positive Z. Torus uses a Z axis through its center, with major radius measured
+to the tube center and minor radius measuring the tube itself. The minor radius must be smaller
+than the major radius. Dimensions and placement accept unit expressions and committed variables;
+preview remains disposable until Apply, and reopening restores authored expressions.
 
 1. Double-click a feature or dimension in the tree or viewport.
 2. Enter a new value and show a debounced preview.

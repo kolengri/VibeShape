@@ -8,6 +8,9 @@ export const editorCommandIds = {
   createChamfer: "org.vibeshape.editor.part-design.create-chamfer",
   createBox: "org.vibeshape.editor.part-design.create-box",
   createCylinder: "org.vibeshape.editor.part-design.create-cylinder",
+  createSphere: "org.vibeshape.editor.part-design.create-sphere",
+  createCone: "org.vibeshape.editor.part-design.create-cone",
+  createTorus: "org.vibeshape.editor.part-design.create-torus",
   createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createRevolve: "org.vibeshape.editor.part-design.create-revolve",
@@ -143,6 +146,9 @@ export type EditorCommandIcon =
   | "fillet"
   | "chamfer"
   | "cylinder"
+  | "sphere"
+  | "cone"
+  | "torus"
   | "datum-plane"
   | "dimension"
   | "extrude"
@@ -185,6 +191,9 @@ export type EditorCommandLabelKey =
   | "createChamfer"
   | "createBox"
   | "createCylinder"
+  | "createSphere"
+  | "createCone"
+  | "createTorus"
   | "createDatumPlane"
   | "createExtrusion"
   | "createRevolve"
