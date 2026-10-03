@@ -40,7 +40,7 @@ function rebuild(
 ): Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> {
   return {
     type: "documentRebuilt",
-    protocolVersion: 21,
+    protocolVersion: 22,
     requestId: "test",
     documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f2903",
     revision: 1,

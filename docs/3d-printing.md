@@ -109,7 +109,13 @@ Do not promise portability of slicer profiles between vendors; metadata and exte
 
 SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its local-only gate verifies the same two-mesh component fixture through PrusaSlicer and the Orca/Bambu family and requires matching facet, manifold, and volume metrics. See [SPK-004 evidence](spikes/spk-004-3mf.md).
 
-The Phase 1 product dialog exports successful terminal exact B-Rep bodies through the print-mesh path. The geometry worker retessellates each body with a fixed `0.02 mm` chord tolerance and `0.1 rad` angular tolerance, clears the temporary OCCT triangulation after extraction, and returns bounded triangle soups. The document worker verifies body identity and order, welds face-local duplicate vertices at `1e-7 mm`, validates the resulting manifold mesh through the Core writer, preserves feature labels as object names, and emits millimeter build items.
+The product dialog exports successful terminal exact B-Rep bodies through the print-mesh path. The geometry worker retessellates each body with a fixed `0.02 mm` chord tolerance and `0.1 rad` angular tolerance, clears the temporary OCCT triangulation after extraction, and returns bounded triangle soups. The document worker verifies body identity and order, welds face-local duplicate vertices at `1e-7 mm`, and validates the resulting manifold mesh through the Core writer.
+
+Export scope selects all current terminal bodies or one available authored part. Display-hidden parts remain
+exportable; stale or unavailable selections fail instead of substituting another cached shape. Authored names
+label their 3MF mesh resources, with feature labels as the unmanaged-body fallback. Multiple meshes share one
+component build item that retains their world positions; slicers may offer their own grouping or rearrangement
+controls. Selected STL and STEP use the same exact semantic body selection. Export does not change the model.
 
 The current prepared-print slice adds a disposable derived copy from **Export → Prepare print /
 breakaway fins**. It rotates around X/Y, centers the copy over the XY build area, seats its lowest
@@ -147,7 +153,10 @@ The Phase 1 product smoke exporter currently downloads successful terminal solid
 
 ## STEP
 
-The same Phase 1 dialog exports those terminal exact B-Rep shapes as STEP for CAD exchange. The file contains resulting geometry, not VibeShape variables, features, or event history. The separate implemented `.vshape` v0 Project flow is the native backup and editability format; it carries semantic parametrics and intentionally excludes derived geometry.
+The same dialog exports those terminal exact B-Rep shapes as STEP for CAD exchange, without promising a named
+assembly tree. STEP contains resulting geometry, not VibeShape variables, features, or event history. File → Save
+project writes the editable `.vshape` format-3 archive with authored parts, folders, and verified history; it
+intentionally excludes derived geometry.
 
 - Preserve exact B-Rep geometry.
 - Prefer AP242 and use AP214 as a compatibility fallback after the spike.

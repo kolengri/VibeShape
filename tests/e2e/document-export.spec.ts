@@ -9,7 +9,7 @@ async function createBox(page: import("@playwright/test").Page) {
     .getByRole("form", { name: "Create box" })
     .getByRole("button", { name: "Create box" })
     .click()
-  await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+  await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
 }
 
 test.describe("document export", () => {
@@ -30,13 +30,13 @@ test.describe("document export", () => {
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
       .click()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
     await page
       .getByRole("form", { name: "Create cylinder" })
       .getByRole("button", { name: "Create cylinder" })
       .click()
-    await expect(page.getByRole("treeitem", { name: "Cylinder 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Export…" }).click()
     const threeMfDownloadPromise = page.waitForEvent("download")
@@ -48,7 +48,9 @@ test.describe("document export", () => {
     const threeMfArchive = unzipSync(new Uint8Array(await readFile(threeMfPath)))
     const model = new TextDecoder().decode(threeMfArchive["3D/3dmodel.model"])
     expect(model).toContain('<model unit="millimeter"')
-    expect(model.match(/<object /g)).toHaveLength(2)
+    expect(model.match(/<mesh>/g)).toHaveLength(2)
+    expect(model.match(/<components>/g)).toHaveLength(1)
+    expect(model.match(/<item objectid=/g)).toHaveLength(1)
     await expect(page.getByText("3MF download started", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Export…" }).click()

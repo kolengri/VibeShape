@@ -1,6 +1,6 @@
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { adoptOcctShape, castOcctShape, type OcctShapeCaster } from "./occt-cast"
+import { castOcctShape, type OcctShapeCaster } from "./occt-cast"
 
 export function createOcctCompound(
   opencascade: OpenCascadeInstance,
@@ -12,13 +12,16 @@ export function createOcctCompound(
   }
 
   const compound = new opencascade.TopoDS_Compound()
-  const builder = new opencascade.TopoDS_Builder()
-
   try {
-    builder.MakeCompound(compound)
-    for (const shape of shapes) builder.Add(compound, shape.wrapped)
-    return adoptOcctShape(compound, castShape)
+    const builder = new opencascade.TopoDS_Builder()
+    try {
+      builder.MakeCompound(compound)
+      for (const shape of shapes) builder.Add(compound, shape.wrapped)
+      return castShape(compound)
+    } finally {
+      builder.delete()
+    }
   } finally {
-    builder.delete()
+    compound.delete()
   }
 }

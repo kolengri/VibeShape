@@ -53,6 +53,7 @@
     "prepare:local": "bun run scripts/prepare-local-release.ts",
     "package:local": "bun run scripts/local-distribution-build.ts",
     "test:distribution": "playwright test --config playwright.distribution.config.ts",
+    "test:authority-persistence": "playwright test --config scripts/authority-persistence.config.ts",
     "slicer:bridge": "bun run --cwd apps/slicer-bridge start",
     "format": "biome format --write .",
     "format:check": "biome format .",

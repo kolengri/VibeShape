@@ -15,21 +15,21 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   review: vi.fn(),
 }))
-vi.mock("@vibeshape/application/versioned-document-session", () => ({
-  openVersionedDocumentSession: mocks.open,
+vi.mock("@vibeshape/application/authority-document-session", () => ({
+  openAuthorityDocumentSession: mocks.open,
 }))
 vi.mock("./browser-project-repository", () => ({
   BrowserProjectRepository: class {
     versioned = {}
     legacy = {}
-    exportPortableProjectV2 = mocks.exportProject
-    copyPortableProjectV2 = mocks.copyProject
+    exportPortableProject = mocks.exportProject
+    copyPortableProject = mocks.copyProject
     listProjects = mocks.list
   },
 }))
 vi.mock("@vibeshape/formats/vshape", async (original) => {
   const actual = await original<typeof import("@vibeshape/formats/vshape")>()
-  return { ...actual, readVersionedVShape: mocks.readArchive }
+  return { ...actual, readAuthoredVShape: mocks.readArchive }
 })
 
 vi.mock("../automation/automation-review-controller", async (original) => {
@@ -84,11 +84,11 @@ beforeEach(async () => {
   const actual = await vi.importActual<typeof import("@vibeshape/formats/vshape")>(
     "@vibeshape/formats/vshape",
   )
-  mocks.readArchive.mockImplementation(actual.readVersionedVShape)
+  mocks.readArchive.mockImplementation(actual.readAuthoredVShape)
   mocks.review.mockReturnValue(null)
   mocks.close.mockResolvedValue({ ok: true })
   mocks.list.mockResolvedValue({ ok: true, value: [{ documentId: id }] })
-  mocks.copyProject.mockImplementation(async ({ snapshot }) => ({
+  mocks.copyProject.mockImplementation(async ({ project: { snapshot } }) => ({
     ok: true,
     value: { documentId: snapshot.id },
   }))
@@ -111,7 +111,7 @@ async function ready() {
     session,
     report: { snapshot: source.snapshot, mode: "read-write", writeAccessDiagnostic: null },
   })
-  mocks.exportProject.mockResolvedValue({ ok: true, value: source })
+  mocks.exportProject.mockResolvedValue({ ok: true, value: { version: 2, project: source } })
   const controller = await import("./document-controller")
   const hook = renderHook(() => controller.useDocumentController("Untitled"))
   await waitFor(() => expect(hook.result.current.status).toBe("ready"))
@@ -139,7 +139,7 @@ describe("project file identity and active-work guards", () => {
     if (!first.ok || !second.ok) throw new Error("Expected two new copies.")
     expect(first.documentId).not.toBe(id)
     expect(second.documentId).not.toBe(first.documentId)
-    const copied = mocks.copyProject.mock.calls[0]?.[0]
+    const copied = mocks.copyProject.mock.calls[0]?.[0].project
     expect(copied.snapshot.name).toBe("Source imported")
     expect(copied.versionedEvents[0].commandId).not.toBe(source.versionedEvents[0]?.commandId)
     expect(source.snapshot).toMatchObject({ id, name: "Source", revision: 1 })
@@ -179,11 +179,11 @@ describe("project file identity and active-work guards", () => {
       diagnostic: { code: "project-action-blocked" },
     })
     expect(mocks.copyProject).not.toHaveBeenCalled()
-    const exporting = deferred<{ ok: true; value: typeof source }>()
+    const exporting = deferred<{ ok: true; value: { version: 2; project: typeof source } }>()
     mocks.exportProject.mockReturnValueOnce(exporting.promise)
     const backup = controller.exportActiveProjectBackup()
     session.snapshot = { ...session.snapshot, revision: 3 }
-    exporting.resolve({ ok: true, value: source })
+    exporting.resolve({ ok: true, value: { version: 2, project: source } })
     expect(await backup).toMatchObject({
       ok: false,
       diagnostic: { code: "project-action-blocked" },

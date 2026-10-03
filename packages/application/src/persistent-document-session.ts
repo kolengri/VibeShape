@@ -8,6 +8,7 @@ import {
 } from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
+import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import {
   commandIdSchema,
   type DocumentId,
@@ -21,6 +22,7 @@ import {
 } from "@vibeshape/domain/identifiers"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import {
+  type DocumentExportOptions,
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
   type FeatureMeshPolicy,
@@ -162,7 +164,13 @@ export type DocumentSemanticHistoryPort = Readonly<{
   move: (input: PersistenceHistoryMoveInput) => Promise<SessionPortResult<DocumentSnapshot>>
 }>
 
+export type DocumentAuthoredMetadataPort = Readonly<{
+  readonly snapshot: DocumentAuthoritySnapshot | null
+  apply: (input: PersistenceHistoryMoveInput) => Promise<SessionPortResult<DocumentSnapshot>>
+}>
+
 export type PersistentDocumentRepositoryPort = Readonly<{
+  authoredMetadata?: DocumentAuthoredMetadataPort
   history?: DocumentHistoryPort
   semanticHistory?: DocumentSemanticHistoryPort
   commit: (input: PersistenceCommitInput) => Promise<SessionPortResult<unknown>>
@@ -196,7 +204,10 @@ export type DocumentRebuildPort = Readonly<{
     document: DocumentSnapshot
     mesh: FeatureMeshPolicy
   }) => Promise<DocumentRebuildResponse>
-  exportDocument: (format: GeometryExportFormat) => Promise<DocumentExportResponse>
+  exportDocument: (
+    format: GeometryExportFormat,
+    options?: DocumentExportOptions,
+  ) => Promise<DocumentExportResponse>
   solveSketch: (input: DocumentSketchSolveInput) => Promise<SketchSolveResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
@@ -521,26 +532,51 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#moveHistoryItem(input))
   }
 
+  get authoredSnapshot() {
+    return this.#dependencies.repository.authoredMetadata?.snapshot ?? null
+  }
+
+  commitAuthored(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    return this.#enqueue(() =>
+      this.#commitPortMutation(
+        input,
+        this.#dependencies.repository.authoredMetadata?.apply,
+        "The document does not expose authored metadata mutations.",
+        "The authored metadata was not saved.",
+      ),
+    )
+  }
+
   async #moveHistoryItem(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    return this.#commitPortMutation(
+      input,
+      this.#dependencies.repository.semanticHistory?.move,
+      "The document does not expose semantic History mutations.",
+      "The History order was not saved.",
+    )
+  }
+
+  async #commitPortMutation(
+    input: unknown,
+    operation: DocumentSemanticHistoryPort["move"] | undefined,
+    unavailableMessage: string,
+    failureMessage: string,
+  ): Promise<PersistentDocumentHistoryResult> {
     if (this.#closed)
       return {
         ok: false,
         diagnostic: diagnostic("session-closed", "The document session is closed."),
       }
-    const semanticHistory = this.#dependencies.repository.semanticHistory
-    if (!semanticHistory)
+    if (!operation)
       return {
         ok: false,
-        diagnostic: diagnostic(
-          "command-rejected",
-          "The document does not expose semantic History mutations.",
-        ),
+        diagnostic: diagnostic("command-rejected", unavailableMessage),
       }
     const lease = await this.#renewWriteAccess()
     if (!lease.ok) return lease
     let result: SessionPortResult<DocumentSnapshot>
     try {
-      result = await semanticHistory.move({
+      result = await operation({
         sessionId: this.#sessionId,
         lease: { epoch: lease.lease.epoch, nowMs: lease.nowMs },
         baseSnapshot: this.#snapshot,
@@ -549,17 +585,13 @@ export class PersistentDocumentSession {
     } catch {
       return {
         ok: false,
-        diagnostic: diagnostic("persistence-failed", "The History order was not saved.", true),
+        diagnostic: diagnostic("persistence-failed", failureMessage, true),
       }
     }
     if (!result.ok)
       return {
         ok: false,
-        diagnostic: portDiagnostic(
-          "persistence-failed",
-          "The History order was not saved.",
-          result.diagnostic,
-        ),
+        diagnostic: portDiagnostic("persistence-failed", failureMessage, result.diagnostic),
       }
     const restored = validateHistoryResult(result.value, this.#documentId, this.#snapshot.revision)
     if (!restored)
@@ -567,7 +599,7 @@ export class PersistentDocumentSession {
         ok: false,
         diagnostic: diagnostic(
           "invalid-recovered-document",
-          "The History adapter returned an invalid document revision.",
+          "The persistence adapter returned an invalid document revision.",
         ),
       }
     this.#snapshot = restored
@@ -630,8 +662,11 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#rebuild())
   }
 
-  exportDocument(format: GeometryExportFormat): Promise<PersistentDocumentExportResult> {
-    return this.#enqueue(() => this.#exportDocument(format))
+  exportDocument(
+    format: GeometryExportFormat,
+    options: DocumentExportOptions = {},
+  ): Promise<PersistentDocumentExportResult> {
+    return this.#enqueue(() => this.#exportDocument(format, options))
   }
 
   solveSketch(
@@ -780,7 +815,10 @@ export class PersistentDocumentSession {
     }
   }
 
-  async #exportDocument(format: GeometryExportFormat): Promise<PersistentDocumentExportResult> {
+  async #exportDocument(
+    format: GeometryExportFormat,
+    options: DocumentExportOptions,
+  ): Promise<PersistentDocumentExportResult> {
     if (this.#closed) {
       return {
         ok: false,
@@ -788,7 +826,7 @@ export class PersistentDocumentSession {
       }
     }
     try {
-      return { ok: true, response: await this.#rebuildPort.exportDocument(format) }
+      return { ok: true, response: await this.#rebuildPort.exportDocument(format, options) }
     } catch {
       return {
         ok: false,

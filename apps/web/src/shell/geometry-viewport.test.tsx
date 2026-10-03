@@ -25,6 +25,7 @@ import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { createSketchProjectionStore } from "../features/sketch/sketch-projection-store"
 import { i18n } from "../i18n"
+import { authoredTreeFixture, requireAuthoredFixture } from "../test-support/authored-tree-fixture"
 import {
   GeometryViewport,
   type GeometryViewportSketchContext,
@@ -420,6 +421,37 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("applies authored part visibility without mutating feature visibility or model history", () => {
+    const { authority, snapshot } = authoredTreeFixture()
+    const first = requireAuthoredFixture(authority.parts[0])
+    const controller = readyController(
+      snapshot.features.map(({ id, dependencies }) => ({ id, dependencies })),
+      snapshot.features.map(({ id }) => ({ featureId: id, geometry: { mesh } })),
+    )
+    if (!controller.report) throw new Error("Expected fixture report.")
+    const visible = {
+      ...controller,
+      report: { ...controller.report, snapshot },
+      authoredSnapshot: authority,
+    }
+    const hidden = {
+      ...visible,
+      authoredSnapshot: {
+        ...authority,
+        parts: authority.parts.map((part) =>
+          part.id === first.id ? { ...part, visible: false } : part,
+        ),
+      },
+    }
+    expect(viewerMeshes(visible)).toHaveLength(3)
+    expect(viewerMeshes(hidden).map(({ featureId }) => featureId)).toEqual(
+      snapshot.features.slice(1).map(({ id }) => id),
+    )
+    expect(hidden.report.snapshot).toBe(snapshot)
+    expect(hidden.authoredSnapshot.history).toBe(authority.history)
+    expect(viewerMeshes(visible)).toHaveLength(3)
+  })
+
   it("shows primitive translation and forwards world-space position changes", async () => {
     const onPositionChange = vi.fn()
     const { createViewport, port } = renderViewport(

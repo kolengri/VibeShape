@@ -293,3 +293,14 @@ remove the broken row and choose a replacement before Apply. Changing the target
 references to geometrically identical edges on another body. Apply creates one ordinary committed
 edit, Cancel discards the task, and Undo/Redo uses the shared session history. Existing all-edge
 features retain version 1 semantics. See [ADR-0040](../adr/0040-selected-edge-treatments.md).
+
+
+## Parts, folders, placement, and export
+
+The Parts group is separate from History. Select a part to highlight its current exact body, use its Rename action or eye control, and use Place for a visible available current tip. Placement accepts six unit-aware expressions and previews the resulting rigid transform. Editing its History row reopens the same feature; Cancel discards the preview and Undo restores the preceding saved transaction.
+
+Compound and Union have separate actions. Choose an ordered list of two to eight current parts from distinct producing features. Compound preserves each part and its stable output slot when inputs are reordered. Union identifies the first selected part as the survivor and explains consumption of the remaining parts; disconnected solids cannot be accepted as one Union. Editing retains unresolved inputs for explicit repair and excludes new choices that would create dependency cycles.
+
+New folder selects an explicit first and last History item. Folder collapse is presentation state; saved names and contiguous membership are organizational metadata. Ungroup removes only the folder. It never deletes or reorders geometry. Part names, visibility, folders, and feature history survive native Save/Open as a fresh document copy.
+
+Export scope chooses All parts or one named part, including hidden parts. STL exports the selected current solid; multipart 3MF retains names and positions. Opening Export resets the scope to All parts. Print preparation is available for All parts and creates a disposable print copy; it does not modify the authored model. A changed document or unavailable selected body produces an error instead of silently exporting another body.

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import type { Download } from "@playwright/test"
-import { readVersionedVShape } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { expect, test } from "./fixtures"
 
 for (const operation of ["fillet", "chamfer"] as const) {
@@ -69,8 +69,8 @@ for (const operation of ["fillet", "chamfer"] as const) {
 async function expectSelectedNativeBackup(download: Download, label: string) {
   const file = await download.path()
   if (!file) throw new Error("Expected a native backup.")
-  const archive = await readVersionedVShape(new Uint8Array(await readFile(file)))
-  if (!archive.ok || archive.value.version !== 2)
+  const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
+  if (!archive.ok || archive.value.version !== 3)
     throw new Error("Expected replay-proven selected-edge history.")
   const saved = archive.value.project.snapshot.features.find((feature) => feature.label === label)
   expect(saved?.type.schemaVersion).toBe(2)

@@ -149,11 +149,11 @@ test.describe("selector-backed revolve", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
-    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
@@ -206,11 +206,11 @@ test.describe("selector-backed revolve", () => {
       await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await form.getByRole("button", { name: "Create revolve" }).click()
 
-      await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+      await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
       await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
         timeout: 120_000,
       })
-      await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+      await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
       const editForm = page.getByRole("form", { name: "Edit revolve" })
       await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveText(
         resultOperationLabels[operation],
@@ -286,7 +286,7 @@ test.describe("selector-backed revolve", () => {
     const submit = form.getByRole("button", { name: "Create revolve" })
     await expect(submit).toBeDisabled()
     await submit.click({ force: true })
-    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toHaveCount(0)
+    await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toHaveCount(0)
   })
 
   test("reselects a profile without closing create or edit", async ({ page }) => {
@@ -320,7 +320,7 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
 
-    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await editForm.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
@@ -329,8 +329,8 @@ test.describe("selector-backed revolve", () => {
     await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await editForm.getByRole("button", { name: "Update revolve" }).click()
 
-    await page.getByRole("treeitem", { name: "Variables" }).click()
-    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     form = page.getByRole("form", { name: "Edit revolve" })
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
   })
@@ -394,13 +394,13 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
     await reopenedCreateForm.getByRole("button", { name: "Create revolve" }).dblclick()
 
-    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(editForm.getByText("Sketch 1 · Line 1")).toBeVisible()
     await expect(editForm.getByRole("combobox", { name: "Angle" })).toHaveValue("180 deg")
@@ -418,11 +418,11 @@ test.describe("selector-backed revolve", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
-    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(reopenedForm.getByRole("combobox", { name: "Angle" })).toHaveValue("270 deg")
     await expect(reopenedForm.getByText("Sketch 1 · Line 1")).toBeVisible()
@@ -478,10 +478,10 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
 
-    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.reload()
-    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     await expect(
       page.getByRole("form", { name: "Edit revolve" }).getByText(selectedLabel, { exact: true }),
     ).toBeVisible()

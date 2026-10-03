@@ -1,6 +1,7 @@
 import {
   createEmptySketch,
   featureIdSchema,
+  partIdSchema,
   type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -61,6 +62,21 @@ function selectedFeatureFaceSupport() {
 }
 
 describe("editor session store", () => {
+  it("keeps authored part identity distinct from topology and clears it on a new selection", () => {
+    const store = createEditorSessionStore()
+    const partId = partIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const actions = store.getState().actions
+    actions.setSelectedBody({ featureId })
+    actions.setSelectedPart(partId)
+    expect(store.getState().selectedPartId).toBe(partId)
+    expect(store.getState().selectedBody).toBeNull()
+    actions.setSelection(null)
+    expect(store.getState().selectedPartId).toBeNull()
+    actions.setSelectedPart(partId)
+    actions.startPartDesignTool({ kind: "create-box" })
+    expect(store.getState().selectedPartId).toBeNull()
+  })
+
   it("keeps graphical primitive placement transient and scoped to the active tool", () => {
     const store = createEditorSessionStore()
 

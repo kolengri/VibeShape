@@ -26,7 +26,9 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "./part-design"
+import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { placementFeatureType } from "./part-design-placement"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 export const commandDescriptorSchema = z
@@ -415,6 +417,9 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
   commands: [],
   queries: [],
   featureTypes: [
+    placementFeatureType,
+    compoundFeatureType,
+    unionFeatureType,
     holeFeatureType,
     holeFeatureTypeV2,
     booleanFeatureType,

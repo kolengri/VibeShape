@@ -1,4 +1,5 @@
 import type { AutomationDraftPreview } from "@vibeshape/automation-api/drafts"
+import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
 import { documentCoreModule, featureCoreModule } from "@vibeshape/domain/modules"
 import { quantitySchema } from "@vibeshape/domain/units"
@@ -322,6 +323,38 @@ function DestructiveApply({
   )
 }
 
+function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput["metadata"]> }) {
+  const t = useTranslations("app.shell.taskPanel.automationReview")
+  const { change, targetName, range } = metadata
+  const labels = {
+    "part.rename": "renamePart",
+    "part.set-visibility": "setPartVisibility",
+    "folder.create": "createFolder",
+    "folder.rename": "renameFolder",
+    "folder.set-items": "setFolderItems",
+    "folder.remove": "removeFolder",
+  } as const
+  return (
+    <li className="break-words rounded border p-2">
+      <div className="font-medium">{t(labels[change.kind])}</div>
+      {targetName ? <div>{t("target", { target: targetName })}</div> : null}
+      {"name" in change ? <div>{t("nameValue", { name: change.name })}</div> : null}
+      {change.kind === "folder.create" ? (
+        <div>{t("nameValue", { name: change.folder.name })}</div>
+      ) : null}
+      {change.kind === "part.set-visibility" ? (
+        <div>{t(change.visible ? "showPart" : "hidePart")}</div>
+      ) : null}
+      {range ? (
+        <div>
+          {t("folderRange", { first: range.firstLabel, last: range.lastLabel, count: range.count })}
+        </div>
+      ) : null}
+      {change.kind === "folder.remove" ? <div>{t("ungroupPreservesFeatures")}</div> : null}
+    </li>
+  )
+}
+
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { input } = review
@@ -360,6 +393,7 @@ export function AutomationReviewPanel({ review }: { review: AutomationReviewStat
         <section className="mt-4 border-t pt-3">
           <h3 className="text-xs font-medium">{t("changes")}</h3>
           <ul className="mt-2 grid gap-2 text-xs">
+            {input.metadata ? <MetadataDetails metadata={input.metadata} /> : null}
             {commands.map((command) => (
               <li key={command.commandId} className="break-words rounded border p-2">
                 <div className="font-medium">

@@ -1416,3 +1416,50 @@ describe("document body catalogs", () => {
     },
   )
 })
+
+describe("selected terminal export requests", () => {
+  it.each(["step", "stl", "3mf"] as const)(
+    "exports one exact sibling through %s",
+    async (format) => {
+      const { engine, runtime, messages } = createHarness()
+      engine.bodyRoles = ["body.left", "body.right"]
+      const rebuild = request("selected-export-rebuild")
+      if (rebuild.type !== "rebuildDocument") throw new Error("Expected rebuild.")
+      await runtime.handle({ ...rebuild, document: { ...rebuild.document, features: [box()] } })
+      await runtime.handle({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: "selected-export",
+        documentId: documentIds.primary,
+        revision: 1,
+        generation: 1,
+        type: "exportDocument",
+        format,
+        bodies: [{ featureId: featureIds.box, outputRole: "body.right", name: "Right housing" }],
+      })
+      const calls = format === "3mf" ? engine.printMeshExportedFeatures : engine.exportedFeatures
+      expect(calls.at(-1)).toEqual([
+        { featureId: featureIds.box, contentHash: expect.any(String), outputRole: "body.right" },
+      ])
+      expect(messages.at(-1)).toMatchObject({ type: "documentExported", bodyCount: 1 })
+    },
+  )
+  it("rejects a consumed source rather than exporting its still-cached shape", async () => {
+    const { engine, runtime, messages } = createHarness()
+    await runtime.handle(request("consumed-source-rebuild"))
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "consumed-source-export",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "stl",
+      bodies: [{ featureId: featureIds.box }],
+    })
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "export-failed" },
+    })
+    expect(engine.exportedFeatures).toEqual([])
+  })
+})

@@ -19,6 +19,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
+import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
@@ -55,6 +56,17 @@ import type {
 } from "../document/document-controller"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
+import type { AuthoredMetadataCommit } from "./authored-item-rename"
+import { AuthoredPartsGroup } from "./authored-parts-group"
+import {
+  authoredBodyKey,
+  authoredBodyKeys,
+  currentAuthoredParts,
+  currentAuthoredSnapshot,
+  groupFolderHistory,
+} from "./authored-tree-state"
+import { HistoryFolderDialog } from "./history-folder-dialog"
+import { HistoryFolderGroup } from "./history-folder-group"
 import { HistoryProfileSources } from "./history-profile-sources"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
 import { historyMovePositions, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
@@ -741,6 +753,13 @@ function ModelTreeGroupItem({
 }
 
 type ModelTreeProps = {
+  authoredMetadataBlocked?: boolean | undefined
+  selectedPartId?: PartId | null | undefined
+  onPartsCombine?: ((operation: "compound" | "union") => void) | undefined
+  onPartPlace?: ((partId: PartId) => void) | undefined
+  onPartSelect?: ((partId: PartId) => void) | undefined
+  onAuthoredMetadata?: AuthoredMetadataCommit | undefined
+
   onSourceProfilePreview?: ((profile: SketchProfileSelector | null) => void) | undefined
   sourcePreviewSketchId?: SketchId | null | undefined
   activeFeatureId: FeatureRecord["id"] | null
@@ -767,6 +786,17 @@ type ModelTreeProps = {
   activeBody?: ModelBodySelection | null | undefined
   onBodyActivate?: ((selection: ModelBodySelection) => void) | undefined
   onBodyPreselectionChange?: ((selection: ModelBodySelection | null) => void) | undefined
+}
+
+function authoredTreeWriteBlocked(props: ModelTreeProps) {
+  return (
+    props.authoredMetadataBlocked ||
+    props.controller.status !== "ready" ||
+    props.controller.report?.mode !== "read-write" ||
+    props.controller.saveStatus === "saving" ||
+    props.activeFeatureId !== null ||
+    props.sketchRenameBlockedId !== null
+  )
 }
 
 function ModelTreeWorkspaceItems({
@@ -1326,6 +1356,9 @@ function HistoryGroup({
   rollbackIndex: number
 }) {
   const { t, view } = props
+  const authority = currentAuthoredSnapshot(props.controller)
+  const metadataDisabled = authoredTreeWriteBlocked(props)
+  const folderGroups = groupFolderHistory(view.rows, authority?.folders ?? [])
   const [busy, setBusy] = useState(false)
   const [dragSourceKey, setDragSourceKey] = useState<string | null>(null)
   const [dragDestinationIndex, setDragDestinationIndex] = useState<number | null>(null)
@@ -1435,6 +1468,14 @@ function HistoryGroup({
         onExpandedChange={onExpandedChange}
         title={t("items.history")}
       />
+      {authority && props.onAuthoredMetadata && (
+        <HistoryFolderDialog
+          authority={authority}
+          rows={view.rows}
+          disabled={metadataDisabled || !completeGraph}
+          onCommit={props.onAuthoredMetadata}
+        />
+      )}
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("items.history")}</legend>
@@ -1510,22 +1551,38 @@ function HistoryGroup({
             }}
             onDragEnd={handleDragEnd}
           >
-            {view.rows.map((row, index) => {
-              const rowProps = {
-                ...props,
-                busy,
-                dragDestinationIndex,
-                dragSourceKey,
-                index,
-                onMoveToIndex: moveToIndex,
-                row,
-                rolledBack: rollbackIndex >= 0 && index > rollbackIndex,
-                marker: rollbackIndex === index && index < view.rows.length - 1,
-              }
-              return row.kind === "sketch" ? (
-                <SketchHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
+            {folderGroups.map((group) => {
+              const rows = group.rows.map(({ row, index }) => {
+                const rowProps = {
+                  ...props,
+                  busy,
+                  dragDestinationIndex,
+                  dragSourceKey,
+                  index,
+                  onMoveToIndex: moveToIndex,
+                  row,
+                  rolledBack: rollbackIndex >= 0 && index > rollbackIndex,
+                  marker: rollbackIndex === index && index < view.rows.length - 1,
+                }
+                return row.kind === "sketch" ? (
+                  <SketchHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
+                ) : (
+                  <FeatureHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
+                )
+              })
+              return group.folder && authority && props.onAuthoredMetadata ? (
+                <HistoryFolderGroup
+                  key={group.folder.id}
+                  folder={group.folder}
+                  authority={authority}
+                  rows={view.rows}
+                  disabled={metadataDisabled}
+                  onCommit={props.onAuthoredMetadata}
+                >
+                  {rows}
+                </HistoryFolderGroup>
               ) : (
-                <FeatureHistoryRow key={historyRefKey(row.ref)} {...rowProps} />
+                rows
               )
             })}
           </DragDropProvider>
@@ -1544,17 +1601,22 @@ function BodiesGroup({
   onExpandedChange: (expanded: boolean) => void
 }) {
   const { t, view } = props
+  const authoredT = useTranslations("app.authoredTree")
+  const authority = currentAuthoredSnapshot(props.controller)
+  const owned = authority ? authoredBodyKeys(authority) : new Set<string>()
+  const bodies = view.modelBodies.filter(({ geometry }) => !owned.has(authoredBodyKey(geometry)))
+  if (authority && bodies.length === 0) return null
   return (
     <div role="none">
       <ModelTreeGroupItem
         expanded={expanded}
         onExpandedChange={onExpandedChange}
-        title={t("items.bodies")}
+        title={authority ? authoredT("otherBodies") : t("items.bodies")}
       />
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("items.bodies")}</legend>
-          {view.modelBodies.map((body, index) => {
+          {bodies.map((body, index) => {
             const { feature, geometry } = body
             const label = t("bodyLabel", { number: index + 1 })
             const source = t("bodySource", {
@@ -1646,6 +1708,21 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
         onExpandedChange={setHistoryExpanded}
         rollbackIndex={rollbackIndex}
       />
+      {currentAuthoredSnapshot(props.controller) &&
+        props.onAuthoredMetadata &&
+        props.onPartSelect && (
+          <AuthoredPartsGroup
+            parts={currentAuthoredParts(props.controller)}
+            revision={props.controller.report?.snapshot.revision ?? 0}
+            selectedPartId={props.selectedPartId ?? null}
+            disabled={authoredTreeWriteBlocked(props)}
+            onSelect={props.onPartSelect}
+            onPlace={props.onPartPlace}
+            onCombine={props.onPartsCombine}
+            onPreselect={props.onBodyPreselectionChange}
+            onCommit={props.onAuthoredMetadata}
+          />
+        )}
       <BodiesGroup {...props} expanded={bodiesExpanded} onExpandedChange={setBodiesExpanded} />
     </>
   )
@@ -1672,21 +1749,30 @@ function linearTreeTarget(key: string, items: readonly HTMLElement[], index: num
   return undefined
 }
 
+function firstTreeChild(current: HTMLElement) {
+  const selector = ':scope > fieldset [role="treeitem"]'
+  return (
+    current.parentElement?.querySelector<HTMLElement>(selector) ??
+    current.parentElement?.parentElement?.querySelector<HTMLElement>(selector) ??
+    undefined
+  )
+}
+
+function parentTreeItem(current: HTMLElement) {
+  const parent = current.closest<HTMLElement>("fieldset")?.previousElementSibling
+  return parent?.matches('[role="treeitem"]')
+    ? (parent as HTMLElement)
+    : (parent?.querySelector<HTMLElement>('[role="treeitem"]') ?? undefined)
+}
+
 function hierarchicalTreeTarget(key: string, current: HTMLElement) {
   if (key === "ArrowRight") {
     if (current.getAttribute("aria-expanded") === "false") current.click()
-    if (current.getAttribute("aria-expanded") !== "true") return undefined
-    return (
-      current.parentElement?.querySelector<HTMLElement>(':scope > fieldset [role="treeitem"]') ??
-      undefined
-    )
+    return current.getAttribute("aria-expanded") === "true" ? firstTreeChild(current) : undefined
   }
   if (key === "ArrowLeft") {
     if (current.getAttribute("aria-expanded") === "true") current.click()
-    if (current.getAttribute("aria-expanded") !== null) return undefined
-    return current.closest<HTMLElement>("fieldset")?.previousElementSibling as
-      | HTMLElement
-      | undefined
+    return current.getAttribute("aria-expanded") === null ? parentTreeItem(current) : undefined
   }
   return undefined
 }

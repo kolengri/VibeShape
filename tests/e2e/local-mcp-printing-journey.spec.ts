@@ -14,11 +14,19 @@ import {
   savePrintingArtifacts,
 } from "./printing-journey-helpers"
 
+function launchPrintingClient(parallelIndex: number) {
+  const entry = process.env.VIBESHAPE_TEST_MCP_ENTRY
+  return createMcpTestClient(
+    44000 + parallelIndex,
+    entry ? { command: "bun", args: [entry] } : undefined,
+  )
+}
+
 test("prints an editable MCP mounting plate while preserving a manual browser dimension", async ({
   page,
 }, testInfo) => {
   test.setTimeout(300_000)
-  const local = await createMcpTestClient(44000 + testInfo.parallelIndex)
+  const local = await launchPrintingClient(testInfo.parallelIndex)
   const call = async (name: string, args: Record<string, unknown>) =>
     (await local.callTool({ name, arguments: args })).structuredContent?.result
   const modelInfo = async () =>

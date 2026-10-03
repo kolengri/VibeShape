@@ -28,12 +28,25 @@ SPK-005 implements the original six active stores: `projects`, `snapshots`, `eve
 
 Schema-version-1 promotion is an explicit atomic transaction. It reconstructs and compares the authoritative migrated recovery result, rejects any bounded loss, requires an unchanged legacy head and the active writer lease, stores that exact migrated snapshot and recovery metadata in the v1 tables, and retains migration provenance plus bounded unavailable-record evidence. It does not fabricate v1 events for legacy revisions. New v1 events form a suffix after the promoted snapshot. The first successful v1 commit marks the project `current`; before that, `journal-derived` or `snapshot-derived` identifies how History was recovered. Every v1 write and lease acquisition strictly parses the stored project head and reports corruption instead of replacing it. Once the v1 head exists, every legacy semantic write, import, copy publication, clean close, and deletion path fails closed instead of forking the document. Explicit v1 project deletion removes both generations only after its exact-revision and lease checks pass.
 
-The product controller adopts that boundary without rewriting the editor session. New projects commit directly to
-v1. Existing v1 projects recover through a compatibility adapter that projects the authoritative History-bearing
+The version-1 adoption boundary uses a compatibility adapter without rewriting the editor session. Existing v1 projects recover through an adapter that projects the authoritative History-bearing
 snapshot to the current worker and UI contract while translating new legacy-shaped add events into anchored v1
 History insertions. A complete v0 recovery is promoted only after a writer lease is acquired; lease contention or
 lossy recovery leaves the legacy project unmodified and read-only. The project-library façade always prefers v1
 authority, but can still export a complete unpromoted legacy project while another tab owns its lease.
+
+The current editor then explicitly upgrades a fully recovered, writable V1 project to authored V2 authority.
+The upgrade appends one event and retains the preceding journal. Existing version-3 IndexedDB stores hold
+strict V1/V2 record variants; no database-version change or destructive rewrite is required. V2 owns the
+model, canonical History, stable parts, and organizational folders. Compatibility projections serve the
+geometry worker and never replace that authority. Model and metadata commands, including Undo/Redo, persist
+one complete authored result with the normal revision and lease checks. Unsupported heads fail closed before
+writable recovery. See [ADR-0054](../adr/0054-authored-parts-and-organizational-history-folders.md).
+
+Current native saves use archive format 3 and retain the verified mixed history and original actors. The
+authored reader accepts formats 0–3. Opening a complete archive creates fresh document, command, and
+transaction identities while preserving document-local feature, part, and folder identities. Read-only
+checkpoint archives cannot be opened as writable copies. Older application builds cannot edit V2 authority;
+rolling back the application must not overwrite or downgrade the current browser database.
 
 The production repository now also exposes a bounded authoritative local-project summary read, exact-revision project deletion, verified v2 portable-project reads, atomic semantic-copy publication, and atomic imports over both storage generations. Project listing parses every returned head through the strict generation-specific schema, exposes only document ID, name, revision, creation/modification timestamps, latest external-backup time, and an optional exact-revision preview, then sorts deterministically by modification time and fails closed on corrupt semantic records or an unsupported project count. Preview parsing, count, and aggregate bytes are independently bounded; invalid, stale, or unavailable derived records fail open to no preview. Local duplication verifies and replays the complete native or promoted history, remaps document plus globally unique command and transaction identities in the domain, preserves History and entity identities, appends a copy-name event, then publishes the copied legacy prefix, v1 seed/suffix, head snapshot, clean-close metadata, and project record in one transaction with no recovery marker, lease, or external-backup timestamp. An available source preview is copied afterward as best-effort derived work and never changes semantic success. Project deletion rejects stale summaries and any live writer lease, then removes both generations of project heads, events, snapshots, previews, recovery markers, and expired lease in one transaction. Export rereads the authoritative head and complete replay boundary, verifies stored checksums, and refuses corrupt or incomplete history unless it can produce an explicitly evidenced read-only checkpoint archive. Writable import occurs only after `.vshape` validation and complete replay proof. Existing document IDs in either generation fail closed instead of being replaced.
 
@@ -110,7 +123,15 @@ Cross-browser fallback:
 - Blob download for Save As;
 - clear messaging when automatic overwrite is unavailable.
 
-The product Projects dialog lists local projects with exact-revision isometric previews or an accessible placeholder, identifies the current one, creates a new project, switches to an existing project after validating that its IndexedDB record still exists, duplicates any valid listed project without switching, and offers confirmed permanent deletion only for an inactive project. It also implements the file fallback baseline in every browser: `Download .vshape` is distinct from 3MF/STEP/STL geometry export, and `Choose .vshape` validates a bounded archive before importing it. Every successful project switch closes the prior session, selects the target document or clears the active selection for a new document, reloads, and rebuilds derived geometry. The current slice deliberately omits active-project deletion, silent same-ID restore, copy-as-new import identity rewriting, directory mirroring, and persistent file handles.
+The File control offers Save project (.vshape), Open project (.vshape), and the local Projects library.
+Native files preserve editable history; 3MF/STEP/STL are separate geometry exports. Open validates a bounded
+archive and publishes a fresh copy before activation. File actions reject active drafts, pending persistence,
+save errors, or AI work/review, and recheck the active document and revision after asynchronous work. The
+library lists exact-revision previews or accessible placeholders, identifies the current project, creates and
+opens projects, duplicates verified history, and offers confirmed permanent deletion only for an inactive
+project. Switching closes the previous session and rebuilds derived geometry from the selected saved model.
+Active-project deletion, silent same-ID restoration, directory mirroring, and persistent file handles remain
+outside the implemented file workflow.
 
 ## Multiple tabs
 

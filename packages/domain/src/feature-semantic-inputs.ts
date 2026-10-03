@@ -23,7 +23,9 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "./part-design"
+import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
+import { placementFeatureType } from "./part-design-placement"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
@@ -36,6 +38,9 @@ export type FirstPartySemanticInputProjection =
 const emptySemanticInputTypeKeys = new Set(
   [
     boxFeatureType,
+    placementFeatureType,
+    compoundFeatureType,
+    unionFeatureType,
     cylinderFeatureType,
     booleanFeatureType,
     datumPlaneFeatureType,

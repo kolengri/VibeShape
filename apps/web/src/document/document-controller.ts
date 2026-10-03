@@ -1,3 +1,6 @@
+import { authoredPartExportBodies } from "@vibeshape/application/authored-parts"
+import { openAuthorityDocumentSession } from "@vibeshape/application/authority-document-session"
+import { createAuthorityPersistenceAdapter } from "@vibeshape/application/authority-persistence-adapter"
 import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
 import { createModelEdgeEvidence } from "@vibeshape/application/model-edges"
 import {
@@ -13,8 +16,6 @@ import {
   type PersistentSketchSolveOptions,
   type PersistentSketchSolveResult,
 } from "@vibeshape/application/persistent-document-session"
-import { openVersionedDocumentSession } from "@vibeshape/application/versioned-document-session"
-import { createVersionedPersistenceAdapter } from "@vibeshape/application/versioned-persistence-adapter"
 import type {
   CadInspectionDetailQuery,
   CadInspectionListQuery,
@@ -66,9 +67,17 @@ import {
   type VariableId,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentCommand } from "@vibeshape/domain/commands"
+import type { DocumentAuthoritySnapshot, DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type {
+  DocumentV2Command,
+  DocumentV2MetadataChange,
+} from "@vibeshape/domain/document-v2-command-schemas"
+import { documentV2MetadataCommandSchema } from "@vibeshape/domain/document-v2-command-schemas"
+import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
-import { readVersionedVShape, writeVShapeV2 } from "@vibeshape/formats/vshape"
+import { readAuthoredVShape, writeVShapeV2, writeVShapeV3 } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
   type LocalProjectSummary,
@@ -84,15 +93,14 @@ import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
+import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
+import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
+import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { createProjectActionGuard } from "./project-action-guard"
-import {
-  copyPortableProjectV2,
-  formatProjectCopyName,
-  portableProjectV2FromArchive,
-} from "./versioned-project-file"
+import { formatProjectCopyName } from "./versioned-project-file"
 
 const DATABASE_NAME = "vibeshape-product-v0"
 const DOCUMENT_STORAGE_KEY = "vibeshape-active-document-id"
@@ -103,6 +111,7 @@ type SaveStatus = "saved" | "saving" | "save-error"
 export type DocumentControllerState = Readonly<{
   status: ControllerStatus
   report: PersistentDocumentSessionReport | null
+  authoredSnapshot?: DocumentAuthoritySnapshot | null
   saveStatus: SaveStatus
   diagnostic: PersistentDocumentSessionDiagnostic | null
   history?: Readonly<{ canUndo: boolean; canRedo: boolean }>
@@ -219,7 +228,11 @@ function projectActionUnavailable() {
 }
 
 function publish(next: DocumentControllerState) {
-  state = { ...next, history: session?.history ?? { canUndo: false, canRedo: false } }
+  state = {
+    ...next,
+    authoredSnapshot: session?.authoredSnapshot ?? null,
+    history: session?.history ?? { canUndo: false, canRedo: false },
+  }
   for (const listener of listeners) listener()
 }
 
@@ -332,7 +345,10 @@ async function openOrCreate(defaultDocumentName: string) {
   const database = new VibeShapeDatabase(DATABASE_NAME)
   const repository = new BrowserProjectRepository(database)
   activeRepository = repository
-  const versionedAdapter = createVersionedPersistenceAdapter(repository.versioned)
+  const versionedAdapter = createAuthorityPersistenceAdapter(
+    repository.versioned,
+    createBrowserPart,
+  )
   const sessionDependencies = dependencies(database, versionedAdapter)
   const sessionId = currentSessionId()
   const storedDocumentId = documentIdSchema.safeParse(
@@ -340,11 +356,12 @@ async function openOrCreate(defaultDocumentName: string) {
   )
 
   if (storedDocumentId.success) {
-    const opened = await openVersionedDocumentSession(
+    const opened = await openAuthorityDocumentSession(
       {
         ...sessionDependencies,
         legacyRepository: repository.legacy,
         versionedRepository: repository.versioned,
+        createPart: createBrowserPart,
       },
       {
         documentId: storedDocumentId.data,
@@ -353,7 +370,7 @@ async function openOrCreate(defaultDocumentName: string) {
         storedAt: new Date().toISOString(),
       },
     )
-    if (opened.ok) return opened
+    if (opened.ok) return enableAuthoredDocument(opened)
     if (opened.diagnostic.sourceCode !== "document-not-found") return opened
   }
 
@@ -364,7 +381,7 @@ async function openOrCreate(defaultDocumentName: string) {
     command: createCommand(documentId, defaultDocumentName),
   })
   if (created.ok) writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId)
-  return created
+  return enableAuthoredDocument(created)
 }
 
 async function start(defaultDocumentName: string) {
@@ -552,7 +569,8 @@ async function commitActiveAutomationDraft(
 // Only trusted browser composition may create a handle; MCP pairing and review remain separate gates.
 export function createActiveDocumentAutomationSession() {
   const active = session
-  if (!active || state.status !== "ready" || !state.report)
+  const repository = activeRepository
+  if (!active || !repository || state.status !== "ready" || !state.report)
     return automationCommitFailure("document-write-unavailable", "No local project is open.", true)
   const factory = createDocumentAutomationSession({
     commands: coreCommandDispatcher(),
@@ -685,7 +703,7 @@ export function createActiveDocumentAutomationSession() {
         "The active project changed before export.",
         true,
       )
-    const result = await active.exportDocument(format)
+    const result = await exportActiveDocument(format)
     if (!result.ok) return result
     if (!currentReport() || active.snapshot.revision !== revision)
       return automationCommitFailure(
@@ -693,14 +711,17 @@ export function createActiveDocumentAutomationSession() {
         "The active project changed during export.",
         true,
       )
-    return {
-      ok: true as const,
-      format: result.response.format,
-      file: result.response.file,
-      bodyCount: result.response.bodyCount,
-      documentName: active.snapshot.name,
-    }
+    return result
   }
+  const metadata = createMetadataAutomationSession({
+    documentId: active.snapshot.id,
+    queries: queryDispatcher.dispatcher,
+    createDraftId: browserUuidV7,
+    readSnapshot: () => (currentReport() ? active.authoredSnapshot : null),
+    hasCommandId: (commandId) => repository.hasCommandId(commandId),
+    isActive: () => currentReport() !== null,
+    commit: (command, expected) => commitReviewedMetadata(active, command, expected),
+  })
   const closeAutomation = factory.dispose
   let revision = active.snapshot.revision
   const unsubscribe = subscribeDocumentController(() => {
@@ -711,6 +732,7 @@ export function createActiveDocumentAutomationSession() {
     if (active.snapshot.revision !== revision) {
       revision = active.snapshot.revision
       factory.cancel("stale-revision")
+      metadata.cancel("stale-revision")
     }
   })
   function dispose() {
@@ -718,6 +740,7 @@ export function createActiveDocumentAutomationSession() {
     unsubscribe()
     window.removeEventListener("pagehide", dispose)
     closeAutomation()
+    metadata.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
   return {
@@ -727,11 +750,15 @@ export function createActiveDocumentAutomationSession() {
       return active.snapshot.revision
     },
     host: factory.host,
+    metadata,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
     readCad,
     exportRevisionBound,
-    cancel: factory.cancel,
+    cancel: (reason?: Parameters<typeof factory.cancel>[0]) => {
+      factory.cancel(reason)
+      metadata.cancel(reason)
+    },
     dispose,
   }
 }
@@ -845,6 +872,130 @@ export function undoDocument(baseRevision: number) {
 
 export function redoDocument(baseRevision: number) {
   return navigateDocumentHistory("redo", baseRevision)
+}
+
+function canWriteAuthoredMetadata(active: PersistentDocumentSession | null) {
+  return (
+    active?.mode === "read-write" &&
+    state.status === "ready" &&
+    state.report !== null &&
+    state.saveStatus !== "saving" &&
+    !getProjectActiveWorkBlock()
+  )
+}
+
+function reviewedMetadataBase(active: PersistentDocumentSession, baseRevision: number) {
+  if (
+    session !== active ||
+    state.status !== "ready" ||
+    state.saveStatus === "saving" ||
+    active.mode !== "read-write"
+  )
+    return null
+  const base = active.authoredSnapshot
+  return base?.schemaVersion === 2 && base.revision === baseRevision ? base : null
+}
+
+async function commitReviewedMetadata(
+  active: PersistentDocumentSession,
+  command: Extract<DocumentV2Command, { kind: "org.vibeshape.document.metadata-command" }>,
+  expected: DocumentSnapshotV2,
+) {
+  const base = reviewedMetadataBase(active, command.baseRevision)
+  if (!base)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "stale-revision",
+        message: "The reviewed metadata base is no longer writable.",
+        retryable: true,
+      },
+    }
+  const replayed = applyDocumentV2Command(base, command)
+  if (!replayed.ok || canonicalJson(replayed.snapshot) !== canonicalJson(expected))
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "draft-commit-intent-mismatch",
+        message: "The reviewed metadata does not match the requested change.",
+        retryable: false,
+      },
+    }
+  const result = await commitActiveAuthoredCommand(active, command)
+  if (!result.ok)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: result.diagnostic.sourceCode ?? result.diagnostic.code,
+        message: result.diagnostic.message,
+        retryable: result.diagnostic.retryable,
+      },
+    }
+  return {
+    documentId: command.documentId,
+    commandId: command.commandId,
+    baseRevision: command.baseRevision,
+    revision: result.snapshot.revision,
+    change: command.payload,
+  }
+}
+
+export async function commitAuthoredMetadata(
+  baseRevision: number,
+  change: DocumentV2MetadataChange,
+): Promise<DocumentMutationResult> {
+  const active = session
+  if (!active || !canWriteAuthoredMetadata(active))
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "Finish the active edit before changing parts or folders.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  const result = await commitActiveAuthoredCommand(
+    active,
+    documentV2MetadataCommandSchema.parse({
+      kind: "org.vibeshape.document.metadata-command",
+      schemaVersion: 2,
+      commandId: browserUuidV7(),
+      documentId: active.snapshot.id,
+      baseRevision,
+      issuedAt: new Date().toISOString(),
+      actor: { type: "user", userId: null },
+      payload: change,
+    }),
+  )
+  return result.ok ? { ok: true } : result
+}
+
+async function commitActiveAuthoredCommand(
+  active: PersistentDocumentSession,
+  command: Extract<DocumentV2Command, { kind: "org.vibeshape.document.metadata-command" }>,
+) {
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.commitAuthored(command)
+  if (session !== active) return result
+  if (!result.ok) {
+    publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
+    return result
+  }
+  publish({
+    ...state,
+    report: state.report
+      ? {
+          ...state.report,
+          snapshot: result.snapshot,
+          historyItems: active.historyItems,
+          rebuild: result.rebuild,
+        }
+      : null,
+    saveStatus: "saved",
+    diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+  })
+  return result
 }
 
 async function commitDocumentCommand(
@@ -1081,6 +1232,7 @@ export async function solveActiveSketch(
 
 export async function exportActiveDocument(
   format: GeometryExportFormat,
+  partId?: string,
 ): Promise<ActiveDocumentExportResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
@@ -1095,7 +1247,24 @@ export async function exportActiveDocument(
   }
   const active = session
   const { revision, name } = active.snapshot
-  const result = await active.exportDocument(format)
+  const authority = active.authoredSnapshot
+  const bodies =
+    authority?.schemaVersion === 2
+      ? authoredPartExportBodies(authority, state.report, partId)
+      : partId
+        ? null
+        : undefined
+  if (bodies === null)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The requested parts do not have current exportable geometry.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    }
+  const result = await active.exportDocument(format, bodies?.length ? { bodies } : {})
   if (session !== active || active.snapshot.revision !== revision) {
     return {
       ok: false,
@@ -1159,12 +1328,13 @@ function unavailableProjectFileResult() {
 export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupResult> {
   const action = captureProjectAction()
   if (!action) return projectActionUnavailable()
-  const portable = await action.repository.exportPortableProjectV2(action.id)
+  const portable = await action.repository.exportPortableProject(action.id)
   if (!portable.ok) return portable
-  if (!action.current() || portable.value.snapshot.revision !== action.revision)
+  if (!action.current() || portable.value.project.snapshot.revision !== action.revision)
     return projectActionUnavailable()
-  const archived = await writeVShapeV2({
-    ...portable.value,
+  const write = portable.value.version === 3 ? writeVShapeV3 : writeVShapeV2
+  const archived = await write({
+    ...portable.value.project,
     exportedAt: new Date().toISOString(),
     createdBy: { application: "VibeShape", version: "0.0.0", build: null },
     engine: null,
@@ -1187,23 +1357,23 @@ export async function importProjectBackup(
 ): Promise<ProjectImportResult> {
   const action = captureProjectAction()
   if (!action) return projectActionUnavailable()
-  const decoded = await readVersionedVShape(bytes)
+  const decoded = await readAuthoredVShape(bytes)
   if (!action.current()) return projectActionUnavailable()
   if (!decoded.ok) return decoded
-  const portable = portableProjectV2FromArchive(decoded.value)
+  const portable = portableProjectFromArchive(decoded.value)
   if (!portable.ok) return portable
   const copiedAt = new Date().toISOString()
-  const copied = copyPortableProjectV2({
-    source: portable.project,
+  const copied = copyBrowserPortableProject({
+    source: portable.value,
     documentId: documentIdSchema.parse(browserUuidV7()),
-    name: formatProjectCopyName(portable.project.snapshot.name, formatCopyName),
+    name: formatProjectCopyName(portable.value.project.snapshot.name, formatCopyName),
     issuedAt: copiedAt,
     nextCommandId: browserUuidV7,
     nextTransactionId: () => draftIdSchema.parse(browserUuidV7()),
   })
   if (!copied.ok) return copied
   if (!action.current()) return projectActionUnavailable()
-  const imported = await action.repository.copyPortableProjectV2({ ...copied.project, copiedAt })
+  const imported = await action.repository.copyPortableProject(copied.value, copiedAt)
   if (!action.current()) return projectActionUnavailable()
   return imported.ok
     ? { ok: true, documentId: imported.value.documentId }
@@ -1367,9 +1537,9 @@ export async function duplicateLocalProject(
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
   }
-  const portable = await activeRepository.exportPortableProjectV2(documentId.data)
+  const portable = await activeRepository.exportPortableProject(documentId.data)
   if (!portable.ok) return { ok: false, diagnostic: portable.diagnostic }
-  if (portable.value.snapshot.revision !== expectedHeadRevision) {
+  if (portable.value.project.snapshot.revision !== expectedHeadRevision) {
     return {
       ok: false,
       diagnostic: { code: "stale-revision", message: "The project changed before it was copied." },
@@ -1377,7 +1547,7 @@ export async function duplicateLocalProject(
   }
 
   const copiedAt = new Date().toISOString()
-  const copied = copyPortableProjectV2({
+  const copied = copyBrowserPortableProject({
     source: portable.value,
     documentId: documentIdSchema.parse(browserUuidV7()),
     name,
@@ -1387,10 +1557,7 @@ export async function duplicateLocalProject(
   })
   if (!copied.ok) return { ok: false, diagnostic: copied.diagnostic }
 
-  const stored = await activeRepository.copyPortableProjectV2({
-    ...copied.project,
-    copiedAt,
-  })
+  const stored = await activeRepository.copyPortableProject(copied.value, copiedAt)
   if (!stored.ok) return { ok: false, diagnostic: stored.diagnostic }
   await activeRepository.copyProjectThumbnail({
     sourceDocumentId: documentId.data,
@@ -1399,7 +1566,7 @@ export async function duplicateLocalProject(
     targetRevision: stored.value.revision,
     generatedAt: copiedAt,
   })
-  return { ok: true, documentId: stored.value.documentId, name: copied.project.snapshot.name }
+  return { ok: true, documentId: stored.value.documentId, name: copied.value.project.snapshot.name }
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {

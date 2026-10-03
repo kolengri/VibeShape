@@ -29,6 +29,8 @@
     "./model-bodies": "./src/model-bodies.ts",
     "./part-design": "./src/part-design.ts",
     "./part-design-hole": "./src/part-design-hole.ts",
+    "./part-design-placement": "./src/part-design-placement.ts",
+    "./part-design-body-combination": "./src/part-design-body-combination.ts",
     "./rectangle-sketch": "./src/rectangle-sketch.ts",
     "./sketch": "./src/sketch.ts",
     "./sketch-edit": "./src/sketch-edit.ts",
@@ -40,7 +42,15 @@
     "./topology": "./src/topology.ts",
     "./units": "./src/units.ts",
     "./variables": "./src/variables.ts",
-    "./model-edges": "./src/model-edges.ts"
+    "./model-edges": "./src/model-edges.ts",
+    "./parts": "./src/parts.ts",
+    "./history-folders": "./src/history-folders.ts",
+    "./document-v2": "./src/document-v2.ts",
+    "./document-v2-command-schemas": "./src/document-v2-command-schemas.ts",
+    "./document-v2-commands": "./src/document-v2-commands.ts",
+    "./document-v2-migration": "./src/document-v2-migration.ts",
+    "./document-v2-replay": "./src/document-v2-replay.ts",
+    "./document-v2-copy": "./src/document-v2-copy.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

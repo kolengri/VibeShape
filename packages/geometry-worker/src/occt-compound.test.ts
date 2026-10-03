@@ -59,4 +59,19 @@ describe("createOcctCompound", () => {
     expect(state.compound.delete).toHaveBeenCalledOnce()
     expect(state.builder.delete).toHaveBeenCalledOnce()
   })
+  it.each(["builder-constructor", "make", "add"])(
+    "releases every acquired native wrapper after %s failure",
+    (stage) => {
+      const state = harness()
+      const fail = () => {
+        throw new Error("Native compound fixture failure")
+      }
+      if (stage === "builder-constructor") state.opencascade.TopoDS_Builder.mockImplementation(fail)
+      if (stage === "make") state.builder.MakeCompound.mockImplementation(fail)
+      if (stage === "add") state.builder.Add.mockImplementation(fail)
+      expect(() => createOcctCompound(state.opencascade as never, state.shapes as never)).toThrow()
+      expect(state.compound.delete).toHaveBeenCalledOnce()
+      expect(state.builder.delete).toHaveBeenCalledTimes(stage === "builder-constructor" ? 0 : 1)
+    },
+  )
 })

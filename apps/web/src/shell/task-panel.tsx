@@ -1,3 +1,4 @@
+import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import {
   type FeatureRecord,
   readHoleBodyTarget,
@@ -9,6 +10,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
+import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerSelection } from "@vibeshape/viewer"
@@ -109,6 +111,9 @@ import {
   isActiveSketchEditorTool,
   type SketchDraftChangeMode,
 } from "../features/sketch/sketch-tool"
+import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
+import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
+import { PlacementTaskPanel } from "./placement-task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -1551,6 +1556,8 @@ function ActiveSubtractTaskPanel({
 type ExtrusionFaceSelection = Readonly<{ planar: boolean; canCreateSketch: boolean }>
 
 type ActiveTaskPanelProps = Readonly<{
+  authority: DocumentSnapshotV2 | null
+  parts: readonly ResolvedAuthoredPart[]
   documentBusy: boolean
   extrusionFaceSelection: ExtrusionFaceSelection | null
   onCreateSketch: () => void
@@ -1939,7 +1946,43 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
   )
 }
 
+function PlacementToolTaskPanel(props: ActiveTaskPanelProps) {
+  return (
+    <PlacementTaskPanel
+      {...props}
+      renderDelete={(feature) => (
+        <ActiveFeatureDeleteAction
+          feature={feature}
+          onDeleted={props.onCompleteTool}
+          report={props.report}
+        />
+      )}
+    />
+  )
+}
+
+function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
+  return (
+    <BodyCombinationTaskPanel
+      {...props}
+      renderDelete={(feature) => (
+        <ActiveFeatureDeleteAction
+          feature={feature}
+          onDeleted={props.onCompleteTool}
+          report={props.report}
+        />
+      )}
+    />
+  )
+}
+
 const activeTaskPanelByKind = {
+  "create-compound": CombinationToolTaskPanel,
+  "edit-compound": CombinationToolTaskPanel,
+  "create-union": CombinationToolTaskPanel,
+  "edit-union": CombinationToolTaskPanel,
+  "create-placement": PlacementToolTaskPanel,
+  "edit-placement": PlacementToolTaskPanel,
   "create-hole": HoleToolTaskPanel,
   "edit-hole": HoleToolTaskPanel,
   "create-fillet": EdgeTreatmentToolTaskPanel,
@@ -1994,6 +2037,8 @@ function ModelTaskPanel(props: TaskPanelProps) {
   if (props.activeTool && report) {
     return (
       <ActiveTaskPanel
+        authority={currentAuthoredSnapshot(props.controller)}
+        parts={currentAuthoredParts(props.controller)}
         activeTool={props.activeTool}
         extrusionFaceSelection={selectedExtrusionFace(props)}
         onCreateSketch={props.onCreateSketch}

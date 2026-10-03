@@ -1,8 +1,8 @@
 import { canonicalJson, type DocumentSnapshotV1 } from "@vibeshape/domain"
 
-type HistoryEntry = Readonly<{
-  before: DocumentSnapshotV1
-  after: DocumentSnapshotV1
+type HistoryEntry<Snapshot> = Readonly<{
+  before: Snapshot
+  after: Snapshot
   size: number
 }>
 
@@ -10,9 +10,11 @@ type HistoryEntry = Readonly<{
 const MAX_ENTRIES = 100
 const MAX_CHECKPOINT_BYTES = 32 * 1024 * 1024
 
-export class DocumentUndoHistory {
-  #undo: HistoryEntry[] = []
-  #redo: HistoryEntry[] = []
+export class DocumentUndoHistory<
+  Snapshot extends { revision: number; updatedAt: string } = DocumentSnapshotV1,
+> {
+  #undo: HistoryEntry<Snapshot>[] = []
+  #redo: HistoryEntry<Snapshot>[] = []
 
   get availability() {
     return { canUndo: this.#undo.length > 0, canRedo: this.#redo.length > 0 }
@@ -23,7 +25,7 @@ export class DocumentUndoHistory {
     this.#redo = []
   }
 
-  record(before: DocumentSnapshotV1 | null, after: DocumentSnapshotV1) {
+  record(before: Snapshot | null, after: Snapshot) {
     if (!before) return
     const { revision: _beforeRevision, updatedAt: _beforeTime, ...beforeContent } = before
     const { revision: _afterRevision, updatedAt: _afterTime, ...afterContent } = after

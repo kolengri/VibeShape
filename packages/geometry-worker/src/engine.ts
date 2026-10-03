@@ -1,7 +1,9 @@
 import {
   booleanFeatureContentParametersSchema,
   boxFeatureContentParametersSchema,
+  type CompoundFeatureContentParameters,
   chamferFeatureContentParametersSchema,
+  compoundFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   datumPlaneFeatureContentParametersSchema,
   extrusionExtentBounds,
@@ -23,12 +25,15 @@ import {
   holeFeatureContentParametersSchema,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
+  type PlacementFeatureContentParameters,
+  placementFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
+  unionFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
 import {
@@ -76,11 +81,18 @@ import {
   getWasmHeapBytes,
   type OpenCascadeMemoryModule,
 } from "./memory-profile"
+import {
+  createOcctBodyCompound,
+  createOcctBodyUnion,
+  disposeBodyCombination,
+  type OwnedBodyCombination,
+} from "./occt-body-combination"
 import { createOcctCompound } from "./occt-compound"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
+import { placeOcctShape } from "./occt-placement"
 import {
   createOcctBox,
   createOcctCylinder,
@@ -195,6 +207,12 @@ export type DocumentPrintMeshExportResult = Readonly<{
 type OpenCascadeModule = OpenCascadeInstance & OpenCascadeMemoryModule
 
 const MAX_FEATURE_WORKSPACE_LENGTH_MM = 100_000
+const PLACEMENT_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.placement#1"
+const COMPOUND_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.compound#1"
+const UNION_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.union#1"
 const PRINT_MESH_CHORD_TOLERANCE_MM = 0.02
 const PRINT_MESH_ANGULAR_TOLERANCE_RAD = 0.1
 const BOX_FEATURE_TYPE_KEY =
@@ -945,6 +963,9 @@ type ParsedFeature =
       parameters: RevolveMultiProfileModifyingContentParameters
     }
   | { kind: "hole"; parameters: HoleContentParameters }
+  | { kind: "placement"; parameters: PlacementFeatureContentParameters }
+  | { kind: "compound"; parameters: CompoundFeatureContentParameters }
+  | { kind: "union" }
 
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
@@ -1448,7 +1469,65 @@ function holeInputCardinalityIsValid(
   )
 }
 
+function hasNamedCombinationInputs(input: FeatureEvaluationInput): boolean {
+  if (input.content.schemaVersion !== 1) return false
+  const feature = input.content.feature
+  return (
+    feature.inputs.length >= 2 &&
+    feature.inputs.length <= 8 &&
+    input.dependencies.length === feature.inputs.length &&
+    feature.references.length === 0 &&
+    feature.inputRoles.every((role) => role !== null)
+  )
+}
+
+function parseBodyCombinationFeature(
+  input: FeatureEvaluationInput,
+  kind: "compound" | "union",
+): FeatureParseResult {
+  const feature = input.content.feature
+  if (!hasNamedCombinationInputs(input)) {
+    return invalidInputCardinality(
+      "Select two to eight exact bodies from distinct producing features; every input requires a named body role.",
+    )
+  }
+  if (kind === "union") {
+    return unionFeatureContentParametersSchema.safeParse(feature.parameters).success
+      ? { ok: true, feature: { kind: "union" } }
+      : featureFailure("invalid-feature-parameters", "Union content parameters are invalid.")
+  }
+  const parameters = compoundFeatureContentParametersSchema.safeParse(feature.parameters)
+  return parameters.success && parameters.data.outputRoles.length === feature.inputs.length
+    ? { ok: true, feature: { kind: "compound", parameters: parameters.data } }
+    : featureFailure(
+        "invalid-feature-parameters",
+        "Compound requires one authored output role per selected body.",
+      )
+}
+
+function parsePlacementFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (
+    input.content.schemaVersion !== 1 ||
+    feature.inputs.length !== 1 ||
+    input.dependencies.length !== 1 ||
+    feature.references.length !== 0 ||
+    input.content.feature.inputRoles[0] == null
+  ) {
+    return invalidInputCardinality(
+      "Placement requires one exact named body dependency and no topology references.",
+    )
+  }
+  const parameters = placementFeatureContentParametersSchema.safeParse(feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "placement", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Placement content parameters are invalid.")
+}
+
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
+  [COMPOUND_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "compound")],
+  [UNION_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "union")],
+  [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
   [FILLET_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "chamfer")],
@@ -1782,9 +1861,31 @@ function createHoleFeatureShape(
   }
 }
 
+function createPlacementFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: PlacementFeatureContentParameters,
+  source: Shape3D | undefined,
+) {
+  if (!source) throw new Error("Placement target body is unavailable.")
+  const metrics = measureShape(opencascade, source)
+  if (!featureResultMetricsAreValid(metrics, 1))
+    throw new Error("Placement requires one valid positive-volume solid.")
+  return placeOcctShape(opencascade, source, parameters)
+}
+
+function validateCombinationSources(opencascade: OpenCascadeInstance, sources: readonly Shape3D[]) {
+  for (const source of sources) {
+    if (!featureResultMetricsAreValid(measureShape(opencascade, source), 1))
+      throw new Error("Each selected body must be a valid positive-volume single solid.")
+  }
+}
+
 function createFeatureShape(
   opencascade: OpenCascadeInstance,
-  feature: Exclude<ParsedFeature, { kind: "selected-fillet" | "selected-chamfer" }>,
+  feature: Exclude<
+    ParsedFeature,
+    { kind: "selected-fillet" | "selected-chamfer" | "placement" | "compound" | "union" }
+  >,
   dependencyShapes: readonly Shape3D[],
 ) {
   switch (feature.kind) {
@@ -2478,6 +2579,7 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
 }
 
 function featureProfileCount(feature: ParsedFeature) {
+  if (feature.kind === "compound") return feature.parameters.outputRoles.length
   return feature.kind === "multi-extrusion" ||
     feature.kind === "multi-revolve" ||
     feature.kind === "extent-extrusion"
@@ -2503,7 +2605,7 @@ function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSoli
 }
 
 function featureHasSingleBody(metrics: ReturnType<typeof measureShape>, feature: ParsedFeature) {
-  return metrics.solidCount === 1 && feature.kind !== "datum-plane"
+  return metrics.solidCount === 1 && feature.kind !== "datum-plane" && feature.kind !== "compound"
 }
 
 function evaluateFeatureGeometry(
@@ -2513,10 +2615,18 @@ function evaluateFeatureGeometry(
 ) {
   const startedAt = performance.now()
   const metrics = measureShape(opencascade, shape)
+  if (
+    ["placement", "compound", "union"].includes(feature.kind) &&
+    !withinFeatureWorkspace([...metrics.bounds.min, ...metrics.bounds.max].map(Math.abs))
+  ) {
+    throw new Error("Geometry must remain within the supported world-coordinate bounds.")
+  }
   const maximumSolidCount = featureSolidCountLimit(
     featureSolidKind(feature),
     featureProfileCount(feature),
   )
+  if (feature.kind === "compound" && metrics.solidCount !== maximumSolidCount)
+    throw new Error("A Compound must retain every separately owned input solid.")
   if (!featureResultMetricsAreValid(metrics, maximumSolidCount)) {
     throw new Error("Feature evaluation did not produce a valid bounded positive-volume result.")
   }
@@ -2548,11 +2658,11 @@ function tessellateFeatureGeometry(
 function createFeatureEvaluationShape(
   opencascade: OpenCascadeInstance,
   source: Extract<FeatureShapeSource, { ok: true }>,
-  feature: ParsedFeature,
+  feature: Exclude<ParsedFeature, { kind: "compound" }>,
   input: FeatureEvaluationInput,
   createUncached: (
     opencascade: OpenCascadeInstance,
-    feature: ParsedFeature,
+    feature: Exclude<ParsedFeature, { kind: "compound" }>,
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
   ) => Shape3D,
@@ -2605,10 +2715,62 @@ function featureEvaluationResult(
   }
 }
 
+function evaluateCompoundBody(
+  opencascade: OpenCascadeInstance,
+  output: OwnedBodyCombination["outputs"][number],
+  mesh: FeatureEvaluationInput["mesh"],
+) {
+  const metrics = measureShape(opencascade, output.shape)
+  if (!featureResultMetricsAreValid(metrics, 1))
+    throw new Error("Compound constituent geometry is invalid.")
+  const snapshot = captureReplicadTopologySnapshot(output.shape)
+  const tessellation = tessellateFeatureGeometry(opencascade, output.shape, mesh)
+  return {
+    snapshot,
+    body: {
+      outputRole: output.role,
+      shape: metrics,
+      mesh: tessellation.mesh,
+      topologyCandidates: snapshot.candidates,
+    },
+  }
+}
+
 type FeatureShapeSource =
   | { ok: true; brepHit: true; shape: Shape3D }
   | { ok: true; brepHit: false; dependencies: Shape3D[] }
   | Extract<FeatureEvaluationResult, { ok: false }>
+
+function compoundBundleForEvaluation(
+  registry: DocumentFeatureShapeRegistry<Shape3D>,
+  input: FeatureEvaluationInput,
+  feature: Extract<ParsedFeature, { kind: "compound" }>,
+  source: Extract<FeatureShapeSource, { ok: true }>,
+  opencascade: OpenCascadeInstance,
+): OwnedBodyCombination {
+  if (!source.brepHit) {
+    validateCombinationSources(opencascade, source.dependencies)
+    return createOcctBodyCompound(opencascade, source.dependencies, feature.parameters.outputRoles)
+  }
+  const outputs = feature.parameters.outputRoles.map((role) => {
+    const shape = registry.getOutput(input.documentId, input.featureId, input.contentHash, role)
+    if (!shape) throw new Error("An exact authored Compound role is unavailable.")
+    return { role, shape }
+  })
+  return { shape: source.shape, outputs }
+}
+
+function disposeUncachedCompound(
+  bundle: OwnedBodyCombination | null,
+  snapshots: WeakMap<Shape3D, TopologyCaptureSnapshot>,
+): boolean {
+  const cleanupSucceeded = disposeBodyCombination(bundle)
+  if (bundle) {
+    snapshots.delete(bundle.shape)
+    for (const output of bundle.outputs) snapshots.delete(output.shape)
+  }
+  return cleanupSucceeded
+}
 
 function resolveFeatureShapeSource(
   registry: DocumentFeatureShapeRegistry<Shape3D>,
@@ -2771,8 +2933,10 @@ export type GeometryTopologyResolver = (
 
 export class ReplicadGeometryEngine implements GeometryKernelEngine {
   readonly #ownedShapes = new OwnedShapeRegistry()
-  readonly #featureShapes = new DocumentFeatureShapeRegistry<Shape3D>()
   readonly #topologySnapshots = new WeakMap<Shape3D, TopologyCaptureSnapshot>()
+  readonly #featureShapes = new DocumentFeatureShapeRegistry<Shape3D>((shape) =>
+    this.#topologySnapshots.delete(shape),
+  )
   #metadata: GeometryEngineMetadata | null = null
   #opencascade: OpenCascadeModule | null = null
   #initialization: Promise<GeometryEngineMetadata> | null = null
@@ -2865,6 +3029,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return featureFailure("invalid-feature-geometry", "OpenCascade did not initialize.")
     }
 
+    const feature = parsed.feature
+    if (feature.kind === "compound")
+      return this.#evaluateCompound(input, feature, opencascade, engine, reportProgress)
+
     reportProgress("feature-validation", 0.1)
     const totalStartedAt = performance.now()
     const source = resolveFeatureShapeSource(this.#featureShapes, input)
@@ -2876,13 +3044,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const evaluatedShape = createFeatureEvaluationShape(
         opencascade,
         source,
-        parsed.feature,
+        feature,
         input,
         (module, feature, dependencies, featureInput) =>
           this.#createUncachedFeature(module, feature, dependencies, featureInput),
       )
       temporaryShape = evaluatedShape.temporaryShape
-      const evaluation = evaluateFeatureGeometry(opencascade, evaluatedShape.shape, parsed.feature)
+      const evaluation = evaluateFeatureGeometry(opencascade, evaluatedShape.shape, feature)
       this.#topologySnapshots.set(evaluatedShape.shape, evaluation.topologySnapshot)
 
       reportProgress("feature-tessellation", 0.7)
@@ -2917,12 +3085,85 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
   }
 
+  #evaluateCompound(
+    input: FeatureEvaluationInput,
+    feature: Extract<ParsedFeature, { kind: "compound" }>,
+    opencascade: OpenCascadeInstance,
+    engine: GeometryEngineMetadata,
+    reportProgress: ProgressReporter,
+  ): FeatureEvaluationResult {
+    reportProgress("feature-validation", 0.1)
+    const startedAt = performance.now()
+    const source = resolveFeatureShapeSource(this.#featureShapes, input)
+    if (!source.ok) return source
+    let temporary: OwnedBodyCombination | null = null
+    try {
+      reportProgress("feature-evaluation", 0.35)
+      const { shape, outputs } = compoundBundleForEvaluation(
+        this.#featureShapes,
+        input,
+        feature,
+        source,
+        opencascade,
+      )
+      if (!source.brepHit) temporary = { shape, outputs }
+      const evaluation = evaluateFeatureGeometry(opencascade, shape, feature)
+      this.#topologySnapshots.set(shape, evaluation.topologySnapshot)
+      reportProgress("feature-tessellation", 0.7)
+      const tessellation = tessellateFeatureGeometry(opencascade, shape, input.mesh)
+      const bodies = outputs.map((output) => {
+        const result = evaluateCompoundBody(opencascade, output, input.mesh)
+        this.#topologySnapshots.set(output.shape, result.snapshot)
+        return result.body
+      })
+      if (temporary) {
+        this.#featureShapes.replace(
+          input.documentId,
+          input.featureId,
+          input.contentHash,
+          temporary.shape,
+          temporary.outputs,
+        )
+        temporary = null
+      }
+      reportProgress("complete", 1)
+      return {
+        ok: true,
+        result: {
+          ...featureEvaluationResult(
+            engine,
+            evaluation,
+            tessellation,
+            source.brepHit,
+            elapsed(startedAt),
+          ),
+          bodies,
+        },
+      }
+    } catch {
+      const cleanupSucceeded = disposeUncachedCompound(temporary, this.#topologySnapshots)
+      return featureFailure(
+        "invalid-feature-geometry",
+        cleanupSucceeded
+          ? "Compound geometry evaluation failed."
+          : "Compound evaluation failed and temporary shape cleanup did not complete.",
+      )
+    }
+  }
+
   #createUncachedFeature(
     opencascade: OpenCascadeInstance,
-    feature: ParsedFeature,
+    feature: Exclude<ParsedFeature, { kind: "compound" }>,
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
   ) {
+    if (feature.kind === "union") {
+      validateCombinationSources(opencascade, dependencies)
+      return createOcctBodyUnion(opencascade, dependencies)
+    }
+    if (feature.kind === "placement") {
+      return createPlacementFeatureShape(opencascade, feature.parameters, dependencies[0])
+    }
     if (feature.kind !== "selected-fillet" && feature.kind !== "selected-chamfer") {
       return createFeatureShape(opencascade, feature, dependencies)
     }

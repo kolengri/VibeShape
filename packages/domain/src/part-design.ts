@@ -4,7 +4,9 @@ import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { type FeatureId, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
+import { compoundFeatureTypeHandler, unionFeatureTypeHandler } from "./part-design-body-combination"
 import { holeFeatureTypeHandler, holeFeatureTypeHandlerV2 } from "./part-design-hole"
+import { placementFeatureTypeHandler } from "./part-design-placement"
 import {
   createSketchProfileSet,
   sketchProfileSelectorSchema,
@@ -1306,4 +1308,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   },
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
+  placementFeatureTypeHandler,
+  compoundFeatureTypeHandler,
+  unionFeatureTypeHandler,
 ]

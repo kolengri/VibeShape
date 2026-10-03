@@ -1,3 +1,5 @@
+export type { AuthorityRecoveryReport } from "./authority-recovery"
+export * from "./authority-schemas"
 export * from "./cache"
 export * from "./capabilities"
 export * from "./database"

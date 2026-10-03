@@ -1,3 +1,4 @@
+import { resolveAuthoredParts } from "@vibeshape/application/authored-parts"
 import { useTranslations } from "@vibeshape/i18n"
 import type { GeometryExportFormat } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
@@ -12,6 +13,7 @@ import {
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
 import { Download } from "@vibeshape/ui/components/icons"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useState } from "react"
 import { PrintPreparationPanel } from "../printing/print-preparation-panel"
@@ -52,13 +54,13 @@ type ExportActivity = Readonly<{
 
 const idleActivity: ExportActivity = { pendingFormat: null, statusKey: null, failed: false }
 
-function useDocumentExportAction(closeDialog: () => void) {
+function useDocumentExportAction(closeDialog: () => void, partId?: string) {
   const [activity, setActivity] = useState<ExportActivity>(idleActivity)
 
   const runExport = async (format: GeometryExportFormat) => {
     setActivity({ pendingFormat: format, statusKey: formatCopy[format].pending, failed: false })
     try {
-      const result = await exportActiveDocument(format)
+      const result = await exportActiveDocument(format, partId)
       if (!result.ok) {
         setActivity({ pendingFormat: null, statusKey: "status.failed", failed: true })
         return
@@ -138,6 +140,84 @@ function ExportNotice({ hasGeometry, failed }: { hasGeometry: boolean; failed: b
   )
 }
 
+function ExportPartSelection({
+  controller,
+  value,
+  onChange,
+  disabled,
+}: {
+  controller: DocumentControllerState
+  value: string
+  onChange: (value: string) => void
+  disabled: boolean
+}) {
+  const t = useTranslations("app.export")
+  const authority = controller.authoredSnapshot
+  if (authority?.schemaVersion !== 2 || !controller.report) return null
+  const parts =
+    resolveAuthoredParts(authority, controller.report)?.filter(({ body }) => body !== null) ?? []
+  if (parts.length === 0) return null
+  return (
+    <div className="grid gap-2">
+      <SelectField
+        label={t("parts.label")}
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled}
+      >
+        <SelectOption value="all">{t("parts.all")}</SelectOption>
+        {parts.map(({ part }) => (
+          <SelectOption key={part.id} value={part.id}>
+            {part.name}
+          </SelectOption>
+        ))}
+      </SelectField>
+      <p className="text-xs text-muted-foreground">{t("parts.description")}</p>
+    </div>
+  )
+}
+
+function ExportPreparation({
+  controller,
+  available,
+  shown,
+  onShowChange,
+  disabled,
+  panelDisabled,
+  onBusyChange,
+}: {
+  controller: DocumentControllerState
+  available: boolean
+  shown: boolean
+  onShowChange: (shown: boolean) => void
+  disabled: boolean
+  panelDisabled: boolean
+  onBusyChange: (busy: boolean) => void
+}) {
+  const t = useTranslations("app.export")
+  if (!available) return null
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled}
+        aria-expanded={shown}
+        onClick={() => onShowChange(!shown)}
+      >
+        {t(shown ? "originalExport" : "preparePrint")}
+      </Button>
+      {shown ? (
+        <PrintPreparationPanel
+          key={`${controller.report?.snapshot.id}:${controller.report?.snapshot.revision}`}
+          disabled={panelDisabled}
+          onBusyChange={onBusyChange}
+        />
+      ) : null}
+    </>
+  )
+}
+
 export function DocumentExportDialog({
   controller,
   preferredFormat = "3mf",
@@ -151,15 +231,21 @@ export function DocumentExportDialog({
   const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
   const [printPending, setPrintPending] = useState(false)
   const [showPreparation, setShowPreparation] = useState(false)
-  const { activity, runExport, resetActivity } = useDocumentExportAction(() => setOpen(false))
+  const [exportPart, setExportPart] = useState("all")
+  const selectedPartId = exportPart === "all" ? undefined : exportPart
+  const { activity, runExport, resetActivity } = useDocumentExportAction(
+    () => setOpen(false),
+    selectedPartId,
+  )
   const hasGeometry = documentHasExportableGeometry(controller)
-  const actionDisabled =
-    activity.pendingFormat !== null || slicerPending || printPending || !hasGeometry
+  const preparationDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
+  const actionDisabled = preparationDisabled || printPending
   const changeDialogOpen = (nextOpen: boolean) => {
     if (nextOpen) {
       setSlicerStatus(null)
       resetActivity()
       setShowPreparation(false)
+      setExportPart("all")
     }
     setOpen(nextOpen)
   }
@@ -199,50 +285,51 @@ export function DocumentExportDialog({
             <DialogDescription>{t("description")}</DialogDescription>
           </DialogHeader>
           {!showPreparation ? (
-            <SlicerHandoffPanel
-              disabled={actionDisabled}
-              onBusyChange={setSlicerPending}
-              onOpened={(message) => {
-                setSlicerStatus(message)
-                setOpen(false)
-              }}
-              prepareThreeMf={() => exportActiveDocument("3mf")}
-            />
-          ) : null}
-          {!showPreparation ? (
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                preferredFormat,
-                ...(["3mf", "step", "stl"] as const).filter((format) => format !== preferredFormat),
-              ].map((format) => (
-                <ExportFormatCard
-                  key={format}
-                  format={format}
-                  preferred={format === preferredFormat}
-                  disabled={actionDisabled}
-                  loading={activity.pendingFormat === format}
-                  onExport={runExport}
-                />
-              ))}
-            </div>
+            <>
+              <ExportPartSelection
+                controller={controller}
+                value={exportPart}
+                onChange={setExportPart}
+                disabled={actionDisabled}
+              />
+              <SlicerHandoffPanel
+                disabled={actionDisabled}
+                onBusyChange={setSlicerPending}
+                onOpened={(message) => {
+                  setSlicerStatus(message)
+                  setOpen(false)
+                }}
+                prepareThreeMf={() => exportActiveDocument("3mf", selectedPartId)}
+              />
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  preferredFormat,
+                  ...(["3mf", "step", "stl"] as const).filter(
+                    (format) => format !== preferredFormat,
+                  ),
+                ].map((format) => (
+                  <ExportFormatCard
+                    key={format}
+                    format={format}
+                    preferred={format === preferredFormat}
+                    disabled={actionDisabled}
+                    loading={activity.pendingFormat === format}
+                    onExport={runExport}
+                  />
+                ))}
+              </div>
+            </>
           ) : null}
           <ExportNotice hasGeometry={hasGeometry} failed={activity.failed} />
-          <Button
-            type="button"
-            variant="outline"
+          <ExportPreparation
+            controller={controller}
+            available={exportPart === "all"}
+            shown={showPreparation}
+            onShowChange={setShowPreparation}
             disabled={actionDisabled}
-            aria-expanded={showPreparation}
-            onClick={() => setShowPreparation(!showPreparation)}
-          >
-            {t(showPreparation ? "originalExport" : "preparePrint")}
-          </Button>
-          {showPreparation ? (
-            <PrintPreparationPanel
-              key={`${controller.report?.snapshot.id}:${controller.report?.snapshot.revision}`}
-              disabled={activity.pendingFormat !== null || slicerPending || !hasGeometry}
-              onBusyChange={setPrintPending}
-            />
-          ) : null}
+            panelDisabled={preparationDisabled}
+            onBusyChange={setPrintPending}
+          />
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">

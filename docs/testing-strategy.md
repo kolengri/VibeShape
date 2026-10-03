@@ -83,6 +83,15 @@ enforcement, and rejection of tampered seeds, History anchors, and promotion bou
 recomputed. Manifest tests also reject JSON/NDJSON media-type substitutions before replay.
 Legacy `readVShape` and `writeVShape` remain strict v0 compatibility gates.
 
+Authored V2 and archive-format-3 coverage adds explicit upgrade replay, captured part allocation/effect rejection,
+complete metadata Undo, same-store atomic commits, old-runtime refusal, and mixed-history copies preserving local
+part/folder identities and actors. Real browser workflows cover independent dimensional edits, Parts visibility,
+contiguous folders, reload, and File Save/Open. Placement and Compound/Union additionally require exact native
+bounds/volume, stable semantic roles, suppression/repair, and disposal evidence. Selected exports must match the
+chosen current body; multipart 3MF must retain names and world placement and open in independent slicers.
+Typed metadata MCP tests require manual review even when CAD auto-apply is enabled, persistent duplicate rejection,
+stale/cancel/disconnect handling, and unchanged exact geometry after metadata changes.
+
 The transitional model-tree suite verifies that the schema-version-0 graph projection produces one History
 branch, keeps Datum Planes in History but out of Bodies, lists only terminal solid results under Bodies, exposes
 origin-plane and feature/profile provenance, and preserves stable sketch and feature activation. It also proves
@@ -393,7 +402,7 @@ geometry-class drift, and degenerate projections; projection tests cover full an
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
 - Shared UI component tests cover native uncontrolled behavior before TanStack Form adapters, including double activation, async settlement, disabled/busy semantics, labels, and validation relationships.
 - Editor-session component tests prove one vanilla Zustand store per provider mount, retention across ordinary rerenders, and reset only when the owning React boundary remounts.
-- Planar-face Intersection coverage proves that persisted references exclude transient mesh identities, current worker-local face keys never cross the protocol boundary, 3D face selection routes only through the explicit tool, and the browser executes the exact OCCT section into one read-only sketch line. The current document protocol version is 18.
+- Planar-face Intersection coverage proves that persisted references exclude transient mesh identities, current worker-local face keys never cross the protocol boundary, 3D face selection routes only through the explicit tool, and the browser executes the exact OCCT section into one read-only sketch line. Document protocol version 22 also validates bounded exact export-body selections.
 - I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 

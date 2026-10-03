@@ -7,6 +7,15 @@ import {
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
+import {
+  authoredFoldersViewSchema,
+  authoredHistoryListArgumentsSchema,
+  authoredHistoryViewSchema,
+  authoredListArgumentsSchema,
+  authoredPartsViewSchema,
+  metadataChangeArgumentsSchema,
+  metadataCommitViewSchema,
+} from "./authored-metadata"
 import { automationDraftInspectionViewSchema } from "./draft-inspection"
 import {
   automationDraftCommitViewSchema,
@@ -87,6 +96,10 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  model_history: authoredHistoryListArgumentsSchema,
+  model_parts: authoredListArgumentsSchema,
+  model_folders: authoredListArgumentsSchema,
+  change_metadata: metadataChangeArgumentsSchema,
   ...localDraftInspectionInputs,
   model_edges: modelEdgeQuerySchema.omit({ kind: true, schemaVersion: true, documentId: true }),
   model_body_measurements: modelBodyMeasurementArgumentsSchema,
@@ -152,6 +165,10 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  model_history: resultOf(authoredHistoryViewSchema),
+  model_parts: resultOf(authoredPartsViewSchema),
+  model_folders: resultOf(authoredFoldersViewSchema),
+  change_metadata: resultOf(metadataCommitViewSchema),
   draft_tree: resultOf(automationDraftInspectionViewSchema),
   draft_entity: resultOf(automationDraftInspectionViewSchema),
   draft_variables: resultOf(automationDraftInspectionViewSchema),
@@ -189,6 +206,10 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "model_history",
+  "model_parts",
+  "model_folders",
+  "change_metadata",
   "draft_tree",
   "draft_entity",
   "draft_variables",
@@ -227,6 +248,12 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),
+  z.object({ tool: z.literal("model_parts"), arguments: localToolInputs.model_parts }).strict(),
+  z.object({ tool: z.literal("model_folders"), arguments: localToolInputs.model_folders }).strict(),
+  z
+    .object({ tool: z.literal("change_metadata"), arguments: localToolInputs.change_metadata })
+    .strict(),
   ...localDraftInspectionOperations,
   z
     .object({
@@ -270,13 +297,13 @@ export type LocalToolResult = z.infer<(typeof localToolOutputs)[LocalToolName]>
 
 export type LocalDraftCommandOperation = Extract<
   LocalOperation,
-  { arguments: { commandId: string } }
+  { arguments: { commandId: string; draftId: string } }
 >
 
 export function isLocalDraftCommand(
   operation: LocalOperation,
 ): operation is LocalDraftCommandOperation {
-  return "commandId" in operation.arguments
+  return "commandId" in operation.arguments && "draftId" in operation.arguments
 }
 
 export type LocalInspectionOperation = Extract<
@@ -318,5 +345,27 @@ export function isLocalInspection(
     operation.tool === "model_edges" ||
     operation.tool === "model_body_measurements" ||
     operation.tool === "model_body_topology"
+  )
+}
+
+export type LocalMetadataReadOperation = Extract<
+  LocalOperation,
+  { tool: "model_parts" | "model_folders" | "model_history" }
+>
+export function isLocalMetadataRead(
+  operation: LocalOperation,
+): operation is LocalMetadataReadOperation {
+  return (
+    operation.tool === "model_parts" ||
+    operation.tool === "model_folders" ||
+    operation.tool === "model_history"
+  )
+}
+export function isLocalMetadataTool(tool: LocalToolName) {
+  return (
+    tool === "model_parts" ||
+    tool === "model_folders" ||
+    tool === "model_history" ||
+    tool === "change_metadata"
   )
 }

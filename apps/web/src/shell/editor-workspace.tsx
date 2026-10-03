@@ -11,6 +11,7 @@ import {
   type DocumentSnapshot,
   type FeatureId,
   type FeatureRecord,
+  type PartId,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   type revolveFeatureParametersSchema,
@@ -45,6 +46,7 @@ import {
 import { automationReviews } from "../automation/automation-review-controller"
 import { AutomationReviewPanel } from "../automation/automation-review-panel"
 import {
+  commitAuthoredMetadata,
   type DocumentControllerState,
   moveHistoryItem,
   removeSketch,
@@ -150,6 +152,12 @@ function committedGeometry(controller: DocumentControllerState) {
 }
 
 const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = new Set([
+  "create-compound",
+  "edit-compound",
+  "create-union",
+  "edit-union",
+  "create-placement",
+  "edit-placement",
   "create-hole",
   "edit-hole",
   "create-fillet",
@@ -1726,6 +1734,9 @@ export type EditorWorkspaceActions = Readonly<{
   editSketch: (sketchId: SketchId) => void
   preselectBody?: (body: ModelBodySelection | null) => void
   selectBody?: (body: ModelBodySelection | null) => void
+  selectPart?: (partId: PartId | null) => void
+  combineParts?: (operation: "compound" | "union") => void
+  placePart?: (partId: PartId) => void
   preselectFeature: (featureId: FeatureId | null) => void
   select: (selection: ViewerSelection | null) => void
   selectSavedSketchProfile: (
@@ -1775,6 +1786,7 @@ type EditorWorkspaceProps = Readonly<{
   onSketchFinalContextChange: (visible: boolean) => void
   preselectedBody?: ModelBodySelection | null
   selectedBody?: ModelBodySelection | null
+  selectedPartId?: PartId | null
   preselectedFeatureId: FeatureId | null
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   primitivePlacementRequest: PrimitivePlacementRequest | null
@@ -2019,6 +2031,12 @@ function EditorModelTree({
       hiddenFeatureIds={props.hiddenFeatureIds}
       hiddenSketchIds={props.hiddenSketchIds}
       activeBody={props.selectedBody}
+      selectedPartId={props.selectedPartId}
+      onPartSelect={actions.selectPart}
+      onPartPlace={actions.placePart}
+      onPartsCombine={actions.combineParts}
+      onAuthoredMetadata={commitAuthoredMetadata}
+      authoredMetadataBlocked={Boolean(activeTool || activeSketchTool)}
       onBodyActivate={actions.selectBody}
       onBodyPreselectionChange={actions.preselectBody}
       onFeatureActivate={actions.editFeature}

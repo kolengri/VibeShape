@@ -6,7 +6,9 @@ import {
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
+  isLocalMetadataRead,
   LOCAL_EXPORT_MAX_BYTES,
+  type LocalMetadataReadOperation,
   type LocalOperation,
   localFailure,
 } from "@vibeshape/automation-api/local-tools"
@@ -26,6 +28,7 @@ import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 import { createLocalVariableCommand } from "./local-variable-command"
+import type { createMetadataAutomationSession } from "./metadata-automation-session"
 
 type LocalExportResult =
   | { ok: true; format: "step" | "stl" | "3mf"; file: Uint8Array; documentName: string }
@@ -35,6 +38,7 @@ type LocalSessionPort = Readonly<{
   documentId: string
   revision: number
   host: AutomationHost
+  metadata?: ReturnType<typeof createMetadataAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -157,7 +161,7 @@ function isVariableCommand(operation: LocalOperation): operation is Extract<
 }
 
 function draftCommandRequest(
-  operation: Extract<LocalOperation, { arguments: { commandId: string } }>,
+  operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
   actor: CommandActor,
   documentId: string,
 ) {
@@ -177,7 +181,7 @@ function draftCommandRequest(
 async function dispatchDraftCommand(
   session: LocalSessionPort,
   actor: CommandActor,
-  operation: Extract<LocalOperation, { arguments: { commandId: string } }>,
+  operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
 ) {
   const request = draftCommandRequest(operation, actor, session.documentId)
   const result = await session.host.applyCommand(actor, request)
@@ -188,11 +192,35 @@ function hostResult(result: AutomationHostResult<unknown>) {
   return result.ok ? { ok: true as const, value: result.value } : diagnostic(result)
 }
 
+const metadataKinds = {
+  model_parts: "parts",
+  model_folders: "folders",
+  model_history: "history",
+} as const
+function readMetadata(session: LocalSessionPort, operation: LocalMetadataReadOperation) {
+  return session.metadata
+    ? session.metadata.read(metadataKinds[operation.tool], operation.arguments)
+    : localFailure("authored-metadata-unavailable", "The paired document has no authored metadata.")
+}
+function changeMetadata(
+  session: LocalSessionPort,
+  actor: CommandActor,
+  operation: Extract<LocalOperation, { tool: "change_metadata" }>,
+  signal?: AbortSignal,
+) {
+  return session.metadata
+    ? session.metadata.change(actor, operation.arguments, signal)
+    : localFailure("authored-metadata-unavailable", "The paired document has no authored metadata.")
+}
+
 export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
 ): LocalToolExecutor {
-  async function execute(operation: LocalOperation) {
+  async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
+    if (operation.tool === "change_metadata")
+      return changeMetadata(session, actor, operation, signal)
     if (isLocalDraftCommand(operation)) return dispatchDraftCommand(session, actor, operation)
     if (isLocalDraftInspection(operation)) {
       const result = await session.host.inspectDraft(actor, {
@@ -223,7 +251,7 @@ export function createLocalToolExecutor(
         ? Promise.resolve(
             localFailure("request-cancelled", "The automation request was cancelled.", true),
           )
-        : execute(operation),
+        : execute(operation, signal),
   }
 }
 

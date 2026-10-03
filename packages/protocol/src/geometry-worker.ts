@@ -35,6 +35,35 @@ export const MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS = 65_536
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
+const placementAngleSchema = finiteNumberSchema.min(-2 * Math.PI).max(2 * Math.PI)
+export const placementFeatureContentParametersSchema = z
+  .object({
+    translation: vector3Schema,
+    rotation: z.tuple([placementAngleSchema, placementAngleSchema, placementAngleSchema]),
+  })
+  .strict()
+export type PlacementFeatureContentParameters = z.infer<
+  typeof placementFeatureContentParametersSchema
+>
+const compoundOutputRoleSchema = z
+  .string()
+  .regex(/^body\.[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+export const compoundFeatureContentParametersSchema = z
+  .object({
+    outputRoles: z
+      .array(compoundOutputRoleSchema)
+      .min(2)
+      .max(8)
+      .refine(
+        (roles) => new Set(roles).size === roles.length,
+        "Compound output slot identities must be unique.",
+      ),
+  })
+  .strict()
+export type CompoundFeatureContentParameters = z.infer<
+  typeof compoundFeatureContentParametersSchema
+>
+export const unionFeatureContentParametersSchema = z.object({}).strict()
 const topologyVector3Schema = z.tuple([finiteNumberSchema, finiteNumberSchema, finiteNumberSchema])
 
 function vectorDot(

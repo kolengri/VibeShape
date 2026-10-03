@@ -149,11 +149,11 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create extrusion" }).click()
 
-    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
-    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
@@ -177,7 +177,7 @@ test.describe("selector-backed extrusion", () => {
         await boxForm.getByRole("combobox", { name: "Origin Z" }).fill("-20 mm")
       }
       await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
-      await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+      await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
 
       await page
         .getByRole("complementary", { name: "Task panel" })
@@ -207,11 +207,11 @@ test.describe("selector-backed extrusion", () => {
       await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await form.getByRole("button", { name: "Create extrusion" }).click()
 
-      await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+      await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
       await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
         timeout: 120_000,
       })
-      await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+      await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
       const editForm = page.getByRole("form", { name: "Edit extrusion" })
       await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveText(
         resultOperationLabels[operation],
@@ -277,9 +277,9 @@ test.describe("selector-backed extrusion", () => {
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create extrusion" }).click()
-    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
 
-    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
@@ -287,8 +287,8 @@ test.describe("selector-backed extrusion", () => {
     await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await editForm.getByRole("button", { name: "Update extrusion" }).click()
 
-    await page.getByRole("treeitem", { name: "Variables" }).click()
-    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     await expect(
       page
         .getByRole("form", { name: "Edit extrusion" })
@@ -307,7 +307,7 @@ test.describe("selector-backed extrusion", () => {
     await confirmSketchPlane(page, "xy")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.reload()
@@ -339,7 +339,7 @@ test.describe("selector-backed extrusion", () => {
     await confirmSketchPlane(page, "xy")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.reload()
@@ -390,7 +390,7 @@ test.describe("selector-backed extrusion", () => {
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
     await expect(startPanel.getByRole("heading", { name: "Start with a sketch" })).toBeVisible()
 
-    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("depth")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("18 mm")
@@ -405,7 +405,7 @@ test.describe("selector-backed extrusion", () => {
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
 
-    await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1", {
       timeout: 120_000,
@@ -432,16 +432,16 @@ test.describe("selector-backed extrusion", () => {
     })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
     await expect(page.getByText("Unsaved extrusion preview", { exact: true })).toBeVisible()
-    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).not.toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).not.toBeVisible()
     await createForm.getByRole("button", { name: "Create extrusion" }).dblclick()
 
-    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toBeVisible()
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     const normalSketchViewport = page.locator("section[data-sketch-context-mode='normal']")
@@ -491,7 +491,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
-    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(editForm.getByRole("combobox", { name: "Distance" })).toHaveValue("#depth")
     await expect(editForm.getByRole("checkbox", { name: "Extrude symmetrically" })).toBeChecked()
@@ -503,7 +503,7 @@ test.describe("selector-backed extrusion", () => {
     await editForm.getByRole("button", { name: "Cancel" }).click()
     await expect(viewport).toHaveAttribute("data-preview-status", "idle")
 
-    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     const expression = page.getByRole("combobox", { name: "Variable expression" })
     await expression.fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
@@ -516,13 +516,13 @@ test.describe("selector-backed extrusion", () => {
     })
 
     await page.reload()
-    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
-    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.getByRole("combobox", { name: "Variable expression" })).toHaveValue("24 mm")
-    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(reopenedForm.getByRole("combobox", { name: "Distance" })).toHaveValue("#depth")
     await expect(
@@ -579,8 +579,8 @@ test.describe("selector-backed extrusion", () => {
     await expect(extrusionForm).toBeVisible()
     await extrusionForm.getByRole("button", { name: "Create extrusion" }).click()
 
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
-    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
@@ -590,7 +590,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Show Box 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
 
-    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toBeVisible()
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     const sketchContext = page.locator("section[data-sketch-context-mode='normal']")
@@ -664,7 +664,7 @@ test.describe("selector-backed extrusion", () => {
     const supportLabel = await support.locator("option:checked").textContent()
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(
       page.getByRole("combobox", { name: "Support plane" }).locator("option:checked"),
     ).toHaveText(supportLabel ?? "")
@@ -705,7 +705,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(support.locator("option:checked")).toHaveText(sideLabel)
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
@@ -733,14 +733,14 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
 
-    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await editForm.getByRole("combobox", { name: "Distance" }).fill("20 mm")
     await editForm.getByRole("button", { name: "Update extrusion" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
-    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(support.locator("option:checked")).toHaveText(sideLabel)
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
@@ -812,7 +812,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(support.locator("option:checked")).toHaveText(/Extrusion 1 · Face \d+/)
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(support.locator("option:checked")).toHaveText(/Extrusion 1 · Face \d+/)
   })
 
@@ -844,7 +844,7 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("button", { name: "Create cylinder" })
       .click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
-    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
 
     const support = page.getByRole("combobox", { name: "Support plane" })
     await expect(support).toHaveValue("xy")
@@ -880,7 +880,9 @@ test.describe("selector-backed extrusion", () => {
     await expect(support).toHaveValue("feature-face")
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(page.getByRole("button", { name: "Finish sketch", exact: true })).toHaveCount(0)
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(support).toHaveValue("feature-face")
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   })

@@ -1,16 +1,18 @@
 import Dexie, { type Table } from "dexie"
 import type {
+  EventAuthorityRecord,
+  ProjectAuthorityRecord,
+  RecoveryAuthorityRecord,
+  SnapshotAuthorityRecord,
+} from "./authority-schemas"
+import type {
   CacheIndexRecord,
   EventRecord,
-  EventRecordV1,
   LeaseRecord,
   ProjectRecord,
-  ProjectRecordV1,
   ProjectThumbnailRecord,
   RecoveryRecord,
-  RecoveryRecordV1,
   SnapshotRecord,
-  SnapshotRecordV1,
 } from "./schemas"
 
 export const PERSISTENCE_SCHEMA_VERSION = 3
@@ -23,10 +25,10 @@ export class VibeShapeDatabase extends Dexie {
   leases!: Table<LeaseRecord, string>
   cacheIndex!: Table<CacheIndexRecord, string>
   projectThumbnails!: Table<ProjectThumbnailRecord, string>
-  projectsV1!: Table<ProjectRecordV1, string>
-  snapshotsV1!: Table<SnapshotRecordV1, [string, number]>
-  eventsV1!: Table<EventRecordV1, [string, number]>
-  recoveryV1!: Table<RecoveryRecordV1, string>
+  projectsV1!: Table<ProjectAuthorityRecord, string>
+  snapshotsV1!: Table<SnapshotAuthorityRecord, [string, number]>
+  eventsV1!: Table<EventAuthorityRecord, [string, number]>
+  recoveryV1!: Table<RecoveryAuthorityRecord, string>
 
   constructor(name: string) {
     super(name)

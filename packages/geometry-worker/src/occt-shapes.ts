@@ -198,15 +198,17 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     const progress = new opencascade.Message_ProgressRange_1()
     const Builder =
       operation === "fuse" ? opencascade.BRepAlgoAPI_Fuse_3 : opencascade.BRepAlgoAPI_Common_3
-    const builder = new Builder(source.wrapped, tool.wrapped, progress)
-
     try {
-      builder.SetToFillHistory(false)
-      builder.Build(progress)
-      builder.SimplifyResult(true, true, 1e-3)
-      return adoptOcctShape(builder.Shape(), castShape)
+      const builder = new Builder(source.wrapped, tool.wrapped, progress)
+      try {
+        builder.SetToFillHistory(false)
+        builder.Build(progress)
+        builder.SimplifyResult(true, true, 1e-3)
+        return adoptOcctShape(builder.Shape(), castShape)
+      } finally {
+        builder.delete()
+      }
     } finally {
-      builder.delete()
       progress.delete()
     }
   }

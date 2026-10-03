@@ -19,7 +19,7 @@ import {
 } from "../../packages/domain/src/rectangle-sketch"
 import { sketchRecordSchema } from "../../packages/domain/src/sketch"
 import { createLengthQuantity } from "../../packages/domain/src/units"
-import { readVersionedVShape } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { expect } from "./fixtures"
 
 export type PrintingMcpClient = Awaited<ReturnType<typeof createMcpTestClient>>
@@ -241,8 +241,9 @@ async function saveNativeBackup(page: Page, directory: string, revision: number)
   const backupPath = resolve(directory, "mounting-plate.vshape")
   await (await downloading).saveAs(backupPath)
   const backup = printingSuccess(
-    await readVersionedVShape(new Uint8Array(await readFile(backupPath))),
+    await readAuthoredVShape(new Uint8Array(await readFile(backupPath))),
   )
+  if (backup.version !== 3) throw new Error("Expected replay-validated authored V3 plate history.")
   expect(backup.project.snapshot.revision).toBe(revision)
   expect(backup.project.snapshot.variables).toEqual(
     expect.arrayContaining([

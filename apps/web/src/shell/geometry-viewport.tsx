@@ -60,6 +60,7 @@ import type { FeaturePreviewState } from "../features/preview/use-feature-previe
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
 import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
 import { selectedSketchSupportFromController } from "../features/sketch/sketch-support"
+import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
 import {
   SAFE_VIEWPORT_CENTER,
   SAFE_VIEWPORT_LEFT,
@@ -111,9 +112,14 @@ export function viewerMeshes(
   const features = controller.report?.snapshot.features ?? []
   const bodies = terminalModelBodies(features, rebuild.response, contextualHiddenFeatureIds)
   if (!bodies) return []
+  const authority = currentAuthoredSnapshot(controller)
+  const hiddenParts = authority ? authoredBodyKeys(authority, true) : new Set<string>()
   const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
   const solidMeshes = bodies
-    .filter(({ geometry }) => !hiddenIds.has(geometry.featureId))
+    .filter(
+      ({ geometry }) =>
+        !hiddenIds.has(geometry.featureId) && !hiddenParts.has(authoredBodyKey(geometry)),
+    )
     .map(({ geometry: body }) => ({
       featureId: body.featureId,
       ...(body.outputRole === undefined ? {} : { outputRole: body.outputRole }),
@@ -1417,12 +1423,13 @@ function useViewportMeshPresentation({
 >) {
   const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
   const hiddenIds = hiddenFeatureIds ?? EMPTY_IDS
+  const authority = controller.authoredSnapshot
   const featureSnapshot = controller.report?.snapshot.features
   const rebuild = controller.report?.rebuild
   const rebuildResponse = rebuild?.ok ? rebuild.response : undefined
   const allCommittedMeshes = useMemo(
     () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
-    [featureSnapshot, rebuild?.ok, rebuildResponse],
+    [authority, featureSnapshot, rebuild?.ok, rebuildResponse],
   )
   const allHiddenFeatureIds = useMemo(
     () => [...new Set([...hiddenIds, ...contextualIds])],
@@ -1430,14 +1437,16 @@ function useViewportMeshPresentation({
   )
   const committedMeshes = useMemo(
     () => viewerMeshes(controller, hiddenIds, contextualIds),
-    [contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
+    [authority, contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
   )
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)
+    const authored = currentAuthoredSnapshot(controller)
+    const hiddenBodies = authored ? authoredBodyKeys(authored, true) : new Set<string>()
     return previewMeshes(featurePreview, committedMeshes).filter(
-      ({ featureId }) => !hidden.has(featureId),
+      (mesh) => !hidden.has(mesh.featureId) && !hiddenBodies.has(authoredBodyKey(mesh)),
     )
-  }, [allHiddenFeatureIds, committedMeshes, featurePreview])
+  }, [authority, allHiddenFeatureIds, committedMeshes, featurePreview])
   return { allCommittedMeshes, allHiddenFeatureIds, meshes }
 }
 

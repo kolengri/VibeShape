@@ -1,4 +1,11 @@
 import {
+  type DocumentAuthorityEvent,
+  type DocumentAuthoritySnapshot,
+  type DocumentSnapshotV2,
+  documentAuthorityEventSchema,
+  documentAuthoritySnapshotSchema,
+  documentSnapshotV2Schema,
+  replayDocumentAuthorityEvents,
   replayVersionedDocumentEvents,
   type VersionedDocumentEvent,
   versionedDocumentEventSchema,
@@ -738,7 +745,10 @@ async function requireSemanticIntegrity(
   }
 }
 
-async function requireV2SemanticIntegrity(manifest: VShapeManifestV2, files: UnzippedProjectFiles) {
+async function requireV2SemanticIntegrity(
+  manifest: Pick<VShapeManifestV2, "semanticEntries">,
+  files: UnzippedProjectFiles,
+) {
   requireVShape(
     new Set(manifest.semanticEntries.map(({ path }) => path)).size === 4,
     "invalid-manifest",
@@ -950,9 +960,12 @@ type V2SemanticBytes = Readonly<{
   suffix: Uint8Array
 }>
 
-function encodeV2SemanticProject(
-  input: z.output<typeof writeVShapeV2InputSchema>,
-): V2SemanticBytes {
+function encodeV2SemanticProject(input: {
+  snapshot: unknown
+  seed: unknown
+  legacyEvents: readonly unknown[]
+  versionedEvents: readonly unknown[]
+}): V2SemanticBytes {
   return {
     document: strToU8(canonicalJson(input.snapshot)),
     seed: strToU8(input.seed === null ? "null" : canonicalJson(input.seed)),
@@ -1023,7 +1036,7 @@ async function createManifestV2(
   })
 }
 
-function encodeVShapeV2Archive(manifest: VShapeManifestV2, bytes: V2SemanticBytes) {
+function encodeVShapeV2Archive(manifest: unknown, bytes: V2SemanticBytes) {
   return zipSync(
     {
       [MANIFEST_PATH]: strToU8(canonicalJson(manifest)),
@@ -1093,6 +1106,231 @@ export async function readVersionedVShape(
       return { ok: true, value: { version: 1, project: await decodeVShapeV1(files) } }
     if (header.formatVersion === VSHAPE_V2_FORMAT_VERSION)
       return { ok: true, value: { version: 2, project: await decodeVShapeV2(files) } }
+    throw new VShapeError("unsupported-version", "This project requires a newer VibeShape reader.")
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+export const VSHAPE_V3_FORMAT_VERSION = 3 as const
+export const vShapeManifestV3Schema = z
+  .object({
+    ...vShapeManifestV2Schema.shape,
+    schemaVersion: z.literal(3),
+    formatVersion: z.literal(VSHAPE_V3_FORMAT_VERSION),
+    minimumReaderVersion: z.literal(VSHAPE_V3_FORMAT_VERSION),
+    upgradeRevision: z.number().int().positive().safe(),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    validateV2ManifestEntries(manifest, context)
+    validateV2ManifestHistory(manifest, context)
+    if (manifest.upgradeRevision > manifest.documentRevision)
+      context.addIssue({
+        code: "custom",
+        message: "The upgrade revision exceeds the document revision.",
+      })
+  })
+export type VShapeManifestV3 = Readonly<z.infer<typeof vShapeManifestV3Schema>>
+export type VShapeProjectV3 = Readonly<{
+  manifest: VShapeManifestV3
+  snapshot: DocumentSnapshotV2
+  seed: DocumentAuthoritySnapshot | null
+  legacyEvents: readonly DocumentEvent[]
+  versionedEvents: readonly DocumentAuthorityEvent[]
+}>
+const writeVShapeV3InputSchema = z
+  .object({
+    ...writeVShapeV2InputSchema.shape,
+    snapshot: documentSnapshotV2Schema,
+    seed: documentAuthoritySnapshotSchema.nullable(),
+    versionedEvents: z.array(documentAuthorityEventSchema).max(MAX_EVENTS),
+    upgradeRevision: z.number().int().positive().safe(),
+  })
+  .strict()
+
+function requireV3Boundary(project: VShapeProjectV3) {
+  const { manifest, snapshot, legacyEvents, versionedEvents } = project
+  const events = [...legacyEvents, ...versionedEvents]
+  requireVShape(
+    events.length <= MAX_EVENTS,
+    "resource-limit",
+    "The mixed journal exceeds its aggregate record budget.",
+  )
+  requireVShape(
+    new Set(events.map((event) => event.commandId)).size === events.length,
+    "history-mismatch",
+    "The mixed journal repeats a command identity.",
+  )
+  requireVShape(
+    snapshot.id === manifest.documentId &&
+      snapshot.revision === manifest.documentRevision &&
+      snapshot.createdAt === manifest.createdAt,
+    "history-mismatch",
+    "The manifest and authored snapshot disagree.",
+  )
+  requireV3Seed(project)
+  requireV3Upgrade(project)
+}
+
+function requireV3Seed({ manifest, seed, legacyEvents }: VShapeProjectV3) {
+  if (manifest.historyMode === "checkpoint") {
+    requireVShape(
+      seed !== null && seed.revision === manifest.promotionRevision && legacyEvents.length === 0,
+      "history-mismatch",
+      "The checkpoint seed does not match its history boundary.",
+    )
+  } else if (seed) {
+    requireVShape(
+      seed.schemaVersion === 1 &&
+        seed.revision === manifest.promotionRevision &&
+        legacyEvents.length === manifest.promotionRevision,
+      "history-mismatch",
+      "The complete history requires its original V1 promotion seed.",
+    )
+    requireV1ReplayProof(seed, legacyEvents)
+  } else
+    requireVShape(
+      manifest.promotionRevision === 0 && legacyEvents.length === 0,
+      "history-mismatch",
+      "Native history cannot declare a legacy prefix.",
+    )
+}
+
+function requireV3Upgrade({ manifest, seed, versionedEvents }: VShapeProjectV3) {
+  const upgrades = versionedEvents.filter(
+    (event) => event.type === "org.vibeshape.document.upgraded-v2",
+  )
+  const validUpgrade =
+    seed?.schemaVersion === 2
+      ? manifest.upgradeRevision <= seed.revision && upgrades.length === 0
+      : upgrades.length === 1 && upgrades[0]?.revision === manifest.upgradeRevision
+  requireVShape(validUpgrade, "history-mismatch", "The authored upgrade boundary is inconsistent.")
+}
+
+function requireV3History(project: VShapeProjectV3) {
+  requireV3Boundary(project)
+  const replayed = replayDocumentAuthorityEvents(project.seed, project.versionedEvents)
+  requireVShape(
+    replayed.ok && canonicalJson(replayed.snapshot) === canonicalJson(project.snapshot),
+    "history-mismatch",
+    "The mixed journal does not reproduce the authored snapshot.",
+  )
+}
+
+async function createManifestV3(
+  input: z.output<typeof writeVShapeV3InputSchema>,
+  bytes: V2SemanticBytes,
+) {
+  return vShapeManifestV3Schema.parse({
+    schemaVersion: 3,
+    format: "vshape",
+    formatVersion: 3,
+    minimumReaderVersion: 3,
+    documentId: input.snapshot.id,
+    documentRevision: input.snapshot.revision,
+    createdBy: input.createdBy,
+    engine: input.engine,
+    rootDocument: DOCUMENT_PATH,
+    historySeed: V2_SEED_PATH,
+    legacyEventJournal: V2_LEGACY_PATH,
+    versionedEventJournal: V2_SUFFIX_PATH,
+    eventJournal: V2_SUFFIX_PATH,
+    compression: "deflate",
+    historyMode: input.historyMode,
+    promotionRevision: input.promotionRevision,
+    upgradeRevision: input.upgradeRevision,
+    migrationDiagnostic: input.migrationDiagnostic,
+    unavailableRecords: input.unavailableRecords,
+    semanticEntries: await v2SemanticEntries(bytes),
+    requiredCapabilities: [],
+    extensionsLockChecksum: null,
+    createdAt: input.snapshot.createdAt,
+    exportedAt: input.exportedAt,
+    units: "millimeter",
+    coordinateSystem: "right-handed-z-up",
+  })
+}
+
+export async function writeVShapeV3(inputValue: unknown): Promise<VShapeResult<Uint8Array>> {
+  const input = writeVShapeV3InputSchema.safeParse(inputValue)
+  if (!input.success)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-document",
+        message: "The V3 portable project input is invalid.",
+      },
+    }
+  try {
+    const bytes = encodeV2SemanticProject(input.data)
+    const manifest = await createManifestV3(input.data, bytes)
+    requireV3History({ ...input.data, manifest })
+    const archive = encodeVShapeV2Archive(manifest, bytes)
+    // Apply the same expansion, path, and ratio limits enforced by readers to writer output.
+    await readSafeZip(archive, VSHAPE_LIMITS)
+    return { ok: true, value: archive }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+async function decodeVShapeV3(files: UnzippedProjectFiles): Promise<VShapeProjectV3> {
+  const paths = Object.keys(files)
+  requireVShape(
+    paths.length === V2_REQUIRED_PATHS.length &&
+      V2_REQUIRED_PATHS.every((path) => paths.includes(path)),
+    "undeclared-entry",
+    "The V3 archive must contain exactly its declared entries.",
+  )
+  const parsed = vShapeManifestV3Schema.safeParse(parseManifestInput(files))
+  requireVShape(parsed.success, "invalid-manifest", "The V3 manifest is invalid.")
+  const manifest = parsed.data
+  await requireV2SemanticIntegrity(manifest, files)
+  const snapshot = parseJsonFile(files, DOCUMENT_PATH, documentSnapshotV2Schema, "invalid-document")
+  const seed = parseJsonFile(
+    files,
+    V2_SEED_PATH,
+    documentAuthoritySnapshotSchema.nullable(),
+    "invalid-document",
+  )
+  const legacyEvents = parseNdjson(files, V2_LEGACY_PATH, documentEventSchema)
+  const versionedEvents = parseNdjson(files, V2_SUFFIX_PATH, documentAuthorityEventSchema)
+  const project = { manifest, snapshot, seed, legacyEvents, versionedEvents }
+  requireV3History(project)
+  return project
+}
+
+export async function readVShapeV3(bytes: unknown): Promise<VShapeResult<VShapeProjectV3>> {
+  try {
+    return { ok: true, value: await decodeVShapeV3(await readSafeZip(bytes, VSHAPE_LIMITS)) }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+export type AuthoredVShapeProject =
+  | VersionedVShapeProject
+  | Readonly<{ version: 3; project: VShapeProjectV3 }>
+export async function readAuthoredVShape(
+  bytes: unknown,
+): Promise<VShapeResult<AuthoredVShapeProject>> {
+  try {
+    const files = await readSafeZip(bytes, VSHAPE_LIMITS)
+    const header = parseManifestHeader(files)
+    requireVShape(
+      header.minimumReaderVersion <= 3,
+      "unsupported-version",
+      "This project requires a newer VibeShape reader.",
+    )
+    if (header.formatVersion === 3)
+      return { ok: true, value: { version: 3, project: await decodeVShapeV3(files) } }
+    if (header.formatVersion === 2)
+      return { ok: true, value: { version: 2, project: await decodeVShapeV2(files) } }
+    if (header.formatVersion === 1)
+      return { ok: true, value: { version: 1, project: await decodeVShapeV1(files) } }
+    if (header.formatVersion === 0)
+      return { ok: true, value: { version: 0, project: await decodeVShape(files) } }
     throw new VShapeError("unsupported-version", "This project requires a newer VibeShape reader.")
   } catch (error) {
     return { ok: false, diagnostic: vShapeDiagnostic(error) }

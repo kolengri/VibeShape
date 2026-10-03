@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
 import { extrusionFeatureParametersV5Schema } from "../../packages/domain/src/part-design"
-import { readVersionedVShape } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -168,7 +168,7 @@ test.describe("native project file", () => {
     test.setTimeout(90_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.getByRole("heading", { name: "Variables", exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
@@ -181,7 +181,7 @@ test.describe("native project file", () => {
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
     await page.getByRole("button", { name: "File" }).click()
@@ -208,17 +208,45 @@ test.describe("native project file", () => {
     if (!backupPath) throw new Error("Playwright did not retain the .vshape download.")
     const backupBytes = await readFile(backupPath)
     expect(backupBytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
-    const decodedBackup = await readVersionedVShape(new Uint8Array(backupBytes))
+    const decodedBackup = await readAuthoredVShape(new Uint8Array(backupBytes))
     expect(decodedBackup).toMatchObject({
       ok: true,
       value: {
-        version: 2,
+        version: 3,
         project: {
-          manifest: { historyMode: "complete", promotionRevision: 0 },
-          versionedEvents: { length: 4 },
+          manifest: { historyMode: "complete", promotionRevision: 0, upgradeRevision: 2 },
+          versionedEvents: { length: 5 },
         },
       },
     })
+    if (!decodedBackup.ok || decodedBackup.value.version !== 3)
+      throw new Error("Expected replay-validated authored V3 history.")
+    const authoredEvents = decodedBackup.value.project.versionedEvents
+    expect(authoredEvents[0]).toMatchObject({
+      schemaVersion: 1,
+      type: "org.vibeshape.document.created",
+      baseRevision: 0,
+      revision: 1,
+    })
+    expect(authoredEvents[1]).toMatchObject({
+      schemaVersion: 2,
+      type: "org.vibeshape.document.upgraded-v2",
+      baseRevision: authoredEvents[0]?.revision,
+      revision: 2,
+    })
+    expect(authoredEvents.filter((event) => event.schemaVersion === 1)).toHaveLength(1)
+    expect(
+      authoredEvents.filter((event) => event.type === "org.vibeshape.document.upgraded-v2"),
+    ).toHaveLength(1)
+    expect(
+      authoredEvents.flatMap((event) =>
+        event.type === "org.vibeshape.document.model-changed"
+          ? [event.modelEvent]
+          : event.schemaVersion === 1
+            ? [event]
+            : [],
+      ),
+    ).toHaveLength(4)
 
     await page.getByRole("button", { name: "File" }).click()
     const currentProjectDialog = page.getByRole("dialog", { name: "Projects" })
@@ -235,7 +263,7 @@ test.describe("native project file", () => {
     await expect(
       page.locator("header").first().getByText("Calibration bracket imported", { exact: true }),
     ).toBeVisible()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     const copiedProjectId = await page.evaluate(() =>
       (
         globalThis as unknown as { localStorage: { getItem(key: string): string | null } }
@@ -264,7 +292,7 @@ test.describe("native project file", () => {
     importedPage.on("pageerror", (error) => runtimeErrors.push(`page: ${error.message}`))
 
     try {
-      await importedPage.goto("http://127.0.0.1:4173/")
+      await importedPage.goto(new URL(page.url()).origin)
       await expect(importedPage.getByText("Saved in this browser", { exact: true })).toBeVisible({
         timeout: 30_000,
       })
@@ -288,19 +316,19 @@ test.describe("native project file", () => {
       await expect(
         importedPage.getByText("Calibration bracket imported", { exact: true }),
       ).toBeVisible()
-      await expect(importedPage.getByRole("treeitem", { name: "Box 1" })).toBeVisible({
+      await expect(importedPage.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible({
         timeout: 30_000,
       })
       const viewport = importedPage.getByRole("region", { name: "3D viewport" })
       await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-      await importedPage.getByRole("treeitem", { name: "Variables" }).click()
+      await importedPage.getByRole("treeitem", { name: "Variables", exact: true }).click()
       await expect(importedPage.getByRole("textbox", { name: "Variable name" })).toHaveValue(
         "width",
       )
       await expect(importedPage.getByRole("combobox", { name: "Variable expression" })).toHaveValue(
         "24 mm",
       )
-      await importedPage.getByRole("treeitem", { name: "Box 1" }).click()
+      await importedPage.getByRole("treeitem", { name: "Box 1", exact: true }).click()
       await expect(
         importedPage
           .getByRole("form", { name: "Edit box" })
@@ -318,7 +346,7 @@ test.describe("native project file", () => {
     test.setTimeout(90_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
@@ -330,7 +358,7 @@ test.describe("native project file", () => {
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
     await page.getByRole("button", { name: "File" }).click()
@@ -346,7 +374,7 @@ test.describe("native project file", () => {
       .click()
     await createdProjectNavigation
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toHaveCount(0)
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
 
     await page.getByRole("button", { name: "File" }).click()
     const dialog = page.getByRole("dialog", { name: "Projects" })
@@ -359,7 +387,9 @@ test.describe("native project file", () => {
     await previousProject.getByRole("button", { name: /Open .*revision 3/ }).click()
     await reopenedProjectNavigation
 
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
 
     await page.getByRole("button", { name: "File" }).click()
     const sourceDialog = page.getByRole("dialog", { name: "Projects" })
@@ -378,10 +408,12 @@ test.describe("native project file", () => {
     )
     await copiedProject.getByRole("button", { name: /Open .*revision 4/ }).click()
     await copiedProjectNavigation
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible({ timeout: 30_000 })
-    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("width")
-    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("#width")
@@ -425,9 +457,9 @@ async function saveNativeProject(page: Page) {
   const path = await download.path()
   if (!path) throw new Error("Native project download must be retained.")
   const bytes = await readFile(path)
-  const decoded = await readVersionedVShape(new Uint8Array(bytes))
-  if (!decoded.ok || decoded.value.version !== 2)
-    throw new Error("Expected a valid native V2 project archive.")
+  const decoded = await readAuthoredVShape(new Uint8Array(bytes))
+  if (!decoded.ok || decoded.value.version !== 3)
+    throw new Error("Expected a valid authored V3 project archive.")
   return { project: decoded.value.project, bytes, filename: download.suggestedFilename() }
 }
 

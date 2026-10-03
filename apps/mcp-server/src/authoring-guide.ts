@@ -6,6 +6,29 @@ Open that URL, open/create the intended project, and have the person click **Ena
 The browser retains the document authority; there is no embedded chat and no headless modeling mode.
 Use MCP tools/list as the current input/output schema authority. Only listed tools are callable.
 
+## Authored parts and History folders
+
+Read \`model_parts\`, \`model_folders\` and \`model_history\` with the exact committed revision from \`model_info\`.
+Use cursor:null and follow nextCursor. A part has a stable PartId, authored name/visibility,
+origin, current semantic body reference and optional consuming feature. Visibility is intent;
+use exact body measurements to determine available geometry.
+
+Call \`change_metadata\` with baseRevision, a fresh commandId and exactly one closed-world change:
+part.rename, part.set-visibility, folder.create, folder.rename, folder.set-items or folder.remove.
+Use the tool schema for the exact discriminated payload. A new folder needs a fresh UUIDv7 ID.
+Folder members are existing canonical History references (kind and id) in a nonempty contiguous
+range. Folders cannot overlap or nest. Read \`model_history\` for the exact canonical interleaved item references and ordering;
+\`model_tree\` storage order is not History order.
+Removing a folder only ungroups its members: no feature, dependency or solid is removed.
+
+Every metadata proposal evaluates disposable exact geometry and waits for manual browser Apply
+or Discard, even when CAD auto-apply is enabled. A successful Apply saves one revision and one
+Undo entry through the same authored document session used by human edits. Proposals expire
+in five minutes, retain the exact authenticated MCP actor and command ID, and fail closed after
+revision changes, cancellation, project switches or disconnection before persistence starts.
+Input is limited to 192 KiB and output to 128 KiB. After an unconfirmed save or disconnect,
+inspect the actual document revision before proposing a new change.
+
 ## Transaction and editing workflow
 
 1. Read \`model_info\` for the current committed \`summary.revision\`. Read \`model_tree\`,

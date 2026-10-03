@@ -126,6 +126,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.box",
         "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.chamfer",
+        "org.vibeshape.feature.part-design.compound",
         "org.vibeshape.feature.part-design.cylinder",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
@@ -136,12 +137,14 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
+        "org.vibeshape.feature.part-design.placement",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
+        "org.vibeshape.feature.part-design.union",
       ])
     }
   })

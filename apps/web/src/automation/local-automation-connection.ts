@@ -126,7 +126,10 @@ export function createLocalAutomationConnection() {
     const active = current.active
     if (!active) return null
     const review =
-      active.work.operation.tool === "commit_draft" ? automationReviews.getSnapshot() : null
+      active.work.operation.tool === "commit_draft" ||
+      active.work.operation.tool === "change_metadata"
+        ? automationReviews.getSnapshot()
+        : null
     const stage =
       review?.status === "applying"
         ? "applying"

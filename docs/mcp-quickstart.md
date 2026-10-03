@@ -46,6 +46,8 @@ already pending review cannot be auto-approved. Invalid geometry and stale revis
 The grant resets on disconnect, project change, and reload. Reconnect manually and opt in again if
 desired. An edit already saving may finish after Stop; inspect the result and use Undo if needed.
 
+`model_parts`, `model_folders`, and `model_history` provide bounded, exact-revision views of authored metadata and canonical History order. `change_metadata` proposes one typed part/folder change through exact preview and browser Apply/Discard. Metadata proposals always require manual review, including when CAD auto-apply is on. The accepted command keeps the paired agent actor and supplied command identity in the native history. Reuse neither a stale revision nor an already committed command ID.
+
 For an agent editing a person's existing model, reread the current full feature/sketch/variable
 records and preserve their IDs and unaffected intent. If manual work changes the base revision,
 create a fresh draft from the updated model. Cancellation revokes pairing; a commit that already
@@ -53,7 +55,7 @@ entered persistence cannot be rolled back by disconnect. Inspect the actual save
 retrying an interrupted or unconfirmed commit.
 
 The current MCP surface is a supported subset of the editor, not full CAD parity. In particular,
-Box update/placement and Cylinder/Boolean/Datum Plane/removal/history tools are not exposed.
+Box update, Cylinder, Boolean, Datum Plane, Placement, Compound/Union, removal, suppression, and History mutation tools are not exposed. Placement and body combinations are available in the manual editor; the AI can inspect their saved feature records and must preserve them during supported upstream edits.
 There is no arbitrary script or direct storage tool. Production printability analysis remains open.
 See the served guide for the complete current scope and
 [automation architecture](architecture/automation-and-mcp.md) for the authority and safety contract.

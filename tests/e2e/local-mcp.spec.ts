@@ -42,6 +42,7 @@ test("creates, repairs, reviews, commits and exports a model through real local 
   try {
     const tools = await local.client.listTools()
     expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
+      "change_metadata",
       "commit_draft",
       "create_box",
       "create_chamfer",
@@ -62,7 +63,10 @@ test("creates, repairs, reviews, commits and exports a model through real local 
       "model_body_topology",
       "model_edges",
       "model_entity",
+      "model_folders",
+      "model_history",
       "model_info",
+      "model_parts",
       "model_tree",
       "model_variables",
       "preview_draft",

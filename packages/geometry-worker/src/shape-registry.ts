@@ -65,6 +65,8 @@ export class DocumentFeatureShapeRegistry<Shape extends DeletableShape = AnyShap
   readonly #pendingCleanup = new Map<string, Set<Shape>>()
   readonly #owned = new Map<Shape, { documentId: string; featureId: string }>()
 
+  constructor(private readonly onShapeReleased?: (shape: Shape) => void) {}
+
   get size() {
     return this.#owned.size
   }
@@ -252,12 +254,18 @@ export class DocumentFeatureShapeRegistry<Shape extends DeletableShape = AnyShap
     for (const wrapper of [...wrappers].reverse()) {
       try {
         wrapper.delete()
-        this.#owned.delete(wrapper)
       } catch (error) {
         firstError ??= error
         const pending = this.#pendingCleanup.get(documentId) ?? new Set<Shape>()
         pending.add(wrapper)
         this.#pendingCleanup.set(documentId, pending)
+        continue
+      }
+      this.#owned.delete(wrapper)
+      try {
+        this.onShapeReleased?.(wrapper)
+      } catch (error) {
+        firstError ??= error
       }
     }
     return firstError
@@ -270,8 +278,14 @@ export class DocumentFeatureShapeRegistry<Shape extends DeletableShape = AnyShap
     for (const wrapper of [...pending].reverse()) {
       try {
         wrapper.delete()
-        pending.delete(wrapper)
-        this.#owned.delete(wrapper)
+      } catch (error) {
+        firstError ??= error
+        continue
+      }
+      pending.delete(wrapper)
+      this.#owned.delete(wrapper)
+      try {
+        this.onShapeReleased?.(wrapper)
       } catch (error) {
         firstError ??= error
       }

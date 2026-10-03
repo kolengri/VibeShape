@@ -18,6 +18,11 @@ import {
   revolveFeatureTypeV6,
   sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
+import {
+  compoundFeatureType,
+  unionFeatureType,
+} from "@vibeshape/domain/part-design-body-combination"
+import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { describe, expect, it } from "vitest"
 import {
   activeFeatureId,
@@ -316,5 +321,27 @@ describe("part-design tool routing", () => {
     expect(
       modifyingSolidTargetFeatures([box, cylinder, modifyingRevolve], modifyingRevolve.id),
     ).toEqual([box, cylinder])
+  })
+})
+
+describe("authored part operation routing", () => {
+  it("reopens exact trusted Placement, Compound, and Union versions", () => {
+    for (const [descriptor, kind] of [
+      [placementFeatureType, "edit-placement"],
+      [compoundFeatureType, "edit-compound"],
+      [unionFeatureType, "edit-union"],
+    ] as const) {
+      const feature = featureRecordSchema.parse({ ...box, type: descriptor.type })
+      expect(editPartDesignTool(feature)).toEqual({ kind, featureId: feature.id })
+      expect(
+        editPartDesignTool({ ...feature, type: { ...feature.type, schemaVersion: 999 } }),
+      ).toBeNull()
+    }
+  })
+  it("admits single-result Placement and Union to modifiers while keeping Compound aggregate output excluded", () => {
+    const placement = featureRecordSchema.parse({ ...box, type: placementFeatureType.type })
+    const union = featureRecordSchema.parse({ ...cylinder, type: unionFeatureType.type })
+    const compound = featureRecordSchema.parse({ ...boolean, type: compoundFeatureType.type })
+    expect(booleanInputFeatures([placement, union, compound])).toEqual([placement, union])
   })
 })

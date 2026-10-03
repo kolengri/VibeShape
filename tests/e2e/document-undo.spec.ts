@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises"
-import { readVersionedVShape } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -63,10 +63,10 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
   await projects.getByRole("button", { name: "Save project (.vshape)" }).click()
   const file = await (await downloading).path()
   if (!file) throw new Error("The project backup was not retained.")
-  const archive = await readVersionedVShape(new Uint8Array(await readFile(file)))
+  const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
   expect(archive.ok).toBe(true)
-  if (!archive.ok || archive.value.version !== 2)
-    throw new Error("Expected a replay-proven v2 backup.")
+  if (!archive.ok || archive.value.version !== 3)
+    throw new Error("Expected a replay-proven authored V3 backup.")
   expect(
     archive.value.project.versionedEvents.filter(
       (event) => event.type === "org.vibeshape.document.restored",
