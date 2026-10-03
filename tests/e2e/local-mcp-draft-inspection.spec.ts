@@ -238,7 +238,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
         .toBeGreaterThan(committed.revision)
       await page.reload()
       await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-      await enableLocalAi(page)
+      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
       const restored = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       const restoredTree = success(
         localToolOutputs.model_tree.parse(

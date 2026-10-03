@@ -256,7 +256,9 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const restored = await modelInfo()
     expect(restored.summary.revision).toBe(redone.summary.revision)

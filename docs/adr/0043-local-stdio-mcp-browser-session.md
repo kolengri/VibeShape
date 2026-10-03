@@ -4,6 +4,8 @@
 - Date: 2026-09-07
 - Related: [ADR-0013](0013-microkernel-modules-and-mcp-automation.md), [ADR-0042](0042-exact-automation-draft-application-path.md)
 
+The local page-exit revocation rule is superseded by [ADR-0075](0075-local-mcp-tab-reload-recovery.md).
+
 ## Decision
 
 Accept the local transport subset of ADR-0013. `apps/mcp-server` is a Bun process using MCP stdio
