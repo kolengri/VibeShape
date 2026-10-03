@@ -73,6 +73,12 @@ Chromium's return to an HTTPS or IPv4/IPv6 loopback client, or interpolating cli
 The consent form uses `Referrer-Policy: same-origin` so its POST retains the required same-origin
 `Origin` header; completion and other OAuth responses retain `no-referrer`.
 
+Dynamic client registration validates the supported metadata and discards unsupported extension
+fields before handing the request to the OAuth SDK, as required by
+[RFC 7591](https://www.rfc-editor.org/rfc/rfc7591.html#section-2). This includes Codex's
+`application_type: "native"`; it does not permit private-use callback schemes, additional scopes or
+unsupported grants. Payload and admission budgets still apply before SDK writes.
+
 ## Resource budgets
 
 | Budget | Initial limit |

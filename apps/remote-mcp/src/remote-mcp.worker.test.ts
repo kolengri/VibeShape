@@ -200,6 +200,59 @@ afterEach(async () => {
 })
 
 describe("remote MCP in workerd", () => {
+  it("registers Codex native metadata while discarding unsupported extension fields", async () => {
+    const redirect = "http://127.0.0.1:49854/callback/test-client"
+    const response = await call("/oauth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Codex",
+        redirect_uris: [redirect],
+        grant_types: ["authorization_code", "refresh_token"],
+        token_endpoint_auth_method: "none",
+        response_types: ["code"],
+        scope: "editor:session",
+        application_type: "native",
+        contacts: ["test-client@example.com"],
+        policy_uri: "https://client.example/policy",
+        software_version: "0.160.0",
+      }),
+    })
+    expect(response.status).toBe(201)
+    const registered = (await response.json()) as { client_id: string }
+    expect(registered).toMatchObject({
+      client_name: "Codex",
+      redirect_uris: [redirect],
+      token_endpoint_auth_method: "none",
+    })
+    for (const ignored of ["application_type", "contacts", "policy_uri", "software_version"]) {
+      expect(registered).not.toHaveProperty(ignored)
+    }
+    expect(registered).not.toHaveProperty("client_secret")
+    await authorizationPage(registered.client_id, redirect)
+  })
+
+  it("does not let extension metadata bypass redirects, grants, or scopes", async () => {
+    for (const invalid of [
+      { redirect_uris: ["codex://callback"] },
+      { grant_types: ["client_credentials"] },
+      { scope: "editor:session admin" },
+      { token_endpoint_auth_method: "private_key_jwt" },
+    ]) {
+      const response = await call("/oauth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          redirect_uris: ["https://client.example/callback"],
+          application_type: "native",
+          ...invalid,
+        }),
+      })
+      expect(response.status).toBe(400)
+    }
+    expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(0)
+  })
+
   it.each([
     "https://client.example/callback?context=one",
     "http://127.0.0.1:8977/callback",
