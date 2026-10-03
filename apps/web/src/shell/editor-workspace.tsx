@@ -1819,7 +1819,7 @@ function useEditorFeaturePreview(
     committedGeometry(controller),
     isPreviewedFeatureToolActive(activeTool),
   )
-  return { featurePreview, previewFeature, setPreviewFeature }
+  return { featurePreview, setPreviewFeature }
 }
 
 function useRevolveAxisCandidates(
@@ -2111,7 +2111,7 @@ function EditorContent({
   featureProfileSelections,
   featureProfileHiddenSketchIds,
   featurePreview,
-  previewFeature,
+  manipulatorFeature,
   onFeatureProfileChange,
   revolveAxisCandidates,
   revolveAxisSelection,
@@ -2124,7 +2124,7 @@ function EditorContent({
   featureProfileSelections: readonly SketchProfileSelector[]
   featureProfileHiddenSketchIds: readonly SketchId[]
   featurePreview: ReturnType<typeof useFeaturePreview>
-  previewFeature: FeatureRecord | null
+  manipulatorFeature: FeatureRecord | null
   onFeatureProfileChange: (
     profile: SketchProfileSelector,
     intent: ViewerSketchProfileSelectionIntent,
@@ -2175,7 +2175,7 @@ function EditorContent({
         axialGizmoPending: isExtrusionPartDesignTool(props.activeTool),
         extrusionManipulator: extrusionManipulator(
           props.activeTool,
-          previewFeature,
+          manipulatorFeature,
           props.extrusionDistanceRequest,
           rebuiltSketchDisplays(props.controller),
           props.controller.report?.mode === "read-only",
@@ -2183,13 +2183,13 @@ function EditorContent({
         featurePreview,
         primitiveManipulator: primitiveManipulator(
           props.activeTool,
-          previewFeature,
+          manipulatorFeature,
           props.primitivePlacementRequest,
           props.controller.report?.mode === "read-only",
         ),
         revolveManipulator: revolveManipulator(
           props.activeTool,
-          previewFeature,
+          manipulatorFeature,
           props.revolveAngleRequest,
           revolveAxisCandidates,
           rebuiltSketchDisplays(props.controller),
@@ -2387,23 +2387,32 @@ function useHistorySourcePreview(props: EditorWorkspaceProps) {
 }
 
 function useWorkspaceFeaturePreview(props: EditorWorkspaceProps) {
-  const { featurePreview, previewFeature, setPreviewFeature } = useEditorFeaturePreview(
+  const { featurePreview, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
   )
+  const [manipulatorCandidate, setManipulatorCandidate] = useState<Readonly<{
+    tool: ActivePartDesignTool | null
+    feature: FeatureRecord
+  }> | null>(null)
+  const activeTool = props.activeTool
   const acknowledgeExtrusionDistance = props.actions.acknowledgeExtrusionDistance
   const acknowledgeRevolveAngle = props.actions.acknowledgeRevolveAngle
   const onFeaturePreviewChange = useCallback(
     (feature: FeatureRecord | null) => {
       setPreviewFeature(feature)
       if (feature) {
+        // Preview invalidation must not detach the active gesture during the form debounce.
+        setManipulatorCandidate({ tool: activeTool, feature })
         acknowledgeExtrusionDistance(feature.id)
         acknowledgeRevolveAngle(feature.id)
       }
     },
-    [acknowledgeExtrusionDistance, acknowledgeRevolveAngle, setPreviewFeature],
+    [acknowledgeExtrusionDistance, acknowledgeRevolveAngle, activeTool, setPreviewFeature],
   )
-  return { featurePreview, previewFeature, onFeaturePreviewChange }
+  const manipulatorFeature =
+    manipulatorCandidate?.tool === activeTool ? manipulatorCandidate.feature : null
+  return { featurePreview, manipulatorFeature, onFeaturePreviewChange }
 }
 
 export function EditorWorkspace(props: EditorWorkspaceProps) {
@@ -2414,7 +2423,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   )
   const { holePicking, edgeTreatmentPicking, viewportContext } = useModelFeaturePicking(props)
   const taskPanelT = useTranslations("app.shell.taskPanel")
-  const { featurePreview, previewFeature, onFeaturePreviewChange } =
+  const { featurePreview, manipulatorFeature, onFeaturePreviewChange } =
     useWorkspaceFeaturePreview(props)
   const snapshot = props.controller.report?.snapshot
   const historySourcePreview = useHistorySourcePreview(props)
@@ -2508,7 +2517,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
           featureProfileSelections={featureProfileSelection.value}
           featurePreview={featurePreview}
-          previewFeature={previewFeature}
+          manipulatorFeature={manipulatorFeature}
           onFeatureProfileChange={selectFeatureProfile}
           onRevolveAxisChange={revolveAxisSelection.setValue}
           props={props}
