@@ -1,6 +1,7 @@
 import {
   booleanFeatureType,
   boxFeatureType,
+  coneFeatureType,
   createAngleQuantity,
   createLengthQuantity,
   createSketchProfileSet,
@@ -17,6 +18,8 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV6,
   sketchProfileSelectorSchema,
+  sphereFeatureType,
+  torusFeatureType,
 } from "@vibeshape/domain"
 import {
   compoundFeatureType,
@@ -31,10 +34,14 @@ import {
   editPartDesignTool,
   isBooleanFeature,
   isBoxFeature,
+  isConeFeature,
   isCylinderFeature,
   isDatumPlaneFeature,
   isExtrusionFeature,
+  isPrimitivePartDesignTool,
   isRevolveFeature,
+  isSphereFeature,
+  isTorusFeature,
   modifyingSolidTargetFeatures,
 } from "./part-design-tool"
 
@@ -372,4 +379,27 @@ describe("authored part operation routing", () => {
     expect(booleanInputFeatures([box, cylinder, suppressed])).toEqual([box, cylinder])
     expect(modifyingSolidTargetFeatures([box, cylinder, suppressed])).toEqual([box, cylinder])
   })
+})
+
+describe("basic primitive tool eligibility", () => {
+  it.each([
+    ["sphere", sphereFeatureType.type, isSphereFeature],
+    ["cone", coneFeatureType.type, isConeFeature],
+    ["torus", torusFeatureType.type, isTorusFeature],
+  ] as const)(
+    "keeps %s editable, previewable, and eligible for downstream solid tools",
+    (kind, type, matches) => {
+      const primitive = featureRecordSchema.parse({ ...box, type })
+      const editedTool = editPartDesignTool(primitive)
+      expect(matches(primitive)).toBe(true)
+      expect(editedTool).toEqual({ kind: `edit-${kind}`, featureId: primitive.id })
+      expect(isPrimitivePartDesignTool(editedTool)).toBe(true)
+      expect(activePartDesignCommand(editedTool)).toBe(kind)
+      expect(booleanInputFeatures([primitive])).toEqual([primitive])
+      expect(modifyingSolidTargetFeatures([primitive])).toEqual([primitive])
+      expect(
+        matches(featureRecordSchema.parse({ ...primitive, type: { ...type, schemaVersion: 2 } })),
+      ).toBe(false)
+    },
+  )
 })

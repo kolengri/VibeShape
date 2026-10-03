@@ -34,6 +34,9 @@ const actions = {
   createHole: vi.fn(),
   createBox: vi.fn(),
   createCylinder: vi.fn(),
+  createSphere: vi.fn(),
+  createCone: vi.fn(),
+  createTorus: vi.fn(),
   createDatumPlane: vi.fn(),
   createExtrusion: vi.fn(),
   createRevolve: vi.fn(),
@@ -273,6 +276,16 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Model" }))
     await user.keyboard("{ArrowRight}")
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
+  })
+
+  it("exposes all basic primitives through the shared command handlers", async () => {
+    const user = userEvent.setup()
+    renderToolbar()
+    for (const key of ["createSphere", "createCone", "createTorus"] as const) {
+      const label = { createSphere: "Sphere", createCone: "Cone", createTorus: "Torus" }[key]
+      await user.click(screen.getByRole("button", { name: label }))
+      expect(actions[key]).toHaveBeenCalledOnce()
+    }
   })
 
   it("shows committed history only in idle model mode", () => {

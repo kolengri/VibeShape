@@ -7,13 +7,13 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { TanStackLengthExpressionField } from "../part-design/length-expression-field"
 import {
   defaultPrimitiveOriginValues,
   type FeatureParameterFormProps,
@@ -29,7 +29,10 @@ import {
   PrimitiveParameterPanel,
   type PrimitiveParameterPanelCopy,
 } from "../part-design/primitive-parameter-panel"
-import type { PrimitivePlacementRequest } from "../part-design/primitive-placement"
+import {
+  type PrimitivePlacementRequest,
+  usePrimitivePlacementRequest,
+} from "../part-design/primitive-placement"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
@@ -242,31 +245,26 @@ export function CylinderForm({
     },
   })
 
-  useEffect(() => {
-    if (disabled || !placementRequest || placementRequest.featureId !== featureId) return
-    const [x, y, z] = placementRequest.position
-    clearSubmissionErrors()
-    form.setFieldValue("originX", defaultLengthExpression(x, displayUnits.length))
-    form.setFieldValue("originY", defaultLengthExpression(y, displayUnits.length))
-    form.setFieldValue("originZ", defaultLengthExpression(z, displayUnits.length))
-  }, [clearSubmissionErrors, disabled, displayUnits.length, featureId, form, placementRequest])
+  usePrimitivePlacementRequest({
+    disabled,
+    displayUnit: displayUnits.length,
+    featureId,
+    form,
+    onBeforeChange: clearSubmissionErrors,
+    placementRequest,
+  })
 
   const dimensionField = (fieldName: DimensionField, label: string) => (
     <form.Field name={fieldName}>
       {(field) => (
-        <LengthExpressionField
+        <TanStackLengthExpressionField
           id={`cylinder-${fieldName}`}
-          name={field.name}
-          value={field.state.value}
+          field={field}
           label={label}
           description={copy.expressionDescription}
           error={issues[fieldName]}
           suggestions={suggestions}
-          onBlur={field.handleBlur}
-          onValueChange={(value) => {
-            clearSubmissionErrors()
-            field.handleChange(value)
-          }}
+          onBeforeChange={clearSubmissionErrors}
         />
       )}
     </form.Field>
@@ -275,19 +273,14 @@ export function CylinderForm({
   const originField = (fieldName: PrimitiveOriginField, label: string) => (
     <form.Field name={fieldName}>
       {(field) => (
-        <LengthExpressionField
+        <TanStackLengthExpressionField
           id={`cylinder-${fieldName}`}
-          name={field.name}
-          value={field.state.value}
+          field={field}
           label={label}
           description={copy.positionDescription}
           error={issues[fieldName]}
           suggestions={suggestions}
-          onBlur={field.handleBlur}
-          onValueChange={(value) => {
-            clearSubmissionErrors()
-            field.handleChange(value)
-          }}
+          onBeforeChange={clearSubmissionErrors}
         />
       )}
     </form.Field>

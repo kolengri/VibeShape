@@ -586,6 +586,18 @@
         "workspaceSketch": {
           "label": "Sketch",
           "keywords": "sketch workspace|2d|drawing|constraints"
+        },
+        "createSphere": {
+          "label": "Sphere",
+          "keywords": "create sphere|primitive|solid|ball|round"
+        },
+        "createCone": {
+          "label": "Cone",
+          "keywords": "create cone|primitive|solid|pointed|taper"
+        },
+        "createTorus": {
+          "label": "Torus",
+          "keywords": "create torus|primitive|solid|ring|donut"
         }
       }
     },
@@ -915,7 +927,7 @@
         "description": "Choose a support plane, define a constrained 2D profile, then turn that selected profile into a solid with Extrude.",
         "expandPanel": "Open task panel",
         "directSolids": "Direct solids (advanced)",
-        "directSolidsDescription": "Box and Cylinder remain available for fast blocking and compatibility, but sketch-driven features are the primary parametric workflow.",
+        "directSolidsDescription": "Box, Cylinder, Sphere, Cone, and Torus create standalone solids for fast blocking. Use sketch-driven features for profile-based parametric modeling.",
         "selectedProfileDescription": "The selected sketch contains a supported closed region. Use Extrude or Revolve in the modeling toolbar, or return to the sketch to edit its dimensions.",
         "selectedProfileReady": "Profile ready",
         "startModeling": "Start with a sketch",
@@ -1304,6 +1316,75 @@
           "validationSummary": "Check the highlighted values.",
           "saveFailed": "The hole could not be saved. Try again.",
           "staleRevision": "The document changed. Reopen this task before saving."
+        },
+        "createSphere": "Create sphere",
+        "sphere": {
+          "title": "Create sphere",
+          "description": "Create a spherical solid centered on the placement origin.",
+          "editTitle": "Edit sphere",
+          "editDescription": "Update this Sphere's dimensions and placement while preserving its identity and authored expressions.",
+          "parameters": "Sphere definition",
+          "featureLabel": "Sphere {number}",
+          "create": "Create sphere",
+          "update": "Update sphere",
+          "validationSummary": "Fix the highlighted parameters before creating the sphere.",
+          "updateValidationSummary": "Fix the highlighted parameters before updating the sphere.",
+          "staleRevision": "The document changed while this sphere was being edited. Review the current model and try again.",
+          "createFailed": "The sphere could not be created. Your parameter values are preserved.",
+          "updateFailed": "The sphere could not be updated. Your parameter values are preserved."
+        },
+        "createCone": "Create cone",
+        "cone": {
+          "title": "Create cone",
+          "description": "Create a pointed cone along +Z from its axis placement origin.",
+          "editTitle": "Edit cone",
+          "editDescription": "Update this Cone's dimensions and placement while preserving its identity and authored expressions.",
+          "parameters": "Cone definition",
+          "featureLabel": "Cone {number}",
+          "create": "Create cone",
+          "update": "Update cone",
+          "validationSummary": "Fix the highlighted parameters before creating the cone.",
+          "updateValidationSummary": "Fix the highlighted parameters before updating the cone.",
+          "staleRevision": "The document changed while this cone was being edited. Review the current model and try again.",
+          "createFailed": "The cone could not be created. Your parameter values are preserved.",
+          "updateFailed": "The cone could not be updated. Your parameter values are preserved."
+        },
+        "createTorus": "Create torus",
+        "torus": {
+          "title": "Create torus",
+          "description": "Create a ring torus centered on the placement origin with its axis along Z.",
+          "editTitle": "Edit torus",
+          "editDescription": "Update this Torus's dimensions and placement while preserving its identity and authored expressions.",
+          "parameters": "Torus definition",
+          "featureLabel": "Torus {number}",
+          "create": "Create torus",
+          "update": "Update torus",
+          "validationSummary": "Fix the highlighted parameters before creating the torus.",
+          "updateValidationSummary": "Fix the highlighted parameters before updating the torus.",
+          "staleRevision": "The document changed while this torus was being edited. Review the current model and try again.",
+          "createFailed": "The torus could not be created. Your parameter values are preserved.",
+          "updateFailed": "The torus could not be updated. Your parameter values are preserved."
+        },
+        "basicPrimitive": {
+          "dimensions": "Dimensions",
+          "radius": "Radius",
+          "height": "Height",
+          "majorRadius": "Major radius",
+          "minorRadius": "Minor radius",
+          "placement": "Placement origin",
+          "originX": "Origin X",
+          "originY": "Origin Y",
+          "originZ": "Origin Z",
+          "centered": "Center height about placement origin",
+          "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #radius.",
+          "positionDescription": "Enter a signed coordinate with a supported unit, a unitless value in project units, or a variable such as #offset.",
+          "cancel": "Cancel",
+          "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to a length.",
+          "invalidRange": "Enter a length from 0.001 mm to 100,000 mm.",
+          "invalidPositionRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
+          "invalidTorusRadii": "The major radius must be greater than the minor radius.",
+          "invalidWorkspaceBounds": "Reduce dimensions or move the origin to keep the solid within the supported workspace limits."
         }
       },
       "viewport": {
@@ -1409,7 +1490,10 @@
         "holePointKeyboardPlaceholder": "Choose a sketch point",
         "holePreviewFailed": "The selected holes cannot be cut. Check the centers, body, direction, and dimensions.",
         "holePreviewLoading": "Calculating hole preview…",
-        "holePreviewReady": "Hole preview ready."
+        "holePreviewReady": "Hole preview ready.",
+        "featurePreviewFailed": "The unsaved feature could not be previewed. Adjust its dimensions or placement.",
+        "featurePreviewLoading": "Rebuilding unsaved feature preview…",
+        "featurePreviewReady": "Unsaved feature preview"
       },
       "faq": {
         "trigger": "FAQ",

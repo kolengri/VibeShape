@@ -158,6 +158,13 @@ Saved sketches and features expose persistent icon-only, tooltip-labeled Rename 
 
 ## Flow 2: edit an early parameter
 
+Sphere, Cone, and Torus use the same direct-primitive create/edit workflow as Box and Cylinder.
+Sphere's origin is its center. Cone's base lies at origin Z unless centered height is enabled;
+its apex points along positive Z. Torus uses a Z axis through its center, with major radius measured
+to the tube center and minor radius measuring the tube itself. The minor radius must be smaller
+than the major radius. Dimensions and placement accept unit expressions and committed variables;
+preview remains disposable until Apply, and reopening restores authored expressions.
+
 1. Double-click a feature or dimension in the tree or viewport.
 2. Enter a new value and show a debounced preview.
 3. Rebuild in the worker while keeping the UI responsive.

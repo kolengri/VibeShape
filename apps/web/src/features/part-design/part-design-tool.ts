@@ -3,6 +3,7 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  coneFeatureType,
   cylinderFeatureType,
   datumPlaneFeatureType,
   type FeatureId,
@@ -22,6 +23,8 @@ import {
   revolveFeatureTypeV6,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
+  sphereFeatureType,
+  torusFeatureType,
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import type { PartId } from "@vibeshape/domain/identifiers"
@@ -42,6 +45,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-box"; featureId: FeatureId }>
   | Readonly<{ kind: "create-cylinder" }>
   | Readonly<{ kind: "edit-cylinder"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-sphere" | "create-cone" | "create-torus" }>
+  | Readonly<{ kind: "edit-sphere" | "edit-cone" | "edit-torus"; featureId: FeatureId }>
   | Readonly<{ kind: "create-extrusion"; profiles: readonly SketchProfileSelector[] }>
   | Readonly<{ kind: "edit-extrusion"; featureId: FeatureId }>
   | Readonly<{ kind: "create-revolve"; profiles: readonly SketchProfileSelector[] }>
@@ -59,7 +64,19 @@ export type ActivePartDesignTool =
 
 export type ActivePrimitivePartDesignTool = Extract<
   ActivePartDesignTool,
-  { kind: "create-box" | "create-cylinder" | "edit-box" | "edit-cylinder" }
+  {
+    kind:
+      | "create-box"
+      | "create-cylinder"
+      | "edit-box"
+      | "edit-cylinder"
+      | "create-sphere"
+      | "edit-sphere"
+      | "create-cone"
+      | "edit-cone"
+      | "create-torus"
+      | "edit-torus"
+  }
 >
 
 export type ActiveExtrusionPartDesignTool = Extract<
@@ -77,6 +94,12 @@ const primitivePartDesignToolKinds = new Set<ActivePartDesignTool["kind"]>([
   "edit-box",
   "create-cylinder",
   "edit-cylinder",
+  "create-sphere",
+  "edit-sphere",
+  "create-cone",
+  "edit-cone",
+  "create-torus",
+  "edit-torus",
 ])
 
 export function isPrimitivePartDesignTool(
@@ -122,6 +145,18 @@ export function isBoxFeature(feature: FeatureRecord) {
 
 export function isCylinderFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, cylinderFeatureType.type)
+}
+
+export function isSphereFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, sphereFeatureType.type)
+}
+
+export function isConeFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, coneFeatureType.type)
+}
+
+export function isTorusFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, torusFeatureType.type)
 }
 
 export function isHoleFeature(feature: FeatureRecord) {
@@ -179,6 +214,9 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
   return [
     isBoxFeature,
     isCylinderFeature,
+    isSphereFeature,
+    isConeFeature,
+    isTorusFeature,
     isExtrusionFeature,
     isRevolveFeature,
     isBooleanFeature,
@@ -280,6 +318,9 @@ const editableFeatureTools: readonly [
   [isPlacementFeature, "edit-placement"],
   [isBoxFeature, "edit-box"],
   [isCylinderFeature, "edit-cylinder"],
+  [isSphereFeature, "edit-sphere"],
+  [isConeFeature, "edit-cone"],
+  [isTorusFeature, "edit-torus"],
   [isExtrusionFeature, "edit-extrusion"],
   [isRevolveFeature, "edit-revolve"],
   [isHoleFeature, "edit-hole"],
@@ -308,6 +349,12 @@ const commandByToolKind = {
   "edit-box": "box",
   "create-cylinder": "cylinder",
   "edit-cylinder": "cylinder",
+  "create-sphere": "sphere",
+  "edit-sphere": "sphere",
+  "create-cone": "cone",
+  "edit-cone": "cone",
+  "create-torus": "torus",
+  "edit-torus": "torus",
   "create-extrusion": "extrusion",
   "edit-extrusion": "extrusion",
   "create-revolve": "revolve",

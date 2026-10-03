@@ -255,8 +255,12 @@ function readEdgeSample(edge: Edge, index: number, displayPointBudget: number) {
     const direction = normalizedDirection(edge.tangentAt(0.5))
     const start = readVector(edge.startPoint)
     const end = readVector(edge.endPoint)
-    const referenceGeometry = readEdgeReferenceGeometry(edge, start, end)
-    const edgePolyline = readEdgeDisplayGeometry(edge, start, end, displayPointBudget)
+    // Singular surface boundaries remain topology, but cannot serve as selectable model curves.
+    const degenerated = getOC().BRep_Tool.Degenerated(edge.wrapped)
+    const referenceGeometry = degenerated ? undefined : readEdgeReferenceGeometry(edge, start, end)
+    const edgePolyline = degenerated
+      ? undefined
+      : readEdgeDisplayGeometry(edge, start, end, displayPointBudget)
     return {
       endpoints: [start, end] as const,
       displayPointCount: edgePolyline?.length ?? 0,

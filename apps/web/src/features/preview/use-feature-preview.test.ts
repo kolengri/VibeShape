@@ -3,6 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react"
 import {
   boxFeatureType,
+  coneFeatureType,
   createLengthQuantity,
   datumPlaneFeatureType,
   documentIdSchema,
@@ -11,6 +12,8 @@ import {
   featureIdSchema,
   featureRecordSchema,
   holeFeatureTypeV2,
+  sphereFeatureType,
+  torusFeatureType,
 } from "@vibeshape/domain"
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -194,6 +197,15 @@ describe("feature preview composition", () => {
 
     expect(featurePreviewKind(candidate)).toBe("primitive")
   })
+
+  it.each([sphereFeatureType.type, coneFeatureType.type, torusFeatureType.type])(
+    "classifies $typeId as a primitive preview",
+    (type) => {
+      expect(featurePreviewKind(featureRecordSchema.parse({ ...feature(candidateId), type }))).toBe(
+        "primitive",
+      )
+    },
+  )
 
   it("creates a disposable document without mutating the committed snapshot", () => {
     const candidate = feature(candidateId, [baseId])

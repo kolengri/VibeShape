@@ -36,6 +36,9 @@ export type BuiltInEditorCommandContext = Readonly<{
     createChamfer: () => void
     createBox: () => void
     createCylinder: () => void
+    createSphere: () => void
+    createCone: () => void
+    createTorus: () => void
     createDatumPlane: () => void
     createExtrusion: () => unknown
     createRevolve?: () => unknown
@@ -240,6 +243,30 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "cylinder",
     id: editorCommandIds.createCylinder,
     labelKey: "createCylinder",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primitives",
+  },
+  {
+    group: "modeling",
+    icon: "sphere",
+    id: editorCommandIds.createSphere,
+    labelKey: "createSphere",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primitives",
+  },
+  {
+    group: "modeling",
+    icon: "cone",
+    id: editorCommandIds.createCone,
+    labelKey: "createCone",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primitives",
+  },
+  {
+    group: "modeling",
+    icon: "torus",
+    id: editorCommandIds.createTorus,
+    labelKey: "createTorus",
     ownerModuleId: partDesignOwner,
     toolbarGroup: "model-primitives",
   },
@@ -860,6 +887,30 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: canCreateFeature,
     id: editorCommandIds.createCylinder,
     isActive: ({ state }) => state.activePartDesignCommand === "cylinder",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createSphere(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createSphere,
+    isActive: ({ state }) => state.activePartDesignCommand === "sphere",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createCone(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createCone,
+    isActive: ({ state }) => state.activePartDesignCommand === "cone",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createTorus(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createTorus,
+    isActive: ({ state }) => state.activePartDesignCommand === "torus",
     isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: partDesignOwner,
   },
