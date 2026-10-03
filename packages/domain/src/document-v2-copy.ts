@@ -9,20 +9,25 @@ import {
 } from "./commands"
 import { type DocumentSnapshotV1, documentNameSchema, documentSnapshotV1Schema } from "./document"
 import { migrateDocumentSnapshot } from "./document-migration"
-import { type DocumentSnapshotV2, documentSnapshotV2Schema } from "./document-v2"
+import {
+  type AuthoredDocumentSnapshot,
+  documentSnapshotV2Schema,
+  documentSnapshotV3Schema,
+} from "./document-v2"
 import {
   type DocumentAuthorityEvent,
   documentAuthorityEventSchema,
 } from "./document-v2-command-schemas"
 import { applyDocumentV2Command } from "./document-v2-commands"
 import { replayDocumentAuthorityEvents } from "./document-v2-replay"
+import { applyDocumentV3Command } from "./document-v3-commands"
 import { commandIdSchema, documentIdSchema, draftIdSchema, timestampSchema } from "./identifiers"
 
 const copyInputObjectSchema = z
   .object({
     sourceLegacyEvents: z.array(documentEventSchema).max(99_999),
     sourceSeed: documentSnapshotV1Schema.nullable(),
-    sourceSnapshot: documentSnapshotV2Schema,
+    sourceSnapshot: z.union([documentSnapshotV2Schema, documentSnapshotV3Schema]),
     sourceEvents: z.array(documentAuthorityEventSchema).max(99_999),
     documentId: documentIdSchema,
     commandIds: z.array(commandIdSchema).min(1).max(100_000),
@@ -90,7 +95,7 @@ export type CompleteDocumentAuthorityCopyResult =
       ok: true
       legacyEvents: readonly DocumentEvent[]
       seed: DocumentSnapshotV1 | null
-      snapshot: DocumentSnapshotV2
+      snapshot: AuthoredDocumentSnapshot
       versionedEvents: readonly DocumentAuthorityEvent[]
     }>
   | Readonly<{ ok: false; diagnostic: DomainDiagnostic }>
@@ -158,7 +163,7 @@ export function copyCompleteDocumentAuthorityHistory(
   const copied = replayDocumentAuthorityEvents(seed, events)
   if (
     !copied.ok ||
-    copied.snapshot.schemaVersion !== 2 ||
+    copied.snapshot.schemaVersion === 1 ||
     canonicalJson(copied.snapshot) !==
       canonicalJson({ ...input.sourceSnapshot, id: input.documentId })
   )
@@ -174,10 +179,12 @@ export function copyCompleteDocumentAuthorityHistory(
     actor: input.actor,
     payload: { name: input.name },
   }
-  const renamed = applyDocumentV2Command(copied.snapshot, {
+  const apply =
+    copied.snapshot.schemaVersion === 3 ? applyDocumentV3Command : applyDocumentV2Command
+  const renamed = apply(copied.snapshot, {
     ...command,
     kind: "org.vibeshape.document.model-command",
-    schemaVersion: 2,
+    schemaVersion: copied.snapshot.schemaVersion,
     payload: { command, partAllocations: [] },
   })
   return renamed.ok

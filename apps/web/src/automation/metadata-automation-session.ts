@@ -8,7 +8,7 @@ import {
 } from "@vibeshape/automation-host/metadata-proposal"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import { commandActorSchema } from "@vibeshape/domain/commands"
-import { documentSnapshotV2Schema } from "@vibeshape/domain/document-v2"
+import { authoredDocumentSnapshotSchema } from "@vibeshape/domain/document-v2"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { automationReviews } from "./automation-review-controller"
 
@@ -33,7 +33,7 @@ export function createMetadataAutomationSession(
     async read(kind: "parts" | "folders" | "history", input: unknown) {
       if (closed || !configuration.isActive())
         return localFailure("session-revoked", "The metadata session is unavailable.")
-      const snapshot = documentSnapshotV2Schema.safeParse(await configuration.readSnapshot())
+      const snapshot = authoredDocumentSnapshotSchema.safeParse(await configuration.readSnapshot())
       if (!snapshot.success || snapshot.data.id !== configuration.documentId)
         return localFailure(
           "authored-metadata-unavailable",

@@ -1,4 +1,4 @@
-export type ProjectActionBlock = "editor-draft" | "automation-busy"
+export type ProjectActionBlock = "editor-draft" | "surface-texture-draft" | "automation-busy"
 
 // Readers retain the owning stores; no draft or automation state is copied here.
 export function createProjectActionGuard() {

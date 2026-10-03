@@ -5,7 +5,7 @@ import {
   featureRecordSchema,
   filletFeatureType,
 } from "@vibeshape/domain"
-import type { DocumentWorkerResponse } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, type DocumentWorkerResponse } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { terminalModelBodies } from "./model-bodies"
 import { modifyingSolidTargetFeatures } from "./part-design-tool"
@@ -42,7 +42,7 @@ function rebuild(
 ): Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> {
   return {
     type: "documentRebuilt",
-    protocolVersion: 22,
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
     requestId: "test",
     documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f2903",
     revision: 1,

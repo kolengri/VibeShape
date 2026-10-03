@@ -25,7 +25,11 @@ import type {
   RecoveryAuthorityRecord,
   SnapshotAuthorityRecord,
 } from "./authority-schemas"
-import { portableProjectV3CopySchema, portableProjectV3ImportSchema } from "./authority-schemas"
+import {
+  portableProjectV3CopySchema,
+  portableProjectV3ImportSchema,
+  portableProjectV4CopySchema,
+} from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
   classifyPersistenceError,
@@ -937,6 +941,28 @@ export class VersionedLocalDocumentRepository {
         diagnostic: createPersistenceDiagnostic(
           "invalid-input",
           "The portable V3 copy is invalid.",
+        ),
+      }
+    try {
+      return {
+        ok: true,
+        value: await publishPortableAuthority(this.database, input.data, input.data.copiedAt, null),
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async copyPortableProjectV4(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<PortableProjectImportReport>> {
+    const input = portableProjectV4CopySchema.safeParse(inputValue)
+    if (!input.success)
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The portable V4 copy is invalid.",
         ),
       }
     try {

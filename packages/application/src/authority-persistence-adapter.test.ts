@@ -396,3 +396,67 @@ describe("authored authority persistence adapter", () => {
     expect(f.adapter.authoredMetadata?.snapshot).toEqual(f.current())
   })
 })
+
+describe("surface texture persistence and undo", () => {
+  it("persists one first Apply event and restores layers with one undo and redo", async () => {
+    const f = fixture()
+    const base = f.current()
+    const feature = base.features[0]
+    if (!feature) throw new Error("Missing fixture feature")
+    const { createDefaultSurfaceTextureLayer, surfaceTextureLayerIdSchema } = await import(
+      "@vibeshape/domain/surface-textures"
+    )
+    const layer = createDefaultSurfaceTextureLayer(
+      feature.id,
+      "result",
+      surfaceTextureLayerIdSchema.parse(id(400)),
+    )
+    const original = f.runtime().features
+    const apply = () =>
+      f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: {
+          ...f.envelope(400),
+          schemaVersion: 3,
+          kind: "org.vibeshape.document.metadata-command",
+          payload: { kind: "textures.replace-layers", featureId: feature.id, layers: [layer] },
+        },
+      })
+    f.fail(true)
+    expect((await apply()).ok).toBe(false)
+    expect(f.current()).toEqual(base)
+    expect(f.adapter.history.availability.canUndo).toBe(false)
+    f.fail(false)
+    success(await apply())
+    const applied = f.current()
+    expect(applied.schemaVersion).toBe(3)
+    if (applied.schemaVersion !== 3) throw new Error("Missing texture authority")
+    expect(applied.surfaceTextures).toEqual([layer])
+    expect(f.writes.at(-1)?.event.type).toBe("org.vibeshape.document.upgraded-v3")
+    expect(f.current().revision).toBe(base.revision + 1)
+    expect(f.runtime().features).toEqual(original)
+    success(await f.navigate(401, "undo"))
+    const undone = f.current()
+    if (undone.schemaVersion !== 3) throw new Error("Undo downgraded texture authority")
+    expect(undone.surfaceTextures).toEqual([])
+    success(await f.navigate(402, "redo"))
+    const redone = f.current()
+    if (redone.schemaVersion !== 3) throw new Error("Missing redone texture authority")
+    expect(redone.surfaceTextures).toEqual([layer])
+    success(
+      await f.metadata(403, {
+        kind: "part.rename",
+        partId: part(base).id,
+        name: "Textured base",
+      }),
+    )
+    const renamed = f.current()
+    if (renamed.schemaVersion !== 3) throw new Error("Metadata downgraded texture authority")
+    expect(renamed.surfaceTextures).toEqual([layer])
+    expect(renamed.parts[0]?.name).toBe("Textured base")
+    success(await f.adapter.recover(base.id))
+    expect(f.current()).toEqual(renamed)
+  })
+})

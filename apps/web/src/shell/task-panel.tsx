@@ -10,7 +10,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerSelection } from "@vibeshape/viewer"
@@ -120,6 +120,7 @@ import {
   isActiveSketchEditorTool,
   type SketchDraftChangeMode,
 } from "../features/sketch/sketch-tool"
+import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-texture-task-panel"
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
 import { PlacementTaskPanel } from "./placement-task-panel"
@@ -1662,12 +1663,12 @@ function ActiveSubtractTaskPanel({
 type ExtrusionFaceSelection = Readonly<{ planar: boolean; canCreateSketch: boolean }>
 
 type ActiveTaskPanelProps = Readonly<{
-  authority: DocumentSnapshotV2 | null
+  authority: AuthoredDocumentSnapshot | null
   parts: readonly ResolvedAuthoredPart[]
   documentBusy: boolean
   extrusionFaceSelection: ExtrusionFaceSelection | null
   onCreateSketch: () => void
-  activeTool: Exclude<ActivePartDesignTool, { kind: "measure" }>
+  activeTool: Exclude<ActivePartDesignTool, { kind: "measure" | "surface-texture" }>
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   featurePreviewStatus: FeaturePreviewState["status"]
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
@@ -2226,6 +2227,8 @@ function selectedExtrusionFace(props: TaskPanelProps): ExtrusionFaceSelection | 
 
 function ModelTaskPanel(props: TaskPanelProps) {
   const report = props.controller.report
+  if (props.activeTool?.kind === "surface-texture")
+    return <ModelSurfaceTextureTaskPanel props={props} />
   if (props.activeTool?.kind === "measure")
     return <ModelMeasurementTaskPanel props={props} report={report} />
   if (props.activeTool && report) {
@@ -2739,4 +2742,20 @@ export function TaskPanel(props: TaskPanelProps) {
   }
   const Panel = taskPanelByWorkspace[props.workspace]
   return <Panel {...props} />
+}
+
+function ModelSurfaceTextureTaskPanel({ props }: { props: TaskPanelProps }) {
+  const tool = props.activeTool
+  if (tool?.kind !== "surface-texture") return null
+  return (
+    <SurfaceTextureTaskPanel
+      key={`${props.controller.report?.snapshot.id}:${tool.featureId ?? "selection"}`}
+      controller={props.controller}
+      selectedFace={props.selectedFace ?? null}
+      initialFeatureId={tool.featureId ?? props.selectedFeatureId ?? null}
+      initialOutputRole={tool.outputRole ?? props.selectedOutputRole}
+      onClose={props.onCloseTool}
+      onComplete={props.onCompleteTool}
+    />
+  )
 }

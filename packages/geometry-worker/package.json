@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
     "./engine": "./src/engine.ts",
-    "./runtime": "./src/runtime.ts"
+    "./runtime": "./src/runtime.ts",
+    "./surface-texture": "./src/surface-texture.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

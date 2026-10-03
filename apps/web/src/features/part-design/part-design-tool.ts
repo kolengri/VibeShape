@@ -39,6 +39,7 @@ import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { terminalModelBodies } from "./model-bodies"
 
 export type ActivePartDesignTool =
+  | Readonly<{ kind: "surface-texture"; featureId?: FeatureId; outputRole?: string }>
   | Readonly<{ kind: "measure" }>
   | Readonly<{ kind: "create-compound" | "create-union" }>
   | Readonly<{ kind: "edit-compound" | "edit-union"; featureId: FeatureId }>
@@ -405,6 +406,7 @@ export function editPartDesignTool(
 }
 
 const commandByToolKind = {
+  "surface-texture": "surface-texture",
   "create-compound": "compound",
   "edit-compound": "compound",
   "create-union": "union",

@@ -752,6 +752,57 @@ describe("DocumentWorkerRuntime", () => {
     expect(exportedTransfer.byteLength).toBe(3)
   })
 
+  it.each(["stl", "3mf"] as const)(
+    "forwards resolved texture masks and the triangle budget to %s export",
+    async (format) => {
+      const { engine, runtime } = createHarness()
+      await runtime.handle(request("rebuild-texture-export"))
+      const stlExport = vi.spyOn(engine, "exportDocument")
+      const printExport = vi.spyOn(engine, "exportPrintMeshes")
+      const surfaceTextures = [
+        {
+          featureId: featureIds.boolean,
+          outputRole: "result",
+          layers: [
+            {
+              id: "layer",
+              enabled: true,
+              targetFaceIds: null,
+              mask: { base: "all" as const, strokes: [] },
+              map: { kind: "builtin" as const, pattern: "ridges" as const },
+              mapping: { kind: "planar" as const, axis: "z" as const },
+              heightMm: 0.3,
+              sizeUMm: 5,
+              sizeVMm: 5,
+              rotationDeg: 0,
+              offsetUMm: 0,
+              offsetVMm: 0,
+              direction: "outward" as const,
+              invert: false,
+              boundaryFadeMm: 0,
+              blend: "add" as const,
+            },
+          ],
+        },
+      ]
+      const textureQuality = { maxEdgeLengthMm: 1, maxTriangles: 2_000 }
+      await runtime.handle({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: `texture-${format}`,
+        documentId: documentIds.primary,
+        revision: 1,
+        generation: 1,
+        type: "exportDocument",
+        format,
+        surfaceTextures,
+        textureQuality,
+      })
+      expect(format === "stl" ? stlExport : printExport).toHaveBeenCalledWith(
+        expect.objectContaining({ surfaceTextures, textureQuality }),
+      )
+    },
+  )
+
   it("writes a 3MF archive from print meshes with matching terminal body identities", async () => {
     const { engine, messages, runtime, transfers } = createHarness()
     await runtime.handle(request("rebuild-for-3mf-export"))

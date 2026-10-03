@@ -22,7 +22,11 @@ import {
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
-import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
+import type {
+  DocumentPrintMeshExportInput,
+  DocumentPrintMeshExportResult,
+  GeometryKernelEngine,
+} from "@vibeshape/geometry-worker/engine"
 import { preparePrintMeshes } from "@vibeshape/print-analysis"
 import type { PrintPreparationSettings } from "@vibeshape/protocol"
 import {
@@ -175,14 +179,27 @@ function transferablesFor(response: DocumentWorkerResponse) {
   ]
 }
 
-async function exportThreeMfDocument(
-  engine: GeometryKernelEngine,
-  document: RebuildDocumentSnapshot,
+type TextureExportRequestOptions = Pick<
+  DocumentPrintMeshExportInput,
+  "surfaceTextures" | "textureQuality"
+>
+
+function textureExportOptions(
+  request: Pick<
+    Extract<DocumentWorkerRequest, { type: "exportDocument" }>,
+    "surfaceTextures" | "textureQuality"
+  >,
+): TextureExportRequestOptions {
+  return {
+    ...(request.surfaceTextures ? { surfaceTextures: request.surfaceTextures } : {}),
+    ...(request.textureQuality ? { textureQuality: request.textureQuality } : {}),
+  }
+}
+
+function validatePrintMeshExportIdentity(
+  result: DocumentPrintMeshExportResult,
   features: readonly FeatureEvaluationDependency[],
-  names: ReadonlyMap<string, string>,
-  settings?: PrintPreparationSettings,
 ) {
-  const result = await engine.exportPrintMeshes({ documentId: document.id, features })
   if (
     result.meshes.length !== features.length ||
     result.meshes.some(
@@ -190,9 +207,24 @@ async function exportThreeMfDocument(
         mesh.featureId !== features[index]?.featureId ||
         mesh.outputRole !== features[index]?.outputRole,
     )
-  ) {
+  )
     throw new Error("Print mesh export returned mismatched feature bodies.")
-  }
+}
+
+async function exportThreeMfDocument(
+  engine: GeometryKernelEngine,
+  document: RebuildDocumentSnapshot,
+  features: readonly FeatureEvaluationDependency[],
+  names: ReadonlyMap<string, string>,
+  settings?: PrintPreparationSettings,
+  textureOptions?: TextureExportRequestOptions,
+) {
+  const result = await engine.exportPrintMeshes({
+    documentId: document.id,
+    features,
+    ...textureOptions,
+  })
+  validatePrintMeshExportIdentity(result, features)
   const labels = new Map(document.features.map(({ id, label }) => [id, label]))
   const meshes = result.meshes.map((mesh, index) => ({
     name: exportBodyName(mesh, names) ?? labels.get(mesh.featureId) ?? `Body ${index + 1}`,
@@ -347,6 +379,7 @@ export class DocumentWorkerRuntime {
         return
       }
 
+      const textureOptions = textureExportOptions(request)
       const exported =
         request.format === "3mf"
           ? await exportThreeMfDocument(
@@ -355,11 +388,13 @@ export class DocumentWorkerRuntime {
               features,
               names,
               request.printPreparation,
+              textureOptions,
             )
           : await this.engine.exportDocument({
               documentId: request.documentId,
               features,
               format: request.format,
+              ...textureOptions,
             })
       this.#post({
         ...requestEnvelope(request),

@@ -3,7 +3,7 @@ import { type FeatureId, type FeatureRecord, featureRecordSchema } from "@vibesh
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { createDocumentDependencyGraph } from "@vibeshape/domain/document-graph"
 import type { DocumentNodeRef } from "@vibeshape/domain/document-node"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { historyItemKey } from "@vibeshape/domain/history-folders"
 import type { CompoundSlotId, PartId } from "@vibeshape/domain/identifiers"
 import {
@@ -38,7 +38,7 @@ export type BodyCombinationMode = Readonly<{
   )
 
 function downstreamFeatures(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   featureId: FeatureId,
 ): Set<FeatureId> | null {
   const result = createDocumentDependencyGraph(authority)
@@ -60,7 +60,7 @@ function downstreamFeatures(
 }
 
 export function combinationInputOptions(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   parts: readonly ResolvedAuthoredPart[],
   mode: BodyCombinationMode,
 ): readonly BodyCombinationInput[] {
@@ -77,12 +77,13 @@ export function combinationInputOptions(
 }
 
 function retainedInput(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   body: BodyReference,
   output: BodyReference | null,
 ): BodyCombinationInput | null {
-  const contains = (reference: BodyReference) => (part: DocumentSnapshotV2["parts"][number]) =>
-    part.bodyHistory.some((entry) => sameBody(entry, reference))
+  const contains =
+    (reference: BodyReference) => (part: AuthoredDocumentSnapshot["parts"][number]) =>
+      part.bodyHistory.some((entry) => sameBody(entry, reference))
   const outputOwner = output ? authority.parts.filter(contains(output)) : []
   const candidates = outputOwner.length ? outputOwner : authority.parts.filter(contains(body))
   if (candidates.length !== 1) return null
@@ -92,7 +93,7 @@ function retainedInput(
 }
 
 function compoundInputs(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   feature: FeatureRecord,
 ): readonly BodyCombinationInput[] | null {
   const parameters = readCompoundFeatureParameters(feature)
@@ -108,7 +109,7 @@ function compoundInputs(
   return inputs.every((input) => input !== null) ? inputs : null
 }
 function unionInputs(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   feature: FeatureRecord,
 ): readonly BodyCombinationInput[] | null {
   const parameters = readUnionFeatureParameters(feature)
@@ -123,7 +124,7 @@ function unionInputs(
   return inputs.every((input) => input !== null) ? inputs : null
 }
 export function retainedCombinationInputs(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   feature: FeatureRecord,
   operation: BodyCombinationKind,
 ): readonly BodyCombinationInput[] | null {

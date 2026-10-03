@@ -60,6 +60,8 @@ import type { FeaturePreviewState } from "../features/preview/use-feature-previe
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
 import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
 import { selectedSketchSupportFromController } from "../features/sketch/sketch-support"
+import { SurfaceTextureViewportTools } from "../features/surface-texture/surface-texture-viewport-tools"
+import { useTexturedMeshes } from "../features/surface-texture/use-textured-meshes"
 import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
 import {
   SAFE_VIEWPORT_CENTER,
@@ -1450,7 +1452,8 @@ function useViewportMeshPresentation({
       (mesh) => !hidden.has(mesh.featureId) && !hiddenBodies.has(authoredBodyKey(mesh)),
     )
   }, [authority, allHiddenFeatureIds, committedMeshes, featurePreview])
-  return { allCommittedMeshes, allHiddenFeatureIds, meshes }
+  const texturedMeshes = useTexturedMeshes(controller, meshes)
+  return { allCommittedMeshes, allHiddenFeatureIds, meshes: texturedMeshes }
 }
 
 function useViewportSketchPresentation({
@@ -2987,6 +2990,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
       <canvas ref={canvasRef} className={cn("peer", regionClassNames.canvas)} />
+      <SurfaceTextureViewportTools viewportRef={viewportRef} />
       {props.axialGizmo ? (
         <p
           role="status"

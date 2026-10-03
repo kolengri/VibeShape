@@ -16,6 +16,7 @@ import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
 import { useEditorSessionStoreApi } from "../editor-session/editor-session-provider"
+import type { EditorSessionState } from "../editor-session/editor-session-store"
 import { FaqDialog } from "./faq-dialog"
 import { LocalAutomationStatus } from "./local-automation-status"
 import { RemoteAutomationStatus } from "./remote-automation-status"
@@ -170,12 +171,8 @@ function useAutomationConnections(controller: DocumentControllerState) {
     () =>
       registerProjectActionGuard(() => {
         const state = editorStore.getState()
-        if (
-          (state.activePartDesignTool && state.activePartDesignTool.kind !== "measure") ||
-          state.sketch.activeSketchTool ||
-          state.sketch.draft
-        )
-          return "editor-draft"
+        const draftBlock = editorDraftBlock(state)
+        if (draftBlock) return draftBlock
         if (connection.getSnapshot().busy || remoteConnection.getSnapshot().busy)
           return "automation-busy"
         return null
@@ -186,6 +183,14 @@ function useAutomationConnections(controller: DocumentControllerState) {
 }
 
 type AutomationConnections = ReturnType<typeof useAutomationConnections>
+function editorDraftBlock(state: EditorSessionState) {
+  const sketchDraft = state.sketch.activeSketchTool || state.sketch.draft
+  if (state.activePartDesignTool?.kind === "surface-texture" && !sketchDraft)
+    return "surface-texture-draft" as const
+  if ((state.activePartDesignTool && state.activePartDesignTool.kind !== "measure") || sketchDraft)
+    return "editor-draft" as const
+  return null
+}
 function AutomationStatusControls({
   controller,
   blockedReason,

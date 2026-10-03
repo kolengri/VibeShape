@@ -7,6 +7,9 @@ import {
   type GeometryWorkerResponse,
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
+  type SurfaceTextureMesh,
+  type SurfaceTextureMeshLayer,
+  type SurfaceTextureQuality,
 } from "@vibeshape/protocol"
 import { isError } from "is-what"
 import GeometryWorkerConstructor from "./worker-entry?worker"
@@ -88,6 +91,27 @@ export class GeometryWorkerClient {
       this.#pending.set(request.requestId, pending)
       this.worker.postMessage(request)
     })
+  }
+
+  async previewSurfaceTextureMesh(
+    envelope: GeometryRequestEnvelope,
+    mesh: SurfaceTextureMesh,
+    layers: readonly SurfaceTextureMeshLayer[],
+    quality: SurfaceTextureQuality,
+  ) {
+    const response = await this.request({
+      ...envelope,
+      type: "textureMesh",
+      mesh,
+      layers: [...layers],
+      quality,
+    })
+    if (response.type !== "surfaceTexturePreviewed")
+      throw new GeometryWorkerRequestError(
+        "The geometry worker did not return a surface texture preview.",
+        response,
+      )
+    return response
   }
 
   terminate() {
