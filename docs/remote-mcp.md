@@ -84,7 +84,7 @@ unsupported grants. Payload and admission budgets still apply before SDK writes.
 | Budget | Initial limit |
 | --- | --- |
 | `MAX_ACTIVE_SESSIONS` | 3 live tabs, configurable up to 128 |
-| `MAX_SESSIONS_PER_DAY` | 12 challenge attempts per UTC day; 3/IP/day |
+| `MAX_SESSIONS_PER_DAY` | 12 challenge attempts per UTC day; 12/IP/day for hosted acceptance |
 | `MAX_CLIENTS_PER_DAY` | 24 DCR attempts per UTC day; 6/IP/day |
 | `MAX_CONSENTS_PER_DAY` | 24 SDK consent transactions per UTC day; 6/IP/day |
 | `MAX_TOKEN_REQUESTS_PER_DAY` | 48 token requests per UTC day; 12/IP/day |
