@@ -12,7 +12,7 @@ Neither feature moves or rotates the source sketches to make a preview succeed.
 
 ## Loft
 
-Add two to eight distinct closed, hole-free sections. The list order defines the loft; use the explicit
+Add two to twenty-four distinct closed, hole-free sections within the 2,000-curve aggregate budget. The list order defines the loft; use the explicit
 earlier, later, and removal actions to change it. **Ruled** selects straight interpolation between
 sections. Hole correspondence is not supported in this version. Degenerate or incompatible sections
 fail exact native preview instead of producing an approximate mesh.

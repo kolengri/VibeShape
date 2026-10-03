@@ -5,6 +5,14 @@ It reuses existing CAD, sketch, variable, topology and metadata tools. The edito
 documents, review, persistence and Undo. The local Bun/stdio workflow remains available separately.
 See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
+The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,
+`create_boolean`/`update_boolean`, `create_union`/`update_union`, and
+`create_compound`/`update_compound`. Plane support/offset, legacy whole-result subtraction and v2
+exact-body selections follow the same [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
+and owner-bound revisioned drafts as local stdio. An explicit browser session auto-apply grant
+covers Union v2 and Loft v1 creation and same-version edits; Compound and schema upgrades require
+manual review. Tools cannot enable the grant.
+
 The server bundles the [application-use skill pack](agent-skills.md), including modeling, recovery and the browser export fallback. After authentication, read `vibeshape://agent-skills`, then the entrypoint and relevant document URIs. Clients exposing only tools can use `read_agent_skill`. Both routes retain live-tab OAuth checks, return static instructions only, and never dispatch browser work. No checkout or local skill installation is required.
 
 ## User workflow

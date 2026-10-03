@@ -33,6 +33,57 @@ const actor = commandActorSchema.parse({
   sessionId: id(50),
 })
 describe("ordinary Sweep and Loft draft tools", () => {
+  it.each([19, 24])(
+    "preserves %i Loft sections and producer dependencies through draft dispatch",
+    (count) => {
+      const sections = Array.from({ length: count }, (_, index) => profile(index + 100))
+      const dependencies = Array.from({ length: count }, (_, index) => id(index + 200))
+      for (const tool of ["create_loft", "update_loft"] as const) {
+        const operation = localOperationSchema.parse({
+          tool,
+          arguments: { ...base, dependencies, parameters: { sections, ruled: false } },
+        })
+        if (operation.tool !== "create_loft" && operation.tool !== "update_loft")
+          throw new Error("Expected Loft.")
+        expect(createLocalCadCommand(operation, actor, id(60))).toMatchObject({
+          command: {
+            payload: {
+              feature: {
+                type: loftFeatureType.type,
+                dependencies,
+                parameters: { sections, ruled: false },
+              },
+            },
+          },
+        })
+      }
+      expect(
+        localOperationSchema.safeParse({
+          tool: "create_loft",
+          arguments: {
+            ...base,
+            dependencies: [
+              ...dependencies,
+              ...Array.from({ length: 25 - count }, (_, index) => id(index + 300)),
+            ],
+            parameters: { sections, ruled: false },
+          },
+        }).success,
+      ).toBe(false)
+    },
+  )
+  it("keeps Sweep dependency bounds unchanged", () => {
+    expect(
+      localOperationSchema.safeParse({
+        tool: "create_sweep",
+        arguments: {
+          ...base,
+          dependencies: Array.from({ length: 9 }, (_, index) => id(index + 200)),
+          parameters: sweep,
+        },
+      }).success,
+    ).toBe(false)
+  })
   it.each(["create_loft", "update_loft", "create_sweep", "update_sweep"] as const)(
     "routes %s through one validated ordinary command",
     (tool) => {
@@ -69,6 +120,13 @@ describe("ordinary Sweep and Loft draft tools", () => {
     },
   )
   it.each([
+    {
+      tool: "create_loft",
+      parameters: {
+        ...loft,
+        sections: Array.from({ length: 25 }, (_, index) => profile(index + 100)),
+      },
+    },
     { tool: "create_loft", parameters: { ...loft, sections: [profile(1)] } },
     { tool: "create_loft", parameters: { ...loft, sections: [profile(1), profile(1)] } },
     {

@@ -15,6 +15,7 @@ import { featureTypeKey } from "@vibeshape/domain/feature-type-contracts"
 import {
   loftFeatureParametersSchema,
   loftFeatureType,
+  MAX_LOFT_SECTIONS,
   readLoftFeatureParameters,
 } from "@vibeshape/domain/part-design-loft"
 import {
@@ -68,7 +69,12 @@ function validateDependencies(input: PreparationInput, sketchIds: readonly strin
     sketchIds,
     input.feature.references.map(({ featureId }) => featureId),
   )
-  if (expected.length > 8) return failure("dependency-budget-exceeded", { count: expected.length })
+  const limit =
+    featureTypeKey(input.feature.type) === featureTypeKey(loftFeatureType.type)
+      ? MAX_LOFT_SECTIONS
+      : 8
+  if (expected.length > limit)
+    return failure("dependency-budget-exceeded", { count: expected.length })
   if (
     expected.length !== input.feature.dependencies.length ||
     expected.some((id, index) => id !== input.feature.dependencies[index])

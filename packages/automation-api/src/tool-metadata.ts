@@ -1,12 +1,28 @@
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  create_datum_plane:
+    "Stage an offset Datum Plane in an owned draft using origin support xy/xz/yz or an existing planar face v0 TopoRef. Offset is a signed typed length quantity with optional variable expression. Origin support has empty dependencies/references; face support requires its sole owner dependency and exactly the same support reference. Supply UUIDv7 featureId/commandId, current draft revision and suppressed=false; preview before ordinary commit.",
+  update_datum_plane:
+    "Update an existing Datum Plane in an owned draft, preserving feature identity. Resubmit offset mode, signed typed offset, support and its exact dependency/reference set. Origin support has no feature input; face support uses one matching owner and reference. Read existing intent first; use a fresh commandId and current draft revision, then preview downstream sketches and features before commit.",
+  create_boolean:
+    "Stage legacy Boolean subtraction with operation=subtract and optional keepTools in an owned draft. Supply exactly two distinct producer dependencies in target-before-tool order and empty references. This v1 feature subtracts whole producer results; it does not select outputRole bodies. Use UUIDv7 IDs/current draft revision and preview before ordinary commit.",
+  update_boolean:
+    "Update an existing Boolean subtraction in an owned draft, preserving feature identity and whole-result v1 scope. Resubmit operation=subtract, optional keepTools, two distinct target-before-tool dependencies and empty references. Use a fresh commandId/current draft revision and preview before commit.",
+  create_union:
+    "Stage a v2 Union of two to eight distinct exact bodies {schemaVersion:0,featureId,outputRole} in authored order. Bodies may share a producer; dependencies list each producer once in first-occurrence order and references are empty. Obtain stable roles from body inspection; the first selected part survives and the others are consumed. Exact preview requires one connected positive-volume solid; disjoint or missing bodies fail closed. Use UUIDv7 IDs/current draft revision and ordinary commit review.",
+  update_union:
+    "Update an existing Union in an owned draft using v2 exact-body selections. Preserve feature identity, resubmit two to eight distinct bodies in the intended order and their deduplicated ordered producer dependencies, with empty references. Reordering changes the surviving part. Preview before ordinary commit; an explicit edit may upgrade a saved v1 Union to v2.",
+  create_compound:
+    "Stage a v2 Compound with two to eight ordered slots, each with a unique UUIDv7 slotId and exact targetBody. Bodies may share a producer; list each producer once in first-occurrence dependency order and use empty references. Compound preserves separate solids and exposes stable body.<slotId> roles. Use fresh featureId/commandId/current draft revision and preview before ordinary commit review.",
+  update_compound:
+    "Update an existing Compound in an owned draft using v2 exact-body slots. Preserve feature identity and existing slotId values to retain output roles/part identities; resubmit ordered slots and their deduplicated ordered producer dependencies, with empty references. Removing a slot makes its role unavailable. Preview before ordinary commit; an explicit edit may upgrade saved v1 intent to v2.",
   create_body_pattern:
     "Pattern one exact named body in an owned draft. Supply targetBody, its sole matching dependency, no topology references, XYZ axis and unit-aware scalar integer count from 2 to 256 including the seed. Linear uses signed nonzero spacing with total span at most 100,000 mm. Circular uses signed nonzero angle up to one revolution and explicit XYZ center quantities; a full revolution excludes its duplicate endpoint. Instance0 continues the source part, others own independent stable part IDs. Use fresh commandId/current draft revision and preview before ordinary commit; expressions retain variable intent.",
   update_body_pattern:
     "Update an existing body Pattern in an owned draft preserving feature identity and exact targetBody. Resubmit its sole dependency, empty references, pattern kind, XYZ axis, variable-aware count, signed spacing or circular angle and explicit center. Stable instance roles survive edits; count changes allocate parts through ordinary domain authority. Preview before commit.",
   create_loft:
-    "Stage a Loft from two to eight unique hole-free solved profile selectors in explicit section order, plus a ruled toggle. Preserve exact authored sketch planes and boundary IDs. Supply deduplicated support/external model dependency owners and persisted references in section order; preview the owned draft before ordinary commit.",
+    "Stage a Loft from two to twenty-four unique hole-free solved profile selectors in explicit section order, plus a ruled toggle. The aggregate boundary budget remains 2,000 entities. Preserve exact authored sketch planes and boundary IDs. Supply at most twenty-four deduplicated support/external model dependency owners and persisted references in section order; preview the owned draft before ordinary commit.",
   update_loft:
     "Update an existing Loft in an owned draft. Preserve feature identity and resubmit ordered section selectors, ruled flag, authoritative support/external dependency owners and references. Preview exact geometry before commit; holes and incompatible sections fail closed.",
   create_sweep:

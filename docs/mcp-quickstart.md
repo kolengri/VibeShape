@@ -60,8 +60,18 @@ create a fresh draft from the updated model. Cancellation revokes pairing; a com
 entered persistence cannot be rolled back by disconnect. Inspect the actual saved revision before
 retrying an interrupted or unconfirmed commit.
 
-The current MCP surface is a supported subset of the editor, not full CAD parity. In particular,
-Box update, Cylinder, Boolean, Datum Plane, Placement, Compound/Union, removal, suppression, and History mutation tools are not exposed. Placement and body combinations are available in the manual editor; the AI can inspect their saved feature records and must preserve them during supported upstream edits.
+Both local and paired remote MCP expose `create_datum_plane`/`update_datum_plane`,
+`create_boolean`/`update_boolean`, `create_union`/`update_union`, and
+`create_compound`/`update_compound`. Datum Planes retain explicit origin/face support and signed
+offset intent. Boolean subtraction retains legacy whole-result target/tool semantics; Union and
+Compound select ordered exact bodies through schema v2. Read the
+[modeling contract](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
+before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1 creation
+and same-version edits; Compound and version-upgrade edits still require review.
+
+The current MCP surface is a supported subset of the editor, not full CAD parity. Box update,
+Cylinder, Placement, removal, dedicated suppression and History mutation tools are not exposed.
+The AI can inspect their saved records and must preserve them during supported upstream edits.
 There is no arbitrary script or direct storage tool. Production printability analysis remains open.
 See the served guide for the complete current scope and
 [automation architecture](architecture/automation-and-mcp.md) for the authority and safety contract.
@@ -69,6 +79,10 @@ See the served guide for the complete current scope and
 The prepared local build publishes its runtime provenance at `/local-build.json` and its
 source/license index at `/sources/index.html` on the same editor origin. Retain those delivery
 files with the editor.
+
+After replacing the prepared build, restart the local MCP process before reloading its editor.
+The static server retains its startup HTML; serving it with newly replaced asset files can produce
+a blank page from missing old asset URLs.
 
 A production distribution must also meet the repository's controlled geometry runtime, source
 and license delivery, browser/recovery, offline and update gates. A local source launch by itself

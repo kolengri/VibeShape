@@ -412,11 +412,25 @@ exposure, offline installation, and full command/resource coverage remain releas
 
 ## Expanded exact feature authoring
 
-Local stdio and paired remote MCP expose create/update tools for Mirror, body Pattern, Shell,
-Split, Sweep, Loft and custom Thread through shared schemas and descriptions. Exact named-body
+Local stdio and paired remote MCP expose create/update tools for Datum Plane, Boolean subtraction,
+Union, Compound, Mirror, body Pattern, Shell, Split, Sweep, Loft and custom Thread through shared
+schemas and descriptions. Datum Plane uses the existing origin/planar-face offset contract with
+explicit support inputs. Boolean retains v1 ordered target/tool whole-result scope. Union/Compound
+use v2 ordered exact-body slots, including several roles from one producer, with deduplicated
+first-occurrence producer dependencies and no topology references. Compound retains authored
+slot UUIDs on update. Missing roles and disjoint Union results fail exact preview.
+Loft supports two to twenty-four sections and up to twenty-four ordered producer dependencies;
+its 2,000-curve aggregate budget remains unchanged. Other feature evaluation requests retain the
+eight-producer limit.
+Exact named-body
 selection, stable dependencies, variable quantities, draft preview and ordinary review/commit
 remain authoritative. Shell binds current opening topology and content hash; Sweep retains its
 explicit path start frame; Loft retains ordered bounded sections; Thread is bounded custom
 60-degree geometry without ISO/DIN fit certification. The modeling operator skill and local
 authoring guide describe these limits. Imports, text generation, assembly/library authoring and
 texture authoring remain editor workflows. Remote MCP still excludes binary file exports.
+
+Manual review remains the default. The browser-owned explicit session grant additionally permits
+Union schema v2 and Loft schema v1 creation and same-version updates. Actor/document matching,
+valid exact preview, unsuppressed matching prior versions, expiry and persistence remain mandatory.
+Compound, version upgrades and future feature versions require manual review.
