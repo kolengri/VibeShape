@@ -10,21 +10,41 @@ import {
 } from "@vibeshape/ui/components/dialog"
 import { Input } from "@vibeshape/ui/components/input"
 import { useState } from "react"
+import { useDialogOpen } from "../components/use-dialog-open"
 
 const pages = ["mcp", "files", "reconnect"] as const
 type Page = (typeof pages)[number]
 
-export function FaqDialog({ endpoint }: { endpoint?: string | undefined }) {
+export function FaqDialog({
+  endpoint,
+  showTrigger = true,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
+}: {
+  endpoint?: string | undefined
+  showTrigger?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
+}) {
   const t = useTranslations("app.shell.faq")
+  const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [page, setPage] = useState<Page>("mcp")
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button type="button" size="xs" variant="outline">
-          {t("trigger")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent closeLabel={t("close")} className="max-w-3xl">
+    <Dialog open={open} onOpenChange={setOpen}>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          <Button type="button" size="xs" variant="outline">
+            {t("trigger")}
+          </Button>
+        </DialogTrigger>
+      ) : null}
+      <DialogContent
+        onCloseAutoFocus={onCloseAutoFocus}
+        closeLabel={t("close")}
+        className="max-w-3xl"
+      >
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>{t("description")}</DialogDescription>

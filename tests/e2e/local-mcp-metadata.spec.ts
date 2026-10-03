@@ -3,6 +3,11 @@ import type { Page } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { readVShapeV3 } from "../../packages/formats/src/vshape"
+import {
+  enableLocalAi,
+  openAiConnections,
+  openApplicationMenuItem,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -103,7 +108,7 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
       timeout: 30_000,
     })
     await createBoxes(page)
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const original = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     let revision = original.summary.revision
     const parts = success(
@@ -148,8 +153,10 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
         ?.name,
     ).toBe(part.name)
     // The browser grant for CAD never grants metadata consent.
+    await openAiConnections(page)
     await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
+    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
     const renameId = await change(
       { kind: "part.rename", partId: part.id, name: "MCP housing" },
       "Name: MCP housing",
@@ -233,7 +240,7 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
         item.status === "succeeded" ? item.shape : item.status,
       ),
     )
-    await page.getByRole("button", { name: "File", exact: true }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const projects = page.getByRole("dialog", { name: "Projects", exact: true })
     const downloading = page.waitForEvent("download")
     await projects.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
@@ -264,7 +271,7 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
     await expect(
       page.getByRole("treeitem", { name: "Folder Reviewed assembly", exact: true }),
     ).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const reopened = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(reopened.summary.revision).toBe(final.summary.revision)
     expect(
@@ -303,7 +310,7 @@ test("cancels a real MCP metadata proposal before writing on browser disconnect"
       timeout: 30_000,
     })
     await createBoxes(page)
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const before = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const parts = success(
       localToolOutputs.model_parts.parse(
@@ -318,13 +325,13 @@ test("cancels a real MCP metadata proposal before writing on browser disconnect"
     await expect(page.getByRole("region", { name: "Review AI changes", exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await page.getByRole("button", { name: /Disable AI session/ }).click()
+    await page.getByRole("button", { name: "Stop AI", exact: true }).click()
     expect(await pending).toMatchObject({ ok: false, diagnostic: { code: "session-revoked" } })
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const after = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(after.summary.revision).toBe(before.summary.revision)
     expect(

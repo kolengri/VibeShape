@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { createSolids, openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 
 async function setTheme(page: Page, theme: string) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings", exact: true })
   await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
   await page.getByRole("option", { name: theme, exact: true }).click()

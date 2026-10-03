@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -50,7 +51,7 @@ test("resizes panels with pointer and keyboard, restores defaults, and retains p
   await expect.poll(() => width(task)).toBeGreaterThan(320)
   await taskSeparator.dblclick()
   await expect.poll(() => width(task)).toBe(320)
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings" })
   await settings.getByRole("button", { name: "Hide Model tree", exact: true }).click()
   await settings.getByRole("button", { name: "Hide Task panel", exact: true }).click()
@@ -59,7 +60,7 @@ test("resizes panels with pointer and keyboard, restores defaults, and retains p
   await page.keyboard.press("Escape")
   await reopenWorkspace(page)
   await expect.poll(() => width(tree)).toBe(0)
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   await settings.getByRole("button", { name: "Reset layout", exact: true }).click()
   await expect.poll(() => width(tree)).toBe(240)
   await expect.poll(() => width(task)).toBe(320)
@@ -84,7 +85,7 @@ for (const theme of ["light", "dark"] as const) {
       .evaluate((element, theme) => element.classList.toggle("dark", theme === "dark"), theme)
     const canvas = page.locator(".workspace-viewport canvas").first()
     const originalCanvas = await canvas.elementHandle()
-    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await openApplicationMenuItem(page, "Settings…")
     const settings = page.getByRole("dialog", { name: "Settings" })
     const opacity = settings.getByRole("slider", {
       name: "Model tree background opacity",
@@ -118,7 +119,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: test.info().outputPath(`transparent-panels-${theme}.png`) })
     await reopenWorkspace(page)
     await expect(page.locator(".cad-workspace-grid")).toHaveAttribute("data-transparent", "true")
-    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await openApplicationMenuItem(page, "Settings…")
     await expect(opacity).toHaveValue("35")
     await page.keyboard.press("Escape")
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
@@ -174,7 +175,7 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await page.screenshot({ path: test.info().outputPath("compact-full-width-task-390.png") })
   await page.setViewportSize({ width: 512, height: 384 })
   await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(512)
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings" })
   await expect(
     settings.getByRole("slider", { name: "Task panel width", exact: true }),
@@ -202,7 +203,7 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await expect
     .poll(() => page.locator("body").evaluate((element) => element.scrollWidth))
     .toBe(1024)
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   await page.getByRole("button", { name: "Hide Task panel", exact: true }).click()
   await page.getByRole("button", { name: "Show Task panel", exact: true }).click()
   await page.keyboard.press("Escape")
@@ -219,7 +220,7 @@ test("keeps transparent panels above sketch gestures and viewport controls insid
     .getByRole("button", { name: "Create sketch", exact: true })
     .click()
   await confirmSketchPlane(page)
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings" })
   await settings
     .getByRole("slider", { name: "Model tree background opacity", exact: true })

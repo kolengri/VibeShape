@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
 import { unzipSync } from "fflate"
 import { readVShapeV3 } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 async function createBox(page: Page, values: Record<string, string>) {
@@ -24,7 +25,7 @@ async function renamePart(page: Page, from: string, to: string) {
   await expect(dialog).not.toBeVisible()
 }
 async function nativeSnapshot(page: Page) {
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const dialog = page.getByRole("dialog", { name: "Projects", exact: true })
   const downloading = page.waitForEvent("download")
   await dialog.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
@@ -73,7 +74,7 @@ function readBinaryStl(bytes: Buffer) {
   )
 }
 async function downloadExport(page: Page, format: "STL" | "3MF", part?: string) {
-  await page.getByRole("button", { name: "Export…", exact: true }).click()
+  await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model", exact: true })
   if (part) {
     await dialog.getByRole("combobox", { name: "Export scope", exact: true }).click()

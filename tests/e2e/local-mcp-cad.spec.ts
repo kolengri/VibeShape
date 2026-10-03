@@ -14,6 +14,7 @@ import {
 } from "../../packages/domain/src/rectangle-sketch"
 import { sketchRecordSchema } from "../../packages/domain/src/sketch"
 import { createAngleQuantity, createLengthQuantity } from "../../packages/domain/src/units"
+import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -94,7 +95,7 @@ test("creates and updates a sketch-backed extrusion through real local MCP and b
   try {
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const info = localToolOutputs.model_info.parse(await call("model_info", {}))
     const base = success(info).summary.revision
     const sketchId = sketchIdSchema.parse(id(1))
@@ -299,7 +300,7 @@ test("creates and updates a sketch-backed extrusion through real local MCP and b
       .toBeGreaterThan(updateCommit.revision)
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     await expect(page.getByRole("treeitem", { name: "MCP extrusion", exact: true })).toBeVisible()
     const afterUndo = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(featureVolume(afterUndo, featureId)).toBeCloseTo(1_000, 6)
@@ -316,7 +317,7 @@ test("creates and updates a full revolve through real local MCP", async ({ page 
   try {
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const base = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
       .revision
     const sketchId = sketchIdSchema.parse(id(11))
@@ -436,7 +437,7 @@ test("preserves a manual first depth when MCP changes the independent second dep
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const draft = success(
       localToolOutputs.create_draft.parse(

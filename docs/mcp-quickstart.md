@@ -34,7 +34,8 @@ scope, limits, and complete schema-backed printing plate example. The guide is s
 by the adapter from [authoring-guide.ts](../apps/mcp-server/src/authoring-guide.ts); it is available
 without document access. The session resource exposes no token or document identity.
 
-Open the returned editor URL, open or create the intended project, and click **Enable AI session**.
+Open the returned editor URL, open or create the intended project, then choose
+**VibeShape → AI connections… → Enable AI session**.
 Read `model_info`, create a draft at its committed revision, issue supported named commands,
 preview exact geometry, and request `commit_draft`. Click Apply in the browser review. Then read
 the new revision and export STEP/STL/3MF. The export response contains a resource link; read it,

@@ -15,7 +15,8 @@ import {
 import { Download } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { useDialogOpen } from "../components/use-dialog-open"
 import { PrintPreparationPanel } from "../printing/print-preparation-panel"
 import { SlicerHandoffPanel } from "../printing/slicer-handoff-panel"
 import type { DocumentControllerState } from "./document-controller"
@@ -54,7 +55,11 @@ type ExportActivity = Readonly<{
 
 const idleActivity: ExportActivity = { pendingFormat: null, statusKey: null, failed: false }
 
-function useDocumentExportAction(closeDialog: () => void, partId?: string) {
+function useDocumentExportAction(
+  closeDialog: () => void,
+  partId: string | undefined,
+  open: boolean,
+) {
   const [activity, setActivity] = useState<ExportActivity>(idleActivity)
 
   const runExport = async (format: GeometryExportFormat) => {
@@ -73,7 +78,11 @@ function useDocumentExportAction(closeDialog: () => void, partId?: string) {
     }
   }
 
-  return { activity, runExport, resetActivity: () => setActivity(idleActivity) }
+  const resetActivity = useCallback(() => setActivity(idleActivity), [])
+  useEffect(() => {
+    if (open) resetActivity()
+  }, [open, resetActivity])
+  return { activity, runExport }
 }
 
 function documentHasExportableGeometry(controller: DocumentControllerState) {
@@ -218,37 +227,121 @@ function ExportPreparation({
   )
 }
 
+function useExportDialogPresentation(open: boolean) {
+  const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
+  const [showPreparation, setShowPreparation] = useState(false)
+  const [exportPart, setExportPart] = useState("all")
+  useEffect(() => {
+    if (!open) return
+    setSlicerStatus(null)
+    setShowPreparation(false)
+    setExportPart("all")
+  }, [open])
+  return {
+    slicerStatus,
+    setSlicerStatus,
+    showPreparation,
+    setShowPreparation,
+    exportPart,
+    setExportPart,
+  }
+}
+
+function ExportFormatCards({
+  preferredFormat,
+  disabled,
+  pendingFormat,
+  onExport,
+}: {
+  preferredFormat: GeometryExportFormat
+  disabled: boolean
+  pendingFormat: GeometryExportFormat | null
+  onExport: (format: GeometryExportFormat) => Promise<void>
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {[
+        preferredFormat,
+        ...(["3mf", "step", "stl"] as const).filter((format) => format !== preferredFormat),
+      ].map((format) => (
+        <ExportFormatCard
+          key={format}
+          format={format}
+          preferred={format === preferredFormat}
+          disabled={disabled}
+          loading={pendingFormat === format}
+          onExport={onExport}
+        />
+      ))}
+    </div>
+  )
+}
+
+function ExportDialogTrigger({
+  shown,
+  controller,
+}: {
+  shown: boolean
+  controller: DocumentControllerState
+}) {
+  const t = useTranslations("app.export")
+  if (!shown) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("trigger")}
+            disabled={controller.status !== "ready" || controller.report === null}
+          >
+            <Download aria-hidden="true" />
+          </Button>
+        </DialogTrigger>
+      </TooltipTrigger>
+      <TooltipContent>{t("trigger")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function DocumentExportDialog({
   controller,
   preferredFormat = "3mf",
+  showTrigger = true,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
 }: {
   controller: DocumentControllerState
   preferredFormat?: GeometryExportFormat
+  showTrigger?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
 }) {
   const t = useTranslations("app.export")
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [slicerPending, setSlicerPending] = useState(false)
-  const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
   const [printPending, setPrintPending] = useState(false)
-  const [showPreparation, setShowPreparation] = useState(false)
-  const [exportPart, setExportPart] = useState("all")
+  const {
+    slicerStatus,
+    setSlicerStatus,
+    showPreparation,
+    setShowPreparation,
+    exportPart,
+    setExportPart,
+  } = useExportDialogPresentation(open)
   const selectedPartId = exportPart === "all" ? undefined : exportPart
-  const { activity, runExport, resetActivity } = useDocumentExportAction(
+  const { activity, runExport } = useDocumentExportAction(
     () => setOpen(false),
     selectedPartId,
+    open,
   )
   const hasGeometry = documentHasExportableGeometry(controller)
   const preparationDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
   const actionDisabled = preparationDisabled || printPending
-  const changeDialogOpen = (nextOpen: boolean) => {
-    if (nextOpen) {
-      setSlicerStatus(null)
-      resetActivity()
-      setShowPreparation(false)
-      setExportPart("all")
-    }
-    setOpen(nextOpen)
-  }
 
   return (
     <>
@@ -259,24 +352,10 @@ export function DocumentExportDialog({
       ) : (
         <ExportStatus messageKey={activity.statusKey} />
       )}
-      <Dialog open={open} onOpenChange={changeDialogOpen}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t("trigger")}
-                disabled={controller.status !== "ready" || controller.report === null}
-              >
-                <Download aria-hidden="true" />
-              </Button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{t("trigger")}</TooltipContent>
-        </Tooltip>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <ExportDialogTrigger shown={showTrigger} controller={controller} />
         <DialogContent
+          onCloseAutoFocus={onCloseAutoFocus}
           closeLabel={t("closeLabel")}
           className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto"
         >
@@ -305,23 +384,12 @@ export function DocumentExportDialog({
                 }}
                 prepareThreeMf={() => exportActiveDocument("3mf", selectedPartId)}
               />
-              <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  preferredFormat,
-                  ...(["3mf", "step", "stl"] as const).filter(
-                    (format) => format !== preferredFormat,
-                  ),
-                ].map((format) => (
-                  <ExportFormatCard
-                    key={format}
-                    format={format}
-                    preferred={format === preferredFormat}
-                    disabled={actionDisabled}
-                    loading={activity.pendingFormat === format}
-                    onExport={runExport}
-                  />
-                ))}
-              </div>
+              <ExportFormatCards
+                preferredFormat={preferredFormat}
+                disabled={actionDisabled}
+                pendingFormat={activity.pendingFormat}
+                onExport={runExport}
+              />
             </>
           ) : null}
           <ExportNotice hasGeometry={hasGeometry} failed={activity.failed} />

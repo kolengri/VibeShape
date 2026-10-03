@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { unzipSync } from "fflate"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 test("previews breakaway fins on a print copy and exports without changing CAD history", async ({
@@ -13,7 +14,7 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
   await box.getByRole("button", { name: "Create box", exact: true }).click()
   await expect(box).not.toBeVisible()
   await expect(page.getByRole("button", { name: "Suppress Box 1" })).toBeVisible()
-  await page.getByRole("button", { name: "Export…", exact: true }).click()
+  await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model" })
   await dialog.getByRole("button", { name: "Prepare print / breakaway fins…" }).click()
   await dialog.getByRole("button", { name: "Generate print preview" }).click()

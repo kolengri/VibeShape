@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
 import { readVShapeV3 } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect } from "./fixtures"
 
 export async function saved(page: Page) {
@@ -21,7 +22,7 @@ export async function createSolids(page: Page) {
   await saved(page)
 }
 export async function saveProject(page: Page) {
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const projects = page.getByRole("dialog", { name: "Projects", exact: true })
   const downloading = page.waitForEvent("download")
   await projects.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
@@ -36,7 +37,7 @@ export async function saveProject(page: Page) {
 }
 
 export async function openProject(page: Page, source: Awaited<ReturnType<typeof saveProject>>) {
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   await page
     .getByRole("dialog", { name: "Projects", exact: true })
     .getByLabel("Choose VibeShape project file")

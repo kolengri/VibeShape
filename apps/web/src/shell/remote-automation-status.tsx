@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
 import { TurnstileChallenge } from "../automation/turnstile-challenge"
 import { LocalAutomationStatus } from "./local-automation-status"
@@ -44,10 +44,13 @@ export function RemoteAutomationStatus({
       alive = false
     }
   }, [connection, open, current.pairingCode, current.connecting])
+  useEffect(() => {
+    if (current.consent) setOpen(false)
+  }, [current.consent])
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Dialog
-        open={open || current.consent !== null}
+        open={open && current.consent === null}
         onOpenChange={(next) => {
           setOpen(next)
           if (!next) {
@@ -121,17 +124,6 @@ function RemoteDialogBody({
   onClose: () => void
   onFailed: (failed: boolean) => void
 }) {
-  if (current.consent)
-    return (
-      <RemoteClientConsent
-        consent={current.consent}
-        onDecision={(approved) => {
-          const accepted = connection.consent(approved)
-          if (approved) onFailed(!accepted)
-          onClose()
-        }}
-      />
-    )
   if (current.pairingCode)
     return (
       <RemotePairingCode
@@ -150,6 +142,63 @@ function RemoteDialogBody({
       blocked={blocked || current.connecting}
       onFailed={onFailed}
     />
+  )
+}
+
+export function RemoteAutomationConsentDialog({
+  connection,
+  current,
+}: {
+  connection: Pick<Connection, "consent">
+  current: ReturnType<Connection["getSnapshot"]>
+}) {
+  const t = useTranslations("app.shell.remoteAi")
+  const [failed, setFailed] = useState(false)
+  const returnFocus = useRef<HTMLElement | null>(null)
+  return (
+    <Dialog
+      open={current.consent !== null}
+      onOpenChange={(next) => {
+        if (!next) connection.consent(false)
+      }}
+    >
+      <DialogContent
+        closeLabel={t("close")}
+        onOpenAutoFocus={() => {
+          returnFocus.current =
+            document.activeElement instanceof HTMLElement &&
+            document.activeElement !== document.body
+              ? document.activeElement
+              : null
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          const target = returnFocus.current?.isConnected
+            ? returnFocus.current
+            : document.querySelector<HTMLButtonElement>("[data-application-menu-trigger]")
+          target?.focus()
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("consentTitle")}</DialogTitle>
+          <DialogDescription>{t("scope")}</DialogDescription>
+        </DialogHeader>
+        {current.consent ? (
+          <RemoteClientConsent
+            consent={current.consent}
+            onDecision={(approved) => {
+              const accepted = connection.consent(approved)
+              setFailed(approved && !accepted)
+            }}
+          />
+        ) : null}
+        {failed ? (
+          <p role="alert" className="text-sm text-destructive">
+            {t("failed")}
+          </p>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 for (const operation of ["fillet", "chamfer"] as const) {
@@ -73,7 +74,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(page.getByRole("button", { name: "Delete feature", exact: true })).toBeEnabled()
     await page.screenshot({ path: test.info().outputPath(`${operation}-editor.png`) })
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "Export…", exact: true }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     const dialog = page.getByRole("dialog", { name: "Export model" })
     const downloadPromise = page.waitForEvent("download")
     await dialog.getByRole("button", { name: /Export STEP/ }).click()

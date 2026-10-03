@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 async function createBox(page: Page) {
@@ -233,7 +234,7 @@ test("transfers focus from command palette to shortcut help and back to a visibl
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
   })
-  await page.getByRole("button", { name: "Commands", exact: true }).click()
+  await openApplicationMenuItem(page, "Commands Ctrl/Cmd+K")
   const palette = page.getByRole("dialog", { name: "Command palette" })
   await palette.getByRole("combobox", { name: "Search commands" }).fill("Keyboard shortcuts")
   await palette.getByRole("option", { name: /Keyboard shortcuts/ }).click()

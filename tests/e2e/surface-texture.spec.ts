@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
 import type { SurfaceTextureMask } from "../../packages/domain/src/surface-textures"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 test.setTimeout(60_000)
@@ -39,7 +40,7 @@ async function openTexture(page: Page) {
 }
 
 async function exportedStl(page: Page) {
-  await page.getByRole("button", { name: "Export…", exact: true }).click()
+  await openApplicationMenuItem(page, "Export geometry…")
   const download = page.waitForEvent("download")
   await page.getByRole("button", { name: "Export STL", exact: true }).click()
   const path = await (await download).path()
@@ -161,7 +162,7 @@ test("erasing a raised image stores brush dabs on the original body surface", as
   })
   await panel.getByRole("button", { name: "Apply", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Surface textures", exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const downloading = page.waitForEvent("download")
   await page
     .getByRole("dialog", { name: "Projects", exact: true })

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { createLengthQuantity } from "../../packages/domain/src/units"
+import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import {
   expectPlateGeometry,
@@ -85,8 +86,8 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByRole("textbox", { name: /chat|prompt|message/i })).toHaveCount(0)
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-    await expect(page.getByRole("button", { name: /Disable AI session/ })).toBeVisible()
+    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const base = (await modelInfo()).summary.revision
     const draft = printingSuccess(
       localToolOutputs.create_draft.parse(await call("create_draft", { baseRevision: base })),
@@ -255,8 +256,8 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-    await expect(page.getByRole("button", { name: /Disable AI session/ })).toBeVisible()
+    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const restored = await modelInfo()
     expect(restored.summary.revision).toBe(redone.summary.revision)
     expectPlateGeometry(restored.measurements?.data.features, 90, 5.4)
@@ -352,8 +353,8 @@ test("executes the MCP authoring guide plate example against the real browser ke
       .parse(JSON.parse(json.replaceAll("0195b5ac-b250", "0195b5ac-d450")))
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-    await expect(page.getByRole("button", { name: /Disable AI session/ })).toBeVisible()
+    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const info = printingSuccess(localToolOutputs.model_info.parse(await call("model_info", {})))
     const draft = printingSuccess(
       localToolOutputs.create_draft.parse(

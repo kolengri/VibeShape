@@ -1,7 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { CommandIcon, Keyboard } from "@vibeshape/ui/components/icons"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createLocalAutomationConnection } from "../automation/local-automation-connection"
@@ -12,16 +10,12 @@ import {
   getProjectActiveWorkBlock,
   registerProjectActionGuard,
 } from "../document/document-controller"
-import { DocumentExportDialog } from "../document/document-export-dialog"
-import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
 import { useEditorSessionStoreApi } from "../editor-session/editor-session-provider"
 import type { EditorSessionState } from "../editor-session/editor-session-store"
-import { FaqDialog } from "./faq-dialog"
+import { ApplicationMenu } from "./application-menu"
 import { LocalAutomationStatus } from "./local-automation-status"
-import { RemoteAutomationStatus } from "./remote-automation-status"
-import { SettingsDialog } from "./settings-dialog"
-import { useViewerPreferences } from "./viewer-preferences"
+import { RemoteAutomationConsentDialog, RemoteAutomationStatus } from "./remote-automation-status"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -47,9 +41,7 @@ export function ApplicationBar({
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
 }) {
   const t = useTranslations("app.shell.applicationBar")
-  const commandsT = useTranslations("app.commands")
   const { connection, remoteConnection, current, remote } = useAutomationConnections(controller)
-  const preferredExportFormat = useViewerPreferences((state) => state.preferredExportFormat)
   const blockedReason = getProjectActionBlock()
   const unitChangesBlocked =
     controller.status !== "ready" ||
@@ -65,64 +57,57 @@ export function ApplicationBar({
 
   return (
     <header className="flex min-w-0 items-center gap-1 border-b bg-toolbar px-2 sm:gap-3">
-      <strong className="hidden truncate text-sm sm:block">VibeShape</strong>
-      <span className="min-w-0 truncate text-muted-foreground">{documentName}</span>
-      <DocumentRenameDialog controller={controller} />
-      <DocumentProjectDialog controller={controller} blockedReason={blockedReason} />
-      <SettingsDialog controller={controller} blocked={unitChangesBlocked} />
-      <FaqDialog endpoint={remote.available ? import.meta.env.VITE_REMOTE_MCP_URL : undefined} />
-      <AutomationStatusControls
+      <RemoteAutomationConsentDialog connection={remoteConnection} current={remote} />
+      <ApplicationMenu
         controller={controller}
         blockedReason={blockedReason}
-        connection={connection}
-        remoteConnection={remoteConnection}
-        current={current}
-        remote={remote}
+        unitChangesBlocked={unitChangesBlocked}
+        remoteEndpoint={remote.available ? import.meta.env.VITE_REMOTE_MCP_URL : undefined}
+        onOpenCommandPalette={onOpenCommandPalette}
+        onOpenShortcutHelp={onOpenShortcutHelp}
+        automationControls={
+          controller.status === "ready" && (current.available || remote.available) ? (
+            <AutomationStatusControls
+              controller={controller}
+              blockedReason={blockedReason}
+              connection={connection}
+              remoteConnection={remoteConnection}
+              current={current}
+              remote={remote}
+            />
+          ) : null
+        }
       />
+      <div className="flex min-w-0 flex-1 items-center gap-1">
+        <span className="min-w-0 truncate text-muted-foreground" title={documentName}>
+          {documentName}
+        </span>
+        <DocumentRenameDialog controller={controller} />
+      </div>
+      {current.connected || remote.connected ? (
+        <>
+          <span role="status" className="shrink-0 text-xs font-medium text-primary">
+            {current.autoApply || remote.autoApply ? t("autoApplyOn") : t("aiConnectedShort")}
+          </span>
+          <Button
+            type="button"
+            size="xs"
+            variant="destructive"
+            title={t("stopAiDescription")}
+            onClick={async () => {
+              await Promise.all([connection.disable(), remoteConnection.disable()])
+            }}
+          >
+            {t("stopAi")}
+          </Button>
+        </>
+      ) : null}
       <span
         className="sr-only sm:not-sr-only sm:ml-auto sm:min-w-0 sm:truncate sm:text-xs sm:text-muted-foreground"
         role="status"
       >
         {saveStatus}
       </span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            aria-label={commandsT("open")}
-            onClick={(event) => onOpenCommandPalette(event.currentTarget)}
-          >
-            <CommandIcon aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent className="flex items-center gap-3">
-          <span>{commandsT("open")}</span>
-          <kbd className="rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground">
-            {commandsT("openShortcut")}
-          </kbd>
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            className="hidden sm:inline-flex"
-            data-shortcut-help-trigger
-            aria-label={commandsT("shortcutHelp.title")}
-            onClick={(event) => onOpenShortcutHelp(event.currentTarget)}
-          >
-            <Keyboard aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {commandsT("shortcutHelp.title")} <kbd>F1</kbd>
-        </TooltipContent>
-      </Tooltip>
-      <DocumentExportDialog controller={controller} preferredFormat={preferredExportFormat} />
     </header>
   )
 }

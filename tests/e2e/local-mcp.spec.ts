@@ -1,5 +1,6 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
+import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 function success<Value>(
@@ -102,8 +103,8 @@ test("creates, repairs, reviews, commits and exports a model through real local 
     })
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-    await expect(page.getByRole("button", { name: /Disable AI session/ })).toBeVisible()
+    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const info = localToolOutputs.model_info.parse(await call("model_info", {}))
     expect(info.ok).toBe(true)
     const baseRevision = success(info).summary.revision
@@ -227,7 +228,7 @@ test("creates, repairs, reviews, commits and exports a model through real local 
     await expect(page.getByRole("treeitem", { name: "MCP fillet", exact: true })).toHaveCount(0)
     await toolbar.getByRole("button", { name: "Redo", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "MCP fillet", exact: true })).toBeVisible()
-    await page.getByRole("button", { name: /Disable AI session/ }).click()
+    await page.getByRole("button", { name: "Stop AI", exact: true }).click()
     expect(await call("model_info", {})).toMatchObject({
       ok: false,
       diagnostic: { code: "not-paired" },
