@@ -192,6 +192,8 @@ all invalidate the projection without mutating the draft or invoking the solver.
 OrbitControls temporarily binds to the active sketch SVG, with primary/touch input reserved for
 editing and middle/secondary input reserved for navigation. Cleanup restores the canvas binding;
 primary pointer cancellation and release outside the canvas cannot leave navigation disabled.
+Explicit camera-up changes recreate OrbitControls to refresh its cached orbit axis, preserving the
+target, enabled state, input bindings, and current view before returning to modeling navigation.
 Graphical Use, Pierce, and Intersection retain their separate 3D picking ownership. This bridge is
 viewer/UI state only and introduces no document schema, worker protocol, or persistence changes.
 

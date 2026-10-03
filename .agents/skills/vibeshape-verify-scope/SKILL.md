@@ -9,8 +9,9 @@ description: Select and run the smallest correct deterministic verification scop
 
 1. Map every edited path to its `apps/<name>` or `packages/<name>` workspace and inspect that workspace's scripts.
 2. Include downstream consumers when a public export, protocol, schema, generated type, token, or file format changed.
-3. Prefer focused checks while iterating; run the full relevant gates before merge.
-4. Re-run the same checks after fixes until they pass.
+3. Use existing import/export evidence (for example, Fallow inspect) to identify candidate consumer checks. Account separately for dynamic, generated, external, worker, and WASM boundaries; graph absence cannot waive a required gate.
+4. Prefer focused checks while iterating; run the full relevant gates before merge.
+5. Re-run affected checks after fixes. Reuse a passing result only while relevant source, dependencies, configuration, and environment are unchanged.
 
 ## Minimum Matrix
 

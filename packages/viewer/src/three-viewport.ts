@@ -1122,7 +1122,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #orientationScene = new Scene()
   readonly #orientationCamera = new PerspectiveCamera(35, 1, 0.1, 10)
   readonly #orientationAxes = new AxesHelper(1.05)
-  readonly #controls: OrbitControls
+  #controls: OrbitControls
   readonly #translationControls: TransformControls
   readonly #translationObject = new Object3D()
   readonly #translationHelper: Object3D
@@ -1488,15 +1488,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationHelper = this.#translationControls.getHelper()
     this.#translationHelper.visible = false
     this.#scene.add(this.#translationHelper)
-    this.#controls = new OrbitControls(this.#camera, canvas)
-    this.#controls.enableDamping = false
-    this.#controls.zoomToCursor = true
-    this.#controls.mouseButtons.LEFT = MOUSE.ROTATE
-    this.#controls.mouseButtons.MIDDLE = MOUSE.ROTATE
-    this.#controls.mouseButtons.RIGHT = MOUSE.PAN
-    this.#controls.target.set(0, 0, 0)
-    this.#controls.addEventListener("change", this.#onControlsChange)
-    this.#controls.update()
+    this.#controls = this.#createOrbitControls(new Vector3(), true)
     this.#translationControls.addEventListener("change", this.#onTranslationControlsChange)
     this.#translationControls.addEventListener("objectChange", this.#onTranslationObjectChange)
     this.#translationControls.addEventListener("mouseDown", this.#onTranslationControlsMouseDown)
@@ -1514,6 +1506,38 @@ class ThreeGeometryViewport implements GeometryViewport {
     window.addEventListener("blur", this.#cancelTranslationGesture)
 
     this.#resizeObserver = this.#observeLayout(canvas)
+  }
+
+  #createOrbitControls(target: Vector3, enabled: boolean) {
+    const position = this.#camera.position.clone()
+    const controls = new OrbitControls(this.#camera, null)
+    controls.enableDamping = false
+    controls.zoomToCursor = true
+    controls.mouseButtons.LEFT = MOUSE.ROTATE
+    controls.mouseButtons.MIDDLE = MOUSE.ROTATE
+    controls.mouseButtons.RIGHT = MOUSE.PAN
+    controls.target.copy(target)
+    this.#camera.position.copy(position)
+    controls.enabled = enabled
+    controls.connect(this.#canvas)
+    controls.update()
+    controls.addEventListener("change", this.#onControlsChange)
+    return controls
+  }
+
+  #setCameraUp(up: ViewerVector3) {
+    if (this.#camera.up.equals(new Vector3(...up))) return
+    const target = this.#controls.target.clone()
+    const navigationElement = this.#sketchNavigationElement
+    this.#removeSketchNavigationPointerGuard()
+    const enabled = this.#controls.enabled
+    this.#controls.removeEventListener("change", this.#onControlsChange)
+    this.#controls.dispose()
+    this.#camera.up.set(...up)
+    // OrbitControls caches its orbit-axis transform at construction.
+    this.#controls = this.#createOrbitControls(target, enabled)
+    this.#sketchNavigationElement = null
+    if (navigationElement) this.setSketchNavigationElement(navigationElement)
   }
 
   #observeLayout(canvas: HTMLCanvasElement) {
@@ -1857,7 +1881,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (!pose) return
     this.#clearSketchReferencePicking()
     this.#camera.position.set(...pose.position)
-    this.#camera.up.set(...pose.up)
+    this.#setCameraUp(pose.up)
     this.#controls.target.set(...pose.target)
     this.#updateClippingToScene()
     this.#controls.update()
@@ -1872,7 +1896,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (!pose) return false
     this.#controls.target.set(...pose.target)
     this.#camera.position.set(...pose.position)
-    this.#camera.up.set(...pose.up)
+    this.#setCameraUp(pose.up)
     this.#expandViewToScene(frame.origin)
     this.#updateClippingToScene()
     this.#updateProjection()
@@ -1922,7 +1946,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchProjection = { bounds }
     this.#controls.target.set(...pose.target)
     this.#camera.position.set(...pose.position)
-    this.#camera.up.set(...pose.up)
+    this.#setCameraUp(pose.up)
     const aspect = this.#canvas.clientWidth / Math.max(this.#canvas.clientHeight, 1)
     this.#viewHeight = viewerSketchProjectionViewHeight(bounds, aspect)
     this.#updateClippingToScene()

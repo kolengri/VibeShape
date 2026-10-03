@@ -673,7 +673,8 @@ function canCreateEdgeTreatment(context: BuiltInEditorCommandContext) {
   const eligibility = canCreateFeature(context)
   if (!eligibility.enabled) return eligibility
   const features = context.state.controller.report?.snapshot.features ?? []
-  return modifyingSolidTargetFeatures(features).length > 0
+  return modifyingSolidTargetFeatures(features, undefined, context.state.controller.report?.rebuild)
+    .length > 0
     ? editorCommandEnabled()
     : editorCommandDisabled("selectSolid")
 }
@@ -920,7 +921,8 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
       const eligibility = canCreateFeature(context)
       if (!eligibility.enabled) return eligibility
       const features = context.state.controller.report?.snapshot.features ?? []
-      return booleanInputFeatures(features).length >= 2
+      return booleanInputFeatures(features, undefined, context.state.controller.report?.rebuild)
+        .length >= 2
         ? editorCommandEnabled()
         : editorCommandDisabled("selectTwoSolids")
     },

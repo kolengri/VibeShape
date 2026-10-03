@@ -64,3 +64,9 @@ Add `fallow-ignore` only for a confirmed false positive or intentional external 
 - Rerun the audit after the suppression.
 
 Use `vibeshape-verify-scope` for the remaining lint, typecheck, test, build, browser, geometry, and format checks. Fallow is optional for Markdown-only or project-skill-only changes unless its configuration or workflow changed.
+
+## Optional Compact Navigation
+
+For a dependency or consumer question where the graph is useful, the installed personal global helper can be used: `~/.codex/bin/agent-tools fallow --root . --file packages/domain/src/document-history.ts --log-dir /private/tmp/vibeshape-task-evidence` as an example, substituting the relevant target and task-specific artifact directory. It runs the existing pinned Fallow and projects file/export consumers, imports, evidence status, and limitations while retaining the full report. Otherwise use `bun run fallow inspect --file <path> --format json --quiet` directly and select the needed fields locally.
+
+Use graph evidence to choose source reads and candidate consumer checks. Do not interpret a syntactic graph, absent edge, or empty finding list as proof of runtime correctness or complete test coverage. The changed-code audit and domain verification remain separate gates.

@@ -3,10 +3,12 @@ import {
   createLengthQuantity,
   featureIdSchema,
   featureRecordSchema,
+  filletFeatureType,
 } from "@vibeshape/domain"
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { terminalModelBodies } from "./model-bodies"
+import { modifyingSolidTargetFeatures } from "./part-design-tool"
 
 const sourceId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2901")
 const consumerId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2902")
@@ -98,6 +100,32 @@ function geometryRecord(featureId: string, bodies?: readonly object[]) {
 }
 
 describe("terminalModelBodies", () => {
+  it("preserves a successful historical modifier target consumed by an independent branch", () => {
+    const modifier = {
+      ...consumer,
+      type: filletFeatureType.type,
+      parameters: { radius: createLengthQuantity(1, "mm", "1 mm") },
+    }
+    const fork = {
+      ...modifier,
+      id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2904"),
+      dependencies: [modifier.id],
+    }
+    const edited = {
+      ...fork,
+      id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2905"),
+    }
+    const features = [source, modifier, fork, edited]
+    const response = rebuild(
+      features.map(({ id }) => ({ featureId: id, status: "succeeded", contentHash: hash })),
+      features.map(({ id }) => geometryRecord(id)),
+    )
+    expect(modifyingSolidTargetFeatures(features, edited.id, { ok: true, response })).toEqual([
+      modifier,
+      fork,
+    ])
+  })
+
   it("projects successful terminal bodies and keeps unnamed roots roleless", () => {
     const result = terminalModelBodies(
       [source],
