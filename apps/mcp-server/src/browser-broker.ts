@@ -65,6 +65,7 @@ type Pair = {
   expiresAt: number
   lastPollAt: number
   sequence: number
+  suspendedUntil: number | null
   client: Client
   pending: Pending | null
 }
@@ -75,6 +76,7 @@ const MAX_EXPORT_BODY = 8 * 1024 * 1024 + 64 * 1024
 const TTL = 60 * 60 * 1000
 const OPERATION_TTL = 6 * 60 * 1000
 const LIVENESS = 15 * 1000
+const RESUME_GRACE = 60 * 1000
 
 function response(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -374,6 +376,7 @@ export function createBrowserBroker({
   let client: Client | null = null
   let pair: Pair | null = null
   let disposed = false
+  let sessionGeneration = 0
   const toolTimes: number[] = []
   const pollTimes: number[] = []
   let livenessTimer: ReturnType<typeof setInterval> | null = null
@@ -386,6 +389,7 @@ export function createBrowserBroker({
 
   function revoke() {
     const hadPair = pair !== null
+    if (hadPair) sessionGeneration += 1
     if (pair?.pending) {
       clearPending(
         pair.pending,
@@ -399,7 +403,11 @@ export function createBrowserBroker({
   }
 
   function expire() {
-    if (pair && (pair.expiresAt <= now() || pair.lastPollAt + LIVENESS <= now())) revoke()
+    if (
+      pair &&
+      (pair.expiresAt <= now() || (pair.suspendedUntil ?? pair.lastPollAt + LIVENESS) <= now())
+    )
+      revoke()
   }
 
   livenessTimer = setInterval(expire, 1000)
@@ -429,6 +437,13 @@ export function createBrowserBroker({
     const authorized = auth(request)
     if (!authorized)
       return response(401, failure("unauthorized", "The local automation token is invalid."))
+    return authenticatedRoute(route, request, authorized)
+  }
+  function authenticatedRoute(route: string, request: Request, authorized: Pair) {
+    if (route === "/suspend") return suspendRoute(request, authorized)
+    if (route === "/resume") return resumeRoute(request, authorized)
+    if (authorized.suspendedUntil !== null)
+      return response(409, failure("session-suspended", "The browser session is reloading.", true))
     if (route === "/poll") return pollRoute(request, authorized)
     if (route === "/result") return resultRoute(request, authorized)
     return response(404, failure("not-found", "The automation route was not found."))
@@ -463,12 +478,14 @@ export function createBrowserBroker({
         failure("already-paired", "A local automation session is already paired."),
       )
     const token = randomBytes(32)
+    sessionGeneration += 1
     pair = {
       token,
       document: parsed.data.document,
       expiresAt: now() + TTL,
       lastPollAt: now(),
       sequence: 0,
+      suspendedUntil: null,
       client,
       pending: null,
     }
@@ -478,6 +495,59 @@ export function createBrowserBroker({
       actor: createLocalAutomationActor(now(), randomBytes(10)),
       expiresAt: pair.expiresAt,
       client,
+    })
+  }
+  function interrupt(authorized: Pair) {
+    if (authorized.pending) {
+      clearPending(
+        authorized.pending,
+        failure(
+          "outcome-unknown",
+          "The browser reloaded. Inspect the current revision before making another change.",
+        ),
+      )
+      authorized.pending = null
+    }
+    onRevoke?.()
+  }
+  async function suspendRoute(request: Request, authorized: Pair) {
+    const body = await readBrowserJson(request, 8 * 1024)
+    if (!z.object({}).strict().safeParse(body).success)
+      return response(400, failure("invalid-suspend", "The suspend request is invalid."))
+    if (pair !== authorized) return response(401, failure("session-revoked", "The session ended."))
+    if (authorized.suspendedUntil === null) {
+      authorized.suspendedUntil = Math.min(authorized.expiresAt, now() + RESUME_GRACE)
+      interrupt(authorized)
+    }
+    return response(200, { ok: true })
+  }
+  async function resumeRoute(request: Request, authorized: Pair) {
+    const body = await readBrowserJson(request, 64 * 1024)
+    const parsed = localConnectRequestSchema.safeParse(body)
+    if (!parsed.success || parsed.data.document.id !== authorized.document.id)
+      return response(409, failure("document-changed", "The paired document changed."))
+    if (pair !== authorized || !client || authorized.expiresAt <= now())
+      return response(401, failure("session-revoked", "The session ended."))
+    // Replace the pair so late requests cannot mutate the resumed session.
+    interrupt(authorized)
+    const token = randomBytes(32)
+    sessionGeneration += 1
+    pair = {
+      ...authorized,
+      token,
+      document: parsed.data.document,
+      sequence: 0,
+      lastPollAt: now(),
+      suspendedUntil: null,
+      pending: null,
+    }
+    pollTimes.length = 0
+    return response(200, {
+      protocolVersion: 1,
+      token: token.toString("base64url"),
+      actor: createLocalAutomationActor(now(), randomBytes(10)),
+      expiresAt: pair.expiresAt,
+      client: pair.client,
     })
   }
   async function pollRoute(request: Request, authorized: Pair) {
@@ -547,7 +617,8 @@ export function createBrowserBroker({
     // Reserve space for the poll envelope inside the browser's 256 KiB response budget.
     if (Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > 192 * 1024)
       return Promise.resolve(failure("operation-too-large", "The local operation exceeds 192 KiB."))
-    if (!pair) return Promise.resolve(failure("not-paired", "The browser is not paired."))
+    if (!pair || pair.suspendedUntil !== null)
+      return Promise.resolve(failure("not-paired", "The browser is not paired."))
     const activePair = pair
     if (activePair.pending)
       return Promise.resolve(failure("busy", "Another local operation is pending.", true))
@@ -613,16 +684,19 @@ export function createBrowserBroker({
     },
     invoke,
     revoke,
-    isPaired() {
+    sessionGeneration: () => sessionGeneration,
+    isPaired(expectedGeneration = sessionGeneration) {
       expire()
-      return pair !== null
+      return (
+        pair !== null && pair.suspendedUntil === null && expectedGeneration === sessionGeneration
+      )
     },
     readSession() {
       expire()
       return {
         schemaVersion: 1 as const,
         editorUrl: allowedOrigin,
-        paired: pair !== null,
+        paired: pair !== null && pair.suspendedUntil === null,
       }
     },
     dispose() {

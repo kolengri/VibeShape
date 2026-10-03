@@ -840,3 +840,62 @@ it("requires a metadata commit result to preserve exact command identity, revisi
   ).toBe(200)
   await expect(pending).resolves.toEqual({ ok: true, value })
 })
+
+describe("authenticated local reload recovery", () => {
+  it("suspends access, cancels work without replay and rotates the token on resume", async () => {
+    let at = 1000
+    const broker = makeBroker({ origin, now: () => at })
+    const credential = await connect(broker)
+    const pending = broker.invoke({ tool: "model_info", arguments: {} })
+    expect((await broker.handle(request("suspend", {}, credential.token))).status).toBe(200)
+    expect(await pending).toMatchObject({ ok: false, diagnostic: { code: "outcome-unknown" } })
+    expect(broker.isPaired()).toBe(false)
+    expect(await broker.invoke({ tool: "model_info", arguments: {} })).toMatchObject({ ok: false })
+    at += 20_000
+    const resumed = await broker.handle(
+      request("resume", { protocolVersion: 1, document }, credential.token),
+    )
+    expect(resumed.status).toBe(200)
+    const next = (await resumed.json()) as { token: string; expiresAt: number }
+    expect(next.token).not.toBe(credential.token)
+    expect(next.expiresAt).toBe(3_601_000)
+    expect((await broker.handle(request("revoke", {}, credential.token))).status).toBe(401)
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, next.token),
+    )
+    expect(await poll.json()).toMatchObject({ work: null })
+    expect(broker.isPaired()).toBe(true)
+  })
+  it("refuses another document and expired or revoked credentials", async () => {
+    let at = 1000
+    const broker = makeBroker({ origin, now: () => at })
+    const credential = await connect(broker)
+    await broker.handle(request("suspend", {}, credential.token))
+    expect(
+      (
+        await broker.handle(
+          request(
+            "resume",
+            {
+              protocolVersion: 1,
+              document: { ...document, id: "0195b5ac-b250-7a2c-8c33-000000000002" },
+            },
+            credential.token,
+          ),
+        )
+      ).status,
+    ).toBe(409)
+    at += 60_001
+    expect(
+      (await broker.handle(request("resume", { protocolVersion: 1, document }, credential.token)))
+        .status,
+    ).toBe(401)
+    const fresh = await connect(broker)
+    await broker.handle(request("suspend", {}, fresh.token))
+    await broker.handle(request("revoke", {}, fresh.token))
+    expect(
+      (await broker.handle(request("resume", { protocolVersion: 1, document }, fresh.token)))
+        .status,
+    ).toBe(401)
+  })
+})

@@ -271,7 +271,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
         .toBeGreaterThan(repairedCommit.revision)
       await page.reload()
       await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-      await enableLocalAi(page)
+      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
       const restored = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       expect(volumeFor(restored, treatmentId)).toBeCloseTo(initialVolume, 4)
     } finally {

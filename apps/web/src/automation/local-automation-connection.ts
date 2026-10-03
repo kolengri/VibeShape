@@ -2,6 +2,7 @@ import {
   type LocalConnection,
   type LocalWork,
   localConnectResponseSchema,
+  localDocumentSchema,
   localPollResponseSchema,
   localStatusSchema,
 } from "@vibeshape/automation-api/local-session"
@@ -29,6 +30,32 @@ type Pair = {
   active: { work: LocalWork; controller: AbortController } | null
   timer: ReturnType<typeof setTimeout> | null
 }
+const resumeKey = "vibeshape-local-ai-resume"
+const resumeSchema = z
+  .object({
+    documentId: localDocumentSchema.shape.id,
+    token: localConnectResponseSchema.shape.token,
+    expiresAt: localConnectResponseSchema.shape.expiresAt,
+    resumeUntil: z.number().int().positive(),
+  })
+  .strict()
+function readResume() {
+  try {
+    const value = resumeSchema.safeParse(JSON.parse(sessionStorage.getItem(resumeKey) ?? "null"))
+    return value.success && Math.min(value.data.expiresAt, value.data.resumeUntil) > Date.now()
+      ? value.data
+      : null
+  } catch {
+    return null
+  }
+}
+function clearResume() {
+  try {
+    sessionStorage.removeItem(resumeKey)
+  } catch {
+    /* Storage can be unavailable. */
+  }
+}
 const acknowledgement = z.object({ ok: z.literal(true) }).strict()
 
 export function createLocalAutomationConnection() {
@@ -42,13 +69,14 @@ export function createLocalAutomationConnection() {
   }
   let pair: Pair | null = null
   let generation = 0
-  let enabling = false
+  let connecting = false
+  let restoreTimer: ReturnType<typeof setTimeout> | null = null
   const listeners = new Set<() => void>()
   function publish(next: Snapshot) {
     snapshot = next
     for (const listener of listeners) listener()
   }
-  async function revokeCredential(credential: LocalConnection) {
+  async function revokeCredential(credential: Pick<LocalConnection, "token">) {
     await localAutomationRequest("/revoke", {}, credential.token, true).catch(() => undefined)
   }
   function closeLocal(current: Pair) {
@@ -59,11 +87,16 @@ export function createLocalAutomationConnection() {
   }
   async function disable() {
     generation += 1
+    const saved = readResume()
+    clearResume()
+    if (restoreTimer) clearTimeout(restoreTimer)
+    restoreTimer = null
     const current = pair
     if (current) closeLocal(current)
     if (snapshot.connected)
       publish({ ...snapshot, connected: false, autoApply: false, busy: false })
     if (current) await revokeCredential(current.credential)
+    else if (saved) await revokeCredential(saved)
   }
   async function fail(current: Pair) {
     if (pair !== current) return
@@ -78,6 +111,9 @@ export function createLocalAutomationConnection() {
       const value = localStatusSchema.parse(response.data)
       if (!response.ok || generation !== at) return
       publish({ ...snapshot, available: true, client: value.client, error: false })
+      if (readResume()) {
+        if (!restoreTimer) retryRestore()
+      } else clearResume()
     } catch {
       if (generation === at) publish({ ...snapshot, available: false })
     }
@@ -172,17 +208,25 @@ export function createLocalAutomationConnection() {
       if (pair === current) current.timer = setTimeout(() => void poll(current), 500)
     }
   }
-  async function connect(created: Handle, at: number) {
+  async function connect(
+    created: Handle,
+    at: number,
+    saved?: NonNullable<ReturnType<typeof readResume>>,
+  ) {
     const info = created.readInfo()
     if (!info) throw new Error("The document session is unavailable.")
-    const response = await localAutomationRequest("/connect", {
-      protocolVersion: 1,
-      document: {
-        id: info.summary.documentId,
-        name: info.summary.data.name,
-        revision: info.summary.revision,
+    const response = await localAutomationRequest(
+      saved ? "/resume" : "/connect",
+      {
+        protocolVersion: 1,
+        document: {
+          id: info.summary.documentId,
+          name: info.summary.data.name,
+          revision: info.summary.revision,
+        },
       },
-    })
+      saved?.token,
+    )
     const credential = localConnectResponseSchema.parse(response.data)
     if (!response.ok) throw new Error("The local AI bridge rejected pairing.")
     if (generation !== at || !created.readInfo()) {
@@ -199,6 +243,7 @@ export function createLocalAutomationConnection() {
       timer: null,
     }
     pair = current
+    clearResume()
     publish({
       available: true,
       connected: true,
@@ -211,8 +256,8 @@ export function createLocalAutomationConnection() {
     return true
   }
   async function enable() {
-    if (enabling || pair || !snapshot.available || !snapshot.client) return false
-    enabling = true
+    if (connecting || pair || !snapshot.available || !snapshot.client) return false
+    connecting = true
     const at = ++generation
     const created = createActiveDocumentAutomationSession()
     try {
@@ -223,10 +268,92 @@ export function createLocalAutomationConnection() {
       if (generation === at) publish({ ...snapshot, connected: false, error: true })
       return false
     } finally {
-      enabling = false
+      connecting = false
     }
   }
-  const onPageHide = () => void disable()
+  async function restore() {
+    if (connecting || pair) return
+    const saved = readResume()
+    if (!saved) {
+      clearResume()
+      return
+    }
+    connecting = true
+    const at = generation
+    try {
+      await resumeDocument(saved, at)
+    } catch {
+      if (generation === at) {
+        clearResume()
+        await revokeCredential(saved)
+        if (generation === at) publish({ ...snapshot, error: true })
+      }
+    } finally {
+      connecting = false
+    }
+  }
+  function retryRestore() {
+    restoreTimer = setTimeout(() => {
+      restoreTimer = null
+      void restore()
+    }, 250)
+  }
+  async function resumeDocument(saved: NonNullable<ReturnType<typeof readResume>>, at: number) {
+    const created = createActiveDocumentAutomationSession()
+    if (!created.ok) {
+      retryRestore()
+      return
+    }
+    const info = created.readInfo()
+    if (!info) {
+      created.dispose()
+      retryRestore()
+      return
+    }
+    if (info.summary.documentId !== saved.documentId) {
+      created.dispose()
+      clearResume()
+      await revokeCredential(saved)
+      return
+    }
+    try {
+      await connect(created, at, saved)
+    } catch (error) {
+      created.dispose()
+      throw error
+    }
+  }
+  const onPageHide = () => {
+    generation += 1
+    if (restoreTimer) clearTimeout(restoreTimer)
+    restoreTimer = null
+    const current = pair
+    if (!current) return
+    const info = current.handle.readInfo()
+    try {
+      if (!info) throw new Error("The document session ended.")
+      sessionStorage.setItem(
+        resumeKey,
+        JSON.stringify({
+          documentId: info.summary.documentId,
+          token: current.credential.token,
+          expiresAt: current.credential.expiresAt,
+          resumeUntil: Date.now() + 60_000,
+        }),
+      )
+    } catch {
+      void disable()
+      return
+    }
+    closeLocal(current)
+    publish({ ...snapshot, connected: false, autoApply: false, busy: false })
+    void localAutomationRequest("/suspend", {}, current.credential.token, true).catch(
+      () => undefined,
+    )
+  }
+  const onPageShow = () => {
+    void status()
+  }
   return {
     enable,
     enableAutoApply() {
@@ -245,6 +372,7 @@ export function createLocalAutomationConnection() {
     status,
     start() {
       window.addEventListener("pagehide", onPageHide)
+      window.addEventListener("pageshow", onPageShow)
     },
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
@@ -253,7 +381,14 @@ export function createLocalAutomationConnection() {
     },
     dispose() {
       window.removeEventListener("pagehide", onPageHide)
-      void disable()
+      window.removeEventListener("pageshow", onPageShow)
+      // Loading-to-ready remounts transfer the tab's recovery record to the new owner.
+      if (pair) void disable()
+      else {
+        generation += 1
+        if (restoreTimer) clearTimeout(restoreTimer)
+        restoreTimer = null
+      }
     },
   }
 }

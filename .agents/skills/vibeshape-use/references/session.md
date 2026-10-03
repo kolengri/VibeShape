@@ -20,7 +20,7 @@ After tool discovery and pairing, call `model_info` with `{}`. Check the actual 
 
 Manual browser Apply is the default. **Set up auto-apply** requires a separate explicit human opt-in for eligible CAD edits in this project/session. No MCP tool enables it. Metadata always requires manual review. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
 
-Keep the paired tab open. Project changes, reload, disconnect, cancellation, and session expiry require pairing again; auto-apply does not carry over. **Stop AI** revokes access, but a save that already entered persistence may finish. After an uncertain write, restore pairing and inspect the saved revision and affected records before deciding whether more work is needed.
+Keep the paired tab open. Local stdio restores access after reload in the same tab and project within 60 seconds while the original session remains valid. Wait for recovery, then call `model_info` and inspect the current revision; interrupted requests and drafts are never replayed. Remote HTTPS still requires fresh pairing and client consent after reload. Project changes, Stop AI, other disconnects, cancellation, and session expiry require pairing again; auto-apply does not carry over. **Stop AI** revokes access, but a save that already entered persistence may finish. After an uncertain write, restore pairing and inspect the saved revision and affected records before deciding whether more work is needed.
 
 ## Limits and errors
 
