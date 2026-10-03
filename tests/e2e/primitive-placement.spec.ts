@@ -21,6 +21,8 @@ test.describe("Primitive graphical placement", () => {
       timeout: 30_000,
     })
     await height.fill("31 mm")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready")
+    await expect(viewport).toHaveAttribute("data-translation-gizmo-position", "0,0,0")
 
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
@@ -30,10 +32,27 @@ test.describe("Primitive graphical placement", () => {
       y: bounds.y + bounds.height / 2 + 40,
     }
 
+    const orientationBounds = await viewport.getByRole("img", { name: "World axes" }).boundingBox()
+    if (!orientationBounds)
+      throw new Error("The camera orientation inset has no measurable bounds.")
+    // Compare the rendered axes, excluding the translucent frame and DOM labels.
+    const cameraBounds = {
+      x: orientationBounds.x + 4,
+      y: orientationBounds.y + 4,
+      width: orientationBounds.width - 8,
+      height: orientationBounds.height - 20,
+    }
+    const cameraBeforeDrag = await page.screenshot({ clip: cameraBounds })
+
     await page.mouse.move(handle.x, handle.y)
     await page.mouse.down()
     await page.mouse.move(handle.x + 45, handle.y, { steps: 5 })
     await expect(originX).not.toHaveValue("0 mm")
+    const firstDragPosition = await originX.inputValue()
+    await expect(viewport).toHaveAttribute("data-translation-gizmo-feature", /.+/)
+    await page.mouse.move(handle.x + 75, handle.y, { steps: 5 })
+    await expect(originX).not.toHaveValue(firstDragPosition)
+    expect((await page.screenshot({ clip: cameraBounds })).equals(cameraBeforeDrag)).toBe(true)
     await page.keyboard.press("Escape")
     await expect(originX).toHaveValue("0 mm")
     await expect(height).toHaveValue("31 mm")
@@ -46,6 +65,7 @@ test.describe("Primitive graphical placement", () => {
     await page.mouse.up()
     await expect(originX).not.toHaveValue("0 mm")
     const movedOrigin = await originX.inputValue()
+    expect((await page.screenshot({ clip: cameraBounds })).equals(cameraBeforeDrag)).toBe(true)
 
     await form.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
