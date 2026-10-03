@@ -2,7 +2,9 @@
 
 ## Recommendation
 
-VibeShape should expose AI automation through a **local MCP adapter over the ordinary document command and query contracts**. MCP is an integration boundary, not a second CAD engine, extension runtime, persistence layer, or privileged scripting API.
+VibeShape exposes AI automation through local stdio and explicitly paired remote HTTPS MCP adapters
+over the ordinary document command and query contracts. MCP is an integration boundary, not a second
+CAD engine, extension runtime, persistence layer, or privileged scripting API.
 
 The broad target remains proposed in [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
 The implemented local stdio subset is accepted by [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md). The adapter-neutral host validates actor identities supplied separately from payloads, owns bounded expiring drafts, retains original parsed commands,
@@ -290,6 +292,23 @@ Connecting an already open app from another origin is deferred. Its spike must c
 
 Streamable HTTP is deferred. If introduced, it requires the MCP authorization profile, origin validation, localhost-only defaults for local mode, secure session IDs, token audience validation, and a separate deployment threat model. Remote HTTP is not enabled by a command-line flag on the local bridge.
 
+## Remote HTTPS transport and pairing
+
+`apps/remote-mcp` implements OAuth-protected Streamable HTTP on a Cloudflare Worker and SQLite
+Durable Objects. The exact editor tab explicitly pairs a hibernating WebSocket and approves one OAuth
+client. Required Turnstile verification and global admission budgets precede tab allocation and
+OAuth writes. The service routes existing named operations to the browser's ordinary automation
+handle; it does not own geometry or project storage. Tool metadata is shared with the local adapter.
+Remote file resources remain deferred while ordinary editor exports continue to work.
+
+Manual Apply and the explicit session-only auto-apply policy remain unchanged. Revocation disposes
+browser authority immediately, and every remote request checks live tab/client authorization.
+Disconnected or uncertain writes are never queued for replay. Exact failure, configuration and
+personal Free-plan admission limits are defined in
+[ADR-0058](../adr/0058-remote-mcp-paired-browser-transport.md) and
+[Remote MCP operation and limits](../remote-mcp.md). Public onboarding beyond the bounded personal
+deployment needs a separate admission decision and deployed evidence.
+
 ## Progress, cancellation, and long tasks
 
 MCP progress tokens map to command execution IDs. The coordinator forwards real worker stages and never invents precision that the kernel cannot provide. Notifications are rate-limited and stop after a terminal result.
@@ -356,9 +375,12 @@ packages/
 
 apps/
   mcp-server/            # local Bun MCP transport and authenticated browser pairing bridge
+  remote-mcp/            # HTTPS OAuth transport and bounded per-tab coordination; no CAD authority
 ```
 
-The MCP SDK belongs only in `apps/mcp-server`. Domain, geometry, persistence, and feature packages never import it. The browser depends on the adapter-neutral automation protocol rather than MCP types.
+The MCP SDK belongs only in `apps/mcp-server` and `apps/remote-mcp`. Domain, geometry, persistence,
+and feature packages never import it. The browser depends on the adapter-neutral automation protocol
+rather than MCP types. Cloudflare runtime and OAuth dependencies belong only in `apps/remote-mcp`.
 
 `packages/automation-api` and `packages/automation-host` are checked in because the document-summary query and owner-bound draft lifecycle execute end to end in tests. `apps/mcp-server` now implements the first paired transport slice. Its command list and limits are
 explicitly narrower than the target contract in this document; see ADR-0043.

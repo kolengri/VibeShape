@@ -51,6 +51,9 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Test remote MCP authorization and session boundaries
+        run: bun run test:remote-mcp
+
       - name: Build browser application
         run: bun run build
 

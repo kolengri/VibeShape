@@ -17,6 +17,8 @@ jobs:
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      VITE_REMOTE_MCP_URL: ${{ vars.VIBESHAPE_REMOTE_MCP_URL }}
     outputs:
       manifest-sha256: ${{ steps.evidence.outputs.sha256 }}
     steps:

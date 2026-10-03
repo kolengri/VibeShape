@@ -15,6 +15,8 @@
     "apps/web/src/spikes/topology.ts",
     "apps/slicer-bridge/src/index.ts",
     "apps/mcp-server/src/index.ts",
+    "apps/remote-mcp/src/index.ts",
+    "apps/remote-mcp/vitest.config.ts",
     // Bun.build packages the relocatable launcher through a runtime entrypoint string.
     "scripts/local-distribution.ts",
     "playwright.formats.config.ts",
@@ -30,7 +32,9 @@
   // Bun resolves these transitive security pins in bun.lock; Fallow currently checks pnpm lockfiles only.
   "ignoreDependencyOverrides": [
     { "package": "fast-uri", "source": "package.json" },
-    { "package": "qs", "source": "package.json" }
+    { "package": "qs", "source": "package.json" },
+    { "package": "ip-address", "source": "package.json" },
+    { "package": "sharp", "source": "package.json" }
   ],
   "ignorePatterns": [
     "**/__generated__/**",
@@ -49,6 +53,7 @@
     "zones": [
       { "name": "web", "patterns": ["apps/web/**"] },
       { "name": "mcp-server", "patterns": ["apps/mcp-server/**"] },
+      { "name": "remote-mcp", "patterns": ["apps/remote-mcp/**"] },
       { "name": "slicer-bridge", "patterns": ["apps/slicer-bridge/**"] },
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
@@ -88,6 +93,7 @@
       // The loopback adapter depends only on its strict shared contract.
       { "from": "slicer-bridge", "allow": ["slicer-handoff"] },
       { "from": "mcp-server", "allow": ["automation-api"] },
+      { "from": "remote-mcp", "allow": ["automation-api"] },
       // Use-case coordination depends on pure domain policy and serializable runtime contracts.
       { "from": "application", "allow": ["domain", "protocol"] },
       // The document worker composes application policy, native geometry, and approved file formats.

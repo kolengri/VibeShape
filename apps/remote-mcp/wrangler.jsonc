@@ -1,0 +1,33 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vibeshape-remote-mcp",
+  "account_id": "dddb9fcdf9bec709036b951ebb932642",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      { "name": "ADMISSION", "class_name": "Admission" },
+      { "name": "TAB_SESSIONS", "class_name": "TabSession" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Admission", "TabSession"] }],
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "7f713754e68d449894bdca2c03a06075" }],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://vibeshape-remote-mcp.greg-ddd.workers.dev",
+    "EDITOR_ORIGIN": "https://vibeshape-greg.pages.dev",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFMwmMa5dCtdT65r",
+    "MAX_ACTIVE_SESSIONS": "3",
+    "MAX_SESSIONS_PER_DAY": "12",
+    "MAX_CLIENTS_PER_DAY": "24",
+    "MAX_CONSENTS_PER_DAY": "24",
+    "MAX_TOKEN_REQUESTS_PER_DAY": "48"
+  },
+  // Stable project namespace; verify account-wide uniqueness before provisioning.
+  // Locality-based coarse limits run before OAuth/KV and per-tab DO routing.
+  "ratelimits": [
+    { "name": "IP_LIMIT", "namespace_id": "1598340211", "simple": { "limit": 60, "period": 60 } }
+  ],
+  "observability": { "enabled": false }
+}

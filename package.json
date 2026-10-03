@@ -62,6 +62,7 @@
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "typecheck": "bun run typecheck:scripts && bun run --workspaces typecheck",
     "test": "vitest run",
+    "test:remote-mcp": "bun run --cwd apps/remote-mcp test",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:chromium": "playwright test --project=chromium",
@@ -91,7 +92,7 @@
     "fallow:health": "fallow health --score",
     "audit": "bun run scripts/run-critical-dependency-audit.ts",
     "shadcn:add": "shadcn add --cwd apps/web",
-    "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+    "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run test:remote-mcp && bun run build",
     "mcp:local": "bun run --cwd apps/mcp-server start"
   },
   "dependencies": {
@@ -106,10 +107,12 @@
     "jsdom": "30.0.1",
     "shadcn": "4.16.2",
     "typescript": "7.0.2",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11"
   },
   "overrides": {
     "qs": "6.16.0",
-    "fast-uri": "3.1.6"
+    "fast-uri": "3.1.8",
+    "ip-address": "10.7.3",
+    "sharp": "0.35.4"
   }
 }

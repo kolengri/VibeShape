@@ -53,6 +53,7 @@
 | [0049](0049-constituent-body-identity-and-solid-patterns.md) | Accepted architecture; staged implementation | Exact constituent body ownership, role-sensitive input identity, and independently selectable solid patterns |
 | [0050](0050-constituent-body-measurements.md) | Accepted | Revision-bound constituent body measurements shared by the editor and local MCP |
 | [0051](0051-body-bound-topology-inspection.md) | Accepted staged contract | Exact body-scoped edge and face inspection with isolated reference resolution |
+| [0058](0058-remote-mcp-paired-browser-transport.md) | Accepted with reduced scope; deployment gates open | OAuth-protected HTTPS MCP routed to one explicitly paired browser tab |
 
 Statuses:
 
