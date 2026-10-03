@@ -59,6 +59,7 @@ export type SketchInferenceCurve =
     }>
 
 export type SketchPointRelationInference =
+  | Readonly<{ type: "origin" }>
   | Readonly<{ pointId: SketchEntityId; type: "coincident" }>
   | Readonly<{ pointId: SketchEntityId; type: "horizontal-points" }>
   | Readonly<{ pointId: SketchEntityId; type: "vertical-points" }>
@@ -1616,11 +1617,28 @@ export function inferSketchPoint(input: {
   curves?: readonly SketchInferenceCurve[]
   directionLines?: readonly SketchInferenceLine[]
   lines?: readonly SketchInferenceLine[]
+  includeOrigin?: boolean
   point: SketchPoint2
   points: readonly SketchInferencePoint[]
   tolerance: number
 }): SketchPointInference {
   requireInferenceTolerance(input.tolerance)
   const snappedPoint = nearestPoint(input.point, input.points, input.tolerance)
-  return snappedPoint ? coincidentInference(snappedPoint) : newPointInference(input)
+  const inference = snappedPoint ? coincidentInference(snappedPoint) : newPointInference(input)
+  const origin = { x: 0, y: 0 }
+  const originDistance = squaredDistance(input.point, origin)
+  if (
+    input.includeOrigin &&
+    originDistance <= input.tolerance * input.tolerance &&
+    (inference.kind === "none" || originDistance < squaredDistance(input.point, inference.point))
+  ) {
+    return {
+      direction: null,
+      kind: "coincident",
+      point: origin,
+      relations: [{ type: "origin" }],
+      target: { kind: "new", point: origin },
+    }
+  }
+  return inference
 }

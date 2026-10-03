@@ -19,6 +19,44 @@ const horizontalLine = {
 } as const
 
 describe("sketch inference", () => {
+  it("proposes a persistent origin relation within the screen tolerance", () => {
+    expect(
+      inferSketchPoint({
+        includeOrigin: true,
+        point: { x: 0.3, y: -0.4 },
+        points: [],
+        tolerance: 0.5,
+      }),
+    ).toEqual({
+      direction: null,
+      kind: "coincident",
+      point: { x: 0, y: 0 },
+      relations: [{ type: "origin" }],
+      target: { kind: "new", point: { x: 0, y: 0 } },
+    })
+    expect(
+      inferSketchPoint({
+        includeOrigin: true,
+        point: { x: 0.3, y: -0.4 },
+        points: [],
+        tolerance: 0.49,
+      }).kind,
+    ).toBe("none")
+  })
+
+  it("keeps a closer authored point ahead of the origin and opts out by default", () => {
+    const input = {
+      point: { x: 0.2, y: 0 },
+      points: [{ id: firstPointId, x: 0.25, y: 0 }],
+      tolerance: 1,
+    }
+    expect(inferSketchPoint({ ...input, includeOrigin: true }).target).toEqual({
+      kind: "existing",
+      pointId: firstPointId,
+    })
+    expect(inferSketchPoint({ ...input, points: [] }).kind).toBe("none")
+  })
+
   it("snaps to the nearest authored point with stable identity tie-breaking", () => {
     const inference = inferSketchPoint({
       point: { x: 0, y: 0 },
