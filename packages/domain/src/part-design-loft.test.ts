@@ -19,6 +19,11 @@ const section = (value: number) => ({
 const parameters = { sections: [section(2), section(1)], ruled: false }
 
 describe("ordered new-body Loft contract", () => {
+  it.each([19, 24])("accepts %i ordered sections with bounded producer dependencies", (count) => {
+    const sections = Array.from({ length: count }, (_, index) => section(index + 1))
+    expect(loftFeatureParametersSchema.parse({ sections, ruled: true }).sections).toEqual(sections)
+    expect(loftFeatureType.dependencies).toEqual({ min: 0, max: 24 })
+  })
   it("retains section order as content identity and reads only its exact feature version", () => {
     const feature = featureRecordSchema.parse({
       schemaVersion: 0,
@@ -44,7 +49,7 @@ describe("ordered new-body Loft contract", () => {
   it.each([
     { sections: [section(1)] },
     { sections: [section(1), section(1)] },
-    { sections: Array.from({ length: 9 }, (_, index) => section(index + 1)) },
+    { sections: Array.from({ length: 25 }, (_, index) => section(index + 1)) },
     { sections: [{ ...section(1), holeBoundaryEntityIds: [[id(51)]] }, section(2)] },
     {
       sections: [1, 2].map((value) => ({

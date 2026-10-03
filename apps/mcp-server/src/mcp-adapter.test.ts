@@ -10,6 +10,89 @@ import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
 
+it("advertises client-valid Datum Plane, Boolean and exact-body combination tools", async () => {
+  const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
+  const adapter = createLocalMcpAdapter(broker, createExportResources())
+  const client = new Client({ name: "reference-combination-schema-test", version: "1" })
+  const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
+  const base = {
+    draftId: id(1),
+    baseRevision: 7,
+    commandId: id(2),
+    featureId: id(3),
+    references: [],
+    suppressed: false,
+  }
+  const bodies = [
+    { schemaVersion: 0, featureId: id(4), outputRole: "split.negative" },
+    { schemaVersion: 0, featureId: id(4), outputRole: "split.positive" },
+  ]
+  const fixtures = [
+    {
+      suffix: "datum_plane",
+      arguments: {
+        ...base,
+        dependencies: [],
+        parameters: {
+          mode: "offset",
+          support: { kind: "origin-plane", plane: "xy" },
+          offset: {
+            schemaVersion: 0,
+            dimension: "length",
+            value: -29.5,
+            unit: "mm",
+            source: { value: -29.5, unit: "mm", expression: null },
+          },
+        },
+      },
+    },
+    {
+      suffix: "boolean",
+      arguments: {
+        ...base,
+        dependencies: [id(4), id(5)],
+        parameters: { operation: "subtract", keepTools: true },
+      },
+    },
+    { suffix: "union", arguments: { ...base, dependencies: [id(4)], parameters: { bodies } } },
+    {
+      suffix: "compound",
+      arguments: {
+        ...base,
+        dependencies: [id(4)],
+        parameters: {
+          slots: bodies.map((targetBody, index) => ({ slotId: id(10 + index), targetBody })),
+        },
+      },
+    },
+  ]
+  try {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([adapter.connect(serverTransport), client.connect(clientTransport)])
+    const listed = await client.listTools()
+    const validator = new AjvJsonSchemaValidator()
+    for (const fixture of fixtures) {
+      for (const action of ["create", "update"]) {
+        const tool = listed.tools.find(({ name }) => name === `${action}_${fixture.suffix}`)
+        if (!tool) throw new Error(`Missing advertised ${action}_${fixture.suffix} tool.`)
+        expect(tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false })
+        const validate = validator.getValidator({
+          ...tool.inputSchema,
+          properties: tool.inputSchema.properties ?? {},
+          required: tool.inputSchema.required ?? [],
+        })
+        expect(validate(fixture.arguments).valid).toBe(true)
+        expect(validate({ ...fixture.arguments, commandId: "legacy-command" }).valid).toBe(false)
+        expect(validate({ ...fixture.arguments, parameters: {} }).valid).toBe(false)
+      }
+    }
+  } finally {
+    await client.close()
+    await adapter.close()
+    broker.dispose()
+  }
+})
+
 it("discovers the actual editor and a usable authoring guide before pairing without document access", async () => {
   const broker = createBrowserBroker({ origin: "http://127.0.0.1:43999" })
   const invoke = vi.spyOn(broker, "invoke")

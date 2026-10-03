@@ -1,7 +1,8 @@
 import { applyAutomationDraftCommandRequestSchema } from "@vibeshape/automation-api/drafts"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
-import { type CommandActor, featureRecordSchema } from "@vibeshape/domain"
+import { type CommandActor, datumPlaneFeatureType, featureRecordSchema } from "@vibeshape/domain"
 import {
+  booleanFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
@@ -10,6 +11,10 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "@vibeshape/domain/part-design"
+import {
+  compoundFeatureTypeV2,
+  unionFeatureTypeV2,
+} from "@vibeshape/domain/part-design-body-combination"
 import {
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
@@ -50,10 +55,26 @@ type CadOperation = Extract<
       | "update_loft"
       | "create_sweep"
       | "update_sweep"
+      | "create_datum_plane"
+      | "update_datum_plane"
+      | "create_boolean"
+      | "update_boolean"
+      | "create_union"
+      | "update_union"
+      | "create_compound"
+      | "update_compound"
   }
 >
 
 const directCadFeatureTypes = {
+  create_datum_plane: datumPlaneFeatureType.type,
+  update_datum_plane: datumPlaneFeatureType.type,
+  create_boolean: booleanFeatureType.type,
+  update_boolean: booleanFeatureType.type,
+  create_union: unionFeatureTypeV2.type,
+  update_union: unionFeatureTypeV2.type,
+  create_compound: compoundFeatureTypeV2.type,
+  update_compound: compoundFeatureTypeV2.type,
   create_shell: shellFeatureType.type,
   update_shell: shellFeatureType.type,
   create_mirror: mirrorFeatureType.type,
@@ -87,29 +108,9 @@ function cadFeatureType(
 }
 
 function profileFeatureType(
-  operation: Exclude<
+  operation: Extract<
     CadOperation,
-    {
-      tool:
-        | "create_sketch"
-        | "update_sketch"
-        | "create_hole"
-        | "update_hole"
-        | "create_mirror"
-        | "update_mirror"
-        | "create_shell"
-        | "update_shell"
-        | "create_thread"
-        | "update_thread"
-        | "create_body_pattern"
-        | "update_body_pattern"
-        | "create_split"
-        | "update_split"
-        | "create_loft"
-        | "update_loft"
-        | "create_sweep"
-        | "update_sweep"
-    }
+    { tool: "create_extrude" | "update_extrude" | "create_revolve" | "update_revolve" }
   >,
 ) {
   const parameters = operation.arguments.parameters

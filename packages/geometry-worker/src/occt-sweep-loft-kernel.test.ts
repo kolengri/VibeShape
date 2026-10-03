@@ -117,6 +117,26 @@ beforeAll(async () => {
 afterAll(() => cachedSource?.delete())
 
 describe("Sweep and Loft with installed Replicad 0.23.1 / OCCT package 0.23.0", () => {
+  it.each([19, 24])(
+    "builds %i exact ordered Loft sections with unchanged source geometry",
+    (count) => {
+      const sections = Array.from({ length: count }, (_, index) => rectangle(2, 4, index))
+      const before = structuredClone(sections)
+      const shape = createOcctLoft(occt, sections, { ruled: false })
+      try {
+        validateOcctProfileSolid(occt, shape)
+        expect(measureVolume(shape)).toBeCloseTo(8 * (count - 1), 6)
+        expectBounds(shape, [
+          [-1, -2, 0],
+          [1, 2, count - 1],
+        ])
+        expect(sections).toEqual(before)
+        expect(measureVolume(cachedSource)).toBeCloseTo(63 * Math.PI, 6)
+      } finally {
+        shape.delete()
+      }
+    },
+  )
   it.each([true, false])(
     "builds exact differing rectangle sections with ruled=%s and preserves analytical/native sources",
     (ruled) => {

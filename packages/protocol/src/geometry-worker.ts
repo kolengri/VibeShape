@@ -8,6 +8,7 @@ import {
 } from "./surface-texture"
 
 export const GEOMETRY_PROTOCOL_VERSION = 17 as const
+export const MAX_ANALYTICAL_LOFT_SECTIONS = 24
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -1571,12 +1572,30 @@ const featureEvaluationInputFields = {
   featureId: featureIdSchema,
   content: featureContentIdentitySchema,
   contentHash: sha256Schema,
-  dependencies: z.array(featureEvaluationDependencySchema).max(8),
+  dependencies: z.array(featureEvaluationDependencySchema).max(MAX_ANALYTICAL_LOFT_SECTIONS),
   mesh: featureMeshPolicySchema,
 } as const
 
 const featureEvaluationInputBaseSchema = z.object(featureEvaluationInputFields)
 type FeatureEvaluationInput = z.infer<typeof featureEvaluationInputBaseSchema>
+
+function validateFeatureEvaluationDependencyBudget(
+  request: FeatureEvaluationInput,
+  context: z.RefinementCtx,
+) {
+  const type = request.content.feature.type
+  const loftV1 =
+    type.moduleId === "org.vibeshape.core.part-design" &&
+    type.moduleVersion === "0.1.0" &&
+    type.typeId === "org.vibeshape.feature.part-design.loft" &&
+    type.schemaVersion === 1
+  if (!loftV1 && request.dependencies.length > 8)
+    context.addIssue({
+      code: "custom",
+      path: ["dependencies"],
+      message: "Only Loft v1 may evaluate more than eight producer dependencies.",
+    })
+}
 
 function validateFeatureEvaluationInput(request: FeatureEvaluationInput, context: z.RefinementCtx) {
   if (request.dependencies.length !== request.content.feature.inputs.length) {
@@ -1625,12 +1644,13 @@ function validateFeatureEvaluationInput(request: FeatureEvaluationInput, context
   }
 }
 
-export const featureEvaluationInputSchema = featureEvaluationInputBaseSchema.superRefine(
-  validateFeatureEvaluationInput,
-)
+export const featureEvaluationInputSchema = featureEvaluationInputBaseSchema
+  .superRefine(validateFeatureEvaluationDependencyBudget)
+  .superRefine(validateFeatureEvaluationInput)
 
 const evaluateFeatureRequestSchema = requestEnvelopeSchema
   .extend({ type: z.literal("evaluateFeature"), ...featureEvaluationInputFields })
+  .superRefine(validateFeatureEvaluationDependencyBudget)
   .superRefine(validateFeatureEvaluationInput)
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({

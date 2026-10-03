@@ -5,6 +5,7 @@ import {
   extrusionFrameSchema,
   extrusionProfileLoopSchema,
   extrusionProfileSegmentSchema,
+  MAX_ANALYTICAL_LOFT_SECTIONS,
 } from "./geometry-worker"
 
 const profileFields = extrusionFeatureContentParametersSchema.shape
@@ -67,7 +68,10 @@ export const analyticalSweepPathSchema = extrusionProfileLoopSchema
   })
 
 export const loftFeatureContentParametersSchema = z
-  .object({ sections: z.array(analyticalProfileSchema).min(2).max(8), ruled: z.boolean() })
+  .object({
+    sections: z.array(analyticalProfileSchema).min(2).max(MAX_ANALYTICAL_LOFT_SECTIONS),
+    ruled: z.boolean(),
+  })
   .strict()
   .superRefine(({ sections }, context) => {
     if (sections.some(({ holes }) => holes.length > 0))

@@ -72,6 +72,19 @@ function fixture() {
 }
 
 describe("owned exact OCCT Loft", () => {
+  it("rejects more than twenty-four sections before allocating native bindings", () => {
+    const f = fixture()
+    const operations = createOcctLoftOperations(f.cast as unknown as OcctShapeCaster)
+    expect(() =>
+      operations.loftShape(
+        f.constructors as unknown as OpenCascadeInstance,
+        Array.from({ length: 25 }, (_, index) => section(index)),
+        { ruled: false },
+      ),
+    ).toThrow("two to twenty-four")
+    expect(f.constructors.BRepOffsetAPI_ThruSections).not.toHaveBeenCalled()
+    expect(f.constructors.Message_ProgressRange_1).not.toHaveBeenCalled()
+  })
   it("adds ordered fresh sections and releases every temporary while transferring one result", () => {
     const f = fixture()
     expect(f.run()).toBe(f.result as unknown as Shape3D)

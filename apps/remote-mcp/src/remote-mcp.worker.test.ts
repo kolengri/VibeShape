@@ -617,6 +617,18 @@ describe("remote MCP in workerd", () => {
     const catalog = (await listed.json()) as { result: { tools: { name: string }[] } }
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("create_hole")
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("change_metadata")
+    expect(catalog.result.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "create_datum_plane",
+        "update_datum_plane",
+        "create_boolean",
+        "update_boolean",
+        "create_union",
+        "update_union",
+        "create_compound",
+        "update_compound",
+      ]),
+    )
     expect(catalog.result.tools.map((tool) => tool.name)).not.toContain("export_model")
     const bMessages: unknown[] = []
     b.socket.addEventListener("message", (event) => bMessages.push(event.data))
@@ -641,6 +653,45 @@ describe("remote MCP in workerd", () => {
     expect(result.status).toBe(200)
     expect(await result.json()).toMatchObject({
       result: { structuredContent: { result: { diagnostic: { message: "Tab A" } } } },
+    })
+    expect(bMessages).toHaveLength(0)
+    const body = {
+      schemaVersion: 0,
+      featureId: "0195b5ac-b250-7a2c-8c33-000000000004",
+      outputRole: "split.negative",
+    }
+    const unionArguments = {
+      draftId: "0195b5ac-b250-7a2c-8c33-000000000001",
+      commandId: "0195b5ac-b250-7a2c-8c33-000000000002",
+      featureId: "0195b5ac-b250-7a2c-8c33-000000000003",
+      baseRevision: 7,
+      dependencies: [body.featureId],
+      references: [],
+      suppressed: false,
+      parameters: { bodies: [body, { ...body, outputRole: "split.positive" }] },
+    }
+    const unionWork = nextMessage(a.socket)
+    const unionResponse = mcp(authenticated.token, 10, "tools/call", {
+      name: "create_union",
+      arguments: unionArguments,
+    })
+    const unionOperation = await unionWork
+    expect(unionOperation).toMatchObject({
+      type: "work",
+      operation: { tool: "create_union", arguments: unionArguments },
+    })
+    if (unionOperation.type !== "work") throw new Error("Expected body combination browser work.")
+    a.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: unionOperation.requestId,
+        tool: "create_union",
+        result: localFailure("fixture-draft", "Tab A draft"),
+      }),
+    )
+    expect(await (await unionResponse).json()).toMatchObject({
+      result: { structuredContent: { result: { diagnostic: { message: "Tab A draft" } } } },
     })
     expect(bMessages).toHaveLength(0)
     const duplicate = await mcp(authenticated.token, 2, "tools/call", {

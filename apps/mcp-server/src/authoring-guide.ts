@@ -8,13 +8,29 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
 
 ## Additional exact feature tools
 
-Named create/update tools cover Mirror, linear/circular body Pattern, Shell, Split, Sweep, Loft
-and custom Thread. Choose exact feature/output-role targets from \`model_body_measurements\`.
+Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
+linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
+feature/output-role targets from \`model_body_measurements\`.
 Shell openings require current body topology references and their source content hash. Sweep
 requires an already aligned profile at the start of an open tangent-continuous line/arc path;
-Loft takes two to eight ordered hole-free sections. Thread models a custom 60-degree V groove
+Loft takes two to twenty-four ordered hole-free sections within a 2,000-curve aggregate budget. Thread models a custom 60-degree V groove
 with at most sixteen total turns, without ISO/DIN fit certification. Use the live schema for
 limits, quantities, dependencies and repair; exact preview remains mandatory.
+
+\`create_datum_plane\`/\`update_datum_plane\` use offset mode, a signed typed length and
+origin support xy/xz/yz (empty dependencies/references) or an existing planar face v0 TopoRef
+(exactly its owner dependency and the same persisted reference). Body-topology v1 references
+cannot be substituted. Preview downstream sketches/features before commit.
+\`create_boolean\`/\`update_boolean\` perform legacy whole-result subtraction: operation=subtract,
+optional keepTools, exactly two distinct dependencies ordered target before tool, empty references.
+\`create_union\`/\`update_union\` select two to eight distinct exact bodies in ordered \`bodies\`;
+\`create_compound\`/\`update_compound\` select them in ordered \`slots\` with stable UUIDv7 slotId.
+Both use feature schema v2. Dependencies list each producer once in first-occurrence order;
+references are empty. Several roles from one producer are supported. Union requires one connected
+solid and keeps the first selected part. Compound retains separate solids and body.<slotId> roles.
+Preserve existing slot IDs on update. Missing roles fail closed. Manual review remains default;
+an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
+and schema upgrades still require manual review. Tools cannot enable the grant.
 
 Geometry/planar import, text generation, assemblies, the local component library and surface
 texture authoring use the editor. They are not named MCP construction tools. The shared local
@@ -450,9 +466,10 @@ is not exposed. A newly authored single-solid Extrude declares the body role \`r
 legacy Hole semantics in the example, or preserve a known exact \`targetBody\` on update.
 
 Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/update;
-Fillet/Chamfer, Mirror, body Pattern, Shell, Split, Sweep, Loft and custom Thread create/update;
+Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
+Split, Sweep, Loft and custom Thread create/update;
 variables; bounded inspection; draft lifecycle and export.
-Box update/placement, Cylinder, Boolean, Datum Plane, feature/sketch removal, suppression,
+Box update/placement, Cylinder, feature/sketch removal, dedicated suppression,
 model rename and history navigation are not currently exposed through MCP. There is no
 generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.
