@@ -439,7 +439,7 @@ describe("remote MCP in workerd", () => {
   it("caps unauthenticated registration before SDK KV writes and active tabs before per-tab allocation", async () => {
     const allocatedBefore = (await listDurableObjectIds(bindings.TAB_SESSIONS)).length
     const payload = JSON.stringify({ redirect_uris: ["https://client.example/callback"] })
-    for (let count = 0; count < 6; count++) {
+    for (let count = 0; count < 12; count++) {
       const registered = await call("/oauth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -453,7 +453,30 @@ describe("remote MCP in workerd", () => {
       body: payload,
     })
     expect(second.status).toBe(429)
-    expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(6)
+    expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(12)
+    ip = `198.51.100.${++address}`
+    for (let count = 0; count < 12; count++) {
+      expect(
+        (
+          await call("/oauth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+          })
+        ).status,
+      ).toBe(201)
+    }
+    ip = `198.51.100.${++address}`
+    expect(
+      (
+        await call("/oauth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        })
+      ).status,
+    ).toBe(429)
+    expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(24)
     const tab = await pair()
     expect(tab.credential.browserToken).toHaveLength(43)
     const unknown = await call(`/browser/socket/${crypto.randomUUID()}`, {
@@ -472,6 +495,31 @@ describe("remote MCP in workerd", () => {
     })
     expect(fourth.status).toBe(429)
     expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(allocatedBefore + 3)
+  })
+
+  it("allows twelve OAuth consent pages per IP and preserves the global budget before SDK writes", async () => {
+    const client = await registeredClient()
+    const query = new URLSearchParams({
+      response_type: "code",
+      client_id: client.client_id,
+      redirect_uri: "https://client.example/callback",
+      scope: "editor:session",
+      state: "admission-test-state",
+      code_challenge: "a".repeat(43),
+      code_challenge_method: "S256",
+      resource: "https://mcp.example/mcp",
+    })
+    const path = `/authorize?${query}`
+    for (let count = 0; count < 12; count++) expect((await call(path)).status).toBe(200)
+    const beforeIpRejection = (await bindings.OAUTH_KV.list()).keys.length
+    expect((await call(path)).status).toBe(429)
+    expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(beforeIpRejection)
+    ip = `198.51.100.${++address}`
+    for (let count = 0; count < 12; count++) expect((await call(path)).status).toBe(200)
+    ip = `198.51.100.${++address}`
+    const beforeGlobalRejection = (await bindings.OAUTH_KV.list()).keys.length
+    expect((await call(path)).status).toBe(429)
+    expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(beforeGlobalRejection)
   })
 
   it("requires the SDK browser-bound one-use consent and rejects cross-origin consent", async () => {
