@@ -200,6 +200,113 @@ afterEach(async () => {
 })
 
 describe("remote MCP in workerd", () => {
+  it("serves the operator skill resources and tool only under live-tab OAuth authority without browser work", async () => {
+    expect((await mcp("invalid-token", 1, "resources/list")).status).toBe(401)
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const messages: unknown[] = []
+    tab.socket.addEventListener("message", (event) => {
+      messages.push(event.data)
+    })
+    const initialized = await mcp(authenticated.token, 2, "initialize", {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "skill-reader", version: "1" },
+    })
+    expect(await initialized.json()).toMatchObject({
+      result: {
+        capabilities: { resources: {} },
+        instructions: expect.stringContaining("read_agent_skill"),
+      },
+    })
+    const listed = await mcp(authenticated.token, 3, "resources/list")
+    const resources = (await listed.json()) as { result: { resources: { uri: string }[] } }
+    expect(resources.result.resources).toHaveLength(10)
+    expect(resources.result.resources).not.toContainEqual(
+      expect.objectContaining({ uri: "vibeshape://model" }),
+    )
+    const indexUri = "vibeshape://agent-skills"
+    const read = await mcp(authenticated.token, 4, "resources/read", { uri: indexUri })
+    const indexContent = ((await read.json()) as { result: { contents: { text: string }[] } })
+      .result.contents[0]
+    if (!indexContent) throw new Error("Expected skill index.")
+    const index = JSON.parse(indexContent.text) as {
+      entrypoint: string
+      skills: { name: string }[]
+    }
+    expect(index.skills.map((skill) => skill.name)).toEqual([
+      "vibeshape-use",
+      "vibeshape-modeling",
+      "vibeshape-inspection",
+      "vibeshape-organization",
+      "vibeshape-export",
+    ])
+    const toolIndex = await mcp(authenticated.token, 5, "tools/call", {
+      name: "read_agent_skill",
+      arguments: {},
+    })
+    expect(await toolIndex.json()).toMatchObject({
+      result: {
+        isError: false,
+        structuredContent: { result: { value: { uri: indexUri, text: indexContent.text } } },
+      },
+    })
+    const skill = await mcp(authenticated.token, 6, "tools/call", {
+      name: "read_agent_skill",
+      arguments: { uri: index.entrypoint },
+    })
+    expect(await skill.json()).toMatchObject({
+      result: {
+        isError: false,
+        structuredContent: {
+          result: {
+            value: {
+              mimeType: "text/markdown",
+              text: expect.stringContaining("vibeshape://agent-skills/vibeshape-modeling/SKILL.md"),
+            },
+          },
+        },
+      },
+    })
+    const unknown = await mcp(authenticated.token, 7, "resources/read", {
+      uri: `${indexUri}/../session`,
+    })
+    expect(await unknown.json()).toMatchObject({ error: { code: -32602 } })
+    const oversized = await mcp(authenticated.token, 8, "tools/call", {
+      name: "read_agent_skill",
+      arguments: { uri: "x".repeat(257) },
+    })
+    expect(await oversized.json()).toMatchObject({
+      result: {
+        isError: true,
+        structuredContent: { result: { diagnostic: { code: "invalid-operation" } } },
+      },
+    })
+    expect(messages).toHaveLength(0)
+    expect(
+      (
+        await call(`/browser/revoke/${tab.credential.sessionId}`, {
+          method: "POST",
+          headers: {
+            Origin: "https://editor.example",
+            Authorization: `Bearer ${tab.credential.browserToken}`,
+          },
+        })
+      ).status,
+    ).toBe(204)
+    expect((await mcp(authenticated.token, 9, "resources/read", { uri: indexUri })).status).toBe(
+      401,
+    )
+    expect(
+      (
+        await mcp(authenticated.token, 10, "tools/call", {
+          name: "read_agent_skill",
+          arguments: {},
+        })
+      ).status,
+    ).toBe(401)
+  })
+
   it("registers Codex native metadata while discarding unsupported extension fields", async () => {
     const redirect = "http://127.0.0.1:49854/callback/test-client"
     const response = await call("/oauth/register", {

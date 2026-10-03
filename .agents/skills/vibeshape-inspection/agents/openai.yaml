@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Inspection"
+  short_description: "Inspect dimensions, bodies, topology, and CAD failures"
+  default_prompt: "Use $vibeshape-inspection to check my VibeShape model and report evidence from the relevant exact revision."

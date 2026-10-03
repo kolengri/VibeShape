@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Modeling"
+  short_description: "Author and revise parametric CAD through VibeShape MCP"
+  default_prompt: "Use $vibeshape-modeling to create or revise my model in VibeShape while preserving existing design intent."

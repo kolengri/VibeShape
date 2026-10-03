@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { agentSkillBundlePath, renderAgentSkillBundle } from "./bundle-agent-skills"
 
 const repositoryRoot = join(import.meta.dir, "..")
 const skillsDirectory = join(repositoryRoot, ".agents", "skills")
@@ -138,6 +139,16 @@ if (!existsSync(skillsDirectory)) {
     .sort()
 
   for (const skillName of skillNames) validateSkill(skillName)
+}
+
+try {
+  if (
+    !existsSync(agentSkillBundlePath) ||
+    readFileSync(agentSkillBundlePath, "utf8") !== renderAgentSkillBundle()
+  )
+    report("MCP skill bundle is stale or missing; run bun run skills:bundle")
+} catch (error) {
+  report(error instanceof Error ? error.message : "MCP skill bundle validation failed")
 }
 
 if (violations.length > 0) {

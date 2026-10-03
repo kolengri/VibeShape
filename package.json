@@ -69,6 +69,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report .artifacts/playwright/report",
     "skills:validate": "bun run scripts/validate-agent-skills.ts",
+    "skills:bundle": "bun run scripts/bundle-agent-skills.ts",
     "occt:prepare": "bun run scripts/prepare-occt-build.ts",
     "occt:build": "bun run scripts/prepare-occt-build.ts --build",
     "occt:build:source": "bun run occt:prepare && bun run scripts/build-occt-source-builder.ts",

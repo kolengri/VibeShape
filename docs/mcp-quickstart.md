@@ -5,6 +5,8 @@ named tools; the browser remains the document owner and manual approval is the d
 There is no embedded chat. The bridge serves the production editor at a stable loopback origin;
 use the same origin to retain browser-local projects.
 
+Read `vibeshape://agent-skills` for the bundled [application-use skill pack](agent-skills.md), then load the entrypoint and relevant modeling, inspection, organization, export, or recovery documents. Clients exposing only tools can call `read_agent_skill` with no arguments for the index and a listed `uri` for a document. Local installation of the pack is optional.
+
 From the repository, install the pinned Bun workspace dependencies and build the editor using
 `bun ci` and `bun run prepare:local`. Configure a stdio MCP client to launch Bun with the absolute path
 to `apps/mcp-server/src/index.ts` as its argument. For example:
