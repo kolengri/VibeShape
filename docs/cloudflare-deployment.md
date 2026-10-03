@@ -28,6 +28,13 @@ session relay are a separate implementation; this workflow does not advertise th
    rejects symlinks, confirms the source is still the current protected `main`, and publishes with
    pinned Wrangler 4.136.3. Production publication is serialized and never cancelled mid-deploy.
 
+When `VIBESHAPE_REMOTE_MCP_URL` is configured, the same verified build also creates a bundled relay
+artifact with an exact source/hash manifest. A separate `cloudflare-mcp-production` job checks its
+account, Worker name, origin and current protected `main`, then publishes with Wrangler 4.147.0
+before the editor. Neither publication job installs project dependencies. Relay failure blocks the
+new editor deployment; an empty relay URL preserves the static-only path. PRs receive no deployment
+credentials. Configure the separately approved Worker token before activating this workflow version.
+
 The `cloudflare-production` GitHub environment owns publication credentials. Restrict it to `main`
 and obtain the owner's approval before initial activation. PRs and fork code never receive the token.
 No `pull_request_target`, broad write permission, GitHub-to-Cloudflare app grant, or global token is
@@ -98,6 +105,14 @@ and Cloudflare Turnstile script/frame origin to editor-document CSP, and leaves 
 and source-document policies unchanged. A static-only build does not enable this allowance.
 See [license notice provenance](../deployment/licenses/README.md) for embedded dependency handling.
 
+The relay publication token is separate from the Pages token. After explicit owner approval, create
+**Account → Workers Scripts → Edit** for the personal Greg account only and store it directly as
+`CLOUDFLARE_MCP_API_TOKEN` in the `cloudflare-mcp-production` GitHub environment. Restrict that
+environment to `main`. The account-scoped permission can edit other Workers in that account; it is
+not a verified per-Worker scope. The pipeline does not provision namespaces, widgets, secrets,
+routes or subscriptions, so the token needs no Workers KV, Turnstile, DNS or billing permissions.
+The already provisioned `TURNSTILE_SECRET_KEY` stays in Cloudflare; deployments preserve secrets.
+
 Before declaring the first hosted deployment usable, check actual response headers, worker/WASM
 startup and a create/edit/save/reload/export journey in Chromium, Firefox and WebKit; verify a
 missing asset and automation API return 404; reconstruct a source archive and check its digest.
@@ -112,6 +127,11 @@ changes served application files, not browser documents or schema versions. Keep
 Reverting through protected `main` creates a new fully gated deployment; running an old workflow
 against a non-current commit intentionally fails the current-head check. Preserve the approved
 kernel asset while a supported version needs it.
+
+For a relay-enabled release, also restore the matching Worker version through its Cloudflare
+deployment history. Preserve the current bindings, OAuth KV and SQLite objects. Rolling back code
+does not reverse storage migrations or an already accepted browser save; review compatibility before
+rolling back future protocol or storage changes.
 
 ## Official references
 
