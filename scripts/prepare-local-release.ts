@@ -32,6 +32,7 @@ cpSync(
   join(sources, "solvespace-corresponding-source.tar.gz"),
 )
 cpSync(join(root, "LICENSE"), join(sources, "LICENSE.txt"))
+cpSync(join(root, "node_modules/shadcn/LICENSE.md"), join(sources, "shadcn-LICENSE.txt"))
 cpSync(join(bundle, "THIRD_PARTY_NOTICES.md"), join(sources, "OCCT-NOTICES.txt"))
 cpSync(join(bundle, "REPLACEMENT.md"), join(sources, "OCCT-REPLACEMENT.txt"))
 writeFileSync(
@@ -41,6 +42,9 @@ writeFileSync(
 <p>This local build uses Open CASCADE Technology through OpenCascade.js and the SolveSpace solver.
 VibeShape is GPL-3.0-or-later. OCCT is LGPL-2.1 with its additional exception.</p>
 <ul><li><a href="LICENSE.txt">VibeShape license</a></li>
+<li><a href="browser-licenses.txt">Browser dependency licenses</a></li>
+<li><a href="worker-licenses.txt">Worker dependency licenses</a></li>
+<li><a href="shadcn-LICENSE.txt">Copied UI component license</a></li>
 <li><a href="OCCT-NOTICES.txt">OCCT and binding notices</a></li>
 <li><a href="OCCT-REPLACEMENT.txt">Replacing and rebuilding OCCT</a></li>
 <li><a href="occt-corresponding-source.tar">Exact OCCT sources, licenses and build recipes</a></li>

@@ -18,7 +18,8 @@ session relay are a separate implementation; this workflow does not advertise th
    and solver, then build the application with the controlled kernel. Native kernels are not built
    in Actions.
 3. Package the exact commit and exercise its real Chromium save/restart/native recovery/MCP flow.
-4. Stage only static web assets and complete corresponding sources. Files over the Pages limit are
+4. Generate complete license texts for the exact browser and worker bundles, retain copied UI
+   licensing, and stage only static web assets and complete corresponding sources. Files over the Pages limit are
    rejected, except corresponding-source archives, which are split into reconstructable 20 MiB
    parts. `sources/RECONSTRUCT.txt` records the exact filenames and whole-archive SHA-256. The
    application source TAR is included; no project files or local server executable are uploaded.
@@ -28,16 +29,25 @@ session relay are a separate implementation; this workflow does not advertise th
    pinned Wrangler 4.136.3. Production publication is serialized and never cancelled mid-deploy.
 
 The `cloudflare-production` GitHub environment owns publication credentials. Restrict it to `main`
-and configure an approval gate for initial activation. PRs and fork code never receive the token.
+and obtain the owner's approval before initial activation. PRs and fork code never receive the token.
 No `pull_request_target`, broad write permission, GitHub-to-Cloudflare app grant, or global token is
 used. The workflow records commit, site-manifest digest and Cloudflare deployment URL in its summary;
 the same source identity and per-file hashes are published as `/site-manifest.json`.
 
 ## One-time setup requiring the owner's decision
 
-Read-only inspection on 2026-10-03 found a public `kolengri/VibeShape` repository, protected `main`,
-and no Actions secrets, variables, environments or Releases. No Cloudflare account/project has been
-selected or verified in this task. These steps have not been performed:
+Provisioning on 2026-10-03 selected the personal **Greg** account
+(`dddb9fcdf9bec709036b951ebb932642`), verified through OAuth as `kolenko@me.com`.
+The Direct Upload Pages project is `vibeshape-greg`, with production branch `main` and hostname
+`https://vibeshape-greg.pages.dev`. Creating the project does not prove a working public editor.
+The `cloudflare-production` environment is restricted to `main`; its Pages-only
+`CLOUDFLARE_API_TOKEN` secret was entered privately by the owner and its presence verified.
+The account/project environment variables and controlled-source repository asset variable are set.
+The controlled TAR is stored as asset `607712548` in release `cloudflare-occt-0c007be`.
+Publication remains disabled until the release review and first activation finish. No paid upgrade,
+Dealyv deployment, or Heyfoods credential change was performed.
+
+For another account or re-provisioning, use the following setup contract:
 
 1. Choose the intended Cloudflare account and an existing Pages project, or authorize creating one
    Direct Upload project with production branch `main`. Confirm its hostname and public access to
@@ -64,8 +74,7 @@ selected or verified in this task. These steps have not been performed:
 
 Enabling this pipeline authorizes subsequent protected `main` deployments under the configured
 environment policy. It does not authorize changing another project's credentials or deployment.
-No credentials, access grants, Releases, Pages projects or paid resources were created by preparing
-these files. Missing setup fails closed; an absent enable variable leaves the workflow skipped.
+The configuration itself creates no credentials or resources. Missing setup fails closed; an absent enable variable leaves the workflow skipped.
 
 ## Headers and browser acceptance
 
@@ -75,6 +84,12 @@ Cloudflare joins duplicate header values, so adding a second CSP cannot relax a 
 The config supplies WASM MIME, same-origin resource policy, immutable hashed assets and revalidation
 for HTML/service-worker files. No COOP/COEP or SharedArrayBuffer is needed. A top-level `404.html`
 prevents Pages' SPA fallback from returning HTML for missing assets or nonexistent APIs.
+
+When a reviewed remote relay is enabled, set `VITE_REMOTE_MCP_URL` consistently for the build and
+staging commands. Staging accepts only an HTTPS `/mcp` endpoint, adds its exact HTTPS/WSS origin
+and Cloudflare Turnstile script/frame origin to editor-document CSP, and leaves geometry-worker
+and source-document policies unchanged. A static-only build does not enable this allowance.
+See [license notice provenance](../deployment/licenses/README.md) for embedded dependency handling.
 
 Before declaring the first hosted deployment usable, check actual response headers, worker/WASM
 startup and a create/edit/save/reload/export journey in Chromium, Firefox and WebKit; verify a

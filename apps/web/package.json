@@ -42,6 +42,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "rollup-plugin-license": "3.7.1",
     "@tailwindcss/vite": "catalog:",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.3",
