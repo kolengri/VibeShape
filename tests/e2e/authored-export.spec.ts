@@ -154,13 +154,10 @@ test("exports a hidden selected part and a named positioned assembly without cha
   if (!insert) throw new Error("Named insert mesh is missing.")
   expect(measureTriangles(insert.vertices, insert.indices)).toEqual(selected)
   expect(await nativeSnapshot(page)).toEqual(before)
-  const stale = await page.evaluate(
-    async (source) => {
-      const controller: { exportActiveDocument(format: string, partId: string): Promise<unknown> } =
-        await import(source)
-      return controller.exportActiveDocument("stl", "0195b5ac-b220-7a2c-8c33-000000000999")
-    },
-    "/src/document/document-controller.ts",
-  )
+  const stale = await page.evaluate(async (source) => {
+    const controller: { exportActiveDocument(format: string, partId: string): Promise<unknown> } =
+      await import(source)
+    return controller.exportActiveDocument("stl", "0195b5ac-b220-7a2c-8c33-000000000999")
+  }, "/src/document/document-controller.ts")
   expect(stale).toMatchObject({ ok: false, diagnostic: { sourceCode: "stale-revision" } })
 })

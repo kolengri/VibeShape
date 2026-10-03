@@ -594,7 +594,9 @@ test("rebuilds Compound slots through edits, suppression and role removal withou
   function assertDependentShapePreservation() {
     expect(feature(evidence.edited, 4)?.shape.volume).toBeCloseTo(20400, 5)
     for (const index of [5, 6]) {
-      expect(feature(evidence.edited, index)?.shape).toEqual(feature(evidence.initial, index)?.shape)
+      expect(feature(evidence.edited, index)?.shape).toEqual(
+        feature(evidence.initial, index)?.shape,
+      )
       expect(feature(evidence.edited, index)?.contentHash).not.toBe(
         feature(evidence.initial, index)?.contentHash,
       )
