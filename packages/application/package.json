@@ -24,6 +24,7 @@
     "./authority-persistence-adapter": "./src/authority-persistence-adapter.ts",
     "./authority-persistence-operations": "./src/authority-persistence-operations.ts",
     "./authority-document-session": "./src/authority-document-session.ts",
+    "./surface-textures": "./src/surface-textures.ts",
     "./authored-parts": "./src/authored-parts.ts"
   },
   "scripts": {

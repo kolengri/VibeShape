@@ -133,6 +133,7 @@ import type {
   SketchEditorTool,
 } from "../features/sketch/sketch-tool"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
+import { SurfaceTexturePreviewProvider } from "../features/surface-texture/surface-texture-preview-context"
 import { VariablesPanel } from "../features/variables/variables-panel"
 import {
   GeometryViewport,
@@ -1758,6 +1759,7 @@ export type EditorWorkspaceActions = Readonly<{
   createSketch: () => void
   createSubtract: () => void
   measure: () => void
+  surfaceTexture: (featureId?: FeatureId, outputRole?: string) => void
   editFeature: (featureId: FeatureId) => void
   editSketch: (sketchId: SketchId) => void
   preselectBody?: (body: ModelBodySelection | null) => void
@@ -2063,6 +2065,7 @@ function EditorModelTree({
       onPartSelect={actions.selectPart}
       onPartPlace={actions.placePart}
       onPartsCombine={actions.combineParts}
+      onSurfaceTexture={actions.surfaceTexture}
       onAuthoredMetadata={commitAuthoredMetadata}
       authoredMetadataBlocked={Boolean(activeTool || activeSketchTool)}
       onBodyActivate={actions.selectBody}
@@ -2448,6 +2451,14 @@ function useWorkspaceFeaturePreview(props: EditorWorkspaceProps) {
 }
 
 export function EditorWorkspace(props: EditorWorkspaceProps) {
+  return (
+    <SurfaceTexturePreviewProvider active={props.activeTool?.kind === "surface-texture"}>
+      <EditorWorkspaceContent {...props} />
+    </SurfaceTexturePreviewProvider>
+  )
+}
+
+function EditorWorkspaceContent(props: EditorWorkspaceProps) {
   const review = useSyncExternalStore(
     automationReviews.subscribe,
     automationReviews.getSnapshot,

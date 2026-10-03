@@ -1,5 +1,5 @@
 import type { BodyReference } from "@vibeshape/domain/body-reference"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { featureEvaluationRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
 import type { PartRecord } from "@vibeshape/domain/parts"
@@ -63,7 +63,7 @@ function resolvePart(
 
 /** Pure view projection: failed downstream operations may expose an earlier body of the same part. */
 export function resolveAuthoredParts(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   report: PersistentDocumentSessionReport,
 ): readonly ResolvedAuthoredPart[] | null {
   if (
@@ -97,7 +97,7 @@ export function visibleAuthoredBodies(
 
 /** Resolve stable part identity at the captured revision; hidden bodies remain exportable. */
 export function authoredPartExportBodies(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   report: PersistentDocumentSessionReport,
   partId?: string,
 ): DocumentExportBodies | null {

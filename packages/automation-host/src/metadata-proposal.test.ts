@@ -2,15 +2,20 @@ import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/aut
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentUpgradeV2Command } from "@vibeshape/domain/document-v2-migration"
+import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import {
   createModuleRegistry,
   documentCoreModule,
   featureCoreModule,
 } from "@vibeshape/domain/modules"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
+import {
+  createDefaultSurfaceTextureLayer,
+  surfaceTextureLayerIdSchema,
+} from "@vibeshape/domain/surface-textures"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { describe, expect, it, vi } from "vitest"
 import type { DraftReviewInput } from "./draft-review"
@@ -67,7 +72,7 @@ function setup() {
       },
     }),
   )
-  let snapshot: DocumentSnapshotV2 = requireSuccess(
+  let snapshot: AuthoredDocumentSnapshot = requireSuccess(
     applyDocumentUpgradeV2Command(model.snapshot, {
       ...envelope,
       schemaVersion: 2,
@@ -98,8 +103,12 @@ function setup() {
     () => "approved",
   )
   const hasCommandId = vi.fn(async () => false)
-  const commit = vi.fn(async (command: MetadataCommand, expected: DocumentSnapshotV2) => {
-    snapshot = requireSuccess(applyDocumentV2Command(snapshot, command)).snapshot
+  const commit = vi.fn(async (command: MetadataCommand, expected: AuthoredDocumentSnapshot) => {
+    snapshot = requireSuccess(
+      snapshot.schemaVersion === 3
+        ? applyDocumentV3Command(snapshot, { ...command, schemaVersion: 3 })
+        : applyDocumentV2Command(snapshot, command),
+    ).snapshot
     expect(snapshot).toEqual(expected)
     return {
       documentId: snapshot.id,
@@ -157,7 +166,7 @@ function setup() {
     advance: () => {
       at += 300_000
     },
-    replace: (value: DocumentSnapshotV2) => {
+    replace: (value: AuthoredDocumentSnapshot) => {
       snapshot = value
     },
     request: {
@@ -297,5 +306,41 @@ describe("typed metadata proposal coordination", () => {
       }),
     ).toMatchObject({ ok: false })
     expect(fixture.confirm).not.toHaveBeenCalled()
+  })
+})
+
+describe("metadata proposals on texture authority", () => {
+  it("keeps existing paired metadata edits available without discarding texture layers", async () => {
+    const f = setup()
+    const before = f.snapshot()
+    const feature = before.features[0]
+    if (!feature) throw new Error("Missing metadata fixture feature")
+    const layer = createDefaultSurfaceTextureLayer(
+      feature.id,
+      "result",
+      surfaceTextureLayerIdSchema.parse(id(400)),
+    )
+    const textured = requireSuccess(
+      applyDocumentV3Command(before, {
+        schemaVersion: 3,
+        kind: "org.vibeshape.document.metadata-command",
+        documentId: before.id,
+        commandId: id(401),
+        baseRevision: before.revision,
+        issuedAt: new Date(started).toISOString(),
+        actor,
+        payload: { kind: "textures.replace-layers", featureId: feature.id, layers: [layer] },
+      }),
+    )
+    f.replace(textured.snapshot)
+    const result = await f.host.change(actor, {
+      ...f.request,
+      baseRevision: textured.snapshot.revision,
+    })
+    expect(result.ok).toBe(true)
+    const after = f.snapshot()
+    if (after.schemaVersion !== 3) throw new Error("Metadata discarded texture authority")
+    expect(after.surfaceTextures).toEqual([layer])
+    expect(f.commit).toHaveBeenCalledOnce()
   })
 })

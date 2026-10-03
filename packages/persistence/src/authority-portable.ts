@@ -1,7 +1,7 @@
 import {
+  type AuthoredDocumentSnapshot,
   canonicalJson,
   type DocumentId,
-  type DocumentSnapshotV2,
   documentIdSchema,
   migrateDocumentSnapshot,
   replayDocumentAuthorityEvents,
@@ -15,10 +15,12 @@ import {
 } from "./authority-records"
 import { authorityEventsThrough } from "./authority-recovery"
 import {
+  authoredPortableProjectPayloadSchema,
   type PortableProjectV3,
-  type ProjectRecordV2,
-  portableProjectV3PayloadSchema,
+  type PortableProjectV4,
+  type ProjectAuthorityRecord,
   projectRecordV2Schema,
+  projectRecordV3Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -34,7 +36,7 @@ import {
 } from "./repository"
 import { projectRecordSchema } from "./schemas"
 
-function validatePortableAuthority(project: PortableProjectV3) {
+function validatePortableAuthority(project: PortableProjectV3 | PortableProjectV4) {
   let legacySnapshot = null
   if (project.historyMode === "complete" && project.seed) {
     const legacy = replayDocumentEvents(project.legacyEvents)
@@ -73,8 +75,12 @@ async function exactSnapshot(
   return snapshot
 }
 
-function checkpoint(snapshot: DocumentSnapshotV2, project: ProjectRecordV2, evidence: string[]) {
-  return portableProjectV3PayloadSchema.parse({
+function checkpoint(
+  snapshot: AuthoredDocumentSnapshot,
+  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
+  evidence: string[],
+) {
+  return authoredPortableProjectPayloadSchema.parse({
     snapshot,
     seed: snapshot,
     legacyEvents: [],
@@ -82,6 +88,9 @@ function checkpoint(snapshot: DocumentSnapshotV2, project: ProjectRecordV2, evid
     historyMode: "checkpoint",
     promotionRevision: snapshot.revision,
     upgradeRevision: project.upgradeRevision,
+    ...(project.schemaVersion === 3
+      ? { textureUpgradeRevision: project.textureUpgradeRevision }
+      : {}),
     migrationDiagnostic: {
       code: "legacy-journal-unavailable",
       message:
@@ -93,10 +102,10 @@ function checkpoint(snapshot: DocumentSnapshotV2, project: ProjectRecordV2, evid
 
 function validatedCompleteOrCheckpoint(
   input: unknown,
-  snapshot: DocumentSnapshotV2,
-  project: ProjectRecordV2,
+  snapshot: AuthoredDocumentSnapshot,
+  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
 ) {
-  const parsed = portableProjectV3PayloadSchema.safeParse(input)
+  const parsed = authoredPortableProjectPayloadSchema.safeParse(input)
   if (!parsed.success) return checkpoint(snapshot, project, ["authority-boundary"])
   try {
     validatePortableAuthority(parsed.data)
@@ -106,7 +115,10 @@ function validatedCompleteOrCheckpoint(
   return parsed.data
 }
 
-async function readLegacyBoundary(database: VibeShapeDatabase, project: ProjectRecordV2) {
+async function readLegacyBoundary(
+  database: VibeShapeDatabase,
+  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
+) {
   const record = await database.projects.get(project.documentId)
   if (!record) return { seed: null, events: [], evidence: [] }
   const legacy = projectRecordSchema.safeParse(record)
@@ -125,8 +137,8 @@ async function readLegacyBoundary(database: VibeShapeDatabase, project: ProjectR
 
 async function assembleComplete(
   database: VibeShapeDatabase,
-  project: ProjectRecordV2,
-  snapshot: DocumentSnapshotV2,
+  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
+  snapshot: AuthoredDocumentSnapshot,
 ) {
   const boundary = await readLegacyBoundary(database, project)
   if (boundary.evidence.length) return checkpoint(snapshot, project, boundary.evidence)
@@ -148,6 +160,9 @@ async function assembleComplete(
       historyMode: "complete",
       promotionRevision: boundary.seed?.revision ?? 0,
       upgradeRevision: project.upgradeRevision,
+      ...(project.schemaVersion === 3
+        ? { textureUpgradeRevision: project.textureUpgradeRevision }
+        : {}),
       migrationDiagnostic: null,
       unavailableRecords: [],
     },
@@ -159,7 +174,7 @@ async function assembleComplete(
 export async function exportDocumentAuthority(
   database: VibeShapeDatabase,
   input: unknown,
-): Promise<PersistenceResult<PortableProjectV3>> {
+): Promise<PersistenceResult<PortableProjectV3 | PortableProjectV4>> {
   const documentId = documentIdSchema.safeParse(input)
   if (!documentId.success)
     return {
@@ -168,13 +183,13 @@ export async function exportDocumentAuthority(
     }
   try {
     const project = await requireAuthorityProject(database, documentId.data)
-    if (project.schemaVersion !== 2)
+    if (project.schemaVersion === 1)
       throw persistenceInvariantError(
         "invalid-input",
-        "V3 export requires an authored V2 document.",
+        "Native export requires an authored document.",
       )
     const snapshot = await exactSnapshot(database, project.documentId, project.headRevision)
-    if (snapshot.schemaVersion !== 2)
+    if (snapshot.schemaVersion === 1 || snapshot.schemaVersion !== project.schemaVersion)
       throw persistenceInvariantError(
         "corrupt-history",
         "The authority head and snapshot versions disagree.",
@@ -186,7 +201,7 @@ export async function exportDocumentAuthority(
 }
 
 async function preparePortableAuthority(
-  project: PortableProjectV3,
+  project: PortableProjectV3 | PortableProjectV4,
   storedAt: string,
   backupAt: string | null,
 ) {
@@ -203,8 +218,13 @@ async function preparePortableAuthority(
   const snapshots = project.seed ? [await storeAuthoritySnapshot(project.seed, storedAt)] : []
   if (!project.seed || project.seed.revision !== project.snapshot.revision)
     snapshots.push(await storeAuthoritySnapshot(project.snapshot, storedAt))
-  const head = projectRecordV2Schema.parse({
-    schemaVersion: 2,
+  const head = (
+    project.snapshot.schemaVersion === 3 ? projectRecordV3Schema : projectRecordV2Schema
+  ).parse({
+    schemaVersion: project.snapshot.schemaVersion,
+    ...("textureUpgradeRevision" in project
+      ? { textureUpgradeRevision: project.textureUpgradeRevision }
+      : {}),
     documentId: project.snapshot.id,
     name: project.snapshot.name,
     headRevision: project.snapshot.revision,
@@ -223,7 +243,7 @@ async function preparePortableAuthority(
 
 export async function publishPortableAuthority(
   database: VibeShapeDatabase,
-  project: PortableProjectV3,
+  project: PortableProjectV3 | PortableProjectV4,
   storedAt: string,
   backupAt: string | null,
 ): Promise<PortableProjectImportReport> {

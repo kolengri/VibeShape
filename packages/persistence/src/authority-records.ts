@@ -21,7 +21,12 @@ const versionHeaderSchema = z.object({ schemaVersion: z.number().int() }).passth
 /** Future versions are a capability boundary, never a corrupt-record fallback candidate. */
 export function requireSupportedAuthorityVersion(value: unknown) {
   const header = versionHeaderSchema.safeParse(value)
-  if (header.success && header.data.schemaVersion !== 1 && header.data.schemaVersion !== 2)
+  if (
+    header.success &&
+    header.data.schemaVersion !== 1 &&
+    header.data.schemaVersion !== 2 &&
+    header.data.schemaVersion !== 3
+  )
     throw persistenceInvariantError(
       "unsupported-version",
       "This document requires a different authority schema version.",

@@ -12,6 +12,7 @@ import {
 } from "@vibeshape/protocol"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import type { GeometryKernelEngine } from "./engine"
+import { SurfaceTextureError, textureSurfaceMesh } from "./surface-texture"
 
 export interface GeometryWorkerEndpoint {
   postMessage(message: GeometryWorkerResponse, transfer?: Transferable[]): void
@@ -45,7 +46,11 @@ function errorMessage(error: unknown) {
 }
 
 function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
-  if (response.type !== "kernelSpikeCompleted" && response.type !== "featureEvaluated") {
+  if (
+    response.type !== "kernelSpikeCompleted" &&
+    response.type !== "featureEvaluated" &&
+    response.type !== "surfaceTexturePreviewed"
+  ) {
     return []
   }
 
@@ -159,7 +164,8 @@ export class GeometryWorkerRuntime {
     if (
       request.type !== "runKernelSpike" &&
       request.type !== "runTopologySpike" &&
-      request.type !== "evaluateFeature"
+      request.type !== "evaluateFeature" &&
+      request.type !== "textureMesh"
     ) {
       return
     }
@@ -206,7 +212,35 @@ export class GeometryWorkerRuntime {
       return
     }
 
+    if (request.type === "textureMesh") {
+      await this.#textureMesh(request)
+      return
+    }
+
     await this.#runKernelSpike(request)
+  }
+
+  async #textureMesh(request: Extract<GeometryWorkerRequest, { type: "textureMesh" }>) {
+    if (this.#shouldSkipRequest(request)) return
+    try {
+      const result = await textureSurfaceMesh(request.mesh, request.layers, request.quality, {
+        isCancelled: () => this.#cancelledRequests.has(request.requestId) || this.#isStale(request),
+        onProgress: (fraction) => this.#postProgress(request, "surface-texture", fraction),
+      })
+      if (this.#shouldSkipRequest(request)) return
+      this.#post({ ...this.#envelope(request), type: "surfaceTexturePreviewed", ...result })
+    } catch (error) {
+      if (this.#shouldSkipRequest(request)) return
+      if (error instanceof SurfaceTextureError)
+        this.#postFailure(
+          this.#envelope(request),
+          error.code,
+          error.message,
+          "surface-texture",
+          false,
+        )
+      else throw error
+    }
   }
 
   async #initialize(request: Extract<GeometryWorkerRequest, { type: "initializeEngine" }>) {

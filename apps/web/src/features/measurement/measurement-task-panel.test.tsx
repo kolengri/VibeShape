@@ -9,6 +9,7 @@ import {
   featureRecordSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { afterEach, describe, expect, it } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
@@ -138,7 +139,7 @@ function fixture(
         },
       }))
   const response = {
-    protocolVersion: 22,
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
     requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f6201",
     documentId,
     revision: 7,

@@ -2,7 +2,7 @@ import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
-import { documentWorkerResponseSchema } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import { createModelEdgeEvidence } from "./model-edges"
@@ -96,7 +96,7 @@ const validGeometry = {
 
 function response(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 22,
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
     requestId: documentId,
     documentId,
     revision: 4,

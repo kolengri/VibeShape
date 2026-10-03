@@ -1,9 +1,9 @@
 import {
+  type AuthoredDocumentSnapshot,
   canonicalJson,
   commandActorsEqual,
   type DocumentAuthorityEvent,
   type DocumentAuthoritySnapshot,
-  type DocumentSnapshotV2,
   reduceDocumentAuthorityEvent,
 } from "@vibeshape/domain"
 import {
@@ -18,8 +18,10 @@ import {
   persistenceAuthorityCommitInputSchema,
   persistenceAuthorityDraftCommitInputSchema,
   projectRecordV2Schema,
+  projectRecordV3Schema,
   recoveryAuthorityRecordSchema,
   recoveryRecordV2Schema,
+  recoveryRecordV3Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -37,7 +39,7 @@ type AuthorityWrite = Readonly<{
   lease: WriterLeaseClaim | null
   storedAt: string
   baseSnapshot: DocumentAuthoritySnapshot
-  snapshot: DocumentSnapshotV2
+  snapshot: AuthoredDocumentSnapshot
   events: readonly DocumentAuthorityEvent[]
 }>
 
@@ -88,10 +90,20 @@ async function verifyStoredBase(database: VibeShapeDatabase, input: AuthorityWri
 
 function nextProject(current: ProjectAuthorityRecord, input: AuthorityWrite) {
   const upgrade = input.events.find((event) => event.type === "org.vibeshape.document.upgraded-v2")
-  const upgradeRevision = current.schemaVersion === 2 ? current.upgradeRevision : upgrade?.revision
-  return projectRecordV2Schema.parse({
+  const upgradeRevision = current.schemaVersion !== 1 ? current.upgradeRevision : upgrade?.revision
+  const textureUpgrade = input.events.find(
+    (event) => event.type === "org.vibeshape.document.upgraded-v3",
+  )
+  const schema = input.snapshot.schemaVersion === 3 ? projectRecordV3Schema : projectRecordV2Schema
+  return schema.parse({
     ...current,
-    schemaVersion: 2,
+    schemaVersion: input.snapshot.schemaVersion,
+    ...(input.snapshot.schemaVersion === 3
+      ? {
+          textureUpgradeRevision:
+            current.schemaVersion === 3 ? current.textureUpgradeRevision : textureUpgrade?.revision,
+        }
+      : {}),
     upgradeRevision,
     name: input.snapshot.name,
     headRevision: input.snapshot.revision,
@@ -126,8 +138,8 @@ async function writeAuthorityRecords(database: VibeShapeDatabase, input: Authori
     await database.snapshotsV1.add(records.snapshot)
     await database.projectsV1.put(project)
     await database.recoveryV1.put(
-      recoveryRecordV2Schema.parse({
-        schemaVersion: 2,
+      (input.snapshot.schemaVersion === 3 ? recoveryRecordV3Schema : recoveryRecordV2Schema).parse({
+        schemaVersion: input.snapshot.schemaVersion,
         documentId: input.snapshot.id,
         sessionId: input.sessionId,
         openedAt: recovery.success ? recovery.data.openedAt : input.storedAt,
@@ -150,14 +162,14 @@ export async function commitDocumentAuthority(
   if (
     !parsed.success ||
     parsed.data.baseSnapshot === null ||
-    parsed.data.snapshot.schemaVersion !== 2 ||
-    parsed.data.event.schemaVersion !== 2
+    parsed.data.snapshot.schemaVersion === 1 ||
+    parsed.data.event.schemaVersion !== parsed.data.snapshot.schemaVersion
   )
     return {
       ok: false,
       diagnostic: createPersistenceDiagnostic(
         "invalid-input",
-        "An authority commit requires a base and one explicit V2 event/result.",
+        "An authority commit requires a base and one explicit authored event/result.",
       ),
     }
   try {
@@ -192,7 +204,7 @@ function draftEnvelopesMatch(
     first !== undefined &&
     input.events.every(
       (event) =>
-        event.schemaVersion === 2 &&
+        event.schemaVersion === input.snapshot.schemaVersion &&
         event.type !== "org.vibeshape.document.restored" &&
         event.transactionId === input.transactionId &&
         event.documentId === input.snapshot.id &&
@@ -208,14 +220,14 @@ export async function commitDocumentAuthorityDraft(
   const parsed = persistenceAuthorityDraftCommitInputSchema.safeParse(inputValue)
   if (
     !parsed.success ||
-    parsed.data.snapshot.schemaVersion !== 2 ||
+    parsed.data.snapshot.schemaVersion === 1 ||
     !draftEnvelopesMatch(parsed.data)
   )
     return {
       ok: false,
       diagnostic: createPersistenceDiagnostic(
         "invalid-input",
-        "The authority draft must contain one actor and transaction's V2 events.",
+        "The authority draft must contain one actor and transaction's authored events.",
       ),
     }
   try {

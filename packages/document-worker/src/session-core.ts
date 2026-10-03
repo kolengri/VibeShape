@@ -265,6 +265,8 @@ export class DocumentWorkerSession {
       format,
       ...(options.bodies ? { bodies: options.bodies } : {}),
       ...(options.printPreparation ? { printPreparation: options.printPreparation } : {}),
+      ...(options.surfaceTextures ? { surfaceTextures: options.surfaceTextures } : {}),
+      ...(options.textureQuality ? { textureQuality: options.textureQuality } : {}),
     })
     if (request.type !== "exportDocument") {
       throw new TypeError("Document worker export request validation returned an invalid type.")

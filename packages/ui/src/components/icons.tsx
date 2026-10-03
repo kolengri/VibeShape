@@ -48,6 +48,7 @@ export {
   Slash,
   Spline,
   Split,
+  Star,
   Trash2,
   Undo2,
   X,

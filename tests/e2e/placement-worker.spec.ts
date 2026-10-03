@@ -261,7 +261,7 @@ test("rebuilds the document placement chain after authored edits and blocks supp
           generation: number,
           revision?: number,
         ): {
-          protocolVersion: 22
+          protocolVersion: typeof import("../../packages/protocol/src/index").DOCUMENT_PROTOCOL_VERSION
           requestId: string
           documentId: string
           revision: number

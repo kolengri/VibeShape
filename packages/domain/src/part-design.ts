@@ -399,6 +399,18 @@ const extrusionDepthV5Schema = lengthQuantitySchema.refine(
   "Extrusion depths must be between 0.001 and 100,000 mm.",
 )
 
+function symmetricExtrusionDepthAllowed(parameters: {
+  symmetric: boolean
+  secondDistance: unknown | null
+}) {
+  return !parameters.symmetric || parameters.secondDistance === null
+}
+
+const symmetricExtrusionDepthIssue = {
+  path: ["secondDistance"],
+  message: "Symmetric extrusion cannot enable a second depth.",
+}
+
 export const extrusionFeatureParametersV5Schema = z
   .object({
     profiles: multiProfileSetSchema,
@@ -409,10 +421,7 @@ export const extrusionFeatureParametersV5Schema = z
     operation: extrusionOperationSchema,
   })
   .strict()
-  .refine(({ symmetric, secondDistance }) => !symmetric || secondDistance === null, {
-    path: ["secondDistance"],
-    message: "Symmetric extrusion cannot enable a second depth.",
-  })
+  .refine(symmetricExtrusionDepthAllowed, symmetricExtrusionDepthIssue)
   .refine(
     ({ distance, secondDistance }) => distance.value + (secondDistance?.value ?? 0) <= 100_000,
     {
@@ -431,10 +440,7 @@ export const extrusionFeatureAuthoredContentParametersV5Schema = z
     operation: extrusionOperationSchema,
   })
   .strict()
-  .refine(({ symmetric, secondDistance }) => !symmetric || secondDistance === null, {
-    path: ["secondDistance"],
-    message: "Symmetric extrusion cannot enable a second depth.",
-  })
+  .refine(symmetricExtrusionDepthAllowed, symmetricExtrusionDepthIssue)
   .refine(({ distance, secondDistance }) => distance + (secondDistance ?? 0) <= 100_000, {
     path: ["distance"],
     message: "The total extrusion span must be at most 100,000 mm.",

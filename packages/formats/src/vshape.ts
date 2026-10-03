@@ -1,10 +1,16 @@
 import {
   type DocumentAuthorityEvent,
   type DocumentAuthoritySnapshot,
+  type DocumentAuthorityV2Event,
+  type DocumentAuthorityV2Snapshot,
   type DocumentSnapshotV2,
+  type DocumentSnapshotV3,
   documentAuthorityEventSchema,
   documentAuthoritySnapshotSchema,
+  documentAuthorityV2EventSchema,
+  documentAuthorityV2SnapshotSchema,
   documentSnapshotV2Schema,
+  documentSnapshotV3Schema,
   replayDocumentAuthorityEvents,
   replayVersionedDocumentEvents,
   type VersionedDocumentEvent,
@@ -1135,16 +1141,16 @@ export type VShapeManifestV3 = Readonly<z.infer<typeof vShapeManifestV3Schema>>
 export type VShapeProjectV3 = Readonly<{
   manifest: VShapeManifestV3
   snapshot: DocumentSnapshotV2
-  seed: DocumentAuthoritySnapshot | null
+  seed: DocumentAuthorityV2Snapshot | null
   legacyEvents: readonly DocumentEvent[]
-  versionedEvents: readonly DocumentAuthorityEvent[]
+  versionedEvents: readonly DocumentAuthorityV2Event[]
 }>
 const writeVShapeV3InputSchema = z
   .object({
     ...writeVShapeV2InputSchema.shape,
     snapshot: documentSnapshotV2Schema,
-    seed: documentAuthoritySnapshotSchema.nullable(),
-    versionedEvents: z.array(documentAuthorityEventSchema).max(MAX_EVENTS),
+    seed: documentAuthorityV2SnapshotSchema.nullable(),
+    versionedEvents: z.array(documentAuthorityV2EventSchema).max(MAX_EVENTS),
     upgradeRevision: z.number().int().positive().safe(),
   })
   .strict()
@@ -1291,11 +1297,11 @@ async function decodeVShapeV3(files: UnzippedProjectFiles): Promise<VShapeProjec
   const seed = parseJsonFile(
     files,
     V2_SEED_PATH,
-    documentAuthoritySnapshotSchema.nullable(),
+    documentAuthorityV2SnapshotSchema.nullable(),
     "invalid-document",
   )
   const legacyEvents = parseNdjson(files, V2_LEGACY_PATH, documentEventSchema)
-  const versionedEvents = parseNdjson(files, V2_SUFFIX_PATH, documentAuthorityEventSchema)
+  const versionedEvents = parseNdjson(files, V2_SUFFIX_PATH, documentAuthorityV2EventSchema)
   const project = { manifest, snapshot, seed, legacyEvents, versionedEvents }
   requireV3History(project)
   return project
@@ -1309,9 +1315,235 @@ export async function readVShapeV3(bytes: unknown): Promise<VShapeResult<VShapeP
   }
 }
 
+export const VSHAPE_V4_FORMAT_VERSION = 4 as const
+export const vShapeManifestV4Schema = z
+  .object({
+    ...vShapeManifestV2Schema.shape,
+    schemaVersion: z.literal(4),
+    formatVersion: z.literal(VSHAPE_V4_FORMAT_VERSION),
+    minimumReaderVersion: z.literal(VSHAPE_V4_FORMAT_VERSION),
+    upgradeRevision: z.number().int().positive().safe(),
+    textureUpgradeRevision: z.number().int().positive().safe(),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    validateV2ManifestEntries(manifest, context)
+    validateV2ManifestHistory(manifest, context)
+    if (
+      manifest.textureUpgradeRevision <= manifest.upgradeRevision ||
+      manifest.textureUpgradeRevision > manifest.documentRevision ||
+      manifest.upgradeRevision > manifest.documentRevision
+    )
+      context.addIssue({
+        code: "custom",
+        message: "The upgrade revision exceeds the document revision.",
+      })
+  })
+export type VShapeManifestV4 = Readonly<z.infer<typeof vShapeManifestV4Schema>>
+export type VShapeProjectV4 = Readonly<{
+  manifest: VShapeManifestV4
+  snapshot: DocumentSnapshotV3
+  seed: DocumentAuthoritySnapshot | null
+  legacyEvents: readonly DocumentEvent[]
+  versionedEvents: readonly DocumentAuthorityEvent[]
+}>
+const writeVShapeV4InputSchema = z
+  .object({
+    ...writeVShapeV2InputSchema.shape,
+    snapshot: documentSnapshotV3Schema,
+    seed: documentAuthoritySnapshotSchema.nullable(),
+    versionedEvents: z.array(documentAuthorityEventSchema).max(MAX_EVENTS),
+    upgradeRevision: z.number().int().positive().safe(),
+    textureUpgradeRevision: z.number().int().positive().safe(),
+  })
+  .strict()
+
+function requireV4Boundary(project: VShapeProjectV4) {
+  const { manifest, snapshot, legacyEvents, versionedEvents } = project
+  const events = [...legacyEvents, ...versionedEvents]
+  requireVShape(
+    events.length <= MAX_EVENTS,
+    "resource-limit",
+    "The mixed journal exceeds its aggregate record budget.",
+  )
+  requireVShape(
+    new Set(events.map((event) => event.commandId)).size === events.length,
+    "history-mismatch",
+    "The mixed journal repeats a command identity.",
+  )
+  requireVShape(
+    snapshot.id === manifest.documentId &&
+      snapshot.revision === manifest.documentRevision &&
+      snapshot.createdAt === manifest.createdAt,
+    "history-mismatch",
+    "The manifest and authored snapshot disagree.",
+  )
+  requireV4Seed(project)
+  requireV4Upgrade(project)
+}
+
+function requireV4Seed({ manifest, seed, legacyEvents }: VShapeProjectV4) {
+  if (manifest.historyMode === "checkpoint") {
+    requireVShape(
+      seed !== null && seed.revision === manifest.promotionRevision && legacyEvents.length === 0,
+      "history-mismatch",
+      "The checkpoint seed does not match its history boundary.",
+    )
+  } else if (seed) {
+    requireVShape(
+      seed.schemaVersion === 1 &&
+        seed.revision === manifest.promotionRevision &&
+        legacyEvents.length === manifest.promotionRevision,
+      "history-mismatch",
+      "The complete history requires its original V1 promotion seed.",
+    )
+    requireV1ReplayProof(seed, legacyEvents)
+  } else
+    requireVShape(
+      manifest.promotionRevision === 0 && legacyEvents.length === 0,
+      "history-mismatch",
+      "Native history cannot declare a legacy prefix.",
+    )
+}
+
+function requireV4Upgrade({ manifest, seed, versionedEvents }: VShapeProjectV4) {
+  const upgrades = versionedEvents.filter(
+    (event) => event.type === "org.vibeshape.document.upgraded-v2",
+  )
+  const validUpgrade =
+    seed && seed.schemaVersion !== 1
+      ? manifest.upgradeRevision <= seed.revision && upgrades.length === 0
+      : upgrades.length === 1 && upgrades[0]?.revision === manifest.upgradeRevision
+  requireVShape(validUpgrade, "history-mismatch", "The authored upgrade boundary is inconsistent.")
+  requireV4TextureUpgrade({ manifest, seed, versionedEvents })
+}
+
+function requireV4TextureUpgrade({
+  manifest,
+  seed,
+  versionedEvents,
+}: Pick<VShapeProjectV4, "manifest" | "seed" | "versionedEvents">) {
+  const textureUpgrades = versionedEvents.filter(
+    (event) => event.type === "org.vibeshape.document.upgraded-v3",
+  )
+  const validTextureUpgrade =
+    seed?.schemaVersion === 3
+      ? manifest.textureUpgradeRevision <= seed.revision && textureUpgrades.length === 0
+      : textureUpgrades.length === 1 &&
+        textureUpgrades[0]?.revision === manifest.textureUpgradeRevision
+  requireVShape(
+    validTextureUpgrade,
+    "history-mismatch",
+    "The texture authority upgrade boundary is inconsistent.",
+  )
+}
+
+function requireV4History(project: VShapeProjectV4) {
+  requireV4Boundary(project)
+  const replayed = replayDocumentAuthorityEvents(project.seed, project.versionedEvents)
+  requireVShape(
+    replayed.ok && canonicalJson(replayed.snapshot) === canonicalJson(project.snapshot),
+    "history-mismatch",
+    "The mixed journal does not reproduce the authored snapshot.",
+  )
+}
+
+async function createManifestV4(
+  input: z.output<typeof writeVShapeV4InputSchema>,
+  bytes: V2SemanticBytes,
+) {
+  return vShapeManifestV4Schema.parse({
+    schemaVersion: 4,
+    format: "vshape",
+    formatVersion: 4,
+    minimumReaderVersion: 4,
+    documentId: input.snapshot.id,
+    documentRevision: input.snapshot.revision,
+    createdBy: input.createdBy,
+    engine: input.engine,
+    rootDocument: DOCUMENT_PATH,
+    historySeed: V2_SEED_PATH,
+    legacyEventJournal: V2_LEGACY_PATH,
+    versionedEventJournal: V2_SUFFIX_PATH,
+    eventJournal: V2_SUFFIX_PATH,
+    compression: "deflate",
+    historyMode: input.historyMode,
+    promotionRevision: input.promotionRevision,
+    upgradeRevision: input.upgradeRevision,
+    textureUpgradeRevision: input.textureUpgradeRevision,
+    migrationDiagnostic: input.migrationDiagnostic,
+    unavailableRecords: input.unavailableRecords,
+    semanticEntries: await v2SemanticEntries(bytes),
+    requiredCapabilities: [],
+    extensionsLockChecksum: null,
+    createdAt: input.snapshot.createdAt,
+    exportedAt: input.exportedAt,
+    units: "millimeter",
+    coordinateSystem: "right-handed-z-up",
+  })
+}
+
+export async function writeVShapeV4(inputValue: unknown): Promise<VShapeResult<Uint8Array>> {
+  const input = writeVShapeV4InputSchema.safeParse(inputValue)
+  if (!input.success)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-document",
+        message: "The V4 portable project input is invalid.",
+      },
+    }
+  try {
+    const bytes = encodeV2SemanticProject(input.data)
+    const manifest = await createManifestV4(input.data, bytes)
+    requireV4History({ ...input.data, manifest })
+    const archive = encodeVShapeV2Archive(manifest, bytes)
+    // Apply the same expansion, path, and ratio limits enforced by readers to writer output.
+    await readSafeZip(archive, VSHAPE_LIMITS)
+    return { ok: true, value: archive }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+async function decodeVShapeV4(files: UnzippedProjectFiles): Promise<VShapeProjectV4> {
+  const paths = Object.keys(files)
+  requireVShape(
+    paths.length === V2_REQUIRED_PATHS.length &&
+      V2_REQUIRED_PATHS.every((path) => paths.includes(path)),
+    "undeclared-entry",
+    "The V4 archive must contain exactly its declared entries.",
+  )
+  const parsed = vShapeManifestV4Schema.safeParse(parseManifestInput(files))
+  requireVShape(parsed.success, "invalid-manifest", "The V4 manifest is invalid.")
+  const manifest = parsed.data
+  await requireV2SemanticIntegrity(manifest, files)
+  const snapshot = parseJsonFile(files, DOCUMENT_PATH, documentSnapshotV3Schema, "invalid-document")
+  const seed = parseJsonFile(
+    files,
+    V2_SEED_PATH,
+    documentAuthoritySnapshotSchema.nullable(),
+    "invalid-document",
+  )
+  const legacyEvents = parseNdjson(files, V2_LEGACY_PATH, documentEventSchema)
+  const versionedEvents = parseNdjson(files, V2_SUFFIX_PATH, documentAuthorityEventSchema)
+  const project = { manifest, snapshot, seed, legacyEvents, versionedEvents }
+  requireV4History(project)
+  return project
+}
+
+export async function readVShapeV4(bytes: unknown): Promise<VShapeResult<VShapeProjectV4>> {
+  try {
+    return { ok: true, value: await decodeVShapeV4(await readSafeZip(bytes, VSHAPE_LIMITS)) }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
 export type AuthoredVShapeProject =
   | VersionedVShapeProject
   | Readonly<{ version: 3; project: VShapeProjectV3 }>
+  | Readonly<{ version: 4; project: VShapeProjectV4 }>
 export async function readAuthoredVShape(
   bytes: unknown,
 ): Promise<VShapeResult<AuthoredVShapeProject>> {
@@ -1319,10 +1551,12 @@ export async function readAuthoredVShape(
     const files = await readSafeZip(bytes, VSHAPE_LIMITS)
     const header = parseManifestHeader(files)
     requireVShape(
-      header.minimumReaderVersion <= 3,
+      header.minimumReaderVersion <= 4,
       "unsupported-version",
       "This project requires a newer VibeShape reader.",
     )
+    if (header.formatVersion === 4)
+      return { ok: true, value: { version: 4, project: await decodeVShapeV4(files) } }
     if (header.formatVersion === 3)
       return { ok: true, value: { version: 3, project: await decodeVShapeV3(files) } }
     if (header.formatVersion === 2)

@@ -12,6 +12,8 @@ erDiagram
     FEATURE ||--o| SKETCH : may_define
     FEATURE }o--o{ FEATURE : depends_on
     FEATURE ||--o{ TOPO_REF : references
+    DOCUMENT ||--o{ SURFACE_TEXTURE_LAYER : authors
+    FEATURE ||--o{ SURFACE_TEXTURE_LAYER : owns
     SKETCH ||--o{ SKETCH_ENTITY : contains
     SKETCH ||--o{ CONSTRAINT : constrains
     BODY ||--o{ MESH_CACHE : derives
@@ -193,10 +195,32 @@ revision, persistence, and Undo boundaries. Worker compatibility projections can
 Archive format 3 retains the five-entry layout, the original legacy prefix and migration seed, and a mixed
 versioned suffix containing the explicit upgrade and subsequent authored events. Checksums, bounded expansion,
 complete replay equality, and aggregate event limits apply to the whole history. `readAuthoredVShape` dispatches
-formats 0–3; existing 0–2 readers and writers preserve their contracts. Complete writable copies remap document,
+formats 0–4; version-specific 0–3 readers and writers preserve their contracts. Complete writable copies remap document,
 command, and transaction IDs while preserving local feature, part, folder, and actor identities. Checkpoints
 remain read-only. See [ADR-0054](../adr/0054-authored-parts-and-organizational-history-folders.md) and
 [local-first storage](local-first-storage.md) for persistence and older-runtime refusal.
+
+### Texture V3 authority and archive format 4
+
+V3 adds an ordered `surfaceTextures` collection without changing frozen V0/V1/V2 inputs. A layer
+owns a UUIDv7 ID and producing feature ID, and targets a semantic body output role or face
+`BodyTopoRef` records scoped to that same feature and role. It stores enabled state, a built-in map
+or bounded local grayscale pixels, projection and axis, height/size/offset/fade in millimeters,
+rotation in degrees, direction, inversion, blend mode, and a paint mask. Bounds are four layers per
+feature, 256 by 256 pixels per custom map, and 2,048 normal-aware paint/erase dabs per layer. Masks
+retain model-coordinate centers and normalized normals; no transient face indices or image URLs
+enter document authority.
+
+The first replacement command upgrades V2 and applies the reviewed layers in one event and revision.
+V3 model/metadata events preserve layers; removing a feature prunes its layers in the same event.
+Compensating restore events include the complete authored state. An earlier V2 restore target is
+lifted to V3 with empty layers so the first Apply remains one Undo action.
+
+Format 4 keeps the five-entry archive layout, strict digest/replay proof, and complete versus
+checkpoint distinction. Its manifest records `textureUpgradeRevision` after the existing V2
+`upgradeRevision`. Complete copies preserve local layer IDs, settings, grayscale pixels, and mask
+dabs while remapping external document/command/transaction identities. Geometry and mesh face
+mappings remain derived. See [ADR-0059](../adr/0059-editable-surface-texture-layers.md).
 
 ### `manifest.json`
 

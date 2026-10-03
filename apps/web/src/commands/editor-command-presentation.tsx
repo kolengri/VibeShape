@@ -60,6 +60,7 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  "surface-texture": Grid2X2,
   keyboard: Keyboard,
   "aligned-rectangle": RectangleHorizontal,
   arc: PenLine,

@@ -14,15 +14,16 @@ import {
 } from "@vibeshape/domain/commands"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import {
-  type DocumentSnapshotV2,
-  documentSnapshotV2Schema,
-  projectDocumentSnapshotV2ToV1,
+  type AuthoredDocumentSnapshot,
+  authoredDocumentSnapshotSchema,
+  projectAuthoredDocumentSnapshotToV1,
 } from "@vibeshape/domain/document-v2"
 import {
   documentV2MetadataChangeSchema,
   documentV2MetadataCommandSchema,
 } from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
+import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import { type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 import type { DraftReviewInput } from "./draft-review"
@@ -52,8 +53,8 @@ export type PreparedMetadataInput = {
   expiresAt: number
 }
 export type PreparedMetadataProposal = PreparedMetadataInput & {
-  base: DocumentSnapshotV2
-  snapshot: DocumentSnapshotV2
+  base: AuthoredDocumentSnapshot
+  snapshot: AuthoredDocumentSnapshot
   value: MetadataCommitView
 }
 
@@ -127,7 +128,7 @@ export async function prepareMetadataProposal(
   configuration: MetadataProposalConfiguration,
   input: PreparedMetadataInput,
 ): Promise<AutomationHostResult<PreparedMetadataProposal>> {
-  const before = documentSnapshotV2Schema.safeParse(await configuration.readSnapshot())
+  const before = authoredDocumentSnapshotSchema.safeParse(await configuration.readSnapshot())
   if (!before.success || before.data.id !== configuration.documentId)
     return metadataProposalFailure(
       "invalid-document-snapshot",
@@ -144,7 +145,10 @@ export async function prepareMetadataProposal(
       "duplicate-command-id",
       "The command identifier already exists in the journal.",
     )
-  const prepared = applyDocumentV2Command(before.data, input.command)
+  const prepared =
+    before.data.schemaVersion === 3
+      ? applyDocumentV3Command(before.data, { ...input.command, schemaVersion: 3 })
+      : applyDocumentV2Command(before.data, input.command)
   if (!prepared.ok) return { ok: false, diagnostic: { ...prepared.diagnostic, issues: [] } }
   const value = metadataCommitViewSchema.parse({
     documentId: input.command.documentId,
@@ -162,7 +166,7 @@ export async function prepareMetadataProposal(
 }
 
 function historyRange(
-  base: DocumentSnapshotV2,
+  base: AuthoredDocumentSnapshot,
   items: readonly HistoryItemRef[] | undefined,
 ): NonNullable<DraftReviewInput["metadata"]>["range"] {
   const first = items?.[0]
@@ -206,7 +210,9 @@ export async function previewMetadataProposal(
   configuration: MetadataProposalConfiguration,
   proposal: PreparedMetadataProposal,
 ): Promise<AutomationHostResult<DraftReviewInput>> {
-  const projected = projectDocumentSnapshotV1ToV0(projectDocumentSnapshotV2ToV1(proposal.snapshot))
+  const projected = projectDocumentSnapshotV1ToV0(
+    projectAuthoredDocumentSnapshotToV1(proposal.snapshot),
+  )
   if (!projected.ok)
     return metadataProposalFailure("invalid-document-snapshot", projected.diagnostic.message)
   const exact = await evaluateDraftGeometry(
@@ -273,7 +279,7 @@ export async function recheckMetadataProposal(
   configuration: MetadataProposalConfiguration,
   proposal: PreparedMetadataProposal,
 ) {
-  const current = documentSnapshotV2Schema.safeParse(await configuration.readSnapshot())
+  const current = authoredDocumentSnapshotSchema.safeParse(await configuration.readSnapshot())
   if (!current.success || canonicalJson(current.data) !== canonicalJson(proposal.base))
     return metadataProposalFailure(
       "stale-revision",

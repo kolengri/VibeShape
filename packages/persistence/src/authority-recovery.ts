@@ -196,7 +196,12 @@ export async function recoverAuthoritySnapshot(
       "corrupt-history",
       "Recovery cannot cross the document authority version boundary.",
     )
-  if (project.schemaVersion === 2 && snapshot.revision < project.upgradeRevision)
+  if (project.schemaVersion === 3 && snapshot.revision < project.textureUpgradeRevision)
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "Recovery cannot cross the texture authority upgrade boundary.",
+    )
+  if (project.schemaVersion !== 1 && snapshot.revision < project.upgradeRevision)
     throw persistenceInvariantError(
       "corrupt-history",
       "No valid V2 revision remains at the recorded upgrade boundary.",

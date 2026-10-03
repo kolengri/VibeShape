@@ -23,7 +23,7 @@ export async function enableAuthoredDocument(
   if (
     !opened.ok ||
     opened.session.mode !== "read-write" ||
-    opened.session.authoredSnapshot?.schemaVersion === 2
+    (opened.session.authoredSnapshot && opened.session.authoredSnapshot.schemaVersion !== 1)
   )
     return opened
   const result = await opened.session.commitAuthored({

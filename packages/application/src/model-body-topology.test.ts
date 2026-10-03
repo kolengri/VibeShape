@@ -2,6 +2,7 @@ import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { type FeatureId, featureIdSchema } from "@vibeshape/domain/identifiers"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
+import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { createModelBodyTopologyEvidence } from "./model-body-topology"
 
@@ -125,7 +126,7 @@ function response(
   })),
 ) {
   return {
-    protocolVersion: 22,
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
     requestId: "0195b5ac-b220-7a2c-8c33-000000000010",
     documentId,
     revision: 4,

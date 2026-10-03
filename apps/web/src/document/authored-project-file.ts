@@ -4,40 +4,43 @@ import type { AuthoredVShapeProject } from "@vibeshape/formats/vshape"
 import {
   type PortableProjectV2,
   type PortableProjectV3,
+  type PortableProjectV4,
   portableProjectV3PayloadSchema,
+  portableProjectV4PayloadSchema,
 } from "@vibeshape/persistence"
 import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
 
 export type BrowserPortableProject =
   | Readonly<{ version: 2; project: PortableProjectV2 }>
   | Readonly<{ version: 3; project: PortableProjectV3 }>
+  | Readonly<{ version: 4; project: PortableProjectV4 }>
 
 type PortableResult =
   | Readonly<{ ok: true; value: BrowserPortableProject }>
   | Readonly<{ ok: false; diagnostic: Readonly<{ code: string; message: string }> }>
 
 export function portableProjectFromArchive(archive: AuthoredVShapeProject): PortableResult {
-  if (archive.version !== 3) {
+  if (archive.version !== 3 && archive.version !== 4) {
     const converted = portableProjectV2FromArchive(archive)
     return converted.ok
       ? { ok: true, value: { version: 2, project: converted.project } }
       : converted
   }
   const { manifest, ...project } = archive.project
-  return {
-    ok: true,
-    value: {
-      version: 3,
-      project: portableProjectV3PayloadSchema.parse({
-        ...project,
-        historyMode: manifest.historyMode,
-        promotionRevision: manifest.promotionRevision,
-        upgradeRevision: manifest.upgradeRevision,
-        migrationDiagnostic: manifest.migrationDiagnostic,
-        unavailableRecords: manifest.unavailableRecords,
-      }),
-    },
+  const value = {
+    ...project,
+    historyMode: manifest.historyMode,
+    promotionRevision: manifest.promotionRevision,
+    upgradeRevision: manifest.upgradeRevision,
+    ...(archive.version === 4
+      ? { textureUpgradeRevision: archive.project.manifest.textureUpgradeRevision }
+      : {}),
+    migrationDiagnostic: manifest.migrationDiagnostic,
+    unavailableRecords: manifest.unavailableRecords,
   }
+  return archive.version === 4
+    ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(value) } }
+    : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(value) } }
 }
 
 type CopyInput = {
@@ -57,8 +60,11 @@ export function copyBrowserPortableProject(input: CopyInput): PortableResult {
   return copyAuthoredProject(input, input.source.project)
 }
 
-function copyAuthoredProject(input: CopyInput, source: PortableProjectV3): PortableResult {
-  if (source.historyMode !== "complete" || source.seed?.schemaVersion === 2)
+function copyAuthoredProject(
+  input: CopyInput,
+  source: PortableProjectV3 | PortableProjectV4,
+): PortableResult {
+  if (source.historyMode !== "complete" || (source.seed && source.seed.schemaVersion !== 1))
     return {
       ok: false,
       diagnostic: {
@@ -86,21 +92,21 @@ function copyAuthoredProject(input: CopyInput, source: PortableProjectV3): Porta
     actor: { type: "user", userId: null },
   })
   if (!copied.ok) return copied
-  return {
-    ok: true,
-    value: {
-      version: 3,
-      project: portableProjectV3PayloadSchema.parse({
-        snapshot: copied.snapshot,
-        seed: copied.seed,
-        legacyEvents: copied.legacyEvents,
-        versionedEvents: copied.versionedEvents,
-        historyMode: "complete",
-        promotionRevision: source.promotionRevision,
-        upgradeRevision: source.upgradeRevision,
-        migrationDiagnostic: null,
-        unavailableRecords: [],
-      }),
-    },
+  const payload = {
+    snapshot: copied.snapshot,
+    seed: copied.seed,
+    legacyEvents: copied.legacyEvents,
+    versionedEvents: copied.versionedEvents,
+    historyMode: "complete",
+    promotionRevision: source.promotionRevision,
+    upgradeRevision: source.upgradeRevision,
+    ...("textureUpgradeRevision" in source
+      ? { textureUpgradeRevision: source.textureUpgradeRevision }
+      : {}),
+    migrationDiagnostic: null,
+    unavailableRecords: [],
   }
+  return source.snapshot.schemaVersion === 3
+    ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(payload) } }
+    : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(payload) } }
 }
