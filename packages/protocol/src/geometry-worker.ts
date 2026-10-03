@@ -141,6 +141,64 @@ export const cylinderFeatureContentParametersSchema = z
   })
   .strict()
 
+function radialPrimitiveWithinWorkspace(
+  origin: readonly [number, number, number],
+  radius: number,
+  minimumZ: number,
+  maximumZ: number,
+) {
+  return [
+    Math.abs(origin[0]) + radius,
+    Math.abs(origin[1]) + radius,
+    Math.abs(minimumZ),
+    Math.abs(maximumZ),
+  ].every((value) => value <= 100_000)
+}
+
+export const sphereFeatureContentParametersSchema = z
+  .object({ radius: cadLengthSchema, origin: vector3Schema.default([0, 0, 0]) })
+  .strict()
+  .refine(
+    ({ radius, origin }) =>
+      radialPrimitiveWithinWorkspace(origin, radius, origin[2] - radius, origin[2] + radius),
+    "Sphere dimensions and placement must remain within the 100000 mm workspace.",
+  )
+
+export const coneFeatureContentParametersSchema = z
+  .object({
+    radius: cadLengthSchema,
+    height: cadLengthSchema,
+    centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
+  })
+  .strict()
+  .refine(({ radius, height, centered, origin }) => {
+    const minimumZ = origin[2] - (centered ? height / 2 : 0)
+    return radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
+  }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
+
+export const torusFeatureContentParametersSchema = z
+  .object({
+    majorRadius: cadLengthSchema,
+    minorRadius: cadLengthSchema,
+    origin: vector3Schema.default([0, 0, 0]),
+  })
+  .strict()
+  .refine(({ majorRadius, minorRadius }) => majorRadius > minorRadius, {
+    path: ["minorRadius"],
+    message: "A ring torus requires majorRadius greater than minorRadius.",
+  })
+  .refine(
+    ({ majorRadius, minorRadius, origin }) =>
+      radialPrimitiveWithinWorkspace(
+        origin,
+        majorRadius + minorRadius,
+        origin[2] - minorRadius,
+        origin[2] + minorRadius,
+      ),
+    "Torus dimensions and placement must remain within the 100000 mm workspace.",
+  )
+
 const holeExtentSchema = z.enum(["blind", "through-all"])
 
 function canonicalHoleCenters(centers: readonly (readonly [number, number, number])[]) {

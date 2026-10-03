@@ -3,6 +3,7 @@ import { expect, it, vi } from "vitest"
 import { captureReplicadTopologySnapshot } from "./topology-signatures"
 
 vi.mock("replicad", () => ({
+  getOC: () => ({ BRep_Tool: { Degenerated: () => false } }),
   measureShapeLinearProperties: () => ({ length: 10, centerOfMass: [5, 0, 0], delete: vi.fn() }),
 }))
 vi.mock("./edge-display-polyline", () => ({
@@ -16,6 +17,7 @@ import { edgeDisplayPolyline } from "./edge-display-polyline"
 it("stops display sampling at the feature budget while retaining exact topology and releasing wrappers", () => {
   const vector = (point: number[]) => ({ toTuple: () => point, delete: vi.fn() })
   const edges = Array.from({ length: 67 }, (_, i) => ({
+    wrapped: {},
     geomType: "BSPLINE",
     hashCode: i + 1,
     isClosed: false,

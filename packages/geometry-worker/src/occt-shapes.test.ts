@@ -25,11 +25,15 @@ function createPrimitiveFixture() {
     gp_Ax2_3: createConstructor(axis),
     BRepPrimAPI_MakeBox_3: createConstructor(maker),
     BRepPrimAPI_MakeCylinder_3: createConstructor(maker),
+    BRepPrimAPI_MakeSphere_5: createConstructor(maker),
+    BRepPrimAPI_MakeTorus_5: createConstructor(maker),
   } as unknown as OpenCascadeInstance
-  const operations = createOcctShapeOperations(vi.fn(() => wrappedShape) as never)
+  const castShape = vi.fn(() => wrappedShape)
+  const operations = createOcctShapeOperations(castShape as never)
 
   return {
     axis,
+    castShape,
     direction,
     maker,
     opencascade,
@@ -70,6 +74,161 @@ describe("owned OCCT primitive adapters", () => {
     expect(fixture.point.delete).toHaveBeenCalledOnce()
     expect(fixture.maker.delete).toHaveBeenCalledOnce()
     expect(fixture.rawShape.delete).toHaveBeenCalledOnce()
+  })
+})
+
+describe("owned radial primitive adapters", () => {
+  it("constructs and disposes a placed sphere", () => {
+    const fixture = createPrimitiveFixture()
+    expect(fixture.operations.createSphere(fixture.opencascade, 4, [8, -4, 6])).toBe(
+      fixture.wrappedShape,
+    )
+    expect(fixture.opencascade.BRepPrimAPI_MakeSphere_5).toHaveBeenCalledWith(fixture.point, 4)
+    expect(fixture.point.delete).toHaveBeenCalledOnce()
+    expect(fixture.maker.delete).toHaveBeenCalledOnce()
+    expect(fixture.rawShape.delete).toHaveBeenCalledOnce()
+  })
+  it("constructs a placed torus around a positive Z axis", () => {
+    const fixture = createPrimitiveFixture()
+    expect(fixture.operations.createTorus(fixture.opencascade, 12, 4, [8, -4, 6])).toBe(
+      fixture.wrappedShape,
+    )
+    expect(fixture.opencascade.gp_Dir_4).toHaveBeenCalledWith(0, 0, 1)
+    expect(fixture.opencascade.BRepPrimAPI_MakeTorus_5).toHaveBeenCalledWith(fixture.axis, 12, 4)
+    for (const object of [
+      fixture.axis,
+      fixture.direction,
+      fixture.point,
+      fixture.maker,
+      fixture.rawShape,
+    ])
+      expect(object.delete).toHaveBeenCalledOnce()
+  })
+  it.each(["sphere", "torus"] as const)(
+    "disposes %s bindings when shape adoption fails",
+    (kind) => {
+      const fixture = createPrimitiveFixture()
+      fixture.castShape.mockImplementationOnce(() => {
+        throw new Error("Fixture adoption failed")
+      })
+      const call = () =>
+        kind === "sphere"
+          ? fixture.operations.createSphere(fixture.opencascade, 4, [0, 0, 0])
+          : fixture.operations.createTorus(fixture.opencascade, 12, 4, [0, 0, 0])
+      expect(call).toThrow("Fixture adoption failed")
+      for (const object of [fixture.point, fixture.maker, fixture.rawShape])
+        expect(object.delete).toHaveBeenCalledOnce()
+      if (kind === "torus") {
+        expect(fixture.axis.delete).toHaveBeenCalledOnce()
+        expect(fixture.direction.delete).toHaveBeenCalledOnce()
+      }
+    },
+  )
+  it("releases earlier torus bindings if the axis constructor fails", () => {
+    const fixture = createPrimitiveFixture()
+    vi.mocked(fixture.opencascade.gp_Ax2_3).mockImplementationOnce(function Constructor() {
+      throw new Error("Fixture axis failed")
+    })
+    expect(() => fixture.operations.createTorus(fixture.opencascade, 12, 4, [0, 0, 0])).toThrow(
+      "Fixture axis failed",
+    )
+    expect(fixture.point.delete).toHaveBeenCalledOnce()
+    expect(fixture.direction.delete).toHaveBeenCalledOnce()
+  })
+})
+
+function createConeFixture() {
+  const allocated: ReturnType<typeof createDeletable>[] = []
+  const binding = () => {
+    const value = createDeletable()
+    allocated.push(value)
+    return value
+  }
+  const bindingConstructor = <T>(create: (...args: unknown[]) => T) =>
+    vi.fn(function MockConstructor(...args: unknown[]) {
+      return create(...args)
+    })
+  const opencascade = {
+    gp_Pnt_3: bindingConstructor(binding),
+    gp_Dir_4: bindingConstructor(binding),
+    gp_Ax1_2: bindingConstructor(binding),
+    BRepBuilderAPI_MakeEdge_3: bindingConstructor(() => ({ ...binding(), Edge: vi.fn(binding) })),
+    BRepBuilderAPI_MakeWire_4: bindingConstructor(() => ({ ...binding(), Wire: vi.fn(binding) })),
+    BRepBuilderAPI_MakeFace_15: bindingConstructor(() => ({
+      ...binding(),
+      IsDone: () => true,
+      Face: vi.fn(binding),
+    })),
+    BRepPrimAPI_MakeRevol_1: bindingConstructor(() => ({ ...binding(), Shape: vi.fn(binding) })),
+  }
+  const castShape = vi.fn(() => ({ wrapped: createDeletable() }))
+  return {
+    allocated,
+    opencascade,
+    castShape,
+    operations: createOcctShapeOperations(castShape as never),
+  }
+}
+
+describe("owned exact cone meridian", () => {
+  it("revolves an exact closed meridian and releases every binding", () => {
+    const fixture = createConeFixture()
+    fixture.operations.createCone(
+      fixture.opencascade as unknown as OpenCascadeInstance,
+      4,
+      12,
+      [8, -4, 6],
+    )
+    expect(fixture.opencascade.gp_Pnt_3.mock.calls).toEqual([
+      [8, -4, 6],
+      [12, -4, 6],
+      [8, -4, 18],
+    ])
+    expect(fixture.opencascade.BRepPrimAPI_MakeRevol_1).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      2 * Math.PI,
+      false,
+    )
+    expect(fixture.castShape).toHaveBeenCalledOnce()
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+  })
+  it.each([
+    "gp_Pnt_3",
+    "BRepBuilderAPI_MakeEdge_3",
+    "BRepBuilderAPI_MakeWire_4",
+    "BRepBuilderAPI_MakeFace_15",
+    "BRepPrimAPI_MakeRevol_1",
+  ] as const)("releases all previously allocated bindings when %s fails", (stage) => {
+    const fixture = createConeFixture()
+    fixture.opencascade[stage].mockImplementationOnce(function Constructor(): never {
+      throw new Error("Fixture construction failed")
+    })
+    expect(() =>
+      fixture.operations.createCone(
+        fixture.opencascade as unknown as OpenCascadeInstance,
+        4,
+        12,
+        [0, 0, 0],
+      ),
+    ).toThrow("Fixture construction failed")
+    expect(fixture.castShape).not.toHaveBeenCalled()
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+  })
+  it("releases the meridian and output when shape adoption fails", () => {
+    const fixture = createConeFixture()
+    fixture.castShape.mockImplementationOnce(() => {
+      throw new Error("Fixture adoption failed")
+    })
+    expect(() =>
+      fixture.operations.createCone(
+        fixture.opencascade as unknown as OpenCascadeInstance,
+        4,
+        12,
+        [0, 0, 0],
+      ),
+    ).toThrow("Fixture adoption failed")
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
   })
 })
 

@@ -19,7 +19,7 @@ export function PrimitiveParameterPanel({
   placementFields,
 }: {
   actions: ReactNode
-  centeredField: ReactNode
+  centeredField?: ReactNode
   copy: PrimitiveParameterPanelCopy
   disabled?: boolean
   fields: ReactNode
@@ -41,7 +41,7 @@ export function PrimitiveParameterPanel({
       <fieldset className="grid gap-3 border-t border-border pt-3">
         <legend className="text-xs font-medium text-muted-foreground">{copy.placement}</legend>
         {placementFields}
-        <div className="pt-1">{centeredField}</div>
+        {centeredField ? <div className="pt-1">{centeredField}</div> : null}
       </fieldset>
     </ParameterPanel>
   )

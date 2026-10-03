@@ -16,6 +16,7 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  coneFeatureType,
   cylinderFeatureType,
   expectedRevolveDependencyIds,
   extrusionFeatureType,
@@ -33,6 +34,8 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  sphereFeatureType,
+  torusFeatureType,
 } from "./part-design"
 import {
   compoundFeatureType,
@@ -169,6 +172,9 @@ function key(ref: DocumentNodeRef) {
 const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(boxFeatureType.type),
   featureTypeKey(cylinderFeatureType.type),
+  featureTypeKey(sphereFeatureType.type),
+  featureTypeKey(coneFeatureType.type),
+  featureTypeKey(torusFeatureType.type),
   featureTypeKey(booleanFeatureType.type),
   featureTypeKey(filletFeatureType.type),
   featureTypeKey(chamferFeatureType.type),
