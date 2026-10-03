@@ -40,7 +40,10 @@ import {
   assemblyModeCommands,
   useAssemblyMode,
 } from "./features/assembly/assembly-mode"
-import { authoredPlacementTarget } from "./features/part-design/authored-part-selection"
+import {
+  authoredPlacementTarget,
+  selectedPlacementPart,
+} from "./features/part-design/authored-part-selection"
 import {
   activePartDesignCommand,
   editPartDesignTool,
@@ -615,12 +618,31 @@ function resolveEditorApplicationCommands(
     }
     return result
   }
+  const parts = currentAuthoredParts(controller)
+  const selectedPart = selectedPlacementPart(
+    parts,
+    session.selectedPartId,
+    session.selectedBody ?? session.selection,
+  )
+  const combinationBodies = new Set(
+    parts.flatMap((part) => {
+      const body = authoredPlacementTarget(part)
+      return body ? [`${body.featureId}:${body.outputRole}`] : []
+    }),
+  )
   return resolveBuiltInEditorCommands({
     actions: {
       ...dialogs,
       cancelActive: workspaceActions.closeTool,
       documentRedo: redoCommittedDocument,
       documentUndo: undoCommittedDocument,
+      placePart: workspaceActions.placePart,
+      mirrorPart: workspaceActions.mirrorPart,
+      shellPart: workspaceActions.shellPart,
+      splitPart: workspaceActions.splitPart,
+      patternPart: workspaceActions.patternPart,
+      threadPart: workspaceActions.threadPart,
+      combineParts: workspaceActions.combineParts,
       createHole: workspaceActions.createHole,
       createFillet: workspaceActions.createFillet,
       createChamfer: workspaceActions.createChamfer,
@@ -653,6 +675,8 @@ function resolveEditorApplicationCommands(
       activeSketchTool: session.sketch.activeSketchTool,
       controller,
       extrusionAvailable: profileCommandAvailable,
+      selectedExactPartId: selectedPart?.part.id ?? null,
+      partCombinationAvailable: combinationBodies.size >= 2,
       selectionAvailable: [
         session.selectedPartId,
         session.selectedBody,

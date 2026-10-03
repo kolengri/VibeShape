@@ -6,7 +6,7 @@ import { expect, test } from "./fixtures"
 
 async function startThread(page: Page) {
   await page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true }).click()
-  await page.getByRole("button", { name: "Thread Cylinder 1", exact: true }).click()
+  await page.getByRole("button", { name: "Thread", exact: true }).click()
   return page.getByRole("form", { name: "Thread body", exact: true })
 }
 

@@ -192,77 +192,27 @@ describe("authored tree controls", () => {
   })
 })
 
-describe("authored part operations", () => {
-  it("starts Placement from the selected stable PartId and blocks upstream fallbacks", async () => {
-    const { authority } = authoredTreeFixture()
-    const part = requireAuthoredFixture(authority.parts[0])
-    const onPlace = vi.fn()
-    const props = {
-      revision: authority.revision,
-      selectedPartId: part.id,
-      disabled: false,
-      onSelect: vi.fn(),
-      onPlace,
-      onCommit: commit(),
-    }
-    const { rerender } = render(
-      providers(
-        <AuthoredPartsGroup
-          {...props}
-          parts={[{ part, body: authoredTestBody(part), status: "available" }]}
-        />,
-      ),
-    )
-    await userEvent.click(screen.getByRole("button", { name: "Place part Part 1" }))
-    expect(onPlace).toHaveBeenCalledExactlyOnceWith(part.id)
-    rerender(
-      providers(
-        <AuthoredPartsGroup
-          {...props}
-          parts={[{ part, body: authoredTestBody(part), status: "upstream" }]}
-        />,
-      ),
-    )
-    expect(screen.getByRole("button", { name: "Place part Part 1" }).hasAttribute("disabled")).toBe(
-      true,
-    )
-  })
-  it("keeps Compound and Union explicit for distinct sibling bodies and rejects duplicate body selections", async () => {
-    const { authority } = authoredTreeFixture()
-    const parts = authority.parts
-      .slice(0, 2)
-      .map((part) => ({ part, body: authoredTestBody(part), status: "available" as const }))
-    const onCombine = vi.fn()
-    const props = {
-      revision: authority.revision,
-      selectedPartId: null,
-      disabled: false,
-      onSelect: vi.fn(),
-      onCombine,
-      onCommit: commit(),
-    }
-    const { rerender } = render(providers(<AuthoredPartsGroup {...props} parts={parts} />))
-    await userEvent.click(screen.getByRole("button", { name: "Compound" }))
-    await userEvent.click(screen.getByRole("button", { name: "Union" }))
-    expect(onCombine.mock.calls).toEqual([["compound"], ["union"]])
-    const first = requireAuthoredFixture(parts[0])
-    const second = requireAuthoredFixture(parts[1])
-    rerender(
-      providers(
-        <AuthoredPartsGroup
-          {...props}
-          parts={[first, { ...second, body: { ...first.body, outputRole: "body.second" } }]}
-        />,
-      ),
-    )
-    expect(screen.getByRole("button", { name: "Compound" }).hasAttribute("disabled")).toBe(false)
-    expect(screen.getByRole("button", { name: "Union" }).hasAttribute("disabled")).toBe(false)
-    rerender(
-      providers(<AuthoredPartsGroup {...props} parts={[first, { ...second, body: first.body }]} />),
-    )
-    expect(screen.getByRole("button", { name: "Compound" }).hasAttribute("disabled")).toBe(true)
-    expect(screen.getByRole("button", { name: "Union" }).hasAttribute("disabled")).toBe(true)
-  })
+it("keeps selected Part rows focused on selection and metadata", () => {
+  const { authority } = authoredTreeFixture()
+  const part = requireAuthoredFixture(authority.parts[0])
+  render(
+    providers(
+      <AuthoredPartsGroup
+        revision={authority.revision}
+        selectedPartId={part.id}
+        disabled={false}
+        onSelect={vi.fn()}
+        onCommit={commit()}
+        parts={[{ part, body: authoredTestBody(part), status: "available" }]}
+      />,
+    ),
+  )
+  expect(screen.getByRole("treeitem", { name: "Part Part 1" })).toBeTruthy()
+  expect(
+    screen.queryByRole("button", {
+      name: /Place|Mirror|Shell|Split|Pattern|Thread|Compound|Union/,
+    }),
+  ).toBeNull()
 })
 
 describe("surface texture source eligibility", () => {

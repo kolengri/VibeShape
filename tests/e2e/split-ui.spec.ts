@@ -29,7 +29,7 @@ test("previews, cancels, rejects missed and tangent planes, splits independent p
     "The source authored part must exist.",
   )
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Split part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Split", exact: true }).click()
   let form = page.getByRole("form", { name: "Split part", exact: true })
   await expect(form.getByRole("combobox", { name: "Plane offset", exact: true })).toHaveValue(
     `${height / 2} mm`,
@@ -43,7 +43,7 @@ test("previews, cancels, rejects missed and tangent planes, splits independent p
   expect(canceled.project.snapshot.features).toEqual(before.project.snapshot.features)
   expect(canceled.project.snapshot.parts).toEqual(before.project.snapshot.parts)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Split part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Split", exact: true }).click()
   form = page.getByRole("form", { name: "Split part", exact: true })
   const offset = form.getByRole("combobox", { name: "Plane offset", exact: true })
   for (const invalid of [`${height + 1} mm`, `${height} mm`]) {
@@ -124,7 +124,7 @@ test("previews, cancels, rejects missed and tangent planes, splits independent p
   expect(imported.project.snapshot.parts).toEqual(reloaded.project.snapshot.parts)
   // Modify just the positive side through its exact current BodyReference.
   await page.locator(`[data-part-id="${positive.id}"]`).getByRole("treeitem").click()
-  await page.getByRole("button", { name: `Place part ${positive.name}`, exact: true }).click()
+  await page.getByRole("button", { name: "Place / align faces", exact: true }).click()
   const placement = page.getByRole("form", { name: "Place part", exact: true })
   await placement.getByRole("combobox", { name: "Translate Z", exact: true }).fill("5 mm")
   await expect(

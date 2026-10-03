@@ -1,3 +1,4 @@
+import type { PartId } from "@vibeshape/domain/identifiers"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { SketchCameraMode } from "../editor-session/editor-session-store"
 import {
@@ -32,6 +33,13 @@ export type BuiltInEditorCommandContext = Readonly<{
     cancelActive: () => void
     documentRedo?: (baseRevision: number) => Promise<unknown>
     documentUndo?: (baseRevision: number) => Promise<unknown>
+    placePart?: ((partId: PartId) => void) | undefined
+    mirrorPart?: ((partId: PartId) => void) | undefined
+    shellPart?: ((partId: PartId) => void) | undefined
+    splitPart?: ((partId: PartId) => void) | undefined
+    patternPart?: ((partId: PartId) => void) | undefined
+    threadPart?: ((partId: PartId) => void) | undefined
+    combineParts?: ((operation: "compound" | "union") => void) | undefined
     createHole: () => void
     createFillet: () => void
     createChamfer: () => void
@@ -64,6 +72,8 @@ export type BuiltInEditorCommandContext = Readonly<{
     activeSketchTool: ActiveSketchTool | null
     controller: DocumentControllerState
     extrusionAvailable: boolean
+    selectedExactPartId?: PartId | null
+    partCombinationAvailable?: boolean
     selectionAvailable?: boolean
     hasSavedSketches: boolean
     revolveAvailable?: boolean
@@ -114,7 +124,36 @@ const constraintEditorCommandDescriptors: readonly EditorCommandDescriptor[] =
     toolbarGroup: "sketch-precision",
   }))
 
+const partCommandDescriptors = [
+  ["placePart", "transform", "placement"],
+  ["mirrorPart", "mirror", "mirror"],
+  ["shellPart", "shell", "shell"],
+  ["splitPart", "split", "split"],
+  ["patternPart", "linear-pattern", "pattern"],
+  ["threadPart", "thread", "thread"],
+] as const
+
+const contextualPartDescriptors: readonly EditorCommandDescriptor[] = [
+  ...partCommandDescriptors.map(([key, icon]) => ({
+    group: "modeling" as const,
+    icon,
+    id: editorCommandIds[key],
+    labelKey: key,
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-part" as const,
+  })),
+  ...(["compound", "union"] as const).map((operation) => ({
+    group: "modeling" as const,
+    icon: operation,
+    id: editorCommandIds[operation === "compound" ? "compoundParts" : "unionParts"],
+    labelKey: operation === "compound" ? ("compoundParts" as const) : ("unionParts" as const),
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-part" as const,
+  })),
+]
+
 const descriptors: readonly EditorCommandDescriptor[] = [
+  ...contextualPartDescriptors,
   {
     group: "modeling",
     icon: "surface-texture",
@@ -796,7 +835,51 @@ function sketchToolHandler(
   }
 }
 
+function contextualPartVisible({ state }: BuiltInEditorCommandContext) {
+  return (
+    state.workspace === "model" &&
+    !state.activeSketchTool &&
+    !state.activePartDesignCommand &&
+    Boolean(state.selectedExactPartId)
+  )
+}
+
+const contextualPartHandlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  ...partCommandDescriptors.map(([key, , activeCommand]) => ({
+    id: editorCommandIds[key],
+    ownerModuleId: partDesignOwner,
+    execute: ({ actions, state }: BuiltInEditorCommandContext) => {
+      if (state.selectedExactPartId) actions[key]?.(state.selectedExactPartId)
+    },
+    getEligibility: (context: BuiltInEditorCommandContext) => {
+      const eligibility = writableDocumentEligibility(context)
+      if (!eligibility.enabled) return eligibility
+      return context.state.selectedExactPartId && context.actions[key]
+        ? editorCommandEnabled()
+        : editorCommandDisabled("selectSolid")
+    },
+    isActive: ({ state }: BuiltInEditorCommandContext) =>
+      state.activePartDesignCommand === activeCommand,
+    isToolbarVisible: contextualPartVisible,
+  })),
+  ...(["compound", "union"] as const).map((operation) => ({
+    id: editorCommandIds[operation === "compound" ? "compoundParts" : "unionParts"],
+    ownerModuleId: partDesignOwner,
+    execute: ({ actions }: BuiltInEditorCommandContext) => actions.combineParts?.(operation),
+    getEligibility: (context: BuiltInEditorCommandContext) => {
+      const eligibility = writableDocumentEligibility(context)
+      if (!eligibility.enabled) return eligibility
+      return context.state.partCombinationAvailable && context.actions.combineParts
+        ? editorCommandEnabled()
+        : editorCommandDisabled("selectTwoSolids")
+    },
+    isToolbarVisible: (context: BuiltInEditorCommandContext) =>
+      contextualPartVisible(context) && Boolean(context.state.partCombinationAvailable),
+  })),
+]
+
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  ...contextualPartHandlers,
   {
     execute: ({ actions }) => actions.openShortcutHelp?.(),
     getEligibility: ({ actions }) =>

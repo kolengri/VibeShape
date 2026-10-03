@@ -2,7 +2,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import {
   AlignedRectangleIcon,
   ArrowUpRight,
+  Bolt,
   Box as BoxIcon,
+  BoxSelect,
   CenterArcIcon,
   CenteredAlignedRectangleIcon,
   CenteredSlotIcon,
@@ -11,6 +13,7 @@ import {
   Circle,
   CircularPatternIcon,
   CircumscribedPolygonIcon,
+  Combine,
   ConeIcon,
   ConstraintCoincidentIcon,
   ConstraintConcentricIcon,
@@ -41,6 +44,7 @@ import {
   HoleIcon,
   InscribedPolygonIcon,
   Keyboard,
+  Layers3,
   LinearPatternIcon,
   Link2,
   LoftIcon,
@@ -85,6 +89,10 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  shell: BoxSelect,
+  thread: Bolt,
+  compound: Layers3,
+  union: Combine,
   "surface-texture": SurfaceTextureIcon,
   keyboard: Keyboard,
   "aligned-rectangle": AlignedRectangleIcon,

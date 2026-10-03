@@ -4,7 +4,7 @@ import {
   authoredTreeFixture,
   requireAuthoredFixture,
 } from "../../test-support/authored-tree-fixture"
-import { authoredPlacementTarget } from "./authored-part-selection"
+import { authoredPlacementTarget, selectedPlacementPart } from "./authored-part-selection"
 
 const part = requireAuthoredFixture(authoredTreeFixture().authority.parts[0])
 const body = authoredTestBody(part)
@@ -41,4 +41,20 @@ describe("selected Part exact-operation eligibility", () => {
     expect(authoredPlacementTarget({ part, body: null, status: "available" })).toBeNull()
     expect(authoredPlacementTarget(undefined)).toBeNull()
   })
+})
+
+it("resolves viewport bodies to exactly one eligible current Part without historical fallback", () => {
+  const resolved = { part, body, status: "available" as const }
+  expect(selectedPlacementPart([resolved], null, body)).toBe(resolved)
+  expect(selectedPlacementPart([resolved], part.id, null)).toBe(resolved)
+  expect(selectedPlacementPart([resolved, resolved], null, body)).toBeUndefined()
+  expect(
+    selectedPlacementPart([{ ...resolved, status: "upstream" }], part.id, body),
+  ).toBeUndefined()
+  expect(
+    selectedPlacementPart([resolved], null, { ...body, outputRole: "missing" }),
+  ).toBeUndefined()
+  expect(
+    selectedPlacementPart([{ ...resolved, part: { ...part, visible: false } }], null, body),
+  ).toBeUndefined()
 })

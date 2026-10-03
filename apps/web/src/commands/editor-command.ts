@@ -1,4 +1,13 @@
 export const editorCommandIds = {
+  placePart: "org.vibeshape.editor.part-design.place-part",
+  mirrorPart: "org.vibeshape.editor.part-design.mirror-part",
+  shellPart: "org.vibeshape.editor.part-design.shell-part",
+  splitPart: "org.vibeshape.editor.part-design.split-part",
+  patternPart: "org.vibeshape.editor.part-design.pattern-part",
+  threadPart: "org.vibeshape.editor.part-design.thread-part",
+  compoundParts: "org.vibeshape.editor.part-design.compound-parts",
+  unionParts: "org.vibeshape.editor.part-design.union-parts",
+
   openShortcutHelp: "org.vibeshape.editor.shortcuts.help",
   cancelActive: "org.vibeshape.editor.cancel-active",
   documentUndo: "org.vibeshape.editor.document.undo",
@@ -84,6 +93,7 @@ export type EditorCommandGroup = "workspace" | "modeling" | "sketch" | "history"
 export type EditorCommandToolbarGroup =
   | "workspace"
   | "model-primary"
+  | "model-part"
   | "model-inspection"
   | "model-primitives"
   | "sketch-tools"
@@ -122,6 +132,10 @@ export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBas
   )
 
 export type EditorCommandIcon =
+  | "shell"
+  | "thread"
+  | "compound"
+  | "union"
   | "surface-texture"
   | "keyboard"
   | "aligned-rectangle"
@@ -197,6 +211,14 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "placePart"
+  | "mirrorPart"
+  | "shellPart"
+  | "splitPart"
+  | "patternPart"
+  | "threadPart"
+  | "compoundParts"
+  | "unionParts"
   | "surfaceTexture"
   | "openShortcutHelp"
   | "createHole"

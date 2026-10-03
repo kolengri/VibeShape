@@ -5,7 +5,12 @@ import type {
   VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { type RefObject, useEffect, useState } from "react"
+import {
+  defaultAngleExpression,
+  defaultLengthExpression,
+} from "../../document/document-display-units"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -15,6 +20,8 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import { PlacementAlignmentFields } from "./placement-alignment-fields"
+import type { PlacementAlignmentFaces } from "./placement-face-alignment"
 import {
   type PlacementFormMode,
   type PlacementFormValues,
@@ -47,6 +54,8 @@ export type PlacementFormCopy = ParameterPanelCopy &
 
 type PlacementFormProps = FeatureParameterFormProps<PlacementFormMode, PlacementFormCopy> & {
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+  alignmentFaces?: PlacementAlignmentFaces | undefined
+  selectedFace?: ViewerSelection | null | undefined
 }
 function PlacementPreview({
   values,
@@ -56,6 +65,7 @@ function PlacementPreview({
   mode,
   featureId,
   onPreviewChange,
+  previewEnabled,
 }: {
   values: PlacementFormValues
   variables: readonly VariableDefinition[]
@@ -64,11 +74,12 @@ function PlacementPreview({
   mode: PlacementFormMode
   featureId: FeatureId
   onPreviewChange: (feature: FeatureRecord | null) => void
+  previewEnabled: boolean
 }) {
   const parsed = parsePlacementForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: parsed.ok ? placementFeatureRecord(mode, featureId, parsed) : null,
+    preview: previewEnabled && parsed.ok ? placementFeatureRecord(mode, featureId, parsed) : null,
   })
   return null
 }
@@ -89,6 +100,7 @@ function PlacementErrorFocus({
 
 export function PlacementForm({
   baseRevision,
+  alignmentFaces,
   copy,
   disabled = false,
   mode,
@@ -97,9 +109,11 @@ export function PlacementForm({
   onSave,
   onSaved,
   previewStatus,
+  selectedFace,
   variables,
 }: PlacementFormProps) {
   const state = useParameterFormState(variables)
+  const [previewEnabled, setPreviewEnabled] = useState(true)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
@@ -141,6 +155,7 @@ export function PlacementForm({
               mode={mode}
               featureId={featureId}
               onPreviewChange={onPreviewChange}
+              previewEnabled={previewEnabled}
             />
           )}
         </form.Subscribe>
@@ -169,6 +184,34 @@ export function PlacementForm({
                 />
               }
             >
+              {alignmentFaces && (
+                <PlacementAlignmentFields
+                  faces={alignmentFaces}
+                  selectedFace={selectedFace}
+                  units={state.displayUnits}
+                  variables={variables}
+                  copy={copy}
+                  onPickFaces={() => setPreviewEnabled(false)}
+                  previewPaused={!previewEnabled}
+                  onAlign={({ translation, rotation }) => {
+                    setPreviewEnabled(true)
+                    state.clearSubmissionErrors()
+                    for (const [index, axis] of placementAxes.entries()) {
+                      form.setFieldValue(
+                        placementFieldName("translation", axis),
+                        defaultLengthExpression(
+                          translation[index] as number,
+                          state.displayUnits.length,
+                        ),
+                      )
+                      form.setFieldValue(
+                        placementFieldName("rotation", axis),
+                        defaultAngleExpression(rotation[index] as number, state.displayUnits.angle),
+                      )
+                    }
+                  }}
+                />
+              )}
               {(["translation", "rotation"] as const).map((group) => (
                 <fieldset className="grid gap-3" key={group}>
                   <legend className="mb-2 text-xs font-medium text-muted-foreground">
@@ -193,6 +236,7 @@ export function PlacementForm({
                             suggestions={state.suggestions}
                             onBlur={field.handleBlur}
                             onValueChange={(value) => {
+                              setPreviewEnabled(true)
                               state.clearSubmissionErrors()
                               field.handleChange(value)
                             }}

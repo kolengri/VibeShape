@@ -10,6 +10,7 @@ test("unions two exact sibling outputs through ordered body slots and preserves 
   await page.goto("/")
   await saved(page)
   await createSolids(page)
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await page.getByRole("button", { name: "Compound", exact: true }).click()
   let form = page.getByRole("form", { name: "Create Compound", exact: true })
   await form.getByRole("button", { name: "Add part Box 1", exact: true }).click()
@@ -23,6 +24,7 @@ test("unions two exact sibling outputs through ordered body slots and preserves 
   const producer = parts[0]?.bodyHistory.at(-1)?.featureId
   expect(producer).toBeDefined()
   expect(parts[1]?.bodyHistory.at(-1)?.featureId).toBe(producer)
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await page.getByRole("button", { name: "Union", exact: true }).click()
   form = page.getByRole("form", { name: "Create Union", exact: true })
   await form.getByRole("button", { name: "Add part Box 1", exact: true }).click()

@@ -1669,6 +1669,7 @@ function ActiveSubtractTaskPanel({
 type ExtrusionFaceSelection = Readonly<{ planar: boolean; canCreateSketch: boolean }>
 
 type ActiveTaskPanelProps = Readonly<{
+  selectedFace?: TaskPanelProps["selectedFace"]
   authority: AuthoredDocumentSnapshot | null
   parts: readonly ResolvedAuthoredPart[]
   documentBusy: boolean
@@ -2259,6 +2260,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
   if (props.activeTool && report) {
     return (
       <ActiveTaskPanel
+        selectedFace={props.selectedFace}
         authority={currentAuthoredSnapshot(props.controller)}
         parts={currentAuthoredParts(props.controller)}
         activeTool={props.activeTool}
