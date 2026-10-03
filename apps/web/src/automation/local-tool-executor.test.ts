@@ -422,3 +422,58 @@ describe("local automation tool executor", () => {
     },
   )
 })
+
+it("routes metadata to its typed paired port and forwards request cancellation", async () => {
+  const actor = commandActorSchema.parse({
+    type: "mcp",
+    clientId: "org.example.client",
+    sessionId: id(1),
+  })
+  const host = {
+    createDraft: vi.fn(),
+    inspectDraft: vi.fn(),
+    applyCommand: vi.fn(),
+    previewDraft: vi.fn(),
+    commitDraft: vi.fn(),
+    discardDraft: vi.fn(),
+  }
+  const metadata = {
+    read: vi.fn().mockResolvedValue({ ok: true }),
+    change: vi.fn().mockResolvedValue({ ok: true }),
+    cancel: vi.fn(),
+    dispose: vi.fn(),
+  }
+  const executor = createLocalToolExecutor(
+    {
+      documentId: id(2),
+      revision: 4,
+      host,
+      metadata,
+      readCad: vi.fn(),
+      readInfo: () => null,
+      exportRevisionBound: vi.fn(),
+    },
+    actor,
+  )
+  const listing = localOperationSchema.parse({ tool: "model_parts", arguments: { revision: 4 } })
+  await executor.execute(listing)
+  expect(metadata.read).toHaveBeenCalledWith("parts", listing.arguments)
+  const operation = localOperationSchema.parse({
+    tool: "change_metadata",
+    arguments: {
+      baseRevision: 4,
+      commandId: id(3),
+      change: { kind: "part.rename", partId: id(4), name: "Housing" },
+    },
+  })
+  const controller = new AbortController()
+  await executor.execute(operation, controller.signal)
+  expect(metadata.change).toHaveBeenCalledWith(actor, operation.arguments, controller.signal)
+  expect(host.applyCommand).not.toHaveBeenCalled()
+  controller.abort()
+  await expect(executor.execute(operation, controller.signal)).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "request-cancelled" },
+  })
+  expect(metadata.change).toHaveBeenCalledTimes(1)
+})

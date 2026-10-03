@@ -140,6 +140,27 @@ describe("owned OCCT boolean adapter", () => {
   })
 })
 
+describe("owned Boolean constructor failure", () => {
+  it.each(["fuseShapes", "intersectShapes"] as const)(
+    "releases progress when %s builder construction fails",
+    (operation) => {
+      const progress = createDeletable()
+      const fail = vi.fn(function Constructor() {
+        throw new Error("Boolean builder fixture failure")
+      })
+      const opencascade = {
+        Message_ProgressRange_1: createConstructor(progress),
+        BRepAlgoAPI_Fuse_3: fail,
+        BRepAlgoAPI_Common_3: fail,
+      } as unknown as OpenCascadeInstance
+      const operations = createOcctShapeOperations(vi.fn() as never)
+      const source = { wrapped: {} }
+      expect(() => operations[operation](opencascade, source as never, source as never)).toThrow()
+      expect(progress.delete).toHaveBeenCalledOnce()
+    },
+  )
+})
+
 describe("owned OCCT fillet adapter", () => {
   it("selects target-plane edges and deletes explorer temporaries", () => {
     const edgeType = {}

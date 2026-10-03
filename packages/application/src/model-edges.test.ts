@@ -96,7 +96,7 @@ const validGeometry = {
 
 function response(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 21,
+    protocolVersion: 22,
     requestId: documentId,
     documentId,
     revision: 4,

@@ -1,3 +1,4 @@
+import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import {
   type FeatureRecord,
   readHoleBodyTarget,
@@ -9,8 +10,10 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
+import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import type { ViewerSelection } from "@vibeshape/viewer"
 import { type ReactNode, useMemo, useState } from "react"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
@@ -98,13 +101,19 @@ import {
   type SketchEditorPanelActions,
   type SketchEditorPanelState,
 } from "../features/sketch/sketch-editor-panel"
-import { inspectSketchSupportHealth } from "../features/sketch/sketch-support"
+import {
+  inspectSketchSupportHealth,
+  selectedSketchSupportFromController,
+} from "../features/sketch/sketch-support"
 import {
   type ActiveSketchEditorTool,
   type ActiveSketchTool,
   isActiveSketchEditorTool,
   type SketchDraftChangeMode,
 } from "../features/sketch/sketch-tool"
+import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
+import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
+import { PlacementTaskPanel } from "./placement-task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -114,6 +123,7 @@ type TaskPanelProps = Readonly<{
   controller: DocumentControllerState
   selectedFeatureId?: string | null
   selectedOutputRole?: string | null
+  selectedFace?: ViewerSelection | null
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   featurePreviewStatus: FeaturePreviewState["status"]
   onCloseTool: () => void
@@ -381,6 +391,11 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
     removeProfile: (profile: string) => t("removeProfile", { profile }),
     distance: t("distance"),
     symmetric: t("symmetric"),
+    reversed: t("reversed"),
+    secondDirection: t("secondDirection"),
+    secondDistance: t("secondDistance"),
+    symmetricDescription: t("symmetricDescription"),
+    extentInvalidRange: t("extentInvalidRange"),
     expressionDescription: t("expressionDescription"),
     cancel: t("cancel"),
     invalidExpression: t("invalidExpression"),
@@ -1368,11 +1383,13 @@ function ActiveDatumPlaneTaskPanel({
 
 function EmptyProfileFeatureTaskPanel({
   cancel,
+  children,
   description,
   onCloseTool,
   title,
 }: Readonly<{
   cancel: string
+  children?: ReactNode
   description: string
   onCloseTool: () => void
   title: string
@@ -1386,6 +1403,7 @@ function EmptyProfileFeatureTaskPanel({
       <div className="grid gap-2">
         <h2 className="text-base font-semibold">{title}</h2>
         <p className="text-sm text-muted-foreground">{description}</p>
+        {children}
       </div>
       <Button type="button" size="sm" variant="outline" onClick={onCloseTool}>
         {cancel}
@@ -1394,12 +1412,53 @@ function EmptyProfileFeatureTaskPanel({
   )
 }
 
+function ExtrusionProfileSelectionTaskPanel({
+  activeTool,
+  faceSelection,
+  onCloseTool,
+  onCreateSketch,
+}: Readonly<{
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
+  faceSelection: ExtrusionFaceSelection | null
+  onCloseTool: () => void
+  onCreateSketch: () => void
+}>) {
+  const t = useTranslations("app.shell.taskPanel.extrusion")
+  const hint = extrusionProfileSelectionHint(faceSelection)
+  return (
+    <EmptyProfileFeatureTaskPanel
+      cancel={t("cancel")}
+      description={t(hint)}
+      onCloseTool={onCloseTool}
+      title={t(activeTool.kind === "edit-extrusion" ? "editTitle" : "title")}
+    >
+      {faceSelection?.planar ? (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!faceSelection.canCreateSketch}
+          onClick={onCreateSketch}
+        >
+          {t("selectionCreateSketch")}
+        </Button>
+      ) : null}
+    </EmptyProfileFeatureTaskPanel>
+  )
+}
+
+function extrusionProfileSelectionHint(faceSelection: ExtrusionFaceSelection | null) {
+  if (!faceSelection) return "profileSelectionRequired"
+  return faceSelection.planar ? "selectionPlanarFaceHint" : "selectionFaceHint"
+}
+
 function ActiveExtrusionTaskPanel({
   activeTool,
   distanceRequest,
+  faceSelection,
   featureProfileSelections,
   onCloseTool,
   onCompleteTool,
+  onCreateSketch,
   onProfileRemove,
   onProfilesClear,
   onPreviewChange,
@@ -1408,9 +1467,11 @@ function ActiveExtrusionTaskPanel({
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
   distanceRequest: ExtrusionDistanceRequest | null
+  faceSelection: ExtrusionFaceSelection | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onCloseTool: () => void
   onCompleteTool: () => void
+  onCreateSketch: () => void
   onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
   onProfilesClear?: (() => void) | undefined
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
@@ -1428,11 +1489,11 @@ function ActiveExtrusionTaskPanel({
   )
   if (!mode)
     return (
-      <EmptyProfileFeatureTaskPanel
-        cancel={t("cancel")}
-        description={t("profileSelectionRequired")}
+      <ExtrusionProfileSelectionTaskPanel
+        activeTool={activeTool}
+        faceSelection={faceSelection}
         onCloseTool={onCloseTool}
-        title={t(activeTool.kind === "edit-extrusion" ? "editTitle" : "title")}
+        onCreateSketch={onCreateSketch}
       />
     )
   const options = extrusionOptions(
@@ -1492,8 +1553,14 @@ function ActiveSubtractTaskPanel({
   )
 }
 
+type ExtrusionFaceSelection = Readonly<{ planar: boolean; canCreateSketch: boolean }>
+
 type ActiveTaskPanelProps = Readonly<{
+  authority: DocumentSnapshotV2 | null
+  parts: readonly ResolvedAuthoredPart[]
   documentBusy: boolean
+  extrusionFaceSelection: ExtrusionFaceSelection | null
+  onCreateSketch: () => void
   activeTool: Exclude<ActivePartDesignTool, { kind: "measure" }>
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   featurePreviewStatus: FeaturePreviewState["status"]
@@ -1589,10 +1656,12 @@ function DatumPlaneToolTaskPanel({
 function ExtrusionToolTaskPanel({
   activeTool,
   extrusionDistanceRequest,
+  extrusionFaceSelection,
   featureProfileSelections,
   featurePreviewStatus,
   onCloseTool,
   onCompleteTool,
+  onCreateSketch,
   onFeatureProfileRemove,
   onFeatureProfilesClear,
   onFeaturePreviewChange,
@@ -1603,9 +1672,11 @@ function ExtrusionToolTaskPanel({
     <ActiveExtrusionTaskPanel
       activeTool={activeTool}
       distanceRequest={extrusionDistanceRequest}
+      faceSelection={extrusionFaceSelection}
       featureProfileSelections={featureProfileSelections}
       onCloseTool={onCloseTool}
       onCompleteTool={onCompleteTool}
+      onCreateSketch={onCreateSketch}
       onProfileRemove={onFeatureProfileRemove}
       onProfilesClear={onFeatureProfilesClear}
       onPreviewChange={onFeaturePreviewChange}
@@ -1875,7 +1946,43 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
   )
 }
 
+function PlacementToolTaskPanel(props: ActiveTaskPanelProps) {
+  return (
+    <PlacementTaskPanel
+      {...props}
+      renderDelete={(feature) => (
+        <ActiveFeatureDeleteAction
+          feature={feature}
+          onDeleted={props.onCompleteTool}
+          report={props.report}
+        />
+      )}
+    />
+  )
+}
+
+function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
+  return (
+    <BodyCombinationTaskPanel
+      {...props}
+      renderDelete={(feature) => (
+        <ActiveFeatureDeleteAction
+          feature={feature}
+          onDeleted={props.onCompleteTool}
+          report={props.report}
+        />
+      )}
+    />
+  )
+}
+
 const activeTaskPanelByKind = {
+  "create-compound": CombinationToolTaskPanel,
+  "edit-compound": CombinationToolTaskPanel,
+  "create-union": CombinationToolTaskPanel,
+  "edit-union": CombinationToolTaskPanel,
+  "create-placement": PlacementToolTaskPanel,
+  "edit-placement": PlacementToolTaskPanel,
   "create-hole": HoleToolTaskPanel,
   "edit-hole": HoleToolTaskPanel,
   "create-fillet": EdgeTreatmentToolTaskPanel,
@@ -1917,6 +2024,12 @@ function canExtrudeSelectedSketch(
   )
 }
 
+function selectedExtrusionFace(props: TaskPanelProps): ExtrusionFaceSelection | null {
+  if (props.activeTool?.kind !== "create-extrusion" || !props.selectedFace) return null
+  const planar = selectedSketchSupportFromController(props.controller, props.selectedFace) !== null
+  return { planar, canCreateSketch: planar && canCreateFeature(props.controller) }
+}
+
 function ModelTaskPanel(props: TaskPanelProps) {
   const report = props.controller.report
   if (props.activeTool?.kind === "measure")
@@ -1924,7 +2037,11 @@ function ModelTaskPanel(props: TaskPanelProps) {
   if (props.activeTool && report) {
     return (
       <ActiveTaskPanel
+        authority={currentAuthoredSnapshot(props.controller)}
+        parts={currentAuthoredParts(props.controller)}
         activeTool={props.activeTool}
+        extrusionFaceSelection={selectedExtrusionFace(props)}
+        onCreateSketch={props.onCreateSketch}
         documentBusy={
           props.controller.status !== "ready" || props.controller.saveStatus === "saving"
         }

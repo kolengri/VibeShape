@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane } from "./sketch-helpers"
+import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test.setTimeout(60_000)
 
@@ -50,8 +50,8 @@ test("resizes panels with pointer and keyboard, restores defaults, and retains p
   await expect.poll(() => width(task)).toBeGreaterThan(320)
   await taskSeparator.dblclick()
   await expect.poll(() => width(task)).toBe(320)
-  await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
-  const settings = page.getByRole("dialog", { name: "Workspace layout settings" })
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "Settings" })
   await settings.getByRole("button", { name: "Hide Model tree", exact: true }).click()
   await settings.getByRole("button", { name: "Hide Task panel", exact: true }).click()
   await expect.poll(() => width(tree)).toBe(0)
@@ -59,7 +59,7 @@ test("resizes panels with pointer and keyboard, restores defaults, and retains p
   await page.keyboard.press("Escape")
   await reopenWorkspace(page)
   await expect.poll(() => width(tree)).toBe(0)
-  await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
   await settings.getByRole("button", { name: "Reset layout", exact: true }).click()
   await expect.poll(() => width(tree)).toBe(240)
   await expect.poll(() => width(task)).toBe(320)
@@ -84,8 +84,8 @@ for (const theme of ["light", "dark"] as const) {
       .evaluate((element, theme) => element.classList.toggle("dark", theme === "dark"), theme)
     const canvas = page.locator(".workspace-viewport canvas").first()
     const originalCanvas = await canvas.elementHandle()
-    await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
-    const settings = page.getByRole("dialog", { name: "Workspace layout settings" })
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    const settings = page.getByRole("dialog", { name: "Settings" })
     const opacity = settings.getByRole("slider", {
       name: "Model tree background opacity",
       exact: true,
@@ -118,7 +118,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: test.info().outputPath(`transparent-panels-${theme}.png`) })
     await reopenWorkspace(page)
     await expect(page.locator(".cad-workspace-grid")).toHaveAttribute("data-transparent", "true")
-    await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
     await expect(opacity).toHaveValue("35")
     await page.keyboard.press("Escape")
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
@@ -155,9 +155,27 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await expect(input).toHaveValue("77")
   await expect.poll(() => width(page.locator("#workspace-task"))).toBe(0)
   expect(await form.evaluate((element, original) => element === original, formElement)).toBe(true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const narrowTree = page.getByRole("complementary", { name: "Model tree", exact: true })
+  await expect(narrowTree).toBeHidden()
+  await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(390)
+  await expect.poll(() => width(page.locator(".workspace-panel--task"))).toBe(390)
+  await expect.poll(() => width(form)).toBeGreaterThan(350)
+  await expect(input).toHaveValue("77")
+  await page.getByRole("button", { name: "Show model tree", exact: true }).click()
+  await expect(narrowTree).toBeVisible()
+  await expect.poll(() => width(narrowTree)).toBeGreaterThanOrEqual(240)
+  await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
+  await expect(narrowTree).toBeHidden()
+  expect(await form.evaluate((element, original) => element === original, formElement)).toBe(true)
+  expect(await canvas.evaluate((element, original) => element === original, canvasElement)).toBe(
+    true,
+  )
+  await page.screenshot({ path: test.info().outputPath("compact-full-width-task-390.png") })
   await page.setViewportSize({ width: 512, height: 384 })
-  await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
-  const settings = page.getByRole("dialog", { name: "Workspace layout settings" })
+  await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(512)
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "Settings" })
   await expect(
     settings.getByRole("slider", { name: "Task panel width", exact: true }),
   ).toBeDisabled()
@@ -180,10 +198,11 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await page.setViewportSize({ width: 1024, height: 720 })
   await expect(input).toHaveValue("77")
   await expect.poll(() => width(page.locator("#workspace-task"))).toBe(320)
+  await expect.poll(() => width(page.locator("#workspace-tree"))).toBe(240)
   await expect
     .poll(() => page.locator("body").evaluate((element) => element.scrollWidth))
     .toBe(1024)
-  await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
   await page.getByRole("button", { name: "Hide Task panel", exact: true }).click()
   await page.getByRole("button", { name: "Show Task panel", exact: true }).click()
   await page.keyboard.press("Escape")
@@ -200,8 +219,8 @@ test("keeps transparent panels above sketch gestures and viewport controls insid
     .getByRole("button", { name: "Create sketch", exact: true })
     .click()
   await confirmSketchPlane(page)
-  await page.getByRole("button", { name: "Workspace layout settings", exact: true }).click()
-  const settings = page.getByRole("dialog", { name: "Workspace layout settings" })
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "Settings" })
   await settings
     .getByRole("slider", { name: "Model tree background opacity", exact: true })
     .fill("30")
@@ -231,4 +250,63 @@ test("keeps transparent panels above sketch gestures and viewport controls insid
   ).toBeVisible()
   expect(await sketch.locator("[data-sketch-entity-type]").count()).toBe(entityCount)
   await page.screenshot({ path: test.info().outputPath("transparent-sketch-panels.png") })
+})
+
+test("offers readable independent extrusion depths beside a temporary model tree on a phone", async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await openWorkspace(page)
+  const commands = page.getByRole("toolbar", { name: "Model commands" })
+  await commands.getByRole("button", { name: "Create sketch", exact: true }).click()
+  await confirmSketchPlane(page, "xy")
+  await drawRectangle(page)
+  await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+  await commands.getByRole("button", { name: "Extrude", exact: true }).click()
+  const form = page.getByRole("form", { name: "Extrude profile", exact: true })
+  const firstDepth = form.getByRole("combobox", { name: "Distance", exact: true })
+  await firstDepth.fill("13 mm")
+  await form.getByRole("checkbox", { name: "Second direction", exact: true }).check()
+  const secondDepth = form.getByRole("combobox", { name: "Second distance", exact: true })
+  await secondDepth.fill("7 mm")
+  const originalForm = await form.elementHandle()
+  const canvas = page.locator(".workspace-viewport canvas").first()
+  const originalCanvas = await canvas.elementHandle()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => width(form)).toBeGreaterThan(350)
+  await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(390)
+  const treeDrawer = page.locator(".workspace-panel--tree")
+  await expect(treeDrawer).toHaveAttribute("data-drawer-open", "false")
+  await expect(treeDrawer).toHaveCSS("visibility", "hidden")
+  await expect(treeDrawer).toHaveCSS("opacity", "0")
+  await expect(firstDepth).toHaveValue("13 mm")
+  await expect(secondDepth).toHaveValue("7 mm")
+  await firstDepth.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    animations: "disabled",
+    path: test.info().outputPath("compact-extrusion-first-depth-390.png"),
+  })
+  await secondDepth.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    animations: "disabled",
+    path: test.info().outputPath("compact-extrusion-second-depth-390.png"),
+  })
+  await page.getByRole("button", { name: "Show model tree", exact: true }).click()
+  await expect(treeDrawer).toHaveCSS("opacity", "1")
+  await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
+  await page.screenshot({
+    animations: "disabled",
+    path: test.info().outputPath("compact-model-tree-drawer-390.png"),
+  })
+  await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
+  await expect(treeDrawer).toHaveCSS("opacity", "0")
+  await expect(firstDepth).toHaveValue("13 mm")
+  await expect(secondDepth).toHaveValue("7 mm")
+  expect(await form.evaluate((element, original) => element === original, originalForm)).toBe(true)
+  expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
+    true,
+  )
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect.poll(() => width(page.locator("#workspace-tree"))).toBe(240)
+  await expect.poll(() => width(page.locator("#workspace-task"))).toBe(320)
 })

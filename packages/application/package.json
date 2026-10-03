@@ -20,7 +20,11 @@
     "./sketch-display": "./src/sketch-display.ts",
     "./selected-edge-resolution": "./src/selected-edge-resolution.ts",
     "./model-edges": "./src/model-edges.ts",
-    "./model-body-topology": "./src/model-body-topology.ts"
+    "./model-body-topology": "./src/model-body-topology.ts",
+    "./authority-persistence-adapter": "./src/authority-persistence-adapter.ts",
+    "./authority-persistence-operations": "./src/authority-persistence-operations.ts",
+    "./authority-document-session": "./src/authority-document-session.ts",
+    "./authored-parts": "./src/authored-parts.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

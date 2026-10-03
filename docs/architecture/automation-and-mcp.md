@@ -28,7 +28,10 @@ MCP endpoint by itself. The local adapter now pairs it explicitly and exposes th
 [ADR-0047](../adr/0047-local-mcp-draft-inspection.md), and sketch-point Hole in
 [ADR-0048](../adr/0048-sketch-point-holes.md), and constituent body measurements in
 [ADR-0050](../adr/0050-constituent-body-measurements.md).
-Commit requires the host-owned browser review described below. See
+Commit requires host-owned browser review by default. An explicit, browser-owned grant may auto-apply
+allowlisted valid CAD edits only in the current paired session; see
+[ADR-0052](../adr/0052-session-cad-auto-apply.md). Stop AI revokes that session immediately.
+All geometry, revision, expiry, persistence, and Undo checks remain mandatory. See
 [ADR-0042](../adr/0042-exact-automation-draft-application-path.md) and the exact transport scope in
 [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md).
 
@@ -229,6 +232,11 @@ uses the built-in registry metadata. Apply stays pending through persistence; Di
 owned draft. Expiry, a changed document, or session closure cancels a pending review and retains a
 bounded message that can be dismissed. A request-specific UI identity prevents an old button from
 approving a later review. Only one session can own the confirmation surface at a time.
+
+An idle paired user may explicitly opt in to the session CAD allowlist in ADR-0052. The browser
+then approves qualifying valid drafts through the same review port, with a persistent Auto-apply on
+indicator and Stop AI control. An existing review cannot acquire this grant retroactively. All
+other drafts keep the review surface above; disconnect or project change resets the grant.
 
 Once the ordinary atomic persistence operation has started, cancellation is not a rollback request.
 The editor keeps action controls locked while it completes. Unexpected persistence failures remain

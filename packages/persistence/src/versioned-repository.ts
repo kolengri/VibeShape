@@ -3,7 +3,6 @@ import {
   commandActorsEqual,
   type DocumentEvent,
   type DocumentId,
-  type DocumentSnapshot,
   type DocumentSnapshotV1,
   documentIdSchema,
   documentSnapshotV1Schema,
@@ -17,12 +16,23 @@ import {
   versionedDocumentEventSchema,
 } from "@vibeshape/domain"
 import { z } from "zod"
+import { commitDocumentAuthority, commitDocumentAuthorityDraft } from "./authority-commit"
+import { closeDocumentAuthority } from "./authority-lifecycle"
+import { exportDocumentAuthority, publishPortableAuthority } from "./authority-portable"
+import { recoverDocumentAuthority } from "./authority-recovery"
+import type {
+  EventAuthorityRecord,
+  RecoveryAuthorityRecord,
+  SnapshotAuthorityRecord,
+} from "./authority-schemas"
+import { portableProjectV3CopySchema, portableProjectV3ImportSchema } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
   classifyPersistenceError,
   createPersistenceDiagnostic,
   persistenceInvariantError,
 } from "./diagnostics"
+import { importedLegacyProject, storedLegacyPortableRecords } from "./portable-legacy-records"
 import {
   authoritativeProjectCatalog,
   requireAuthoritativeProject,
@@ -40,9 +50,7 @@ import {
   type ProjectThumbnailWriteReport,
 } from "./repository"
 import {
-  type EventRecord,
   type EventRecordV1,
-  eventRecordSchema,
   eventRecordV1Schema,
   type LocalProjectSummary,
   type ProjectRecord,
@@ -59,14 +67,12 @@ import {
   projectThumbnailCopyInputSchema,
   projectThumbnailRecordSchema,
   projectThumbnailWriteInputSchema,
-  type RecoveryRecordV1,
   recoveryRecordV1Schema,
-  type SnapshotRecordV1,
-  snapshotRecordSchema,
   snapshotRecordV1Schema,
   writerLeaseClaimSchema,
 } from "./schemas"
 import { parseStoredRecordPayload, serializeStoredRecord } from "./stored-record-codec"
+import { versionedSemanticWriteTransaction } from "./versioned-storage-transaction"
 import { hasValidWriterLease, requireWriterLease } from "./writer-lease-authority"
 
 const versionedCleanCloseInputSchema = z
@@ -246,7 +252,7 @@ function recoveryForCommit(
     storedAt: string
     snapshot: DocumentSnapshotV1
   }>,
-  current: RecoveryRecordV1 | undefined,
+  current: RecoveryAuthorityRecord | undefined,
   project: ProjectRecordV1,
 ) {
   return recoveryRecordV1Schema.parse({
@@ -306,7 +312,7 @@ function requireCurrentRevision(current: ProjectRecordV1 | undefined, baseRevisi
     )
 }
 
-function parseCurrentProject(record: ProjectRecordV1 | undefined) {
+function parseCurrentProject(record: unknown) {
   if (!record) return undefined
   const project = projectRecordV1Schema.safeParse(record)
   if (!project.success)
@@ -322,7 +328,7 @@ function requireNewDocument(
     throw persistenceInvariantError("document-already-exists", "The document already exists.")
 }
 
-async function validStoredSnapshot(record: SnapshotRecordV1) {
+async function validStoredSnapshot(record: SnapshotAuthorityRecord) {
   const parsed = snapshotRecordV1Schema.safeParse(record)
   if (!parsed.success) return null
   const snapshot = await parseStoredRecordPayload(parsed.data, documentSnapshotV1Schema)
@@ -342,7 +348,7 @@ async function storedSnapshotAt(
   return record ? validStoredSnapshot(record) : null
 }
 
-async function validStoredEvent(record: EventRecordV1) {
+async function validStoredEvent(record: EventAuthorityRecord) {
   const parsed = eventRecordV1Schema.safeParse(record)
   if (!parsed.success) return null
   const event = await parseStoredRecordPayload(parsed.data, versionedDocumentEventSchema)
@@ -418,7 +424,7 @@ async function findRestoreReplaySeed(
   database: VibeShapeDatabase,
   documentId: DocumentId,
   targetRevision: number,
-  records: readonly EventRecordV1[],
+  records: readonly EventAuthorityRecord[],
 ): Promise<{ ok: true; seed: DocumentSnapshotV1 | null } | { ok: false }> {
   const first = records[0] ? await validStoredEvent(records[0]) : null
   if (first?.type === "org.vibeshape.document.created" && first.revision === 1)
@@ -434,7 +440,7 @@ async function findRestoreReplaySeed(
   return { ok: false }
 }
 
-async function latestValidSnapshot(records: readonly SnapshotRecordV1[]) {
+async function latestValidSnapshot(records: readonly SnapshotAuthorityRecord[]) {
   const corruptRecords: string[] = []
   for (const record of records) {
     const snapshot = await validStoredSnapshot(record)
@@ -445,7 +451,7 @@ async function latestValidSnapshot(records: readonly SnapshotRecordV1[]) {
 }
 
 async function readContiguousEvents(
-  records: readonly EventRecordV1[],
+  records: readonly EventAuthorityRecord[],
   baseRevision: number,
   corruptRecords: string[],
 ) {
@@ -475,7 +481,7 @@ async function resolveHistoricalEventTarget(
 
 async function replayStoredSuffix(
   snapshot: DocumentSnapshotV1 | null,
-  records: readonly EventRecordV1[],
+  records: readonly EventAuthorityRecord[],
   corruptRecords: string[],
   headRevision: number,
   resolveRestoreTarget: StoredRestoreTargetResolver,
@@ -503,24 +509,6 @@ async function replayStoredSuffix(
 function recoveryStatus(lostRevisionCount: number, markerPresent: boolean) {
   if (lostRevisionCount > 0) return "recovered-with-loss" as const
   return markerPresent ? ("recovered" as const) : ("clean" as const)
-}
-
-function versionedSemanticWriteTransaction(
-  database: VibeShapeDatabase,
-  operation: () => Promise<void>,
-) {
-  return database.transaction(
-    "rw",
-    [
-      database.projects,
-      database.projectsV1,
-      database.eventsV1,
-      database.snapshotsV1,
-      database.recoveryV1,
-      database.leases,
-    ],
-    operation,
-  )
 }
 
 async function requireStoredVersionedProject(database: VibeShapeDatabase, documentId: DocumentId) {
@@ -632,36 +620,6 @@ async function exactVersionedEvents(
   return events
 }
 
-async function storedLegacyPortableRecords(
-  events: readonly DocumentEvent[],
-  snapshot: DocumentSnapshot,
-  storedAt: string,
-) {
-  const storedEvents: EventRecord[] = []
-  for (const event of events) {
-    const serialized = await serializeStoredRecord(event)
-    storedEvents.push(
-      eventRecordSchema.parse({
-        schemaVersion: 0,
-        documentId: event.documentId,
-        revision: event.revision,
-        commandId: event.commandId,
-        storedAt,
-        ...serialized,
-      }),
-    )
-  }
-  const serialized = await serializeStoredRecord(snapshot)
-  const storedSnapshot = snapshotRecordSchema.parse({
-    schemaVersion: 0,
-    documentId: snapshot.id,
-    revision: snapshot.revision,
-    storedAt,
-    ...serialized,
-  })
-  return { events: storedEvents, snapshot: storedSnapshot }
-}
-
 async function storedVersionedPortableRecords(project: PortableProjectV2, storedAt: string) {
   const events = await Promise.all(
     project.versionedEvents.map((event) => storedEvent(event, storedAt)),
@@ -696,24 +654,6 @@ function importedVersionedProject(
     migrationProvenance,
     migrationDiagnostic: project.migrationDiagnostic,
     unavailableRecords: project.unavailableRecords,
-  })
-}
-
-function importedLegacyProject(
-  snapshot: DocumentSnapshot,
-  storedAt: string,
-  externalBackupAt: string | null,
-) {
-  return projectRecordSchema.parse({
-    schemaVersion: 0,
-    documentId: snapshot.id,
-    name: snapshot.name,
-    headRevision: snapshot.revision,
-    latestSnapshotRevision: snapshot.revision,
-    cleanCloseRevision: snapshot.revision,
-    createdAt: snapshot.createdAt,
-    updatedAt: storedAt,
-    lastExternalBackupAt: externalBackupAt,
   })
 }
 
@@ -944,6 +884,71 @@ async function deleteProjectSemanticRecords(database: VibeShapeDatabase, documen
 export class VersionedLocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
 
+  commitAuthority(input: unknown) {
+    return commitDocumentAuthority(this.database, input)
+  }
+  commitAuthorityDraft(input: unknown) {
+    return commitDocumentAuthorityDraft(this.database, input)
+  }
+  recoverAuthority(input: unknown) {
+    return recoverDocumentAuthority(this.database, input)
+  }
+  closeAuthorityCleanly(input: unknown) {
+    return closeDocumentAuthority(this.database, input)
+  }
+  exportPortableProjectV3(input: unknown) {
+    return exportDocumentAuthority(this.database, input)
+  }
+
+  async importPortableProjectV3(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<PortableProjectImportReport>> {
+    const input = portableProjectV3ImportSchema.safeParse(inputValue)
+    if (!input.success)
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The portable V3 import is invalid.",
+        ),
+      }
+    try {
+      return {
+        ok: true,
+        value: await publishPortableAuthority(
+          this.database,
+          input.data,
+          input.data.importedAt,
+          input.data.exportedAt,
+        ),
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async copyPortableProjectV3(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<PortableProjectImportReport>> {
+    const input = portableProjectV3CopySchema.safeParse(inputValue)
+    if (!input.success)
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The portable V3 copy is invalid.",
+        ),
+      }
+    try {
+      return {
+        ok: true,
+        value: await publishPortableAuthority(this.database, input.data, input.data.copiedAt, null),
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
   async listProjects(): Promise<PersistenceResult<readonly LocalProjectSummary[]>> {
     try {
       const projects = await authoritativeProjectCatalog(this.database)
@@ -953,7 +958,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed through the workspace package export.
   async promote(inputValue: unknown): Promise<PersistenceResult<PromotionReport>> {
     const input = persistencePromotionInputSchema.safeParse(inputValue)
     if (!input.success)
@@ -1021,7 +1025,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed through the workspace package export.
   async commit(inputValue: unknown): Promise<PersistenceResult<CommitReport>> {
     const input = persistenceV1CommitInputSchema.safeParse(inputValue)
     if (!input.success)
@@ -1184,6 +1187,7 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
+  // fallow-ignore-next-line unused-class-member -- Invoked through the dynamic browser import in document-history-recovery.spec.ts.
   async importPortableProjectV2(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {

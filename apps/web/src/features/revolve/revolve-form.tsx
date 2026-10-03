@@ -24,6 +24,7 @@ import {
 import { Button } from "@vibeshape/ui/components/button"
 import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -594,21 +595,22 @@ function RevolveOperationField({ controller }: { controller: RevolveFormControll
   return (
     <form.Field name="operation">
       {(field) => (
-        <NativeSelectField
+        <SelectField
           name={field.name}
           value={field.state.value}
           label={controller.copy.operation}
           disabled={controller.disabled}
-          onChange={(event) => {
+          onBlur={field.handleBlur}
+          onValueChange={(value) => {
             controller.clearSubmissionErrors()
-            field.handleChange(event.currentTarget.value)
+            field.handleChange(value)
           }}
         >
-          <option value="new">{controller.copy.operationNew}</option>
-          <option value="add">{controller.copy.operationAdd}</option>
-          <option value="remove">{controller.copy.operationRemove}</option>
-          <option value="intersect">{controller.copy.operationIntersect}</option>
-        </NativeSelectField>
+          <SelectOption value="new">{controller.copy.operationNew}</SelectOption>
+          <SelectOption value="add">{controller.copy.operationAdd}</SelectOption>
+          <SelectOption value="remove">{controller.copy.operationRemove}</SelectOption>
+          <SelectOption value="intersect">{controller.copy.operationIntersect}</SelectOption>
+        </SelectField>
       )}
     </form.Field>
   )

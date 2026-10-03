@@ -12,11 +12,34 @@ const profile = {
   holeBoundaryEntityIds: [],
 }
 
+function profileFeatureParameters(
+  tool: string,
+  operation: string,
+  multi: boolean,
+  version: number,
+) {
+  const extrusion = tool.includes("extrude")
+  return {
+    ...(version === 5 && extrusion
+      ? { reversed: true, secondDistance: createLengthQuantity(3) }
+      : {}),
+    ...(multi ? { profiles: { schemaVersion: 0, profiles: [profile] } } : { profile }),
+    operation,
+    ...(extrusion
+      ? { distance: createLengthQuantity(30), symmetric: false }
+      : { angle: createAngleQuantity(180, "deg"), axis: { kind: "origin-axis", axis: "y" } }),
+  }
+}
+
 describe("local CAD commands", () => {
   it.each([
     ["create_extrude", "new", false, 2],
     ["update_extrude", "new", true, 3],
     ["create_extrude", "remove", true, 4],
+    ["create_extrude", "new", true, 5],
+    ["update_extrude", "add", true, 5],
+    ["create_extrude", "remove", true, 5],
+    ["create_extrude", "intersect", true, 5],
     ["create_revolve", "new", false, 4],
     ["update_revolve", "new", true, 5],
     ["create_revolve", "intersect", true, 6],
@@ -47,13 +70,7 @@ describe("local CAD commands", () => {
         },
         actor,
       )
-      const parameters = {
-        ...(multi ? { profiles: { schemaVersion: 0, profiles: [profile] } } : { profile }),
-        operation,
-        ...(tool.includes("extrude")
-          ? { distance: createLengthQuantity(30), symmetric: false }
-          : { angle: createAngleQuantity(180, "deg"), axis: { kind: "origin-axis", axis: "y" } }),
-      }
+      const parameters = profileFeatureParameters(tool, operation, multi, version)
       await executor.execute(
         localOperationSchema.parse({
           tool,

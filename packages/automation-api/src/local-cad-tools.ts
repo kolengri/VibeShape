@@ -12,6 +12,7 @@ import {
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV3Schema,
   extrusionFeatureParametersV4Schema,
+  extrusionFeatureParametersV5Schema,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
@@ -41,6 +42,7 @@ const extrude = z
       extrusionFeatureParametersSchema,
       extrusionFeatureParametersV3Schema,
       extrusionFeatureParametersV4Schema,
+      extrusionFeatureParametersV5Schema,
     ]),
   })
   .strict()

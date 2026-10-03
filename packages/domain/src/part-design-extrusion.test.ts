@@ -10,8 +10,10 @@ import {
 import {
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV4Schema,
+  extrusionFeatureParametersV5Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
@@ -60,6 +62,150 @@ function extrusion(distance = createLengthQuantity(12, "mm", "#depth")) {
 }
 
 describe("selector-backed extrusion feature", () => {
+  const extentFeature = (parameters = {}) =>
+    featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV5.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile] },
+        distance: createLengthQuantity(10),
+        symmetric: false,
+        reversed: false,
+        secondDistance: createLengthQuantity(3),
+        operation: "new",
+        ...parameters,
+      },
+    })
+
+  it("registers independent depths and preserves legacy total-span intent", () => {
+    const feature = extentFeature()
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readExtrusionFeatureParameters(feature)).toMatchObject({
+      profile,
+      reversed: false,
+      secondDistance: { value: 3 },
+    })
+    const legacy = { ...extrusion(), parameters: { ...extrusion().parameters, symmetric: true } }
+    expect(readExtrusionFeatureParameters(legacy)).toMatchObject({
+      distance: { value: 12 },
+      symmetric: true,
+      reversed: false,
+      secondDistance: null,
+    })
+    expect(legacy.parameters).not.toHaveProperty("secondDistance")
+    expect(extrusionFeatureParametersSchema.safeParse(feature.parameters).success).toBe(false)
+  })
+
+  it("canonicalizes both literal depth units in authored content", () => {
+    const millimeters = registry().validateFeature(extentFeature())
+    const centimeters = registry().validateFeature(
+      extentFeature({
+        distance: createLengthQuantity(1, "cm"),
+        secondDistance: createLengthQuantity(0.3, "cm"),
+      }),
+    )
+    expect(millimeters.ok && centimeters.ok).toBe(true)
+    if (!millimeters.ok || !centimeters.ok) throw new Error("Expected valid extent features.")
+    expect(centimeters.contentParameters).toEqual(millimeters.contentParameters)
+    expect(millimeters.contentParameters).toMatchObject({
+      distance: 10,
+      secondDistance: 3,
+      reversed: false,
+    })
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite authored depths %s",
+    (value) => {
+      expect(
+        extrusionFeatureParametersV5Schema.safeParse({
+          ...extentFeature().parameters,
+          secondDistance: { ...createLengthQuantity(3), value },
+        }).success,
+      ).toBe(false)
+    },
+  )
+
+  it.each([
+    { distance: createLengthQuantity(0) },
+    { distance: createLengthQuantity(0.0005) },
+    { secondDistance: createLengthQuantity(-1) },
+    { secondDistance: createLengthQuantity(0) },
+    { symmetric: true },
+    { distance: createLengthQuantity(99_999), secondDistance: createLengthQuantity(2) },
+    { offset: createLengthQuantity(1) },
+    { reversed: "true" },
+    { secondDistance: undefined },
+  ])("rejects invalid authored extrusion extents %j", (parameters) => {
+    expect(
+      extrusionFeatureParametersV5Schema.safeParse({ ...extentFeature().parameters, ...parameters })
+        .success,
+    ).toBe(false)
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "requires an explicit target for v5 %s",
+    (operation) => {
+      const feature = extentFeature({ operation })
+      expect(registry().validateFeature(feature)).toMatchObject({ ok: false })
+      expect(
+        registry().validateFeature({
+          ...feature,
+          dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3302"],
+        }),
+      ).toMatchObject({ ok: true })
+    },
+  )
+
+  it("resolves both expressions in canonical millimeters and rejects total overflow after rebuild", () => {
+    const feature = extentFeature({
+      distance: createLengthQuantity(1, "cm", "#front"),
+      secondDistance: createLengthQuantity(0.3, "cm", "#back"),
+    })
+    const variables = (front: string, back: string) => {
+      const result = evaluateVariableDefinitions([
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+          name: "front",
+          expression: front,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ad",
+          name: "back",
+          expression: back,
+        },
+      ])
+      if (!result.ok) throw new Error(result.diagnostic.message)
+      return result.valuesByName
+    }
+    expect(registry().resolveFeatureParameters(feature, variables("1 in", "3 mm"))).toMatchObject({
+      ok: true,
+      feature: {
+        parameters: {
+          distance: { value: 25.4, source: { expression: "#front" } },
+          secondDistance: { value: 3, source: { expression: "#back" } },
+        },
+      },
+    })
+    expect(
+      registry().resolveFeatureParameters(feature, variables("99999 mm", "2 mm")),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { reason: "invalid-range" },
+    })
+    expect(registry().resolveFeatureParameters(feature, variables("10 mm", "0 mm"))).toMatchObject({
+      ok: false,
+    })
+    expect(registry().resolveFeatureParameters(feature, variables("10 mm", "3 deg"))).toMatchObject(
+      {
+        ok: false,
+        diagnostic: { issues: [{ path: "parameters.secondDistance" }] },
+      },
+    )
+  })
+
   it("persists only stable profile intent and a variable-capable distance", () => {
     expect(extrusionFeatureParametersSchema.parse(extrusion().parameters)).toEqual(
       extrusion().parameters,

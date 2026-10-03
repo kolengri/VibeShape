@@ -6,7 +6,6 @@ export type ActiveSketchEditorTool =
   | Readonly<{ kind: "edit-sketch"; sketchId: SketchId }>
 
 export type SketchSupportReplacementReturn = Readonly<{
-  cameraMode: "normal" | "orbit"
   showFinalContext: boolean
   tool: ActiveSketchEditorTool
 }>

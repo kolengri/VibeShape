@@ -10,6 +10,7 @@ import {
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -22,7 +23,9 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "./part-design"
+import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
+import { placementFeatureType } from "./part-design-placement"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
@@ -35,6 +38,9 @@ export type FirstPartySemanticInputProjection =
 const emptySemanticInputTypeKeys = new Set(
   [
     boxFeatureType,
+    placementFeatureType,
+    compoundFeatureType,
+    unionFeatureType,
     cylinderFeatureType,
     booleanFeatureType,
     datumPlaneFeatureType,
@@ -50,6 +56,7 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(legacyExtrusionFeatureType.type),
   featureTypeKey(extrusionFeatureTypeV3.type),
   featureTypeKey(extrusionFeatureTypeV4.type),
+  featureTypeKey(extrusionFeatureTypeV5.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),

@@ -38,6 +38,7 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
+import { exportBodyName, selectExportBodies } from "./export-bodies"
 import {
   type ExternalModelMaterializationCache,
   inspectExternalModelReferenceHealth,
@@ -178,6 +179,7 @@ async function exportThreeMfDocument(
   engine: GeometryKernelEngine,
   document: RebuildDocumentSnapshot,
   features: readonly FeatureEvaluationDependency[],
+  names: ReadonlyMap<string, string>,
   settings?: PrintPreparationSettings,
 ) {
   const result = await engine.exportPrintMeshes({ documentId: document.id, features })
@@ -193,7 +195,7 @@ async function exportThreeMfDocument(
   }
   const labels = new Map(document.features.map(({ id, label }) => [id, label]))
   const meshes = result.meshes.map((mesh, index) => ({
-    name: labels.get(mesh.featureId) ?? `Body ${index + 1}`,
+    name: exportBodyName(mesh, names) ?? labels.get(mesh.featureId) ?? `Body ${index + 1}`,
     vertices: [...mesh.vertices],
     triangles: [...mesh.triangles],
   }))
@@ -201,7 +203,7 @@ async function exportThreeMfDocument(
   const exported = writeThreeMfMeshes({
     title: document.name,
     meshes: printPreparation?.meshes ?? meshes,
-    ...(printPreparation ? { assembly: true } : {}),
+    assembly: meshes.length > 1 || Boolean(printPreparation),
   })
   return {
     file: exported.bytes,
@@ -334,7 +336,7 @@ export class DocumentWorkerRuntime {
     }
 
     try {
-      const features = terminalExportFeatures(state)
+      const { features, names } = selectExportBodies(terminalExportFeatures(state), request.bodies)
       if (features.length === 0) {
         this.#postFailure(
           request,
@@ -347,7 +349,13 @@ export class DocumentWorkerRuntime {
 
       const exported =
         request.format === "3mf"
-          ? await exportThreeMfDocument(this.engine, document, features, request.printPreparation)
+          ? await exportThreeMfDocument(
+              this.engine,
+              document,
+              features,
+              names,
+              request.printPreparation,
+            )
           : await this.engine.exportDocument({
               documentId: request.documentId,
               features,

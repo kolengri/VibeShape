@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useState } from "react"
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react"
 import { useStore } from "zustand"
 import {
   createEditorSessionStore,
@@ -6,10 +6,32 @@ import {
   type EditorSessionStoreApi,
 } from "./editor-session-store"
 
+import { loadSketchVisibility, saveSketchVisibility } from "./sketch-visibility"
+
+function browserStorage() {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return null
+  }
+}
+
 const EditorSessionContext = createContext<EditorSessionStoreApi | null>(null)
 
-export function EditorSessionProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [store] = useState(() => createEditorSessionStore())
+export function EditorSessionProvider({
+  children,
+  documentId,
+}: Readonly<{ children: ReactNode; documentId?: string | undefined }>) {
+  const [store] = useState(() =>
+    createEditorSessionStore(documentId ? loadSketchVisibility(browserStorage(), documentId) : {}),
+  )
+  useEffect(() => {
+    if (!documentId) return
+    return store.subscribe((state, previous) => {
+      if (state.sketchVisibilityOverrides !== previous.sketchVisibilityOverrides)
+        saveSketchVisibility(browserStorage(), documentId, state.sketchVisibilityOverrides)
+    })
+  }, [store, documentId])
   return <EditorSessionContext.Provider value={store}>{children}</EditorSessionContext.Provider>
 }
 

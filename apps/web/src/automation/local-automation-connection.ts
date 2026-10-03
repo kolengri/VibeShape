@@ -16,6 +16,8 @@ type Handle = Extract<ReturnType<typeof createActiveDocumentAutomationSession>, 
 type Snapshot = Readonly<{
   available: boolean
   connected: boolean
+  autoApply: boolean
+  busy: boolean
   client: LocalConnection["client"] | null
   error: boolean
 }>
@@ -30,7 +32,14 @@ type Pair = {
 const acknowledgement = z.object({ ok: z.literal(true) }).strict()
 
 export function createLocalAutomationConnection() {
-  let snapshot: Snapshot = { available: false, connected: false, client: null, error: false }
+  let snapshot: Snapshot = {
+    available: false,
+    connected: false,
+    autoApply: false,
+    busy: false,
+    client: null,
+    error: false,
+  }
   let pair: Pair | null = null
   let generation = 0
   let enabling = false
@@ -52,7 +61,8 @@ export function createLocalAutomationConnection() {
     generation += 1
     const current = pair
     if (current) closeLocal(current)
-    if (snapshot.connected) publish({ ...snapshot, connected: false })
+    if (snapshot.connected)
+      publish({ ...snapshot, connected: false, autoApply: false, busy: false })
     if (current) await revokeCredential(current.credential)
   }
   async function fail(current: Pair) {
@@ -80,6 +90,7 @@ export function createLocalAutomationConnection() {
     }
     const controller = new AbortController()
     current.active = { work, controller }
+    publish({ ...snapshot, busy: true })
     let result: unknown
     try {
       result = await current.executor.execute(work.operation, controller.signal)
@@ -88,6 +99,9 @@ export function createLocalAutomationConnection() {
       result = localFailure("automation-failed", "The local automation request failed.", true)
     }
     if (pair !== current || controller.signal.aborted) return
+    await sendOperationResult(current, work, result)
+  }
+  async function sendOperationResult(current: Pair, work: LocalWork, result: unknown) {
     try {
       const response = await localAutomationRequest(
         "/result",
@@ -105,13 +119,17 @@ export function createLocalAutomationConnection() {
       await fail(current)
     } finally {
       current.active = null
+      if (pair === current) publish({ ...snapshot, busy: false })
     }
   }
   function progress(current: Pair) {
     const active = current.active
     if (!active) return null
     const review =
-      active.work.operation.tool === "commit_draft" ? automationReviews.getSnapshot() : null
+      active.work.operation.tool === "commit_draft" ||
+      active.work.operation.tool === "change_metadata"
+        ? automationReviews.getSnapshot()
+        : null
     const stage =
       review?.status === "applying"
         ? "applying"
@@ -181,7 +199,14 @@ export function createLocalAutomationConnection() {
       timer: null,
     }
     pair = current
-    publish({ available: true, connected: true, client: credential.client, error: false })
+    publish({
+      available: true,
+      connected: true,
+      autoApply: false,
+      busy: false,
+      client: credential.client,
+      error: false,
+    })
     void poll(current)
     return true
   }
@@ -204,6 +229,18 @@ export function createLocalAutomationConnection() {
   const onPageHide = () => void disable()
   return {
     enable,
+    enableAutoApply() {
+      const current = pair
+      if (
+        !current ||
+        current.active ||
+        !current.handle.readInfo() ||
+        !current.handle.enableAutoApply(current.credential.actor)
+      )
+        return false
+      publish({ ...snapshot, autoApply: true })
+      return true
+    },
     disable,
     status,
     start() {

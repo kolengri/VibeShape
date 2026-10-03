@@ -1,3 +1,5 @@
+import { historyItemRefSchema } from "@vibeshape/domain/document-node"
+import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-command-schemas"
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react"
@@ -145,4 +147,40 @@ describe("AutomationReviewPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(dismiss).toHaveBeenCalledWith("review-1")
   })
+})
+
+it("shows the exact folder range and feature-preserving removal in manual review", () => {
+  const proposal = review()
+  const input = {
+    ...proposal.input,
+    commands: [],
+    metadata: {
+      change: documentV2MetadataChangeSchema.parse({
+        kind: "folder.remove",
+        folderId: "0195b5ac-b250-7a2c-8c33-000000000009",
+      }),
+      targetName: "Housing operations",
+      range: {
+        first: historyItemRefSchema.parse({
+          kind: "feature",
+          id: "0195b5ac-b250-7a2c-8c33-000000000007",
+        }),
+        last: historyItemRefSchema.parse({
+          kind: "feature",
+          id: "0195b5ac-b250-7a2c-8c33-000000000008",
+        }),
+        firstLabel: "Box",
+        lastLabel: "Fillet",
+        count: 2,
+      },
+    },
+  }
+  renderPanel({ ...proposal, input })
+  expect(screen.getByText("Remove History folder")).toBeTruthy()
+  expect(screen.getByText("Target: Housing operations")).toBeTruthy()
+  expect(screen.getByText("Range: Box to Fillet (2 History items)")).toBeTruthy()
+  expect(
+    screen.getByText("Ungroup these History items. All features and geometry are preserved."),
+  ).toBeTruthy()
+  expect(screen.getByRole("button", { name: /^Apply$/ })).toBeTruthy()
 })

@@ -8,7 +8,12 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
 } from "./part-design"
+import {
+  readCompoundFeatureParameters,
+  readUnionFeatureParameters,
+} from "./part-design-body-combination"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
+import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readDatumPlaneFeatureParameters } from "./reference-geometry"
 
 export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
@@ -41,7 +46,11 @@ export function featureBodyDependencyIds(feature: FeatureRecord): readonly Featu
 export function featureBodyDependencies(
   feature: FeatureRecord,
 ): readonly { featureId: FeatureId; outputRole?: string }[] {
-  const target = readHoleBodyTarget(feature)
+  const compound = readCompoundFeatureParameters(feature)
+  if (compound) return compound.slots.map(({ targetBody }) => targetBody)
+  const union = readUnionFeatureParameters(feature)
+  if (union) return union.bodies
+  const target = readHoleBodyTarget(feature) ?? readPlacementFeatureParameters(feature)?.targetBody
   if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
 }

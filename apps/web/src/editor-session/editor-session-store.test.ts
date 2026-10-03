@@ -1,6 +1,7 @@
 import {
   createEmptySketch,
   featureIdSchema,
+  partIdSchema,
   type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -61,6 +62,21 @@ function selectedFeatureFaceSupport() {
 }
 
 describe("editor session store", () => {
+  it("keeps authored part identity distinct from topology and clears it on a new selection", () => {
+    const store = createEditorSessionStore()
+    const partId = partIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const actions = store.getState().actions
+    actions.setSelectedBody({ featureId })
+    actions.setSelectedPart(partId)
+    expect(store.getState().selectedPartId).toBe(partId)
+    expect(store.getState().selectedBody).toBeNull()
+    actions.setSelection(null)
+    expect(store.getState().selectedPartId).toBeNull()
+    actions.setSelectedPart(partId)
+    actions.startPartDesignTool({ kind: "create-box" })
+    expect(store.getState().selectedPartId).toBeNull()
+  })
+
   it("keeps graphical primitive placement transient and scoped to the active tool", () => {
     const store = createEditorSessionStore()
 
@@ -519,7 +535,6 @@ describe("editor session store", () => {
         activeSketchTool: {
           kind: "select-sketch-plane",
           returnTo: {
-            cameraMode: "normal",
             showFinalContext: false,
             tool: { kind: "edit-sketch", sketchId },
           },
@@ -568,12 +583,11 @@ describe("editor session store", () => {
     store.getState().actions.beginSketchSupportReplacement()
 
     expect(store.getState().sketch).toMatchObject({
-      cameraMode: "normal",
+      cameraMode: "orbit",
       showFinalContext: false,
       activeSketchTool: {
         kind: "select-sketch-plane",
         returnTo: {
-          cameraMode: "orbit",
           showFinalContext: true,
           tool: { kind: "edit-sketch", sketchId },
         },
@@ -592,14 +606,14 @@ describe("editor session store", () => {
     })
   })
 
-  it("keeps sketch authoring state intact while camera mode changes and resets on close", () => {
+  it("keeps sketch authoring state intact while explicit camera commands change presentation", () => {
     const store = createEditorSessionStore()
     const initial = createSketch("Initial")
     const changed = createSketch("Changed")
     const profile = createProfile()
 
     store.getState().actions.setSketchCameraMode("orbit")
-    expect(store.getState().sketch.cameraMode).toBe("normal")
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
 
     store.getState().actions.beginSketchEdit(initial)
     store.getState().actions.setSketchDraft(changed)
@@ -623,9 +637,53 @@ describe("editor session store", () => {
     store.getState().actions.closeActiveTool()
     expect(store.getState().sketch).toMatchObject({
       activeSketchTool: null,
-      cameraMode: "normal",
+      cameraMode: "orbit",
       draft: null,
     })
+  })
+
+  it("starts each sketch session in the current view after an explicit normal command", () => {
+    const store = createEditorSessionStore()
+    const first = createSketch("First")
+    const second = { ...createSketch("Second"), plane: "xz" as const }
+    const { actions } = store.getState()
+
+    actions.beginSketchCreate(first)
+    actions.selectSketchPlane("xy")
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+    actions.setSketchCameraMode("normal")
+    actions.saveSketch(first)
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+
+    actions.beginSketchEdit(second)
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+    actions.setSketchCameraMode("normal")
+    actions.closeActiveTool()
+    actions.beginSketchEdit(first)
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+
+    actions.setSketchCameraMode("normal")
+    actions.beginSketchSupportReplacement()
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+    actions.closeActiveTool()
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+  })
+
+  it("keeps the current sketch view independent of undo and redo snapshots", () => {
+    const store = createEditorSessionStore()
+    const first = createSketch("First")
+    const second = createSketch("Second")
+    const { actions } = store.getState()
+    actions.beginSketchEdit(first)
+    actions.setSketchDraft(second)
+    actions.setSketchCameraMode("normal")
+    actions.undoSketchDraft()
+    expect(store.getState().sketch.draft).toBe(first)
+    expect(store.getState().sketch.cameraMode).toBe("normal")
+    actions.setSketchCameraMode("orbit")
+    actions.redoSketchDraft()
+    expect(store.getState().sketch.draft).toBe(second)
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
   })
 
   it("opens the graphical 3D face picker when planar-face intersection starts", () => {

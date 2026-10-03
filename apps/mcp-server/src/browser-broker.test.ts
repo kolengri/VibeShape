@@ -732,3 +732,111 @@ describe("browser automation broker", () => {
     })
   })
 })
+
+it("rejects metadata results from another document, revision, or requested page", async () => {
+  const broker = makeBroker({ origin })
+  const { token } = await connect(broker)
+  const operation = localOperationSchema.parse({
+    tool: "model_parts",
+    arguments: { revision: 4, cursor: null, limit: 1 },
+  })
+  const pending = broker.invoke(operation)
+  const polled = await broker.handle(
+    request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+  )
+  const body = (await polled.json()) as { work: { requestId: string } }
+  const value = { documentId: document.id, revision: 4, total: 0, nextCursor: null, parts: [] }
+  for (const wrong of [
+    { ...value, documentId: "0195b5ac-b220-7a2c-8c33-000000000099" },
+    { ...value, revision: 5 },
+    { ...value, total: 3, nextCursor: 2 },
+  ]) {
+    const rejected = await broker.handle(
+      request(
+        "result",
+        {
+          protocolVersion: 1,
+          requestId: body.work.requestId,
+          tool: "model_parts",
+          result: { ok: true, value: wrong },
+        },
+        token,
+      ),
+    )
+    expect(rejected.status).toBe(400)
+  }
+  expect(
+    (
+      await broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: body.work.requestId,
+            tool: "model_parts",
+            result: { ok: true, value },
+          },
+          token,
+        ),
+      )
+    ).status,
+  ).toBe(200)
+  await expect(pending).resolves.toEqual({ ok: true, value })
+})
+
+it("requires a metadata commit result to preserve exact command identity, revision and change", async () => {
+  const broker = makeBroker({ origin })
+  const { token } = await connect(broker)
+  const commandId = "0195b5ac-b220-7a2c-8c33-000000000091"
+  const change = {
+    kind: "part.rename" as const,
+    partId: "0195b5ac-b220-7a2c-8c33-000000000092",
+    name: "Housing",
+  }
+  const operation = localOperationSchema.parse({
+    tool: "change_metadata",
+    arguments: { baseRevision: 4, commandId, change },
+  })
+  const pending = broker.invoke(operation)
+  const polled = await broker.handle(
+    request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+  )
+  const body = (await polled.json()) as { work: { requestId: string } }
+  const value = { documentId: document.id, commandId, baseRevision: 4, revision: 5, change }
+  for (const wrong of [
+    { ...value, commandId: change.partId },
+    { ...value, revision: 6 },
+    { ...value, change: { ...change, name: "Redirected" } },
+  ]) {
+    const rejected = await broker.handle(
+      request(
+        "result",
+        {
+          protocolVersion: 1,
+          requestId: body.work.requestId,
+          tool: "change_metadata",
+          result: { ok: true, value: wrong },
+        },
+        token,
+      ),
+    )
+    expect(rejected.status).toBe(400)
+  }
+  expect(
+    (
+      await broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: body.work.requestId,
+            tool: "change_metadata",
+            result: { ok: true, value },
+          },
+          token,
+        ),
+      )
+    ).status,
+  ).toBe(200)
+  await expect(pending).resolves.toEqual({ ok: true, value })
+})

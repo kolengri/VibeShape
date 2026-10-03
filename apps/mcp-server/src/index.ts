@@ -16,14 +16,16 @@ function portArgument(args: string[]) {
 }
 
 async function start() {
-  const port = portArgument(process.argv.slice(2))
+  const args = process.argv.slice(2)
+  const editorOnly = args[0] === "--editor"
+  const port = portArgument(editorOnly ? args.slice(1) : args)
   const origin = `http://127.0.0.1:${port}`
   const resources = createExportResources()
   const broker = createBrowserBroker({ origin, onRevoke: resources.clear })
   const fetch = await createStaticEditor({
     directory: fileURLToPath(new URL("../../web/dist", import.meta.url)),
     origin,
-    api: broker.handle,
+    ...(editorOnly ? {} : { api: broker.handle }),
   })
   const mcp = createLocalMcpAdapter(broker, resources)
   const http = Bun.serve({
@@ -42,11 +44,17 @@ async function start() {
     void mcp.close()
   }
   mcp.onclose = close
-  // The SDK stdio transport does not observe EOF itself.
-  process.stdin.once("end", close)
   process.once("SIGINT", close)
   process.once("SIGTERM", close)
   process.stdout.once("error", close)
+  if (editorOnly) {
+    process.stderr.write(
+      `VibeShape editor: ${origin}\nKeep this terminal open. Press Control-C to stop.\nFor agent tools, stop this editor and start VibeShape from your MCP client.\n`,
+    )
+    return
+  }
+  // The SDK stdio transport does not observe EOF itself.
+  process.stdin.once("end", close)
   try {
     await mcp.connect(
       new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 256 * 1024 }),
@@ -64,7 +72,7 @@ try {
   await start()
 } catch {
   process.stderr.write(
-    "VibeShape MCP could not start. Build the editor first and check that the selected local port is available.\n",
+    "VibeShape could not start. Check the installed build and command arguments. If the selected local port is busy, stop its owning client yourself; VibeShape never takes over a running session.\n",
   )
   process.exitCode = 1
 }

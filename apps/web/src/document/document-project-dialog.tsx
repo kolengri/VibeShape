@@ -15,7 +15,7 @@ import {
 import { FolderOpen } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { type DropEvent, type FileRejection, useDropzone } from "react-dropzone"
 import {
   activateLocalProject,
@@ -24,12 +24,14 @@ import {
   deleteLocalProject,
   duplicateLocalProject,
   exportActiveProjectBackup,
+  getProjectActionBlock,
   importProjectBackup,
   listLocalProjects,
 } from "./document-controller"
 import { downloadProjectBackup } from "./document-project-file"
 import { DocumentRenameDialog } from "./document-rename-dialog"
 import { ProjectDeleteAction } from "./project-delete-action"
+import { formatProjectCopyName } from "./versioned-project-file"
 
 type ProjectActivity =
   | "idle"
@@ -152,6 +154,8 @@ function ProjectFileDropzone({
 function feedbackForImport(code: string) {
   if (code === "document-already-exists") return "errors.alreadyExists"
   if (code === "resource-limit") return "errors.tooLarge"
+  if (code === "checkpoint-read-only") return "errors.checkpoint"
+  if (code === "project-action-blocked") return "errors.activeWork"
   return "errors.openFailed"
 }
 
@@ -165,16 +169,6 @@ function feedbackForFiles(files: readonly File[]) {
 
 function resetProjectFileInput(input: HTMLInputElement | undefined) {
   if (input) input.value = ""
-}
-
-function localizedCopyName(sourceName: string, format: (name: string) => string) {
-  let baseName = sourceName
-  let copyName = format(baseName)
-  while (copyName.length > 120 && baseName.length > 0) {
-    baseName = baseName.slice(0, -1)
-    copyName = format(baseName)
-  }
-  return copyName
 }
 
 function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"]>) {
@@ -426,8 +420,77 @@ function ProjectLibrary({
   )
 }
 
-export function DocumentProjectDialog({ controller }: { controller: DocumentControllerState }) {
+function ProjectFileFeedback({
+  feedback,
+  kind,
+  compact = false,
+}: {
+  feedback: ProjectFeedback | null
+  kind: ProjectFeedback["kind"]
+  compact?: boolean
+}) {
   const t = useTranslations("app.projectFile")
+  if (feedback?.kind !== kind) return null
+  const Element = compact ? "span" : "p"
+  return (
+    <Element
+      className={
+        kind === "error"
+          ? "text-sm text-destructive"
+          : compact
+            ? "text-xs text-muted-foreground"
+            : "text-sm text-muted-foreground"
+      }
+      role={kind === "error" ? "alert" : "status"}
+      aria-live={kind === "status" ? "polite" : undefined}
+    >
+      {t(feedback.key)}
+    </Element>
+  )
+}
+
+function ProjectGuardFeedback({ blockedReason }: { blockedReason: string | null }) {
+  const t = useTranslations("app.projectFile")
+  if (!blockedReason) return null
+  return (
+    <p role="status" className="text-sm text-muted-foreground">
+      {t(blockedReason === "save-error" ? "errors.saveError" : "errors.activeWork")}
+    </p>
+  )
+}
+
+function useProjectFileTarget(controller: DocumentControllerState, blockedReason: string | null) {
+  const latest = useRef({ controller, blockedReason })
+  useEffect(() => {
+    latest.current = { controller, blockedReason }
+  }, [controller, blockedReason])
+  const target = () => {
+    const snapshot = latest.current.controller.report?.snapshot
+    return snapshot ? { documentId: snapshot.id, revision: snapshot.revision } : null
+  }
+  const stillCurrent = (expected: ReturnType<typeof target>) => {
+    const current = target()
+    return (
+      expected &&
+      current &&
+      !latest.current.blockedReason &&
+      !getProjectActionBlock() &&
+      current.documentId === expected.documentId &&
+      current.revision === expected.revision
+    )
+  }
+  return { target, stillCurrent }
+}
+
+export function DocumentProjectDialog({
+  controller,
+  blockedReason = null,
+}: {
+  controller: DocumentControllerState
+  blockedReason?: string | null
+}) {
+  const t = useTranslations("app.projectFile")
+  const { target, stillCurrent } = useProjectFileTarget(controller, blockedReason)
   const importInProgressRef = useRef(false)
   const [open, setOpen] = useState(false)
   const [activity, setActivity] = useState<ProjectActivity>("idle")
@@ -436,7 +499,30 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
   const listRequestRef = useRef(0)
-  const disabled = controller.status !== "ready" || activity !== "idle"
+  const disabled = controller.status !== "ready" || blockedReason !== null || activity !== "idle"
+
+  const importAndActivate = async (
+    file: File,
+    expected: NonNullable<ReturnType<typeof target>>,
+  ) => {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    if (!stillCurrent(expected)) {
+      setFeedback({ key: "errors.activeWork", kind: "error" })
+      return
+    }
+    const imported = await importProjectBackup(bytes, (name) => t("open.copyName", { name }))
+    if (!imported.ok) {
+      setFeedback({ key: feedbackForImport(imported.diagnostic.code), kind: "error" })
+      return
+    }
+    if (!stillCurrent(expected)) {
+      setFeedback({ key: "errors.activeWork", kind: "error" })
+      return
+    }
+    setFeedback({ key: "status.switching", kind: "status" })
+    const activated = await activateLocalProject(imported.documentId, expected)
+    if (!activated.ok) setFeedback({ key: "errors.switchFailed", kind: "error" })
+  }
 
   const importFiles = async (files: readonly File[], input?: HTMLInputElement) => {
     if (disabled || importInProgressRef.current) {
@@ -450,21 +536,15 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
       return
     }
     const file = files[0]
-    if (!file) return
+    const expected = target()
+    if (!file || !expected) return
 
     // State updates do not block a second event in the same render; claim the import synchronously.
     importInProgressRef.current = true
     setActivity("opening-file")
     setFeedback({ key: "status.opening", kind: "status" })
     try {
-      const imported = await importProjectBackup(new Uint8Array(await file.arrayBuffer()))
-      if (!imported.ok) {
-        setFeedback({ key: feedbackForImport(imported.diagnostic.code), kind: "error" })
-        return
-      }
-      setFeedback({ key: "status.switching", kind: "status" })
-      const activated = await activateLocalProject(imported.documentId)
-      if (!activated.ok) setFeedback({ key: "errors.switchFailed", kind: "error" })
+      await importAndActivate(file, expected)
     } catch {
       setFeedback({ key: "errors.openFailed", kind: "error" })
     } finally {
@@ -488,6 +568,7 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
   }
 
   const changeOpen = (nextOpen: boolean) => {
+    if (!nextOpen && activity !== "idle") return
     setOpen(nextOpen)
     if (nextOpen) {
       setFeedback(null)
@@ -496,17 +577,31 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
   }
 
   const backup = async () => {
+    const expected = target()
+    if (!expected || !stillCurrent(expected)) return
     setActivity("backing-up")
     setFeedback({ key: "status.backingUp", kind: "status" })
     try {
       const result = await exportActiveProjectBackup()
       if (!result.ok) {
-        setFeedback({ key: "errors.backupFailed", kind: "error" })
+        setFeedback({
+          key:
+            result.diagnostic.code === "project-action-blocked"
+              ? "errors.activeWork"
+              : "errors.backupFailed",
+          kind: "error",
+        })
+        return
+      }
+      if (!stillCurrent(expected)) {
+        setFeedback({ key: "errors.activeWork", kind: "error" })
         return
       }
       downloadProjectBackup(result)
       setFeedback({ key: "status.downloaded", kind: "status" })
       setOpen(false)
+    } catch {
+      setFeedback({ key: "errors.backupFailed", kind: "error" })
     } finally {
       setActivity("idle")
     }
@@ -547,7 +642,7 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
     setDuplicatingDocumentId(project.documentId)
     setFeedback({ key: "status.duplicating", kind: "status" })
     try {
-      const copyName = localizedCopyName(project.name, (name) =>
+      const copyName = formatProjectCopyName(project.name, (name) =>
         t("library.duplicate.copyName", { name }),
       )
       const result = await duplicateLocalProject(project.documentId, project.headRevision, copyName)
@@ -567,17 +662,14 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
 
   return (
     <>
-      {feedback?.kind === "status" && !open ? (
-        <span className="text-xs text-muted-foreground" role="status" aria-live="polite">
-          {t(feedback.key)}
-        </span>
-      ) : null}
+      <ProjectFileFeedback feedback={open ? null : feedback} kind="status" compact />
       <Dialog open={open} onOpenChange={changeOpen}>
         <Tooltip>
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
-              <Button type="button" size="icon-sm" variant="ghost" aria-label={t("trigger")}>
+              <Button type="button" size="xs" variant="outline" aria-label={t("file")}>
                 <FolderOpen aria-hidden="true" />
+                <span>{t("file")}</span>
               </Button>
             </DialogTrigger>
           </TooltipTrigger>
@@ -586,32 +678,15 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
         <DialogContent
           className="max-h-[min(90vh,48rem)] max-w-2xl overflow-y-auto"
           closeLabel={t("closeLabel")}
+          showCloseButton={activity === "idle"}
         >
           <DialogHeader>
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
           </DialogHeader>
-          {feedback?.kind === "status" ? (
-            <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-              {t(feedback.key)}
-            </p>
-          ) : null}
-          <ProjectLibrary
-            activeDocumentId={controller.report?.snapshot.id}
-            controller={controller}
-            disabled={disabled}
-            duplicatingDocumentId={duplicatingDocumentId}
-            library={library}
-            onCreate={createProject}
-            onDeleted={loadProjects}
-            onDuplicate={duplicateProject}
-            onOpen={openProject}
-            onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
-            onRenamed={() => void loadProjects()}
-            onRetry={loadProjects}
-            switchingDocumentId={switchingDocumentId}
-          />
-          <div className="h-px bg-border" />
+          <ProjectFileFeedback feedback={feedback} kind="status" />
+          <ProjectGuardFeedback blockedReason={blockedReason} />
+          <ProjectFileFeedback feedback={feedback} kind="error" />
           <div className="grid gap-3 sm:grid-cols-2">
             <ProjectFileCard
               action={t("backup.action")}
@@ -634,11 +709,22 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
               }}
             />
           </div>
-          {feedback?.kind === "error" ? (
-            <p className="text-sm text-destructive" role="alert">
-              {t(feedback.key)}
-            </p>
-          ) : null}
+          <ProjectLibrary
+            activeDocumentId={controller.report?.snapshot.id}
+            controller={controller}
+            disabled={disabled}
+            duplicatingDocumentId={duplicatingDocumentId}
+            library={library}
+            onCreate={createProject}
+            onDeleted={loadProjects}
+            onDuplicate={duplicateProject}
+            onOpen={openProject}
+            onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
+            onRenamed={() => void loadProjects()}
+            onRetry={loadProjects}
+            switchingDocumentId={switchingDocumentId}
+          />
+          <div className="h-px bg-border" />
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={activity !== "idle"}>

@@ -1,5 +1,6 @@
 import {
   DOCUMENT_PROTOCOL_VERSION,
+  type DocumentExportOptions,
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
   documentRebuildSnapshotSchema,
@@ -21,7 +22,8 @@ type DisposalResponse = Extract<DocumentWorkerTerminalResponse, { type: "documen
 type ExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
 type SketchResponse = Extract<DocumentWorkerTerminalResponse, { type: "sketchSolved" }>
 type SolveSketchRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
-type ExportOptions = DocumentWorkerRequestOptions & { printPreparation?: PrintPreparationSettings }
+type ExportOptions = DocumentWorkerRequestOptions &
+  DocumentExportOptions & { printPreparation?: PrintPreparationSettings }
 
 export type DocumentWorkerRebuildInput = Readonly<{
   document: unknown
@@ -261,6 +263,7 @@ export class DocumentWorkerSession {
       ...this.#envelope(revision),
       type: "exportDocument",
       format,
+      ...(options.bodies ? { bodies: options.bodies } : {}),
       ...(options.printPreparation ? { printPreparation: options.printPreparation } : {}),
     })
     if (request.type !== "exportDocument") {

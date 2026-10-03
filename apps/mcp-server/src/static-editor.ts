@@ -21,6 +21,9 @@ const mimeTypes: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
+  ".txt": "text/plain; charset=utf-8",
+  ".tar": "application/x-tar",
+  ".gz": "application/gzip",
 }
 function staticRequestStatus(request: Request, origin: URL, url: URL) {
   if (url.origin !== origin.origin || request.headers.get("host") !== origin.host) return 403
@@ -51,14 +54,14 @@ async function resolveStaticFile(root: string, pathname: string) {
 export async function createStaticEditor(input: {
   directory: string
   origin: string
-  api: (request: Request) => Promise<Response>
+  api?: (request: Request) => Promise<Response>
 }) {
   const root = await realpath(input.directory)
   const indexPath = resolve(root, "index.html")
-  const html = (await readFile(indexPath, "utf8")).replace(
-    "<head>",
-    '<head><meta name="vibeshape-local-automation" content="1">',
-  )
+  const source = await readFile(indexPath, "utf8")
+  const html = input.api
+    ? source.replace("<head>", '<head><meta name="vibeshape-local-automation" content="1">')
+    : source
   const origin = new URL(input.origin)
   async function serveFile(request: Request, url: URL) {
     if (!["GET", "HEAD"].includes(request.method))
@@ -80,7 +83,7 @@ export async function createStaticEditor(input: {
     const status = staticRequestStatus(request, origin, url)
     if (status !== 200) return Promise.resolve(new Response(null, { status, headers }))
     return url.pathname.startsWith(LOCAL_AUTOMATION_PATH)
-      ? input.api(request)
+      ? (input.api?.(request) ?? Promise.resolve(new Response(null, { status: 404, headers })))
       : serveFile(request, url)
   }
 }

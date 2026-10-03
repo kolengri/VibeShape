@@ -4,6 +4,9 @@ export type GeometryFeatureKind =
   | "chamfer"
   | "box"
   | "cylinder"
+  | "placement"
+  | "compound"
+  | "union"
   | "datum-plane"
   | "extrusion"
   | "multi-extrusion"
@@ -21,7 +24,9 @@ type FeatureResultMetrics = Readonly<{
 type DisposableShape = Readonly<{ delete(): unknown }>
 
 export function featureSolidCountLimit(kind: GeometryFeatureKind, profileCount: number) {
-  return kind === "multi-extrusion" || kind === "multi-revolve" ? profileCount : 1
+  return kind === "multi-extrusion" || kind === "multi-revolve" || kind === "compound"
+    ? profileCount
+    : 1
 }
 
 export function featureResultMetricsAreValid(

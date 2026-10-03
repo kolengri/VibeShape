@@ -60,6 +60,7 @@ import type { FeaturePreviewState } from "../features/preview/use-feature-previe
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
 import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
 import { selectedSketchSupportFromController } from "../features/sketch/sketch-support"
+import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
 import {
   SAFE_VIEWPORT_CENTER,
   SAFE_VIEWPORT_LEFT,
@@ -111,9 +112,14 @@ export function viewerMeshes(
   const features = controller.report?.snapshot.features ?? []
   const bodies = terminalModelBodies(features, rebuild.response, contextualHiddenFeatureIds)
   if (!bodies) return []
+  const authority = currentAuthoredSnapshot(controller)
+  const hiddenParts = authority ? authoredBodyKeys(authority, true) : new Set<string>()
   const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
   const solidMeshes = bodies
-    .filter(({ geometry }) => !hiddenIds.has(geometry.featureId))
+    .filter(
+      ({ geometry }) =>
+        !hiddenIds.has(geometry.featureId) && !hiddenParts.has(authoredBodyKey(geometry)),
+    )
     .map(({ geometry: body }) => ({
       featureId: body.featureId,
       ...(body.outputRole === undefined ? {} : { outputRole: body.outputRole }),
@@ -308,6 +314,7 @@ async function initializeViewport(
   latestSketchProfilePreviewRef: RefObject<SketchProfileSelector | null | undefined>,
   latestAngularGizmoRef: RefObject<GeometryViewportProps["angularGizmo"]>,
   latestAxialGizmoRef: RefObject<GeometryViewportProps["axialGizmo"]>,
+  latestAxialDistanceChangeRef: RefObject<((distance: number) => void) | undefined>,
   latestTranslationGizmoRef: RefObject<GeometryViewportProps["translationGizmo"]>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
@@ -330,8 +337,7 @@ async function initializeViewport(
       onSketchProfileSelectionChange,
       onTranslationGizmoPositionChange: (position) =>
         latestTranslationGizmoRef.current?.onPositionChange(position),
-      onAxialGizmoDistanceChange: (distance) =>
-        latestAxialGizmoRef.current?.onDistanceChange(distance),
+      onAxialGizmoDistanceChange: (distance) => latestAxialDistanceChangeRef.current?.(distance),
       onAngularGizmoAngleChange: (angle) => latestAngularGizmoRef.current?.onAngleChange(angle),
     })
     if (mount.cancelled) {
@@ -484,6 +490,15 @@ function viewportInteractionMode(
   return context ? "camera-only" : "select"
 }
 
+function retainAxialDistanceChange(
+  callbackRef: { current: ((distance: number) => void) | undefined },
+  axialGizmo: GeometryViewportProps["axialGizmo"],
+  pending: boolean,
+) {
+  if (axialGizmo) callbackRef.current = axialGizmo.onDistanceChange
+  else if (!pending) callbackRef.current = undefined
+}
+
 function useLatestViewportInputs({
   controller,
   featurePreselection,
@@ -499,7 +514,9 @@ function useLatestViewportInputs({
   sketchProfilePreview,
   angularGizmo,
   axialGizmo,
+  axialGizmoPending,
   translationGizmo,
+  selectionCallbacks,
 }: Readonly<{
   controller: DocumentControllerState
   featurePreselection: ViewerMesh | null
@@ -515,11 +532,25 @@ function useLatestViewportInputs({
   sketchProfilePreview: GeometryViewportProps["sketchProfilePreview"]
   angularGizmo: GeometryViewportProps["angularGizmo"]
   axialGizmo: GeometryViewportProps["axialGizmo"]
+  axialGizmoPending: boolean
   translationGizmo: GeometryViewportProps["translationGizmo"]
+  selectionCallbacks: Readonly<{
+    onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
+    onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void
+    onSelectionChange: (selection: ViewerSelection | null) => void
+  }>
 }>) {
   const controllerRef = useRef(controller)
-  const featurePreselectionRef = useRef(featurePreselection)
-  const featureSelectionRef = useRef(featureSelection)
+  const featureHighlightRefs = useRef({
+    preselection: { current: featurePreselection },
+    selection: { current: featureSelection },
+    axialDistanceChange: { current: axialGizmo?.onDistanceChange },
+  }).current
+  const featurePreselectionRef = featureHighlightRefs.preselection
+  const featureSelectionRef = featureHighlightRefs.selection
+  const axialDistanceChangeRef = featureHighlightRefs.axialDistanceChange
+  retainAxialDistanceChange(axialDistanceChangeRef, axialGizmo, axialGizmoPending)
+  const selectionCallbacksRef = useRef(selectionCallbacks)
   const meshesRef = useRef(meshes)
   const originPlaneRef = useRef(originPlaneSelection)
   const originPlaneSelectionActiveRef = useRef(originPlaneSelectionActive)
@@ -533,6 +564,7 @@ function useLatestViewportInputs({
   const axialGizmoRef = useRef(axialGizmo)
   const translationGizmoRef = useRef(translationGizmo)
   controllerRef.current = controller
+  selectionCallbacksRef.current = selectionCallbacks
   featurePreselectionRef.current = featurePreselection
   featureSelectionRef.current = featureSelection
   meshesRef.current = meshes
@@ -548,9 +580,11 @@ function useLatestViewportInputs({
   axialGizmoRef.current = axialGizmo
   translationGizmoRef.current = translationGizmo
   return {
+    selectionCallbacksRef,
     controllerRef,
     featurePreselectionRef,
     featureSelectionRef,
+    axialDistanceChangeRef,
     meshesRef,
     originPlaneRef,
     originPlaneSelectionActiveRef,
@@ -595,6 +629,7 @@ function useViewportGizmoSynchronization(
   angularGizmo: GeometryViewportProps["angularGizmo"],
   axialGizmo: GeometryViewportProps["axialGizmo"],
   translationGizmo: GeometryViewportProps["translationGizmo"],
+  axialGizmoPending: boolean,
 ) {
   useEffect(() => {
     const viewport = viewportRef.current
@@ -611,9 +646,9 @@ function useViewportGizmoSynchronization(
       viewport.showTranslationGizmo(translationGizmo.position)
       return
     }
-    viewport.hideTranslationGizmo()
+    viewport.hideTranslationGizmo({ preserveActiveGesture: axialGizmoPending })
     viewport.hideAngularGizmo()
-  }, [angularGizmo, axialGizmo, translationGizmo, viewportRef])
+  }, [angularGizmo, axialGizmo, axialGizmoPending, translationGizmo, viewportRef])
 }
 
 function useViewportRenderer(
@@ -636,6 +671,7 @@ function useViewportRenderer(
   angularGizmo: GeometryViewportProps["angularGizmo"],
   axialGizmo: GeometryViewportProps["axialGizmo"],
   translationGizmo: GeometryViewportProps["translationGizmo"],
+  axialGizmoPending: boolean,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
@@ -654,7 +690,13 @@ function useViewportRenderer(
     sketchProfilePreview,
     angularGizmo,
     axialGizmo,
+    axialGizmoPending,
     translationGizmo,
+    selectionCallbacks: {
+      onOriginPlanePreselectionChange,
+      onOriginPlaneSelectionChange,
+      onSelectionChange,
+    },
   })
   const [rendererFailed, setRendererFailed] = useState(false)
   const sketchReferenceInteraction = useViewportSketchReferenceInteractionState()
@@ -669,10 +711,10 @@ function useViewportRenderer(
     void initializeViewport(
       canvas,
       createViewport,
-      onOriginPlanePreselectionChange,
+      (plane) => latest.selectionCallbacksRef.current.onOriginPlanePreselectionChange(plane),
       (plane) => {
         profileInteraction.dismissSelectionRequest()
-        onOriginPlaneSelectionChange(plane)
+        latest.selectionCallbacksRef.current.onOriginPlaneSelectionChange(plane)
       },
       (selection) => {
         profileInteraction.dismissSelectionRequest()
@@ -681,7 +723,7 @@ function useViewportRenderer(
           faceSelection.onSelect(selection)
           return
         }
-        onSelectionChange(selection)
+        latest.selectionCallbacksRef.current.onSelectionChange(selection)
       },
       selectionCandidates.onChange,
       selectionCandidates.onCommit,
@@ -724,6 +766,7 @@ function useViewportRenderer(
       latest.sketchProfilePreviewRef,
       latest.angularGizmoRef,
       latest.axialGizmoRef,
+      latest.axialDistanceChangeRef,
       latest.translationGizmoRef,
       setRendererFailed,
     )
@@ -734,9 +777,6 @@ function useViewportRenderer(
     }
   }, [
     createViewport,
-    onOriginPlanePreselectionChange,
-    onOriginPlaneSelectionChange,
-    onSelectionChange,
     profileInteraction.dismissSelectionRequest,
     selectionCandidates.onChange,
     selectionCandidates.onCommit,
@@ -1137,6 +1177,7 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
 
 type GeometryViewportProps = Readonly<{
   activeSketchDisplay?: ViewerSketch | null
+  axialGizmoPending?: boolean
   controller: DocumentControllerState
   createViewport?: ViewportFactory
   contextualHiddenFeatureIds?: readonly string[]
@@ -1168,6 +1209,7 @@ type GeometryViewportProps = Readonly<{
   selection: ViewerSelection | null
   sketchContext?: GeometryViewportSketchContext
   sketchProfileSelection?: Readonly<{
+    excludedSketchIds?: readonly string[]
     selectedProfiles: readonly SketchProfileSelector[]
     onSelect: (
       profile: SketchProfileSelector | null,
@@ -1185,6 +1227,10 @@ type GeometryViewportProps = Readonly<{
     Readonly<{
       featureId: string
       onDistanceChange: (distance: number) => void
+      opposite?: Readonly<{
+        distance: number
+        onDistanceChange: (distance: number) => void
+      }>
     }>
   translationGizmo?: Readonly<{
     featureId: string
@@ -1377,12 +1423,13 @@ function useViewportMeshPresentation({
 >) {
   const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
   const hiddenIds = hiddenFeatureIds ?? EMPTY_IDS
+  const authority = controller.authoredSnapshot
   const featureSnapshot = controller.report?.snapshot.features
   const rebuild = controller.report?.rebuild
   const rebuildResponse = rebuild?.ok ? rebuild.response : undefined
   const allCommittedMeshes = useMemo(
     () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
-    [featureSnapshot, rebuild?.ok, rebuildResponse],
+    [authority, featureSnapshot, rebuild?.ok, rebuildResponse],
   )
   const allHiddenFeatureIds = useMemo(
     () => [...new Set([...hiddenIds, ...contextualIds])],
@@ -1390,14 +1437,16 @@ function useViewportMeshPresentation({
   )
   const committedMeshes = useMemo(
     () => viewerMeshes(controller, hiddenIds, contextualIds),
-    [contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
+    [authority, contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
   )
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)
+    const authored = currentAuthoredSnapshot(controller)
+    const hiddenBodies = authored ? authoredBodyKeys(authored, true) : new Set<string>()
     return previewMeshes(featurePreview, committedMeshes).filter(
-      ({ featureId }) => !hidden.has(featureId),
+      (mesh) => !hidden.has(mesh.featureId) && !hiddenBodies.has(authoredBodyKey(mesh)),
     )
-  }, [allHiddenFeatureIds, committedMeshes, featurePreview])
+  }, [authority, allHiddenFeatureIds, committedMeshes, featurePreview])
   return { allCommittedMeshes, allHiddenFeatureIds, meshes }
 }
 
@@ -1561,12 +1610,14 @@ function useGeometryViewportInteraction(
     props.angularGizmo,
     props.axialGizmo,
     props.translationGizmo,
+    props.axialGizmoPending ?? false,
   )
   useViewportGizmoSynchronization(
     viewportRef,
     props.angularGizmo,
     props.axialGizmo,
     props.translationGizmo,
+    props.axialGizmoPending ?? false,
   )
   const supportFaceSelection = useSupportFaceSelection(
     selectionCandidateStack,
@@ -2273,14 +2324,12 @@ function SavedProfileViewportChrome({
   profileSelectOther,
   profileSelection,
   selectedSketchProfileKey,
-  sketches,
 }: Readonly<{
   controller: DocumentControllerState
   profilePreselectionLabel: string | null
   profileSelectOther: SavedProfileSelectOtherState
   profileSelection: GeometryViewportProps["sketchProfileSelection"]
   selectedSketchProfileKey: string | null
-  sketches: readonly ViewerSketch[]
 }>) {
   const t = useTranslations("app.shell.viewport")
   return (
@@ -2290,7 +2339,6 @@ function SavedProfileViewportChrome({
         controller={controller}
         selectedKey={selectedSketchProfileKey}
         selection={profileSelection}
-        sketches={sketches}
       />
       {profilePreselectionLabel ? (
         <div
@@ -2437,19 +2485,21 @@ function SavedProfileKeyboardPicker({
   controller,
   selectedKey,
   selection,
-  sketches,
 }: Readonly<{
   controller: DocumentControllerState
   selectedKey: string | null
   selection: GeometryViewportProps["sketchProfileSelection"]
-  sketches: readonly ViewerSketch[]
 }>) {
   const t = useTranslations("app.shell.viewport")
   if (!selection) return null
   const sketchLabels = new Map<string, string>(
     (controller.report?.snapshot.sketches ?? []).map(({ id, label }) => [id, label]),
   )
+  const rebuild = controller.report?.rebuild
+  const sketches = rebuild?.ok ? (rebuild.response.sketches ?? []) : []
+  const excludedIds = new Set(selection.excludedSketchIds)
   const options = sketches.flatMap((sketch) => {
+    if (excludedIds.has(sketch.sketchId)) return []
     const label = sketchLabels.get(sketch.sketchId)
     const profiles = sketch.profiles ?? []
     if (!label) return []
@@ -2706,7 +2756,6 @@ function GeometryViewportContextChrome({
             props.sketchProfilePreview,
           )}
           selectedSketchProfileKey={model.selectedSketchProfileKey}
-          sketches={model.sketches}
         />
       }
       selection={props.selectedBody ?? selection}
@@ -2809,6 +2858,62 @@ function viewportRegionClassNames(
   }
 }
 
+function useAxialGizmoSide(gizmo: GeometryViewportProps["axialGizmo"]) {
+  const [selection, setSelection] = useState<{
+    featureId: string | undefined
+    side: "first" | "second"
+  }>({ featureId: undefined, side: "first" })
+  const side =
+    selection.featureId === gizmo?.featureId && gizmo?.opposite ? selection.side : "first"
+  const activeGizmo = useMemo(() => {
+    if (!gizmo?.opposite || side === "first") return gizmo
+    return {
+      ...gizmo,
+      direction: [-gizmo.direction[0], -gizmo.direction[1], -gizmo.direction[2]] as const,
+      distance: gizmo.opposite.distance,
+      onDistanceChange: gizmo.opposite.onDistanceChange,
+    }
+  }, [gizmo, side])
+  return {
+    gizmo: activeGizmo,
+    side,
+    select: (side: "first" | "second") => setSelection({ featureId: gizmo?.featureId, side }),
+  }
+}
+
+function AxialGizmoSideControls({
+  onSelect,
+  side,
+}: Readonly<{
+  onSelect: (side: "first" | "second") => void
+  side: "first" | "second"
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <fieldset
+      className={cn(
+        "absolute right-3 top-14 z-10 grid min-w-0 grid-cols-2 gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_RIGHT,
+      )}
+    >
+      <legend className="sr-only">{t("extrusionDepthSelection")}</legend>
+      {(["first", "second"] as const).map((value) => (
+        <Button
+          key={value}
+          type="button"
+          size="sm"
+          className="h-auto min-h-8 min-w-0 whitespace-normal px-2 text-xs"
+          variant={side === value ? "secondary" : "ghost"}
+          aria-pressed={side === value}
+          onClick={() => onSelect(value)}
+        >
+          {t(value === "first" ? "extrusionFirstDepth" : "extrusionSecondDepth")}
+        </Button>
+      ))}
+    </fieldset>
+  )
+}
+
 export function GeometryViewport(props: GeometryViewportProps) {
   const {
     featurePreview,
@@ -2821,7 +2926,9 @@ export function GeometryViewport(props: GeometryViewportProps) {
   const displayUnits = useDocumentDisplayUnits()
   const sketchReferenceRegionRef = useRef<HTMLElement>(null)
   const t = useTranslations("app.shell.viewport")
-  const model = useGeometryViewportModel(props)
+  const axial = useAxialGizmoSide(props.axialGizmo)
+  const viewportProps = axial.gizmo ? { ...props, axialGizmo: axial.gizmo } : props
+  const model = useGeometryViewportModel(viewportProps)
   const { canvasRef, sketchReferenceCandidateStack, sketchPointPreselection, viewportRef } = model
   const selectOther = useSketchReferenceSelectOther({
     candidateStack: sketchReferenceCandidateStack,
@@ -2865,8 +2972,9 @@ export function GeometryViewport(props: GeometryViewportProps) {
       {...viewportSketchContextData(sketchContext)}
       data-angular-gizmo-angle={props.angularGizmo?.angle}
       data-angular-gizmo-feature={props.angularGizmo?.featureId}
-      data-axial-gizmo-distance={props.axialGizmo?.distance}
+      data-axial-gizmo-distance={axial.gizmo?.distance}
       data-axial-gizmo-feature={props.axialGizmo?.featureId}
+      data-axial-gizmo-side={props.axialGizmo ? axial.side : undefined}
       data-translation-gizmo-feature={props.translationGizmo?.featureId}
       data-translation-gizmo-position={props.translationGizmo?.position.join(",")}
       onKeyDown={referenceInteraction.onKeyDown}
@@ -2875,7 +2983,18 @@ export function GeometryViewport(props: GeometryViewportProps) {
       onPointerLeave={referenceInteraction.onPointerLeave}
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
-      <canvas ref={canvasRef} className={regionClassNames.canvas} />
+      <canvas ref={canvasRef} className={cn("peer", regionClassNames.canvas)} />
+      {props.axialGizmo ? (
+        <p
+          role="status"
+          className={cn(
+            "pointer-events-none absolute left-3 top-24 hidden w-72 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm peer-data-[axial-gizmo-drag-available=false]:block",
+            SAFE_VIEWPORT_LEFT,
+          )}
+        >
+          {t("extrusionDepthViewHint")}
+        </p>
+      ) : null}
       <div
         aria-hidden="true"
         data-viewport-orientation-offset
@@ -2885,10 +3004,13 @@ export function GeometryViewport(props: GeometryViewportProps) {
         displayUnit={displayUnits.length}
         model={model}
         profileSelectOther={profileSelectOther}
-        props={props}
+        props={viewportProps}
         selectOther={selectOther}
         supportFaceSelectOther={supportFaceSelectOther}
       />
+      {props.axialGizmo?.opposite ? (
+        <AxialGizmoSideControls onSelect={axial.select} side={axial.side} />
+      ) : null}
     </section>
   )
 }

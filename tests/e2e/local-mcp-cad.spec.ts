@@ -419,3 +419,142 @@ test("creates and updates a full revolve through real local MCP", async ({ page 
     await local.close()
   }
 })
+
+test("preserves a manual first depth when MCP changes the independent second depth", async ({
+  page,
+}, info) => {
+  test.setTimeout(240_000)
+  const entry = process.env.VIBESHAPE_TEST_MCP_ENTRY
+  const local = await createMcpTestClient(
+    44740 + info.parallelIndex,
+    entry ? { command: "bun", args: [entry] } : undefined,
+  )
+  const call = async (name: string, args: Record<string, unknown>) =>
+    (await local.callTool({ name, arguments: args })).structuredContent?.result
+  try {
+    await page.goto(local.origin)
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
+    const draft = success(
+      localToolOutputs.create_draft.parse(
+        await call("create_draft", { baseRevision: initial.summary.revision }),
+      ),
+    )
+    const sketch = rectangleSketch(id(501), 20, 10, "Extent sketch")
+    const profile = rectangleSketchProfileSelector(sketch)
+    if (!profile) throw new Error("Missing rectangle profile")
+    const addedSketch = success(
+      localToolOutputs.create_sketch.parse(
+        await call("create_sketch", {
+          draftId: draft.draftId,
+          baseRevision: draft.revision,
+          commandId: command(503),
+          sketch,
+        }),
+      ),
+    )
+    const parameters = {
+      profiles: { schemaVersion: 0, profiles: [profile] },
+      distance: createLengthQuantity(10),
+      secondDistance: createLengthQuantity(3),
+      symmetric: false,
+      reversed: true,
+      operation: "new",
+    }
+    success(
+      localToolOutputs.create_extrude.parse(
+        await call("create_extrude", {
+          draftId: draft.draftId,
+          baseRevision: addedSketch.revision,
+          commandId: command(504),
+          featureId: id(502),
+          label: "Independent extents",
+          dependencies: [],
+          references: [],
+          suppressed: false,
+          parameters,
+        }),
+      ),
+    )
+    const preview = success(
+      localToolOutputs.preview_draft.parse(await call("preview_draft", { draftId: draft.draftId })),
+    )
+    expect(preview.geometry.status).toBe("valid")
+    expect(featureVolume(preview.geometry, id(502))).toBeCloseTo(2600, 5)
+    success(
+      localToolOutputs.commit_draft.parse(
+        await applyCommit(
+          page,
+          local.callTool({ name: "commit_draft", arguments: { draftId: draft.draftId } }),
+        ),
+      ),
+    )
+    await page.getByRole("treeitem", { name: "Independent extents", exact: true }).click()
+    const form = page.getByRole("form", { name: "Edit extrusion", exact: true })
+    await expect(form.getByRole("combobox", { name: "Second distance", exact: true })).toHaveValue(
+      "3 mm",
+    )
+    await form.getByRole("combobox", { name: "Distance", exact: true }).fill("13 mm")
+    await form.getByRole("button", { name: "Update extrusion", exact: true }).click()
+    await expect(form).toHaveCount(0, { timeout: 30_000 })
+    const manual = success(localToolOutputs.model_info.parse(await call("model_info", {})))
+    expect(featureVolume(manual, id(502))).toBeCloseTo(3200, 5)
+    const entity = success(
+      localToolOutputs.model_entity.parse(
+        await call("model_entity", {
+          revision: manual.summary.revision,
+          entity: { kind: "feature", id: id(502) },
+        }),
+      ),
+    )
+    const feature = entity.data
+    if (feature.entityKind !== "feature") throw new Error("Expected the current extrusion feature")
+    const next = success(
+      localToolOutputs.create_draft.parse(
+        await call("create_draft", { baseRevision: manual.summary.revision }),
+      ),
+    )
+    success(
+      localToolOutputs.update_extrude.parse(
+        await call("update_extrude", {
+          draftId: next.draftId,
+          baseRevision: next.revision,
+          commandId: command(505),
+          featureId: id(502),
+          label: "Independent extents",
+          dependencies: [],
+          references: [],
+          suppressed: false,
+          parameters: { ...feature.record.parameters, secondDistance: createLengthQuantity(7) },
+        }),
+      ),
+    )
+    success(
+      localToolOutputs.commit_draft.parse(
+        await applyCommit(
+          page,
+          local.callTool({ name: "commit_draft", arguments: { draftId: next.draftId } }),
+        ),
+      ),
+    )
+    const final = success(localToolOutputs.model_info.parse(await call("model_info", {})))
+    expect(featureVolume(final, id(502))).toBeCloseTo(4000, 5)
+    await page.reload()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await page.getByRole("treeitem", { name: "Independent extents", exact: true }).click()
+    await expect(form.getByRole("combobox", { name: "Distance", exact: true })).toHaveValue("13 mm")
+    await expect(form.getByRole("combobox", { name: "Second distance", exact: true })).toHaveValue(
+      "7 mm",
+    )
+    await expect(
+      form.getByRole("checkbox", { name: "Reverse first direction", exact: true }),
+    ).toBeChecked()
+  } finally {
+    await local.close()
+  }
+})

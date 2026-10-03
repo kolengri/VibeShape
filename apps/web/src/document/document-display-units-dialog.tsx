@@ -42,6 +42,7 @@ function UnitSettingsForm({
   onPendingChange,
   onSaved,
   pending,
+  inline = false,
 }: {
   baseRevision: number
   copy: UnitSettingsCopy
@@ -49,12 +50,14 @@ function UnitSettingsForm({
   onPendingChange: (pending: boolean) => void
   onSaved: () => void
   pending: boolean
+  inline?: boolean
 }) {
   const t = useTranslations("app.unitSettings.options")
   const [message, setMessage] = useState<string | null>(null)
   const form = useAppForm({
     defaultValues: displayUnits,
     onSubmit: async ({ value }) => {
+      if (pending) return
       const parsed = documentDisplayUnitsSchema.safeParse(value)
       if (!parsed.success) return
       if (parsed.data.length === displayUnits.length && parsed.data.angle === displayUnits.angle) {
@@ -122,12 +125,26 @@ function UnitSettingsForm({
         </p>
       ) : null}
       <DialogFooter>
-        <DialogClose asChild>
-          <Button type="button" variant="outline" disabled={pending}>
+        {inline ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              form.reset()
+              setMessage(null)
+            }}
+          >
             {copy.cancel}
           </Button>
-        </DialogClose>
-        <form.SubmitButton>{copy.save}</form.SubmitButton>
+        ) : (
+          <DialogClose asChild>
+            <Button type="button" variant="outline" disabled={pending}>
+              {copy.cancel}
+            </Button>
+          </DialogClose>
+        )}
+        <form.SubmitButton disabled={pending}>{copy.save}</form.SubmitButton>
       </DialogFooter>
     </Form>
   )
@@ -144,19 +161,7 @@ export function DocumentDisplayUnitsDialog({
   const report = controller.report
   const displayUnits = report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits
   const writable = controller.status === "ready" && report?.mode === "read-write"
-  const copy: UnitSettingsCopy = {
-    angleDescription: t("angleDescription"),
-    angleLabel: t("angleLabel"),
-    cancel: t("cancel"),
-    closeLabel: t("closeLabel"),
-    description: t("description"),
-    lengthDescription: t("lengthDescription"),
-    lengthLabel: t("lengthLabel"),
-    save: t("save"),
-    saveFailed: t("saveFailed"),
-    staleRevision: t("staleRevision"),
-    title: t("title"),
-  }
+  const copy = useUnitSettingsCopy()
   const changeOpen = (nextOpen: boolean) => {
     if (!nextOpen && pending) return
     setOpen(nextOpen)
@@ -197,5 +202,63 @@ export function DocumentDisplayUnitsDialog({
         </DialogContent>
       ) : null}
     </Dialog>
+  )
+}
+
+function useUnitSettingsCopy(): UnitSettingsCopy {
+  const t = useTranslations("app.unitSettings")
+  return {
+    angleDescription: t("angleDescription"),
+    angleLabel: t("angleLabel"),
+    cancel: t("cancel"),
+    closeLabel: t("closeLabel"),
+    description: t("description"),
+    lengthDescription: t("lengthDescription"),
+    lengthLabel: t("lengthLabel"),
+    save: t("save"),
+    saveFailed: t("saveFailed"),
+    staleRevision: t("staleRevision"),
+    title: t("title"),
+  }
+}
+
+export function DocumentDisplayUnitsSettings({
+  controller,
+  blocked,
+  onPendingChange,
+}: {
+  controller: DocumentControllerState
+  blocked: boolean
+  onPendingChange?: (pending: boolean) => void
+}) {
+  const t = useTranslations("app.unitSettings")
+  const [pending, setPending] = useState(false)
+  const copy = useUnitSettingsCopy()
+  const settingsT = useTranslations("app.settings")
+  const report = controller.report
+  if (!report) return <p className="text-xs text-muted-foreground">{t("readOnly")}</p>
+  const writable = controller.status === "ready" && report.mode === "read-write" && !blocked
+  return (
+    <div className="grid gap-3">
+      <p className="text-xs text-muted-foreground">{copy.description}</p>
+      {!writable ? (
+        <p className="text-xs text-muted-foreground">
+          {report.mode === "read-write" ? settingsT("projectBlocked") : t("readOnly")}
+        </p>
+      ) : null}
+      <UnitSettingsForm
+        key={report.snapshot.revision}
+        baseRevision={report.snapshot.revision}
+        copy={copy}
+        displayUnits={report.snapshot.displayUnits}
+        onPendingChange={(next) => {
+          setPending(next)
+          onPendingChange?.(next)
+        }}
+        onSaved={() => {}}
+        pending={pending || !writable}
+        inline
+      />
+    </div>
   )
 }

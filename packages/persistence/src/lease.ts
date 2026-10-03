@@ -6,13 +6,9 @@ import {
   createPersistenceDiagnostic,
   persistenceInvariantError,
 } from "./diagnostics"
+import { requireAuthoritativeProject } from "./project-catalog"
 import type { PersistenceResult } from "./repository"
-import {
-  type LeaseRecord,
-  leaseRecordSchema,
-  projectRecordSchema,
-  projectRecordV1Schema,
-} from "./schemas"
+import { type LeaseRecord, leaseRecordSchema } from "./schemas"
 
 const leaseRequestSchema = z
   .object({
@@ -94,18 +90,9 @@ async function grantDocumentLease(
 ): Promise<PersistenceResult<LeaseGrant>> {
   const current = await database.leases.get(input.documentId)
   requireLeaseAvailable(current, input)
-  const versionedProject = await database.projectsV1.get(input.documentId)
-  const legacyProject = versionedProject ? undefined : await database.projects.get(input.documentId)
-  if (!versionedProject && !legacyProject) {
-    throw persistenceInvariantError("document-not-found", "The document does not exist.")
-  }
-  const project = versionedProject
-    ? projectRecordV1Schema.safeParse(versionedProject)
-    : projectRecordSchema.safeParse(legacyProject)
-  if (!project.success)
-    throw persistenceInvariantError("corrupt-history", "The persisted project head is invalid.")
+  const project = await requireAuthoritativeProject(database, input.documentId)
   const status = grantStatus(current, input.ownerId, input.nowMs)
-  requireTakeoverSnapshot(status, project.data)
+  requireTakeoverSnapshot(status, project)
   const lease = nextLease(current, input)
   await database.leases.put(lease)
   return { ok: true, value: { status, lease } }

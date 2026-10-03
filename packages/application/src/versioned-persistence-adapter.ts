@@ -76,7 +76,7 @@ function project(snapshot: DocumentSnapshotV1 | null) {
   return snapshot ? projectDocumentSnapshotV1ToV0(snapshot) : { ok: true as const, snapshot: null }
 }
 
-function translateAddEvent(
+export function translateLegacyDocumentEvent(
   snapshot: DocumentSnapshotV1 | null,
   event: DocumentEvent,
 ): VersionedDocumentEvent | VersionedPortResult<never> {
@@ -274,7 +274,7 @@ export function createVersionedPersistenceAdapter(
     async commit(input) {
       const baseMatch = projectInput(authority, input.baseSnapshot)
       if (baseMatch) return baseMatch
-      const translated = translateAddEvent(authority, input.event)
+      const translated = translateLegacyDocumentEvent(authority, input.event)
       if ("ok" in translated) return translated
       const reduced = reduceVersionedDocumentEvent(authority, translated)
       if (!reduced.ok) return failed("invalid-event", reduced.diagnostic.message)
@@ -305,7 +305,7 @@ export function createVersionedPersistenceAdapter(
       const base = current
       const translated: VersionedDocumentEvent[] = []
       for (const event of input.events) {
-        const lifted = translateAddEvent(current, event)
+        const lifted = translateLegacyDocumentEvent(current, event)
         if (!("type" in lifted)) return lifted
         const reduced = reduceVersionedDocumentEvent(current, lifted)
         if (!reduced.ok) return failed("invalid-event", reduced.diagnostic.message)

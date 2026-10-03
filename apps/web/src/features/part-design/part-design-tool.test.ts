@@ -8,6 +8,7 @@ import {
   datumPlaneFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   featureIdSchema,
   featureRecordSchema,
   legacyRevolveFeatureType,
@@ -17,6 +18,11 @@ import {
   revolveFeatureTypeV6,
   sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
+import {
+  compoundFeatureType,
+  unionFeatureType,
+} from "@vibeshape/domain/part-design-body-combination"
+import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { describe, expect, it } from "vitest"
 import {
   activeFeatureId,
@@ -170,6 +176,34 @@ const datumPlane = featureRecordSchema.parse({
 })
 
 describe("part-design tool routing", () => {
+  it("edits independent extents and excludes ambiguous new multi-solid targets", () => {
+    const single = featureRecordSchema.parse({
+      ...extrusion,
+      type: extrusionFeatureTypeV5.type,
+      parameters: {
+        profiles: createSketchProfileSet([profile]),
+        distance: createLengthQuantity(10),
+        secondDistance: createLengthQuantity(3),
+        reversed: true,
+        symmetric: false,
+        operation: "new",
+      },
+    })
+    const multi = featureRecordSchema.parse({
+      ...single,
+      parameters: {
+        ...single.parameters,
+        profiles: createSketchProfileSet([profile, secondProfile]),
+      },
+    })
+    expect(isExtrusionFeature(single)).toBe(true)
+    expect(editPartDesignTool(single)).toEqual({ kind: "edit-extrusion", featureId: single.id })
+    expect(editPartDesignTool(multi)).toEqual({ kind: "edit-extrusion", featureId: multi.id })
+    expect(booleanInputFeatures([single])).toEqual([single])
+    expect(booleanInputFeatures([multi])).toEqual([])
+    expect(modifyingSolidTargetFeatures([multi])).toEqual([])
+  })
+
   it("matches feature types by their full contribution identity", () => {
     expect(isBoxFeature(box)).toBe(true)
     expect(isCylinderFeature(box)).toBe(false)
@@ -287,5 +321,27 @@ describe("part-design tool routing", () => {
     expect(
       modifyingSolidTargetFeatures([box, cylinder, modifyingRevolve], modifyingRevolve.id),
     ).toEqual([box, cylinder])
+  })
+})
+
+describe("authored part operation routing", () => {
+  it("reopens exact trusted Placement, Compound, and Union versions", () => {
+    for (const [descriptor, kind] of [
+      [placementFeatureType, "edit-placement"],
+      [compoundFeatureType, "edit-compound"],
+      [unionFeatureType, "edit-union"],
+    ] as const) {
+      const feature = featureRecordSchema.parse({ ...box, type: descriptor.type })
+      expect(editPartDesignTool(feature)).toEqual({ kind, featureId: feature.id })
+      expect(
+        editPartDesignTool({ ...feature, type: { ...feature.type, schemaVersion: 999 } }),
+      ).toBeNull()
+    }
+  })
+  it("admits single-result Placement and Union to modifiers while keeping Compound aggregate output excluded", () => {
+    const placement = featureRecordSchema.parse({ ...box, type: placementFeatureType.type })
+    const union = featureRecordSchema.parse({ ...cylinder, type: unionFeatureType.type })
+    const compound = featureRecordSchema.parse({ ...boolean, type: compoundFeatureType.type })
+    expect(booleanInputFeatures([placement, union, compound])).toEqual([placement, union])
   })
 })

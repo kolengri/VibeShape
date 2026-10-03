@@ -8,9 +8,11 @@
   "include": [
     "scripts/**/*.ts",
     "tests/e2e/**/*.ts",
+    "tests/distribution/**/*.ts",
     "tests/performance/**/*.ts",
     "tests/topology/**/*.ts",
     "playwright.config.ts",
+    "playwright.distribution.config.ts",
     "playwright.performance.config.ts",
     "playwright.topology.config.ts",
     "vitest.config.ts"

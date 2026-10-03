@@ -11,7 +11,9 @@
     "./draft-inspection": "./src/draft-inspection.ts",
     "./queries": "./src/queries.ts",
     "./local-tools": "./src/local-tools.ts",
-    "./local-session": "./src/local-session.ts"
+    "./local-session": "./src/local-session.ts",
+    "./authored-metadata": "./src/authored-metadata.ts",
+    "./query-byte-budget": "./src/query-byte-budget.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

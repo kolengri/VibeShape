@@ -1,5 +1,11 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import {
+  authoredFoldersViewSchema,
+  authoredHistoryViewSchema,
+  authoredPartsViewSchema,
+  metadataCommitViewSchema,
+} from "@vibeshape/automation-api/authored-metadata"
+import {
   automationDraftCommitViewSchema,
   automationDraftDiscardViewSchema,
   automationDraftPreviewSchema,
@@ -18,7 +24,10 @@ import {
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
+  isLocalMetadataRead,
+  isLocalMetadataTool,
   type LocalInspectionOperation,
+  type LocalMetadataReadOperation,
   localExportSchema,
   localFailure,
   localModelInfoSchema,
@@ -92,7 +101,9 @@ function bodyLimit(operation: LocalOperation | null) {
   return operation?.tool === "export_model" ? MAX_EXPORT_BODY : MAX_BODY
 }
 
-type StateOperation = Extract<LocalOperation, { arguments: { baseRevision: number } }>
+type StateOperation = Extract<LocalOperation, { arguments: { baseRevision: number } }> & {
+  tool: Exclude<LocalOperation["tool"], "change_metadata">
+}
 function stateMatches(operation: StateOperation, value: unknown, documentId: string) {
   const state = automationDraftStateSchema.parse(value)
   if (state.documentId !== documentId) return false
@@ -219,7 +230,74 @@ function semanticInspectionMatches(
     view.data.record.id === operation.arguments.entity.id
   )
 }
-function resultMatches(operation: LocalOperation, result: LocalToolResult, documentId: string) {
+const metadataReadSchemas = {
+  model_parts: authoredPartsViewSchema,
+  model_folders: authoredFoldersViewSchema,
+  model_history: authoredHistoryViewSchema,
+} as const
+function metadataListSize(
+  view: z.infer<(typeof metadataReadSchemas)[LocalMetadataReadOperation["tool"]]>,
+) {
+  if ("parts" in view) return view.parts.length
+  if ("folders" in view) return view.folders.length
+  return view.items.length
+}
+function metadataListMatches(
+  operation: LocalMetadataReadOperation,
+  value: unknown,
+  documentId: string,
+) {
+  const view = metadataReadSchemas[operation.tool].parse(value)
+  const count = metadataListSize(view)
+  const start = operation.arguments.cursor ?? 0
+  return (
+    view.documentId === documentId &&
+    view.revision === operation.arguments.revision &&
+    count <= operation.arguments.limit &&
+    start + count <= view.total &&
+    view.nextCursor === (start + count < view.total ? start + count : null) &&
+    (count > 0 || start === view.total)
+  )
+}
+function metadataCommitMatches(
+  operation: Extract<LocalOperation, { tool: "change_metadata" }>,
+  value: unknown,
+  documentId: string,
+) {
+  const view = metadataCommitViewSchema.parse(value)
+  return (
+    view.documentId === documentId &&
+    view.commandId === operation.arguments.commandId &&
+    view.baseRevision === operation.arguments.baseRevision &&
+    view.revision === view.baseRevision + 1 &&
+    JSON.stringify(view.change) === JSON.stringify(operation.arguments.change)
+  )
+}
+function resultBudgetFits(tool: LocalOperation["tool"], result: LocalToolResult) {
+  return (
+    !isLocalMetadataTool(tool) || Buffer.byteLength(JSON.stringify(result), "utf8") <= 128 * 1024
+  )
+}
+function resultContextMatches(
+  operation: LocalOperation,
+  result: LocalToolResult,
+  documentId: string,
+) {
+  if (!result.ok) return true
+  if (isLocalMetadataRead(operation))
+    return metadataListMatches(operation, result.value, documentId)
+  if (operation.tool === "change_metadata")
+    return metadataCommitMatches(operation, result.value, documentId)
+  return resultMatches(operation, result, documentId)
+}
+function resultMatches(
+  operation: Exclude<
+    LocalOperation,
+    LocalMetadataReadOperation | Extract<LocalOperation, { tool: "change_metadata" }>
+  >,
+  result: LocalToolResult,
+  documentId: string,
+) {
   if (!result.ok) return true
   if (isLocalDraftCommand(operation)) return stateMatches(operation, result.value, documentId)
   if (isLocalDraftInspection(operation))
@@ -275,7 +353,10 @@ function reportProgress(
   }
 }
 
-function matchesPending(pending: Pending | null, result: { requestId: string; tool: string }) {
+function matchesPending(
+  pending: Pending | null,
+  result: { requestId: string; tool: string },
+): pending is Pending {
   return (
     pending !== null && pending.id === result.requestId && pending.operation.tool === result.tool
   )
@@ -430,15 +511,13 @@ export function createBrowserBroker({
       return response(401, failure("session-revoked", "The local automation session was revoked."))
     if (!parsed.success)
       return response(400, failure("invalid-result", "The result request is invalid."))
-    if (!matchesPending(authorized.pending, parsed.data))
+    const pending = authorized.pending
+    if (!matchesPending(pending, parsed.data))
       return response(409, failure("unexpected-result", "No matching operation is pending."))
     const output = localToolOutputs[parsed.data.tool].safeParse(parsed.data.result)
     if (!output.success)
       return response(400, failure("invalid-result", "The tool result does not match its schema."))
-    if (
-      !authorized.pending ||
-      !resultMatches(authorized.pending.operation, output.data, authorized.document.id)
-    )
+    if (!resultContextMatches(pending.operation, output.data, authorized.document.id))
       return response(
         400,
         failure(
@@ -446,7 +525,8 @@ export function createBrowserBroker({
           "The tool result belongs to another document or request.",
         ),
       )
-    const pending = authorized.pending
+    if (!resultBudgetFits(parsed.data.tool, output.data))
+      return response(400, failure("result-too-large", "The metadata result exceeds 128 KiB."))
     authorized.pending = null
     clearPending(pending, output.data)
     return response(200, { ok: true })
@@ -536,6 +616,14 @@ export function createBrowserBroker({
     isPaired() {
       expire()
       return pair !== null
+    },
+    readSession() {
+      expire()
+      return {
+        schemaVersion: 1 as const,
+        editorUrl: allowedOrigin,
+        paired: pair !== null,
+      }
     },
     dispose() {
       disposed = true

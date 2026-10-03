@@ -64,6 +64,10 @@ export type VersionedDocumentSessionDependencies = Readonly<{
     >
   }
   versionedRepository: VersionedDocumentRepositoryPort & VersionedPromotionPort
+  createAdapter?: (
+    repository: VersionedDocumentRepositoryPort,
+    initialSnapshot: DocumentSnapshotV1,
+  ) => PersistentDocumentRepositoryPort
   leases: DocumentLeasePort
   commandDispatcher: PersistentDocumentSessionDependencies["commandDispatcher"]
   createRebuildPort: PersistentDocumentSessionDependencies["createRebuildPort"]
@@ -126,7 +130,7 @@ function openMigratedReadOnly(
   }>,
   migrated: MigratedLegacyRecoveryReport,
 ) {
-  const adapter = createVersionedPersistenceAdapter(
+  const adapter = (dependencies.createAdapter ?? createVersionedPersistenceAdapter)(
     cachedVersionedRepository(
       dependencies.versionedRepository,
       versionedRecoveryFromMigration(migrated),
@@ -171,7 +175,7 @@ export async function openVersionedDocumentSession(
 
   const versioned = await dependencies.versionedRepository.recover(documentId.data)
   if (versioned.ok) {
-    const adapter = createVersionedPersistenceAdapter(
+    const adapter = (dependencies.createAdapter ?? createVersionedPersistenceAdapter)(
       cachedVersionedRepository(dependencies.versionedRepository, versioned.value),
       versioned.value.snapshot,
     )
@@ -236,7 +240,7 @@ export async function openVersionedDocumentSession(
   }
 
   const recovery = versionedRecoveryFromMigration(migrated.value)
-  const adapter = createVersionedPersistenceAdapter(
+  const adapter = (dependencies.createAdapter ?? createVersionedPersistenceAdapter)(
     cachedVersionedRepository(dependencies.versionedRepository, recovery),
     migrated.value.snapshot,
   )

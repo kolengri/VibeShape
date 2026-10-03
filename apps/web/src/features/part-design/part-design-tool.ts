@@ -5,8 +5,6 @@ import {
   chamferFeatureTypeV2,
   cylinderFeatureType,
   datumPlaneFeatureType,
-  extrusionFeatureType,
-  extrusionFeatureTypeV4,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
@@ -14,20 +12,32 @@ import {
   filletFeatureTypeV2,
   holeFeatureType,
   holeFeatureTypeV2,
-  legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
+  readExtrusionFeatureParameters,
   revolveFeatureType,
   revolveFeatureTypeV6,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
 } from "@vibeshape/domain"
+import type { BodyReference } from "@vibeshape/domain/body-reference"
+import type { PartId } from "@vibeshape/domain/identifiers"
+import { isExtrusionType } from "@vibeshape/domain/part-design"
+import {
+  compoundFeatureType,
+  unionFeatureType,
+} from "@vibeshape/domain/part-design-body-combination"
+import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 
 export type ActivePartDesignTool =
   | Readonly<{ kind: "measure" }>
+  | Readonly<{ kind: "create-compound" | "create-union" }>
+  | Readonly<{ kind: "edit-compound" | "edit-union"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-placement"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-placement"; featureId: FeatureId }>
   | Readonly<{ kind: "create-box" }>
   | Readonly<{ kind: "edit-box"; featureId: FeatureId }>
   | Readonly<{ kind: "create-cylinder" }>
@@ -139,12 +149,7 @@ export function isBooleanFeature(feature: FeatureRecord) {
 }
 
 export function isExtrusionFeature(feature: FeatureRecord) {
-  return (
-    hasFeatureType(feature, extrusionFeatureType.type) ||
-    hasFeatureType(feature, multiProfileExtrusionFeatureType.type) ||
-    hasFeatureType(feature, extrusionFeatureTypeV4.type) ||
-    hasFeatureType(feature, legacyExtrusionFeatureType.type)
-  )
+  return isExtrusionType(feature)
 }
 
 export function isRevolveFeature(feature: FeatureRecord) {
@@ -162,25 +167,38 @@ export function isDatumPlaneFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, datumPlaneFeatureType.type)
 }
 
+function isPlacementFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, placementFeatureType.type)
+}
+
+function isUnionFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, unionFeatureType.type)
+}
+
 function isPartDesignSolidFeature(feature: FeatureRecord) {
-  return (
-    isBoxFeature(feature) ||
-    isCylinderFeature(feature) ||
-    isExtrusionFeature(feature) ||
-    isRevolveFeature(feature) ||
-    isBooleanFeature(feature) ||
-    isFilletFeature(feature) ||
-    isChamferFeature(feature) ||
-    isHoleFeature(feature)
-  )
+  return [
+    isBoxFeature,
+    isCylinderFeature,
+    isExtrusionFeature,
+    isRevolveFeature,
+    isBooleanFeature,
+    isFilletFeature,
+    isChamferFeature,
+    isHoleFeature,
+    isPlacementFeature,
+    isUnionFeature,
+  ].some((matches) => matches(feature))
 }
 
 function isModifyingInputFeature(feature: FeatureRecord) {
-  return (
-    isPartDesignSolidFeature(feature) &&
-    !hasFeatureType(feature, multiProfileExtrusionFeatureType.type) &&
-    !hasFeatureType(feature, multiProfileRevolveFeatureType.type)
+  if (!isPartDesignSolidFeature(feature)) return false
+  if (
+    hasFeatureType(feature, multiProfileExtrusionFeatureType.type) ||
+    hasFeatureType(feature, multiProfileRevolveFeatureType.type)
   )
+    return false
+  const extrusion = readExtrusionFeatureParameters(feature)
+  return extrusion?.operation !== "new" || (extrusion.profiles?.profiles.length ?? 1) <= 1
 }
 
 function dependentFeatureIds(features: readonly FeatureRecord[], rootFeatureId: FeatureId) {
@@ -252,23 +270,39 @@ export function activeFeatureId(activeTool: ActivePartDesignTool | null) {
   return activeTool && "featureId" in activeTool ? activeTool.featureId : null
 }
 
+const editableFeatureTools: readonly [
+  (feature: FeatureRecord) => boolean,
+  Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
+][] = [
+  [(feature) => hasFeatureType(feature, compoundFeatureType.type), "edit-compound"],
+  [isUnionFeature, "edit-union"],
+  [isPlacementFeature, "edit-placement"],
+  [isBoxFeature, "edit-box"],
+  [isCylinderFeature, "edit-cylinder"],
+  [isExtrusionFeature, "edit-extrusion"],
+  [isRevolveFeature, "edit-revolve"],
+  [isHoleFeature, "edit-hole"],
+  [isFilletFeature, "edit-fillet"],
+  [isChamferFeature, "edit-chamfer"],
+  [isBooleanFeature, "edit-subtract"],
+  [isDatumPlaneFeature, "edit-datum-plane"],
+]
+
 export function editPartDesignTool(
   feature: FeatureRecord | undefined,
 ): ActivePartDesignTool | null {
   if (!feature) return null
-  if (isBoxFeature(feature)) return { kind: "edit-box", featureId: feature.id }
-  if (isCylinderFeature(feature)) return { kind: "edit-cylinder", featureId: feature.id }
-  if (isExtrusionFeature(feature)) return { kind: "edit-extrusion", featureId: feature.id }
-  if (isRevolveFeature(feature)) return { kind: "edit-revolve", featureId: feature.id }
-  if (isHoleFeature(feature)) return { kind: "edit-hole", featureId: feature.id }
-  if (isFilletFeature(feature)) return { kind: "edit-fillet", featureId: feature.id }
-  if (isChamferFeature(feature)) return { kind: "edit-chamfer", featureId: feature.id }
-  if (isBooleanFeature(feature)) return { kind: "edit-subtract", featureId: feature.id }
-  if (isDatumPlaneFeature(feature)) return { kind: "edit-datum-plane", featureId: feature.id }
-  return null
+  const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
+  return kind ? { kind, featureId: feature.id } : null
 }
 
 const commandByToolKind = {
+  "create-compound": "compound",
+  "edit-compound": "compound",
+  "create-union": "union",
+  "edit-union": "union",
+  "create-placement": "placement",
+  "edit-placement": "placement",
   "create-box": "box",
   "edit-box": "box",
   "create-cylinder": "cylinder",

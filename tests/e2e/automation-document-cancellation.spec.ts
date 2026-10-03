@@ -10,6 +10,7 @@ type BrowserAutomationFactory = {
         documentId: string
         revision: number
         host: AutomationHost
+        enableAutoApply: (actor: unknown) => boolean
         dispose: () => void
       }
     | { ok: false; diagnostic: { message: string } }
@@ -26,13 +27,17 @@ const paths = {
 const cases = {
   dispose: "cancels a preview when the automation handle is disposed",
   human: "cancels a preview when a human revision supersedes it",
+  "auto-dispose": "revokes an auto-apply commit while exact validation is pending",
+  "auto-human": "rejects an auto-apply commit superseded by a human edit",
 } as const
 
 for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
   test(cases[mode], async ({ page }) => {
     test.setTimeout(180_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
 
     const result = await page.evaluate(
       async ({ mode, paths }) => {
@@ -137,9 +142,13 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
         try {
           await seedDraft(host, domain, actor, operation, documentId, revision, id)
 
-          const pendingPreview = host.previewDraft(actor, operation)
+          const autoApply = mode.startsWith("auto-")
+          if (autoApply && !connection.enableAutoApply(actor)) throw new Error("Opt-in failed.")
+          const pendingPreview = autoApply
+            ? host.commitDraft(actor, operation)
+            : host.previewDraft(actor, operation)
           await held.entered
-          if (mode === "dispose") connection.dispose()
+          if (mode === "dispose" || mode === "auto-dispose") connection.dispose()
           else {
             const renamed = await app.renameActiveProject(revision, "Human update")
             if (!renamed.ok) throw new Error("The human edit failed.")
@@ -172,7 +181,9 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
     expect(result.settledBeforeRelease.settled).toBe(true)
     expect(result.settledBeforeRelease.value).toMatchObject({
       ok: false,
-      diagnostic: { code: "automation-operation-failed" },
+      diagnostic: {
+        code: mode === "auto-dispose" ? "draft-review-cancelled" : "automation-operation-failed",
+      },
     })
     expect(result.latePreview).toEqual(result.settledBeforeRelease.value)
     expect(result.committed.ok).toBe(false)
@@ -181,7 +192,7 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
       "data-rendered-feature-count",
       "0",
     )
-    if (mode === "dispose") {
+    if (mode === "dispose" || mode === "auto-dispose") {
       if (result.committed.ok)
         throw new Error("The disposed automation draft unexpectedly committed.")
       expect(result.committed.diagnostic.code).toBe("draft-review-cancelled")

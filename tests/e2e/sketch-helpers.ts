@@ -1,6 +1,12 @@
 import type { Locator, Page } from "@playwright/test"
 import { expect } from "./fixtures"
 
+export async function fitIsometricView(page: Page) {
+  await page.getByRole("button", { name: "Fit view", exact: true }).click()
+  await page.getByRole("button", { name: "Standard views", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Isometric", exact: true }).click()
+}
+
 export async function drawRectangle(page: Page) {
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -28,6 +34,12 @@ export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" =
     .getByRole("button", { name: planeLabels[plane], exact: true })
     .click()
   await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+  // Coordinate-based authoring fixtures deliberately use the plane-normal drawing view.
+  await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+  await expect(page.getByRole("img", { name: "Editable sketch geometry" })).not.toHaveAttribute(
+    "data-sketch-spatial",
+    "true",
+  )
 }
 
 export async function openConstraintManager(page: Page) {

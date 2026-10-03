@@ -35,6 +35,35 @@ export const MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS = 65_536
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
+const placementAngleSchema = finiteNumberSchema.min(-2 * Math.PI).max(2 * Math.PI)
+export const placementFeatureContentParametersSchema = z
+  .object({
+    translation: vector3Schema,
+    rotation: z.tuple([placementAngleSchema, placementAngleSchema, placementAngleSchema]),
+  })
+  .strict()
+export type PlacementFeatureContentParameters = z.infer<
+  typeof placementFeatureContentParametersSchema
+>
+const compoundOutputRoleSchema = z
+  .string()
+  .regex(/^body\.[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+export const compoundFeatureContentParametersSchema = z
+  .object({
+    outputRoles: z
+      .array(compoundOutputRoleSchema)
+      .min(2)
+      .max(8)
+      .refine(
+        (roles) => new Set(roles).size === roles.length,
+        "Compound output slot identities must be unique.",
+      ),
+  })
+  .strict()
+export type CompoundFeatureContentParameters = z.infer<
+  typeof compoundFeatureContentParametersSchema
+>
+export const unionFeatureContentParametersSchema = z.object({}).strict()
 const topologyVector3Schema = z.tuple([finiteNumberSchema, finiteNumberSchema, finiteNumberSchema])
 
 function vectorDot(
@@ -406,6 +435,47 @@ export const extrusionMultiProfileModifyingFeatureContentParametersSchema = z
     operation: z.enum(["add", "remove", "intersect"]),
   })
   .strict()
+
+/** Reference-normal bounds; symmetric distance retains its legacy total-span meaning. */
+export function extrusionExtentBounds(
+  parameters: Readonly<{
+    distance: number
+    symmetric: boolean
+    reversed?: boolean
+    secondDistance?: number | null
+  }>,
+) {
+  if (parameters.symmetric) {
+    return { start: -parameters.distance / 2, end: parameters.distance / 2 }
+  }
+  const second = parameters.secondDistance ?? 0
+  return parameters.reversed
+    ? { start: -parameters.distance, end: second }
+    : { start: second === 0 ? 0 : -second, end: parameters.distance }
+}
+
+/** Independent one- or two-sided extrusion content; schema-version 5 only. */
+export const extrusionFeatureContentParametersV5Schema = z
+  .object({
+    sketchId: sketchIdSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    frame: extrusionFrameSchema,
+    profiles: multiProfileListSchema,
+    distance: cadLengthSchema,
+    symmetric: z.boolean(),
+    reversed: z.boolean(),
+    secondDistance: cadLengthSchema.nullable(),
+    operation: z.enum(["new", "add", "remove", "intersect"]),
+  })
+  .strict()
+  .refine(({ symmetric, secondDistance }) => !symmetric || secondDistance === null, {
+    path: ["secondDistance"],
+    message: "Symmetric extrusion cannot enable a second depth.",
+  })
+  .refine(({ distance, secondDistance }) => distance + (secondDistance ?? 0) <= 100_000, {
+    path: ["distance"],
+    message: "The total extrusion span must be at most 100,000 mm.",
+  })
 
 const revolveMultiProfileFeatureContentBaseSchema = z
   .object({

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
+  extrusionExtentBounds,
+  extrusionFeatureContentParametersV5Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
@@ -42,6 +44,71 @@ const frame = {
 }
 
 describe("multi-profile geometry content", () => {
+  const extent = {
+    sketchId,
+    frame,
+    profiles: [profile()],
+    distance: 10,
+    symmetric: false,
+    reversed: false,
+    secondDistance: 3,
+    operation: "new",
+  }
+
+  it.each([
+    [{}, { start: -3, end: 10 }],
+    [{ reversed: true }, { start: -10, end: 3 }],
+    [{ secondDistance: null }, { start: 0, end: 10 }],
+    [
+      { secondDistance: null, reversed: true },
+      { start: -10, end: 0 },
+    ],
+    [
+      { secondDistance: null, symmetric: true },
+      { start: -5, end: 5 },
+    ],
+    [
+      { secondDistance: null, symmetric: true, reversed: true },
+      { start: -5, end: 5 },
+    ],
+  ])("computes reference-normal bounds for extent %j", (changes, expected) => {
+    expect(
+      extrusionExtentBounds(
+        extrusionFeatureContentParametersV5Schema.parse({ ...extent, ...changes }),
+      ),
+    ).toEqual(expected)
+  })
+
+  it.each([
+    { distance: Number.NaN },
+    { secondDistance: Number.POSITIVE_INFINITY },
+    { secondDistance: 0 },
+    { secondDistance: -3 },
+    { distance: 0.0005 },
+    { distance: 99_999, secondDistance: 2 },
+    { symmetric: true },
+    { secondDistance: undefined },
+    { profiles: [] },
+    { offset: 1 },
+  ])("rejects invalid version-5 worker content %j", (changes) => {
+    expect(
+      extrusionFeatureContentParametersV5Schema.safeParse({ ...extent, ...changes }).success,
+    ).toBe(false)
+  })
+
+  it.each(["new", "add", "remove", "intersect"])(
+    "accepts bounded v5 multi-profile %s content",
+    (operation) => {
+      expect(
+        extrusionFeatureContentParametersV5Schema.safeParse({
+          ...extent,
+          profiles: [profile(), profile(20)],
+          operation,
+        }).success,
+      ).toBe(true)
+    },
+  )
+
   it("accepts bounded new-body analytical profile arrays", () => {
     const result = extrusionMultiProfileFeatureContentParametersSchema.safeParse({
       sketchId,

@@ -9,7 +9,7 @@ import {
   type SketchRecord,
   type TopologyCandidate,
 } from "@vibeshape/domain"
-import { extrusionFrameSchema } from "@vibeshape/protocol"
+import { extrusionExtentBounds, extrusionFrameSchema } from "@vibeshape/protocol"
 
 export type SupportFrame = ReturnType<typeof extrusionFrameSchema.parse>
 type Vector3 = readonly [number, number, number]
@@ -262,11 +262,13 @@ function extrusionSupportFrame(
   if (!sourceSketch) return null
   const frame = sketchFrame(sourceSketch, document, features, visitedFeatureIds, geometry)
   if (!frame) return null
-  const start = parameters.symmetric ? -parameters.distance.value / 2 : 0
+  const { start, end } = extrusionExtentBounds({
+    ...parameters,
+    distance: parameters.distance.value,
+    secondDistance: parameters.secondDistance?.value ?? null,
+  })
   if (role === "extrusion.cap.start") return translatedFrame(frame, start, true)
-  return role === "extrusion.cap.end"
-    ? translatedFrame(frame, start + parameters.distance.value)
-    : null
+  return role === "extrusion.cap.end" ? translatedFrame(frame, end) : null
 }
 
 export function datumPlaneFrame(

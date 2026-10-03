@@ -2,6 +2,7 @@ import { isAnyObject, isArray, isString } from "is-what"
 import type { ZodError } from "zod"
 import { canonicalJson } from "./canonical-json"
 import { type DocumentNodeRef, documentNodeRefSchema, type HistoryItemRef } from "./document-node"
+import { featureBodyDependencies } from "./feature-dependencies"
 import {
   type FeatureRecord,
   type FeatureRecordV1,
@@ -20,6 +21,7 @@ import {
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -33,11 +35,18 @@ import {
   revolveFeatureTypeV6,
 } from "./part-design"
 import {
+  compoundFeatureType,
+  readCompoundFeatureParameters,
+  readUnionFeatureParameters,
+  unionFeatureType,
+} from "./part-design-body-combination"
+import {
   expectedHoleDependencyIds,
   holeFeatureType,
   holeFeatureTypeV2,
   readHoleFeatureParameters,
 } from "./part-design-hole"
+import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
   isOrphanedModelReference,
@@ -166,6 +175,14 @@ const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(filletFeatureTypeV2.type),
   featureTypeKey(chamferFeatureTypeV2.type),
 ])
+type BodySelectionParameterReader = (
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+) => object | null
+const bodySelectionParameterReaders = new Map<string, BodySelectionParameterReader>([
+  [featureTypeKey(placementFeatureType.type), readPlacementFeatureParameters],
+  [featureTypeKey(compoundFeatureType.type), readCompoundFeatureParameters],
+  [featureTypeKey(unionFeatureType.type), readUnionFeatureParameters],
+])
 const revolveTypeKeys = new Set(
   [
     revolveFeatureType,
@@ -182,6 +199,7 @@ const extrusionTypeKeys = new Set(
     extrusionFeatureType,
     extrusionFeatureTypeV3,
     extrusionFeatureTypeV4,
+    extrusionFeatureTypeV5,
   ].map(({ type }) => featureTypeKey(type)),
 )
 const multiProfileResultTypeKeys = new Set([
@@ -189,9 +207,25 @@ const multiProfileResultTypeKeys = new Set([
   featureTypeKey(revolveFeatureTypeV5.type),
 ])
 
+function hasCompleteBodySelectionDependencies(
+  feature: FeatureRecord,
+  readParameters: BodySelectionParameterReader,
+) {
+  return (
+    readParameters(feature) !== null &&
+    orderedIdsMatch(
+      feature.dependencies,
+      featureBodyDependencies(feature).map(({ featureId }) => featureId),
+    )
+  )
+}
+
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
   const typeKey = featureTypeKey(feature.type)
+  const readBodySelectionParameters = bodySelectionParameterReaders.get(typeKey)
+  if (readBodySelectionParameters)
+    return hasCompleteBodySelectionDependencies(feature, readBodySelectionParameters)
   if (
     typeKey === featureTypeKey(holeFeatureType.type) ||
     typeKey === featureTypeKey(holeFeatureTypeV2.type)
@@ -752,11 +786,12 @@ function validateMultiProfileResultInputs(
     const dependencyId = feature.dependencies[dependencyIndex]
     if (!dependencyId) return false
     const source = document.byKey.get(key({ kind: "feature", id: dependencyId }))
-    return (
-      source?.ref.kind === "feature" &&
-      "type" in source.record &&
-      multiProfileResultTypeKeys.has(featureTypeKey(source.record.type))
-    )
+    if (source?.ref.kind !== "feature" || !("type" in source.record)) return false
+    const sourceTypeKey = featureTypeKey(source.record.type)
+    if (multiProfileResultTypeKeys.has(sourceTypeKey)) return true
+    if (sourceTypeKey !== featureTypeKey(extrusionFeatureTypeV5.type)) return false
+    const extrusion = readExtrusionFeatureParameters(source.record as FeatureRecord)
+    return extrusion?.operation === "new" && (extrusion.profiles?.profiles.length ?? 0) > 1
   })
   if (invalidDependencyIndex === undefined) return
   return diagnostic(

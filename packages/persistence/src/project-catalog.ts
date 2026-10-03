@@ -1,24 +1,24 @@
 import type { DocumentId } from "@vibeshape/domain"
+import { parseAuthorityProject } from "./authority-records"
+import type { ProjectAuthorityRecord } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import { persistenceInvariantError } from "./diagnostics"
 import {
   type LocalProjectSummary,
   localProjectSummarySchema,
   type ProjectRecord,
-  type ProjectRecordV1,
   projectRecordSchema,
-  projectRecordV1Schema,
   projectThumbnailRecordSchema,
 } from "./schemas"
 
 export const MAX_LOCAL_PROJECTS = 4_096
 const MAX_LOCAL_PROJECT_THUMBNAIL_BYTES = 16 * 1024 * 1024
 
-export type ProjectCatalogRecord = ProjectRecord | ProjectRecordV1
+export type ProjectCatalogRecord = ProjectRecord | ProjectAuthorityRecord
 
 function parseProjectCatalogRecord(record: unknown, version: 0 | 1): ProjectCatalogRecord {
-  const parsed =
-    version === 1 ? projectRecordV1Schema.safeParse(record) : projectRecordSchema.safeParse(record)
+  if (version === 1) return parseAuthorityProject(record)
+  const parsed = projectRecordSchema.safeParse(record)
   if (!parsed.success)
     throw persistenceInvariantError(
       "corrupt-history",

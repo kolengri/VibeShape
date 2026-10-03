@@ -55,6 +55,12 @@ const DEFAULT_VIEW_HEIGHT = 100
 const FIT_PADDING = 1.35
 const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
+const ORIGIN_PLANE_COLOR = "#7196bf"
+const ORIGIN_PLANE_OPACITY = {
+  idle: { fill: 0.04, edge: 0.25 },
+  selected: { fill: 0.12, edge: 0.7 },
+  preselected: { fill: 0.2, edge: 0.9 },
+} as const
 const MIN_AXIAL_GIZMO_DISTANCE = 0.01
 
 function isFiniteViewerVector3(position: ViewerVector3): boolean {
@@ -491,7 +497,7 @@ export type GeometryViewport = Readonly<{
   showTranslationGizmo: (position: ViewerVector3) => void
   showAxialTranslationGizmo: (gizmo: ViewerAxialGizmo) => void
   showAngularGizmo: (gizmo: ViewerAngularGizmo) => void
-  hideTranslationGizmo: () => void
+  hideTranslationGizmo: (options?: Readonly<{ preserveActiveGesture?: boolean }>) => void
   hideAngularGizmo: () => void
   setStandardView: (view: ViewerStandardView) => void
   fit: () => void
@@ -1108,12 +1114,6 @@ function orientOriginPlane(mesh: Mesh, plane: ViewerOriginPlane) {
   if (plane === "yz") mesh.rotation.y = Math.PI / 2
 }
 
-function originPlaneColor(plane: ViewerOriginPlane) {
-  if (plane === "xy") return "#4c8dff"
-  if (plane === "xz") return "#35a66f"
-  return "#e15b64"
-}
-
 class ThreeGeometryViewport implements GeometryViewport {
   readonly #canvas: HTMLCanvasElement
   readonly #renderer: WebGLRenderer
@@ -1158,7 +1158,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #originPlaneMeshes = new Map<Mesh, ViewerOriginPlane>()
   readonly #originPlaneMeshesByPlane = new Map<ViewerOriginPlane, Mesh>()
   readonly #originPlaneEdges = new Map<LineSegments, ViewerOriginPlane>()
-  readonly #originPlaneEdgesByPlane = new Map<ViewerOriginPlane, LineSegments>()
+  readonly #originPlaneEdgesByPlane = new Map<
+    ViewerOriginPlane,
+    LineSegments<BufferGeometry, LineBasicMaterial>
+  >()
   readonly #originPlaneMaterials = new Map<ViewerOriginPlane, MeshBasicMaterial>()
   readonly #originPlaneEdgeMaterials: LineBasicMaterial[] = []
   readonly #modelSurfaceMaterials: MeshStandardMaterial[] = []
@@ -1347,7 +1350,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
-  #pointerDown: Readonly<{ x: number; y: number }> | null = null
+  #pointerDown: Readonly<{ x: number; y: number; pointerId: number }> | null = null
   #originPlaneSelection: ViewerOriginPlane | null = null
   #originPlaneSelectionActive = false
   #originPlaneIdleSelectionEnabled = false
@@ -1386,6 +1389,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchNavigationControlsEnabledBeforePointer: boolean | null = null
   #sketchNavigationPointerId: number | null = null
   #translationGizmoInteracting = false
+  #translationGizmoHidePending = false
+  #translationGizmoPointerId: number | null = null
   #axialGizmo: ViewerAxialGizmo | null = null
   #angularGizmo: ViewerAngularGizmo | null = null
   #angularGizmoHandle: Points | null = null
@@ -1761,6 +1766,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   showTranslationGizmo(position: ViewerVector3) {
     if (this.#disposed || !isFiniteViewerVector3(position)) return
+    this.#translationGizmoHidePending = false
     this.hideAngularGizmo()
     this.#axialDistancePublisher.cancel()
     this.#axialGizmo = null
@@ -1780,6 +1786,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const position = viewerAxialGizmoHandlePosition(gizmo)
     const direction = normalizedViewerDirection(gizmo.direction)
     if (this.#disposed || !position || !direction) return
+    this.#translationGizmoHidePending = false
     this.hideAngularGizmo()
     this.#translationPositionPublisher.cancel()
     this.#axialGizmo = { ...gizmo, direction: [direction.x, direction.y, direction.z] }
@@ -1797,11 +1804,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
-  hideTranslationGizmo() {
+  hideTranslationGizmo(options?: Readonly<{ preserveActiveGesture?: boolean }>) {
     if (this.#disposed) return
+    if (this.#translationGizmoInteracting && options?.preserveActiveGesture) {
+      this.#translationGizmoHidePending = true
+      return
+    }
+    if (this.#translationGizmoInteracting) this.#cancelTranslationGesture()
+    this.#translationGizmoHidePending = false
     this.#translationControls.detach()
     this.#translationHelper.visible = false
     this.#translationGizmoInteracting = false
+    delete this.#canvas.dataset.translationGizmoDragging
     this.#skipTranslationGizmoPointerUp = false
     this.#pointerDown = null
     if (!this.#angularGizmoInteracting) {
@@ -2393,6 +2407,8 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onTranslationControlsMouseDown = () => {
     this.#translationGizmoInteracting = true
+    this.#translationGizmoPointerId = this.#pointerDown?.pointerId ?? null
+    this.#canvas.dataset.translationGizmoDragging = "true"
     this.#skipTranslationGizmoPointerUp = true
     this.#orbitControlsEnabledBeforeTranslation = this.#controls.enabled
     this.#controls.enabled = false
@@ -2402,7 +2418,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationPositionPublisher.flush()
     this.#axialDistancePublisher.flush()
     this.#translationGizmoInteracting = false
+    const pointerId = this.#translationGizmoPointerId
+    this.#translationGizmoPointerId = null
+    delete this.#canvas.dataset.translationGizmoDragging
     this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+    if (pointerId !== null && this.#canvas.hasPointerCapture(pointerId)) {
+      this.#canvas.releasePointerCapture(pointerId)
+    }
+    if (this.#translationGizmoHidePending) this.hideTranslationGizmo()
   }
 
   #renderAngularGizmo() {
@@ -2532,9 +2555,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   #createOriginPlanes() {
     for (const plane of viewerOriginPlanes) {
       const material = new MeshBasicMaterial({
-        color: new Color(originPlaneColor(plane)),
+        color: new Color(ORIGIN_PLANE_COLOR),
         depthWrite: false,
-        opacity: 0.16,
+        opacity: ORIGIN_PLANE_OPACITY.idle.fill,
         side: DoubleSide,
         transparent: true,
       })
@@ -2546,7 +2569,12 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#originPlaneMeshesByPlane.set(plane, mesh)
       this.#originPlaneGroup.add(mesh)
 
-      const edgeMaterial = new LineBasicMaterial({ color: new Color(originPlaneColor(plane)) })
+      const edgeMaterial = new LineBasicMaterial({
+        color: new Color(ORIGIN_PLANE_COLOR),
+        depthWrite: false,
+        opacity: ORIGIN_PLANE_OPACITY.idle.edge,
+        transparent: true,
+      })
       this.#originPlaneEdgeMaterials.push(edgeMaterial)
       const edges = new LineSegments(new EdgesGeometry(mesh.geometry), edgeMaterial)
       edges.name = `origin-plane:${plane}:edges`
@@ -2617,13 +2645,19 @@ class ThreeGeometryViewport implements GeometryViewport {
       const mesh = this.#originPlaneMeshesByPlane.get(plane)
       if (mesh) mesh.visible = visible
       const edges = this.#originPlaneEdgesByPlane.get(plane)
-      if (edges) edges.visible = visible
-      material.opacity =
-        plane === this.#originPlanePreselection
-          ? 0.42
-          : plane === this.#originPlaneSelection
-            ? 0.26
-            : 0.12
+      const opacity =
+        ORIGIN_PLANE_OPACITY[
+          plane === this.#originPlanePreselection
+            ? "preselected"
+            : plane === this.#originPlaneSelection
+              ? "selected"
+              : "idle"
+        ]
+      if (edges) {
+        edges.visible = visible
+        edges.material.opacity = opacity.edge
+      }
+      material.opacity = opacity.fill
     }
     this.#originPlaneGroup.visible = [...this.#originPlaneMeshes].some(([mesh]) => mesh.visible)
   }
@@ -2741,7 +2775,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#translationGizmoInteracting) return
     if (event.isPrimary && event.button === 0) {
       if (this.#beginAngularGizmoInteraction(event)) return
-      this.#pointerDown = { x: event.clientX, y: event.clientY }
+      this.#pointerDown = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }
     }
   }
 
@@ -2872,6 +2906,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const width = this.#canvas.clientWidth
     const height = this.#canvas.clientHeight
     this.#publishSketchPlaneProjection()
+    this.#publishAxialGizmoAvailability()
     if (width <= 0 || height <= 0) return
     const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
     if (angularHandle) {
@@ -2911,6 +2946,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.render(this.#orientationScene, this.#orientationCamera)
     this.#renderer.setScissorTest(false)
     this.#renderer.setViewport(0, 0, width, height)
+  }
+
+  #publishAxialGizmoAvailability() {
+    if (!this.#axialGizmo) {
+      delete this.#canvas.dataset.axialGizmoDragAvailable
+      return
+    }
+    const direction = new Vector3(...this.#axialGizmo.direction)
+    const viewDirection = this.#camera.getWorldDirection(new Vector3())
+    // TransformControls hides a translation axis at this view alignment.
+    const available = Math.abs(direction.dot(viewDirection)) <= 0.99
+    this.#canvas.dataset.axialGizmoDragAvailable = String(available)
   }
 
   #publishSketchPlaneProjection() {

@@ -1,5 +1,6 @@
 import type {
   FeatureId,
+  PartId,
   SketchConstraintId,
   SketchEntityId,
   SketchExternalReferenceId,
@@ -7,7 +8,7 @@ import type {
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
-import { replaceSketchSupport } from "@vibeshape/domain"
+import { replaceSketchSupport, sketchIdSchema } from "@vibeshape/domain"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -45,6 +46,7 @@ import {
   type SketchEditorTool,
 } from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "../shell/workspace"
+import type { SketchVisibilityOverrides } from "./sketch-visibility"
 
 function clearFeatureSelection(state: Draft<EditorSessionState>, featureId: FeatureId) {
   if (state.selection?.featureId === featureId) state.selection = null
@@ -83,9 +85,11 @@ export type EditorSessionState = Readonly<{
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
+  sketchVisibilityOverrides: SketchVisibilityOverrides
   originPlaneVisibility: ViewerOriginPlaneVisibility
   preselectedBody: ModelBodySelection | null
   selectedBody: ModelBodySelection | null
+  selectedPartId: PartId | null
   preselectedFeatureId: FeatureId | null
   profileFeatureReturn: ProfileFeatureReturnContext | null
   primitivePlacementRequest: PrimitivePlacementRequest | null
@@ -130,12 +134,16 @@ export type EditorSessionActions = Readonly<{
   setSelectedOriginPlane: (plane: ViewerOriginPlane | null) => void
   setBodyPreselection: (body: ModelBodySelection | null) => void
   setSelectedBody: (body: ModelBodySelection | null) => void
+  setSelectedPart: (partId: PartId | null) => void
   setFeaturePreselection: (featureId: FeatureId | null) => void
-  setExtrusionDistance: (featureId: FeatureId, distance: number) => void
+  setExtrusionDistance: (featureId: FeatureId, distance: number, side?: "first" | "second") => void
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setRevolveAngle: (featureId: FeatureId, angle: number) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
-  toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
+  toggleAllSketchVisibility: (
+    sketchIds: readonly SketchId[],
+    effectiveHiddenIds?: readonly SketchId[],
+  ) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchCameraMode: (mode: SketchCameraMode) => void
@@ -162,7 +170,7 @@ function createSketchState(): SketchEditorSessionState {
   return {
     activeSketchId: null,
     activeSketchTool: null,
-    cameraMode: "normal",
+    cameraMode: "orbit",
     construction: false,
     draft: null,
     editorTool: "select",
@@ -179,17 +187,21 @@ function createSketchState(): SketchEditorSessionState {
   }
 }
 
-function createEditorSessionState(): EditorSessionState {
+function createEditorSessionState(overrides: SketchVisibilityOverrides): EditorSessionState {
   return {
     activePartDesignTool: null,
     partDesignToolGeneration: 0,
     commandPaletteOpen: false,
     extrusionDistanceRequest: null,
     hiddenFeatureIds: [],
-    hiddenSketchIds: [],
+    hiddenSketchIds: Object.keys(overrides)
+      .filter((id) => !overrides[id])
+      .map((id) => sketchIdSchema.parse(id)),
+    sketchVisibilityOverrides: overrides,
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     preselectedBody: null,
     selectedBody: null,
+    selectedPartId: null,
     preselectedFeatureId: null,
     profileFeatureReturn: null,
     primitivePlacementRequest: null,
@@ -225,7 +237,8 @@ function resetSketchPresentation(
   sketch: Draft<SketchEditorSessionState>,
   editorTool: SketchEditorTool,
 ) {
-  sketch.cameraMode = "normal"
+  // A new sketch session observes the current camera; only an explicit view command aligns it.
+  sketch.cameraMode = "orbit"
   sketch.editorTool = editorTool
   sketch.failedConstraintIds = []
   sketch.profiles = []
@@ -296,10 +309,10 @@ function pushBoundedHistory(history: Draft<readonly SketchRecord[]>, sketch: Ske
   }
 }
 
-export function createEditorSessionStore() {
+export function createEditorSessionStore(overrides: SketchVisibilityOverrides = {}) {
   return createStore<EditorSessionStore>()(
     immer((set, get) => ({
-      ...createEditorSessionState(),
+      ...createEditorSessionState(overrides),
       actions: {
         acknowledgeExtrusionDistance: (featureId) =>
           set((state) => {
@@ -321,6 +334,7 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.selection = null
             state.selectedBody = null
+            state.selectedPartId = null
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = { kind: "select-sketch-plane" }
             resetSketchDraft(state.sketch, sketch)
@@ -334,6 +348,7 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.selection = null
             state.selectedBody = null
+            state.selectedPartId = null
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = { kind: "edit-sketch", sketchId: sketch.id }
             resetSketchDraft(state.sketch, sketch)
@@ -347,21 +362,22 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.selection = null
             state.selectedBody = null
+            state.selectedPartId = null
             state.sketch.activeSketchTool = {
               kind: "select-sketch-plane",
               returnTo: {
-                cameraMode: state.sketch.cameraMode,
                 showFinalContext: state.sketch.showFinalContext,
                 tool,
               },
             }
-            state.sketch.cameraMode = "normal"
+            state.sketch.cameraMode = "orbit"
             state.sketch.showFinalContext = false
           }),
         closeActiveTool: () =>
           set((state) => {
             if (!state.activePartDesignTool && !state.sketch.activeSketchTool) {
               state.selectedBody = null
+              state.selectedPartId = null
               state.preselectedBody = null
               state.selection = null
               state.selectedOriginPlane = null
@@ -380,8 +396,9 @@ export function createEditorSessionStore() {
               state.workspace = "sketch"
               state.selection = null
               state.selectedBody = null
+              state.selectedPartId = null
               state.sketch.activeSketchTool = activeSketchTool.returnTo.tool
-              state.sketch.cameraMode = activeSketchTool.returnTo.cameraMode
+              state.sketch.cameraMode = "orbit"
               state.sketch.showFinalContext = activeSketchTool.returnTo.showFinalContext
               return
             }
@@ -414,7 +431,7 @@ export function createEditorSessionStore() {
             state.profileFeatureReturn = null
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = null
-            state.sketch.cameraMode = "normal"
+            state.sketch.cameraMode = "orbit"
             resetSketchDraft(state.sketch, null)
             state.sketch.editorTool = "select"
             state.sketch.failedConstraintIds = []
@@ -437,6 +454,7 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.selection = null
             state.selectedBody = null
+            state.selectedPartId = null
             state.sketch.activeSketchId = matchingProfile.sketchId
             state.sketch.activeSketchTool = null
             resetSketchDraft(state.sketch, null)
@@ -467,6 +485,7 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.selection = null
             state.selectedBody = null
+            state.selectedPartId = null
           })
         },
         selectSketchSupport: ({ plane, support }) => {
@@ -494,6 +513,7 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.selection = null
             state.selectedBody = null
+            state.selectedPartId = null
           })
         },
         setCommandPaletteOpen: (open) =>
@@ -515,15 +535,23 @@ export function createEditorSessionStore() {
         setSelectedBody: (body) =>
           set((state) => {
             state.selectedBody = body
+            state.selectedPartId = null
             state.selection = null
             if (body) state.selectedOriginPlane = null
+          }),
+        setSelectedPart: (partId) =>
+          set((state) => {
+            state.selectedPartId = partId
+            state.selectedBody = null
+            state.selection = null
+            state.selectedOriginPlane = null
           }),
         setFeaturePreselection: (featureId) =>
           set((state) => {
             state.preselectedFeatureId = featureId
             state.preselectedBody = null
           }),
-        setExtrusionDistance: (featureId, distance) =>
+        setExtrusionDistance: (featureId, distance, side) =>
           set((state) => {
             if (!finiteExtrusionDistance(distance)) return
             if (!isExtrusionPartDesignTool(state.activePartDesignTool)) return
@@ -531,6 +559,7 @@ export function createEditorSessionStore() {
               distance,
               featureId,
               sequence: (state.extrusionDistanceRequest?.sequence ?? 0) + 1,
+              ...(side ? { side } : {}),
             }
           }),
         setRevolveAngle: (featureId, angle) =>
@@ -565,10 +594,12 @@ export function createEditorSessionStore() {
             if (plane) {
               state.selection = null
               state.selectedBody = null
+              state.selectedPartId = null
             }
           }),
         setSketchVisibility: (sketchId, visible) =>
           set((state) => {
+            state.sketchVisibilityOverrides[sketchId] = visible
             state.hiddenSketchIds = visible
               ? state.hiddenSketchIds.filter((id) => id !== sketchId)
               : [...new Set([...state.hiddenSketchIds, sketchId])]
@@ -576,13 +607,14 @@ export function createEditorSessionStore() {
               closeSketch(state.sketch)
             }
           }),
-        toggleAllSketchVisibility: (sketchIds) =>
+        toggleAllSketchVisibility: (sketchIds, effectiveHiddenIds) =>
           set((state) => {
             const currentSketchIds = [...new Set(sketchIds)]
             if (currentSketchIds.length === 0) return
             const currentSketchIdSet = new Set(currentSketchIds)
-            const hiddenSketchIds = new Set(state.hiddenSketchIds)
+            const hiddenSketchIds = new Set(effectiveHiddenIds ?? state.hiddenSketchIds)
             const allHidden = currentSketchIds.every((id) => hiddenSketchIds.has(id))
+            for (const id of currentSketchIds) state.sketchVisibilityOverrides[id] = allHidden
             state.hiddenSketchIds = allHidden
               ? state.hiddenSketchIds.filter((id) => !currentSketchIdSet.has(id))
               : [...new Set([...state.hiddenSketchIds, ...currentSketchIds])]
@@ -599,6 +631,7 @@ export function createEditorSessionStore() {
           set((state) => {
             state.selection = selection
             state.selectedBody = null
+            state.selectedPartId = null
             if (selection) state.selectedOriginPlane = null
           }),
         setSketchConstruction: (construction) =>
@@ -706,7 +739,10 @@ export function createEditorSessionStore() {
         startPartDesignTool: (tool) =>
           set((state) => {
             state.partDesignToolGeneration += 1
-            if (tool.kind !== "measure") state.selectedBody = null
+            if (tool.kind !== "measure") {
+              state.selectedBody = null
+              state.selectedPartId = null
+            }
             state.workspace = "model"
             state.profileFeatureReturn = profileFeatureReturnContext(state, tool)
             closeSketch(state.sketch)
@@ -728,6 +764,7 @@ export function createEditorSessionStore() {
               state.selectedOriginPlane = null
               state.selection = null
               state.selectedBody = null
+              state.selectedPartId = null
             }
             if (workspace !== "sketch") closeSketch(state.sketch)
           }),

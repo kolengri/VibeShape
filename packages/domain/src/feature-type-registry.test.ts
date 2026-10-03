@@ -19,6 +19,7 @@ import {
   revolveFeatureType,
 } from "./part-design"
 import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { placementFeatureType } from "./part-design-placement"
 import { createLengthQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
 
@@ -103,7 +104,8 @@ describe("feature type registry", () => {
         origin: [5, -3, 10],
       })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
-      expect(result.registry.descriptors).toHaveLength(19)
+      expect(result.registry.descriptors).toHaveLength(partDesignModule.featureTypes.length)
+      expect(result.registry.getDescriptor(placementFeatureType.type)).toEqual(placementFeatureType)
       expect(
         result.registry.descriptors
           .filter(({ type }) => type.typeId === holeFeatureType.type.typeId)
@@ -115,7 +117,7 @@ describe("feature type registry", () => {
         result.registry.descriptors
           .filter(({ type }) => type.typeId === extrusionFeatureType.type.typeId)
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2, 3, 4])
+      ).toEqual([1, 2, 3, 4, 5])
       expect(
         result.registry.descriptors
           .filter(({ type }) => type.typeId === revolveFeatureType.type.typeId)

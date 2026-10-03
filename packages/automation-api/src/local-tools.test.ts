@@ -168,3 +168,37 @@ describe("local automation wire contracts", () => {
     )
   })
 })
+
+it("keeps metadata closed-world and separate from legacy CAD draft commands", async () => {
+  const { isLocalDraftCommand } = await import("./local-tools")
+  const change = localOperationSchema.parse({
+    tool: "change_metadata",
+    arguments: {
+      baseRevision: 4,
+      commandId: id,
+      change: { kind: "part.rename", partId: id, name: "Housing" },
+    },
+  })
+  expect(isLocalDraftCommand(change)).toBe(false)
+  for (const argumentsValue of [
+    { ...change.arguments, actor: { type: "system" } },
+    { ...change.arguments, documentId: id },
+    { ...change.arguments, change: { kind: "part.rename", partId: id, name: " Housing " } },
+    { ...change.arguments, change: { kind: "folder.remove", folderId: id, deleteFeatures: true } },
+    { ...change.arguments, change: { kind: "execute", code: "anything" } },
+  ])
+    expect(
+      localOperationSchema.safeParse({ tool: "change_metadata", arguments: argumentsValue })
+        .success,
+    ).toBe(false)
+  expect(
+    localOperationSchema.safeParse({ tool: "model_parts", arguments: { revision: 4, limit: 201 } })
+      .success,
+  ).toBe(false)
+  expect(
+    localOperationSchema.safeParse({
+      tool: "model_folders",
+      arguments: { revision: 4, cursor: -1 },
+    }).success,
+  ).toBe(false)
+})

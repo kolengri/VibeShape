@@ -442,6 +442,7 @@ export const persistenceDiagnosticCodeSchema = z.enum([
   "document-not-found",
   "stale-revision",
   "corrupt-history",
+  "unsupported-version",
   "quota-exceeded",
   "transaction-aborted",
   "storage-unavailable",

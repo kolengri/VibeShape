@@ -5,6 +5,7 @@ import {
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
@@ -50,6 +51,7 @@ function profileFeatureType(
 ) {
   const parameters = operation.arguments.parameters
   if (operation.tool === "create_extrude" || operation.tool === "update_extrude") {
+    if ("reversed" in parameters) return extrusionFeatureTypeV5.type
     if ("profile" in parameters) return extrusionFeatureType.type
     return parameters.operation === "new"
       ? extrusionFeatureTypeV3.type

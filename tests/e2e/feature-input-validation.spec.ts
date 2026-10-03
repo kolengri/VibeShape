@@ -28,6 +28,9 @@ test("rejects invalid Extrude dimensions without changing the saved model", asyn
   await distance.fill("12 mm")
   await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
   await create.click()
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
   const feature = page.getByRole("treeitem", { name: "Extrusion 1", exact: true })
   await expect(feature).toBeVisible()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", { timeout: 30_000 })

@@ -7,6 +7,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
+import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -32,6 +33,8 @@ import type {
   EditorSessionActions,
   EditorSessionState,
 } from "./editor-session/editor-session-store"
+import { effectiveHiddenSketchIds } from "./editor-session/sketch-visibility"
+import { authoredPlacementTarget } from "./features/part-design/authored-part-selection"
 import {
   activePartDesignCommand,
   editPartDesignTool,
@@ -50,6 +53,7 @@ import {
 } from "./features/sketch/sketch-tool"
 import { SketchToolbarPortalsProvider } from "./features/sketch/sketch-toolbar-portals"
 import { ApplicationBar } from "./shell/application-bar"
+import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
@@ -59,6 +63,7 @@ import {
   type SketchShortcutToolbarAnchor,
 } from "./shell/sketch-shortcut-toolbar"
 import { StatusBar } from "./shell/status-bar"
+import { useViewerPreferences, ViewerPreferencesProvider } from "./shell/viewer-preferences"
 import { WorkspaceLayoutPreferencesProvider } from "./shell/workspace-layout-preferences"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
@@ -195,7 +200,52 @@ function preselectedConstraintForTool(
   return compatible ? compatible.definition : null
 }
 
+function useToggleAllSketchVisibility(controller: ReturnType<typeof useDocumentController>) {
+  const autoHideConsumedSketches = useViewerPreferences((state) => state.autoHideConsumedSketches)
+  const sessionActions = useEditorSession((state) => state.actions)
+  const sessionStore = useEditorSessionStoreApi()
+  return useCallback(
+    () =>
+      sessionActions.toggleAllSketchVisibility(
+        controller.report?.snapshot.sketches.map(({ id }) => id) ?? [],
+        effectiveHiddenSketchIds(
+          controller.report,
+          sessionStore.getState().sketchVisibilityOverrides,
+          autoHideConsumedSketches,
+          null,
+        ),
+      ),
+    [controller.report, sessionActions, sessionStore, autoHideConsumedSketches],
+  )
+}
+
+function useFeatureActivationActions(
+  controller: ReturnType<typeof useDocumentController>,
+  sessionActions: EditorSessionActions,
+) {
+  const placePart = useCallback(
+    (partId: PartId) => {
+      const resolved = currentAuthoredParts(controller).find(({ part }) => part.id === partId)
+      const targetBody = authoredPlacementTarget(resolved)
+      if (targetBody)
+        sessionActions.startPartDesignTool({ kind: "create-placement", partId, targetBody })
+    },
+    [controller, sessionActions],
+  )
+
+  const editFeature = useCallback(
+    (featureId: FeatureId) => {
+      const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
+      const editTool = editPartDesignTool(feature)
+      if (editTool) sessionActions.startPartDesignTool(editTool)
+    },
+    [controller.report?.snapshot.features, sessionActions],
+  )
+  return { placePart, editFeature }
+}
+
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
+  const toggleAllSketchVisibility = useToggleAllSketchVisibility(controller)
   const hasSavedSketches = Boolean(controller.report?.snapshot.sketches.length)
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
@@ -317,14 +367,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     sessionActions,
   ])
 
-  const editFeature = useCallback(
-    (featureId: FeatureId) => {
-      const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
-      const editTool = editPartDesignTool(feature)
-      if (editTool) sessionActions.startPartDesignTool(editTool)
-    },
-    [controller.report?.snapshot.features, sessionActions],
-  )
+  const { placePart, editFeature } = useFeatureActivationActions(controller, sessionActions)
   const setSketchEditorTool = useCallback(
     (tool: SketchEditorTool) => {
       const currentSketch = sessionStore.getState().sketch
@@ -338,13 +381,6 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       sessionActions.setSketchEditorTool(tool)
     },
     [sessionActions, sessionStore],
-  )
-  const toggleAllSketchVisibility = useCallback(
-    () =>
-      sessionActions.toggleAllSketchVisibility(
-        controller.report?.snapshot.sketches.map(({ id }) => id) ?? [],
-      ),
-    [controller.report?.snapshot.sketches, sessionActions],
   )
 
   return useMemo(
@@ -365,12 +401,18 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         createRevolve,
         createSketch,
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
+        combineParts: (operation: "compound" | "union") =>
+          sessionActions.startPartDesignTool({
+            kind: operation === "compound" ? "create-compound" : "create-union",
+          }),
         measure: () => sessionActions.startPartDesignTool({ kind: "measure" }),
         editFeature,
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
         preselectBody: sessionActions.setBodyPreselection,
         selectBody: sessionActions.setSelectedBody,
+        selectPart: sessionActions.setSelectedPart,
+        placePart,
         setPrimitivePlacement: sessionActions.setPrimitivePlacement,
         setRevolveAngle: sessionActions.setRevolveAngle,
         select,
@@ -405,6 +447,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       editFeature,
       editSketch,
       partDesignToolGeneration,
+      placePart,
       select,
       sessionActions,
       setSketchEditorTool,
@@ -419,10 +462,11 @@ type EditorApplicationSession = Pick<
   | "commandPaletteOpen"
   | "extrusionDistanceRequest"
   | "hiddenFeatureIds"
-  | "hiddenSketchIds"
+  | "sketchVisibilityOverrides"
   | "originPlaneVisibility"
   | "preselectedBody"
   | "selectedBody"
+  | "selectedPartId"
   | "preselectedFeatureId"
   | "primitivePlacementRequest"
   | "revolveAngleRequest"
@@ -439,11 +483,12 @@ function useEditorApplicationSession() {
       commandPaletteOpen: state.commandPaletteOpen,
       extrusionDistanceRequest: state.extrusionDistanceRequest,
       hiddenFeatureIds: state.hiddenFeatureIds,
-      hiddenSketchIds: state.hiddenSketchIds,
+      sketchVisibilityOverrides: state.sketchVisibilityOverrides,
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
       preselectedBody: state.preselectedBody,
       selectedBody: state.selectedBody,
+      selectedPartId: state.selectedPartId,
       primitivePlacementRequest: state.primitivePlacementRequest,
       revolveAngleRequest: state.revolveAngleRequest,
       selectedOriginPlane: state.selectedOriginPlane,
@@ -534,9 +579,12 @@ function resolveEditorApplicationCommands(
       activeSketchTool: session.sketch.activeSketchTool,
       controller,
       extrusionAvailable: profileCommandAvailable,
-      selectionAvailable: Boolean(
-        session.selectedBody || session.selection || session.selectedOriginPlane,
-      ),
+      selectionAvailable: [
+        session.selectedPartId,
+        session.selectedBody,
+        session.selection,
+        session.selectedOriginPlane,
+      ].some(Boolean),
       hasSavedSketches: (controller.report?.snapshot.sketches.length ?? 0) > 0,
       revolveAvailable: profileCommandAvailable,
       sketchConstruction: session.sketch.construction,
@@ -562,6 +610,15 @@ function EditorWorkspaceComposition({
   sessionActions: EditorSessionActions
   workspaceActions: EditorWorkspaceActions
 }>) {
+  const autoHideConsumedSketches = useViewerPreferences((state) => state.autoHideConsumedSketches)
+  const hiddenSketchIds = effectiveHiddenSketchIds(
+    controller.report,
+    session.sketchVisibilityOverrides,
+    autoHideConsumedSketches,
+    isActiveSketchEditorTool(session.sketch.activeSketchTool)
+      ? session.sketch.activeSketchId
+      : null,
+  )
   return (
     <EditorWorkspace
       actions={workspaceActions}
@@ -571,12 +628,13 @@ function EditorWorkspaceComposition({
       controller={controller}
       extrusionDistanceRequest={session.extrusionDistanceRequest}
       hiddenFeatureIds={session.hiddenFeatureIds}
-      hiddenSketchIds={session.hiddenSketchIds}
+      hiddenSketchIds={hiddenSketchIds}
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
       preselectedFeatureId={session.preselectedFeatureId}
       preselectedBody={session.preselectedBody}
       selectedBody={session.selectedBody}
+      selectedPartId={session.selectedPartId}
       primitivePlacementRequest={session.primitivePlacementRequest}
       revolveAngleRequest={session.revolveAngleRequest}
       selectedOriginPlane={session.selectedOriginPlane}
@@ -604,10 +662,24 @@ function sketchShortcutAnchorAtPointer(event: PointerEvent): SketchShortcutToolb
   return { x: event.clientX, y: event.clientY }
 }
 
+function useAuthoredEditorSession(controller: ReturnType<typeof useDocumentController>) {
+  const storedSession = useEditorApplicationSession()
+  const authoredParts = useMemo(
+    () => currentAuthoredParts(controller),
+    [controller.authoredSnapshot, controller.report],
+  )
+  return storedSession.selectedPartId
+    ? {
+        ...storedSession,
+        selectedBody: selectedAuthoredBody(authoredParts, storedSession.selectedPartId),
+      }
+    : storedSession
+}
+
 function EditorApplication({
   controller,
 }: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
-  const session = useEditorApplicationSession()
+  const session = useAuthoredEditorSession(controller)
   const sessionActions = useEditorSession((state) => state.actions)
   const workspaceActions = useEditorWorkspaceActions(controller)
   const commandPaletteFocus = useCommandPaletteFocus(sessionActions.setCommandPaletteOpen)
@@ -720,11 +792,16 @@ export function App() {
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
-      <WorkspaceLayoutPreferencesProvider>
-        <EditorSessionProvider key={controller.report?.snapshot.id ?? "loading"}>
-          <EditorApplication controller={controller} />
-        </EditorSessionProvider>
-      </WorkspaceLayoutPreferencesProvider>
+      <ViewerPreferencesProvider>
+        <WorkspaceLayoutPreferencesProvider>
+          <EditorSessionProvider
+            key={controller.report?.snapshot.id ?? "loading"}
+            documentId={controller.report?.snapshot.id}
+          >
+            <EditorApplication controller={controller} />
+          </EditorSessionProvider>
+        </WorkspaceLayoutPreferencesProvider>
+      </ViewerPreferencesProvider>
     </DocumentDisplayUnitsProvider>
   )
 }

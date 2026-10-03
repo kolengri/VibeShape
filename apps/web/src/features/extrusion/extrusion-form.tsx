@@ -2,21 +2,26 @@ import {
   createSketchProfileSet,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV4Schema,
+  extrusionFeatureParametersV5Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
+  type LengthQuantity,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
+  readExtrusionFeatureParameters,
   type SketchProfileSelector,
   type SketchProfileSet,
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
@@ -25,7 +30,7 @@ import {
   positiveDirectManipulationLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
   parsePrimitiveLengthExpression,
@@ -49,6 +54,7 @@ import {
 type ExtrusionFormCopy = ExtrusionParameterPanelCopy &
   Readonly<{
     distance: string
+    extentInvalidRange: string
     expressionDescription: string
     invalidDimension: string
     invalidExpression: string
@@ -64,6 +70,10 @@ type ExtrusionFormCopy = ExtrusionParameterPanelCopy &
     staleRevision: string
     submit: string
     symmetric: string
+    symmetricDescription: string
+    reversed: string
+    secondDirection: string
+    secondDistance: string
     target: string
     targetDescription: string
     validationSummary: string
@@ -71,6 +81,10 @@ type ExtrusionFormCopy = ExtrusionParameterPanelCopy &
 
 type ExtrusionFormValues = Readonly<{
   distance: string
+  extended: boolean
+  reversed: boolean
+  secondDirection: boolean
+  secondDistance: string
   operation: string
   profiles: SketchProfileSet
   supportReference: TopoRef | null
@@ -91,6 +105,10 @@ function defaultValues(
 ): ExtrusionFormValues {
   return {
     distance: defaultLengthExpression(10, unit),
+    extended: false,
+    reversed: false,
+    secondDirection: false,
+    secondDistance: defaultLengthExpression(5, unit),
     operation: "new",
     profiles: createSketchProfileSet(profiles),
     supportReference: supportReference ?? null,
@@ -119,19 +137,16 @@ function valuesFromFeature(
   profiles: readonly SketchProfileSelector[],
   supportReference: TopoRef | undefined,
 ): ExtrusionFormValues {
-  const legacy = extrusionFeatureParametersSchema.safeParse(feature.parameters)
-  const multi = multiProfileExtrusionFeatureParametersSchema.safeParse(feature.parameters)
-  const modifyingMulti = extrusionFeatureParametersV4Schema.safeParse(feature.parameters)
-  const parameters = legacy.success
-    ? legacy.data
-    : multi.success
-      ? multi.data
-      : modifyingMulti.success
-        ? modifyingMulti.data
-        : null
+  const parameters = readExtrusionFeatureParameters(feature)
   if (!parameters) throw new Error("Extrusion parameters are unavailable.")
   return {
     distance: quantityExpression(parameters.distance),
+    extended: feature.type.schemaVersion === 5,
+    reversed: parameters.reversed,
+    secondDirection: parameters.secondDistance !== null,
+    secondDistance: parameters.secondDistance
+      ? quantityExpression(parameters.secondDistance)
+      : "5 mm",
     operation: parameters.operation,
     profiles: createSketchProfileSet(profiles),
     supportReference: supportReference ?? null,
@@ -146,7 +161,8 @@ function extrusionRecord(
   parameters:
     | ReturnType<typeof extrusionFeatureParametersSchema.parse>
     | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>
-    | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>,
+    | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>
+    | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>,
   targetFeatureId: FeatureId | null,
   supportReference: TopoRef | null,
 ) {
@@ -179,8 +195,10 @@ function extrusionType(
   parameters:
     | ReturnType<typeof extrusionFeatureParametersSchema.parse>
     | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>
-    | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>,
+    | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>
+    | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>,
 ) {
+  if ("reversed" in parameters) return extrusionFeatureTypeV5.type
   if (!("profiles" in parameters)) return extrusionFeatureType.type
   return parameters.operation === "new"
     ? multiProfileExtrusionFeatureType.type
@@ -222,6 +240,60 @@ function ExtrusionPreviewSync({
   return null
 }
 
+function parseExtrusionDepth(
+  expression: string,
+  variables: readonly VariableDefinition[],
+  copy: ExtrusionFormCopy,
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+) {
+  return parsePrimitiveLengthExpression(
+    expression,
+    variables,
+    copy,
+    (quantity) => extrusionFeatureParametersSchema.shape.distance.safeParse(quantity).success,
+    displayUnit,
+  )
+}
+
+function parseIndependentExtents(
+  values: ExtrusionFormValues,
+  distance: LengthQuantity,
+  variables: readonly VariableDefinition[],
+  copy: ExtrusionFormCopy,
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+) {
+  const second = values.secondDirection
+    ? parseExtrusionDepth(values.secondDistance, variables, copy, displayUnit)
+    : null
+  if (second && !second.ok)
+    return { ok: false as const, issues: { secondDistance: second.message } }
+  const parameters = extrusionFeatureParametersV5Schema.safeParse({
+    profiles: values.profiles,
+    distance,
+    symmetric: values.symmetric,
+    reversed: values.reversed,
+    secondDistance: second?.ok ? second.quantity : null,
+    operation: values.operation,
+  })
+  return parameters.success
+    ? { ok: true as const, parameters: parameters.data }
+    : { ok: false as const, issues: { distance: copy.extentInvalidRange } }
+}
+
+function legacyExtrusionParameters(values: ExtrusionFormValues, distance: LengthQuantity) {
+  const common = { distance, symmetric: values.symmetric, operation: values.operation }
+  if (values.profiles.profiles.length === 1)
+    return extrusionFeatureParametersSchema.parse({
+      ...common,
+      profile: values.profiles.profiles[0],
+    })
+  const schema =
+    values.operation === "new"
+      ? multiProfileExtrusionFeatureParametersSchema
+      : extrusionFeatureParametersV4Schema
+  return schema.parse({ ...common, profiles: values.profiles })
+}
+
 function parseValues(
   values: ExtrusionFormValues,
   variables: readonly VariableDefinition[],
@@ -229,44 +301,23 @@ function parseValues(
   copy: ExtrusionFormCopy,
   displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
 ) {
-  const [profile] = values.profiles.profiles
-  if (!profile) return { ok: false as const, issues: { profiles: copy.missingProfile } }
-  const distance = parsePrimitiveLengthExpression(
-    values.distance,
-    variables,
-    copy,
-    (quantity) => extrusionFeatureParametersSchema.shape.distance.safeParse(quantity).success,
-    displayUnit,
-  )
+  if (!values.profiles.profiles[0])
+    return { ok: false as const, issues: { profiles: copy.missingProfile } }
+  const distance = parseExtrusionDepth(values.distance, variables, copy, displayUnit)
   if (!distance.ok) return { ok: false as const, issues: { distance: distance.message } }
   const operation = extrusionOperationSchema.parse(values.operation)
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
+  const parsed =
+    values.extended || values.reversed || values.secondDirection
+      ? parseIndependentExtents(values, distance.quantity, variables, copy, displayUnit)
+      : { ok: true as const, parameters: legacyExtrusionParameters(values, distance.quantity) }
+  if (!parsed.ok) return parsed
   return {
     ok: true as const,
     targetFeatureId: target.featureId,
     supportReference: values.supportReference,
-    parameters:
-      values.profiles.profiles.length > 1
-        ? operation === "new"
-          ? multiProfileExtrusionFeatureParametersSchema.parse({
-              profiles: values.profiles,
-              distance: distance.quantity,
-              symmetric: values.symmetric,
-              operation,
-            })
-          : extrusionFeatureParametersV4Schema.parse({
-              profiles: values.profiles,
-              distance: distance.quantity,
-              symmetric: values.symmetric,
-              operation,
-            })
-        : extrusionFeatureParametersSchema.parse({
-            profile,
-            distance: distance.quantity,
-            symmetric: values.symmetric,
-            operation,
-          }),
+    parameters: parsed.parameters,
   }
 }
 
@@ -359,9 +410,11 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
         const invalidFieldName =
           "distance" in parsed.issues
             ? "distance"
-            : "targetFeatureId" in parsed.issues
-              ? "targetFeatureId"
-              : null
+            : "secondDistance" in parsed.issues
+              ? "secondDistance"
+              : "targetFeatureId" in parsed.issues
+                ? "targetFeatureId"
+                : null
         if (invalidFieldName) {
           formElementRef.current
             ?.querySelector<HTMLElement>(`[name="${invalidFieldName}"]`)
@@ -391,9 +444,10 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
     if (props.disabled || !props.distanceRequest || props.distanceRequest.featureId !== featureId) {
       return
     }
+    if (props.distanceRequest.side === "second" && !form.getFieldValue("secondDirection")) return
     clearSubmissionErrors()
     form.setFieldValue(
-      "distance",
+      props.distanceRequest.side === "second" ? "secondDistance" : "distance",
       positiveDirectManipulationLengthExpression(
         props.distanceRequest.distance,
         displayUnits.length,
@@ -468,22 +522,22 @@ function ExtrusionOperationField({ controller }: { controller: ExtrusionFormCont
   return (
     <form.Field name="operation">
       {(field) => (
-        <NativeSelectField
+        <SelectField
           name={field.name}
           value={field.state.value}
           label={controller.copy.operation}
           disabled={controller.disabled}
           onBlur={field.handleBlur}
-          onChange={(event) => {
+          onValueChange={(value) => {
             controller.clearSubmissionErrors()
-            field.handleChange(event.currentTarget.value)
+            field.handleChange(value)
           }}
         >
-          <option value="new">{controller.copy.operationNew}</option>
-          <option value="add">{controller.copy.operationAdd}</option>
-          <option value="remove">{controller.copy.operationRemove}</option>
-          <option value="intersect">{controller.copy.operationIntersect}</option>
-        </NativeSelectField>
+          <SelectOption value="new">{controller.copy.operationNew}</SelectOption>
+          <SelectOption value="add">{controller.copy.operationAdd}</SelectOption>
+          <SelectOption value="remove">{controller.copy.operationRemove}</SelectOption>
+          <SelectOption value="intersect">{controller.copy.operationIntersect}</SelectOption>
+        </SelectField>
       )}
     </form.Field>
   )
@@ -528,18 +582,24 @@ function ExtrusionTargetField({ controller }: { controller: ExtrusionFormControl
   )
 }
 
-function ExtrusionDistanceField({ controller }: { controller: ExtrusionFormController }) {
+function ExtrusionDistanceField({
+  controller,
+  second = false,
+}: {
+  controller: ExtrusionFormController
+  second?: boolean
+}) {
   const { form } = controller
   return (
-    <form.Field name="distance">
+    <form.Field name={second ? "secondDistance" : "distance"}>
       {(field) => (
         <LengthExpressionField
-          id="extrusion-distance"
+          id={second ? "extrusion-second-distance" : "extrusion-distance"}
           name={field.name}
           value={field.state.value}
-          label={controller.copy.distance}
+          label={second ? controller.copy.secondDistance : controller.copy.distance}
           description={controller.copy.expressionDescription}
-          error={controller.issues.distance}
+          error={controller.issues[second ? "secondDistance" : "distance"]}
           suggestions={controller.suggestions}
           onBlur={field.handleBlur}
           onValueChange={(value) => {
@@ -557,13 +617,68 @@ function ExtrusionSymmetricField({ controller }: { controller: ExtrusionFormCont
   return (
     <form.Field name="symmetric">
       {(field) => (
-        <TanStackBooleanParameterField
-          field={field}
+        <BooleanParameterField
+          name={field.name}
+          checked={field.state.value}
           label={controller.copy.symmetric}
-          onBeforeChange={controller.clearSubmissionErrors}
+          onBlur={field.handleBlur}
+          onChange={(event) => {
+            controller.clearSubmissionErrors()
+            field.handleChange(event.currentTarget.checked)
+            if (event.currentTarget.checked) {
+              form.setFieldValue("secondDirection", false)
+              form.setFieldValue("reversed", false)
+            }
+          }}
         />
       )}
     </form.Field>
+  )
+}
+
+function ExtrusionExtentFields({ controller }: { controller: ExtrusionFormController }) {
+  const { form, copy } = controller
+  return (
+    <div className="grid gap-3">
+      <p className="text-xs text-muted-foreground">{copy.symmetricDescription}</p>
+      <form.Subscribe selector={(state) => state.values.symmetric}>
+        {(symmetric) => (
+          <form.Field name="reversed">
+            {(field) => (
+              <BooleanParameterField
+                name={field.name}
+                checked={field.state.value}
+                label={copy.reversed}
+                disabled={symmetric || controller.disabled}
+                onBlur={field.handleBlur}
+                onChange={(event) => {
+                  controller.clearSubmissionErrors()
+                  field.handleChange(event.currentTarget.checked)
+                }}
+              />
+            )}
+          </form.Field>
+        )}
+      </form.Subscribe>
+      <form.Field name="secondDirection">
+        {(field) => (
+          <BooleanParameterField
+            name={field.name}
+            checked={field.state.value}
+            label={copy.secondDirection}
+            onBlur={field.handleBlur}
+            onChange={(event) => {
+              controller.clearSubmissionErrors()
+              field.handleChange(event.currentTarget.checked)
+              if (event.currentTarget.checked) form.setFieldValue("symmetric", false)
+            }}
+          />
+        )}
+      </form.Field>
+      <form.Subscribe selector={(state) => state.values.secondDirection}>
+        {(enabled) => (enabled ? <ExtrusionDistanceField controller={controller} second /> : null)}
+      </form.Subscribe>
+    </div>
   )
 }
 
@@ -603,6 +718,7 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
         targetField={<ExtrusionTargetField controller={controller} />}
         distanceField={<ExtrusionDistanceField controller={controller} />}
         symmetricField={<ExtrusionSymmetricField controller={controller} />}
+        extentFields={<ExtrusionExtentFields controller={controller} />}
       />
     </Form>
   )

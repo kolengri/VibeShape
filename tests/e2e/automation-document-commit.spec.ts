@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 import type { Locator, Page } from "@playwright/test"
 import type { AutomationHost } from "../../packages/automation-host/src/host"
 import type { CommandActor } from "../../packages/domain/src/commands"
-import { readVersionedVShape } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { expect, test } from "./fixtures"
 
 type BrowserAutomationFactory = {
@@ -297,14 +297,14 @@ async function expectFailedAutomationCommit(
 }
 
 async function expectNativeAutomationTransaction(page: Page, draftId: string, actor: CommandActor) {
-  await page.getByRole("button", { name: "Project…" }).click()
+  await page.getByRole("button", { name: "File" }).click()
   const projects = page.getByRole("dialog", { name: "Projects" })
   const downloading = page.waitForEvent("download")
-  await projects.getByRole("button", { name: "Download .vshape" }).click()
+  await projects.getByRole("button", { name: "Save project (.vshape)" }).click()
   const file = await (await downloading).path()
   if (!file) throw new Error("The native project backup was not retained.")
-  const archive = await readVersionedVShape(new Uint8Array(await readFile(file)))
-  if (!archive.ok || archive.value.version !== 2)
+  const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
+  if (!archive.ok || archive.value.version !== 3)
     throw new Error("Expected a replay-validated versioned backup.")
   const events = archive.value.project.versionedEvents.filter(
     (event) => event.transactionId === draftId,

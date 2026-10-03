@@ -16,7 +16,7 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 21 as const
+export const DOCUMENT_PROTOCOL_VERSION = 22 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -144,10 +144,36 @@ const disposeDocumentRequestSchema = requestEnvelopeSchema.extend({
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({ type: z.literal("healthCheck") })
 
+export const documentExportBodiesSchema = z
+  .array(
+    z
+      .object({
+        featureId: featureIdSchema,
+        outputRole: z
+          .string()
+          .min(1)
+          .max(128)
+          .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
+          .optional(),
+        name: z.string().trim().min(1).max(120).optional(),
+      })
+      .strict(),
+  )
+  .min(1)
+  .max(4_096)
+  .superRefine((bodies, context) => {
+    const keys = bodies.map((body) => `${body.featureId}:${body.outputRole ?? "result"}`)
+    if (new Set(keys).size !== keys.length)
+      context.addIssue({ code: "custom", message: "Export bodies must be unique." })
+  })
+export type DocumentExportBodies = z.infer<typeof documentExportBodiesSchema>
+export type DocumentExportOptions = Readonly<{ bodies?: DocumentExportBodies }>
+
 const exportDocumentRequestSchema = requestEnvelopeSchema
   .extend({
     type: z.literal("exportDocument"),
     format: geometryExportFormatSchema,
+    bodies: documentExportBodiesSchema.optional(),
     printPreparation: printPreparationSettingsSchema.optional(),
   })
   .refine((request) => !request.printPreparation || request.format === "3mf", {

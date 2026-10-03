@@ -58,6 +58,63 @@ describe("OwnedShapeRegistry", () => {
 })
 
 describe("DocumentFeatureShapeRegistry", () => {
+  it("releases per-role metadata once on replacement, eviction and disposal", () => {
+    const released: string[] = []
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>((shape) =>
+      released.push(shape.id),
+    )
+    const root = new TrackedShape("root", [])
+    const slot = new TrackedShape("slot", [])
+    const replacement = new TrackedShape("replacement", [])
+    registry.replace("document", "feature", "a".repeat(64), root, [
+      { role: "body.slot", shape: slot },
+    ])
+    registry.replace("document", "feature", "b".repeat(64), replacement)
+    expect(released).toEqual(["slot", "root"])
+    registry.synchronize("document", [])
+    registry.disposeDocument("document")
+    expect(released).toEqual(["slot", "root", "replacement"])
+    expect([root.deleteCount, slot.deleteCount, replacement.deleteCount]).toEqual([1, 1, 1])
+    expect(registry.size).toBe(0)
+  })
+
+  it("releases metadata only after native cleanup succeeds, including retry", () => {
+    const released: string[] = []
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>((shape) =>
+      released.push(shape.id),
+    )
+    const root = new TrackedShape("root", [], true)
+    const slot = new TrackedShape("slot", [])
+    registry.replace("document", "feature", "a".repeat(64), root, [
+      { role: "body.slot", shape: slot },
+    ])
+    expect(() => registry.disposeDocument("document")).toThrow("Failed to delete root.")
+    expect(released).toEqual(["slot"])
+    expect(registry.size).toBe(1)
+    root.recover()
+    registry.disposeDocument("document")
+    registry.disposeDocument("document")
+    expect(released).toEqual(["slot", "root"])
+    expect(root.deleteCount).toBe(2)
+    expect(slot.deleteCount).toBe(1)
+    expect(registry.size).toBe(0)
+  })
+
+  it("reports callback failure without retrying an already freed native handle", () => {
+    let callbacks = 0
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>(() => {
+      callbacks += 1
+      throw new Error("Metadata release failed.")
+    })
+    const shape = new TrackedShape("shape", [])
+    registry.replace("document", "feature", "a".repeat(64), shape)
+    expect(() => registry.disposeDocument("document")).toThrow("Metadata release failed.")
+    expect(registry.size).toBe(0)
+    registry.disposeDocument("document")
+    expect(shape.deleteCount).toBe(1)
+    expect(callbacks).toBe(1)
+  })
+
   it("reuses exact feature content and replaces only the edited feature", () => {
     const deletionOrder: string[] = []
     const registry = new DocumentFeatureShapeRegistry<TrackedShape>()

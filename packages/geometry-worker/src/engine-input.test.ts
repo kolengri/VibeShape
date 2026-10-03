@@ -48,6 +48,65 @@ const namedInput: FeatureEvaluationInput = {
 
 describe("direct geometry engine input boundary", () => {
   it.each([
+    { distance: 0 },
+    { secondDistance: -3 },
+    { symmetric: true },
+    { distance: 99_999, secondDistance: 3 },
+    { secondDistance: Number.POSITIVE_INFINITY },
+    { operation: "remove" },
+  ])("rejects invalid v5 extrusion extent before kernel access %j", async (changes) => {
+    const engine = new ReplicadGeometryEngine()
+    const initialize = vi
+      .spyOn(engine, "initialize")
+      .mockRejectedValue(new Error("Kernel accessed"))
+    const result = await engine.evaluateFeature(
+      {
+        ...namedInput,
+        dependencies: [],
+        content: {
+          ...namedInput.content,
+          schemaVersion: 1,
+          feature: {
+            ...namedInput.content.feature,
+            type: {
+              ...namedInput.content.feature.type,
+              typeId: "org.vibeshape.feature.part-design.extrusion",
+              schemaVersion: 5,
+            },
+            inputs: [],
+            inputRoles: [],
+            parameters: {
+              sketchId: sourceFeatureId,
+              frame: { origin: [0, 0, 0], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+              profiles: [
+                {
+                  outer: {
+                    sourceEntityIds: [sourceFeatureId],
+                    segments: [
+                      { entityId: sourceFeatureId, type: "circle", center: [0, 0], radius: 2 },
+                    ],
+                  },
+                  holes: [],
+                },
+              ],
+              distance: 10,
+              secondDistance: 3,
+              reversed: false,
+              symmetric: false,
+              operation: "new",
+              ...changes,
+            },
+          },
+        },
+      },
+      vi.fn(),
+    )
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-parameters" } })
+    expect(initialize).not.toHaveBeenCalled()
+    expect(engine.getHealth().ownedShapeCount).toBe(0)
+  })
+
+  it.each([
     { contentHash: hash },
     { contentHash: hash, outputRole: "pattern.instance.1" },
     { contentHash: "c".repeat(64), outputRole: "result" },

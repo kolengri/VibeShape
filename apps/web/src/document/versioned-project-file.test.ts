@@ -6,7 +6,11 @@ import {
 } from "@vibeshape/domain"
 import { readVersionedVShape, writeVShape } from "@vibeshape/formats/vshape"
 import { describe, expect, it } from "vitest"
-import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
+import {
+  copyPortableProjectV2,
+  formatProjectCopyName,
+  portableProjectV2FromArchive,
+} from "./versioned-project-file"
 
 const actor = { type: "user", userId: null } as const
 const sourceDocumentId = "0195b5ac-b250-7a2c-8c33-000000000101"
@@ -106,5 +110,32 @@ describe("versioned project file lifecycle", () => {
         ],
       },
     })
+  })
+  it("refuses a writable checkpoint copy and bounds localized import names", () => {
+    const created = applyVersionedDocumentCommand(null, createCommand())
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const result = copyPortableProjectV2({
+      source: {
+        snapshot: created.snapshot,
+        seed: created.snapshot,
+        legacyEvents: [],
+        versionedEvents: [],
+        historyMode: "checkpoint",
+        promotionRevision: 1,
+        migrationDiagnostic: null,
+        unavailableRecords: [],
+      },
+      documentId: documentIdSchema.parse(copiedDocumentId),
+      name: "Source imported",
+      issuedAt,
+      nextCommandId: () => "unused",
+      nextTransactionId: () => draftIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000107"),
+    })
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: "checkpoint-read-only" } })
+    const sourceName = "a".repeat(120)
+    const copyName = formatProjectCopyName(sourceName, (name) => `${name} imported`)
+    expect(copyName.length).toBe(120)
+    expect(copyName.endsWith(" imported")).toBe(true)
+    expect(copyName).not.toBe(sourceName)
   })
 })

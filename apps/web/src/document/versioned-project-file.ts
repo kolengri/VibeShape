@@ -106,7 +106,7 @@ export function copyPortableProjectV2(input: {
     return {
       ok: false,
       diagnostic: {
-        code: "invalid-input",
+        code: "checkpoint-read-only",
         message: "A checkpoint project cannot be copied as a writable local project.",
       },
     }
@@ -146,4 +146,14 @@ export function copyPortableProjectV2(input: {
       unavailableRecords: [],
     },
   }
+}
+
+export function formatProjectCopyName(sourceName: string, format: (name: string) => string) {
+  let baseName = sourceName
+  let copyName = format(baseName)
+  while (copyName.length > 120 && baseName.length > 0) {
+    baseName = baseName.slice(0, -1)
+    copyName = format(baseName)
+  }
+  return copyName
 }

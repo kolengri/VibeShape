@@ -5,8 +5,16 @@ import {
   migrateDocumentSnapshot,
   type SessionId,
 } from "@vibeshape/domain"
+import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
+import { applyDocumentUpgradeV2Command } from "@vibeshape/domain/document-v2-migration"
+import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import {
+  type AuthorityDocumentSessionDependencies,
+  openAuthorityDocumentSession,
+} from "./authority-document-session"
+import type { AuthorityCommitInput, AuthorityDraftInput } from "./authority-persistence-adapter"
 import type {
   DocumentLeasePort,
   DocumentRebuildPort,
@@ -268,4 +276,146 @@ describe("versioned document session orchestration", () => {
     if ("promotionFails" in options && options.promotionFails)
       expect(fixture.leases.releaseCount).toBe(1)
   })
+})
+
+// The authority opener reuses legacy promotion while keeping V2 metadata out of the V0 runtime.
+function authorityDependencies(
+  options: { missing?: boolean; unsupported?: boolean; loss?: boolean } = {},
+) {
+  const migrated = recovery()
+  const v1: VersionedRecoveryReport = {
+    ...migrated,
+    migration: {
+      migrationProvenance: "current",
+      migrationDiagnostic: null,
+      unavailableRecords: [],
+    },
+  }
+  const base = dependencies({ versioned: v1 })
+  let current: DocumentAuthoritySnapshot = migrated.snapshot
+  const upgraded = applyDocumentUpgradeV2Command(current, {
+    schemaVersion: 2,
+    kind: "org.vibeshape.document.upgrade-v2",
+    commandId: "0195b5ac-b250-7a2c-8c33-000000000210",
+    documentId,
+    baseRevision: current.revision,
+    issuedAt: timestamp,
+    actor: { type: "system", source: "org.vibeshape.test" },
+    payload: { partAllocations: [] },
+  })
+  if (!upgraded.ok) throw new Error(upgraded.diagnostic.message)
+  if (!options.missing) current = upgraded.snapshot
+  let writes = 0
+  let authorityReads = 0
+  let identity = 300
+  const repository = {
+    ...base.dependencies.versionedRepository,
+    async recoverAuthority() {
+      authorityReads += 1
+      if (options.unsupported) return failure("unsupported-version")
+      if (options.missing && authorityReads === 1) return failure("document-not-found")
+      return {
+        ok: true as const,
+        value: {
+          ...v1,
+          snapshot: current,
+          headRevision: current.revision + (options.loss ? 1 : 0),
+          recoveredRevision: current.revision,
+          status: options.loss ? ("recovered-with-loss" as const) : ("clean" as const),
+          lostRevisionCount: options.loss ? 1 : 0,
+        },
+      }
+    },
+    async commitAuthority(input: AuthorityCommitInput) {
+      writes += 1
+      current = input.snapshot
+      return { ok: true as const, value: undefined }
+    },
+    async commitAuthorityDraft(input: AuthorityDraftInput) {
+      writes += 1
+      current = input.snapshot
+      return { ok: true as const, value: undefined }
+    },
+    async closeAuthorityCleanly() {
+      return { ok: true as const, value: undefined }
+    },
+  }
+  const configured: AuthorityDocumentSessionDependencies = {
+    ...base.dependencies,
+    versionedRepository: repository,
+    createPart: (requirement, feature) => ({
+      ...requirement,
+      id: partIdSchema.parse(`0195b5ac-b250-7a2c-8c33-${String(identity++).padStart(12, "0")}`),
+      name: feature?.label ?? "Part",
+    }),
+    commandDispatcher: { dispatch: applyDocumentCommand },
+  }
+  return { ...base, configured, writes: () => writes, authorityReads: () => authorityReads }
+}
+
+it("opens V2 authority through one recovery read and exposes full metadata to the session", async () => {
+  const f = authorityDependencies()
+  const opened = await openAuthorityDocumentSession(f.configured, input())
+  if (!opened.ok) throw new Error(opened.diagnostic.message)
+  expect(opened.session.authoredSnapshot).toMatchObject({
+    schemaVersion: 2,
+    parts: [],
+    folders: [],
+  })
+  expect(opened.report.snapshot.schemaVersion).toBe(0)
+  expect(f.authorityReads()).toBe(1)
+  expect(f.counts.legacyRecovery).toBe(0)
+  await opened.session.close()
+})
+
+it("never falls through an unsupported authority version to legacy recovery", async () => {
+  const f = authorityDependencies({ unsupported: true })
+  const opened = await openAuthorityDocumentSession(f.configured, input())
+  expect(opened).toMatchObject({ ok: false, diagnostic: { sourceCode: "unsupported-version" } })
+  expect(f.counts.legacyRecovery).toBe(0)
+  expect(f.leases.acquireCount).toBe(0)
+  expect(f.writes()).toBe(0)
+})
+
+it("keeps incomplete V2 recovery read-only without requesting a writer lease", async () => {
+  const f = authorityDependencies({ loss: true })
+  const opened = await openAuthorityDocumentSession(f.configured, input())
+  if (!opened.ok) throw new Error(opened.diagnostic.message)
+  expect(opened.session.mode).toBe("read-only")
+  expect(f.leases.acquireCount).toBe(0)
+  const rejected = await opened.session.commitAuthored({})
+  expect(rejected.ok).toBe(false)
+  expect(f.writes()).toBe(0)
+  await opened.session.close()
+})
+
+it("uses the authority adapter after a V1 fallback and serializes explicit upgrade commands", async () => {
+  const f = authorityDependencies({ missing: true })
+  const opened = await openAuthorityDocumentSession(f.configured, input())
+  if (!opened.ok) throw new Error(opened.diagnostic.message)
+  expect(opened.session.authoredSnapshot?.schemaVersion).toBe(1)
+  const command = {
+    schemaVersion: 2,
+    kind: "org.vibeshape.document.upgrade-v2",
+    commandId: "0195b5ac-b250-7a2c-8c33-000000000211",
+    documentId,
+    baseRevision: opened.session.snapshot.revision,
+    issuedAt: timestamp,
+    actor: { type: "system", source: "org.vibeshape.test" },
+    payload: {},
+  }
+  const [first, second] = await Promise.all([
+    opened.session.commitAuthored(command),
+    opened.session.commitAuthored({
+      ...command,
+      commandId: "0195b5ac-b250-7a2c-8c33-000000000212",
+    }),
+  ])
+  expect(first.ok).toBe(true)
+  expect(second.ok).toBe(false)
+  expect(opened.session.authoredSnapshot?.schemaVersion).toBe(2)
+  expect(opened.session.snapshot.revision).toBe(command.baseRevision + 1)
+  expect(f.writes()).toBe(1)
+  await opened.session.close()
+  expect((await opened.session.commitAuthored(command)).ok).toBe(false)
 })

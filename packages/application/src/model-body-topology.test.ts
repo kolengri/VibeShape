@@ -125,7 +125,7 @@ function response(
   })),
 ) {
   return {
-    protocolVersion: 21,
+    protocolVersion: 22,
     requestId: "0195b5ac-b220-7a2c-8c33-000000000010",
     documentId,
     revision: 4,

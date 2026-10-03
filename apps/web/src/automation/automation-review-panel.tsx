@@ -1,4 +1,5 @@
 import type { AutomationDraftPreview } from "@vibeshape/automation-api/drafts"
+import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
 import { documentCoreModule, featureCoreModule } from "@vibeshape/domain/modules"
 import { quantitySchema } from "@vibeshape/domain/units"
@@ -201,6 +202,26 @@ function Measurements({ preview }: { preview: AutomationDraftPreview }) {
   )
 }
 
+function ReviewDiagnostic({ review }: { review: AutomationReviewState }) {
+  const t = useTranslations("app.shell.taskPanel.automationReview")
+  if (review.status !== "error") return null
+  const messages: Partial<Record<NonNullable<AutomationReviewState["diagnostic"]>, string>> = {
+    "draft-expired": "expired",
+    "stale-revision": "stale",
+    "draft-review-cancelled": "cancelled",
+    "document-write-unavailable": "writeUnavailable",
+    "document-commit-failed": "unconfirmed",
+  }
+  const diagnosticMessage = review.diagnostic
+    ? (messages[review.diagnostic] ?? "applyFailed")
+    : "applyFailed"
+  return (
+    <p className="mb-3 text-sm text-destructive" role="status">
+      {t(diagnosticMessage)}
+    </p>
+  )
+}
+
 function ReviewActions({
   commands,
   review,
@@ -216,35 +237,20 @@ function ReviewActions({
   }
   const discard = () => automationReviews.decide(review.id, "rejected")
   if (review.status === "error") {
-    const messages: Partial<Record<NonNullable<AutomationReviewState["diagnostic"]>, string>> = {
-      "draft-expired": "expired",
-      "stale-revision": "stale",
-      "draft-review-cancelled": "cancelled",
-      "document-write-unavailable": "writeUnavailable",
-      "document-commit-failed": "unconfirmed",
-    }
-    const diagnosticMessage = review.diagnostic
-      ? (messages[review.diagnostic] ?? "applyFailed")
-      : "applyFailed"
     return (
-      <>
-        <p className="mt-3 text-sm text-destructive" role="status">
-          {t(diagnosticMessage)}
-        </p>
-        <div className="mt-5 flex justify-end border-t pt-3">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => automationReviews.dismiss(review.id)}
-          >
-            {t("close")}
-          </Button>
-        </div>
-      </>
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => automationReviews.dismiss(review.id)}
+        >
+          {t("close")}
+        </Button>
+      </div>
     )
   }
   return (
-    <div className="mt-5 flex flex-wrap justify-end gap-2 border-t pt-3">
+    <div className="flex flex-wrap justify-end gap-2">
       <Button
         variant="outline"
         type="button"
@@ -317,57 +323,102 @@ function DestructiveApply({
   )
 }
 
+function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput["metadata"]> }) {
+  const t = useTranslations("app.shell.taskPanel.automationReview")
+  const { change, targetName, range } = metadata
+  const labels = {
+    "part.rename": "renamePart",
+    "part.set-visibility": "setPartVisibility",
+    "folder.create": "createFolder",
+    "folder.rename": "renameFolder",
+    "folder.set-items": "setFolderItems",
+    "folder.remove": "removeFolder",
+  } as const
+  return (
+    <li className="break-words rounded border p-2">
+      <div className="font-medium">{t(labels[change.kind])}</div>
+      {targetName ? <div>{t("target", { target: targetName })}</div> : null}
+      {"name" in change ? <div>{t("nameValue", { name: change.name })}</div> : null}
+      {change.kind === "folder.create" ? (
+        <div>{t("nameValue", { name: change.folder.name })}</div>
+      ) : null}
+      {change.kind === "part.set-visibility" ? (
+        <div>{t(change.visible ? "showPart" : "hidePart")}</div>
+      ) : null}
+      {range ? (
+        <div>
+          {t("folderRange", { first: range.firstLabel, last: range.lastLabel, count: range.count })}
+        </div>
+      ) : null}
+      {change.kind === "folder.remove" ? <div>{t("ungroupPreservesFeatures")}</div> : null}
+    </li>
+  )
+}
+
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { input } = review
   const commands = input.commands
   return (
-    <section aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-medium">{t("title")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{t("description")}</p>
-        </div>
-      </div>
-      <dl className="mt-4 grid gap-2 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt>{t("client")}</dt>
-          <dd className="min-w-0 break-all">{actorLabel(input.actor, t)}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt>{t("document")}</dt>
-          <dd className="min-w-0 break-words">{input.preview.summary.data.name}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt>{t("baseRevision")}</dt>
-          <dd className="font-mono">{input.preview.draft.baseRevision}</dd>
-        </div>
-      </dl>
-      <section className="mt-4 border-t pt-3">
-        <h3 className="text-xs font-medium">{t("changes")}</h3>
-        <ul className="mt-2 grid gap-2 text-xs">
-          {commands.map((command) => (
-            <li key={command.commandId} className="break-words rounded border p-2">
-              <div className="font-medium">
-                {t(commandLabels[command.kind] ?? "unknownCommand")}
-              </div>
-              <div className="text-muted-foreground">
-                {t("target", { target: commandTarget(command, t("documentTarget")) })}
-              </div>
-              <div className="text-muted-foreground">
-                <CommandDetails command={command} />
-              </div>
-            </li>
-          ))}
-        </ul>
+    <section
+      aria-label={t("title")}
+      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-l bg-panel"
+    >
+      <header className="border-b px-4 py-3">
+        <h2 className="text-sm font-medium">{t("title")}</h2>
+      </header>
+      <section
+        key={review.status === "error" ? "error" : "proposal"}
+        aria-label={t("changes")}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: The labelled scroll region needs keyboard access to long proposals.
+        tabIndex={0}
+        className="min-h-0 min-w-0 overflow-auto overscroll-contain p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ReviewDiagnostic review={review} />
+        <p className="text-xs text-muted-foreground">{t("description")}</p>
+        <dl className="mt-4 grid gap-2 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt>{t("client")}</dt>
+            <dd className="min-w-0 break-all">{actorLabel(input.actor, t)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt>{t("document")}</dt>
+            <dd className="min-w-0 break-words">{input.preview.summary.data.name}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt>{t("baseRevision")}</dt>
+            <dd className="font-mono">{input.preview.draft.baseRevision}</dd>
+          </div>
+        </dl>
+        <section className="mt-4 border-t pt-3">
+          <h3 className="text-xs font-medium">{t("changes")}</h3>
+          <ul className="mt-2 grid gap-2 text-xs">
+            {input.metadata ? <MetadataDetails metadata={input.metadata} /> : null}
+            {commands.map((command) => (
+              <li key={command.commandId} className="break-words rounded border p-2">
+                <div className="font-medium">
+                  {t(commandLabels[command.kind] ?? "unknownCommand")}
+                </div>
+                <div className="text-muted-foreground">
+                  {t("target", { target: commandTarget(command, t("documentTarget")) })}
+                </div>
+                <div className="text-muted-foreground">
+                  <CommandDetails command={command} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <Measurements preview={input.preview} />
+        {commands.some(isDestructiveCommand) ? (
+          <p className="mt-4 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+            {t("destructiveWarning")}
+          </p>
+        ) : null}
       </section>
-      <Measurements preview={input.preview} />
-      {commands.some(isDestructiveCommand) ? (
-        <p className="mt-4 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-          {t("destructiveWarning")}
-        </p>
-      ) : null}
-      <ReviewActions commands={commands} review={review} t={t} />
+      <div className="border-t px-4 py-3">
+        <ReviewActions commands={commands} review={review} t={t} />
+      </div>
     </section>
   )
 }

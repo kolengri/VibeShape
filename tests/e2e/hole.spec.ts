@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises"
-import type { Browser, Page } from "@playwright/test"
-import { readVersionedVShape } from "../../packages/formats/src/vshape"
+import type { Browser, Download, Page } from "@playwright/test"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 async function clickFirstHoleCenter(page: Page) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
+  await viewport.getByRole("button", { name: "Standard views", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Isometric", exact: true }).click()
   const bounds = await viewport.locator("canvas").boundingBox()
   if (!bounds) throw new Error("Expected the Hole viewport canvas.")
   const hover = viewport.getByText("Select Point 1 as a hole center.", { exact: true })
@@ -42,7 +44,9 @@ async function inspectCompactHoleTask(page: Page, theme: string) {
   await page.setViewportSize({ width: 1024, height: 900 })
 }
 
-async function reopenHoleBackup(browser: Browser, file: string) {
+async function reopenHoleBackup(browser: Browser, download: Download, origin: string) {
+  const file = await download.path()
+  if (!file) throw new Error("Expected the downloaded Hole archive.")
   const context = await browser.newContext()
   const page = await context.newPage()
   const errors: string[] = []
@@ -51,10 +55,14 @@ async function reopenHoleBackup(browser: Browser, file: string) {
     if (message.type() === "error") errors.push(message.text())
   })
   try {
-    await page.goto("http://127.0.0.1:4173/")
+    await page.goto(origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Project…" }).click()
-    await page.getByLabel("Choose VibeShape project file").setInputFiles(file)
+    await page.getByRole("button", { name: "File" }).click()
+    await page.getByLabel("Choose VibeShape project file").setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: "application/octet-stream",
+      buffer: await readFile(file),
+    })
     const hole = page.getByRole("treeitem", { name: "Hole 1", exact: true })
     await expect(hole).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
@@ -150,16 +158,17 @@ for (const theme of ["light", "dark"] as const) {
     await expect(edit.getByRole("checkbox", { name: "Point 1", exact: true })).toBeChecked()
     await inspectCompactHoleTask(page, theme)
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "Project…" }).click()
+    await page.getByRole("button", { name: "File" }).click()
     const downloading = page.waitForEvent("download")
     await page
       .getByRole("dialog", { name: "Projects" })
-      .getByRole("button", { name: "Download .vshape" })
+      .getByRole("button", { name: "Save project (.vshape)" })
       .click()
-    const file = await (await downloading).path()
+    const download = await downloading
+    const file = await download.path()
     if (!file) throw new Error("Expected a native backup.")
-    const archive = await readVersionedVShape(new Uint8Array(await readFile(file)))
-    if (!archive.ok || archive.value.version !== 2)
+    const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
+    if (!archive.ok || archive.value.version !== 3)
       throw new Error("Expected replay-proven Hole history.")
     const feature = archive.value.project.snapshot.features.find(({ label }) => label === "Hole 1")
     expect(feature?.type.typeId).toBe("org.vibeshape.feature.part-design.hole")
@@ -171,6 +180,6 @@ for (const theme of ["light", "dark"] as const) {
       extent: "through-all",
     })
     expect(JSON.stringify(feature?.parameters)).not.toContain("solvedPoints")
-    await reopenHoleBackup(browser, file)
+    await reopenHoleBackup(browser, download, new URL(page.url()).origin)
   })
 }

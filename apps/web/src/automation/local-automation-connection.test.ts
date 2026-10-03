@@ -40,15 +40,18 @@ function deferred<T>() {
 }
 let connection: ReturnType<typeof createLocalAutomationConnection>
 const dispose = vi.fn()
+const enableAutoApply = vi.fn()
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
+  enableAutoApply.mockReturnValue(true)
   document.head.innerHTML = '<meta name="vibeshape-local-automation" content="1">'
   mocks.createHandle.mockReturnValue({
     ok: true,
     documentId: id,
     revision: 4,
     dispose,
+    enableAutoApply,
     readInfo: () => ({ summary: { documentId: id, revision: 4, data: { name: "Bracket" } } }),
   })
   mocks.execute.mockResolvedValue(failedResult)
@@ -71,6 +74,66 @@ async function ready() {
   await connection.status()
 }
 describe("browser-owned local AI connection lifecycle", () => {
+  it("requires explicit pairing and an idle browser opt-in, then resets on disconnect", async () => {
+    await ready()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    expect(connection.enableAutoApply()).toBe(false)
+    expect(enableAutoApply).not.toHaveBeenCalled()
+    await connection.enable()
+    expect(connection.getSnapshot().autoApply).toBe(false)
+    expect(connection.getSnapshot().busy).toBe(false)
+    expect(connection.enableAutoApply()).toBe(true)
+    expect(enableAutoApply).toHaveBeenCalledWith(credential.actor)
+    expect(connection.getSnapshot().autoApply).toBe(true)
+    const disabling = connection.disable()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    expect(dispose).toHaveBeenCalledOnce()
+    await disabling
+    await connection.enable()
+    expect(connection.getSnapshot().autoApply).toBe(false)
+  })
+
+  it("does not broaden a refused grant or grant during an active operation", async () => {
+    await ready()
+    await connection.enable()
+    enableAutoApply.mockReturnValue(false)
+    expect(connection.enableAutoApply()).toBe(false)
+    expect(connection.getSnapshot().autoApply).toBe(false)
+    enableAutoApply.mockReturnValue(true)
+    const pending = deferred<typeof failedResult>()
+    mocks.execute.mockReturnValue(pending.promise)
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll"
+        ? ok({ protocolVersion: 1, work, cancelledRequestIds: [] })
+        : original?.(path, ...args),
+    )
+    await vi.advanceTimersByTimeAsync(500)
+    enableAutoApply.mockClear()
+    expect(connection.getSnapshot().busy).toBe(true)
+    expect(connection.enableAutoApply()).toBe(false)
+    expect(enableAutoApply).not.toHaveBeenCalled()
+    const originalRequest = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll" ? emptyPoll : originalRequest?.(path, ...args),
+    )
+    pending.resolve(failedResult)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().busy).toBe(false)
+  })
+
+  it("revokes auto-apply when its captured project closes", async () => {
+    await ready()
+    await connection.enable()
+    expect(connection.enableAutoApply()).toBe(true)
+    const created = mocks.createHandle.mock.results[0]
+    if (!created) throw new Error("The browser handle was not created.")
+    created.value.readInfo = () => null
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(connection.enableAutoApply()).toBe(false)
+  })
   it("keeps an already disconnected snapshot stable on disable and disposal", async () => {
     const initial = connection.getSnapshot()
     const listener = vi.fn()
@@ -91,6 +154,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     const disconnected = connection.getSnapshot()
     connection.dispose()
     expect(disconnected.connected).toBe(false)
+    expect(disconnected.busy).toBe(false)
     expect(connection.getSnapshot()).toBe(disconnected)
     expect(listener).toHaveBeenCalledOnce()
     expect(dispose).toHaveBeenCalledOnce()
