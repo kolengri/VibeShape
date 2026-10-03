@@ -67,8 +67,11 @@ The editor CSP must allow the exact relay HTTPS and WSS origins in `connect-src`
 `https://challenges.cloudflare.com` in `script-src` and `frame-src`. Keep these additions scoped to
 editor HTML and derive them from a validated endpoint. Do not allow arbitrary `workers.dev` hosts.
 The Worker consent page has a separate restrictive CSP and renders no executable client content.
-Its `form-action` permits only the Worker and the origin of the SDK-validated registered callback;
-Chromium checks this directive across the OAuth redirect as well as the initial form submission.
+After approval, a non-cacheable completion page starts a fresh navigation to the SDK-validated
+callback and provides a fallback link. This preserves `form-action 'self'` without blocking
+Chromium's return to an HTTPS or IPv4/IPv6 loopback client, or interpolating client origins into CSP.
+The consent form uses `Referrer-Policy: same-origin` so its POST retains the required same-origin
+`Origin` header; completion and other OAuth responses retain `no-referrer`.
 
 ## Resource budgets
 

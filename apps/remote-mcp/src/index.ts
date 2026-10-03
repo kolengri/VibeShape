@@ -118,7 +118,12 @@ async function oauthRequest(
   const response = await provider(env).fetch(request, env, ctx)
   const headers = new Headers(response.headers)
   headers.set("Cache-Control", "no-store")
-  headers.set("Referrer-Policy", "no-referrer")
+  headers.set(
+    "Referrer-Policy",
+    pathname === "/authorize" && request.method === "GET" && response.status === 200
+      ? "same-origin"
+      : "no-referrer",
+  )
   return new Response(response.body, { status: response.status, headers })
 }
 
