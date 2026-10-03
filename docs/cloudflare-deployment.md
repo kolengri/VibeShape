@@ -44,7 +44,10 @@ The `cloudflare-production` environment is restricted to `main`; its Pages-only
 `CLOUDFLARE_API_TOKEN` secret was entered privately by the owner and its presence verified.
 The account/project environment variables and controlled-source repository asset variable are set.
 The controlled TAR is stored as asset `607712548` in release `cloudflare-occt-0c007be`.
-Publication remains disabled until the release review and first activation finish. No paid upgrade,
+On 2026-10-03 the owner explicitly authorized the first personal hosted release after technical
+checks, deferring the separate legal review required by `docs/licensing.md`. This is a scoped
+release decision, not a legal certification or a waiver of license/source obligations.
+Publication remains disabled until verification and first activation finish. No paid upgrade,
 Dealyv deployment, or Heyfoods credential change was performed.
 
 For another account or re-provisioning, use the following setup contract:
