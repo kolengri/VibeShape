@@ -27,9 +27,11 @@ async function createConsent(request: Request, env: RemoteEnv, ipHash: string) {
   headers.set("Content-Type", "text/html; charset=utf-8")
   headers.set("Cache-Control", "no-store")
   headers.set("Referrer-Policy", "no-referrer")
+  // Chromium also checks form redirects; the SDK has validated this exact registered callback.
+  const callbackOrigin = new URL(auth.redirectUri).origin
   headers.set(
     "Content-Security-Policy",
-    "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    `default-src 'none'; form-action 'self' ${callbackOrigin}; frame-ancestors 'none'; base-uri 'none'`,
   )
   const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Pair VibeShape</title><body><h1>Pair a VibeShape tab</h1><p>Client: ${escaped(description.clientName)}. Return address: ${escaped(description.redirectHost)}.</p><p>Client names are supplied by the client. Confirm the return address. ${description.redirectIsLoopback ? "A local process may be listening at this address." : ""}</p><p>Open Remote AI in your VibeShape editor. Create a pairing code, enter it here, then approve this client in that exact tab. Reads and draft changes are shared; Apply is reviewed in the editor unless you separately opt in to session auto-apply.</p><form method="post" action="/authorize"><input type="hidden" name="handle" value="${escaped(consent.handle)}"><label>Pairing code <input name="pairingCode" required maxlength="16" pattern="[A-Fa-f0-9]{16}" autocomplete="off"></label><button type="submit">Request tab approval</button></form></body></html>`
   return new Response(html, { headers })

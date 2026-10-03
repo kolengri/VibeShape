@@ -65,13 +65,13 @@ async function pair() {
   expect((await paired).type).toBe("paired")
   return { credential, socket }
 }
-async function registeredClient() {
+async function registeredClient(redirectUri = "https://client.example/callback") {
   const response = await call("/oauth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_name: "CAD test client",
-      redirect_uris: ["https://client.example/callback"],
+      redirect_uris: [redirectUri],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
@@ -80,7 +80,10 @@ async function registeredClient() {
   expect(response.status).toBe(201)
   return (await response.json()) as { client_id: string }
 }
-async function authorizationPage(clientId: string) {
+async function authorizationPage(
+  clientId: string,
+  redirectUri = "https://client.example/callback",
+) {
   const verifier = "a".repeat(43)
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
   const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
@@ -90,7 +93,7 @@ async function authorizationPage(clientId: string) {
   const query = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: "https://client.example/callback",
+    redirect_uri: redirectUri,
     scope: "editor:session",
     state: "test-csrf-state",
     code_challenge: codeChallenge,
@@ -104,7 +107,7 @@ async function authorizationPage(clientId: string) {
   if (!handle) throw new Error("Expected the official SDK consent handle.")
   const cookie = (response.headers.get("Set-Cookie") ?? "").split(";")[0] ?? ""
   expect(cookie).toMatch(/^__Host-/)
-  return { handle, cookie, verifier }
+  return { handle, cookie, verifier, policy: response.headers.get("Content-Security-Policy") }
 }
 async function authorizeTab(tab: Awaited<ReturnType<typeof pair>>) {
   const client = await registeredClient()
@@ -185,6 +188,18 @@ afterEach(async () => {
 })
 
 describe("remote MCP in workerd", () => {
+  it.each([
+    ["https://client.example/callback?context=one", "https://client.example"],
+    ["http://127.0.0.1:8977/callback", "http://127.0.0.1:8977"],
+    ["http://[::1]:8977/callback", "http://[::1]:8977"],
+  ])("permits only the registered callback origin in consent CSP for %s", async (uri, origin) => {
+    const client = await registeredClient(uri)
+    const page = await authorizationPage(client.client_id, uri)
+    expect(page.policy).toBe(
+      `default-src 'none'; form-action 'self' ${origin}; frame-ancestors 'none'; base-uri 'none'`,
+    )
+  })
+
   it("fails closed before tab allocation for missing config, hostile origin, and a wrong challenge hostname", async () => {
     const disabled = await call("/browser/pair", {}, { ...bindings, TURNSTILE_SITE_KEY: "" })
     expect(disabled.status).toBe(503)
