@@ -6,6 +6,8 @@ import {
   runInDurableObject,
 } from "cloudflare:test"
 import { env } from "cloudflare:workers"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import {
   remotePairResponseSchema,
@@ -108,7 +110,7 @@ async function authorizationPage(
   if (!handle) throw new Error("Expected the official SDK consent handle.")
   const cookie = (response.headers.get("Set-Cookie") ?? "").split(";")[0] ?? ""
   expect(cookie).toMatch(/^__Host-/)
-  return { handle, cookie, verifier, policy: response.headers.get("Content-Security-Policy") }
+  return { handle, cookie, verifier, html, policy: response.headers.get("Content-Security-Policy") }
 }
 async function authorizeTab(
   tab: Awaited<ReturnType<typeof pair>>,
@@ -200,6 +202,40 @@ afterEach(async () => {
 })
 
 describe("remote MCP in workerd", () => {
+  it("keeps a standard SDK client usable after its optional SSE probe", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const probes: number[] = []
+    const transport = new StreamableHTTPClientTransport(new URL("https://mcp.example/mcp"), {
+      requestInit: { headers: { Authorization: `Bearer ${authenticated.token}` } },
+      fetch: async (input, init) => {
+        const request = new Request(input, init)
+        const response = await call("/mcp", {
+          method: request.method,
+          headers: request.headers,
+          ...(request.method === "POST" ? { body: await request.text() } : {}),
+        })
+        if (request.method === "GET") probes.push(response.status)
+        return response
+      },
+    })
+    const client = new Client({ name: "Standard SDK test client", version: "1" })
+    try {
+      await client.connect(transport)
+      expect((await client.listTools()).tools.some((tool) => tool.name === "model_info")).toBe(true)
+      await vi.waitFor(() => expect(probes).toEqual([405]))
+      expect((await client.listResources()).resources.length).toBeGreaterThan(0)
+      expect(
+        await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(true)
+    } finally {
+      await client.close()
+    }
+  })
+
   it("serves the operator skill resources and tool only under live-tab OAuth authority without browser work", async () => {
     expect((await mcp("invalid-token", 1, "resources/list")).status).toBe(401)
     const tab = await pair()
@@ -375,8 +411,10 @@ describe("remote MCP in workerd", () => {
     async (uri) => {
       const client = await registeredClient(uri)
       const page = await authorizationPage(client.client_id, uri)
+      const nonce = /<script nonce="([A-Za-z0-9_-]+)">/.exec(page.html)?.[1]
+      expect(nonce).toMatch(/^[A-Za-z0-9_-]{43}$/)
       expect(page.policy).toBe(
-        "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+        `default-src 'none'; script-src 'nonce-${nonce}'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`,
       )
     },
   )
@@ -564,6 +602,16 @@ describe("remote MCP in workerd", () => {
       clientInfo: { name: "CAD test client", version: "1" },
     })
     expect(initialized.status).toBe(200)
+    const eventStream = await call("/mcp", {
+      headers: {
+        Authorization: `Bearer ${authenticated.token}`,
+        Accept: "text/event-stream",
+        "MCP-Protocol-Version": "2025-11-25",
+      },
+    })
+    expect(eventStream.status).toBe(405)
+    expect(eventStream.headers.get("Allow")).toBe("POST")
+    expect(await eventStream.json()).toEqual({ error: "sse_not_supported" })
     const listed = await mcp(authenticated.token, 1, "tools/list")
     expect(listed.status).toBe(200)
     const catalog = (await listed.json()) as { result: { tools: { name: string }[] } }

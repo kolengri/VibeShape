@@ -105,6 +105,12 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
     return response
   }
   if (new URL(request.url).pathname !== "/mcp") return failure(404, "unknown_route")
+  // This stateless adapter returns JSON per POST and has no server-initiated SSE messages.
+  if (request.method === "GET") {
+    const response = failure(405, "sse_not_supported")
+    response.headers.set("Allow", "POST")
+    return response
+  }
   const server = new Server(
     { name: "vibeshape-remote", version: "0.1.0" },
     {
