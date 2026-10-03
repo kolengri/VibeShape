@@ -2,7 +2,12 @@ import { describe, expect, test } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
 import { documentSnapshotSchema } from "./document"
 import { featureRecordSchema } from "./feature-graph"
-import { boxFeatureType, extrusionFeatureType } from "./part-design"
+import {
+  boxFeatureType,
+  extrusionFeatureType,
+  multiProfileExtrusionFeatureType,
+} from "./part-design"
+import { createSketchProfileSet, sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import { createLengthQuantity } from "./units"
 
 const documentId = "018f0000-0000-7000-8000-000000000001"
@@ -404,7 +409,7 @@ describe("sketch document commands", () => {
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
   })
 
-  test("blocks removal while a selector-backed extrusion references the sketch", () => {
+  test("preserves the sketch and all referencing extrusions when removal is blocked", () => {
     const created = createDocument()
     if (!created.ok) throw new Error(created.diagnostic.message)
     const added = applyDocumentCommand(created.snapshot, {
@@ -451,8 +456,30 @@ describe("sketch document commands", () => {
           references: [],
           suppressed: false,
         }),
+        featureRecordSchema.parse({
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000010",
+          type: multiProfileExtrusionFeatureType.type,
+          parameters: {
+            profiles: createSketchProfileSet([
+              sketchProfileSelectorSchema.parse({
+                schemaVersion: 0,
+                sketchId,
+                outerBoundaryEntityIds: [lineId],
+                holeBoundaryEntityIds: [],
+              }),
+            ]),
+            distance: createLengthQuantity(20),
+            symmetric: false,
+            operation: "new",
+          },
+          dependencies: [],
+          references: [],
+          suppressed: true,
+        }),
       ],
     }
+    const beforeRemoval = JSON.stringify(referenced)
 
     expect(
       applyDocumentCommand(referenced, {
@@ -469,7 +496,10 @@ describe("sketch document commands", () => {
       ok: false,
       diagnostic: {
         code: "sketch-in-use",
-        issues: [{ path: "features.0.parameters.profile.sketchId" }],
+        issues: [
+          { path: "features.0.parameters.profile.sketchId" },
+          { path: "features.1.parameters.profiles.profiles.0.sketchId" },
+        ],
       },
     })
     expect(reduceDocumentEvent(referenced, removal.event)).toMatchObject({
@@ -481,6 +511,7 @@ describe("sketch document commands", () => {
         ]),
       },
     })
+    expect(JSON.stringify(referenced)).toBe(beforeRemoval)
   })
 
   test("blocks destructive deletion when an unavailable feature has no semantic-input model", () => {
