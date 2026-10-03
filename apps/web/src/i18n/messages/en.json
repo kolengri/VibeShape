@@ -1053,6 +1053,7 @@
           "tool": "Tool solid",
           "targetDescription": "The solid that remains after subtraction.",
           "toolDescription": "The solid removed from the target.",
+          "keepTools": "Keep tool solid",
           "create": "Subtract",
           "update": "Update subtraction",
           "cancel": "Cancel",

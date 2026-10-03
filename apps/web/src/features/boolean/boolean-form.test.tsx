@@ -27,6 +27,7 @@ const copy = {
   tool: "Tool solid",
   targetDescription: "The solid that remains after subtraction.",
   toolDescription: "The solid removed from the target.",
+  keepTools: "Keep tool solid",
   submit: "Subtract",
   cancel: "Cancel",
   missingInput: "Choose an available solid.",
@@ -85,6 +86,32 @@ function renderForm(
 afterEach(cleanup)
 
 describe("BooleanForm", () => {
+  it("saves tool retention and restores it when editing", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm()
+    const keepTools = screen.getByRole("checkbox", { name: copy.keepTools })
+    expect((keepTools as HTMLInputElement).checked).toBe(false)
+    await user.click(keepTools)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({ parameters: { operation: "subtract", keepTools: true } }),
+    )
+    cleanup()
+    const edited = renderForm(undefined, undefined, {
+      kind: "edit",
+      feature: { ...existingFeature, parameters: { operation: "subtract", keepTools: true } },
+    })
+    expect(
+      (screen.getByRole("checkbox", { name: copy.keepTools }) as HTMLInputElement).checked,
+    ).toBe(true)
+    await user.click(screen.getByRole("checkbox", { name: copy.keepTools }))
+    await user.click(screen.getByRole("button", { name: edited.copy.submit }))
+    expect(edited.onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({ parameters: { operation: "subtract" } }),
+    )
+  })
   it("creates ordered subtraction dependencies and guards asynchronous double submission", async () => {
     const user = userEvent.setup()
     const submission = deferred()
@@ -112,6 +139,22 @@ describe("BooleanForm", () => {
 
     submission.resolve()
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+  })
+
+  it("allows repairing a saved subtraction with invalid retention parameters", async () => {
+    const user = userEvent.setup()
+    const { copy: editCopy, onSave } = renderForm(undefined, undefined, {
+      kind: "edit",
+      feature: { ...existingFeature, parameters: { operation: "subtract", keepTools: "true" } },
+    })
+    expect(
+      (screen.getByRole("checkbox", { name: copy.keepTools }) as HTMLInputElement).checked,
+    ).toBe(false)
+    await user.click(screen.getByRole("button", { name: editCopy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({ parameters: { operation: "subtract" } }),
+    )
   })
 
   it("preserves the invalid selection and focuses its adjacent error", async () => {

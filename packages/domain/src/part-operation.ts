@@ -1,4 +1,5 @@
 import type { BodyReference } from "./body-reference"
+import { featureBodyDependencyIds } from "./feature-dependencies"
 import type { FeatureRecord, FeatureRecordV1 } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import {
@@ -78,7 +79,11 @@ export function classifyPartOperation(feature: FeatureRecordV1): PartOperation {
   return {
     kind: "modify",
     target,
-    consumed: isBoolean ? feature.dependencies.slice(1).map((id) => featureResultBody({ id })) : [],
+    consumed: isBoolean
+      ? featureBodyDependencyIds(legacy)
+          .slice(1)
+          .map((id) => featureResultBody({ id }))
+      : [],
   }
 }
 

@@ -299,6 +299,48 @@ describe("V2 authored part authority", () => {
     expect(removed.snapshot.parts).toEqual(both.parts)
   })
 
+  it("updates and replays tool retention without changing authored part identities", () => {
+    const both = addBox(addBox().snapshot, id(202), id(102)).snapshot
+    const feature = {
+      schemaVersion: 0,
+      id: id(203),
+      type: booleanFeatureType.type,
+      parameters: { operation: "subtract", keepTools: true },
+      dependencies: [id(200), id(202)],
+      references: [],
+      suppressed: false,
+    }
+    const kept = requireSuccess(
+      model(both, "org.vibeshape.history.insert-feature", {
+        historyAfter: both.history.at(-1),
+        feature,
+      }),
+    )
+    expect(kept.snapshot.parts.map(({ id: partId }) => partId)).toEqual(
+      both.parts.map(({ id: partId }) => partId),
+    )
+    expect(kept.snapshot.parts.find((part) => part.id === id(102))).toEqual(
+      both.parts.find((part) => part.id === id(102)),
+    )
+    const target = kept.snapshot.parts[0]
+    if (!target) throw new Error("Expected surviving target part")
+    expect(partBodyReference(target)).toMatchObject({ featureId: id(203) })
+    expect(requireSuccess(reduceDocumentV2Event(both, kept.event)).snapshot).toEqual(kept.snapshot)
+    const consumed = requireSuccess(
+      model(kept.snapshot, "org.vibeshape.feature.update", {
+        feature: { ...feature, parameters: { operation: "subtract" } },
+      }),
+    )
+    expect(consumed.snapshot.parts.find((part) => part.id === id(102))?.consumedBy).toBe(id(203))
+    const restored = requireSuccess(
+      model(consumed.snapshot, "org.vibeshape.feature.update", { feature }),
+    )
+    expect(restored.snapshot.parts).toEqual(kept.snapshot.parts)
+    expect(
+      requireSuccess(reduceDocumentV2Event(consumed.snapshot, restored.event)).snapshot,
+    ).toEqual(restored.snapshot)
+  })
+
   it("rejects forged effects, nested provenance, revision gaps, and naked legacy events", () => {
     const base = upgrade().snapshot
     const added = addBox(base)

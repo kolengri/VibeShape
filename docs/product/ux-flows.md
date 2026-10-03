@@ -49,6 +49,12 @@ stateDiagram-v2
 - An error preserves parameters and the failing selection.
 - Escape always cancels the active command before the document changes.
 
+Subtract offers current solid outputs when creating a feature and retains both saved inputs when
+editing. **Keep tool solid** leaves the selected tool available alongside the subtraction result;
+the default consumes it from the final model. Both choices retain the tool feature and dependency
+in History for subsequent edits. Retention changes body and authored-part consumption, not the
+cut geometry or its cached content identity. Suppression, deletion, and Undo restore source bodies.
+
 During sketch editing, the adjacent **Intersection** icon switches the orbitable 3D viewer into planar-face preselection. One eligible face creates an exact bounded read-only line on the active sketch plane and returns to Select. Parallel or coplanar faces are rejected before draft mutation, while exact OCCT failures remain fail-closed.
 
 Each compatible external-reference row exposes **Replace reference**. Activating it reuses the canvas-first Use broker, limits normal and orbit candidates to a compatible topology kind, and marks the action as pressed. Live model-backed candidates stay within the same producing feature. A reference intentionally orphaned by source-feature deletion may instead target compatible topology from another visible feature and becomes an ordinary live reference after the pick. Sketch-backed candidates may come from any earlier sketch, but a curve must retain both its source and projected analytical types. Picking one candidate preserves the reference ID, projected entity IDs, metadata, and dependent constraints, then returns to Select. Finishing and reopening the sketch retains the friendly source-and-geometry label for the replacement. Activating the pressed action again cancels repair without changing the draft.

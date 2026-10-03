@@ -251,10 +251,10 @@ describe("part-design tool routing", () => {
     expect(editPartDesignTool(undefined)).toBeNull()
   })
 
-  it("excludes the edited Boolean and all of its dependents from input candidates", () => {
+  it("offers current Boolean inputs and preserves both edited inputs without descendants", () => {
     expect(
       booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean, datumPlane]),
-    ).toEqual([box, cylinder, extrusion, boolean, dependentBoolean])
+    ).toEqual([extrusion, dependentBoolean])
     expect(
       booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean], boolean.id),
     ).toEqual([box, cylinder, extrusion])
@@ -266,6 +266,16 @@ describe("part-design tool routing", () => {
         modifyingMultiProfileRevolve,
       ]),
     ).toEqual([modifyingMultiProfileExtrusion, modifyingMultiProfileRevolve])
+  })
+
+  it("keeps retained tools selectable and restores consumed inputs after suppression", () => {
+    const retained = { ...boolean, parameters: { operation: "subtract", keepTools: true } }
+    expect(booleanInputFeatures([box, cylinder, retained])).toEqual([cylinder, retained])
+    expect(booleanInputFeatures([box, cylinder, boolean])).toEqual([boolean])
+    expect(booleanInputFeatures([box, cylinder, { ...boolean, suppressed: true }])).toEqual([
+      box,
+      cylinder,
+    ])
   })
 
   it("offers only terminal solids as extrusion targets while retaining the edited target", () => {
@@ -342,6 +352,24 @@ describe("authored part operation routing", () => {
     const placement = featureRecordSchema.parse({ ...box, type: placementFeatureType.type })
     const union = featureRecordSchema.parse({ ...cylinder, type: unionFeatureType.type })
     const compound = featureRecordSchema.parse({ ...boolean, type: compoundFeatureType.type })
-    expect(booleanInputFeatures([placement, union, compound])).toEqual([placement, union])
+    expect(booleanInputFeatures([placement, union])).toEqual([placement, union])
+    expect(booleanInputFeatures([compound])).toEqual([])
+  })
+  it("excludes sources consumed by an active Compound from Subtract and modifier targets", () => {
+    const compound = featureRecordSchema.parse({
+      ...boolean,
+      type: compoundFeatureType.type,
+      parameters: {
+        slots: [box, cylinder].map((source) => ({
+          slotId: source.id,
+          targetBody: { schemaVersion: 0, featureId: source.id, outputRole: "result" },
+        })),
+      },
+    })
+    expect(booleanInputFeatures([box, cylinder, compound])).toEqual([])
+    expect(modifyingSolidTargetFeatures([box, cylinder, compound])).toEqual([])
+    const suppressed = { ...compound, suppressed: true }
+    expect(booleanInputFeatures([box, cylinder, suppressed])).toEqual([box, cylinder])
+    expect(modifyingSolidTargetFeatures([box, cylinder, suppressed])).toEqual([box, cylinder])
   })
 })
