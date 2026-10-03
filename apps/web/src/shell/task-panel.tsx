@@ -1153,10 +1153,12 @@ function booleanOptions(
   editingFeatureId: Extract<BooleanFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
   unnamedFeature: string,
 ) {
-  return booleanInputFeatures(report.snapshot.features, editingFeatureId).map((feature) => ({
-    id: feature.id,
-    label: feature.label ?? unnamedFeature,
-  }))
+  return booleanInputFeatures(report.snapshot.features, editingFeatureId, report.rebuild).map(
+    (feature) => ({
+      id: feature.id,
+      label: feature.label ?? unnamedFeature,
+    }),
+  )
 }
 
 function extrusionOptions(
@@ -1164,12 +1166,14 @@ function extrusionOptions(
   editingFeatureId: Extract<ExtrusionFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
   unnamedFeature: string,
 ) {
-  return modifyingSolidTargetFeatures(report.snapshot.features, editingFeatureId).map(
-    (feature) => ({
-      id: feature.id,
-      label: feature.label ?? unnamedFeature,
-    }),
-  )
+  return modifyingSolidTargetFeatures(
+    report.snapshot.features,
+    editingFeatureId,
+    report.rebuild,
+  ).map((feature) => ({
+    id: feature.id,
+    label: feature.label ?? unnamedFeature,
+  }))
 }
 
 function revolveOptions(
@@ -1177,12 +1181,14 @@ function revolveOptions(
   editingFeatureId: Extract<RevolveFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
   unnamedFeature: string,
 ) {
-  return modifyingSolidTargetFeatures(report.snapshot.features, editingFeatureId).map(
-    (feature) => ({
-      id: feature.id,
-      label: feature.label ?? unnamedFeature,
-    }),
-  )
+  return modifyingSolidTargetFeatures(
+    report.snapshot.features,
+    editingFeatureId,
+    report.rebuild,
+  ).map((feature) => ({
+    id: feature.id,
+    label: feature.label ?? unnamedFeature,
+  }))
 }
 
 function StartModelingAction({
@@ -1361,7 +1367,13 @@ function canCreateFeature(controller: DocumentControllerState) {
 
 function canCreateSubtract(controller: DocumentControllerState) {
   if (!canCreateFeature(controller)) return false
-  return booleanInputFeatures(controller.report?.snapshot.features ?? []).length >= 2
+  return (
+    booleanInputFeatures(
+      controller.report?.snapshot.features ?? [],
+      undefined,
+      controller.report?.rebuild,
+    ).length >= 2
+  )
 }
 
 function ActiveBoxTaskPanel({
@@ -1977,9 +1989,11 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   if (!mode) return null
   const editingId = mode.kind === "edit" ? mode.feature.id : undefined
   const task = featureTaskContext(mode, report.snapshot.revision)
-  const options = modifyingSolidTargetFeatures(report.snapshot.features, editingId).map(
-    ({ id, label }) => ({ id, label: label ?? treeT("unnamedFeature") }),
-  )
+  const options = modifyingSolidTargetFeatures(
+    report.snapshot.features,
+    editingId,
+    report.rebuild,
+  ).map(({ id, label }) => ({ id, label: label ?? treeT("unnamedFeature") }))
   const copy = edgeTreatmentCopy(t, operation, mode.kind)
 
   return (

@@ -1,3 +1,4 @@
+import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -34,6 +35,7 @@ import {
   unionFeatureType,
 } from "@vibeshape/domain/part-design-body-combination"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
+import { terminalModelBodies } from "./model-bodies"
 
 export type ActivePartDesignTool =
   | Readonly<{ kind: "measure" }>
@@ -263,8 +265,9 @@ function dependentFeatureIds(features: readonly FeatureRecord[], rootFeatureId: 
 export function booleanInputFeatures(
   features: readonly FeatureRecord[],
   editingFeatureId?: FeatureId,
+  rebuild?: DocumentRebuildOutcome,
 ) {
-  const candidates = modifyingSolidTargetFeatures(features, editingFeatureId)
+  const candidates = modifyingSolidTargetFeatures(features, editingFeatureId, rebuild)
   const currentInputs = features.find(({ id }) => id === editingFeatureId)?.dependencies ?? []
   const candidateIds = new Set(candidates.map(({ id }) => id))
   return features.filter(
@@ -279,7 +282,9 @@ export function booleanInputFeatures(
 export function modifyingSolidTargetFeatures(
   features: readonly FeatureRecord[],
   editingFeatureId?: FeatureId,
+  rebuild?: DocumentRebuildOutcome,
 ) {
+  if (rebuild) return evaluatedSolidTargetFeatures(features, editingFeatureId, rebuild)
   const excludedIds = editingFeatureId
     ? dependentFeatureIds(features, editingFeatureId)
     : new Set<FeatureId>()
@@ -289,6 +294,53 @@ export function modifyingSolidTargetFeatures(
   const editingFeature = features.find(({ id }) => id === editingFeatureId)
   const currentTargetIds = new Set(editingFeature ? featureBodyDependencyIds(editingFeature) : [])
   return available.filter(({ id }) => !dependedOnIds.has(id) || currentTargetIds.has(id))
+}
+
+function evaluatedSolidTargetFeatures(
+  features: readonly FeatureRecord[],
+  editingFeatureId: FeatureId | undefined,
+  rebuild: DocumentRebuildOutcome,
+) {
+  if (!rebuild.ok) return []
+  const excludedIds = editingFeatureId
+    ? dependentFeatureIds(features, editingFeatureId)
+    : new Set<FeatureId>()
+  const terminal = terminalModelBodies(features, rebuild.response, [...excludedIds]) ?? []
+  const editingFeature = features.find(({ id }) => id === editingFeatureId)
+  const currentTargetIds = new Set(editingFeature ? featureBodyDependencyIds(editingFeature) : [])
+  const savedContextIds = upstreamFeatureIds(features, currentTargetIds)
+  const savedTargets =
+    terminalModelBodies(
+      features,
+      rebuild.response,
+      features.filter(({ id }) => !savedContextIds.has(id)).map(({ id }) => id),
+    ) ?? []
+  const availableIds = new Set(
+    [...terminal, ...savedTargets.filter(({ feature }) => currentTargetIds.has(feature.id))].map(
+      ({ feature }) => feature.id,
+    ),
+  )
+  return features.filter(
+    (feature) =>
+      availableIds.has(feature.id) &&
+      !excludedIds.has(feature.id) &&
+      !feature.suppressed &&
+      isModifyingInputFeature(feature),
+  )
+}
+
+function upstreamFeatureIds(features: readonly FeatureRecord[], roots: ReadonlySet<FeatureId>) {
+  const byId = new Map(features.map((feature) => [feature.id, feature]))
+  const ids = new Set(roots)
+  const queue = [...roots]
+  for (const id of queue) {
+    for (const dependency of byId.get(id)?.dependencies ?? []) {
+      if (ids.has(dependency)) continue
+      ids.add(dependency)
+      queue.push(dependency)
+    }
+  }
+  return ids
 }
 
 /** Includes historical upstream outputs while excluding the edited feature and its dependents. */

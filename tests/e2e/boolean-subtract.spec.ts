@@ -1,6 +1,51 @@
 import { expect, test } from "./fixtures"
 
 test.describe("Boolean subtraction", () => {
+  test("restores selectable sources after a failed cut and preserves saved repair inputs", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000)
+    await page.goto("/")
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    for (const label of ["Box 1", "Box 2"]) {
+      await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+      await page
+        .getByRole("form", { name: "Create box" })
+        .getByRole("button", { name: "Create box", exact: true })
+        .click()
+      await expect(page.getByRole("treeitem", { name: label, exact: true })).toBeVisible()
+    }
+    const subtract = toolbar.getByRole("button", { name: "Subtract", exact: true })
+    await subtract.click()
+    await page
+      .getByRole("form", { name: "Subtract solids" })
+      .getByRole("button", { name: "Subtract", exact: true })
+      .click()
+    const failedFeature = page.getByRole("treeitem", { name: "Subtract 1", exact: true })
+    await expect(failedFeature).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+    await expect(subtract).toBeEnabled()
+    await subtract.click()
+    const createForm = page.getByRole("form", { name: "Subtract solids" })
+    await expect(
+      createForm.getByRole("combobox", { name: "Target solid" }).locator("option"),
+    ).toHaveText(["Box 1", "Box 2"])
+    await createForm.getByRole("button", { name: "Cancel", exact: true }).click()
+    await failedFeature.click()
+    const editForm = page.getByRole("form", { name: "Edit subtraction" })
+    await expect(
+      editForm.getByRole("combobox", { name: "Target solid" }).locator("option:checked"),
+    ).toHaveText("Box 1")
+    await expect(
+      editForm.getByRole("combobox", { name: "Tool solid" }).locator("option:checked"),
+    ).toHaveText("Box 2")
+    await editForm.getByRole("button", { name: "Cancel", exact: true }).click()
+    await page.reload()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+    await expect(subtract).toBeEnabled()
+  })
+
   test("creates, edits, reopens, and safely deletes ordered solid inputs", async ({ page }) => {
     test.setTimeout(90_000)
     await page.goto("/")
