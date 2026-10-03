@@ -36,7 +36,7 @@ import type {
 import { effectiveHiddenSketchIds } from "./editor-session/sketch-visibility"
 import {
   AssemblyContent,
-  AssemblyToolbar,
+  AssemblyModeSwitch,
   assemblyModeCommands,
   useAssemblyMode,
 } from "./features/assembly/assembly-mode"
@@ -64,6 +64,7 @@ import { SketchTextDialog } from "./features/sketch/text/text-dialog"
 import { ApplicationBar } from "./shell/application-bar"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
+import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import {
@@ -848,7 +849,17 @@ function EditorApplication({
         onOpenCommandPalette={(returnFocusTarget) =>
           commandPaletteFocus.setOpen(true, returnFocusTarget)
         }
-      />
+      >
+        <AssemblyModeSwitch
+          active={assemblyMode.active}
+          disabled={
+            controller.status !== "ready" ||
+            controller.saveStatus === "saving" ||
+            Boolean(session.activePartDesignTool || session.sketch.activeSketchTool)
+          }
+          onChange={assemblyMode.onChange}
+        />
+      </ApplicationBar>
       <ShortcutHelpDialog
         commands={commands}
         open={shortcutHelp.open}
@@ -870,16 +881,7 @@ function EditorApplication({
       />
       <SketchTextActionsProvider actions={textDialog.actions}>
         <SketchToolbarPortalsProvider>
-          <AssemblyToolbar
-            commands={commands}
-            active={assemblyMode.active}
-            controller={controller}
-            editing={{
-              part: session.activePartDesignTool,
-              sketch: session.sketch.activeSketchTool,
-            }}
-            onChange={assemblyMode.onChange}
-          />
+          <CommandToolbar commands={commands} />
           <AssemblyContent
             active={assemblyMode.active}
             controller={controller}

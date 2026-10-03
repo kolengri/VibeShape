@@ -3,7 +3,6 @@ import { Button } from "@vibeshape/ui/components/button"
 import { type ReactNode, useCallback, useState } from "react"
 import { editorCommandIds, type ResolvedEditorCommand } from "../../commands/editor-command"
 import type { DocumentControllerState } from "../../document/document-controller"
-import { CommandToolbar } from "../../shell/command-toolbar"
 import { AssemblyWorkspace } from "./assembly-workspace"
 
 const assemblyCommands = new Set<string>([
@@ -19,7 +18,7 @@ export function assemblyModeCommands(
     ? commands.filter(({ descriptor }) => assemblyCommands.has(descriptor.id))
     : commands
 }
-function AssemblyModeSwitch({
+export function AssemblyModeSwitch({
   active,
   disabled,
   onChange,
@@ -64,32 +63,6 @@ export function useAssemblyMode(switchWorkspace: (workspace: "model") => void) {
     [switchWorkspace],
   )
   return { active, onChange }
-}
-export function AssemblyToolbar({
-  commands,
-  active,
-  controller,
-  editing,
-  onChange,
-}: {
-  commands: readonly ResolvedEditorCommand[]
-  active: boolean
-  controller: DocumentControllerState
-  editing: { part: unknown; sketch: unknown }
-  onChange: (assembly: boolean) => void
-}) {
-  const disabled =
-    controller.status !== "ready" ||
-    controller.saveStatus === "saving" ||
-    Boolean(editing.part || editing.sketch)
-  return (
-    <div className="flex min-w-0 items-center border-b bg-panel">
-      <div className="min-w-0 flex-1">
-        <CommandToolbar commands={commands} />
-      </div>
-      <AssemblyModeSwitch active={active} disabled={disabled} onChange={onChange} />
-    </div>
-  )
 }
 export function AssemblyContent({
   active,

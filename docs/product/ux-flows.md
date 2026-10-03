@@ -33,7 +33,9 @@ The implemented viewport shows terminal authoritative meshes only after a succes
 The VibeShape menu groups global actions into Project (files, local projects, and geometry export),
 Workspace (settings and command palette), AI (connection and session controls when available), and
 Help (FAQ, MCP setup, and keyboard shortcuts). The header retains the project name, rename action,
-and save status. An active local or remote AI session keeps a direct **Stop AI** action and a compact
+save status, and the Model / Assembly mode switch. Mode selection stays above the command toolbar
+and is unavailable while a feature or sketch is being edited or the document is saving.
+An active local or remote AI session keeps a direct **Stop AI** action and a compact
 session status in the header. Auto-apply consent remains in the existing session dialog.
 
 The menu supports arrow-key navigation, typeahead, Enter, and Escape. Opening a dialog preserves

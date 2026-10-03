@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createLocalAutomationConnection } from "../automation/local-automation-connection"
 import { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
@@ -32,11 +32,13 @@ function saveStatusMessage(
 }
 
 export function ApplicationBar({
+  children,
   controller,
   onOpenCommandPalette,
   onOpenShortcutHelp,
   hideModelExport = false,
 }: {
+  children?: ReactNode
   controller: DocumentControllerState
   hideModelExport?: boolean
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
@@ -87,6 +89,7 @@ export function ApplicationBar({
         </span>
         <DocumentRenameDialog controller={controller} />
       </div>
+      {children}
       {current.connected || remote.connected ? (
         <>
           <span role="status" className="shrink-0 text-xs font-medium text-primary">
