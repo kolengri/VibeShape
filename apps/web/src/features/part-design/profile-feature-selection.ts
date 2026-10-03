@@ -151,7 +151,9 @@ export function ineligibleProfileSketchIds(
   if (
     tool?.kind !== "edit-extrusion" &&
     tool?.kind !== "edit-revolve" &&
-    tool?.kind !== "edit-hole"
+    tool?.kind !== "edit-hole" &&
+    tool?.kind !== "edit-loft" &&
+    tool?.kind !== "edit-sweep"
   )
     return []
   const graphResult = createDocumentDependencyGraphFromSnapshot(snapshot)

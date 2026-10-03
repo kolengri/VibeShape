@@ -8,7 +8,33 @@ A built-in slicer is outside the MVP. PrusaSlicer/libslic3r and CuraEngine are l
 
 ## Printer profile
 
-A local profile contains only information required for CAD analysis:
+The implemented local profile contains a name, version, rectangular width/depth/height in
+millimeters, and an XY edge margin. Configure it in **Settings → Printer build volume**. The example
+dimensions are illustrative, not a verified printer preset. Legacy viewer preferences keep their
+existing theme, export choice, and sketch visibility when the new optional fields are absent.
+
+The viewport can display an XY ground grid independently of a printer. Enabling the printer bed
+adds a centered XY rectangle and a height envelope from Z=0. These decorations are excluded from
+picking, modeling history, geometry exports, and document authority. The main viewport checks the
+current CAD coordinates, including visible disposable previews; it does not silently move the model.
+
+**Prepare print** rotates a disposable export-quality copy around X, Y, and Z, centers it on XY, and
+seats its lowest point on Z=0. Optional experimental breakaway fins remain separately controlled.
+Select a body triangle in the prepared preview and choose **Lay selected face on bed** to orient
+its outward normal down, reset Z rotation, and regenerate the print copy. This facet selection is
+disposable and does not become a persisted CAD topology reference.
+The same build-volume check evaluates all prepared meshes, including generated fins. It reports
+each exceeded lower or upper boundary and the overrun in millimeters, plus combined and per-mesh
+bounds. A fit verdict tolerates at most `1e-6 mm` numerical error and preserves unrounded bounds.
+The bounded analysis accepts at most ten meshes and 104,000 triangles including supports; unsupported
+display models report an unavailable check rather than a successful fit.
+
+This is a tessellation-based check of the **current orientation**. An overflow does not prove that no
+other orientation fits, and a fit does not prove successful printing. Slicer-generated supports,
+brim, exclusion zones, collision clearance, and machine-specific restrictions still need slicer
+verification. Circular beds and the richer profile fields below remain planned.
+
+The extended CAD-analysis profile is intended to contain:
 
 - build volume X/Y/Z;
 - rectangular or circular bed shape;

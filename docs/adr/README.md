@@ -56,6 +56,29 @@
 | [0058](0058-remote-mcp-paired-browser-transport.md) | Accepted with reduced scope; deployment gates open | OAuth-protected HTTPS MCP routed to one explicitly paired browser tab |
 | [0059](0059-editable-surface-texture-layers.md) | Accepted | Editable V3 texture layers with derived relief meshes and replay-proven native format 4 |
 
+| [0060](0060-persisted-body-bound-shell-openings.md) | Accepted | Persisted exact-body Shell opening references with explicit repair and owned native offset geometry |
+
+| [0052](0052-session-cad-auto-apply.md) | Accepted | Browser-owned session CAD auto-apply |
+| [0053](0053-independent-extrusion-depths.md) | Accepted | Independent extrusion depths |
+| [0054](0054-authored-parts-and-organizational-history-folders.md) | Accepted | Authored parts and organizational History folders |
+| [0055](0055-trusted-exact-body-placement.md) | Accepted | Trusted exact-body Placement |
+| [0056](0056-bounded-authored-metadata-automation.md) | Accepted | Bounded authored metadata automation |
+| [0057](0057-trusted-body-compound-and-union.md) | Proposed | Trusted body Compound and Union |
+| [0061](0061-exact-plane-split-and-part-fan-out.md) | Accepted | Exact plane Split and Part fan-out |
+| [0062](0062-durable-source-assets-and-portable-closure.md) | Accepted | Durable source assets and portable closure |
+| [0063](0063-pattern-fan-out-and-captured-count-growth.md) | Accepted | Pattern fan-out and captured count growth |
+| [0064](0064-modeled-custom-threads.md) | Accepted | Modeled custom threads |
+| [0065](0065-bounded-exchange-geometry-import.md) | Accepted | Bounded exchange geometry import |
+| [0066](0066-grounded-assembly-definitions-and-kinematics.md) | Accepted | Grounded assembly definitions and kinematics |
+| [0067](0067-captured-exact-source-imports.md) | Accepted | Captured exact source imports |
+| [0068](0068-exact-cubic-bezier-sketch-curves.md) | Accepted | Exact cubic Bezier sketch curves |
+| [0069](0069-frozen-assembly-source-authority.md) | Accepted | Frozen assembly source authority |
+| [0070](0070-immutable-font-sketch-text-outlines.md) | Accepted | Immutable font intent and exact sketch text outlines |
+| [0071](0071-explicit-triangle-mesh-source-features.md) | Accepted | Explicit triangle-mesh source features |
+| [0072](0072-derived-assembly-geometry-and-exact-interference.md) | Accepted | Derived assembly geometry and exact interference |
+| [0073](0073-immutable-local-assembly-library.md) | Accepted | Immutable local assembly library revisions |
+| [0074](0074-ordered-body-slots-in-compound-and-union.md) | Accepted | Ordered exact body slots in Compound and Union |
+
 Statuses:
 
 - `Proposed` — under discussion

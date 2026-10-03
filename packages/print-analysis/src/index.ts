@@ -8,13 +8,16 @@ import {
 import { generateFins } from "./fin-supports"
 import { bounds, meshNormals, meshPoints, type Point, rotate, sub } from "./mesh-geometry"
 
+export * from "./build-volume"
+export * from "./lay-flat"
+
 /** Derive a bounded print copy. Never changes design coordinates or semantic history. */
 export function preparePrintMeshes(raw: PrintPreparationInput): PrintPreparationResult {
   const input = printPreparationInputSchema.parse(raw)
   const rotated = input.meshes.map((mesh) => ({
     mesh,
     points: meshPoints(mesh).map((p) =>
-      rotate(p, input.settings.rotationX, input.settings.rotationY),
+      rotate(p, input.settings.rotationX, input.settings.rotationY, input.settings.rotationZ),
     ),
   }))
   const box = bounds(rotated.flatMap(({ points }) => points))

@@ -1,6 +1,7 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import { readDatumPlaneFeatureParameters, type SketchProfileSelector } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import type { PrinterProfile } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
@@ -27,6 +28,7 @@ import type {
   ViewerAxialGizmo,
   ViewerFrame,
   ViewerMesh,
+  ViewerSection,
   ViewerSelection,
   ViewerSketch,
   ViewerSketchProfile,
@@ -62,7 +64,17 @@ import type { SketchProjectionStoreApi } from "../features/sketch/sketch-project
 import { selectedSketchSupportFromController } from "../features/sketch/sketch-support"
 import { SurfaceTextureViewportTools } from "../features/surface-texture/surface-texture-viewport-tools"
 import { useTexturedMeshes } from "../features/surface-texture/use-textured-meshes"
+import {
+  PrintViewportStatus,
+  usePrintViewportFactory,
+  usePrintViewportSynchronization,
+} from "../printing/print-viewport-presentation"
 import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
+import { SectionViewControls } from "./section-view-controls"
+import {
+  useSectionViewportFactory,
+  useSectionViewportSynchronization,
+} from "./section-viewport-presentation"
 import {
   SAFE_VIEWPORT_CENTER,
   SAFE_VIEWPORT_LEFT,
@@ -1184,6 +1196,10 @@ type GeometryViewportProps = Readonly<{
   activeSketchDisplay?: ViewerSketch | null
   axialGizmoPending?: boolean
   controller: DocumentControllerState
+  section?: ViewerSection | null
+  printerProfile?: PrinterProfile | null
+  printBedVisible?: boolean
+  groundGridVisible?: boolean
   createViewport?: ViewportFactory
   contextualHiddenFeatureIds?: readonly string[]
   featurePreview?: FeaturePreviewState
@@ -1576,6 +1592,14 @@ function useGeometryViewportInteraction(
     sketchContext,
     sketchProfileSelection,
   } = props
+  const printPresentation = usePrintViewportFactory(
+    createViewport,
+    scene.meshes,
+    props.printerProfile,
+    props.printBedVisible,
+    props.groundGridVisible,
+  )
+  const sectionFactory = useSectionViewportFactory(printPresentation.factory, props.section ?? null)
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
   )
@@ -1597,7 +1621,7 @@ function useGeometryViewportInteraction(
     sketchReferenceCandidateStack,
     viewportRef,
   } = useViewportRenderer(
-    createViewport,
+    sectionFactory,
     controller,
     scene.meshes,
     scene.sketches,
@@ -1618,6 +1642,8 @@ function useGeometryViewportInteraction(
     props.translationGizmo,
     props.axialGizmoPending ?? false,
   )
+  usePrintViewportSynchronization(viewportRef, printPresentation)
+  useSectionViewportSynchronization(viewportRef, props.section ?? null)
   useViewportGizmoSynchronization(
     viewportRef,
     props.angularGizmo,
@@ -1632,6 +1658,7 @@ function useGeometryViewportInteraction(
     t,
   )
   return {
+    printReport: printPresentation.report,
     canvasRef,
     dismissSketchProfileSelectionRequest,
     originPlaneInteraction,
@@ -1675,6 +1702,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   )
   return {
     ...viewportHighlightIdentity(scene),
+    printReport: interaction.printReport,
     canvasRef: interaction.canvasRef,
     meshes: scene.meshes,
     sketches: scene.sketches,
@@ -2920,6 +2948,31 @@ function AxialGizmoSideControls({
   )
 }
 
+function sectionDuringModeling(section: ViewerSection | null, props: GeometryViewportProps) {
+  if (
+    props.sketchContext ||
+    (props.featurePreview && props.featurePreview.status !== "idle") ||
+    props.originPlaneSelection
+  )
+    return null
+  return section
+}
+
+function viewportGizmoData(
+  props: GeometryViewportProps,
+  axial: ReturnType<typeof useAxialGizmoSide>,
+) {
+  return {
+    "data-angular-gizmo-angle": props.angularGizmo?.angle,
+    "data-angular-gizmo-feature": props.angularGizmo?.featureId,
+    "data-axial-gizmo-distance": axial.gizmo?.distance,
+    "data-axial-gizmo-feature": props.axialGizmo?.featureId,
+    "data-axial-gizmo-side": props.axialGizmo ? axial.side : undefined,
+    "data-translation-gizmo-feature": props.translationGizmo?.featureId,
+    "data-translation-gizmo-position": props.translationGizmo?.position.join(","),
+  }
+}
+
 export function GeometryViewport(props: GeometryViewportProps) {
   const {
     featurePreview,
@@ -2933,7 +2986,13 @@ export function GeometryViewport(props: GeometryViewportProps) {
   const sketchReferenceRegionRef = useRef<HTMLElement>(null)
   const t = useTranslations("app.shell.viewport")
   const axial = useAxialGizmoSide(props.axialGizmo)
-  const viewportProps = axial.gizmo ? { ...props, axialGizmo: axial.gizmo } : props
+  const [section, setSection] = useState<ViewerSection | null>(null)
+  const activeSection = sectionDuringModeling(section, props)
+  const viewportProps = {
+    ...props,
+    section: activeSection,
+    ...(axial.gizmo ? { axialGizmo: axial.gizmo } : {}),
+  }
   const model = useGeometryViewportModel(viewportProps)
   const { canvasRef, sketchReferenceCandidateStack, sketchPointPreselection, viewportRef } = model
   const selectOther = useSketchReferenceSelectOther({
@@ -2976,13 +3035,9 @@ export function GeometryViewport(props: GeometryViewportProps) {
       {...viewportOriginPlaneData(originPlaneSelection, idleOriginPlaneSelection, model)}
       {...viewportRenderData(passive, featurePreview, model, props.sketchProfilePreview)}
       {...viewportSketchContextData(sketchContext)}
-      data-angular-gizmo-angle={props.angularGizmo?.angle}
-      data-angular-gizmo-feature={props.angularGizmo?.featureId}
-      data-axial-gizmo-distance={axial.gizmo?.distance}
-      data-axial-gizmo-feature={props.axialGizmo?.featureId}
-      data-axial-gizmo-side={props.axialGizmo ? axial.side : undefined}
-      data-translation-gizmo-feature={props.translationGizmo?.featureId}
-      data-translation-gizmo-position={props.translationGizmo?.position.join(",")}
+      data-section-axis={activeSection?.axis}
+      data-section-offset={activeSection?.offset}
+      {...viewportGizmoData(props, axial)}
       onKeyDown={referenceInteraction.onKeyDown}
       onPointerDown={referenceInteraction.onPointerDown}
       onPointerEnter={referenceInteraction.onPointerEnter}
@@ -2990,18 +3045,19 @@ export function GeometryViewport(props: GeometryViewportProps) {
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
       <canvas ref={canvasRef} className={cn("peer", regionClassNames.canvas)} />
+      <SectionViewControls
+        disabled={passive || activeSection !== section}
+        section={section}
+        onChange={setSection}
+        meshes={model.meshes}
+      />
+      <PrintViewportStatus
+        profile={props.printerProfile}
+        visible={props.printBedVisible}
+        report={model.printReport}
+        count={model.meshes.length}
+      />
       <SurfaceTextureViewportTools viewportRef={viewportRef} />
-      {props.axialGizmo ? (
-        <p
-          role="status"
-          className={cn(
-            "pointer-events-none absolute left-3 top-24 hidden w-72 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm peer-data-[axial-gizmo-drag-available=false]:block",
-            SAFE_VIEWPORT_LEFT,
-          )}
-        >
-          {t("extrusionDepthViewHint")}
-        </p>
-      ) : null}
       <div
         aria-hidden="true"
         data-viewport-orientation-offset
@@ -3015,9 +3071,35 @@ export function GeometryViewport(props: GeometryViewportProps) {
         selectOther={selectOther}
         supportFaceSelectOther={supportFaceSelectOther}
       />
+      <ViewportAxialControls props={props} axial={axial} />
+    </section>
+  )
+}
+
+function ViewportAxialControls({
+  props,
+  axial,
+}: {
+  props: GeometryViewportProps
+  axial: ReturnType<typeof useAxialGizmoSide>
+}) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <>
+      {props.axialGizmo ? (
+        <p
+          role="status"
+          className={cn(
+            "pointer-events-none absolute left-3 top-24 hidden w-72 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm peer-data-[axial-gizmo-drag-available=false]:block",
+            SAFE_VIEWPORT_LEFT,
+          )}
+        >
+          {t("extrusionDepthViewHint")}
+        </p>
+      ) : null}
       {props.axialGizmo?.opposite ? (
         <AxialGizmoSideControls onSelect={axial.select} side={axial.side} />
-      ) : null}
-    </section>
+      ) : null}{" "}
+    </>
   )
 }

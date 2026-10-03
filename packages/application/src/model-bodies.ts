@@ -1,6 +1,6 @@
 import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
-import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
 import type { FeatureRecord } from "@vibeshape/domain/feature-graph"
+import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
 import type { FeatureEvaluationEngineResult } from "@vibeshape/protocol"
 import type { FeatureGeometryRecord, FeatureRebuildState } from "./feature-rebuild"
 
@@ -8,6 +8,7 @@ export type ModelBodyGeometry = Readonly<{
   featureId: FeatureRecord["id"]
   contentHash: string
   outputRole?: string
+  representation?: "exact-solid" | "triangle-mesh" | undefined
   shape: FeatureEvaluationEngineResult["shape"]
   mesh: FeatureEvaluationEngineResult["mesh"]
   topologyCandidates: FeatureEvaluationEngineResult["topologyCandidates"]
@@ -16,10 +17,15 @@ export type ModelBodyGeometry = Readonly<{
 type BodyState = Pick<FeatureRebuildState, "features" | "geometry" | "evaluation">
 
 function featureBodies(feature: FeatureRecord, record: FeatureGeometryRecord): ModelBodyGeometry[] {
-  if (readDatumPlaneFeatureParameters(feature) || record.geometry.shape.solidCount === 0) return []
+  if (
+    readDatumPlaneFeatureParameters(feature) ||
+    (record.geometry.shape.solidCount === 0 && record.geometry.representation !== "triangle-mesh")
+  )
+    return []
   const { featureId, contentHash, geometry } = record
   const bodies = geometry.bodies
   if (bodies?.length) return bodies.map((body) => ({ featureId, contentHash, ...body }))
+  if (geometry.shape.solidCount === 0) return []
   return [
     {
       featureId,

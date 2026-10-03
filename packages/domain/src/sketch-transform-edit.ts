@@ -397,6 +397,19 @@ function reflectedEntity(
 ): ReflectedCurveResult | null {
   if (entity.type === "point") return null
   switch (entity.type) {
+    case "cubic-bezier":
+      return {
+        auxiliaryPoints: [],
+        requiresEqual: false,
+        entity: {
+          ...entity,
+          id: createEntityId(),
+          startPointId: reflectedPointId(points, entity.startPointId),
+          control1PointId: reflectedPointId(points, entity.control1PointId),
+          control2PointId: reflectedPointId(points, entity.control2PointId),
+          endPointId: reflectedPointId(points, entity.endPointId),
+        },
+      }
     case "line":
       return reflectedLine(entity, points, createEntityId)
     case "circle":

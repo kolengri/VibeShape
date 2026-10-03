@@ -10,7 +10,10 @@ import {
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { createBrowserDocumentId } from "../../document/document-controller"
+import {
+  createBrowserDocumentId,
+  materializeActiveDocumentSourceAssets,
+} from "../../document/document-controller"
 import { PRODUCT_MESH_POLICY } from "../../document/document-worker-settings"
 import { type ModelBodyGeometry, terminalModelBodies } from "../part-design/model-bodies"
 import {
@@ -175,6 +178,7 @@ export function useFeaturePreview(
     if (!previewDocumentId || !previewSessionActive) return
     const session = createDocumentWorkerSession(previewDocumentId, {
       retryRecoverableFailure: false,
+      materializeSourceAssets: materializeActiveDocumentSourceAssets,
     })
     sessionRef.current = session
     return () => {

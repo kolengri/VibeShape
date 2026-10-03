@@ -4,9 +4,23 @@ import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { type FeatureId, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
-import { compoundFeatureTypeHandler, unionFeatureTypeHandler } from "./part-design-body-combination"
+import {
+  compoundFeatureTypeHandler,
+  compoundFeatureTypeV2Handler,
+  unionFeatureTypeHandler,
+  unionFeatureTypeV2Handler,
+} from "./part-design-body-combination"
 import { holeFeatureTypeHandler, holeFeatureTypeHandlerV2 } from "./part-design-hole"
+import { importedFeatureTypeHandler } from "./part-design-import"
+import { loftFeatureTypeHandler } from "./part-design-loft"
+import { meshImportFeatureTypeHandler } from "./part-design-mesh-import"
+import { mirrorFeatureTypeHandler } from "./part-design-mirror"
+import { patternFeatureTypeHandler } from "./part-design-pattern"
 import { placementFeatureTypeHandler } from "./part-design-placement"
+import { shellFeatureTypeHandler } from "./part-design-shell"
+import { splitFeatureTypeHandler } from "./part-design-split"
+import { sweepFeatureTypeHandler } from "./part-design-sweep"
+import { threadFeatureTypeHandler } from "./part-design-thread"
 import {
   createSketchProfileSet,
   sketchProfileSelectorSchema,
@@ -1637,6 +1651,17 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   placementFeatureTypeHandler,
+  mirrorFeatureTypeHandler,
+  patternFeatureTypeHandler,
+  shellFeatureTypeHandler,
+  splitFeatureTypeHandler,
+  loftFeatureTypeHandler,
+  sweepFeatureTypeHandler,
+  importedFeatureTypeHandler,
+  meshImportFeatureTypeHandler,
+  threadFeatureTypeHandler,
   compoundFeatureTypeHandler,
+  compoundFeatureTypeV2Handler,
   unionFeatureTypeHandler,
+  unionFeatureTypeV2Handler,
 ]

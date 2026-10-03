@@ -25,7 +25,7 @@ Use the exact committed revision from `model_info` for model reads; draft reads 
 
 ## Interpret evidence
 
-Stable feature/part IDs and semantic body output roles identify authored intent. Transient OCCT face/edge indices, kernel handles, display names, and mesh order do not. Use only resolved durable references from the edge-selection tools for modeling. `model_body_topology` references currently support inspection, not Hole/Fillet/Chamfer input.
+Stable feature/part IDs and semantic body output roles identify authored intent. Transient OCCT face/edge indices, kernel handles, display names, and mesh order do not. Use only resolved durable references from the edge-selection tools for modeling. `model_body_topology` supplies current exact face references and content hash for Shell openings. Its references are not Hole/Fillet/Chamfer inputs; those operations retain their separate body/edge selection contracts.
 
 There is no draft body/face/profile discovery tool. `draft_tree`/`draft_entity` are authored records; `draft_edges` selects supported feature edges. A missing or ambiguous reference must be repaired through a supported selection route, not reconstructed from an index.
 

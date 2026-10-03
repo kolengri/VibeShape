@@ -1,3 +1,4 @@
+import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import Dexie, { type Table } from "dexie"
 import type {
   EventAuthorityRecord,
@@ -15,7 +16,7 @@ import type {
   SnapshotRecord,
 } from "./schemas"
 
-export const PERSISTENCE_SCHEMA_VERSION = 3
+export const PERSISTENCE_SCHEMA_VERSION = 4
 
 export class VibeShapeDatabase extends Dexie {
   projects!: Table<ProjectRecord, string>
@@ -29,6 +30,7 @@ export class VibeShapeDatabase extends Dexie {
   snapshotsV1!: Table<SnapshotAuthorityRecord, [string, number]>
   eventsV1!: Table<EventAuthorityRecord, [string, number]>
   recoveryV1!: Table<RecoveryAuthorityRecord, string>
+  assetBlobs!: Table<SourceAssetBlob, string>
 
   constructor(name: string) {
     super(name)
@@ -49,5 +51,6 @@ export class VibeShapeDatabase extends Dexie {
       eventsV1: "[documentId+revision], documentId, revision, &commandId",
       recoveryV1: "documentId, updatedAt",
     })
+    this.version(4).stores({ assetBlobs: "digest" })
   }
 }

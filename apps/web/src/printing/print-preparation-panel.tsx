@@ -1,5 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { printPreparationSettingsSchema } from "@vibeshape/protocol"
+import {
+  type PrintPreparationResult,
+  type PrintPreparationSettings,
+  printPreparationSettingsSchema,
+} from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
@@ -8,12 +12,15 @@ import {
   prepareActiveDocumentPrint,
 } from "../document/document-controller"
 import { downloadDocumentExport } from "../document/document-export"
-import { PrintPreparationPreview } from "./print-preparation-preview"
+import { useViewerPreferences } from "../shell/viewer-preferences"
+import { PreparedPrintPreview } from "./prepared-print-preview"
+import { placePreparedPrintFace } from "./print-face-placement"
 import { SlicerHandoffPanel } from "./slicer-handoff-panel"
 
 const numericFields = [
   "rotationX",
   "rotationY",
+  "rotationZ",
   "layerHeight",
   "clearance",
   "thickness",
@@ -22,7 +29,12 @@ const numericFields = [
 ] as const
 type PreparedExport = Extract<ActiveDocumentExportResult, { ok: true }>
 
-function usePrintPreparation(onBusyChange: (busy: boolean) => void) {
+type PrintPreparationPort = (
+  settings: PrintPreparationSettings,
+  signal: AbortSignal,
+) => Promise<ActiveDocumentExportResult>
+
+function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: PrintPreparationPort) {
   const t = useTranslations("app.printPreparation")
   const [prepared, setPrepared] = useState<PreparedExport | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +57,8 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void) {
     defaultValues: {
       rotationX: String(defaults.rotationX),
       rotationY: String(defaults.rotationY),
+      rotationZ: String(defaults.rotationZ),
+      supports: defaults.supports,
       layerHeight: String(defaults.layerHeight),
       clearance: String(defaults.clearance),
       thickness: String(defaults.thickness),
@@ -59,7 +73,7 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void) {
             value[key].trim() === "" ? Number.NaN : Number(value[key]),
           ]),
         ),
-        supports: true,
+        supports: value.supports,
       })
       setPrepared(null)
       setDownloaded(false)
@@ -73,7 +87,7 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void) {
       try {
         const abort = new AbortController()
         preparation.current = abort
-        const result = await prepareActiveDocumentPrint(settings.data, abort.signal)
+        const result = await prepare(settings.data, abort.signal)
         if (!mounted.current) return
         if (!result.ok || !result.printPreparation) {
           setError(t("failed"))
@@ -109,32 +123,32 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void) {
 export function PrintPreparationPanel({
   disabled,
   onBusyChange,
+  prepare = prepareActiveDocumentPrint,
+  limitations,
 }: {
   disabled: boolean
   onBusyChange: (busy: boolean) => void
+  prepare?: PrintPreparationPort
+  limitations?: string
 }) {
   const t = useTranslations("app.printPreparation")
+  const state = usePrintPreparation(onBusyChange, prepare)
   const {
     form,
-    prepared,
     error,
     pending,
-    downloaded,
     setPrepared,
     setError,
     setDownloaded,
-    slicerMessage,
     setSlicerMessage,
     slicerPending,
-    setSlicerPending,
-  } = usePrintPreparation(onBusyChange)
-  const report = prepared?.printPreparation?.report
+  } = state
   return (
     <section className="grid gap-4 border-t pt-4" aria-label={t("title")}>
       <div className="grid gap-1">
         <h3 className="text-sm font-medium">{t("title")}</h3>
         <p className="text-xs text-muted-foreground">{t("description")}</p>
-        <p className="text-xs text-muted-foreground">{t("limitations")}</p>
+        <p className="text-xs text-muted-foreground">{limitations ?? t("limitations")}</p>
       </div>
       <Form
         form={form}
@@ -164,6 +178,19 @@ export function PrintPreparationPanel({
               {(field) => <field.TextField type="number" step="any" label={t(name)} />}
             </form.AppField>
           ))}
+          <form.AppField name="supports">
+            {(field) => (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={field.state.value}
+                  onChange={(event) => field.handleChange(event.currentTarget.checked)}
+                />
+                {t("supports")}
+              </label>
+            )}
+          </form.AppField>
         </fieldset>
         <form.SubmitButton requireDirty={false} disabled={disabled || pending || slicerPending}>
           {t("prepare")}
@@ -174,63 +201,118 @@ export function PrintPreparationPanel({
           {error}
         </p>
       ) : null}
-      {prepared?.printPreparation && report ? (
-        <>
-          <PrintPreparationPreview result={prepared.printPreparation} />
-          <p role="status" className="text-sm">
-            {t("report", {
-              bodies: report.bodyCount,
-              fins: report.finCount,
-              contacts: report.contactCount,
-            })}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t("dimensions", {
-              x: report.bounds[0].toFixed(2),
-              y: report.bounds[1].toFixed(2),
-              z: report.bounds[2].toFixed(2),
-            })}
-          </p>
-          {report.warnings.map((warning) => (
-            <p key={warning} role="status" className="text-sm text-muted-foreground">
-              {t(`warning.${warning}`)}
-            </p>
-          ))}
-          {report.finCount === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("noFins")}</p>
-          ) : null}
-          <p className="text-xs text-muted-foreground">{t("verify")}</p>
-          <Button
-            type="button"
-            disabled={disabled || pending || slicerPending}
-            onClick={() => {
-              downloadDocumentExport(prepared)
-              setDownloaded(true)
-            }}
-          >
-            {t("download")}
-          </Button>
-          {downloaded ? (
-            <p role="status" className="text-sm">
-              {t("downloaded")}
-            </p>
-          ) : null}
-          <SlicerHandoffPanel
-            disabled={disabled || pending || slicerPending}
-            onBusyChange={(busy) => {
-              setSlicerPending(busy)
-              onBusyChange(busy)
-            }}
-            onOpened={setSlicerMessage}
-            prepareThreeMf={async () => prepared}
-          />
-          {slicerMessage ? (
-            <p role="status" className="text-sm">
-              {slicerMessage}
-            </p>
-          ) : null}
-        </>
-      ) : null}
+      <PrintPreparationOutput state={state} disabled={disabled} onBusyChange={onBusyChange} />
     </section>
+  )
+}
+
+function PrintPreparationOutput({
+  state,
+  disabled,
+  onBusyChange,
+}: {
+  state: ReturnType<typeof usePrintPreparation>
+  disabled: boolean
+  onBusyChange: (busy: boolean) => void
+}) {
+  const t = useTranslations("app.printPreparation")
+  const {
+    prepared,
+    form,
+    pending,
+    downloaded,
+    setDownloaded,
+    setError,
+    slicerMessage,
+    setSlicerMessage,
+    slicerPending,
+    setSlicerPending,
+  } = state
+  const printerProfile = useViewerPreferences((state) => state.printerProfile)
+  const report = prepared?.printPreparation?.report
+  const busy = disabled || pending || slicerPending
+  return prepared?.printPreparation && report ? (
+    <>
+      <PreparedPrintPreview
+        result={prepared.printPreparation}
+        disabled={busy}
+        profile={printerProfile}
+        onLayFace={async (meshIndex, triangleIndex) => {
+          try {
+            setSlicerMessage(null)
+            await placePreparedPrintFace(prepared.printPreparation, form, meshIndex, triangleIndex)
+          } catch {
+            setError(t("faceFailed"))
+          }
+        }}
+      />
+      <PrintPreparationReport report={report} supports={form.state.values.supports} />
+      <p className="text-xs text-muted-foreground">{t("verify")}</p>
+      <Button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          downloadDocumentExport(prepared)
+          setDownloaded(true)
+        }}
+      >
+        {t("download")}
+      </Button>
+      {downloaded ? (
+        <p role="status" className="text-sm">
+          {t("downloaded")}
+        </p>
+      ) : null}
+      <SlicerHandoffPanel
+        disabled={busy}
+        onBusyChange={(busy) => {
+          setSlicerPending(busy)
+          onBusyChange(busy)
+        }}
+        onOpened={setSlicerMessage}
+        prepareThreeMf={async () => prepared}
+      />
+      {slicerMessage ? (
+        <p role="status" className="text-sm">
+          {slicerMessage}
+        </p>
+      ) : null}
+    </>
+  ) : null
+}
+
+function PrintPreparationReport({
+  report,
+  supports,
+}: {
+  report: PrintPreparationResult["report"]
+  supports: boolean
+}) {
+  const t = useTranslations("app.printPreparation")
+  return (
+    <>
+      <p role="status" className="text-sm">
+        {t("report", {
+          bodies: report.bodyCount,
+          fins: report.finCount,
+          contacts: report.contactCount,
+        })}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t("dimensions", {
+          x: report.bounds[0].toFixed(2),
+          y: report.bounds[1].toFixed(2),
+          z: report.bounds[2].toFixed(2),
+        })}
+      </p>
+      {report.warnings.map((warning) => (
+        <p key={warning} role="status" className="text-sm text-muted-foreground">
+          {t(`warning.${warning}`)}
+        </p>
+      ))}
+      {report.finCount === 0 ? (
+        <p className="text-sm text-muted-foreground">{t(supports ? "noFins" : "finsDisabled")}</p>
+      ) : null}
+    </>
   )
 }

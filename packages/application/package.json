@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./feature-rebuild": "./src/feature-rebuild.ts",
+    "./assembly-materialization": "./src/assembly-materialization.ts",
     "./model-measurements": "./src/model-measurements.ts",
     "./model-bodies": "./src/model-bodies.ts",
     "./disposable-document-preview": "./src/disposable-document-preview.ts",
@@ -25,7 +26,9 @@
     "./authority-persistence-operations": "./src/authority-persistence-operations.ts",
     "./authority-document-session": "./src/authority-document-session.ts",
     "./surface-textures": "./src/surface-textures.ts",
-    "./authored-parts": "./src/authored-parts.ts"
+    "./authored-parts": "./src/authored-parts.ts",
+    "./shell-opening-resolution": "./src/shell-opening-resolution.ts",
+    "./model-topology-measurements": "./src/model-topology-measurements.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

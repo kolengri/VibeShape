@@ -30,9 +30,23 @@ import {
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
-import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
+import {
+  compoundFeatureType,
+  compoundFeatureTypeV2,
+  unionFeatureType,
+  unionFeatureTypeV2,
+} from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { importedFeatureType } from "./part-design-import"
+import { loftFeatureType } from "./part-design-loft"
+import { meshImportFeatureType } from "./part-design-mesh-import"
+import { mirrorFeatureType } from "./part-design-mirror"
+import { patternFeatureType } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
+import { shellFeatureType } from "./part-design-shell"
+import { splitFeatureType } from "./part-design-split"
+import { sweepFeatureType } from "./part-design-sweep"
+import { threadFeatureType } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 export const commandDescriptorSchema = z
@@ -422,8 +436,19 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
   queries: [],
   featureTypes: [
     placementFeatureType,
+    mirrorFeatureType,
+    patternFeatureType,
+    shellFeatureType,
+    splitFeatureType,
+    loftFeatureType,
+    sweepFeatureType,
+    importedFeatureType,
+    meshImportFeatureType,
+    threadFeatureType,
     compoundFeatureType,
+    compoundFeatureTypeV2,
     unionFeatureType,
+    unionFeatureTypeV2,
     holeFeatureType,
     holeFeatureTypeV2,
     booleanFeatureType,

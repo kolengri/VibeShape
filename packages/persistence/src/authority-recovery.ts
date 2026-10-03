@@ -21,6 +21,7 @@ import {
   persistenceInvariantError,
 } from "./diagnostics"
 import type { PersistenceResult } from "./repository"
+import { requireSourceAssetBytes } from "./source-asset-store"
 
 export interface AuthorityRecoveryReport {
   status: "clean" | "recovered" | "recovered-with-loss"
@@ -196,16 +197,26 @@ export async function recoverAuthoritySnapshot(
       "corrupt-history",
       "Recovery cannot cross the document authority version boundary.",
     )
-  if (project.schemaVersion === 3 && snapshot.revision < project.textureUpgradeRevision)
-    throw persistenceInvariantError(
-      "corrupt-history",
-      "Recovery cannot cross the texture authority upgrade boundary.",
-    )
   if (project.schemaVersion !== 1 && snapshot.revision < project.upgradeRevision)
     throw persistenceInvariantError(
       "corrupt-history",
       "No valid V2 revision remains at the recorded upgrade boundary.",
     )
+  if (
+    project.schemaVersion >= 3 &&
+    "textureUpgradeRevision" in project &&
+    snapshot.revision < project.textureUpgradeRevision
+  )
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "Recovery cannot cross the committed texture authority boundary.",
+    )
+  if (project.schemaVersion === 4 && snapshot.revision < project.sourceUpgradeRevision)
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "No valid V3 revision remains at its source upgrade boundary.",
+    )
+  if (snapshot.schemaVersion === 4) await requireSourceAssetBytes(database, snapshot.assets)
   return { snapshot, corruptRecords }
 }
 

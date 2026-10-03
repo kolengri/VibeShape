@@ -50,6 +50,7 @@ export {
   Split,
   Star,
   Trash2,
+  Type,
   Undo2,
   X,
 } from "lucide-react"

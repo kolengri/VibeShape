@@ -40,9 +40,12 @@ import {
 } from "./part-design"
 import {
   compoundFeatureType,
+  compoundFeatureTypeV2,
+  isBodyCombinationV2,
   readCompoundFeatureParameters,
   readUnionFeatureParameters,
   unionFeatureType,
+  unionFeatureTypeV2,
 } from "./part-design-body-combination"
 import {
   expectedHoleDependencyIds,
@@ -50,7 +53,16 @@ import {
   holeFeatureTypeV2,
   readHoleFeatureParameters,
 } from "./part-design-hole"
+import { importedFeatureType } from "./part-design-import"
+import { loftFeatureType, readLoftFeatureParameters } from "./part-design-loft"
+import { meshImportFeatureType } from "./part-design-mesh-import"
+import { mirrorFeatureType, readMirrorFeatureParameters } from "./part-design-mirror"
+import { patternFeatureType, readPatternFeatureParameters } from "./part-design-pattern"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
+import { readShellFeatureParameters, shellFeatureType } from "./part-design-shell"
+import { readSplitFeatureParameters, splitFeatureType } from "./part-design-split"
+import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
+import { readThreadFeatureParameters, threadFeatureType } from "./part-design-thread"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
   isOrphanedModelReference,
@@ -172,6 +184,8 @@ function key(ref: DocumentNodeRef) {
 
 const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(boxFeatureType.type),
+  featureTypeKey(importedFeatureType.type),
+  featureTypeKey(meshImportFeatureType.type),
   featureTypeKey(cylinderFeatureType.type),
   featureTypeKey(sphereFeatureType.type),
   featureTypeKey(coneFeatureType.type),
@@ -188,8 +202,15 @@ type BodySelectionParameterReader = (
 ) => object | null
 const bodySelectionParameterReaders = new Map<string, BodySelectionParameterReader>([
   [featureTypeKey(placementFeatureType.type), readPlacementFeatureParameters],
+  [featureTypeKey(mirrorFeatureType.type), readMirrorFeatureParameters],
+  [featureTypeKey(threadFeatureType.type), readThreadFeatureParameters],
+  [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
+  [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
+  [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],
   [featureTypeKey(compoundFeatureType.type), readCompoundFeatureParameters],
+  [featureTypeKey(compoundFeatureTypeV2.type), readCompoundFeatureParameters],
   [featureTypeKey(unionFeatureType.type), readUnionFeatureParameters],
+  [featureTypeKey(unionFeatureTypeV2.type), readUnionFeatureParameters],
 ])
 const revolveTypeKeys = new Set(
   [
@@ -214,16 +235,36 @@ const multiProfileResultTypeKeys = new Set([
   featureTypeKey(extrusionFeatureTypeV3.type),
   featureTypeKey(revolveFeatureTypeV5.type),
 ])
+const sketchSolidFeatureTypeKeys = new Set([
+  featureTypeKey(loftFeatureType.type),
+  featureTypeKey(sweepFeatureType.type),
+])
+
+function sketchSolidSemanticInputs(feature: VersionedFeatureRecord) {
+  if (!sketchSolidFeatureTypeKeys.has(featureTypeKey(feature.type))) return null
+  const projection = projectFirstPartyFeatureSemanticInputs(feature)
+  return projection.recognized && projection.ok ? projection.inputs : null
+}
+
+const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord) => object | null>([
+  [featureTypeKey(holeFeatureType.type), readHoleFeatureParameters],
+  [featureTypeKey(holeFeatureTypeV2.type), readHoleFeatureParameters],
+  [featureTypeKey(loftFeatureType.type), readLoftFeatureParameters],
+  [featureTypeKey(sweepFeatureType.type), readSweepFeatureParameters],
+  ...[...extrusionTypeKeys].map((typeKey) => [typeKey, readExtrusionFeatureParameters] as const),
+  ...[...revolveTypeKeys].map((typeKey) => [typeKey, readRevolveFeatureParameters] as const),
+])
 
 function hasCompleteBodySelectionDependencies(
   feature: FeatureRecord,
   readParameters: BodySelectionParameterReader,
 ) {
+  const bodies = featureBodyDependencies(feature).map(({ featureId }) => featureId)
   return (
     readParameters(feature) !== null &&
     orderedIdsMatch(
       feature.dependencies,
-      featureBodyDependencies(feature).map(({ featureId }) => featureId),
+      isBodyCombinationV2(feature) ? [...new Set(bodies)] : bodies,
     )
   )
 }
@@ -234,22 +275,12 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   const readBodySelectionParameters = bodySelectionParameterReaders.get(typeKey)
   if (readBodySelectionParameters)
     return hasCompleteBodySelectionDependencies(feature, readBodySelectionParameters)
-  if (
-    typeKey === featureTypeKey(holeFeatureType.type) ||
-    typeKey === featureTypeKey(holeFeatureTypeV2.type)
-  )
-    return readHoleFeatureParameters(feature) !== null
-  if (dependencyCompleteFeatureTypeKeys.has(typeKey)) return true
-  if (extrusionTypeKeys.has(typeKey)) {
-    return readExtrusionFeatureParameters(feature) !== null
-  }
-  if (revolveTypeKeys.has(typeKey)) {
-    return readRevolveFeatureParameters(feature) !== null
-  }
+  const readParameters = dependencyModelParameterReaders.get(typeKey)
+  if (readParameters) return readParameters(feature) !== null
   if (typeKey === featureTypeKey(datumPlaneFeatureType.type)) {
     return hasCompleteDatumPlaneDependencyModel(feature)
   }
-  return false
+  return dependencyCompleteFeatureTypeKeys.has(typeKey)
 }
 
 function dependencyModelIssues(features: readonly VersionedFeatureRecord[]) {
@@ -475,17 +506,28 @@ type RelationCandidate = Readonly<{
   issue: Readonly<{ path: string; message: string }>
 }>
 
+function declaredSemanticInputs(feature: VersionedFeatureRecord) {
+  return feature.schemaVersion === 1 ? feature.semanticInputs : sketchSolidSemanticInputs(feature)
+}
+
+function featureRelationCount(feature: VersionedFeatureRecord) {
+  return (
+    feature.dependencies.length +
+    feature.references.length +
+    (declaredSemanticInputs(feature)?.length ?? 0) +
+    (hasProfileRelation(feature as FeatureRecord) ? 1 : 0)
+  )
+}
+
 function relationCount(document: IndexedDocument) {
-  let count = 0
-  for (const feature of document.features) {
-    count += feature.dependencies.length + feature.references.length
-    if (feature.schemaVersion === 1 && feature.semanticInputs)
-      count += feature.semanticInputs.length
-    count += hasProfileRelation(feature as FeatureRecord) ? 1 : 0
-  }
-  for (const sketch of document.sketches)
-    count += (sketch.support ? 1 : 0) + (sketch.externalReferences?.length ?? 0)
-  return count
+  const featureCount = document.features.reduce(
+    (count, feature) => count + featureRelationCount(feature),
+    0,
+  )
+  return document.sketches.reduce(
+    (count, sketch) => count + (sketch.support ? 1 : 0) + (sketch.externalReferences?.length ?? 0),
+    featureCount,
+  )
 }
 
 function hasProfileRelation(feature: FeatureRecord) {
@@ -620,15 +662,16 @@ function semanticInputCandidates(
   feature: VersionedFeatureRecord,
   featureIndex: number,
 ): RelationCandidate[] {
-  return feature.schemaVersion === 1 && feature.semanticInputs
-    ? feature.semanticInputs.map(
+  const inputs = declaredSemanticInputs(feature)
+  return inputs
+    ? inputs.map(
         (input, index): RelationCandidate => ({
           source: input,
           target: { kind: "feature", id: feature.id },
           relation: "semantic-input",
           missingMessage: "A semantic input references a missing document node.",
           issue: {
-            path: `features.${featureIndex}.semanticInputs.${index}`,
+            path: `features.${featureIndex}.${feature.schemaVersion === 1 ? "semanticInputs" : "parameters"}.${index}`,
             message: "Referenced document node does not exist.",
           },
         }),

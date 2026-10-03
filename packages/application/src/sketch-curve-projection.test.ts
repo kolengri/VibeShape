@@ -24,6 +24,31 @@ function pointMap(entries: readonly (readonly [string, SketchPoint2])[]) {
 }
 
 describe("analytical sketch curve projection", () => {
+  it("fails explicitly for cubic external-curve projection without reinterpreting its controls", () => {
+    const entity: SketchEntity = {
+      schemaVersion: 0,
+      id: id("5"),
+      type: "cubic-bezier",
+      construction: false,
+      startPointId: id("1"),
+      control1PointId: id("2"),
+      control2PointId: id("3"),
+      endPointId: id("4"),
+    }
+    expect(
+      projectSketchCurveBetweenFrames(
+        xy,
+        xy,
+        entity,
+        pointMap([
+          [id("1"), { x: 0, y: 0 }],
+          [id("2"), { x: 0, y: 4 }],
+          [id("3"), { x: 4, y: 4 }],
+          [id("4"), { x: 4, y: 0 }],
+        ]),
+      ),
+    ).toBeNull()
+  })
   it("projects exact full-circle model edges without tessellation-derived dimensions", () => {
     const projected = projectWorldCircularEdgeToSupport(
       {

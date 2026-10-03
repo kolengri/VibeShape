@@ -9,6 +9,7 @@ import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import type { CommandDispatcher, ModuleRegistry } from "@vibeshape/domain"
 import { type CommandActor, commandActorSchema } from "@vibeshape/domain/commands"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
+import type { SourceAssetMaterialization } from "@vibeshape/protocol"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { automationReviews } from "./automation-review-controller"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
@@ -19,6 +20,7 @@ export function createDocumentAutomationSession(
     commands: CommandDispatcher
     modules: ModuleRegistry
     documents: AutomationDocumentPort
+    materializeSourceAssets?: (document: unknown) => Promise<readonly SourceAssetMaterialization[]>
     createDraftId: () => string
   }>,
 ) {
@@ -32,7 +34,13 @@ export function createDocumentAutomationSession(
   const reviewOwner = Symbol("browser-automation-review")
   const preview = createDisposableDocumentPreview({
     mesh: PRODUCT_MESH_POLICY,
-    createRebuildPort: createDocumentWorkerSession,
+    createRebuildPort: (documentId) =>
+      createDocumentWorkerSession(
+        documentId,
+        input.materializeSourceAssets
+          ? { materializeSourceAssets: input.materializeSourceAssets }
+          : {},
+      ),
   })
   const factory = createAutomationHost({
     commandDispatcher: input.commands,

@@ -737,6 +737,11 @@ type ModelTreeProps = {
   selectedPartId?: PartId | null | undefined
   onPartsCombine?: ((operation: "compound" | "union") => void) | undefined
   onPartPlace?: ((partId: PartId) => void) | undefined
+  onPartShell?: ((partId: PartId) => void) | undefined
+  onPartSplit?: ((partId: PartId) => void) | undefined
+  onPartPattern?: ((partId: PartId) => void) | undefined
+  onPartThread?: ((partId: PartId) => void) | undefined
+  onPartMirror?: ((partId: PartId) => void) | undefined
   onPartSelect?: ((partId: PartId) => void) | undefined
   onAuthoredMetadata?: AuthoredMetadataCommit | undefined
 
@@ -1697,6 +1702,11 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
             disabled={authoredTreeWriteBlocked(props)}
             onSelect={props.onPartSelect}
             onPlace={props.onPartPlace}
+            onMirror={props.onPartMirror}
+            onShell={props.onPartShell}
+            onSplit={props.onPartSplit}
+            onPattern={props.onPartPattern}
+            onThread={props.onPartThread}
             onCombine={props.onPartsCombine}
             onPreselect={props.onBodyPreselectionChange}
             onSurfaceTexture={props.onSurfaceTexture}

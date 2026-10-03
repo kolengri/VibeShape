@@ -37,6 +37,7 @@ export type SketchEditorTool =
   | "centered-aligned-rectangle"
   | "circle"
   | "ellipse"
+  | "cubic-bezier"
   | "elliptical-arc"
   | "three-point-circle"
   | "inscribed-polygon"

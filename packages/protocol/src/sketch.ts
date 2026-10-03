@@ -1,6 +1,11 @@
 import { isString } from "is-what"
 import { z } from "zod"
 import { topologySignatureSchema } from "./geometry-worker"
+import {
+  sketchSourceImportWireSchema,
+  validateSketchSourceImportWireReferences,
+} from "./sketch-source-import"
+import { sketchTextGroupWireSchema, validateTextGroupWireReferences } from "./sketch-text"
 
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const sha256Pattern = /^[0-9a-f]{64}$/
@@ -191,6 +196,25 @@ const sketchEntitySchema = z.discriminatedUnion("type", [
   arcEntitySchema,
   ellipseEntitySchema,
   ellipticalArcEntitySchema,
+  z
+    .object({
+      ...entityEnvelope,
+      type: z.literal("cubic-bezier"),
+      startPointId: sketchEntityIdSchema,
+      control1PointId: sketchEntityIdSchema,
+      control2PointId: sketchEntityIdSchema,
+      endPointId: sketchEntityIdSchema,
+    })
+    .strict()
+    .refine(
+      (curve) =>
+        new Set([
+          curve.startPointId,
+          curve.control1PointId,
+          curve.control2PointId,
+          curve.endPointId,
+        ]).size === 4,
+    ),
 ])
 
 const constraintEnvelope = { schemaVersion: z.literal(0), id: sketchConstraintIdSchema }
@@ -780,6 +804,13 @@ function wireEntityPointReferenceIds(entity: WireEntity): readonly string[] {
       return []
     case "line":
       return [entity.startPointId, entity.endPointId]
+    case "cubic-bezier":
+      return [
+        entity.startPointId,
+        entity.control1PointId,
+        entity.control2PointId,
+        entity.endPointId,
+      ]
     case "circle":
       return [entity.centerPointId]
     case "arc":
@@ -1030,6 +1061,7 @@ function nativeWireConstraintCount(sketch: SketchWireStructure) {
 }
 
 const nativeWireEntityCapacity = {
+  "cubic-bezier": { entities: 1, parameters: 0 },
   arc: { entities: 1, parameters: 0 },
   circle: { entities: 2, parameters: 1 },
   ellipse: { entities: 2, parameters: 0 },
@@ -1190,6 +1222,8 @@ export const sketchWireRecordSchema = z
     entities: z.array(sketchEntitySchema).max(4_990),
     constraints: z.array(sketchConstraintSchema).max(10_000),
     externalReferences: z.array(externalReferenceWireSchema).max(4_990).optional(),
+    textGroups: z.array(sketchTextGroupWireSchema).max(64).optional(),
+    sourceImport: sketchSourceImportWireSchema.optional(),
   })
   .strict()
   .superRefine((sketch, context) => {
@@ -1197,6 +1231,8 @@ export const sketchWireRecordSchema = z
     validateWireEntityTable(sketch, entities, context)
     validateWireConstraintTable(sketch, entities, context)
     validateNativeWireCapacity(sketch, context)
+    validateTextGroupWireReferences(sketch, context)
+    validateSketchSourceImportWireReferences(sketch, context)
   })
 
 const pointSolutionSchema = z
@@ -1231,7 +1267,7 @@ const profileBoundsWireSchema = z
 const profileLoopSegmentWireSchema = z
   .object({
     entityId: sketchEntityIdSchema,
-    type: z.enum(["line", "arc", "circle", "ellipse", "elliptical-arc"]),
+    type: z.enum(["line", "arc", "circle", "ellipse", "elliptical-arc", "cubic-bezier"]),
     reversed: z.boolean(),
   })
   .strict()
@@ -1269,6 +1305,7 @@ const profileDiagnosticWireSchema = z
       "duplicate-entity",
       "intersecting-entities",
       "open-chain",
+      "ambiguous-curve-topology",
     ]),
     message: z
       .string()

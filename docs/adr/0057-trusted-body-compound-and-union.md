@@ -2,6 +2,10 @@
 
 Status: Proposed
 
+For feature schema version 2, this decision is superseded by
+[ADR-0072](0074-ordered-body-slots-in-compound-and-union.md). Version 1 archives retain the original
+distinct-producer contract recorded below.
+
 ## Decision
 
 Register separate first-party Compound and Union feature types. Both select two to eight exact named body outputs from distinct producer feature IDs. This explicit MVP restriction preserves the dependency contract in ADR 0049; selecting multiple slots from one producer requires a later dependency-model change.

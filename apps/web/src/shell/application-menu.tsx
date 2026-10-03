@@ -26,14 +26,26 @@ import { type ReactNode, useRef, useState } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
+import { ImportDialog } from "../features/import/import-dialog"
+import { LibraryDialog } from "../features/library/library-dialog"
+import { PlanarImportDialog } from "../features/planar-import/import-dialog"
 import { FaqDialog } from "./faq-dialog"
 import { SettingsDialog } from "./settings-dialog"
 import { useViewerPreferences } from "./viewer-preferences"
 
-type MenuDialog = "projects" | "export" | "settings" | "faq" | "ai"
+type MenuDialog =
+  | "projects"
+  | "export"
+  | "settings"
+  | "faq"
+  | "ai"
+  | "source-import"
+  | "planar-import"
+  | "library"
 
 export function ApplicationMenu({
   controller,
+  hideModelExport = false,
   blockedReason,
   unitChangesBlocked,
   automationControls,
@@ -42,6 +54,7 @@ export function ApplicationMenu({
   onOpenShortcutHelp,
 }: {
   controller: DocumentControllerState
+  hideModelExport?: boolean
   blockedReason: string | null
   unitChangesBlocked: boolean
   automationControls: ReactNode
@@ -103,12 +116,35 @@ export function ApplicationMenu({
             </DropdownMenuItem>
             <DropdownMenuItem
               aria-haspopup="dialog"
-              disabled={controller.status !== "ready" || controller.report === null}
-              onSelect={() => launchDialog("export")}
+              disabled={unitChangesBlocked}
+              onSelect={() => launchDialog("source-import")}
             >
-              <Download aria-hidden="true" />
-              {t("export")}
+              {t("importGeometry")}
             </DropdownMenuItem>
+            <DropdownMenuItem
+              aria-haspopup="dialog"
+              disabled={unitChangesBlocked}
+              onSelect={() => launchDialog("planar-import")}
+            >
+              {t("importSketch")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              aria-haspopup="dialog"
+              disabled={controller.status !== "ready"}
+              onSelect={() => launchDialog("library")}
+            >
+              {t("library")}
+            </DropdownMenuItem>
+            {!hideModelExport && (
+              <DropdownMenuItem
+                aria-haspopup="dialog"
+                disabled={controller.status !== "ready" || controller.report === null}
+                onSelect={() => launchDialog("export")}
+              >
+                <Download aria-hidden="true" />
+                {t("export")}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuGroup>
           <DropdownMenuGroup aria-label={t("workspace")} className="mt-1 border-t pt-1">
             <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
@@ -170,11 +206,37 @@ export function ApplicationMenu({
         onOpenChange={dialogOpenChange}
         onCloseAutoFocus={closeDialogMenu}
       />
-      <DocumentExportDialog
+      {!hideModelExport && (
+        <DocumentExportDialog
+          controller={controller}
+          preferredFormat={preferredFormat}
+          showTrigger={false}
+          open={dialog === "export"}
+          onOpenChange={dialogOpenChange}
+          onCloseAutoFocus={closeDialogMenu}
+        />
+      )}
+      <ImportDialog
         controller={controller}
-        preferredFormat={preferredFormat}
+        blocked={unitChangesBlocked}
         showTrigger={false}
-        open={dialog === "export"}
+        open={dialog === "source-import"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <PlanarImportDialog
+        controller={controller}
+        blocked={unitChangesBlocked}
+        showTrigger={false}
+        open={dialog === "planar-import"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <LibraryDialog
+        controller={controller}
+        blocked={unitChangesBlocked}
+        showTrigger={false}
+        open={dialog === "library"}
         onOpenChange={dialogOpenChange}
         onCloseAutoFocus={closeDialogMenu}
       />

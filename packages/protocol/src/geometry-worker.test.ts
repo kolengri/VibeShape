@@ -836,15 +836,18 @@ describe("geometry worker protocol", () => {
     },
   )
 
-  it("rejects an unsupported protocol version", () => {
-    expect(
-      geometryWorkerRequestSchema.safeParse({
-        ...validEnvelope,
-        protocolVersion: GEOMETRY_PROTOCOL_VERSION + 1,
-        type: "healthCheck",
-      }).success,
-    ).toBe(false)
-  })
+  it.each([15, 16, GEOMETRY_PROTOCOL_VERSION + 1])(
+    "rejects an incompatible geometry protocol version %s",
+    (protocolVersion) => {
+      expect(
+        geometryWorkerRequestSchema.safeParse({
+          ...validEnvelope,
+          protocolVersion,
+          type: "healthCheck",
+        }).success,
+      ).toBe(false)
+    },
+  )
 
   it("rejects a fillet that cannot fit inside the box", () => {
     const result = kernelSpikeParametersSchema.safeParse({

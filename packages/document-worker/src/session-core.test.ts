@@ -4,9 +4,11 @@ import {
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
   documentRebuildSnapshotSchema,
+  sourceAssetMaterializationsSchema,
 } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { DocumentWorkerRequestError } from "./client-core"
+import { inspectMeshSource } from "./mesh-source-import"
 import {
   type DocumentWorkerClientPort,
   DocumentWorkerSession,
@@ -437,4 +439,129 @@ describe("DocumentWorkerSession", () => {
     await expect(session.rebuild({ document: document(1), mesh })).rejects.toThrow("closed")
     expect(clients.every(({ terminated }) => terminated)).toBe(true)
   })
+})
+
+it("retains detached source bytes when a worker is restarted", async () => {
+  const bytes = new Uint8Array([1, 2, 3])
+  const sources = [
+    {
+      asset: {
+        id: sketchId,
+        digest: "a".repeat(64),
+        byteLength: 3,
+        filename: "Source.step",
+        format: "step",
+        representation: "exact-solid",
+        normalization: {
+          sourceUnit: "millimeter",
+          scaleToMillimeters: 1,
+          normalizedUnit: "millimeter",
+        },
+        outputs: [sketchPointId],
+      },
+      bytes,
+    },
+  ]
+  const { clients, session } = createHarness([], {
+    materializeSourceAssets: async () => sourceAssetMaterializationsSchema.parse(sources),
+  })
+  await session.rebuild({ document: document(3), mesh })
+  bytes.fill(0)
+  await session.restartAndRecover()
+  const request = clients[1]?.requests[0]
+  expect(request?.type).toBe("rebuildDocument")
+  if (request?.type !== "rebuildDocument") throw new Error("Missing recovered rebuild")
+  expect(Array.from(request.sourceAssets?.[0]?.bytes ?? [])).toEqual([1, 2, 3])
+})
+
+it("inspects a source without rebuilding or changing the document revision", async () => {
+  const inspection = { unitEvidence: "explicit-source-metadata" as const, outputs: [] }
+  const { clients, session } = createHarness([
+    (request) =>
+      request.type === "inspectSourceImport"
+        ? { ...envelope(request), type: "sourceImportInspected", inspection }
+        : successfulResponse(request),
+  ])
+  await session.rebuild({ document: document(7), mesh })
+  const result = await session.inspectSourceImport({
+    source: {
+      format: "step",
+      digest: "a".repeat(64),
+      byteLength: 3,
+      normalization: {
+        sourceUnit: "millimeter",
+        scaleToMillimeters: 1,
+        normalizedUnit: "millimeter",
+      },
+      unitPolicy: "step-system-mm",
+      readerPolicyVersion: 1,
+    },
+    bytes: new Uint8Array([1, 2, 3]),
+    mesh,
+  })
+  expect(result.inspection).toEqual(inspection)
+  expect(clients[0]?.requests.map(({ type }) => type)).toEqual([
+    "rebuildDocument",
+    "inspectSourceImport",
+  ])
+  expect(clients[0]?.requests[1]).toMatchObject({ revision: 7 })
+})
+
+it("inspects explicit mesh units through the serialized session without changing rebuilt authority", async () => {
+  const bytes = new TextEncoder().encode(
+    "solid source\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 2 0\nendloop\nendfacet\nendsolid source",
+  )
+  const inspection = await inspectMeshSource("stl", bytes, "cm")
+  const { clients, session } = createHarness([
+    (request) =>
+      request.type === "inspectMeshImport"
+        ? { ...envelope(request), type: "meshImportInspected", inspection }
+        : successfulResponse(request),
+  ])
+  await session.rebuild({ document: document(7), mesh })
+  const result = await session.inspectMeshImport({ format: "stl", bytes, units: "cm" })
+  expect(result.inspection.normalization.scaleToMillimeters).toBe(10)
+  expect(result.inspection.outputs[0]?.shape).toMatchObject({
+    solidCount: 0,
+    volume: 0,
+    surfaceArea: 100,
+  })
+  expect(clients[0]?.requests[1]).toMatchObject({
+    revision: 7,
+    type: "inspectMeshImport",
+    input: { units: "cm" },
+  })
+  await session.restartAndRecover()
+  expect(clients[1]?.requests.map(({ type }) => type)).toEqual(["rebuildDocument"])
+})
+
+it("exports isolated assembly authority without rebuilding or changing the current model recovery", async () => {
+  const { clients, session } = createHarness([
+    (request) =>
+      request.type === "exportAssembly"
+        ? {
+            ...envelope(request),
+            type: "assemblyExported",
+            format: request.input.settings.format,
+            file: new Uint8Array([4, 5]),
+            bodyCount: 2,
+          }
+        : successfulResponse(request),
+  ])
+  await session.rebuild({ document: document(7), mesh })
+  const exported = await session.exportAssembly(
+    {
+      assembly: { authorityJson: "{}", sourceAssets: [], mesh, interferencePairs: [] },
+      settings: { format: "step" },
+    },
+    7,
+  )
+  expect(exported.bodyCount).toBe(2)
+  expect(Array.from(exported.file)).toEqual([4, 5])
+  expect(clients[0]?.requests.map(({ type }) => type)).toEqual([
+    "rebuildDocument",
+    "exportAssembly",
+  ])
+  await session.restartAndRecover()
+  expect(clients[1]?.requests.map(({ type }) => type)).toEqual(["rebuildDocument"])
 })

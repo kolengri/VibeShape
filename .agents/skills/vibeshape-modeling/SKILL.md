@@ -17,7 +17,7 @@ Use the [inspection skill](../vibeshape-inspection/SKILL.md) to choose targets a
 
 ## Capability boundaries
 
-Current MCP covers Box creation; sketch, Extrude, Revolve, Hole, Fillet, and Chamfer create/update; variables; inspection; drafts; and authored metadata. Check discovery before using any operation.
+Current MCP covers Box creation; sketch, Extrude, Revolve, Hole, Fillet, Chamfer, Mirror, linear/circular body Pattern, Shell, Split, Sweep, Loft, and custom Thread create/update; variables; inspection; drafts; and authored metadata. Check discovery before using any operation.
 
 Box update, Cylinder, Boolean, Datum Plane, Placement, Compound/Union, feature/sketch removal, suppression changes, project rename, and History navigation are not currently exposed as named CAD tools. Existing records may still be inspected and must survive supported upstream edits. Use the ordinary visible editor for a required unsupported operation when available and authorized; otherwise identify the exact limitation. A sketch-backed Extrude/Revolve is a valid alternative only when it preserves the requested design and editability.
 

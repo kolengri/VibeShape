@@ -87,6 +87,9 @@ function requireControlledSources(files: ReturnType<typeof distributionInventory
     "sources/solvespace-corresponding-source.tar.gz",
     "sources/LICENSE.txt",
     "sources/OCCT-NOTICES.txt",
+    "sources/Noto-Sans-OFL.txt",
+    "sources/Noto-Sans-provenance.md",
+    "sources/opentype-js-MIT.txt",
     "sources/OCCT-REPLACEMENT.txt",
     "sources/index.html",
   ]) {

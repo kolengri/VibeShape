@@ -1,0 +1,107 @@
+import { type AssemblyInstance, assemblyInstanceSchema } from "@vibeshape/domain/assembly"
+import type { AssemblyAuthority } from "@vibeshape/domain/assembly-authority"
+import { useTranslations } from "@vibeshape/i18n"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { useState } from "react"
+import { AssemblyNameField, AssemblyPoseFields, formPose } from "./assembly-fields"
+import { type AssemblyFormActions, AssemblyTaskForm } from "./assembly-forms"
+import { newAssemblyInstance } from "./assembly-model"
+
+function updatedInstance(data: FormData, instance: AssemblyInstance) {
+  const fields = { ...instance, name: String(data.get("name")) }
+  if (!instance.grounded) return assemblyInstanceSchema.parse(fields)
+  return assemblyInstanceSchema.parse({
+    ...fields,
+    worldFrame: formPose(data, "world", instance.worldFrame),
+  })
+}
+function InstancePoseFields({ instance }: { instance: AssemblyInstance }) {
+  const t = useTranslations("app.assembly")
+  return instance.grounded ? (
+    <AssemblyPoseFields prefix="world" label={t("worldFrame")} pose={instance.worldFrame} />
+  ) : (
+    <p className="text-xs text-muted-foreground">{t("attachedPoseExplanation")}</p>
+  )
+}
+function ExistingInstanceForm({
+  instance,
+  actions,
+}: {
+  instance: AssemblyInstance
+  actions: AssemblyFormActions
+}) {
+  return (
+    <AssemblyTaskForm
+      actions={actions}
+      build={(data) => [{ kind: "instance.update", instance: updatedInstance(data, instance) }]}
+    >
+      <AssemblyNameField value={instance.name} />
+      <InstancePoseFields instance={instance} />
+    </AssemblyTaskForm>
+  )
+}
+function firstDefinitionId(assembly: AssemblyAuthority) {
+  const first = assembly.definitions[0]
+  return first ? first.id : ""
+}
+function NewInstanceForm({
+  assembly,
+  actions,
+}: {
+  assembly: AssemblyAuthority
+  actions: AssemblyFormActions
+}) {
+  const t = useTranslations("app.assembly")
+  const [definitionId, setDefinitionId] = useState<string>(firstDefinitionId(assembly))
+  const definition = assembly.definitions.find(({ id }) => id === definitionId)
+  return (
+    <AssemblyTaskForm
+      actions={actions}
+      build={(data) => {
+        if (!definition) throw new Error("Select an assembly definition.")
+        return [
+          {
+            kind: "instance.create",
+            instance: newAssemblyInstance(
+              definition,
+              String(data.get("name")),
+              formPose(data, "world"),
+            ),
+          },
+        ]
+      }}
+    >
+      <AssemblyNameField
+        value={t("defaultInstance", { name: definition?.name ?? t("defaultDefinition") })}
+      />
+      <SelectField
+        label={t("definition")}
+        value={definitionId}
+        onValueChange={setDefinitionId}
+        required
+      >
+        {assembly.definitions.map(({ id, name }) => (
+          <SelectOption key={id} value={id}>
+            {name}
+          </SelectOption>
+        ))}
+      </SelectField>
+      <AssemblyPoseFields prefix="world" label={t("worldFrame")} />
+    </AssemblyTaskForm>
+  )
+}
+export function AssemblyInstanceForm({
+  assembly,
+  instance,
+  actions,
+}: {
+  assembly: AssemblyAuthority
+  instance?: AssemblyInstance
+  actions: AssemblyFormActions
+}) {
+  return instance ? (
+    <ExistingInstanceForm instance={instance} actions={actions} />
+  ) : (
+    <NewInstanceForm assembly={assembly} actions={actions} />
+  )
+}

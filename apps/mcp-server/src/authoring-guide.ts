@@ -6,6 +6,21 @@ Open that URL, open/create the intended project, and have the person click **Ena
 The browser retains the document authority; there is no embedded chat and no headless modeling mode.
 Use MCP tools/list as the current input/output schema authority. Only listed tools are callable.
 
+## Additional exact feature tools
+
+Named create/update tools cover Mirror, linear/circular body Pattern, Shell, Split, Sweep, Loft
+and custom Thread. Choose exact feature/output-role targets from \`model_body_measurements\`.
+Shell openings require current body topology references and their source content hash. Sweep
+requires an already aligned profile at the start of an open tangent-continuous line/arc path;
+Loft takes two to eight ordered hole-free sections. Thread models a custom 60-degree V groove
+with at most sixteen total turns, without ISO/DIN fit certification. Use the live schema for
+limits, quantities, dependencies and repair; exact preview remains mandatory.
+
+Geometry/planar import, text generation, assemblies, the local component library and surface
+texture authoring use the editor. They are not named MCP construction tools. The shared local
+and paired remote feature tools follow the same draft/review/commit workflow; remote omits
+file exports. Read the modeling operator skill for the relevant feature family.
+
 ## Authored parts and History folders
 
 Read \`model_parts\`, \`model_folders\` and \`model_history\` with the exact committed revision from \`model_info\`.
@@ -429,12 +444,14 @@ All four result operations preserve their existing explicit target/support depen
 \`model_edges\` and \`draft_edges\` return durable selectable edge references; use only resolved
 references for selected treatments. \`model_body_measurements\` returns named output roles.
 \`model_body_topology\` can inspect committed body edges/faces, but those body-scoped topology
-references are currently not accepted by modeling tools. Draft body/face/profile inspection
+references and content hash select Shell opening faces; edge treatments retain their separate
+selection contract. Draft body/face/profile inspection
 is not exposed. A newly authored single-solid Extrude declares the body role \`result\`; use
 legacy Hole semantics in the example, or preserve a known exact \`targetBody\` on update.
 
 Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/update;
-Fillet/Chamfer create/update; variables; bounded inspection; draft lifecycle and export.
+Fillet/Chamfer, Mirror, body Pattern, Shell, Split, Sweep, Loft and custom Thread create/update;
+variables; bounded inspection; draft lifecycle and export.
 Box update/placement, Cylinder, Boolean, Datum Plane, feature/sketch removal, suppression,
 model rename and history navigation are not currently exposed through MCP. There is no
 generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not

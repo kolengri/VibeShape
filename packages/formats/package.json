@@ -6,10 +6,15 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
+    "./planar-import-transform": "./src/planar-import-transform.ts",
     ".": "./src/index.ts",
     "./three-mf": "./src/three-mf.ts",
     "./three-mf-meshes": "./src/three-mf-meshes.ts",
-    "./vshape": "./src/vshape.ts"
+    "./vshape": "./src/vshape.ts",
+    "./import": "./src/import/index.ts",
+    "./text-outline": "./src/text-outline/index.ts",
+    "./noto-sans-regular.ttf": "./src/text-outline/fonts/NotoSans-Regular.ttf",
+    "./stl-meshes": "./src/stl-meshes.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
@@ -17,9 +22,15 @@
   "dependencies": {
     "@vibeshape/domain": "workspace:*",
     "fflate": "catalog:",
-    "zod": "catalog:"
+    "opentype.js": "2.0.0",
+    "zod": "catalog:",
+    "dxf-parser": "1.1.2",
+    "saxes": "6.0.0",
+    "svgpath": "2.6.0",
+    "three": "catalog:"
   },
   "devDependencies": {
-    "@vibeshape/typescript-config": "workspace:*"
+    "@vibeshape/typescript-config": "workspace:*",
+    "@types/three": "catalog:"
   }
 }

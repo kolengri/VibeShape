@@ -38,10 +38,10 @@ async function verifyCompoundReorder(page: Page, testInfo: TestInfo) {
   expect(
     compound.project.snapshot.parts.map(({ bodyHistory }) => bodyHistory.at(-1)?.outputRole),
   ).toEqual(slots?.map(({ slotId }) => `body.${slotId}`))
-  await expect(page.getByRole("button", { name: "Union", exact: true })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Union", exact: true })).toBeEnabled()
   await page.getByRole("treeitem", { name: "Compound 1", exact: true }).click()
   form = page.getByRole("form", { name: "Edit Compound", exact: true })
-  await expect(form.getByText(/Multiple sibling bodies from the same feature/)).toBeVisible()
+  await expect(form.getByText(/Sibling outputs from the same feature are supported/)).toBeVisible()
   await form.getByRole("button", { name: "Move Cylinder 1 earlier", exact: true }).click()
   await form.getByRole("button", { name: "Update", exact: true }).click()
   await expect(form).not.toBeVisible()

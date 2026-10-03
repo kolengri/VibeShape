@@ -408,3 +408,14 @@ The first MCP spike must prove:
 
 The initial SDK pin and local configuration are covered by ADR-0043. Broader conformance, extension
 exposure, offline installation, and full command/resource coverage remain release gates.
+
+## Expanded exact feature authoring
+
+Local stdio and paired remote MCP expose create/update tools for Mirror, body Pattern, Shell,
+Split, Sweep, Loft and custom Thread through shared schemas and descriptions. Exact named-body
+selection, stable dependencies, variable quantities, draft preview and ordinary review/commit
+remain authoritative. Shell binds current opening topology and content hash; Sweep retains its
+explicit path start frame; Loft retains ordered bounded sections; Thread is bounded custom
+60-degree geometry without ISO/DIN fit certification. The modeling operator skill and local
+authoring guide describe these limits. Imports, text generation, assembly/library authoring and
+texture authoring remain editor workflows. Remote MCP still excludes binary file exports.

@@ -8,6 +8,11 @@ import {
   sketchExternalReferenceIdSchema,
   sketchIdSchema,
 } from "./identifiers"
+import {
+  sketchSourceImportSchema,
+  validateSketchSourceImportReferences,
+} from "./sketch-source-import"
+import { sketchTextGroupSchema, validateSketchTextGroups } from "./sketch-text-groups"
 import { edgeTopoRefSchema, planarFaceTopoRefSchema, vertexTopoRefSchema } from "./topology"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 
@@ -451,6 +456,22 @@ export const sketchCircleEntitySchema = sketchEntityEnvelopeSchema
   })
   .strict()
 
+export const sketchCubicBezierEntitySchema = sketchEntityEnvelopeSchema
+  .extend({
+    type: z.literal("cubic-bezier"),
+    startPointId: sketchEntityIdSchema,
+    control1PointId: sketchEntityIdSchema,
+    control2PointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (curve) =>
+      new Set([curve.startPointId, curve.control1PointId, curve.control2PointId, curve.endPointId])
+        .size === 4,
+    { message: "A cubic Bezier requires four distinct point entity identities." },
+  )
+
 export const sketchArcEntitySchema = sketchEntityEnvelopeSchema
   .extend({
     type: z.literal("arc"),
@@ -507,6 +528,7 @@ export const sketchEntitySchema = z.discriminatedUnion("type", [
   sketchArcEntitySchema,
   sketchEllipseEntitySchema,
   sketchEllipticalArcEntitySchema,
+  sketchCubicBezierEntitySchema,
 ])
 
 const sketchConstraintEnvelopeSchema = z.object({
@@ -905,6 +927,13 @@ function entityPointReferenceIds(entity: SketchEntity): readonly SketchEntityId[
       return []
     case "line":
       return [entity.startPointId, entity.endPointId]
+    case "cubic-bezier":
+      return [
+        entity.startPointId,
+        entity.control1PointId,
+        entity.control2PointId,
+        entity.endPointId,
+      ]
     case "circle":
       return [entity.centerPointId]
     case "arc":
@@ -1072,6 +1101,7 @@ function nativeConstraintCount(structure: SketchStructure) {
 }
 
 const nativeEntityCapacity = {
+  "cubic-bezier": { entities: 1, parameters: 0 },
   arc: { entities: 1, parameters: 0 },
   circle: { entities: 2, parameters: 1 },
   ellipse: { entities: 2, parameters: 0 },
@@ -1243,6 +1273,8 @@ export const sketchRecordSchema = z
     entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
     constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
     externalReferences: z.array(sketchExternalReferenceSchema).max(MAX_SKETCH_ENTITIES).optional(),
+    textGroups: z.array(sketchTextGroupSchema).max(64).optional(),
+    sourceImport: sketchSourceImportSchema.optional(),
   })
   .strict()
   .superRefine((sketch, context) => {
@@ -1250,6 +1282,8 @@ export const sketchRecordSchema = z
     validateSketchEntityTable(sketch, entities, context)
     validateSketchConstraintTable(sketch, entities, context)
     validateNativeSketchCapacity(sketch, context)
+    validateSketchTextGroups(sketch, context)
+    validateSketchSourceImportReferences(sketch, context)
   })
 
 const structuralSketchRecordsSchema = z.array(sketchRecordSchema).max(MAX_SKETCHES_PER_DOCUMENT)

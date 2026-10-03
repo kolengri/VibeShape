@@ -33,18 +33,39 @@ import type { PartId } from "@vibeshape/domain/identifiers"
 import { isExtrusionType } from "@vibeshape/domain/part-design"
 import {
   compoundFeatureType,
+  compoundFeatureTypeV2,
   unionFeatureType,
+  unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
+import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
+import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
+import { splitFeatureType } from "@vibeshape/domain/part-design-split"
+import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
+import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
 
 export type ActivePartDesignTool =
   | Readonly<{ kind: "surface-texture"; featureId?: FeatureId; outputRole?: string }>
   | Readonly<{ kind: "measure" }>
+  | Readonly<{ kind: "create-loft" | "create-sweep" }>
+  | Readonly<{ kind: "edit-loft" | "edit-sweep"; featureId: FeatureId }>
   | Readonly<{ kind: "create-compound" | "create-union" }>
   | Readonly<{ kind: "edit-compound" | "edit-union"; featureId: FeatureId }>
   | Readonly<{ kind: "create-placement"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-placement"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-mirror"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-mirror"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-shell"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-shell"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-split"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-split"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-pattern"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-pattern"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-thread"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-thread"; featureId: FeatureId }>
   | Readonly<{ kind: "create-box" }>
   | Readonly<{ kind: "edit-box"; featureId: FeatureId }>
   | Readonly<{ kind: "create-cylinder" }>
@@ -220,9 +241,33 @@ export function isDatumPlaneFeature(feature: FeatureRecord) {
 function isPlacementFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, placementFeatureType.type)
 }
+function isShellFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, shellFeatureType.type)
+}
+function isLoftFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, loftFeatureType.type)
+}
+function isSweepFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, sweepFeatureType.type)
+}
+function isThreadFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, threadFeatureType.type)
+}
+function isPatternFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, patternFeatureType.type)
+}
+function isSplitFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, splitFeatureType.type)
+}
+function isMirrorFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, mirrorFeatureType.type)
+}
 
 function isUnionFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, unionFeatureType.type)
+  return (
+    hasFeatureType(feature, unionFeatureType.type) ||
+    hasFeatureType(feature, unionFeatureTypeV2.type)
+  )
 }
 
 function isPartDesignSolidFeature(feature: FeatureRecord) {
@@ -240,6 +285,11 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isChamferFeature,
     isHoleFeature,
     isPlacementFeature,
+    isMirrorFeature,
+    isShellFeature,
+    isLoftFeature,
+    isSweepFeature,
+    isThreadFeature,
     isUnionFeature,
   ].some((matches) => matches(feature))
 }
@@ -379,9 +429,21 @@ const editableFeatureTools: readonly [
   (feature: FeatureRecord) => boolean,
   Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
 ][] = [
-  [(feature) => hasFeatureType(feature, compoundFeatureType.type), "edit-compound"],
+  [
+    (feature) =>
+      hasFeatureType(feature, compoundFeatureType.type) ||
+      hasFeatureType(feature, compoundFeatureTypeV2.type),
+    "edit-compound",
+  ],
   [isUnionFeature, "edit-union"],
   [isPlacementFeature, "edit-placement"],
+  [isMirrorFeature, "edit-mirror"],
+  [isShellFeature, "edit-shell"],
+  [isSplitFeature, "edit-split"],
+  [isPatternFeature, "edit-pattern"],
+  [isThreadFeature, "edit-thread"],
+  [isLoftFeature, "edit-loft"],
+  [isSweepFeature, "edit-sweep"],
   [isBoxFeature, "edit-box"],
   [isCylinderFeature, "edit-cylinder"],
   [isSphereFeature, "edit-sphere"],
@@ -413,6 +475,20 @@ const commandByToolKind = {
   "edit-union": "union",
   "create-placement": "placement",
   "edit-placement": "placement",
+  "create-mirror": "mirror",
+  "edit-mirror": "mirror",
+  "create-shell": "shell",
+  "edit-shell": "shell",
+  "create-split": "split",
+  "edit-split": "split",
+  "create-pattern": "pattern",
+  "edit-pattern": "pattern",
+  "create-thread": "thread",
+  "edit-thread": "thread",
+  "create-loft": "loft",
+  "edit-loft": "loft",
+  "create-sweep": "sweep",
+  "edit-sweep": "sweep",
   "create-box": "box",
   "edit-box": "box",
   "create-cylinder": "cylinder",

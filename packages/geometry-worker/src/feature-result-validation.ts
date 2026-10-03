@@ -9,6 +9,14 @@ export type GeometryFeatureKind =
   | "pyramid"
   | "torus"
   | "placement"
+  | "mirror"
+  | "shell"
+  | "thread"
+  | "imported"
+  | "split"
+  | "pattern"
+  | "loft"
+  | "sweep"
   | "compound"
   | "union"
   | "datum-plane"
@@ -28,7 +36,12 @@ type FeatureResultMetrics = Readonly<{
 type DisposableShape = Readonly<{ delete(): unknown }>
 
 export function featureSolidCountLimit(kind: GeometryFeatureKind, profileCount: number) {
-  return kind === "multi-extrusion" || kind === "multi-revolve" || kind === "compound"
+  if (kind === "split") return 2
+  return kind === "multi-extrusion" ||
+    kind === "multi-revolve" ||
+    kind === "compound" ||
+    kind === "pattern" ||
+    kind === "imported"
     ? profileCount
     : 1
 }

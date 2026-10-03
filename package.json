@@ -53,6 +53,7 @@
     "prepare:local": "bun run scripts/prepare-local-release.ts",
     "package:local": "bun run scripts/local-distribution-build.ts",
     "test:distribution": "playwright test --config playwright.distribution.config.ts",
+    "test:source-assets-persistence": "playwright test --config scripts/source-assets-persistence.config.ts",
     "test:authority-persistence": "playwright test --config scripts/authority-persistence.config.ts",
     "slicer:bridge": "bun run --cwd apps/slicer-bridge start",
     "format": "biome format --write .",
@@ -94,7 +95,8 @@
     "audit": "bun run scripts/run-critical-dependency-audit.ts",
     "shadcn:add": "shadcn add --cwd apps/web",
     "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run test:remote-mcp && bun run build",
-    "mcp:local": "bun run --cwd apps/mcp-server start"
+    "mcp:local": "bun run --cwd apps/mcp-server start",
+    "test:assembly-library-persistence": "playwright test --config scripts/assembly-library-persistence.config.ts"
   },
   "dependencies": {
     "fflate": "catalog:",
@@ -108,7 +110,9 @@
     "jsdom": "30.0.1",
     "shadcn": "4.16.2",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "replicad": "catalog:",
+    "replicad-opencascadejs": "catalog:"
   },
   "overrides": {
     "qs": "6.16.0",

@@ -1,6 +1,10 @@
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import type { DocumentSnapshot } from "@vibeshape/domain"
-import type { DocumentExportOptions, PrintPreparationSettings } from "@vibeshape/protocol"
+import type {
+  DocumentExportOptions,
+  PrintPreparationSettings,
+  SourceAssetMaterialization,
+} from "@vibeshape/protocol"
 import { DEFAULT_SURFACE_TEXTURE_QUALITY } from "@vibeshape/protocol"
 import type { ActiveDocumentExportResult } from "../document/document-controller"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
@@ -18,9 +22,13 @@ export async function prepareDocumentPrint(
   signal: AbortSignal,
   isCurrent: () => boolean,
   options: DocumentExportOptions = {},
+  materializeSourceAssets?: (document: unknown) => Promise<readonly SourceAssetMaterialization[]>,
 ): Promise<ActiveDocumentExportResult> {
   if (signal.aborted || !isCurrent()) return failed("The print source is no longer current.")
-  const worker = createDocumentWorkerSession(snapshot.id, { retryRecoverableFailure: false })
+  const worker = createDocumentWorkerSession(snapshot.id, {
+    retryRecoverableFailure: false,
+    ...(materializeSourceAssets ? { materializeSourceAssets } : {}),
+  })
   const cancel = () => worker.terminate()
   signal.addEventListener("abort", cancel, { once: true })
   try {

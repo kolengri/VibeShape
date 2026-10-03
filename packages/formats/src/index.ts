@@ -1,3 +1,7 @@
+export * from "./import"
+export * from "./planar-import-transform"
+export * from "./stl-meshes"
+export * from "./text-outline"
 export * from "./three-mf"
 export * from "./three-mf-meshes"
 export * from "./vshape"

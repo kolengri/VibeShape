@@ -66,6 +66,9 @@ describe("browser viewer preferences", () => {
     store.getState().actions.setPreferredExportFormat("step")
     expect(JSON.parse(raw ?? "null")).toEqual({
       version: 1,
+      printerProfile: null,
+      printBedVisible: false,
+      groundGridVisible: true,
       theme: "system",
       autoHideConsumedSketches: false,
       preferredExportFormat: "step",
@@ -75,6 +78,47 @@ describe("browser viewer preferences", () => {
       autoHideConsumedSketches: false,
       preferredExportFormat: "step",
     })
+  })
+
+  it("preserves existing preferences while discarding an invalid printer profile", () => {
+    const storage = {
+      getItem: () =>
+        JSON.stringify({
+          version: 1,
+          theme: "light",
+          autoHideConsumedSketches: false,
+          preferredExportFormat: "step",
+          printerProfile: { version: 1, width: -1 },
+          printBedVisible: true,
+        }),
+      setItem: vi.fn(),
+    }
+    const store = createViewerPreferencesStore(storage)
+    expect(store.getState()).toMatchObject({
+      theme: "light",
+      preferredExportFormat: "step",
+      autoHideConsumedSketches: false,
+      printerProfile: null,
+      printBedVisible: false,
+    })
+  })
+
+  it("restores a maximally sized profile name and hides the bed when its profile is removed", () => {
+    const storage = createTestBrowserStorage()
+    const store = createViewerPreferencesStore(storage)
+    store.getState().actions.setPrinterProfile({
+      version: 1,
+      name: "P".repeat(128),
+      bedShape: "rectangular",
+      width: 220,
+      depth: 220,
+      height: 250,
+      margin: 5,
+    })
+    store.getState().actions.setPrintBedVisible(true)
+    expect(createViewerPreferencesStore(storage).getState().printerProfile?.name).toHaveLength(128)
+    store.getState().actions.setPrinterProfile(null)
+    expect(store.getState().printBedVisible).toBe(false)
   })
 
   it("follows system changes only in System mode and cleans up the media listener", () => {

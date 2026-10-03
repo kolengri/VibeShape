@@ -5,6 +5,7 @@ import {
   createFeatureTypeRegistry,
   createLengthQuantity,
   createModuleRegistry,
+  createScalarQuantity,
   cylinderFeatureType,
   documentCoreModule,
   extrusionFeatureType,
@@ -17,6 +18,8 @@ import {
   holeFeatureTypeV2,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  patternFeatureType,
+  unionFeatureTypeV2,
 } from "@vibeshape/domain"
 import {
   extrusionFeatureContentParametersSchema,
@@ -1411,5 +1414,95 @@ describe("constituent body rebuild and consumption", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.diagnostic.message)
     expect(terminalBodyGeometry(result)).toBeNull()
+  })
+})
+
+function patternedUnionFixture() {
+  const producer: FeatureRecord = {
+    schemaVersion: 0,
+    id: featureIds.cylinder,
+    type: patternFeatureType.type,
+    parameters: {
+      kind: "linear",
+      targetBody: { schemaVersion: 0, featureId: featureIds.box, outputRole: "result" },
+      count: createScalarQuantity(2),
+      axis: "X",
+      spacing: createLengthQuantity(5),
+    },
+    dependencies: [featureIds.box],
+    references: [],
+    suppressed: false,
+  }
+  const selected = [0, 1].map((index) => ({
+    schemaVersion: 0,
+    featureId: producer.id,
+    outputRole: `pattern.instance.${index}`,
+  }))
+  const combination: FeatureRecord = {
+    schemaVersion: 0,
+    id: featureIds.boolean,
+    type: unionFeatureTypeV2.type,
+    parameters: { bodies: selected },
+    dependencies: [producer.id],
+    references: [],
+    suppressed: false,
+  }
+  return { producer, selected, combination }
+}
+
+describe("ordered body-slot rebuild preparation", () => {
+  it("sends both exact roles from one producer without collapsing them into a dependency role", async () => {
+    const { producer, selected, combination } = patternedUnionFixture()
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const result = await rebuildFeatureGraph(
+      rebuildInput(
+        graph([box(featureIds.box), producer, combination]),
+        contentHasher(),
+        successfulPort(requests),
+      ),
+    )
+    expect(result.ok).toBe(true)
+    const request = requests.find(({ featureId }) => featureId === combination.id)
+    if (request?.content.schemaVersion !== 2) throw new Error("Expected canonical ordered slots")
+    expect(request.dependencies).toHaveLength(1)
+    expect(request.dependencies[0]).not.toHaveProperty("outputRole")
+    expect(request.content.feature.inputSlots).toEqual(
+      selected.map(({ outputRole }) => ({
+        inputIndex: 0,
+        contentHash: request.dependencies[0]?.contentHash,
+        outputRole,
+      })),
+    )
+  })
+
+  it("retains invalid authored intent without native evaluation or reuse of former geometry", async () => {
+    const { producer, selected, combination } = patternedUnionFixture()
+    const hash = contentHasher()
+    const initial = await rebuildFeatureGraph(
+      rebuildInput(graph([box(featureIds.box), producer, combination]), hash, successfulPort([])),
+    )
+    if (!initial.ok) throw new Error(initial.diagnostic.message)
+    expect(recordById(initial.evaluation.records, combination.id)?.status).toBe("succeeded")
+    const firstBody = selected[0]
+    if (!firstBody) throw new Error("Expected an authored Pattern body selection")
+    const duplicated: FeatureRecord = {
+      ...combination,
+      parameters: { bodies: [firstBody, firstBody] },
+    }
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const changed = await rebuildFeatureGraph({
+      ...rebuildInput(
+        graph([box(featureIds.box), producer, duplicated]),
+        hash,
+        successfulPort(requests),
+      ),
+      revision: 2,
+      previous: initial,
+    })
+    if (!changed.ok) throw new Error(changed.diagnostic.message)
+    expect(requests).toEqual([])
+    expect(recordById(changed.evaluation.records, combination.id)?.status).toBe("failed")
+    expect(changed.evaluation.reusedFeatureIds).toEqual([featureIds.box, producer.id])
+    expect(changed.geometry.some(({ featureId }) => featureId === combination.id)).toBe(false)
   })
 })

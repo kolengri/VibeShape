@@ -60,6 +60,14 @@ The production repository now also exposes a bounded authoritative local-project
 
 ## Commit protocol
 
+The source-asset foundation adds IndexedDB version 4's immutable, digest-addressed `assetBlobs` store.
+Document V4 contains typed descriptors and captured output identities; it retains the V2 model and
+authored Parts without duplicating imported-body ownership. Byte publication uses the same transaction
+as events, snapshot, project head and recovery marker. Undo retains bytes, and format-5 backups include
+the full historical asset closure needed by Redo. Source corruption fails closed. Product import
+parsers and authoring adapters must use these ports before claiming a complete import workflow.
+See [ADR-0062](../adr/0062-durable-source-assets-and-portable-closure.md).
+
 A user command becomes committed only after:
 
 1. Domain validation.
@@ -75,6 +83,20 @@ from repository-owned verified history; it never decrements the head or deletes 
 Recovery and portable replay retain referenced targets, including when stored historical snapshots
 are missing or corrupt. Navigation stacks are session-local; saved navigation results remain durable.
 See [ADR-0039](../adr/0039-committed-document-undo.md) for the bounds and replay contract.
+
+## Immutable local parts library
+
+`vibeshape-assembly-library` is a separate version-1 IndexedDB/Dexie database. Its mutable item
+metadata and head revision use optimistic concurrency; every published version and source blob is
+immutable. Publication commits the verified blobs, version and item head in one transaction.
+Metadata rename/tag edits do not rewrite historical versions. Reads verify source digests and
+bounded canonical definition closure; corrupt, missing, future-version or quota failures return a
+diagnostic without partial publication. Search uses local item names and tags.
+
+Library publication does not advance CAD History. Insert, explicit reference update and detach use
+one ordinary authored document transaction; inserted pins carry their verified source bytes into
+the project database and format-5 historical closure. A portable project therefore rebuilds without
+access to the library. See [ADR-0073](../adr/0073-immutable-local-assembly-library.md).
 
 ## Autosave
 

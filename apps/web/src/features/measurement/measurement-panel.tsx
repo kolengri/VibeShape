@@ -3,7 +3,7 @@ import { cubicMillimetersToVolume } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import {
   formatDisplayArea,
   formatDisplayLength,
@@ -43,6 +43,7 @@ function bodyLabel(
 
 type MeasurementPanelProps = Readonly<{
   view: ModelBodyMeasurementView | null
+  renderTopology?: ((entry: Entry) => ReactNode) | undefined
   unavailable: boolean
   unavailableMessage: "unavailable" | "featureNotMeasurable" | "bodyNotFound"
   onPrevious: (() => void) | undefined
@@ -138,6 +139,7 @@ export function MeasurementPanel({
   onNext,
   onAllOutputs,
   onClose,
+  renderTopology,
 }: MeasurementPanelProps) {
   const t = useTranslations("app.shell.taskPanel.measurement")
   return (
@@ -161,7 +163,12 @@ export function MeasurementPanel({
           {t(unavailableMessage)}
         </p>
       ) : (
-        <AvailableMeasurementPanel view={view} onPrevious={onPrevious} onNext={onNext} />
+        <AvailableMeasurementPanel
+          view={view}
+          onPrevious={onPrevious}
+          onNext={onNext}
+          renderTopology={renderTopology}
+        />
       )}
     </aside>
   )
@@ -171,8 +178,10 @@ function AvailableMeasurementPanel({
   view,
   onPrevious,
   onNext,
+  renderTopology,
 }: Readonly<{
   view: ModelBodyMeasurementView | null
+  renderTopology: ((entry: Entry) => ReactNode) | undefined
   onPrevious: (() => void) | undefined
   onNext: (() => void) | undefined
 }>) {
@@ -203,6 +212,7 @@ function AvailableMeasurementPanel({
         </NativeSelectField>
       ) : null}
       <MeasurementResult entry={selected} />
+      {selected ? renderTopology?.(selected) : null}
       {view ? (
         <MeasurementPaging total={view.data.total} onPrevious={onPrevious} onNext={onNext} />
       ) : null}

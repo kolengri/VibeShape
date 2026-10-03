@@ -156,7 +156,11 @@ it("keeps File blocked after save failure while allowing unit retry only without
   expect(units.disabled).toBe(false)
 })
 
-function renderHeader(onOpenCommandPalette = vi.fn(), onOpenShortcutHelp = vi.fn()) {
+function renderHeader(
+  onOpenCommandPalette = vi.fn(),
+  onOpenShortcutHelp = vi.fn(),
+  hideModelExport = false,
+) {
   const controller = {
     status: "ready",
     saveStatus: "saved",
@@ -177,6 +181,7 @@ function renderHeader(onOpenCommandPalette = vi.fn(), onOpenShortcutHelp = vi.fn
           <TooltipProvider>
             <ApplicationBar
               controller={controller}
+              hideModelExport={hideModelExport}
               onOpenCommandPalette={onOpenCommandPalette}
               onOpenShortcutHelp={onOpenShortcutHelp}
             />
@@ -258,4 +263,29 @@ it("shows incoming remote consent while the application menu and connection sett
   await waitFor(() =>
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" })),
   )
+})
+
+it.each([
+  ["Import geometry…", "Import geometry"],
+  ["Import sketch…", "Import sketch curves"],
+  ["Library…", "Local component library"],
+])("opens %s from the application menu and restores focus after closing", async (item, title) => {
+  renderHeader()
+  const user = userEvent.setup()
+  const trigger = screen.getByRole("button", { name: "Application menu" })
+  await user.click(trigger)
+  await user.click(screen.getByRole("menuitem", { name: item }))
+  expect(screen.getByRole("dialog", { name: title })).toBeTruthy()
+  expect(screen.queryByRole("menu")).toBeNull()
+  await user.keyboard("{Escape}")
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+})
+
+it("hides Model export in Assembly mode while retaining source and library entry points", async () => {
+  renderHeader(vi.fn(), vi.fn(), true)
+  await userEvent.click(screen.getByRole("button", { name: "Application menu" }))
+  expect(screen.queryByRole("menuitem", { name: "Export…" })).toBeNull()
+  for (const name of ["Import geometry…", "Import sketch…", "Library…"])
+    expect(screen.getByRole("menuitem", { name })).toBeTruthy()
 })

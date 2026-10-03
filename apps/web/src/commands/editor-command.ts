@@ -15,6 +15,8 @@ export const editorCommandIds = {
   createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createRevolve: "org.vibeshape.editor.part-design.create-revolve",
+  createLoft: "org.vibeshape.editor.part-design.create-loft",
+  createSweep: "org.vibeshape.editor.part-design.create-sweep",
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
   measure: "org.vibeshape.editor.measurements.measure",
@@ -44,6 +46,8 @@ export const editorCommandIds = {
   sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchEllipse: "org.vibeshape.editor.sketch.tool.ellipse",
+  sketchText: "org.vibeshape.editor.sketch.text",
+  sketchSpline: "org.vibeshape.editor.sketch.tool.cubic-bezier",
   sketchEllipticalArc: "org.vibeshape.editor.sketch.tool.elliptical-arc",
   sketchCircularPattern: "org.vibeshape.editor.sketch.modify.circular-pattern",
   sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
@@ -126,6 +130,8 @@ export type EditorCommandIcon =
   | "cancel"
   | "circle"
   | "ellipse"
+  | "spline"
+  | "text"
   | "elliptical-arc"
   | "circular-pattern"
   | "circumscribed-polygon"
@@ -158,6 +164,8 @@ export type EditorCommandIcon =
   | "dimension"
   | "extrude"
   | "revolve"
+  | "loft"
+  | "sweep"
   | "extend"
   | "line"
   | "linear-pattern"
@@ -204,6 +212,8 @@ export type EditorCommandLabelKey =
   | "createDatumPlane"
   | "createExtrusion"
   | "createRevolve"
+  | "createLoft"
+  | "createSweep"
   | "createSketch"
   | "createSubtract"
   | "measure"
@@ -217,6 +227,8 @@ export type EditorCommandLabelKey =
   | "sketchCenteredSlot"
   | "sketchCircle"
   | "sketchEllipse"
+  | "sketchSpline"
+  | "sketchText"
   | "sketchEllipticalArc"
   | "sketchCircularPattern"
   | "sketchCircumscribedPolygon"

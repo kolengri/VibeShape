@@ -7,7 +7,7 @@ import {
   surfaceTextureStatisticsSchema,
 } from "./surface-texture"
 
-export const GEOMETRY_PROTOCOL_VERSION = 16 as const
+export const GEOMETRY_PROTOCOL_VERSION = 17 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -42,6 +42,45 @@ const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoor
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
 const placementAngleSchema = finiteNumberSchema.min(-2 * Math.PI).max(2 * Math.PI)
+export const mirrorFeatureContentParametersSchema = z
+  .object({ plane: z.enum(["XY", "XZ", "YZ"]) })
+  .strict()
+export type MirrorFeatureContentParameters = z.infer<typeof mirrorFeatureContentParametersSchema>
+export const splitFeatureContentParametersSchema = z
+  .object({ plane: z.enum(["XY", "XZ", "YZ"]), offset: cadCoordinateSchema })
+  .strict()
+export type SplitFeatureContentParameters = z.infer<typeof splitFeatureContentParametersSchema>
+export const SPLIT_OUTPUT_ROLES = ["split.negative", "split.positive"] as const
+const patternContentCommon = {
+  count: z.number().int().min(2).max(256),
+  axis: z.enum(["X", "Y", "Z"]),
+}
+export const patternFeatureContentParametersSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...patternContentCommon,
+      kind: z.literal("linear"),
+      spacing: cadCoordinateSchema.refine((value) => value !== 0),
+    })
+    .strict()
+    .refine(
+      ({ count, spacing }) => Math.abs((count - 1) * spacing) <= 100_000,
+      "Linear pattern total displacement must remain within 100,000 mm.",
+    ),
+  z
+    .object({
+      ...patternContentCommon,
+      kind: z.literal("circular"),
+      angle: placementAngleSchema.refine((value) => value !== 0),
+      center: vector3Schema,
+    })
+    .strict(),
+])
+export type PatternFeatureContentParameters = z.infer<typeof patternFeatureContentParametersSchema>
+export function patternContentOutputRoles(count: number): readonly string[] {
+  const validated = patternContentCommon.count.parse(count)
+  return Array.from({ length: validated }, (_, index) => `pattern.instance.${index}`)
+}
 export const placementFeatureContentParametersSchema = z
   .object({
     translation: vector3Schema,
@@ -405,6 +444,43 @@ export const extrusionProfileSegmentSchema = z.discriminatedUnion("type", [
   extrusionCircleSegmentSchema,
   extrusionEllipseSegmentSchema,
   extrusionEllipticalArcSegmentSchema,
+  z
+    .object({
+      entityId: sketchEntityIdSchema,
+      type: z.literal("cubic-bezier"),
+      startPointId: sketchEntityIdSchema,
+      control1PointId: sketchEntityIdSchema,
+      control2PointId: sketchEntityIdSchema,
+      endPointId: sketchEntityIdSchema,
+      start: vector2Schema,
+      control1: vector2Schema,
+      control2: vector2Schema,
+      end: vector2Schema,
+    })
+    .strict()
+    .superRefine((curve, context) => {
+      if (
+        new Set([
+          curve.startPointId,
+          curve.control1PointId,
+          curve.control2PointId,
+          curve.endPointId,
+        ]).size !== 4
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Cubic Bezier point identities must be distinct.",
+        })
+      if (
+        [curve.control1, curve.control2, curve.end].every(
+          (point) => Math.hypot(point[0] - curve.start[0], point[1] - curve.start[1]) <= 1e-7,
+        )
+      )
+        context.addIssue({
+          code: "custom",
+          message: "A cubic Bezier profile segment must have nonzero extent.",
+        })
+    }),
 ])
 
 export const extrusionProfileLoopSchema = z
@@ -1230,6 +1306,31 @@ const contentReferenceSchema = z
     path: ["signature", "kind"],
   })
 
+export const shellOpeningContentSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("face"),
+    outputRole: bodyOutputRoleSchema,
+    semanticRole: z.string().min(1).max(256).optional(),
+    lineageToken: z.string().min(1).max(256).optional(),
+    signature: topologySignatureSchema,
+    intent: topologyIntentSchema.optional(),
+  })
+  .strict()
+  .refine((reference) => reference.signature.kind === "face", {
+    message: "Shell opening signature must identify a face.",
+    path: ["signature", "kind"],
+  })
+export const shellFeatureContentParametersSchema = z
+  .object({
+    thickness: finiteNumberSchema.positive().max(100_000),
+    direction: z.enum(["inward", "outward"]),
+    sourceContentHash: sha256Schema,
+    openings: z.array(shellOpeningContentSchema).min(1).max(64),
+  })
+  .strict()
+export type ShellFeatureContentParameters = z.infer<typeof shellFeatureContentParametersSchema>
+
 const featureContentIdentityV0Schema = z
   .object({
     schemaVersion: z.literal(0),
@@ -1279,9 +1380,53 @@ const featureContentIdentityV1Schema = z
   })
   .strict()
 
+const bodySlotContentIdentitySchema = z
+  .object({
+    inputIndex: z.number().int().min(0).max(7),
+    contentHash: sha256Schema,
+    outputRole: bodyOutputRoleSchema,
+  })
+  .strict()
+const featureContentIdentityV2Schema = featureContentIdentityV0Schema.extend({
+  schemaVersion: z.literal(2),
+  feature: featureContentIdentityV0Schema.shape.feature
+    .extend({
+      inputs: z.array(sha256Schema).min(1).max(8),
+      inputSlots: z.array(bodySlotContentIdentitySchema).min(2).max(8),
+    })
+    .superRefine((feature, context) => {
+      const selected = new Set<string>()
+      const producers = new Set<number>()
+      for (const [index, slot] of feature.inputSlots.entries()) {
+        if (feature.inputs[slot.inputIndex] !== slot.contentHash)
+          context.addIssue({
+            code: "custom",
+            path: ["inputSlots", index],
+            message: "Body slots must match their declared producer hash.",
+          })
+        const key = `${slot.inputIndex}:${slot.outputRole}`
+        if (selected.has(key))
+          context.addIssue({
+            code: "custom",
+            path: ["inputSlots", index],
+            message: "Each exact body slot must be unique.",
+          })
+        selected.add(key)
+        producers.add(slot.inputIndex)
+      }
+      if (producers.size !== feature.inputs.length)
+        context.addIssue({
+          code: "custom",
+          path: ["inputSlots"],
+          message: "Every declared producer must contribute an exact body slot.",
+        })
+    }),
+})
+
 export const featureContentIdentitySchema = z.discriminatedUnion("schemaVersion", [
   featureContentIdentityV0Schema,
   featureContentIdentityV1Schema,
+  featureContentIdentityV2Schema,
 ])
 
 export function serializeFeatureContentIdentity(input: unknown) {
@@ -1580,6 +1725,7 @@ const meshPayloadSchema = z
 
 const featureEvaluationBodySchema = z
   .object({
+    representation: z.enum(["exact-solid", "triangle-mesh"]).optional(),
     outputRole: bodyOutputRoleSchema,
     shape: shapeMetricsSchema,
     mesh: meshPayloadSchema,
@@ -1587,6 +1733,18 @@ const featureEvaluationBodySchema = z
   })
   .strict()
   .superRefine((body, context) => {
+    if (body.representation === "triangle-mesh") {
+      if (
+        body.shape.solidCount !== 0 ||
+        body.topologyCandidates.length !== 0 ||
+        body.shape.volume !== 0
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Triangle meshes cannot claim exact solids, exact topology or exact volume.",
+        })
+      return
+    }
     if (!body.shape.valid || body.shape.volume <= 0 || body.shape.solidCount !== 1) {
       context.addIssue({
         code: "custom",
@@ -1769,6 +1927,7 @@ const topologySpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
 })
 
 const featureEvaluatedResponseBaseSchema = responseEnvelopeSchema.extend({
+  representation: z.enum(["exact-solid", "triangle-mesh"]).optional(),
   type: z.literal("featureEvaluated"),
   featureId: featureIdSchema,
   contentHash: sha256Schema,
@@ -1789,15 +1948,33 @@ const featureEvaluatedResponseBaseSchema = responseEnvelopeSchema.extend({
 
 type FeatureEvaluatedBodyEnvelope = Pick<
   z.infer<typeof featureEvaluatedResponseBaseSchema>,
-  "shape" | "bodies"
+  "shape" | "bodies" | "representation"
 >
 
-function validateFeatureEvaluationBodies(
+function validateMeshBodyCatalog(response: FeatureEvaluatedBodyEnvelope, context: z.RefinementCtx) {
+  const bodies = response.bodies
+  if (
+    !bodies?.length ||
+    response.shape.solidCount !== 0 ||
+    bodies.some((body) => body.representation !== "triangle-mesh")
+  )
+    context.addIssue({
+      code: "custom",
+      message:
+        "A triangle-mesh result requires a complete explicit mesh body catalog and zero exact solids.",
+    })
+}
+function validateExactBodyCatalog(
   response: FeatureEvaluatedBodyEnvelope,
   context: z.RefinementCtx,
 ) {
   const bodies = response.bodies
   if (!bodies || bodies.length === 0) return
+  if (bodies.some((body) => body.representation === "triangle-mesh"))
+    context.addIssue({
+      code: "custom",
+      message: "Exact geometry cannot include a triangle-mesh body catalog.",
+    })
   const aggregateSolidCount = bodies.reduce((total, body) => total + body.shape.solidCount, 0)
   if (bodies.length !== response.shape.solidCount) {
     context.addIssue({
@@ -1822,6 +1999,13 @@ function validateFeatureEvaluationBodies(
     })
   }
 }
+function validateFeatureEvaluationBodies(
+  response: FeatureEvaluatedBodyEnvelope,
+  context: z.RefinementCtx,
+) {
+  if (response.representation === "triangle-mesh") validateMeshBodyCatalog(response, context)
+  else validateExactBodyCatalog(response, context)
+}
 
 const featureEvaluatedResponseSchema = featureEvaluatedResponseBaseSchema.superRefine(
   validateFeatureEvaluationBodies,
@@ -1829,6 +2013,7 @@ const featureEvaluatedResponseSchema = featureEvaluatedResponseBaseSchema.superR
 
 export const featureEvaluationEngineResultSchema = featureEvaluatedResponseBaseSchema
   .pick({
+    representation: true,
     engine: true,
     shape: true,
     topologyCandidates: true,

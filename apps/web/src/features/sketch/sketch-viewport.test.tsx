@@ -5596,6 +5596,104 @@ describe("SketchViewport", () => {
     expect(onDraftChange.mock.calls[1]?.[1]).toBe("replace")
   })
 
+  it("previews four cubic Bezier clicks and inserts one stable draft edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "cubic-bezier",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    expect(document.querySelector("[data-sketch-spline-instruction]")?.textContent).toContain(
+      "Place the start point",
+    )
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 100 })
+    expect(document.querySelector("[data-sketch-spline-control-polygon]")).toBeTruthy()
+    expect(document.querySelector("[data-sketch-spline-instruction]")?.textContent).toContain(
+      "first control",
+    )
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 100 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 100 })
+    expect(
+      document.querySelector("[data-sketch-spline-preview-curve]")?.getAttribute("d"),
+    ).toContain(" C ")
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 100 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 300 })
+    expect(document.querySelector("[data-sketch-spline-instruction]")?.textContent).toContain(
+      "end point",
+    )
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const cubic = requiredSketchEntity(placed, "cubic-bezier")
+    expect(placed.entities).toHaveLength(5)
+    expect(placed.constraints).toEqual([])
+    expect(
+      new Set([cubic.startPointId, cubic.control1PointId, cubic.control2PointId, cubic.endPointId])
+        .size,
+    ).toBe(4)
+    expect(document.querySelector('[data-sketch-preview-tool="cubic-bezier"]')).toBeNull()
+    expect(emptySketch.entities).toEqual([])
+  })
+
+  it("cancels a partial cubic preview with Escape without publishing a draft", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn(),
+      onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "cubic-bezier",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+      onEditorToolChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 100 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 100 })
+    expect(document.querySelector("[data-sketch-spline-preview-curve]")).toBeTruthy()
+    fireEvent.keyDown(drawing, { key: "Escape" })
+    expect(document.querySelector("[data-sketch-spline-preview-curve]")).toBeNull()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(onEditorToolChange).not.toHaveBeenCalled()
+  })
+
+  it("keeps cubic creation pending when an endpoint tangent would collapse", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "cubic-bezier",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    expect(document.querySelector("[data-sketch-spline-instruction]")?.textContent).toContain(
+      "first control",
+    )
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 100 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 100 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 100 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-spline-instruction]")?.textContent).toContain(
+      "end point",
+    )
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+  })
+
   it("previews and creates an exact center-point ellipse as one draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()

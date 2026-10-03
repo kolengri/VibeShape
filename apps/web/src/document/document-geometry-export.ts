@@ -41,7 +41,9 @@ export function prepareDocumentGeometryExport(
     }
   try {
     const surfaceTextures =
-      authority?.schemaVersion === 3 && format !== "step"
+      authority &&
+      (authority.schemaVersion === 3 || authority.schemaVersion === 4) &&
+      format !== "step"
         ? resolveSurfaceTextureExportLayers(report, authority.surfaceTextures, bodies)
         : []
     return {

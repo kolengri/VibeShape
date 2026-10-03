@@ -25,21 +25,45 @@ import {
   type GeometryWorkerRequest,
   type HoleFeatureContentParameters,
   holeFeatureContentParametersSchema,
+  type ImportedFeatureContentParameters,
+  type InspectSourceImportInput,
+  importedFeatureContentParametersSchema,
+  importedSourceMaterializationSchema,
+  inspectSourceImportInputSchema,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
+  type LoftFeatureContentParameters,
+  loftFeatureContentParametersSchema,
+  type MirrorFeatureContentParameters,
+  mirrorFeatureContentParametersSchema,
+  type PatternFeatureContentParameters,
   type PlacementFeatureContentParameters,
+  patternContentOutputRoles,
+  patternFeatureContentParametersSchema,
   placementFeatureContentParametersSchema,
   pyramidFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
+  type ShellFeatureContentParameters,
+  type SourceAssetMaterialization,
+  type SourceImportInspection,
+  SPLIT_OUTPUT_ROLES,
+  type SplitFeatureContentParameters,
   type SurfaceTextureExportLayers,
   type SurfaceTextureMeshLayer,
   type SurfaceTextureQuality,
+  type SweepFeatureContentParameters,
+  shellFeatureContentParametersSchema,
+  sourceImportInspectionSchema,
   sphereFeatureContentParametersSchema,
+  splitFeatureContentParametersSchema,
+  sweepFeatureContentParametersSchema,
+  type ThreadContentParameters,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
+  threadContentParametersSchema,
   torusFeatureContentParametersSchema,
   unionFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
@@ -90,6 +114,7 @@ import {
   getWasmHeapBytes,
   type OpenCascadeMemoryModule,
 } from "./memory-profile"
+import { exportOcctAssemblyStep } from "./occt-assembly-export"
 import {
   createOcctBodyCompound,
   createOcctBodyUnion,
@@ -97,11 +122,17 @@ import {
   type OwnedBodyCombination,
 } from "./occt-body-combination"
 import { createOcctCompound } from "./occt-compound"
+import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
+import { measureOcctInterference } from "./occt-interference"
+import { createOcctLoft } from "./occt-loft"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
+import { mirrorOcctShape } from "./occt-mirror"
+import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
+import { splitOcctShape } from "./occt-plane-split"
 import {
   createOcctBox,
   createOcctCone,
@@ -117,6 +148,10 @@ import {
   fuseOcctShapes,
   intersectOcctShapes,
 } from "./occt-shapes"
+import { shellOcctShape } from "./occt-shell"
+import { inspectOcctSourceImport, rebuildOcctSourceImport } from "./occt-source-import"
+import { createOcctSweep } from "./occt-sweep"
+import { threadOcctShape } from "./occt-thread"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
@@ -225,12 +260,32 @@ export type DocumentPrintMeshExportResult = Readonly<{
 type OpenCascadeModule = OpenCascadeInstance & OpenCascadeMemoryModule
 
 const MAX_FEATURE_WORKSPACE_LENGTH_MM = 100_000
+const LOFT_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.loft#1"
+const SWEEP_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.sweep#1"
+const PATTERN_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.pattern#1"
+const SPLIT_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.split#1"
+const IMPORTED_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.imported#1"
+const THREAD_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.thread#1"
+const SHELL_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#1"
+const MIRROR_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.mirror#1"
 const PLACEMENT_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.placement#1"
 const COMPOUND_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.compound#1"
 const UNION_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.union#1"
+const COMPOUND_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.compound#2"
+const UNION_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.union#2"
 const PRINT_MESH_CHORD_TOLERANCE_MM = 0.02
 const PRINT_MESH_ANGULAR_TOLERANCE_RAD = 0.1
 const BOX_FEATURE_TYPE_KEY =
@@ -1135,6 +1190,14 @@ type ParsedFeature =
     }
   | { kind: "hole"; parameters: HoleContentParameters }
   | { kind: "placement"; parameters: PlacementFeatureContentParameters }
+  | { kind: "shell"; parameters: ShellFeatureContentParameters }
+  | { kind: "thread"; parameters: ThreadContentParameters }
+  | { kind: "imported"; parameters: ImportedFeatureContentParameters }
+  | { kind: "split"; parameters: SplitFeatureContentParameters }
+  | { kind: "pattern"; parameters: PatternFeatureContentParameters }
+  | { kind: "loft"; parameters: LoftFeatureContentParameters }
+  | { kind: "sweep"; parameters: SweepFeatureContentParameters }
+  | { kind: "mirror"; parameters: MirrorFeatureContentParameters }
   | { kind: "compound"; parameters: CompoundFeatureContentParameters }
   | { kind: "union" }
 
@@ -1716,14 +1779,25 @@ function hasNamedCombinationInputs(input: FeatureEvaluationInput): boolean {
   )
 }
 
+function hasSlottedCombinationInputs(input: FeatureEvaluationInput): boolean {
+  if (input.content.schemaVersion !== 2) return false
+  return (
+    input.content.feature.inputs.length === input.dependencies.length &&
+    input.content.feature.references.length === 0
+  )
+}
+
 function parseBodyCombinationFeature(
   input: FeatureEvaluationInput,
   kind: "compound" | "union",
+  version = 1,
 ): FeatureParseResult {
   const feature = input.content.feature
-  if (!hasNamedCombinationInputs(input)) {
+  const validInputs =
+    version === 1 ? hasNamedCombinationInputs(input) : hasSlottedCombinationInputs(input)
+  if (!validInputs) {
     return invalidInputCardinality(
-      "Select two to eight exact bodies from distinct producing features; every input requires a named body role.",
+      "Select two to eight exact bodies using the registered version's named body input contract.",
     )
   }
   if (kind === "union") {
@@ -1732,7 +1806,11 @@ function parseBodyCombinationFeature(
       : featureFailure("invalid-feature-parameters", "Union content parameters are invalid.")
   }
   const parameters = compoundFeatureContentParametersSchema.safeParse(feature.parameters)
-  return parameters.success && parameters.data.outputRoles.length === feature.inputs.length
+  const bodyCount =
+    input.content.schemaVersion === 2
+      ? input.content.feature.inputSlots.length
+      : feature.inputs.length
+  return parameters.success && parameters.data.outputRoles.length === bodyCount
     ? { ok: true, feature: { kind: "compound", parameters: parameters.data } }
     : featureFailure(
         "invalid-feature-parameters",
@@ -1740,15 +1818,21 @@ function parseBodyCombinationFeature(
       )
 }
 
+function hasExactSingleBodyInput(input: FeatureEvaluationInput): input is FeatureEvaluationInput & {
+  content: Extract<FeatureEvaluationInput["content"], { schemaVersion: 1 }>
+} {
+  return (
+    input.content.schemaVersion === 1 &&
+    input.content.feature.inputs.length === 1 &&
+    input.dependencies.length === 1 &&
+    input.content.feature.references.length === 0 &&
+    input.content.feature.inputRoles[0] != null
+  )
+}
+
 function parsePlacementFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  if (
-    input.content.schemaVersion !== 1 ||
-    feature.inputs.length !== 1 ||
-    input.dependencies.length !== 1 ||
-    feature.references.length !== 0 ||
-    input.content.feature.inputRoles[0] == null
-  ) {
+  if (!hasExactSingleBodyInput(input)) {
     return invalidInputCardinality(
       "Placement requires one exact named body dependency and no topology references.",
     )
@@ -1759,10 +1843,147 @@ function parsePlacementFeature(input: FeatureEvaluationInput): FeatureParseResul
     : featureFailure("invalid-feature-parameters", "Placement content parameters are invalid.")
 }
 
+function parseImportedFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (
+    input.dependencies.length !== 0 ||
+    input.content.feature.inputs.length !== 0 ||
+    input.content.feature.references.length !== 0
+  )
+    return invalidInputCardinality(
+      "Imported bodies require immutable source content without feature dependencies or topology references.",
+    )
+  const parameters = importedFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  return parameters.success
+    ? { ok: true, feature: { kind: "imported", parameters: parameters.data } }
+    : featureFailure(
+        "invalid-feature-parameters",
+        "Imported source content parameters are invalid.",
+      )
+}
+
+function parseThreadFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality(
+      "Thread requires one exact named body dependency and no topology references.",
+    )
+  const parameters = threadContentParametersSchema.safeParse(input.content.feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "thread", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Thread content parameters are invalid.")
+}
+
+function parseMirrorFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (!hasExactSingleBodyInput(input)) {
+    return invalidInputCardinality(
+      "Mirror requires one exact named body dependency and no topology references.",
+    )
+  }
+  const parameters = mirrorFeatureContentParametersSchema.safeParse(feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "mirror", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Mirror content parameters are invalid.")
+}
+
+function analyticalSketchInputsAreValid(
+  input: FeatureEvaluationInput,
+  sketches: readonly { supportFeatureId?: string | undefined }[],
+) {
+  return (
+    input.dependencies.length <= 8 &&
+    input.content.feature.inputs.length === input.dependencies.length &&
+    sketches.every(
+      ({ supportFeatureId }) =>
+        !supportFeatureId ||
+        input.dependencies.some(({ featureId }) => featureId === supportFeatureId),
+    )
+  )
+}
+
+function parseLoftFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = loftFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Loft analytical sections are invalid.")
+  if (!analyticalSketchInputsAreValid(input, parameters.data.sections))
+    return invalidInputCardinality("Loft requires the exact scheduled sketch owner inputs.")
+  return { ok: true, feature: { kind: "loft", parameters: parameters.data } }
+}
+
+function parseSweepFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = sweepFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  if (!parameters.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Sweep analytical profile and path are invalid.",
+    )
+  if (!analyticalSketchInputsAreValid(input, [parameters.data.profile, parameters.data.path]))
+    return invalidInputCardinality("Sweep requires the exact scheduled sketch owner inputs.")
+  return { ok: true, feature: { kind: "sweep", parameters: parameters.data } }
+}
+
+function parsePatternFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality(
+      "Pattern requires one exact named body dependency and no topology references.",
+    )
+  const parameters = patternFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  return parameters.success
+    ? { ok: true, feature: { kind: "pattern", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Pattern content parameters are invalid.")
+}
+
+function parseSplitFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality(
+      "Split requires one exact named body dependency and no topology references.",
+    )
+  const parameters = splitFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "split", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Split content parameters are invalid.")
+}
+
+function parseShellFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality(
+      "Shell requires one exact named body dependency and no generic topology references.",
+    )
+  const parameters = shellFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Shell content parameters are invalid.")
+  if (parameters.data.sourceContentHash !== input.dependencies[0]?.contentHash)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Shell source changed. Reselect the opening faces on the current body.",
+    )
+  const outputRole = input.content.feature.inputRoles[0]
+  if (parameters.data.openings.some((opening) => opening.outputRole !== outputRole))
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Shell openings must target the exact input body role. Reselect the opening faces.",
+    )
+  return { ok: true, feature: { kind: "shell", parameters: parameters.data } }
+}
+
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
   [COMPOUND_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "compound")],
   [UNION_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "union")],
+  [COMPOUND_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "compound", 2)],
+  [UNION_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "union", 2)],
   [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
+  [MIRROR_FEATURE_TYPE_KEY, parseMirrorFeature],
+  [SHELL_FEATURE_TYPE_KEY, parseShellFeature],
+  [THREAD_FEATURE_TYPE_KEY, parseThreadFeature],
+  [IMPORTED_FEATURE_TYPE_KEY, parseImportedFeature],
+  [SPLIT_FEATURE_TYPE_KEY, parseSplitFeature],
+  [PATTERN_FEATURE_TYPE_KEY, parsePatternFeature],
+  [LOFT_FEATURE_TYPE_KEY, parseLoftFeature],
+  [SWEEP_FEATURE_TYPE_KEY, parseSweepFeature],
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
   [FILLET_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "chamfer")],
@@ -1939,6 +2160,25 @@ function createProfileFeatureShape(
   }
 }
 
+function createSketchGeneratedFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature:
+    | Parameters<typeof createProfileFeatureShape>[1]
+    | Extract<ParsedFeature, { kind: "loft" | "sweep" }>,
+  dependencyShapes: readonly Shape3D[],
+) {
+  switch (feature.kind) {
+    case "loft":
+      return createOcctLoft(opencascade, feature.parameters.sections, {
+        ruled: feature.parameters.ruled,
+      })
+    case "sweep":
+      return createOcctSweep(opencascade, feature.parameters)
+    default:
+      return createProfileFeatureShape(opencascade, feature, dependencyShapes)
+  }
+}
+
 function createEdgeTreatmentShape(
   opencascade: OpenCascadeInstance,
   feature: Extract<ParsedFeature, { kind: "fillet" | "chamfer" }>,
@@ -2112,6 +2352,16 @@ function createPlacementFeatureShape(
   return placeOcctShape(opencascade, source, parameters)
 }
 
+function createMirrorFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: MirrorFeatureContentParameters,
+  source: Shape3D | undefined,
+) {
+  if (!source) throw new Error("Mirror target body is unavailable.")
+  validateCombinationSources(opencascade, [source])
+  return mirrorOcctShape(opencascade, source, parameters)
+}
+
 function validateCombinationSources(opencascade: OpenCascadeInstance, sources: readonly Shape3D[]) {
   for (const source of sources) {
     if (!featureResultMetricsAreValid(measureShape(opencascade, source), 1))
@@ -2171,7 +2421,20 @@ function createFeatureShape(
   opencascade: OpenCascadeInstance,
   feature: Exclude<
     ParsedFeature,
-    { kind: "selected-fillet" | "selected-chamfer" | "placement" | "compound" | "union" }
+    {
+      kind:
+        | "selected-fillet"
+        | "selected-chamfer"
+        | "placement"
+        | "mirror"
+        | "shell"
+        | "thread"
+        | "imported"
+        | "compound"
+        | "split"
+        | "pattern"
+        | "union"
+    }
   >,
   dependencyShapes: readonly Shape3D[],
 ) {
@@ -2189,7 +2452,7 @@ function createFeatureShape(
       return createEdgeTreatmentShape(opencascade, feature, dependencyShapes[0])
     }
     default:
-      return createProfileFeatureShape(opencascade, feature, dependencyShapes)
+      return createSketchGeneratedFeatureShape(opencascade, feature, dependencyShapes)
   }
 }
 
@@ -2532,11 +2795,24 @@ function extrusionOpenCurveEdge(
 }
 
 function extrusionSegmentEdge(
+  opencascade: OpenCascadeInstance,
   plane: ExtrusionPlane,
   segment: ExtrusionSegment,
   offset: number,
   reverse: boolean,
 ) {
+  if (segment.type === "cubic-bezier") {
+    return makeOcctCubicBezierEdge(
+      opencascade,
+      {
+        start: plane.point(segment.start, offset),
+        control1: plane.point(segment.control1, offset),
+        control2: plane.point(segment.control2, offset),
+        end: plane.point(segment.end, offset),
+      },
+      reverse,
+    )
+  }
   if (segment.type === "circle") {
     return makeCircle(
       segment.radius,
@@ -2554,6 +2830,7 @@ function extrusionSegmentEdge(
 }
 
 function extrusionLoopWire(
+  opencascade: OpenCascadeInstance,
   parameters: Pick<ExtrusionContentParameters, "frame" | "plane">,
   loop: { segments: ExtrusionContentParameters["outer"]["segments"] },
   offset: number,
@@ -2562,7 +2839,7 @@ function extrusionLoopWire(
   const plane = extrusionPlane(parameters)
   const orderedSegments = reverse ? [...loop.segments].reverse() : loop.segments
   const edges = orderedSegments.map((segment) =>
-    extrusionSegmentEdge(plane, segment, offset, reverse),
+    extrusionSegmentEdge(opencascade, plane, segment, offset, reverse),
   )
   try {
     return assembleWire(edges)
@@ -2584,7 +2861,7 @@ function createExtrusionShape(
   const plane = extrusionPlane(parameters)
   const { start: startOffset, end: endOffset } = extrusionExtentBounds(parameters)
   const span = endOffset - startOffset
-  const outer = extrusionLoopWire(parameters, parameters.outer, startOffset, false)
+  const outer = extrusionLoopWire(opencascade, parameters, parameters.outer, startOffset, false)
   const holes: Wire[] = []
   let face: ReturnType<typeof makeFace> | null = null
   const vector = new opencascade.gp_Vec_4(
@@ -2594,7 +2871,7 @@ function createExtrusionShape(
   )
   try {
     for (const hole of parameters.holes) {
-      holes.push(extrusionLoopWire(parameters, hole, startOffset, true))
+      holes.push(extrusionLoopWire(opencascade, parameters, hole, startOffset, true))
     }
     face = makeFace(outer, holes)
     const builder = new opencascade.BRepPrimAPI_MakePrism_1(face.wrapped, vector, false, true)
@@ -2628,7 +2905,9 @@ function createRevolveShape(
     reverse: boolean,
   ) => {
     const orderedSegments = reverse ? [...loop.segments].reverse() : loop.segments
-    const edges = orderedSegments.map((segment) => extrusionSegmentEdge(plane, segment, 0, reverse))
+    const edges = orderedSegments.map((segment) =>
+      extrusionSegmentEdge(opencascade, plane, segment, 0, reverse),
+    )
     try {
       return assembleWire(edges)
     } finally {
@@ -2880,6 +3159,8 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
 
 function featureProfileCount(feature: ParsedFeature) {
   if (feature.kind === "compound") return feature.parameters.outputRoles.length
+  if (feature.kind === "pattern") return feature.parameters.count
+  if (feature.kind === "imported") return feature.parameters.outputs.length
   return feature.kind === "multi-extrusion" ||
     feature.kind === "multi-revolve" ||
     feature.kind === "extent-extrusion"
@@ -2904,8 +3185,23 @@ function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSoli
   }
 }
 
+const independentBodyBundleKinds = new Set(["compound", "split", "pattern", "imported"])
+
 function featureHasSingleBody(metrics: ReturnType<typeof measureShape>, feature: ParsedFeature) {
-  return metrics.solidCount === 1 && feature.kind !== "datum-plane" && feature.kind !== "compound"
+  return (
+    metrics.solidCount === 1 &&
+    feature.kind !== "datum-plane" &&
+    !independentBodyBundleKinds.has(feature.kind)
+  )
+}
+
+function validateAuthoredBodyCardinality(
+  metrics: ReturnType<typeof measureShape>,
+  feature: ParsedFeature,
+  maximumSolidCount: number,
+) {
+  if (independentBodyBundleKinds.has(feature.kind) && metrics.solidCount !== maximumSolidCount)
+    throw new Error("Every authored output must retain one separately owned solid.")
 }
 
 function evaluateFeatureGeometry(
@@ -2916,7 +3212,19 @@ function evaluateFeatureGeometry(
   const startedAt = performance.now()
   const metrics = measureShape(opencascade, shape)
   if (
-    ["placement", "compound", "union"].includes(feature.kind) &&
+    [
+      "placement",
+      "mirror",
+      "shell",
+      "thread",
+      "imported",
+      "split",
+      "pattern",
+      "loft",
+      "sweep",
+      "compound",
+      "union",
+    ].includes(feature.kind) &&
     !withinFeatureWorkspace([...metrics.bounds.min, ...metrics.bounds.max].map(Math.abs))
   ) {
     throw new Error("Geometry must remain within the supported world-coordinate bounds.")
@@ -2925,8 +3233,7 @@ function evaluateFeatureGeometry(
     featureSolidKind(feature),
     featureProfileCount(feature),
   )
-  if (feature.kind === "compound" && metrics.solidCount !== maximumSolidCount)
-    throw new Error("A Compound must retain every separately owned input solid.")
+  validateAuthoredBodyCardinality(metrics, feature, maximumSolidCount)
   if (!featureResultMetricsAreValid(metrics, maximumSolidCount)) {
     throw new Error("Feature evaluation did not produce a valid bounded positive-volume result.")
   }
@@ -2958,11 +3265,11 @@ function tessellateFeatureGeometry(
 function createFeatureEvaluationShape(
   opencascade: OpenCascadeInstance,
   source: Extract<FeatureShapeSource, { ok: true }>,
-  feature: Exclude<ParsedFeature, { kind: "compound" }>,
+  feature: Exclude<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
   input: FeatureEvaluationInput,
   createUncached: (
     opencascade: OpenCascadeInstance,
-    feature: Exclude<ParsedFeature, { kind: "compound" }>,
+    feature: Exclude<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
   ) => Shape3D,
@@ -3015,14 +3322,14 @@ function featureEvaluationResult(
   }
 }
 
-function evaluateCompoundBody(
+function evaluateOwnedBody(
   opencascade: OpenCascadeInstance,
   output: OwnedBodyCombination["outputs"][number],
   mesh: FeatureEvaluationInput["mesh"],
 ) {
   const metrics = measureShape(opencascade, output.shape)
   if (!featureResultMetricsAreValid(metrics, 1))
-    throw new Error("Compound constituent geometry is invalid.")
+    throw new Error("Named output body geometry is invalid.")
   const snapshot = captureReplicadTopologySnapshot(output.shape)
   const tessellation = tessellateFeatureGeometry(opencascade, output.shape, mesh)
   return {
@@ -3041,26 +3348,107 @@ type FeatureShapeSource =
   | { ok: true; brepHit: false; dependencies: Shape3D[] }
   | Extract<FeatureEvaluationResult, { ok: false }>
 
-function compoundBundleForEvaluation(
+function aggregateOwnedOutputs(
+  opencascade: OpenCascadeInstance,
+  outputs: OwnedBodyCombination["outputs"],
+): OwnedBodyCombination {
+  const first = outputs[0]
+  if (!first) throw new Error("Named output geometry is unavailable.")
+  try {
+    return {
+      shape: createOcctCompound(
+        opencascade,
+        outputs.map(({ shape }) => shape),
+      ),
+      outputs,
+    }
+  } catch (error) {
+    if (!disposeBodyCombination({ shape: first.shape, outputs }))
+      throw new Error("Aggregate creation and output cleanup failed.", { cause: error })
+    throw error
+  }
+}
+
+function createGeneratedBodyBundle(
+  opencascade: OpenCascadeInstance,
+  target: Shape3D | undefined,
+  feature: Extract<ParsedFeature, { kind: "split" | "pattern" }>,
+): OwnedBodyCombination {
+  if (!target) throw new Error("Exact target body is unavailable.")
+  if (feature.kind === "pattern")
+    return aggregateOwnedOutputs(
+      opencascade,
+      patternOcctShape(opencascade, target, feature.parameters),
+    )
+  const split = splitOcctShape(opencascade, target, feature.parameters)
+  return aggregateOwnedOutputs(opencascade, [
+    { role: SPLIT_OUTPUT_ROLES[0], shape: split.negative },
+    { role: SPLIT_OUTPUT_ROLES[1], shape: split.positive },
+  ])
+}
+
+function bodyBundleRoles(
+  feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
+) {
+  switch (feature.kind) {
+    case "compound":
+      return feature.parameters.outputRoles
+    case "split":
+      return SPLIT_OUTPUT_ROLES
+    case "pattern":
+      return patternContentOutputRoles(feature.parameters.count)
+    case "imported":
+      return feature.parameters.outputs.map(({ outputId }) => `import.${outputId}`)
+  }
+}
+
+async function bodyBundleForEvaluation(
   registry: DocumentFeatureShapeRegistry<Shape3D>,
   input: FeatureEvaluationInput,
-  feature: Extract<ParsedFeature, { kind: "compound" }>,
+  feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
   source: Extract<FeatureShapeSource, { ok: true }>,
   opencascade: OpenCascadeInstance,
-): OwnedBodyCombination {
+  sourceAsset?: SourceAssetMaterialization,
+): Promise<OwnedBodyCombination> {
+  if (feature.kind === "imported") {
+    if (!sourceAsset) throw new Error("Required immutable source bytes are unavailable.")
+    const materialized = importedSourceMaterializationSchema.parse({
+      sourceAssetId: sourceAsset.asset.id,
+      content: feature.parameters,
+      ...sourceAsset,
+    })
+    if (!source.brepHit) {
+      const outputs = await rebuildOcctSourceImport(opencascade, materialized)
+      return aggregateOwnedOutputs(
+        opencascade,
+        outputs.map(({ outputRole, shape }) => ({ role: outputRole, shape })),
+      )
+    }
+    const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(materialized.bytes))
+    const actualHash = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("")
+    if (actualHash !== materialized.asset.digest)
+      throw new Error("The cached imported source digest does not match its bytes.")
+  }
   if (!source.brepHit) {
     validateCombinationSources(opencascade, source.dependencies)
+    if (feature.kind === "imported")
+      throw new Error("Imported source materialization did not produce geometry.")
+    if (feature.kind === "split" || feature.kind === "pattern")
+      return createGeneratedBodyBundle(opencascade, source.dependencies[0], feature)
     return createOcctBodyCompound(opencascade, source.dependencies, feature.parameters.outputRoles)
   }
-  const outputs = feature.parameters.outputRoles.map((role) => {
+  const roles = bodyBundleRoles(feature)
+  const outputs = roles.map((role) => {
     const shape = registry.getOutput(input.documentId, input.featureId, input.contentHash, role)
-    if (!shape) throw new Error("An exact authored Compound role is unavailable.")
+    if (!shape) throw new Error("An exact authored output role is unavailable.")
     return { role, shape }
   })
   return { shape: source.shape, outputs }
 }
 
-function disposeUncachedCompound(
+function disposeUncachedBodyBundle(
   bundle: OwnedBodyCombination | null,
   snapshots: WeakMap<Shape3D, TopologyCaptureSnapshot>,
 ): boolean {
@@ -3076,7 +3464,16 @@ function resolveFeatureShapeSource(
   registry: DocumentFeatureShapeRegistry<Shape3D>,
   input: FeatureEvaluationInput,
 ): FeatureShapeSource {
-  const dependencies = registry.resolve(input.documentId, input.dependencies)
+  const requested =
+    input.content.schemaVersion === 2
+      ? input.content.feature.inputSlots.map((slot) => ({
+          featureId: input.dependencies[slot.inputIndex]?.featureId ?? "",
+          contentHash: slot.contentHash,
+          outputRole: slot.outputRole,
+        }))
+      : input.dependencies
+  // Validate each ordered exact body even when the combination itself has a cached B-Rep.
+  const dependencies = registry.resolve(input.documentId, requested)
   if (!dependencies) {
     return featureFailure(
       "missing-feature-dependency",
@@ -3197,6 +3594,14 @@ function kernelFixtureSemanticRole(
   return undefined
 }
 
+export type AssemblyNativeBody = Readonly<{
+  documentId: string
+  featureId: string
+  contentHash: string
+  outputRole: string
+  pose: import("@vibeshape/protocol").AssemblyInspection["occurrences"][number]["geometryFrame"]
+}>
+
 export interface GeometryKernelEngine {
   initialize(): Promise<GeometryEngineMetadata>
   isInitialized(): boolean
@@ -3204,8 +3609,15 @@ export interface GeometryKernelEngine {
   evaluateFeature(
     input: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
+    sourceAsset?: SourceAssetMaterialization,
   ): Promise<FeatureEvaluationResult>
   sectionPlanarFace?(input: PlanarFaceSectionInput): Promise<PlanarFaceSectionResult>
+  inspectSourceImport?: (input: InspectSourceImportInput) => Promise<SourceImportInspection>
+  inspectAssemblyInterference?: (
+    left: readonly AssemblyNativeBody[],
+    right: readonly AssemblyNativeBody[],
+  ) => Promise<{ volume: number; solidCount: number }>
+  exportAssemblyStep?: (sources: readonly AssemblyNativeBody[]) => Promise<Uint8Array>
   exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult>
   exportPrintMeshes(input: DocumentPrintMeshExportInput): Promise<DocumentPrintMeshExportResult>
   runKernelSpike(
@@ -3225,6 +3637,19 @@ export interface GeometryKernelEngine {
   disposeDocument(documentId: string): number
 }
 
+export type GeometryShellOpeningResolver = (
+  references: ShellFeatureContentParameters["openings"],
+  candidates: readonly TopologyCaptureSnapshot["candidates"][number][],
+  scope: { featureId: string; outputRole: string },
+) =>
+  | { ok: true; candidateIds: readonly string[] }
+  | { ok: false; reason: "missing" | "ambiguous" | "changed" | "duplicate" }
+class ShellOpeningRepairError extends Error {
+  constructor(reason: string) {
+    super(`Shell opening faces are ${reason}. Reselect the opening faces on the current body.`)
+  }
+}
+
 export type GeometryTopologyResolver = (
   references: readonly SelectedEdgeReference[],
   candidates: readonly TopologyCaptureSnapshot["candidates"][number][],
@@ -3241,7 +3666,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   #opencascade: OpenCascadeModule | null = null
   #initialization: Promise<GeometryEngineMetadata> | null = null
 
-  constructor(private readonly resolveReferences?: GeometryTopologyResolver) {}
+  constructor(
+    private readonly resolveReferences?: GeometryTopologyResolver,
+    private readonly resolveShellOpenings?: GeometryShellOpeningResolver,
+  ) {}
 
   isInitialized() {
     return this.#metadata !== null && this.#opencascade !== null
@@ -3319,6 +3747,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   async evaluateFeature(
     request: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
+    sourceAsset?: SourceAssetMaterialization,
   ): Promise<FeatureEvaluationResult> {
     const parsed = parseFeatureRequest(request)
     if (!parsed.ok) return parsed
@@ -3330,9 +3759,31 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
 
     const feature = parsed.feature
-    if (feature.kind === "compound")
-      return this.#evaluateCompound(input, feature, opencascade, engine, reportProgress)
+    if (
+      feature.kind === "compound" ||
+      feature.kind === "split" ||
+      feature.kind === "pattern" ||
+      feature.kind === "imported"
+    )
+      return this.#evaluateBodyBundle(
+        input,
+        feature,
+        opencascade,
+        engine,
+        reportProgress,
+        sourceAsset,
+      )
 
+    return this.#evaluateSingleBodyFeature(input, feature, opencascade, engine, reportProgress)
+  }
+
+  #evaluateSingleBodyFeature(
+    input: FeatureEvaluationInput,
+    feature: Exclude<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
+    opencascade: OpenCascadeInstance,
+    engine: GeometryEngineMetadata,
+    reportProgress: ProgressReporter,
+  ): FeatureEvaluationResult {
     reportProgress("feature-validation", 0.1)
     const totalStartedAt = performance.now()
     const source = resolveFeatureShapeSource(this.#featureShapes, input)
@@ -3374,8 +3825,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           elapsed(totalStartedAt),
         ),
       }
-    } catch {
+    } catch (error) {
       const cleanupSucceeded = disposeTemporaryShape(temporaryShape)
+      if (cleanupSucceeded && error instanceof ShellOpeningRepairError)
+        return featureFailure("invalid-feature-parameters", error.message)
       return featureFailure(
         "invalid-feature-geometry",
         cleanupSucceeded
@@ -3385,13 +3838,14 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
   }
 
-  #evaluateCompound(
+  async #evaluateBodyBundle(
     input: FeatureEvaluationInput,
-    feature: Extract<ParsedFeature, { kind: "compound" }>,
+    feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
     opencascade: OpenCascadeInstance,
     engine: GeometryEngineMetadata,
     reportProgress: ProgressReporter,
-  ): FeatureEvaluationResult {
+    sourceAsset?: SourceAssetMaterialization,
+  ): Promise<FeatureEvaluationResult> {
     reportProgress("feature-validation", 0.1)
     const startedAt = performance.now()
     const source = resolveFeatureShapeSource(this.#featureShapes, input)
@@ -3399,12 +3853,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     let temporary: OwnedBodyCombination | null = null
     try {
       reportProgress("feature-evaluation", 0.35)
-      const { shape, outputs } = compoundBundleForEvaluation(
+      const { shape, outputs } = await bodyBundleForEvaluation(
         this.#featureShapes,
         input,
         feature,
         source,
         opencascade,
+        sourceAsset,
       )
       if (!source.brepHit) temporary = { shape, outputs }
       const evaluation = evaluateFeatureGeometry(opencascade, shape, feature)
@@ -3412,7 +3867,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       reportProgress("feature-tessellation", 0.7)
       const tessellation = tessellateFeatureGeometry(opencascade, shape, input.mesh)
       const bodies = outputs.map((output) => {
-        const result = evaluateCompoundBody(opencascade, output, input.mesh)
+        const result = evaluateOwnedBody(opencascade, output, input.mesh)
         this.#topologySnapshots.set(output.shape, result.snapshot)
         return result.body
       })
@@ -3441,19 +3896,21 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         },
       }
     } catch {
-      const cleanupSucceeded = disposeUncachedCompound(temporary, this.#topologySnapshots)
+      const cleanupSucceeded = disposeUncachedBodyBundle(temporary, this.#topologySnapshots)
       return featureFailure(
         "invalid-feature-geometry",
         cleanupSucceeded
-          ? "Compound geometry evaluation failed."
-          : "Compound evaluation failed and temporary shape cleanup did not complete.",
+          ? feature.kind === "split"
+            ? "Split plane must cross the body and produce two connected positive-volume pieces."
+            : "Compound geometry evaluation failed."
+          : "Named body evaluation failed and temporary shape cleanup did not complete.",
       )
     }
   }
 
   #createUncachedFeature(
     opencascade: OpenCascadeInstance,
-    feature: Exclude<ParsedFeature, { kind: "compound" }>,
+    feature: Exclude<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
   ) {
@@ -3464,9 +3921,52 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     if (feature.kind === "placement") {
       return createPlacementFeatureShape(opencascade, feature.parameters, dependencies[0])
     }
+    if (feature.kind === "mirror")
+      return createMirrorFeatureShape(opencascade, feature.parameters, dependencies[0])
+    if (feature.kind === "thread") {
+      const target = dependencies[0]
+      if (!target) throw new Error("Thread target body is unavailable.")
+      return threadOcctShape(opencascade, target, feature.parameters)
+    }
+    if (feature.kind === "shell")
+      return this.#createShellFeature(opencascade, feature.parameters, dependencies[0], input)
+
     if (feature.kind !== "selected-fillet" && feature.kind !== "selected-chamfer") {
       return createFeatureShape(opencascade, feature, dependencies)
     }
+    return this.#createSelectedEdgeFeature(opencascade, feature, dependencies, input)
+  }
+
+  #createShellFeature(
+    opencascade: OpenCascadeInstance,
+    parameters: ShellFeatureContentParameters,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
+    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
+    const dependency = input.dependencies[0]
+    if (!target || !snapshot || !dependency?.outputRole || !this.resolveShellOpenings)
+      throw new ShellOpeningRepairError("unavailable")
+    validateCombinationSources(opencascade, [target])
+    const resolved = this.resolveShellOpenings(parameters.openings, snapshot.candidates, {
+      featureId: dependency.featureId,
+      outputRole: dependency.outputRole,
+    })
+    if (!resolved.ok) throw new ShellOpeningRepairError(resolved.reason)
+    const keys = resolved.candidateIds.map((id) => {
+      const key = snapshot.transientShapeKeys.get(id)
+      if (!id.startsWith("face:") || key === undefined) throw new ShellOpeningRepairError("missing")
+      return key
+    })
+    return shellOcctShape(opencascade, target, keys, parameters.thickness, parameters.direction)
+  }
+
+  #createSelectedEdgeFeature(
+    opencascade: OpenCascadeInstance,
+    feature: Extract<ParsedFeature, { kind: "selected-fillet" | "selected-chamfer" }>,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
     const target = dependencies[0]
     const snapshot = target ? this.#topologySnapshots.get(target) : undefined
     if (!snapshot) throw new Error("Exact source topology is unavailable for selected edges.")
@@ -3492,6 +3992,74 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     if (!shape)
       return sectionFailure("missing-body", "The exact source feature body is unavailable.")
     return sectionPlanarFace(opencascade, shape, input)
+  }
+
+  async inspectSourceImport(input: InspectSourceImportInput): Promise<SourceImportInspection> {
+    const parsed = inspectSourceImportInputSchema.parse(input)
+    await this.initialize()
+    const occt = this.#opencascade
+    if (!occt) throw new Error("OpenCascade did not initialize.")
+    const inspected = await inspectOcctSourceImport(occt, parsed.source, parsed.bytes)
+    let outcome: { ok: true; value: SourceImportInspection } | { ok: false; error: unknown }
+    try {
+      outcome = {
+        ok: true,
+        value: sourceImportInspectionSchema.parse({
+          unitEvidence: inspected.unitEvidence,
+          outputs: inspected.candidates.map(({ shape, signature }) => ({
+            signature,
+            mesh: tessellateFeatureGeometry(occt, shape, parsed.mesh).mesh,
+          })),
+        }),
+      }
+    } catch (error) {
+      outcome = { ok: false, error }
+    }
+    const first = inspected.candidates[0]
+    const cleanup =
+      !first ||
+      disposeBodyCombination({
+        shape: first.shape,
+        outputs: inspected.candidates.map(({ shape }, index) => ({
+          role: `inspection.${index}`,
+          shape,
+        })),
+      })
+    if (!cleanup)
+      throw new AggregateError(
+        outcome.ok ? [] : [outcome.error],
+        "Source inspection could not release every native body.",
+      )
+    if (!outcome.ok) throw outcome.error
+    return outcome.value
+  }
+
+  async inspectAssemblyInterference(
+    left: readonly AssemblyNativeBody[],
+    right: readonly AssemblyNativeBody[],
+  ) {
+    const occt = this.#opencascade
+    if (!occt) throw new Error("OpenCascade did not initialize.")
+    return measureOcctInterference(occt, this.#assemblySources(left), this.#assemblySources(right))
+  }
+
+  #assemblySources(sources: readonly AssemblyNativeBody[]) {
+    return sources.map((source) => {
+      const shape = this.#featureShapes.getOutput(
+        source.documentId,
+        source.featureId,
+        source.contentHash,
+        source.outputRole,
+      )
+      if (!shape) throw new Error("A pinned exact assembly body is unavailable.")
+      return { shape, pose: source.pose }
+    })
+  }
+
+  async exportAssemblyStep(sources: readonly AssemblyNativeBody[]) {
+    const occt = this.#opencascade
+    if (!occt) throw new Error("OpenCascade did not initialize.")
+    return exportOcctAssemblyStep(occt, this.#assemblySources(sources))
   }
 
   async exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult> {

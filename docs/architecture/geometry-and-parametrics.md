@@ -277,7 +277,7 @@ refuse output.
 
 This is digital relief-mesh validation. Global self-intersections and minimum wall thickness remain
 unproven, and no digital mesh check establishes physical fit, strength, slicer acceptance, or print
-success. Source documents remain editable through V3 authority/native format 4. See
+success. Source documents remain editable through V4 authority/native format 5. See
 [ADR-0059](../adr/0059-editable-surface-texture-layers.md).
 
 ## B-Rep validation

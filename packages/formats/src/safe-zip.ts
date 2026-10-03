@@ -1,4 +1,4 @@
-import { strFromU8, strToU8, unzip, type Unzipped } from "fflate"
+import { strFromU8, strToU8, type Unzipped, unzip } from "fflate"
 
 export type SafeZipDiagnosticCode = "invalid-archive" | "resource-limit" | "unsafe-path"
 

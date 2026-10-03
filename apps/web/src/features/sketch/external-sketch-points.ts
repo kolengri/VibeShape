@@ -76,7 +76,7 @@ export type ExternalSketchGeometryCandidate =
   | ExternalSketchLineCandidate
   | (ExternalSketchCurveContext & { projectedType: ExternalSketchCurveKind })
 
-type ExternalSketchCurveKind = Exclude<SketchEntity["type"], "line" | "point">
+type ExternalSketchCurveKind = Exclude<SketchEntity["type"], "line" | "point" | "cubic-bezier">
 
 export type ExternalSketchCurveContext = Readonly<{
   closed: boolean
@@ -127,7 +127,7 @@ function sketchReferenceSourceEntityId(reference: SketchBackedExternalReference)
 
 function sketchReferenceExpectedType(
   reference: SketchBackedExternalReference,
-): SketchEntity["type"] {
+): Exclude<SketchEntity["type"], "cubic-bezier"> {
   if (reference.kind === "line" || reference.kind === "pierce-point") return "line"
   if (reference.kind === "curve") return reference.sourceType
   return "point"
@@ -143,6 +143,7 @@ function sourceEntityLabels(source: SketchRecord, labels: ExternalSketchGeometry
     ...projectedExternalSketchEntities(source.externalReferences ?? []),
   ]
   for (const entity of entities) {
+    if (entity.type === "cubic-bezier") continue
     if (entity.type === "point") {
       pointOrdinal += 1
       result.set(entity.id, labels.point(source.label, pointOrdinal))
@@ -802,7 +803,7 @@ const curveSamplers = {
 }
 
 function sampledCurvePoints(
-  entity: Exclude<SketchEntity, { type: "line" | "point" }>,
+  entity: Exclude<SketchEntity, { type: "line" | "point" | "cubic-bezier" }>,
   points: SourceSketchPoints,
   solvedRadius?: number,
 ): readonly { x: number; y: number }[] {
@@ -870,7 +871,7 @@ function projectedLineContext(
 }
 
 function projectedCurveContext(
-  entity: Exclude<SketchEntity, { type: "line" | "point" }>,
+  entity: Exclude<SketchEntity, { type: "line" | "point" | "cubic-bezier" }>,
   points: SourceSketchPoints,
   source: SketchRecord,
   sourceFrame: SketchSupportFrame,
@@ -947,6 +948,7 @@ function projectSourceEntity(
       context.labels.line(context.source.label, context.lineOrdinal.value),
     )
   }
+  if (entity.type === "cubic-bezier") return null
   const ordinal = (context.curveOrdinals.get(entity.type) ?? 0) + 1
   context.curveOrdinals.set(entity.type, ordinal)
   return projectedCurveContext(

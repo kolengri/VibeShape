@@ -66,8 +66,13 @@ import {
   type VariableId,
   variableIdSchema,
 } from "@vibeshape/domain"
+import {
+  emptyAssemblyAuthority,
+  pinnedAssemblyDefinitionSchema,
+} from "@vibeshape/domain/assembly-authority"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentCommand } from "@vibeshape/domain/commands"
+import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import type {
   AuthoredDocumentSnapshot,
   DocumentAuthoritySnapshot,
@@ -83,6 +88,8 @@ import {
 } from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
+import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
+import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
@@ -91,6 +98,7 @@ import {
   writeVShapeV2,
   writeVShapeV3,
   writeVShapeV4,
+  writeVShapeV5,
 } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
@@ -99,10 +107,13 @@ import {
   VibeShapeDatabase,
 } from "@vibeshape/persistence"
 import type {
+  AssemblyExportSettings,
+  AssemblyInspection,
   GeometryExportFormat,
   PrintPreparationResult,
   PrintPreparationSettings,
 } from "@vibeshape/protocol"
+import { assemblyExportSettingsSchema } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
 import { automationReviews } from "../automation/automation-review-controller"
@@ -115,6 +126,7 @@ import { BrowserProjectRepository } from "./browser-project-repository"
 import { prepareDocumentGeometryExport } from "./document-geometry-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { createProjectActionGuard } from "./project-action-guard"
+import { materializeDocumentSourceAssets } from "./source-assets-rebuild"
 import { formatProjectCopyName } from "./versioned-project-file"
 
 const DATABASE_NAME = "vibeshape-product-v0"
@@ -319,7 +331,11 @@ export function resolveDocumentFeatureParameters(document: DocumentSnapshot) {
   })
 }
 
-function dependencies(database: VibeShapeDatabase, repository: PersistentDocumentRepositoryPort) {
+function dependencies(
+  database: VibeShapeDatabase,
+  repository: PersistentDocumentRepositoryPort,
+  sourceRepository: BrowserProjectRepository,
+) {
   return {
     commandDispatcher: coreCommandDispatcher(),
     repository,
@@ -330,7 +346,18 @@ function dependencies(database: VibeShapeDatabase, repository: PersistentDocumen
         releaseDocumentLease(database, input),
     },
     createRebuildPort: (documentId: ReturnType<typeof documentIdSchema.parse>) =>
-      createDocumentWorkerSession(documentId),
+      createDocumentWorkerSession(documentId, {
+        materializeSourceAssets: (document) =>
+          materializeDocumentSourceAssets(
+            database,
+            async () => {
+              const recovered = await sourceRepository.versioned.recoverAuthority(documentId)
+              if (!recovered.ok) throw new Error(recovered.diagnostic.message)
+              return recovered.value.snapshot
+            },
+            document.features,
+          ),
+      }),
     now: () => Date.now(),
   }
 }
@@ -364,7 +391,7 @@ async function openOrCreate(defaultDocumentName: string) {
     repository.versioned,
     createBrowserPart,
   )
-  const sessionDependencies = dependencies(database, versionedAdapter)
+  const sessionDependencies = dependencies(database, versionedAdapter, repository)
   const sessionId = currentSessionId()
   const storedDocumentId = documentIdSchema.safeParse(
     readStoredId(localStorage, DOCUMENT_STORAGE_KEY),
@@ -466,7 +493,7 @@ function subscribeDocumentController(listener: () => void) {
   return () => listeners.delete(listener)
 }
 
-function getDocumentControllerState() {
+export function getDocumentControllerState() {
   return state
 }
 
@@ -588,6 +615,7 @@ export function createActiveDocumentAutomationSession() {
   if (!active || !repository || state.status !== "ready" || !state.report)
     return automationCommitFailure("document-write-unavailable", "No local project is open.", true)
   const factory = createDocumentAutomationSession({
+    materializeSourceAssets: materializeActiveDocumentSourceAssets,
     commands: coreCommandDispatcher(),
     modules: coreRegistries().modules,
     createDraftId: browserUuidV7,
@@ -729,6 +757,7 @@ export function createActiveDocumentAutomationSession() {
     return result
   }
   const metadata = createMetadataAutomationSession({
+    materializeSourceAssets: materializeActiveDocumentSourceAssets,
     documentId: active.snapshot.id,
     queries: queryDispatcher.dispatcher,
     createDraftId: browserUuidV7,
@@ -930,9 +959,11 @@ async function commitReviewedMetadata(
       },
     }
   const replayed =
-    base.schemaVersion === 3
-      ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
-      : applyDocumentV2Command(base, command)
+    base.schemaVersion === 4
+      ? applyDocumentV4AuthoredCommand(base, { ...command, schemaVersion: 3 })
+      : base.schemaVersion === 3
+        ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
+        : applyDocumentV2Command(base, command)
   if (!replayed.ok || canonicalJson(replayed.snapshot) !== canonicalJson(expected))
     return {
       ok: false as const,
@@ -959,6 +990,222 @@ async function commitReviewedMetadata(
     revision: result.snapshot.revision,
     change: command.payload,
   }
+}
+
+export async function inspectGeometrySource(input: unknown) {
+  const active = session
+  if (!active) throw new Error("The document session is unavailable.")
+  const result = await active.inspectSourceImport(input)
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  return result.value
+}
+
+export async function inspectTriangleMeshSource(input: unknown) {
+  const active = session
+  if (!active) throw new Error("The document session is unavailable.")
+  const result = await active.inspectMeshImport(input)
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  return result.value
+}
+
+function captureAssemblyContext() {
+  const active = session
+  const repository = activeRepository
+  const authority = active?.authoredSnapshot
+  if (!active || !repository || state.status !== "ready" || authority?.schemaVersion !== 4)
+    throw new Error("Assembly authority is unavailable.")
+  return { active, repository, authority }
+}
+
+function assertAuthorityCurrent(active: NonNullable<typeof session>, revision: number) {
+  if (session !== active || active.authoredSnapshot?.revision !== revision)
+    throw new Error("The source document changed during assembly preparation.")
+}
+
+function assemblyFailure(message: unknown, operation: string) {
+  return {
+    ok: false as const,
+    diagnostic: {
+      code: "export-failed" as const,
+      message: message instanceof Error ? message.message : `${operation} failed.`,
+      retryable: false,
+      sourceCode: "assembly-operation-failed",
+    },
+  }
+}
+
+export async function inspectActiveAssembly(
+  pairs: readonly { leftInstanceId: string; rightInstanceId: string }[] = [],
+): Promise<
+  | { ok: true; inspection: AssemblyInspection }
+  | { ok: false; diagnostic: { code: string; message: string; retryable: boolean } }
+> {
+  try {
+    return await inspectCapturedAssembly(captureAssemblyContext(), pairs)
+  } catch (error) {
+    return assemblyFailure(error, "Assembly inspection")
+  }
+}
+
+async function inspectCapturedAssembly(
+  context: ReturnType<typeof captureAssemblyContext>,
+  pairs: readonly { leftInstanceId: string; rightInstanceId: string }[],
+) {
+  const { active, repository, authority } = context
+  const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
+  try {
+    const sourceAssets = await repository.materializeAssemblySourceAssets(authority)
+    const result = await worker.inspectAssembly(
+      {
+        authorityJson: canonicalJson(authority),
+        sourceAssets: [...sourceAssets],
+        mesh: PRODUCT_MESH_POLICY,
+        interferencePairs: [...pairs],
+      },
+      authority.revision,
+    )
+    assertAuthorityCurrent(active, authority.revision)
+    return { ok: true as const, inspection: result.inspection }
+  } finally {
+    worker.terminate()
+  }
+}
+
+export async function exportActiveAssembly(
+  settings: AssemblyExportSettings,
+  signal?: AbortSignal,
+): Promise<ActiveDocumentExportResult> {
+  try {
+    return await exportCapturedAssembly(
+      captureAssemblyContext(),
+      assemblyExportSettingsSchema.parse(settings),
+      signal,
+    )
+  } catch (error) {
+    return assemblyFailure(error, "Assembly export")
+  }
+}
+
+async function exportCapturedAssembly(
+  context: ReturnType<typeof captureAssemblyContext>,
+  settings: AssemblyExportSettings,
+  signal?: AbortSignal,
+): Promise<ActiveDocumentExportResult> {
+  const { active, repository, authority } = context
+  if (signal?.aborted) throw new Error("Assembly export was cancelled.")
+  const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
+  const cancel = () => worker.terminate()
+  signal?.addEventListener("abort", cancel, { once: true })
+  try {
+    const sourceAssets = await repository.materializeAssemblySourceAssets(authority)
+    if (signal?.aborted) throw new Error("Assembly export was cancelled.")
+    assertAuthorityCurrent(active, authority.revision)
+    const result = await worker.exportAssembly(
+      {
+        assembly: {
+          authorityJson: canonicalJson(authority),
+          sourceAssets: [...sourceAssets],
+          mesh: PRODUCT_MESH_POLICY,
+          interferencePairs: [],
+        },
+        settings,
+      },
+      authority.revision,
+    )
+    if (signal?.aborted) throw new Error("Assembly export was cancelled.")
+    assertAuthorityCurrent(active, authority.revision)
+    return {
+      ok: true,
+      format: settings.format,
+      file: result.file,
+      bodyCount: result.bodyCount,
+      documentName: authority.name,
+      ...(result.printPreparation ? { printPreparation: result.printPreparation } : {}),
+    }
+  } finally {
+    signal?.removeEventListener("abort", cancel)
+    worker.terminate()
+  }
+}
+
+function captureLibrarySourceContext() {
+  const active = session
+  const repository = activeRepository
+  const authority = active?.authoredSnapshot
+  if (
+    !active ||
+    !repository ||
+    !authority ||
+    authority.schemaVersion === 1 ||
+    getProjectActionBlock()
+  )
+    throw new Error("The source document is unavailable for a library save.")
+  return { active, repository, authority }
+}
+
+/** Verifies a saved library pin using an isolated occurrence, including definitions without instances. */
+export async function verifyActiveFrozenDefinition(input: unknown) {
+  const definition = pinnedAssemblyDefinitionSchema.parse(input)
+  const { active, repository, authority } = captureLibrarySourceContext()
+  const frozen = documentSnapshotV4Schema.parse({
+    ...authority,
+    schemaVersion: 4,
+    surfaceTextures: authority.schemaVersion === 2 ? [] : authority.surfaceTextures,
+    assets: authority.schemaVersion === 4 ? authority.assets : [],
+    assembly: {
+      ...emptyAssemblyAuthority(),
+      definitions: [definition],
+      instances: [
+        {
+          schemaVersion: 1,
+          id: browserUuidV7(),
+          definitionId: definition.id,
+          name: definition.name,
+          grounded: true,
+          worldFrame: { translation: [0, 0, 0], quaternion: [0, 0, 0, 1] },
+        },
+      ],
+    },
+  })
+  const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
+  try {
+    const sourceAssets = await repository.materializeAssemblySourceAssets(frozen)
+    await worker.inspectAssembly(
+      {
+        authorityJson: canonicalJson(frozen),
+        sourceAssets: [...sourceAssets],
+        mesh: PRODUCT_MESH_POLICY,
+        interferencePairs: [],
+      },
+      authority.revision,
+    )
+    assertAuthorityCurrent(active, authority.revision)
+    return sourceAssets
+  } finally {
+    worker.terminate()
+  }
+}
+
+export async function commitAuthoredTransaction(
+  baseRevision: number,
+  input: unknown,
+): Promise<DocumentMutationResult> {
+  const active = session
+  if (!active || !canWriteAuthoredMetadata(active) || active.snapshot.revision !== baseRevision)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message:
+          "The document changed or has an active edit. Inspect the source again before importing.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.commitAuthoredTransaction(input)
+  publishAuthoredResult(active, result)
+  return result.ok ? { ok: true } : result
 }
 
 export async function commitAuthoredMetadata(
@@ -1047,10 +1294,18 @@ async function commitActiveAuthoredCommand(
 ) {
   publish({ ...state, saveStatus: "saving", diagnostic: null })
   const result = await active.commitAuthored(command)
-  if (session !== active) return result
+  publishAuthoredResult(active, result)
+  return result
+}
+
+function publishAuthoredResult(
+  active: PersistentDocumentSession,
+  result: Awaited<ReturnType<PersistentDocumentSession["commitAuthored"]>>,
+) {
+  if (session !== active) return
   if (!result.ok) {
     publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
-    return result
+    return
   }
   publish({
     ...state,
@@ -1065,7 +1320,6 @@ async function commitActiveAuthoredCommand(
     saveStatus: "saved",
     diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
   })
-  return result
 }
 
 async function commitDocumentCommand(
@@ -1350,6 +1604,21 @@ export async function exportActiveDocument(
     : result
 }
 
+export async function materializeActiveDocumentSourceAssets(input: unknown) {
+  const document = documentSnapshotSchema.parse(input)
+  const active = session
+  const repository = activeRepository
+  if (!active || !repository || state.status !== "ready")
+    throw new Error("The source document session is unavailable.")
+  const sourceId = active.snapshot.id
+  const revision = active.snapshot.revision
+  if (document.revision !== revision) throw new Error("The source document revision changed.")
+  const assets = await repository.materializeSourceAssets(sourceId, document.features)
+  if (session !== active || active.snapshot.revision !== revision)
+    throw new Error("The source document changed during materialization.")
+  return assets
+}
+
 export async function prepareActiveDocumentPrint(
   settings: PrintPreparationSettings,
   signal: AbortSignal,
@@ -1375,6 +1644,7 @@ export async function prepareActiveDocumentPrint(
     signal,
     () => session === active && active.snapshot.revision === snapshot.revision,
     plan.options,
+    materializeActiveDocumentSourceAssets,
   )
 }
 
@@ -1396,11 +1666,13 @@ export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupRe
   if (!action.current() || portable.value.project.snapshot.revision !== action.revision)
     return projectActionUnavailable()
   const write =
-    portable.value.version === 4
-      ? writeVShapeV4
-      : portable.value.version === 3
-        ? writeVShapeV3
-        : writeVShapeV2
+    portable.value.version === 5
+      ? writeVShapeV5
+      : portable.value.version === 4
+        ? writeVShapeV4
+        : portable.value.version === 3
+          ? writeVShapeV3
+          : writeVShapeV2
   const archived = await write({
     ...portable.value.project,
     exportedAt: new Date().toISOString(),

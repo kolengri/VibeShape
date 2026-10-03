@@ -1,6 +1,74 @@
 import type { SketchEntityId } from "@vibeshape/domain/identifiers"
+import {
+  cubicAreaContribution,
+  cubicCurveIntersections,
+  cubicLength,
+  cubicRayCrossings,
+  cubicSamples,
+  cubicStartAngle,
+} from "./cubic-profile-geometry"
 
 const TWO_PI = Math.PI * 2
+
+function parameterCrossesRay(parameter: number, start: number, sweep: number, slope: number) {
+  const relative = (((parameter - start) % TWO_PI) + TWO_PI) % TWO_PI
+  if (relative <= 1e-11 || TWO_PI - relative <= 1e-11) return slope > 0
+  if (Math.abs(relative - sweep) <= 1e-11) return slope < 0
+  return relative < sweep && slope !== 0
+}
+function roundRayCrossings(curve: ProfileRoundCurve, point: ProfilePoint) {
+  const y = (point.y - curve.center.y) / curve.radius
+  if (Math.abs(y) >= 1) return []
+  const angle = Math.asin(y)
+  return [angle, Math.PI - angle]
+    .filter(
+      (parameter) =>
+        curve.type === "circle" ||
+        parameterCrossesRay(parameter, curve.startAngle, curve.sweep, Math.cos(parameter)),
+    )
+    .map((parameter) => curve.center.x + curve.radius * Math.cos(parameter))
+}
+function ellipseRayCrossings(curve: ProfileEllipseLikeCurve, point: ProfilePoint) {
+  const cosine = Math.cos(curve.rotationRadians),
+    sine = Math.sin(curve.rotationRadians)
+  const a = curve.primaryRadius * sine,
+    b = curve.secondarySign * curve.secondaryRadius * cosine
+  const radius = Math.hypot(a, b),
+    relative = (point.y - curve.center.y) / radius
+  if (Math.abs(relative) >= 1) return []
+  const phase = Math.atan2(b, a),
+    angle = Math.acos(relative)
+  return [phase - angle, phase + angle]
+    .filter(
+      (parameter) =>
+        curve.type === "ellipse" ||
+        parameterCrossesRay(
+          parameter,
+          curve.startParameter,
+          curve.sweep,
+          -a * Math.sin(parameter) + b * Math.cos(parameter),
+        ),
+    )
+    .map(
+      (parameter) =>
+        curve.center.x +
+        curve.primaryRadius * cosine * Math.cos(parameter) -
+        curve.secondarySign * curve.secondaryRadius * sine * Math.sin(parameter),
+    )
+}
+/** Analytical even-odd ray tests avoid making cubic-containing loop nesting depend on display samples. */
+export function curveRayCrossings(curve: ProfileCurve, point: ProfilePoint): readonly number[] {
+  if (curve.type === "cubic-bezier") return cubicRayCrossings(curve, point.y)
+  if (curve.type === "line") {
+    if (curve.start.y > point.y === curve.end.y > point.y) return []
+    return [
+      curve.start.x +
+        ((point.y - curve.start.y) * (curve.end.x - curve.start.x)) / (curve.end.y - curve.start.y),
+    ]
+  }
+  if (curve.type === "circle" || curve.type === "arc") return roundRayCrossings(curve, point)
+  return ellipseRayCrossings(curve, point)
+}
 
 export type ProfilePoint = Readonly<{ x: number; y: number }>
 
@@ -57,7 +125,19 @@ export type ProfileEllipticalArcCurve = ProfileEllipseFields &
 
 export type ProfileEllipseLikeCurve = ProfileEllipseCurve | ProfileEllipticalArcCurve
 
-export type ProfileCurve = ProfileEllipseLikeCurve | ProfileLineCurve | ProfileRoundCurve
+export type ProfileCubicBezierCurve = CurveEnvelope &
+  Readonly<{
+    type: "cubic-bezier"
+    start: ProfilePoint
+    control1: ProfilePoint
+    control2: ProfilePoint
+    end: ProfilePoint
+  }>
+export type ProfileCurve =
+  | ProfileEllipseLikeCurve
+  | ProfileLineCurve
+  | ProfileRoundCurve
+  | ProfileCubicBezierCurve
 
 export type ProfileBounds = Readonly<{
   minX: number
@@ -524,7 +604,11 @@ function roundRoundIntersections(
   return { coincident: false, points: uniquePoints(points, tolerance) } as const
 }
 
-function lineCurveIntersections(line: ProfileLineCurve, curve: ProfileCurve, tolerance: number) {
+function lineCurveIntersections(
+  line: ProfileLineCurve,
+  curve: Exclude<ProfileCurve, { type: "cubic-bezier" }>,
+  tolerance: number,
+) {
   if (curve.type === "line") return lineLineIntersections(line, curve, tolerance)
   if (curve.type === "ellipse" || curve.type === "elliptical-arc") {
     return lineEllipseIntersections(line, curve, tolerance)
@@ -534,13 +618,15 @@ function lineCurveIntersections(line: ProfileLineCurve, curve: ProfileCurve, tol
 
 function ellipseCurveIntersections(
   ellipse: ProfileEllipseLikeCurve,
-  curve: Exclude<ProfileCurve, { type: "line" }>,
+  curve: Exclude<ProfileCurve, { type: "line" | "cubic-bezier" }>,
   tolerance: number,
 ) {
   return sampledCurveIntersections(ellipse, curve, tolerance)
 }
 
 export function curveIntersections(left: ProfileCurve, right: ProfileCurve, tolerance: number) {
+  if (left.type === "cubic-bezier") return cubicCurveIntersections(left, right, tolerance)
+  if (right.type === "cubic-bezier") return cubicCurveIntersections(right, left, tolerance)
   if (left.type === "line") return lineCurveIntersections(left, right, tolerance)
   if (right.type === "line") return lineCurveIntersections(right, left, tolerance)
   if (left.type === "ellipse" || left.type === "elliptical-arc") {
@@ -564,6 +650,7 @@ export function curveStartAngle(
   curve: Exclude<ProfileCurve, { type: "circle" | "ellipse" }>,
   reversed: boolean,
 ) {
+  if (curve.type === "cubic-bezier") return cubicStartAngle(curve, reversed)
   if (curve.type === "line") {
     const start = reversed ? curve.end : curve.start
     const end = reversed ? curve.start : curve.end
@@ -585,7 +672,30 @@ export function curveStartAngle(
   return angle + (reversed ? -Math.PI / 2 : Math.PI / 2)
 }
 
+function ellipticalArcAreaContribution(curve: ProfileEllipticalArcCurve, reversed: boolean) {
+  const start = reversed ? curve.startParameter + curve.sweep : curve.startParameter
+  const delta = reversed ? -curve.sweep : curve.sweep
+  const end = start + delta
+  const cosine = Math.cos(curve.rotationRadians)
+  const sine = Math.sin(curve.rotationRadians)
+  const primaryDirection = { x: cosine, y: sine }
+  const secondaryDirection = {
+    x: -curve.secondarySign * sine,
+    y: curve.secondarySign * cosine,
+  }
+  const integral =
+    curve.primaryRadius *
+      cross(curve.center, primaryDirection) *
+      (Math.cos(end) - Math.cos(start)) +
+    curve.secondaryRadius *
+      cross(curve.center, secondaryDirection) *
+      (Math.sin(end) - Math.sin(start)) +
+    curve.primaryRadius * curve.secondaryRadius * curve.secondarySign * delta
+  return integral / 2
+}
+
 export function curveAreaContribution(curve: ProfileCurve, reversed: boolean) {
+  if (curve.type === "cubic-bezier") return cubicAreaContribution(curve, reversed)
   if (curve.type === "line") {
     const start = reversed ? curve.end : curve.start
     const end = reversed ? curve.start : curve.end
@@ -594,27 +704,7 @@ export function curveAreaContribution(curve: ProfileCurve, reversed: boolean) {
   if (curve.type === "ellipse") {
     return Math.PI * curve.primaryRadius * curve.secondaryRadius * (reversed ? -1 : 1)
   }
-  if (curve.type === "elliptical-arc") {
-    const start = reversed ? curve.startParameter + curve.sweep : curve.startParameter
-    const delta = reversed ? -curve.sweep : curve.sweep
-    const end = start + delta
-    const cosine = Math.cos(curve.rotationRadians)
-    const sine = Math.sin(curve.rotationRadians)
-    const primaryDirection = { x: cosine, y: sine }
-    const secondaryDirection = {
-      x: -curve.secondarySign * sine,
-      y: curve.secondarySign * cosine,
-    }
-    const integral =
-      curve.primaryRadius *
-        cross(curve.center, primaryDirection) *
-        (Math.cos(end) - Math.cos(start)) +
-      curve.secondaryRadius *
-        cross(curve.center, secondaryDirection) *
-        (Math.sin(end) - Math.sin(start)) +
-      curve.primaryRadius * curve.secondaryRadius * curve.secondarySign * delta
-    return integral / 2
-  }
+  if (curve.type === "elliptical-arc") return ellipticalArcAreaContribution(curve, reversed)
   const start = reversed ? curve.startAngle + curve.sweep : curve.startAngle
   const delta = reversed ? -curve.sweep : curve.sweep
   const end = start + delta
@@ -626,6 +716,7 @@ export function curveAreaContribution(curve: ProfileCurve, reversed: boolean) {
 }
 
 export function curveLength(curve: ProfileCurve) {
+  if (curve.type === "cubic-bezier") return cubicLength(curve)
   if (curve.type === "line") return distance(curve.start, curve.end)
   if (curve.type !== "ellipse" && curve.type !== "elliptical-arc") {
     return curve.radius * curve.sweep
@@ -646,6 +737,7 @@ export function curveLength(curve: ProfileCurve) {
 }
 
 export function sampleCurve(curve: ProfileCurve, reversed: boolean) {
+  if (curve.type === "cubic-bezier") return cubicSamples(curve, reversed)
   if (curve.type === "line") return [reversed ? curve.end : curve.start]
   if (curve.type === "ellipse") {
     const segmentCount = 96

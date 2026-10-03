@@ -2,9 +2,10 @@ import { z } from "zod"
 import { bodyOutputRoleSchema } from "./body-reference"
 import { canonicalJson } from "./canonical-json"
 import { featureBodyDependencies } from "./feature-dependencies"
-import { featureParametersSchema, featureTypeSchema } from "./feature-graph"
+import { type FeatureRecord, featureParametersSchema, featureTypeSchema } from "./feature-graph"
 import type { FeatureTypeRegistry } from "./feature-type-registry"
 import { featureIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
+import { isBodyCombinationV2 } from "./part-design-body-combination"
 import { topoRefContentSchema } from "./topology"
 
 const MAX_DEPENDENCIES = 1_024
@@ -117,9 +118,53 @@ const namedFeatureContentIdentitySchema = legacyFeatureContentIdentitySchema.ext
     }),
 })
 
+const bodySlotContentIdentitySchema = z
+  .object({
+    inputIndex: z.number().int().min(0).max(7),
+    contentHash: sha256Schema,
+    outputRole: bodyOutputRoleSchema,
+  })
+  .strict()
+const slottedFeatureContentIdentitySchema = legacyFeatureContentIdentitySchema.extend({
+  schemaVersion: z.literal(2),
+  feature: legacyFeatureContentIdentitySchema.shape.feature
+    .extend({
+      inputs: z.array(sha256Schema).min(1).max(8),
+      inputSlots: z.array(bodySlotContentIdentitySchema).min(2).max(8),
+    })
+    .superRefine((feature, context) => {
+      const selected = new Set<string>()
+      const producers = new Set<number>()
+      for (const [index, slot] of feature.inputSlots.entries()) {
+        if (feature.inputs[slot.inputIndex] !== slot.contentHash)
+          context.addIssue({
+            code: "custom",
+            path: ["inputSlots", index],
+            message: "Body slots must match their declared producer hash.",
+          })
+        const key = `${slot.inputIndex}:${slot.outputRole}`
+        if (selected.has(key))
+          context.addIssue({
+            code: "custom",
+            path: ["inputSlots", index],
+            message: "Each exact body slot must be unique.",
+          })
+        selected.add(key)
+        producers.add(slot.inputIndex)
+      }
+      if (producers.size !== feature.inputs.length)
+        context.addIssue({
+          code: "custom",
+          path: ["inputSlots"],
+          message: "Every declared producer must contribute an exact body slot.",
+        })
+    }),
+})
+
 export const featureContentIdentitySchema = z.discriminatedUnion("schemaVersion", [
   legacyFeatureContentIdentitySchema,
   namedFeatureContentIdentitySchema,
+  slottedFeatureContentIdentitySchema,
 ])
 
 export type FeatureContentEnvironment = Readonly<z.infer<typeof featureContentEnvironmentSchema>>
@@ -236,6 +281,50 @@ function orderedInputContent(
   }
 }
 
+function canonicalBodyInputContent(
+  feature: FeatureRecord,
+  dependencies: ReadonlyMap<FeatureDependencyContent["featureId"], FeatureDependencyContent>,
+  inputRoles: readonly (string | null)[],
+):
+  | { ok: true; schemaVersion: 0 | 1 | 2; fields: Readonly<Record<string, unknown>> }
+  | { ok: false; diagnostic: FeatureContentIdentityDiagnostic } {
+  const bodies = featureBodyDependencies(feature)
+  if (isBodyCombinationV2(feature)) {
+    if ([...dependencies.values()].some(({ outputRole }) => outputRole !== undefined)) {
+      return diagnostic(
+        "invalid-feature-dependency-content",
+        "Slotted content declares roles per body slot, not per producer.",
+      )
+    }
+    const indexes = new Map(feature.dependencies.map((featureId, index) => [featureId, index]))
+    return {
+      ok: true,
+      schemaVersion: 2,
+      fields: {
+        inputSlots: bodies.map(({ featureId, outputRole }) => ({
+          inputIndex: indexes.get(featureId),
+          contentHash: dependencies.get(featureId)?.contentHash,
+          outputRole,
+        })),
+      },
+    }
+  }
+  if (
+    bodies.some(
+      ({ featureId, outputRole }) =>
+        outputRole !== undefined && dependencies.get(featureId)?.outputRole !== outputRole,
+    )
+  ) {
+    return diagnostic(
+      "invalid-feature-dependency-content",
+      "Dependency content must preserve the authored body selection.",
+    )
+  }
+  return inputRoles.some((role) => role !== null)
+    ? { ok: true, schemaVersion: 1, fields: { inputRoles } }
+    : { ok: true, schemaVersion: 0, fields: {} }
+}
+
 export function createFeatureContentIdentity(
   registry: FeatureTypeRegistry,
   input: {
@@ -279,16 +368,12 @@ export function createFeatureContentIdentity(
   if (!indexed.ok) return indexed
   const inputs = orderedInputContent(validated.feature.dependencies, indexed.byFeatureId)
   if (!inputs.ok) return inputs
-  const mismatchedBody = featureBodyDependencies(validated.feature).find(
-    ({ featureId, outputRole }) =>
-      outputRole !== undefined && indexed.byFeatureId.get(featureId)?.outputRole !== outputRole,
+  const bodyContent = canonicalBodyInputContent(
+    validated.feature,
+    indexed.byFeatureId,
+    inputs.inputRoles,
   )
-  if (mismatchedBody) {
-    return diagnostic(
-      "invalid-feature-dependency-content",
-      "Dependency content must preserve the authored body selection.",
-    )
-  }
+  if (!bodyContent.ok) return bodyContent
 
   const inputIndexes = new Map(
     validated.feature.dependencies.map((featureId, index) => [featureId, index]),
@@ -308,15 +393,14 @@ export function createFeatureContentIdentity(
       zodIssues(contentParameters.error, "contentParameters"),
     )
   }
-  const hasNamedInput = inputs.inputRoles.some((role) => role !== null)
   const identity = featureContentIdentitySchema.parse({
-    schemaVersion: hasNamedInput ? 1 : 0,
+    schemaVersion: bodyContent.schemaVersion,
     feature: {
       schemaVersion: validated.feature.schemaVersion,
       type: validated.feature.type,
       parameters: contentParameters.data,
       inputs: inputs.inputs,
-      ...(hasNamedInput ? { inputRoles: inputs.inputRoles } : {}),
+      ...bodyContent.fields,
       references,
     },
     environment: environment.data,

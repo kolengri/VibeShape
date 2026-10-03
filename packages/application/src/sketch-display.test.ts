@@ -9,7 +9,7 @@ import {
 } from "@vibeshape/domain"
 import { documentSketchDisplaySchema } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
-import { materializeSketchDisplay } from "./sketch-display"
+import { materializeSketchDisplay, sampleCubicBezierPoints } from "./sketch-display"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 const firstPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3211")
@@ -77,6 +77,49 @@ function documentFor(sketches: readonly unknown[]) {
 }
 
 describe("materializeSketchDisplay", () => {
+  it("materializes disposable cubic display samples while retaining four authored controls", () => {
+    const roles = [1, 2, 3, 4].map((n) =>
+      sketchEntityIdSchema.parse(`0195b5ac-b220-7a2c-8c33-${n.toString().padStart(12, "0")}`),
+    )
+    const sketch = sketchRecordSchema.parse({
+      ...sourceSketch(),
+      plane: "xy",
+      entities: [
+        ...[
+          [0, 0],
+          [0, 4],
+          [4, 4],
+          [4, 0],
+        ].map(([x, y], i) => ({
+          schemaVersion: 0,
+          id: roles[i],
+          type: "point",
+          construction: false,
+          x,
+          y,
+        })),
+        {
+          schemaVersion: 0,
+          id: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000000005"),
+          type: "cubic-bezier",
+          construction: false,
+          startPointId: roles[0],
+          control1PointId: roles[1],
+          control2PointId: roles[2],
+          endPointId: roles[3],
+        },
+      ],
+    })
+    const before = sketchRecordSchema.parse(JSON.parse(JSON.stringify(sketch)))
+    const record = materializeSketchDisplay(sketchDocument(sketch), sketch)
+    expect(record?.curvePositions).toHaveLength(64 * 6)
+    expect(record?.pointPositions).toHaveLength(4 * 3)
+    expect(
+      sampleCubicBezierPoints({ x: 0, y: 0 }, { x: 0, y: 4 }, { x: 4, y: 4 }, { x: 4, y: 0 })[32],
+    ).toEqual({ x: 2, y: 3 })
+    expect(sketch).toEqual(before)
+    expect(documentSketchDisplaySchema.safeParse(record).success).toBe(true)
+  })
   it("projects authored points and curves through the sketch origin frame", () => {
     const sketch = sourceSketch()
     const record = materializeSketchDisplay(sketchDocument(sketch), sketch)

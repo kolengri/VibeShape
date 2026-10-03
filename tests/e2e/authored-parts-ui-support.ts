@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
-import { readVShapeV3 } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect } from "./fixtures"
 
@@ -30,10 +30,12 @@ export async function saveProject(page: Page) {
   const path = await download.path()
   if (!path) throw new Error("Native archive download must be retained.")
   const bytes = await readFile(path)
-  const decoded = await readVShapeV3(new Uint8Array(bytes))
+  const decoded = await readAuthoredVShape(new Uint8Array(bytes))
   if (!decoded.ok) throw new Error(JSON.stringify(decoded.diagnostic))
+  if (decoded.value.version !== 3 && decoded.value.version !== 4 && decoded.value.version !== 5)
+    throw new Error("Current authored Save must retain V3, V4 or V5 authority.")
   await expect(projects).not.toBeVisible()
-  return { bytes, filename: download.suggestedFilename(), project: decoded.value }
+  return { bytes, filename: download.suggestedFilename(), project: decoded.value.project }
 }
 
 export async function openProject(page: Page, source: Awaited<ReturnType<typeof saveProject>>) {

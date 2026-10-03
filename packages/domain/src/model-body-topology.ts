@@ -1,5 +1,9 @@
 import { z } from "zod"
 import { bodyOutputRoleSchema } from "./body-reference"
+import { type BodyTopoRef, bodyTopoRefSchema } from "./body-topology-reference"
+
+export { type BodyTopoRef, bodyTopoRefSchema } from "./body-topology-reference"
+
 import { canonicalJson } from "./canonical-json"
 import { sha256Schema } from "./feature-content-identity"
 import { documentIdSchema, featureIdSchema, revisionSchema } from "./identifiers"
@@ -12,19 +16,6 @@ import {
 } from "./topology"
 
 const inspectedTopologyKindSchema = z.enum(["edge", "face"])
-
-export const bodyTopoRefSchema = z
-  .object({
-    ...topoRefSchema.shape,
-    schemaVersion: z.literal(1),
-    outputRole: bodyOutputRoleSchema,
-    kind: inspectedTopologyKindSchema,
-  })
-  .strict()
-  .refine((reference) => reference.kind === reference.signature.kind, {
-    message: "Body TopoRef kind must match its signature kind.",
-    path: ["signature", "kind"],
-  })
 
 const bodyTopologyCandidatesSchema = z
   .array(topologyCandidateSchema)
@@ -92,7 +83,6 @@ export const modelBodyTopologyEvidenceResultSchema = z.discriminatedUnion("ok", 
     .strict(),
 ])
 
-export type BodyTopoRef = Readonly<z.infer<typeof bodyTopoRefSchema>>
 export type ModelBodyTopologyEvidence = Readonly<z.infer<typeof modelBodyTopologyEvidenceSchema>>
 export type ModelBodyTopologyEvidenceResult = Readonly<
   z.infer<typeof modelBodyTopologyEvidenceResultSchema>

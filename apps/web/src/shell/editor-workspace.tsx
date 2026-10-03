@@ -40,6 +40,7 @@ import type {
   ViewerSketchReferenceCandidate,
 } from "@vibeshape/viewer/three-viewport"
 import {
+  type ComponentProps,
   type ReactNode,
   useCallback,
   useEffect,
@@ -144,6 +145,7 @@ import {
 import { ModelTree } from "./model-tree"
 import { ResponsiveTaskPanel } from "./responsive-task-panel"
 import { TaskPanel } from "./task-panel"
+import { useViewerPreferences } from "./viewer-preferences"
 import type { EditorWorkspaceName } from "./workspace"
 import { WorkspacePanels } from "./workspace-panels"
 
@@ -163,6 +165,20 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-union",
   "create-placement",
   "edit-placement",
+  "create-mirror",
+  "edit-mirror",
+  "create-shell",
+  "edit-shell",
+  "create-split",
+  "edit-split",
+  "create-pattern",
+  "edit-pattern",
+  "create-thread",
+  "edit-thread",
+  "create-loft",
+  "edit-loft",
+  "create-sweep",
+  "edit-sweep",
   "create-hole",
   "edit-hole",
   "create-fillet",
@@ -674,6 +690,32 @@ function workspaceBodySelectionProps(
   }
 }
 
+function modelingSketchContextProps(
+  actions: WorkspaceContentProps["actions"],
+  sketch: WorkspaceContentProps["sketch"],
+  activeSketchDisplay: SketchDisplayRecord | null | undefined,
+  sketchContext: GeometryViewportSketchContext | undefined,
+): Pick<
+  ComponentProps<typeof GeometryViewport>,
+  "activeSketchDisplay" | "sketchContext" | "originPlaneSelection"
+> {
+  return {
+    ...(activeSketchDisplay
+      ? { activeSketchDisplay: viewerSketchDisplay(activeSketchDisplay) }
+      : {}),
+    ...(sketchContext ? { sketchContext } : {}),
+    ...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
+      ? {
+          originPlaneSelection: {
+            mode: sketch.activeTool.returnTo ? "replace" : "create",
+            selectedPlane: sketch.draft.support ? null : sketch.draft.plane,
+            onSelect: actions.onSketchPlaneSelect,
+          },
+        }
+      : {}),
+  }
+}
+
 function ModelingWorkspaceContent({
   actions,
   controller,
@@ -692,6 +734,7 @@ function ModelingWorkspaceContent({
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
   sketchContext?: GeometryViewportSketchContext | undefined
 }) {
+  const printPreferences = useViewerPreferences((state) => state)
   const projectedSketchIds = useMemo(
     () =>
       sketch.cameraMode === "normal"
@@ -713,6 +756,9 @@ function ModelingWorkspaceContent({
   return (
     <GeometryViewport
       controller={controller}
+      printerProfile={printPreferences.printerProfile}
+      printBedVisible={printPreferences.printBedVisible}
+      groundGridVisible={printPreferences.groundGridVisible}
       featurePreview={model.featurePreview}
       {...extrusionAxialGizmoProps(model.extrusionManipulator, actions.onExtrusionDistanceChange)}
       axialGizmoPending={model.axialGizmoPending}
@@ -740,19 +786,7 @@ function ModelingWorkspaceContent({
         selectedProfiles: sketch.activeTool ? [] : sketch.selectedProfiles,
         onSelect: actions.onSavedSketchProfileSelect,
       }}
-      {...(activeSketchDisplay
-        ? { activeSketchDisplay: viewerSketchDisplay(activeSketchDisplay) }
-        : {})}
-      {...(sketchContext ? { sketchContext } : {})}
-      {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
-        ? {
-            originPlaneSelection: {
-              mode: sketch.activeTool.returnTo ? "replace" : "create",
-              selectedPlane: sketch.draft.support ? null : sketch.draft.plane,
-              onSelect: actions.onSketchPlaneSelect,
-            },
-          }
-        : {})}
+      {...modelingSketchContextProps(actions, sketch, activeSketchDisplay, sketchContext)}
     />
   )
 }
@@ -1756,6 +1790,8 @@ export type EditorWorkspaceActions = Readonly<{
   createDatumPlane: () => void
   createExtrusion: () => Promise<boolean>
   createRevolve: () => Promise<boolean>
+  createLoft: () => void
+  createSweep: () => void
   createSketch: () => void
   createSubtract: () => void
   measure: () => void
@@ -1767,6 +1803,11 @@ export type EditorWorkspaceActions = Readonly<{
   selectPart?: (partId: PartId | null) => void
   combineParts?: (operation: "compound" | "union") => void
   placePart?: (partId: PartId) => void
+  shellPart?: (partId: PartId) => void
+  splitPart?: (partId: PartId) => void
+  patternPart?: (partId: PartId) => void
+  threadPart?: (partId: PartId) => void
+  mirrorPart?: (partId: PartId) => void
   preselectFeature: (featureId: FeatureId | null) => void
   select: (selection: ViewerSelection | null) => void
   selectSavedSketchProfile: (
@@ -2064,6 +2105,11 @@ function EditorModelTree({
       selectedPartId={props.selectedPartId}
       onPartSelect={actions.selectPart}
       onPartPlace={actions.placePart}
+      onPartMirror={actions.mirrorPart}
+      onPartShell={actions.shellPart}
+      onPartSplit={actions.splitPart}
+      onPartPattern={actions.patternPart}
+      onPartThread={actions.threadPart}
       onPartsCombine={actions.combineParts}
       onSurfaceTexture={actions.surfaceTexture}
       onAuthoredMetadata={commitAuthoredMetadata}

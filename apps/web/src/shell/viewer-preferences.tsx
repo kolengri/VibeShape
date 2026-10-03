@@ -1,3 +1,4 @@
+import { type PrinterProfile, printerProfileSchema } from "@vibeshape/protocol"
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react"
 import { z } from "zod"
 import { useStore } from "zustand"
@@ -10,12 +11,18 @@ const preferencesSchema = z
     theme: z.enum(["dark", "light", "system"]),
     autoHideConsumedSketches: z.boolean(),
     preferredExportFormat: z.enum(["3mf", "step", "stl"]),
+    printerProfile: printerProfileSchema.nullable().catch(null).default(null),
+    printBedVisible: z.boolean().default(false),
+    groundGridVisible: z.boolean().default(true),
   })
   .strict()
 
 type Preferences = Omit<z.infer<typeof preferencesSchema>, "version">
 export type ViewerPreferencesState = Preferences & {
   actions: {
+    setPrinterProfile: (profile: PrinterProfile | null) => void
+    setPrintBedVisible: (visible: boolean) => void
+    setGroundGridVisible: (visible: boolean) => void
     setTheme: (theme: Preferences["theme"]) => void
     setAutoHideConsumedSketches: (hidden: boolean) => void
     setPreferredExportFormat: (format: Preferences["preferredExportFormat"]) => void
@@ -23,6 +30,9 @@ export type ViewerPreferencesState = Preferences & {
 }
 type StorageLike = Pick<Storage, "getItem" | "setItem">
 const defaults: Preferences = {
+  printerProfile: null,
+  printBedVisible: false,
+  groundGridVisible: true,
   theme: "dark",
   autoHideConsumedSketches: true,
   preferredExportFormat: "3mf",
@@ -44,7 +54,10 @@ export function createViewerPreferencesStore(storage: StorageLike | null = brows
       const parsed = preferencesSchema.safeParse(JSON.parse(raw))
       if (parsed.success) {
         const { version: _version, ...preferences } = parsed.data
-        initial = preferences
+        initial = {
+          ...preferences,
+          printBedVisible: preferences.printBedVisible && preferences.printerProfile !== null,
+        }
       }
     }
   } catch {
@@ -53,21 +66,46 @@ export function createViewerPreferencesStore(storage: StorageLike | null = brows
   const store = createStore<ViewerPreferencesState>()((set) => ({
     ...initial,
     actions: {
+      setPrinterProfile: (profile) =>
+        set(
+          profile === null
+            ? { printerProfile: null, printBedVisible: false }
+            : { printerProfile: printerProfileSchema.parse(profile) },
+        ),
+      setPrintBedVisible: (printBedVisible) => set({ printBedVisible }),
+      setGroundGridVisible: (groundGridVisible) => set({ groundGridVisible }),
       setTheme: (theme) => set({ theme }),
       setAutoHideConsumedSketches: (autoHideConsumedSketches) => set({ autoHideConsumedSketches }),
       setPreferredExportFormat: (preferredExportFormat) => set({ preferredExportFormat }),
     },
   }))
-  store.subscribe(({ theme, autoHideConsumedSketches, preferredExportFormat }) => {
-    try {
-      storage?.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ version: 1, theme, autoHideConsumedSketches, preferredExportFormat }),
-      )
-    } catch {
-      /* Preferences remain usable in memory. */
-    }
-  })
+  store.subscribe(
+    ({
+      theme,
+      autoHideConsumedSketches,
+      preferredExportFormat,
+      printerProfile,
+      printBedVisible,
+      groundGridVisible,
+    }) => {
+      try {
+        storage?.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            version: 1,
+            theme,
+            autoHideConsumedSketches,
+            preferredExportFormat,
+            printerProfile,
+            printBedVisible,
+            groundGridVisible,
+          }),
+        )
+      } catch {
+        /* Preferences remain usable in memory. */
+      }
+    },
+  )
   return store
 }
 

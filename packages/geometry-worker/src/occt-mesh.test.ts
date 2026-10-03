@@ -126,19 +126,25 @@ describe("owned OCCT tessellation adapter", () => {
 })
 
 describe("owned OCCT STL export adapter", () => {
-  it("exports the attached mesh and clears its B-Rep triangulation cache", () => {
+  it("rebuilds all selected face meshes before STL export and clears their triangulation cache", () => {
     const wrapped = createDeletable()
     const unlink = vi.fn()
     const clean = vi.fn()
-    const write = vi.fn(() => true)
+    const mesher = { ...createDeletable(), IsDone: vi.fn(() => true) }
+    const write = vi.fn(() => {
+      expect(mesher.IsDone).toHaveBeenCalledOnce()
+      return true
+    })
     const opencascade = {
       BRepTools: { Clean: clean },
       FS: { readFile: vi.fn(() => Uint8Array.from([1, 2, 3])), unlink },
+      BRepMesh_IncrementalMesh_2: createConstructor(mesher),
       StlAPI: { Write: write },
     } as unknown as OpenCascadeInstance
 
     const blob = exportMeshedOcctStl(opencascade, { wrapped } as never, true)
 
+    expect(mesher.delete).toHaveBeenCalledOnce()
     expect(blob.size).toBe(3)
     expect(blob.type).toBe("model/stl")
     expect(write).toHaveBeenCalledWith(wrapped, "/vibeshape-export.stl", false)
@@ -152,6 +158,7 @@ describe("owned OCCT STL export adapter", () => {
     const opencascade = {
       BRepTools: { Clean: clean },
       FS: { readFile: vi.fn(), unlink: vi.fn(() => undefined) },
+      BRepMesh_IncrementalMesh_2: createConstructor({ ...createDeletable(), IsDone: () => true }),
       StlAPI: { Write: vi.fn(() => false) },
     } as unknown as OpenCascadeInstance
 

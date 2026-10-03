@@ -1,13 +1,16 @@
 import type { DocumentId } from "@vibeshape/domain"
+import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { commandIdSchema } from "@vibeshape/domain/identifiers"
 import {
   LocalDocumentRepository,
-  portableProjectV3PayloadSchema,
-  portableProjectV4PayloadSchema,
   VersionedLocalDocumentRepository,
   type VibeShapeDatabase,
 } from "@vibeshape/persistence"
 import type { BrowserPortableProject } from "./authored-project-file"
+import {
+  materializeAssemblySourceAssets,
+  materializeDocumentSourceAssets,
+} from "./source-assets-rebuild"
 import { portableProjectV2FromLegacyProject } from "./versioned-project-file"
 
 export class BrowserProjectRepository {
@@ -19,6 +22,22 @@ export class BrowserProjectRepository {
     this.#database = database
     this.legacy = new LocalDocumentRepository(database)
     this.versioned = new VersionedLocalDocumentRepository(database)
+  }
+
+  materializeSourceAssets(documentId: DocumentId, features: readonly { parameters: unknown }[]) {
+    return materializeDocumentSourceAssets(
+      this.#database,
+      async () => {
+        const recovered = await this.versioned.recoverAuthority(documentId)
+        if (!recovered.ok) throw new Error(recovered.diagnostic.message)
+        return recovered.value.snapshot
+      },
+      features,
+    )
+  }
+
+  materializeAssemblySourceAssets(authority: DocumentSnapshotV4) {
+    return materializeAssemblySourceAssets(this.#database, authority)
   }
 
   async hasCommandId(input: string) {
@@ -37,22 +56,7 @@ export class BrowserProjectRepository {
   async exportPortableProject(documentId: DocumentId) {
     const recovered = await this.versioned.recoverAuthority(documentId)
     if (recovered.ok && recovered.value.snapshot.schemaVersion !== 1) {
-      const exported = await this.versioned.exportPortableProjectV3(documentId)
-      return exported.ok
-        ? {
-            ok: true as const,
-            value:
-              exported.value.snapshot.schemaVersion === 3
-                ? {
-                    version: 4 as const,
-                    project: portableProjectV4PayloadSchema.parse(exported.value),
-                  }
-                : {
-                    version: 3 as const,
-                    project: portableProjectV3PayloadSchema.parse(exported.value),
-                  },
-          }
-        : exported
+      return this.#exportAuthoredProject(documentId, recovered.value.snapshot.schemaVersion)
     }
     if (!recovered.ok && recovered.diagnostic.code !== "document-not-found") return recovered
     const exported = await this.exportPortableProjectV2(documentId)
@@ -61,12 +65,29 @@ export class BrowserProjectRepository {
       : exported
   }
 
+  async #exportAuthoredProject(documentId: DocumentId, version: 2 | 3 | 4) {
+    const exported =
+      version === 4
+        ? await this.versioned.exportPortableProjectV5(documentId)
+        : version === 3
+          ? await this.versioned.exportPortableProjectV4(documentId)
+          : await this.versioned.exportPortableProjectV3(documentId)
+    if (!exported.ok) return exported
+    return "sourceUpgradeRevision" in exported.value
+      ? { ok: true as const, value: { version: 5 as const, project: exported.value } }
+      : "textureUpgradeRevision" in exported.value
+        ? { ok: true as const, value: { version: 4 as const, project: exported.value } }
+        : { ok: true as const, value: { version: 3 as const, project: exported.value } }
+  }
+
   copyPortableProject(source: BrowserPortableProject, copiedAt: string) {
-    return source.version === 4
-      ? this.versioned.copyPortableProjectV4({ ...source.project, copiedAt })
-      : source.version === 3
-        ? this.versioned.copyPortableProjectV3({ ...source.project, copiedAt })
-        : this.versioned.copyPortableProjectV2({ ...source.project, copiedAt })
+    if (source.version === 5)
+      return this.versioned.copyPortableProjectV5({ ...source.project, copiedAt })
+    if (source.version === 4)
+      return this.versioned.copyPortableProjectV4({ ...source.project, copiedAt })
+    return source.version === 3
+      ? this.versioned.copyPortableProjectV3({ ...source.project, copiedAt })
+      : this.versioned.copyPortableProjectV2({ ...source.project, copiedAt })
   }
 
   async exportPortableProjectV2(documentId: DocumentId) {

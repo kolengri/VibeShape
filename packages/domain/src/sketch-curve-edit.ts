@@ -21,9 +21,11 @@ import {
   splitSketchLine,
 } from "./sketch-edit"
 
+import { retainSketchSourceImport } from "./sketch-source-import"
+
 type EntityIdFactory = () => SketchEntityId
 type ConstraintIdFactory = () => SketchConstraintId
-type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
+type SketchCurveEntity = Exclude<SketchEntity, { type: "point" | "cubic-bezier" }>
 type SketchBoundaryCurve = Extract<SketchCurveEntity, { type: "arc" | "circle" | "line" }>
 type SketchArcEntity = Extract<SketchEntity, { type: "arc" }>
 type SketchCircleEntity = Extract<SketchEntity, { type: "circle" }>
@@ -81,10 +83,15 @@ function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
 }
 
 function curveById(sketch: SketchRecord, curveId: SketchEntityId) {
-  const curve = sketch.entities.find(
-    (entity): entity is SketchCurveEntity => entity.id === curveId && entity.type !== "point",
-  )
-  if (!curve) throw new TypeError("A curve operation must reference an existing curve entity.")
+  const curve = sketch.entities.find((entity) => entity.id === curveId)
+  if (!curve || curve.type === "point")
+    throw new TypeError("A curve operation must reference an existing curve entity.")
+  if (sketch.entities.some((entity) => entity.type === "cubic-bezier"))
+    throw new TypeError(
+      "Trim, split and extend are unsupported for sketches containing cubic Bezier curves.",
+    )
+  if (curve.type === "cubic-bezier")
+    throw new TypeError("Cubic Bezier curve editing requires control-point operations.")
   return curve
 }
 
@@ -377,6 +384,38 @@ function supportingIntersections(
   return roundSupportingIntersections(sketch, target, boundary)
 }
 
+function pathLineIntersections(
+  sketch: SketchRecord,
+  curve: Extract<SketchEntity, { type: "line" }>,
+  start: SketchPoint2,
+  end: SketchPoint2,
+) {
+  const line = linePoints(sketch, curve)
+  const path = sketchLineIntersection(start, end, line.start, line.end)
+  if (
+    !path ||
+    path.firstParameter < -OPERATION_EPSILON ||
+    path.firstParameter > 1 + OPERATION_EPSILON ||
+    path.secondParameter < -OPERATION_EPSILON ||
+    path.secondParameter > 1 + OPERATION_EPSILON
+  )
+    return []
+  return [{ parameter: path.firstParameter, point: path.point }]
+}
+function pathCurveIntersections(
+  sketch: SketchRecord,
+  curve: SketchCurveEntity,
+  start: SketchPoint2,
+  end: SketchPoint2,
+) {
+  if (curve.type === "line") return pathLineIntersections(sketch, curve, start, end)
+  const points =
+    curve.type === "ellipse" || curve.type === "elliptical-arc"
+      ? lineEllipseIntersections(start, end, ellipseGeometry(sketch, curve))
+      : lineRoundIntersections(start, end, roundGeometry(sketch, curve))
+  return points.map((point) => ({ parameter: lineParameter(start, end, point), point }))
+}
+
 /**
  * Finds authored sketch curves crossed by a straight pointer path segment.
  *
@@ -402,34 +441,9 @@ export function findSketchCurvesCrossedBySegment(
 
   const hits: SketchCurvePathHit[] = []
   for (const curve of sketch.entities) {
-    if (curve.type === "point") continue
+    if (curve.type === "point" || curve.type === "cubic-bezier") continue
     try {
-      const points =
-        curve.type === "line"
-          ? (() => {
-              const path = sketchLineIntersection(
-                start,
-                end,
-                linePoints(sketch, curve).start,
-                linePoints(sketch, curve).end,
-              )
-              return path &&
-                path.firstParameter >= -OPERATION_EPSILON &&
-                path.firstParameter <= 1 + OPERATION_EPSILON &&
-                path.secondParameter >= -OPERATION_EPSILON &&
-                path.secondParameter <= 1 + OPERATION_EPSILON
-                ? [{ parameter: path.firstParameter, point: path.point }]
-                : []
-            })()
-          : curve.type === "ellipse" || curve.type === "elliptical-arc"
-            ? lineEllipseIntersections(start, end, ellipseGeometry(sketch, curve)).map((point) => ({
-                parameter: lineParameter(start, end, point),
-                point,
-              }))
-            : lineRoundIntersections(start, end, roundGeometry(sketch, curve)).map((point) => ({
-                parameter: lineParameter(start, end, point),
-                point,
-              }))
+      const points = pathCurveIntersections(sketch, curve, start, end)
 
       const unique = points.filter(
         ({ parameter, point }, index) =>
@@ -478,6 +492,7 @@ function curveIntersections(sketch: SketchRecord, target: SketchCurveEntity) {
   const intersections = sketch.entities.flatMap((entity): CurveIntersection[] => {
     if (
       entity.type === "point" ||
+      entity.type === "cubic-bezier" ||
       entity.type === "ellipse" ||
       entity.type === "elliptical-arc" ||
       entity.id === target.id
@@ -587,13 +602,15 @@ function replaceCurve(
   replacement: SketchCurveEntity,
   additions: readonly SketchEntity[],
 ) {
-  return sketchRecordSchema.parse({
-    ...sketch,
-    entities: [
-      ...sketch.entities.map((entity) => (entity.id === target.id ? replacement : entity)),
-      ...additions,
-    ],
-  })
+  return sketchRecordSchema.parse(
+    retainSketchSourceImport({
+      ...sketch,
+      entities: [
+        ...sketch.entities.map((entity) => (entity.id === target.id ? replacement : entity)),
+        ...additions,
+      ],
+    }),
+  )
 }
 
 function appendBoundaryConstraint(
@@ -628,13 +645,15 @@ function removeDetachedPoints(sketch: SketchRecord, pointIds: readonly SketchEnt
     pointIds.filter((pointId) => !retainedByGeometry.has(pointId)),
   )
   if (removableIds.size === 0) return sketch
-  return sketchRecordSchema.parse({
-    ...sketch,
-    constraints: sketch.constraints.filter((constraint) =>
-      referencedEntityIds(constraint).every((id) => !removableIds.has(id)),
-    ),
-    entities: sketch.entities.filter(({ id }) => !removableIds.has(id)),
-  })
+  return sketchRecordSchema.parse(
+    retainSketchSourceImport({
+      ...sketch,
+      constraints: sketch.constraints.filter((constraint) =>
+        referencedEntityIds(constraint).every((id) => !removableIds.has(id)),
+      ),
+      entities: sketch.entities.filter(({ id }) => !removableIds.has(id)),
+    }),
+  )
 }
 
 function addedPointEntities(points: readonly ResolvedOperationPoint[]) {

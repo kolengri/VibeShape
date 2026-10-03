@@ -155,11 +155,11 @@ function envelope(revision = 1) {
 }
 
 describe("document worker protocol", () => {
-  it("rejects requests from the previous document protocol version", () => {
+  it.each([16, 23])("rejects the incompatible document protocol version %s", (protocolVersion) => {
     expect(
       documentWorkerRequestSchema.safeParse({
         ...envelope(),
-        protocolVersion: 16,
+        protocolVersion,
         type: "healthCheck",
       }).success,
     ).toBe(false)

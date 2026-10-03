@@ -2,7 +2,7 @@ import type { SketchEntity, SketchPoint2 } from "@vibeshape/domain"
 import { projectSketchPointBetweenFrames, type SupportFrame } from "./support-frame"
 
 type SketchCurveEntity = Exclude<SketchEntity, { type: "line" | "point" }>
-type SketchCurveType = SketchCurveEntity["type"]
+type SketchCurveType = Exclude<SketchCurveEntity["type"], "cubic-bezier">
 type SketchPointLookup = Pick<ReadonlyMap<string, SketchPoint2>, "get">
 
 export type ProjectedSketchCurve = Readonly<{
@@ -559,6 +559,7 @@ export function projectSketchCurveBetweenFrames(
   points: SketchPointLookup,
   circleRadius?: number,
 ): ProjectedSketchCurve | null {
+  if (entity.type === "cubic-bezier") return null
   return entity.type === "circle" || entity.type === "arc"
     ? projectRoundCurve(sourceFrame, targetFrame, entity, points, circleRadius)
     : projectEllipseCurve(sourceFrame, targetFrame, entity, points)

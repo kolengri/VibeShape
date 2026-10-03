@@ -7,9 +7,12 @@ import {
   documentIdSchema,
   documentSnapshotV2Schema,
   documentSnapshotV3Schema,
+  documentSnapshotV4Schema,
   draftIdSchema,
+  projectDocumentSnapshotV4ToV3,
   revisionSchema,
   sessionIdSchema,
+  sourceAssetBlobSchema,
   timestampSchema,
 } from "@vibeshape/domain"
 import { z } from "zod"
@@ -72,25 +75,55 @@ export const projectRecordV3Schema = z
 export const snapshotRecordV3Schema = snapshotRecordV1Schema.extend({ schemaVersion: z.literal(3) })
 export const eventRecordV3Schema = eventRecordV1Schema.extend({ schemaVersion: z.literal(3) })
 export const recoveryRecordV3Schema = recoveryRecordV1Schema.extend({ schemaVersion: z.literal(3) })
+export const projectRecordV4Schema = z
+  .object({
+    ...projectRecordV3Schema.shape,
+    schemaVersion: z.literal(4),
+    sourceUpgradeRevision: revisionSchema,
+  })
+  .strict()
+  .superRefine((project, context) => {
+    const { sourceUpgradeRevision, ...previous } = project
+    const v3 = projectRecordV3Schema.safeParse({ ...previous, schemaVersion: 3 })
+    if (!v3.success)
+      for (const issue of v3.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+    if (
+      sourceUpgradeRevision <= project.textureUpgradeRevision ||
+      sourceUpgradeRevision > project.latestSnapshotRevision
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Source authority must follow its texture upgrade and have a committed snapshot.",
+      })
+  })
+export const snapshotRecordV4Schema = snapshotRecordV1Schema.extend({ schemaVersion: z.literal(4) })
+export const eventRecordV4Schema = eventRecordV1Schema.extend({ schemaVersion: z.literal(4) })
+export const recoveryRecordV4Schema = recoveryRecordV1Schema.extend({ schemaVersion: z.literal(4) })
+export type ProjectRecordV4 = z.infer<typeof projectRecordV4Schema>
 export const projectAuthorityRecordSchema = z.union([
   projectRecordV1Schema,
   projectRecordV2Schema,
   projectRecordV3Schema,
+  projectRecordV4Schema,
 ])
 export const snapshotAuthorityRecordSchema = z.union([
   snapshotRecordV1Schema,
   snapshotRecordV2Schema,
   snapshotRecordV3Schema,
+  snapshotRecordV4Schema,
 ])
 export const eventAuthorityRecordSchema = z.union([
   eventRecordV1Schema,
   eventRecordV2Schema,
   eventRecordV3Schema,
+  eventRecordV4Schema,
 ])
 export const recoveryAuthorityRecordSchema = z.union([
   recoveryRecordV1Schema,
   recoveryRecordV2Schema,
   recoveryRecordV3Schema,
+  recoveryRecordV4Schema,
 ])
 export type ProjectRecordV2 = z.infer<typeof projectRecordV2Schema>
 export type ProjectAuthorityRecord = z.infer<typeof projectAuthorityRecordSchema>
@@ -106,6 +139,7 @@ export const persistenceAuthorityCommitInputSchema = z
     baseSnapshot: documentAuthoritySnapshotSchema.nullable(),
     event: documentAuthorityEventSchema,
     snapshot: documentAuthoritySnapshotSchema,
+    assetBlobs: z.array(sourceAssetBlobSchema).max(1024).default([]),
   })
   .strict()
 export const persistenceAuthorityDraftCommitInputSchema = z
@@ -117,6 +151,7 @@ export const persistenceAuthorityDraftCommitInputSchema = z
     baseSnapshot: documentAuthoritySnapshotSchema,
     events: z.array(documentAuthorityEventSchema).min(1).max(256),
     snapshot: documentAuthoritySnapshotSchema,
+    assetBlobs: z.array(sourceAssetBlobSchema).max(1024).default([]),
   })
   .strict()
 
@@ -254,10 +289,7 @@ export const portableProjectV4ImportSchema = portableProjectV4PayloadSchema
 export const portableProjectV4CopySchema = portableProjectV4PayloadSchema
   .safeExtend({ copiedAt: timestampSchema })
   .superRefine(requireCompleteHistory)
-export const authoredPortableProjectPayloadSchema = z.union([
-  portableProjectV3PayloadSchema,
-  portableProjectV4PayloadSchema,
-])
+
 export const authoredPortableProjectImportSchema = z.union([
   portableProjectV3ImportSchema,
   portableProjectV4ImportSchema,
@@ -274,3 +306,83 @@ export const authorityCleanCloseInputSchema = z
     lease: writerLeaseClaimSchema,
   })
   .strict()
+
+const portableProjectV5ObjectSchema = z
+  .object({
+    ...portableProjectV4ObjectSchema.shape,
+    snapshot: documentSnapshotV4Schema,
+    sourceUpgradeRevision: revisionSchema,
+    assetBlobs: z.array(sourceAssetBlobSchema).max(1024),
+  })
+  .strict()
+
+function validV5SourceBoundary(input: z.infer<typeof portableProjectV5ObjectSchema>) {
+  const sourceUpgradeRevision = input.sourceUpgradeRevision
+  const upgrades = input.versionedEvents.filter(
+    (event) => event.type === "org.vibeshape.document.upgraded-v4",
+  )
+  const valid =
+    input.seed?.schemaVersion === 4
+      ? sourceUpgradeRevision <= input.seed.revision && upgrades.length === 0
+      : upgrades.length === 1 && upgrades[0]?.revision === sourceUpgradeRevision
+  return (
+    valid &&
+    sourceUpgradeRevision > input.textureUpgradeRevision &&
+    sourceUpgradeRevision <= input.snapshot.revision
+  )
+}
+function validateV5PortableBoundary(
+  input: z.infer<typeof portableProjectV5ObjectSchema>,
+  context: z.RefinementCtx,
+) {
+  const boundary = portableProjectV4PayloadSchema.safeParse({
+    historyMode: input.historyMode,
+    promotionRevision: input.promotionRevision,
+    upgradeRevision: input.upgradeRevision,
+    textureUpgradeRevision: input.textureUpgradeRevision,
+    migrationDiagnostic: input.migrationDiagnostic,
+    unavailableRecords: input.unavailableRecords,
+    legacyEvents: input.legacyEvents,
+    versionedEvents: input.versionedEvents,
+    snapshot: projectDocumentSnapshotV4ToV3(input.snapshot),
+    seed: input.seed?.schemaVersion === 4 ? projectDocumentSnapshotV4ToV3(input.seed) : input.seed,
+  })
+  if (!boundary.success)
+    for (const issue of boundary.error.issues)
+      context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+  if (!validV5SourceBoundary(input))
+    context.addIssue({ code: "custom", message: "The V5 source upgrade boundary is inconsistent." })
+}
+export const portableProjectV5PayloadSchema = portableProjectV5ObjectSchema.superRefine(
+  validateV5PortableBoundary,
+)
+export type PortableProjectV5 = Readonly<z.infer<typeof portableProjectV5PayloadSchema>>
+export const portableProjectV5ImportSchema = portableProjectV5PayloadSchema
+  .safeExtend({
+    importedAt: timestampSchema,
+    exportedAt: timestampSchema,
+  })
+  .superRefine((input, context) => {
+    if (input.historyMode !== "complete")
+      context.addIssue({
+        code: "custom",
+        message: "A checkpoint cannot become writable local authority.",
+      })
+  })
+export const portableProjectV5CopySchema = portableProjectV5PayloadSchema
+  .safeExtend({ copiedAt: timestampSchema })
+  .superRefine((input, context) => {
+    if (input.historyMode !== "complete")
+      context.addIssue({
+        code: "custom",
+        message: "A checkpoint cannot become writable local authority.",
+      })
+  })
+
+export const authoredPortableProjectPayloadSchema = z.union([
+  portableProjectV3PayloadSchema,
+  portableProjectV4PayloadSchema,
+  portableProjectV5PayloadSchema,
+])
+
+export type ProjectRecordV3 = z.infer<typeof projectRecordV3Schema>

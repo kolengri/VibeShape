@@ -33,6 +33,27 @@ describe("revolve profile axis crossing", () => {
     expect(revolveProfileCrossesAxis({ axis: "x", outer: rectangle(2, 0, 8, 5) })).toBe(false)
   })
 
+  it("uses exact cubic extrema to detect axis crossings without rejecting a disjoint control hull", () => {
+    const outer = (controlY: number) => ({
+      sourceEntityIds: [entityId],
+      segments: [
+        {
+          entityId,
+          type: "cubic-bezier" as const,
+          startPointId: pointId("1"),
+          control1PointId: pointId("2"),
+          control2PointId: pointId("3"),
+          endPointId: pointId("4"),
+          start: [0, 1] as [number, number],
+          control1: [0, controlY] as [number, number],
+          control2: [4, controlY] as [number, number],
+          end: [4, 1] as [number, number],
+        },
+      ],
+    })
+    expect(revolveProfileCrossesAxis({ axis: "x", outer: outer(-0.2) })).toBe(false)
+    expect(revolveProfileCrossesAxis({ axis: "x", outer: outer(-1) })).toBe(true)
+  })
   it("uses exact full-ellipse bounds instead of endpoint-only checks", () => {
     expect(
       revolveProfileCrossesAxis({

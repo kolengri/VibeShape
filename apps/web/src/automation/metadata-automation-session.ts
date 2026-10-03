@@ -9,13 +9,16 @@ import {
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import { authoredDocumentSnapshotSchema } from "@vibeshape/domain/document-v2"
+import type { SourceAssetMaterialization } from "@vibeshape/protocol"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { automationReviews } from "./automation-review-controller"
 
 export type MetadataAutomationSessionConfiguration = Omit<
   MetadataProposalConfiguration,
   "actor" | "geometry" | "review"
->
+> & {
+  materializeSourceAssets?: (document: unknown) => Promise<readonly SourceAssetMaterialization[]>
+}
 
 /** First-party metadata shares the editor review surface and ordinary authored commit path. */
 export function createMetadataAutomationSession(
@@ -27,7 +30,13 @@ export function createMetadataAutomationSession(
   let coordinator: ReturnType<typeof createMetadataProposalCoordinator> | null = null
   const preview = createDisposableDocumentPreview({
     mesh: PRODUCT_MESH_POLICY,
-    createRebuildPort: createDocumentWorkerSession,
+    createRebuildPort: (documentId) =>
+      createDocumentWorkerSession(
+        documentId,
+        configuration.materializeSourceAssets
+          ? { materializeSourceAssets: configuration.materializeSourceAssets }
+          : {},
+      ),
   })
   return {
     async read(kind: "parts" | "folders" | "history", input: unknown) {

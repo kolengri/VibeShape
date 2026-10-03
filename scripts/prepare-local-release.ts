@@ -47,6 +47,8 @@ VibeShape is GPL-3.0-or-later. OCCT is LGPL-2.1 with its additional exception.</
 <li><a href="shadcn-LICENSE.txt">Copied UI component license</a></li>
 <li><a href="OCCT-NOTICES.txt">OCCT and binding notices</a></li>
 <li><a href="OCCT-REPLACEMENT.txt">Replacing and rebuilding OCCT</a></li>
+<li><a href="Noto-Sans-OFL.txt">Noto Sans font license</a> and <a href="Noto-Sans-provenance.md">font provenance</a></li>
+<li><a href="opentype-js-MIT.txt">opentype.js outline SDK license</a></li>
 <li><a href="occt-corresponding-source.tar">Exact OCCT sources, licenses and build recipes</a></li>
 <li><a href="solvespace-corresponding-source.tar.gz">Exact SolveSpace sources, licenses and build recipes</a></li></ul>
 <p>Application source is in the accompanying VibeShape checkout. This is a local delivery,

@@ -34,6 +34,12 @@ import type {
   EditorSessionState,
 } from "./editor-session/editor-session-store"
 import { effectiveHiddenSketchIds } from "./editor-session/sketch-visibility"
+import {
+  AssemblyContent,
+  AssemblyToolbar,
+  assemblyModeCommands,
+  useAssemblyMode,
+} from "./features/assembly/assembly-mode"
 import { authoredPlacementTarget } from "./features/part-design/authored-part-selection"
 import {
   activePartDesignCommand,
@@ -52,10 +58,12 @@ import {
   sketchConstraintToolKind,
 } from "./features/sketch/sketch-tool"
 import { SketchToolbarPortalsProvider } from "./features/sketch/sketch-toolbar-portals"
+import { useSketchTextApplication } from "./features/sketch/text/text-application"
+import { SketchTextActionsProvider } from "./features/sketch/text/text-context"
+import { SketchTextDialog } from "./features/sketch/text/text-dialog"
 import { ApplicationBar } from "./shell/application-bar"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
-import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import {
@@ -223,14 +231,49 @@ function useFeatureActivationActions(
   controller: ReturnType<typeof useDocumentController>,
   sessionActions: EditorSessionActions,
 ) {
-  const placePart = useCallback(
-    (partId: PartId) => {
+  const startBodyOperation = useCallback(
+    (
+      partId: PartId,
+      kind:
+        | "create-placement"
+        | "create-mirror"
+        | "create-shell"
+        | "create-split"
+        | "create-pattern"
+        | "create-thread",
+    ) => {
       const resolved = currentAuthoredParts(controller).find(({ part }) => part.id === partId)
       const targetBody = authoredPlacementTarget(resolved)
-      if (targetBody)
-        sessionActions.startPartDesignTool({ kind: "create-placement", partId, targetBody })
+      if (targetBody) sessionActions.startPartDesignTool({ kind, partId, targetBody })
     },
     [controller, sessionActions],
+  )
+  const placePart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-placement"),
+    [startBodyOperation],
+  )
+  const mirrorPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-mirror"),
+    [startBodyOperation],
+  )
+  const shellPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-shell"),
+    [startBodyOperation],
+  )
+
+  const splitPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-split"),
+    [startBodyOperation],
+  )
+
+  const patternPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-pattern"),
+    [startBodyOperation],
+  )
+
+  const threadPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-thread"),
+    [startBodyOperation],
   )
 
   const editFeature = useCallback(
@@ -241,7 +284,7 @@ function useFeatureActivationActions(
     },
     [controller.report?.snapshot.features, sessionActions],
   )
-  return { placePart, editFeature }
+  return { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature }
 }
 
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
@@ -367,7 +410,8 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     sessionActions,
   ])
 
-  const { placePart, editFeature } = useFeatureActivationActions(controller, sessionActions)
+  const { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature } =
+    useFeatureActivationActions(controller, sessionActions)
   const setSketchEditorTool = useCallback(
     (tool: SketchEditorTool) => {
       const currentSketch = sessionStore.getState().sketch
@@ -403,6 +447,8 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         createDatumPlane,
         createExtrusion,
         createRevolve,
+        createLoft: () => sessionActions.startPartDesignTool({ kind: "create-loft" }),
+        createSweep: () => sessionActions.startPartDesignTool({ kind: "create-sweep" }),
         createSketch,
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
         combineParts: (operation: "compound" | "union") =>
@@ -423,6 +469,11 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         selectBody: sessionActions.setSelectedBody,
         selectPart: sessionActions.setSelectedPart,
         placePart,
+        mirrorPart,
+        shellPart,
+        splitPart,
+        patternPart,
+        threadPart,
         setPrimitivePlacement: sessionActions.setPrimitivePlacement,
         setRevolveAngle: sessionActions.setRevolveAngle,
         select,
@@ -458,6 +509,11 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       editSketch,
       partDesignToolGeneration,
       placePart,
+      mirrorPart,
+      shellPart,
+      splitPart,
+      patternPart,
+      threadPart,
       select,
       sessionActions,
       setSketchEditorTool,
@@ -536,7 +592,7 @@ function resolveEditorApplicationCommands(
   session: EditorApplicationSession,
   sessionActions: EditorSessionActions,
   workspaceActions: EditorWorkspaceActions,
-  openShortcutHelp: () => void,
+  dialogs: { openShortcutHelp: () => void; openSketchText: () => void },
 ) {
   const profileCommandAvailable = sketchProfileCommandAvailable(
     session,
@@ -560,7 +616,7 @@ function resolveEditorApplicationCommands(
   }
   return resolveBuiltInEditorCommands({
     actions: {
-      openShortcutHelp,
+      ...dialogs,
       cancelActive: workspaceActions.closeTool,
       documentRedo: redoCommittedDocument,
       documentUndo: undoCommittedDocument,
@@ -576,6 +632,8 @@ function resolveEditorApplicationCommands(
       createDatumPlane: workspaceActions.createDatumPlane,
       createExtrusion: workspaceActions.createExtrusion,
       createRevolve: workspaceActions.createRevolve,
+      createLoft: workspaceActions.createLoft,
+      createSweep: workspaceActions.createSweep,
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
       measure: workspaceActions.measure,
@@ -691,14 +749,7 @@ function useAuthoredEditorSession(controller: ReturnType<typeof useDocumentContr
     : storedSession
 }
 
-function EditorApplication({
-  controller,
-}: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
-  const session = useAuthoredEditorSession(controller)
-  const sessionActions = useEditorSession((state) => state.actions)
-  const workspaceActions = useEditorWorkspaceActions(controller)
-  const commandPaletteFocus = useCommandPaletteFocus(sessionActions.setCommandPaletteOpen)
-  const shortcutHelp = useShortcutHelp()
+function useSketchShortcutToolbar(sketchShortcutToolbarAvailable: boolean) {
   const sketchShortcutReturnFocusRef = useRef<HTMLElement | null>(null)
   const lastSketchPointerRef = useRef<SketchShortcutToolbarAnchor | null>(null)
   const [sketchShortcutAnchor, setSketchShortcutAnchor] = useState<SketchShortcutToolbarAnchor>({
@@ -706,14 +757,6 @@ function EditorApplication({
     y: 0,
   })
   const [sketchShortcutToolbarOpen, setSketchShortcutToolbarOpen] = useState(false)
-  const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
-  const commands = resolveEditorApplicationCommands(
-    controller,
-    session,
-    sessionActions,
-    workspaceActions,
-    shortcutHelp.show,
-  )
   useEffect(() => {
     const trackSketchPointer = (event: PointerEvent) => {
       lastSketchPointerRef.current = sketchShortcutAnchorAtPointer(event)
@@ -743,6 +786,42 @@ function EditorApplication({
     (open: boolean) => (open ? openSketchShortcutToolbar() : closeSketchShortcutToolbar()),
     [closeSketchShortcutToolbar, openSketchShortcutToolbar],
   )
+  return {
+    sketchShortcutAnchor,
+    sketchShortcutToolbarOpen,
+    sketchShortcutReturnFocusRef,
+    setSketchShortcutToolbarOpenWithAnchor,
+  }
+}
+
+function EditorApplication({
+  controller,
+}: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
+  const session = useAuthoredEditorSession(controller)
+  const sessionActions = useEditorSession((state) => state.actions)
+  const workspaceActions = useEditorWorkspaceActions(controller)
+  const textDialog = useSketchTextApplication(controller)
+  const assemblyMode = useAssemblyMode(workspaceActions.switchWorkspace)
+  const commandPaletteFocus = useCommandPaletteFocus(sessionActions.setCommandPaletteOpen)
+  const shortcutHelp = useShortcutHelp()
+  const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
+  const {
+    sketchShortcutAnchor,
+    sketchShortcutToolbarOpen,
+    sketchShortcutReturnFocusRef,
+    setSketchShortcutToolbarOpenWithAnchor,
+  } = useSketchShortcutToolbar(sketchShortcutToolbarAvailable)
+  const modelCommands = resolveEditorApplicationCommands(
+    controller,
+    session,
+    sessionActions,
+    workspaceActions,
+    {
+      openShortcutHelp: shortcutHelp.show,
+      openSketchText: textDialog.actions.create,
+    },
+  )
+  const commands = assemblyModeCommands(modelCommands, assemblyMode.active)
   useEditorCommandShortcuts({
     commands,
     paletteOpen: session.commandPaletteOpen,
@@ -752,10 +831,19 @@ function EditorApplication({
     onSketchShortcutToolbarOpenChange: setSketchShortcutToolbarOpenWithAnchor,
   })
 
+  const modelWorkspace = (
+    <EditorWorkspaceComposition
+      controller={controller}
+      session={session}
+      sessionActions={sessionActions}
+      workspaceActions={workspaceActions}
+    />
+  )
   return (
     <main className="cad-shell bg-background text-[13px] text-foreground">
       <ApplicationBar
         controller={controller}
+        hideModelExport={assemblyMode.active}
         onOpenShortcutHelp={shortcutHelp.show}
         onOpenCommandPalette={(returnFocusTarget) =>
           commandPaletteFocus.setOpen(true, returnFocusTarget)
@@ -780,15 +868,33 @@ function EditorApplication({
         returnFocusRef={sketchShortcutReturnFocusRef}
         onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
       />
-      <SketchToolbarPortalsProvider>
-        <CommandToolbar commands={commands} />
-        <EditorWorkspaceComposition
-          controller={controller}
-          session={session}
-          sessionActions={sessionActions}
-          workspaceActions={workspaceActions}
+      <SketchTextActionsProvider actions={textDialog.actions}>
+        <SketchToolbarPortalsProvider>
+          <AssemblyToolbar
+            commands={commands}
+            active={assemblyMode.active}
+            controller={controller}
+            editing={{
+              part: session.activePartDesignTool,
+              sketch: session.sketch.activeSketchTool,
+            }}
+            onChange={assemblyMode.onChange}
+          />
+          <AssemblyContent
+            active={assemblyMode.active}
+            controller={controller}
+            selectedPartId={session.selectedPartId}
+          >
+            {modelWorkspace}
+          </AssemblyContent>
+        </SketchToolbarPortalsProvider>
+        <SketchTextDialog
+          target={textDialog.target}
+          getDraft={textDialog.getDraft}
+          onDraftChange={textDialog.commitDraft}
+          onClose={textDialog.close}
         />
-      </SketchToolbarPortalsProvider>
+      </SketchTextActionsProvider>
       <StatusBar
         selectedBody={session.selectedBody}
         controller={controller}
