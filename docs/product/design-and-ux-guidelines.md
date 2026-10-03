@@ -614,7 +614,7 @@ The automation surface shows:
 - the exact commands proposed for commit, grouped as one undoable transaction when valid;
 - MCP actor and client provenance in history without storing private model prompts by default.
 
-Mutating proposals use host-owned **Review changes**, **Apply**, and **Discard** controls. Destructive effects require an explicit confirmation that names the affected features or data. A client-provided description or MCP tool annotation cannot replace host copy or suppress confirmation.
+Mutating proposals use host-owned **Review changes**, **Apply**, and **Discard** controls. The review fills its task-panel height, keeps decision controls visible outside the scrollable proposal details, and supports keyboard scrolling in short or narrow windows. Destructive effects require an explicit confirmation that names the affected features or data. A client-provided description or MCP tool annotation cannot replace host copy or suppress confirmation.
 
 Disconnect, cancellation, timeout, browser close, worker restart, extension revocation, or validation failure discards or preserves the draft for explicit review according to recovery policy; none silently commits. The user can continue manual modeling while a draft exists, but a changed base revision forces the automation proposal into a visible conflict state rather than automatic rebasing.
 

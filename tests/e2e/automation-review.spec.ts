@@ -31,7 +31,6 @@ async function inspectCompactReview(page: Page) {
   })
   // This CSS viewport represents a 1024-pixel window at 200% browser zoom.
   await page.setViewportSize({ width: 512, height: 384 })
-  await review.getByRole("button", { name: "Discard", exact: true }).scrollIntoViewIfNeeded()
   await expect(review.getByRole("button", { name: "Discard", exact: true })).toBeInViewport()
   await expect(review.getByRole("button", { name: "Apply", exact: true })).toBeInViewport()
   expect(
@@ -182,7 +181,12 @@ for (const mode of ["discard", "human", "close", "approved-close"] as const) {
       await expect(review).toHaveCount(0)
     } else {
       await expect(review.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0)
+      await page.setViewportSize({ width: 512, height: 384 })
+      await expect(review.getByRole("button", { name: "Close", exact: true })).toBeInViewport({
+        ratio: 1,
+      })
       await review.getByRole("button", { name: "Close", exact: true }).click()
+      await page.setViewportSize({ width: 1280, height: 720 })
     }
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

@@ -55,6 +55,12 @@ const DEFAULT_VIEW_HEIGHT = 100
 const FIT_PADDING = 1.35
 const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
+const ORIGIN_PLANE_COLOR = "#7196bf"
+const ORIGIN_PLANE_OPACITY = {
+  idle: { fill: 0.04, edge: 0.25 },
+  selected: { fill: 0.12, edge: 0.7 },
+  preselected: { fill: 0.2, edge: 0.9 },
+} as const
 const MIN_AXIAL_GIZMO_DISTANCE = 0.01
 
 function isFiniteViewerVector3(position: ViewerVector3): boolean {
@@ -1108,12 +1114,6 @@ function orientOriginPlane(mesh: Mesh, plane: ViewerOriginPlane) {
   if (plane === "yz") mesh.rotation.y = Math.PI / 2
 }
 
-function originPlaneColor(plane: ViewerOriginPlane) {
-  if (plane === "xy") return "#4c8dff"
-  if (plane === "xz") return "#35a66f"
-  return "#e15b64"
-}
-
 class ThreeGeometryViewport implements GeometryViewport {
   readonly #canvas: HTMLCanvasElement
   readonly #renderer: WebGLRenderer
@@ -1158,7 +1158,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #originPlaneMeshes = new Map<Mesh, ViewerOriginPlane>()
   readonly #originPlaneMeshesByPlane = new Map<ViewerOriginPlane, Mesh>()
   readonly #originPlaneEdges = new Map<LineSegments, ViewerOriginPlane>()
-  readonly #originPlaneEdgesByPlane = new Map<ViewerOriginPlane, LineSegments>()
+  readonly #originPlaneEdgesByPlane = new Map<
+    ViewerOriginPlane,
+    LineSegments<BufferGeometry, LineBasicMaterial>
+  >()
   readonly #originPlaneMaterials = new Map<ViewerOriginPlane, MeshBasicMaterial>()
   readonly #originPlaneEdgeMaterials: LineBasicMaterial[] = []
   readonly #modelSurfaceMaterials: MeshStandardMaterial[] = []
@@ -2532,9 +2535,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   #createOriginPlanes() {
     for (const plane of viewerOriginPlanes) {
       const material = new MeshBasicMaterial({
-        color: new Color(originPlaneColor(plane)),
+        color: new Color(ORIGIN_PLANE_COLOR),
         depthWrite: false,
-        opacity: 0.16,
+        opacity: ORIGIN_PLANE_OPACITY.idle.fill,
         side: DoubleSide,
         transparent: true,
       })
@@ -2546,7 +2549,12 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#originPlaneMeshesByPlane.set(plane, mesh)
       this.#originPlaneGroup.add(mesh)
 
-      const edgeMaterial = new LineBasicMaterial({ color: new Color(originPlaneColor(plane)) })
+      const edgeMaterial = new LineBasicMaterial({
+        color: new Color(ORIGIN_PLANE_COLOR),
+        depthWrite: false,
+        opacity: ORIGIN_PLANE_OPACITY.idle.edge,
+        transparent: true,
+      })
       this.#originPlaneEdgeMaterials.push(edgeMaterial)
       const edges = new LineSegments(new EdgesGeometry(mesh.geometry), edgeMaterial)
       edges.name = `origin-plane:${plane}:edges`
@@ -2617,13 +2625,19 @@ class ThreeGeometryViewport implements GeometryViewport {
       const mesh = this.#originPlaneMeshesByPlane.get(plane)
       if (mesh) mesh.visible = visible
       const edges = this.#originPlaneEdgesByPlane.get(plane)
-      if (edges) edges.visible = visible
-      material.opacity =
-        plane === this.#originPlanePreselection
-          ? 0.42
-          : plane === this.#originPlaneSelection
-            ? 0.26
-            : 0.12
+      const opacity =
+        ORIGIN_PLANE_OPACITY[
+          plane === this.#originPlanePreselection
+            ? "preselected"
+            : plane === this.#originPlaneSelection
+              ? "selected"
+              : "idle"
+        ]
+      if (edges) {
+        edges.visible = visible
+        edges.material.opacity = opacity.edge
+      }
+      material.opacity = opacity.fill
     }
     this.#originPlaneGroup.visible = [...this.#originPlaneMeshes].some(([mesh]) => mesh.visible)
   }
