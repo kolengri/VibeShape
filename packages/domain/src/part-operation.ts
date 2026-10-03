@@ -6,11 +6,14 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  coneFeatureType,
   cylinderFeatureType,
   filletFeatureType,
   filletFeatureTypeV2,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
+  sphereFeatureType,
+  torusFeatureType,
 } from "./part-design"
 import {
   compoundBodyOutputRole,
@@ -30,7 +33,9 @@ export type PartOperation =
   | Readonly<{ kind: "unmanaged" }>
 
 const newTypes = new Set(
-  [boxFeatureType, cylinderFeatureType].map((descriptor) => featureTypeKey(descriptor.type)),
+  [boxFeatureType, cylinderFeatureType, sphereFeatureType, coneFeatureType, torusFeatureType].map(
+    (descriptor) => featureTypeKey(descriptor.type),
+  ),
 )
 const modifierTypes = new Set(
   [filletFeatureType, filletFeatureTypeV2, chamferFeatureType, chamferFeatureTypeV2].map(

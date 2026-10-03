@@ -11,6 +11,7 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  coneFeatureType,
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
@@ -25,6 +26,8 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  sphereFeatureType,
+  torusFeatureType,
 } from "./part-design"
 import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
@@ -427,6 +430,9 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     chamferFeatureTypeV2,
     boxFeatureType,
     cylinderFeatureType,
+    sphereFeatureType,
+    coneFeatureType,
+    torusFeatureType,
     legacyExtrusionFeatureType,
     extrusionFeatureType,
     extrusionFeatureTypeV3,

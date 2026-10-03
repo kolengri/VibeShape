@@ -1112,6 +1112,9 @@ type PreviewMessageKey =
   | "previewFailed"
   | "previewLoading"
   | "previewReady"
+  | "featurePreviewFailed"
+  | "featurePreviewLoading"
+  | "featurePreviewReady"
 
 const PREVIEW_MESSAGE_KEYS: Readonly<
   Record<
@@ -1136,9 +1139,9 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
     ready: "previewReady",
   },
   primitive: {
-    error: "previewFailed",
-    loading: "previewLoading",
-    ready: "previewReady",
+    error: "featurePreviewFailed",
+    loading: "featurePreviewLoading",
+    ready: "featurePreviewReady",
   },
   revolve: {
     error: "previewFailed",

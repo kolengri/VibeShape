@@ -48,6 +48,84 @@ const namedInput: FeatureEvaluationInput = {
 
 describe("direct geometry engine input boundary", () => {
   it.each([
+    ["sphere", { radius: 0 }],
+    ["sphere", { radius: 0.0005 }],
+    ["sphere", { radius: Number.POSITIVE_INFINITY }],
+    ["sphere", { radius: 10, origin: [99_991, 0, 0] }],
+    ["cone", { radius: 10, height: 0, centered: false }],
+    ["cone", { radius: 10, height: 20, centered: false, origin: [0, 0, 99_990] }],
+    ["cone", { radius: 10, height: 20, centered: true, origin: [0, 0, -99_991] }],
+    ["torus", { majorRadius: 5, minorRadius: 5 }],
+    ["torus", { majorRadius: 5, minorRadius: 6 }],
+    ["torus", { majorRadius: 20, minorRadius: 5, origin: [99_976, 0, 0] }],
+    ["torus", { majorRadius: 20, minorRadius: 5, extra: true }],
+  ])("rejects invalid %s geometry before touching the kernel: %j", async (kind, parameters) => {
+    const engine = new ReplicadGeometryEngine()
+    const initialize = vi
+      .spyOn(engine, "initialize")
+      .mockRejectedValue(new Error("Kernel accessed"))
+    const result = await engine.evaluateFeature(
+      {
+        ...namedInput,
+        dependencies: [],
+        content: {
+          schemaVersion: 0,
+          environment: namedInput.content.environment,
+          feature: {
+            schemaVersion: 0,
+            type: {
+              ...namedInput.content.feature.type,
+              typeId: `org.vibeshape.feature.part-design.${kind}`,
+            },
+            parameters,
+            inputs: [],
+            references: [],
+          },
+        },
+      },
+      vi.fn(),
+    )
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-parameters" } })
+    expect(initialize).not.toHaveBeenCalled()
+    expect(engine.getHealth().ownedShapeCount).toBe(0)
+  })
+
+  it.each(["sphere", "cone", "torus"])(
+    "rejects dependency-bearing %s before kernel access",
+    async (kind) => {
+      const engine = new ReplicadGeometryEngine()
+      const initialize = vi
+        .spyOn(engine, "initialize")
+        .mockRejectedValue(new Error("Kernel accessed"))
+      const result = await engine.evaluateFeature(
+        {
+          ...namedInput,
+          content: {
+            ...namedInput.content,
+            schemaVersion: 1,
+            feature: {
+              ...namedInput.content.feature,
+              type: {
+                ...namedInput.content.feature.type,
+                typeId: `org.vibeshape.feature.part-design.${kind}`,
+              },
+              parameters: { radius: 4, height: 10, centered: true },
+              inputRoles: ["result"],
+            },
+          },
+        },
+        vi.fn(),
+      )
+      expect(result).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-parameters" },
+      })
+      expect(initialize).not.toHaveBeenCalled()
+      expect(engine.getHealth().ownedShapeCount).toBe(0)
+    },
+  )
+
+  it.each([
     { distance: 0 },
     { secondDistance: -3 },
     { symmetric: true },
