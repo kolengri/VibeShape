@@ -37,7 +37,9 @@ jobs:
           mkdir -p .artifacts/cloudflare-kernel
           gh api "repos/$GITHUB_REPOSITORY/releases/assets/$KERNEL_ASSET_ID" -H 'Accept: application/octet-stream' > .artifacts/occt-source.tar
           echo '965e89b6b7afd1401e7ed34b0ac89157b78e5c3c76d897a2f503fc56523a70c0  .artifacts/occt-source.tar' | sha256sum --check --strict
-          tar -xf .artifacts/occt-source.tar -C .artifacts/cloudflare-kernel
+          # BSD tar adds AppleDouble metadata; Linux treats it as extra payload files.
+          # The unchanged manifest verifier still requires every source byte and exact inventory.
+          tar --exclude='._*' -xf .artifacts/occt-source.tar -C .artifacts/cloudflare-kernel
       - name: Install locked dependencies
         run: bun ci
       - name: Build using the verified prebuilt kernel
