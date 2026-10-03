@@ -1,5 +1,33 @@
+import type { ResolvedAuthoredPart } from "../../packages/application/src/authored-parts"
+import type {
+  DocumentRebuildOutcome,
+  PersistentDocumentSessionReport,
+} from "../../packages/application/src/persistent-document-session"
+import type { BodyReference } from "../../packages/domain/src/body-reference"
+import type { DocumentSnapshot } from "../../packages/domain/src/document"
 import { saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+
+// Browser modules are loaded in page.evaluate; keep their inspection types DOM-independent.
+type InspectionState = Readonly<{ report: PersistentDocumentSessionReport | null }>
+type ControllerModule = Readonly<{ getDocumentControllerState: () => InspectionState }>
+type PartsModule = Readonly<{
+  currentAuthoredParts: (state: InspectionState) => readonly ResolvedAuthoredPart[]
+}>
+type InspectionFace = Readonly<{
+  key: string
+  candidateId: string
+  center: readonly [number, number, number]
+  normal: readonly [number, number, number]
+}>
+type AlignmentModule = Readonly<{
+  placementAlignmentFaces: (
+    snapshot: DocumentSnapshot,
+    rebuild: DocumentRebuildOutcome,
+    source: BodyReference,
+    parts: readonly ResolvedAuthoredPart[],
+  ) => Readonly<{ source: readonly InspectionFace[]; targets: readonly InspectionFace[] }>
+}>
 
 const paths = {
   controller: "/src/document/document-controller.ts",
@@ -57,13 +85,9 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   await commands.getByRole("button", { name: "Place / align faces", exact: true }).click()
   form = page.getByRole("form", { name: "Place part", exact: true })
   const before = await page.evaluate(async (modules) => {
-    const controller: typeof import("../../apps/web/src/document/document-controller") =
-      await import(modules.controller)
-    const parts: typeof import("../../apps/web/src/shell/authored-tree-state") = await import(
-      modules.parts
-    )
-    const alignment: typeof import("../../apps/web/src/features/placement/placement-face-alignment") =
-      await import(modules.alignment)
+    const controller: ControllerModule = await import(modules.controller)
+    const parts: PartsModule = await import(modules.parts)
+    const alignment: AlignmentModule = await import(modules.alignment)
     const state = controller.getDocumentControllerState()
     const report = state.report
     if (!report?.rebuild.ok) throw new Error("Committed exact geometry must be available.")
@@ -151,6 +175,7 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   expect(before.targetFace).toBeDefined()
   if (!before.movingFace || !before.targetFace)
     throw new Error("Both solids must expose exact positive-Z planar caps.")
+  const targetFace = before.targetFace
   expect(before.stale).toEqual({ source: [], targets: [] })
   expect([
     before.hiddenTargetCount,
@@ -174,11 +199,8 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   })
   await saved(page)
   const after = await page.evaluate(async (modules) => {
-    const controller: typeof import("../../apps/web/src/document/document-controller") =
-      await import(modules.controller)
-    const parts: typeof import("../../apps/web/src/shell/authored-tree-state") = await import(
-      modules.parts
-    )
+    const controller: ControllerModule = await import(modules.controller)
+    const parts: PartsModule = await import(modules.parts)
     const state = controller.getDocumentControllerState()
     const report = state.report
     if (!report?.rebuild.ok) throw new Error("Placement must rebuild before acceptance.")
@@ -200,8 +222,8 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   expect(after.body?.shape.valid).toBe(true)
   expect(after.body?.shape.solidCount).toBe(1)
   expect(after.body?.shape.volume).toBeCloseTo(before.sourceVolume, 6)
-  const expectedCenter = before.targetFace.center.map(
-    (value, axis) => value + 2 * (before.targetFace.normal[axis] as number),
+  const expectedCenter = targetFace.center.map(
+    (value, axis) => value + 2 * (targetFace.normal[axis] as number),
   )
   const alignedFace = after.body?.topologyCandidates.find(
     ({ signature }) =>
@@ -217,11 +239,8 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   await saved(page)
   await expect(page.getByRole("treeitem", { name: "Placement 1", exact: true })).toHaveCount(0)
   const undone = await page.evaluate(async (modules) => {
-    const controller: typeof import("../../apps/web/src/document/document-controller") =
-      await import(modules.controller)
-    const parts: typeof import("../../apps/web/src/shell/authored-tree-state") = await import(
-      modules.parts
-    )
+    const controller: ControllerModule = await import(modules.controller)
+    const parts: PartsModule = await import(modules.parts)
     const state = controller.getDocumentControllerState()
     const moving = parts.currentAuthoredParts(state).find(({ part }) => part.name === "Box 1")
     return {
