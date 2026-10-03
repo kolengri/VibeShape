@@ -66,6 +66,11 @@ describe("coherent browser and project settings", () => {
     const trigger = screen.getByRole("button", { name: "Settings" })
     await userEvent.click(trigger)
     expect(screen.getAllByRole("dialog")).toHaveLength(1)
+    const sources = screen.getByRole("link", {
+      name: "Licenses and corresponding source (opens in a new tab)",
+    })
+    expect(sources.getAttribute("href")).toBe("/sources/index.html")
+    expect(sources.getAttribute("target")).toBe("_blank")
     await choose("Theme", "Light")
     expect(document.documentElement.classList.contains("dark")).toBe(false)
     await choose("Preferred export format", "STEP")

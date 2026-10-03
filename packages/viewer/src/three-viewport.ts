@@ -1481,6 +1481,13 @@ class ThreeGeometryViewport implements GeometryViewport {
 
     this.#camera.up.set(0, 0, 1)
     this.#camera.position.set(80, -80, 65)
+    // Claim gizmo pointer-downs before OrbitControls can start tracking the same gesture.
+    this.#translationControls = new TransformControls(this.#camera, canvas)
+    this.#translationControls.setMode("translate")
+    this.#translationControls.setSpace("world")
+    this.#translationHelper = this.#translationControls.getHelper()
+    this.#translationHelper.visible = false
+    this.#scene.add(this.#translationHelper)
     this.#controls = new OrbitControls(this.#camera, canvas)
     this.#controls.enableDamping = false
     this.#controls.zoomToCursor = true
@@ -1490,12 +1497,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.target.set(0, 0, 0)
     this.#controls.addEventListener("change", this.#onControlsChange)
     this.#controls.update()
-    this.#translationControls = new TransformControls(this.#camera, canvas)
-    this.#translationControls.setMode("translate")
-    this.#translationControls.setSpace("world")
-    this.#translationHelper = this.#translationControls.getHelper()
-    this.#translationHelper.visible = false
-    this.#scene.add(this.#translationHelper)
     this.#translationControls.addEventListener("change", this.#onTranslationControlsChange)
     this.#translationControls.addEventListener("objectChange", this.#onTranslationObjectChange)
     this.#translationControls.addEventListener("mouseDown", this.#onTranslationControlsMouseDown)
@@ -1504,6 +1505,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#raycaster.params.Line.threshold = 2
     canvas.addEventListener("pointerdown", this.#onPointerDown, true)
     canvas.addEventListener("pointermove", this.#onPointerMove)
+    window.addEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
     canvas.addEventListener("pointercancel", this.#onTranslationGestureCancel)
@@ -2008,6 +2010,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#resizeObserver.disconnect()
     this.#canvas.removeEventListener("pointerdown", this.#onPointerDown, true)
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
+    window.removeEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
     this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
     this.#canvas.removeEventListener("pointercancel", this.#onTranslationGestureCancel)
@@ -2414,6 +2417,28 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.enabled = false
   }
 
+  #onTranslationPointerUpCapture = (event: PointerEvent) => {
+    if (!event.isPrimary || event.button !== 0) return
+    const targetsCanvas = event.target === this.#canvas
+    if (!targetsCanvas) {
+      this.#skipTranslationGizmoPointerUp = false
+      this.#pointerDown = null
+    }
+    if (!this.#translationGizmoInteracting || event.pointerId !== this.#translationGizmoPointerId)
+      return
+    if (targetsCanvas && this.#prepareRaycaster(event)) {
+      // Consume the release endpoint before ending and flushing the gesture.
+      this.#translationControls.pointerMove(
+        new PointerEvent("pointermove", {
+          clientX: this.#pointer.x,
+          clientY: this.#pointer.y,
+          button: -1,
+        }),
+      )
+    }
+    this.#translationControls.pointerUp(null)
+  }
+
   #onTranslationControlsMouseUp = () => {
     this.#translationPositionPublisher.flush()
     this.#axialDistancePublisher.flush()
@@ -2535,9 +2560,16 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#cancelTranslationGesture()
   }
 
-  #onTranslationCaptureLost = () => {
-    // A normal pointer-up releases capture before TransformControls publishes mouseUp.
-    queueMicrotask(this.#cancelTranslationGesture)
+  #onTranslationCaptureLost = (event: PointerEvent) => {
+    // Finish a release outside the canvas before treating capture loss as cancellation.
+    window.setTimeout(() => {
+      if (this.#disposed || this.#canvas.hasPointerCapture(event.pointerId)) return
+      if (
+        this.#translationGizmoPointerId === event.pointerId ||
+        this.#angularGizmoPointerId === event.pointerId
+      )
+        this.#cancelTranslationGesture()
+    }, 0)
   }
 
   #onTranslationGestureKeyDown = (event: KeyboardEvent) => {
@@ -2901,6 +2933,17 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchProfilePreselection(null)
   }
 
+  #publishTranslationGizmoOrigin(width: number, height: number) {
+    if (this.#translationHelper.visible) {
+      const projected = this.#translationObject
+        .getWorldPosition(new Vector3())
+        .project(this.#camera)
+      this.#canvas.dataset.translationGizmoOrigin = `${((projected.x + 1) / 2) * width},${((1 - projected.y) / 2) * height}`
+    } else {
+      delete this.#canvas.dataset.translationGizmoOrigin
+    }
+  }
+
   #render = () => {
     if (this.#disposed) return
     const width = this.#canvas.clientWidth
@@ -2908,6 +2951,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#publishSketchPlaneProjection()
     this.#publishAxialGizmoAvailability()
     if (width <= 0 || height <= 0) return
+    this.#publishTranslationGizmoOrigin(width, height)
     const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
     if (angularHandle) {
       const projected = new Vector3(...angularHandle).project(this.#camera)

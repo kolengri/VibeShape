@@ -1581,6 +1581,11 @@
       }
     },
     "settings": {
+      "about": {
+        "title": "About VibeShape",
+        "licenses": "VibeShape is GPL-3.0-or-later. Geometry uses Open CASCADE Technology (LGPL-2.1 with its additional exception) through OpenCascade.js, and the SolveSpace solver (GPL-3.0-or-later).",
+        "sources": "Licenses and corresponding source (opens in a new tab)"
+      },
       "appearance": "Appearance",
       "autoHideConsumedSketches": "Automatically hide sketches used by successful Extrude features",
       "autoHideDescription": "Manual visibility choices are preserved. Sketches remain visible while you edit them.",
