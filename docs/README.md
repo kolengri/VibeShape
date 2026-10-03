@@ -5,6 +5,8 @@ Current delivery priorities: [Local CAD and MCP development plan](product/local-
 
 ## Recommended reading order
 
+For an external agent operating the application, use [Skills for agents using VibeShape](agent-skills.md), the [local MCP quickstart](mcp-quickstart.md), or [remote MCP operation](remote-mcp.md). The architecture reading order below is for developing the product.
+
 1. [Product vision and scope](product/vision-and-scope.md).
 2. [Feature matrix](product/feature-matrix.md).
 3. [Design and UX guidelines](product/design-and-ux-guidelines.md), [core flows](product/ux-flows.md), the [editor experience plan](product/editor-experience-plan.md), the [canvas-first sketch experience](product/canvas-first-sketch-experience.md), the [sketch precision toolset](product/sketch-toolset.md), the [sketch-first modeling plan](product/sketch-first-modeling-plan.md), the [associative sketch and feature workflow plan](product/associative-sketch-and-feature-workflow-plan.md), and the [external sketch references plan](product/external-sketch-references-plan.md).

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use VibeShape"
+  short_description: "Connect and operate a paired VibeShape CAD session"
+  default_prompt: "Use $vibeshape-use to work in my VibeShape project through the available MCP tools and browser."

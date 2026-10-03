@@ -5,6 +5,8 @@ named tools; the browser remains the document owner and manual approval is the d
 There is no embedded chat. The bridge serves the production editor at a stable loopback origin;
 use the same origin to retain browser-local projects.
 
+Install the [application-use skill pack](agent-skills.md) in the consuming agent for modeling, inspection, organization, export, and session recovery workflows.
+
 From the repository, install the pinned Bun workspace dependencies and build the editor using
 `bun ci` and `bun run prepare:local`. Configure a stdio MCP client to launch Bun with the absolute path
 to `apps/mcp-server/src/index.ts` as its argument. For example:

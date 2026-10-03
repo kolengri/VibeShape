@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Export"
+  short_description: "Deliver editable backups, CAD exports, and slicer handoffs"
+  default_prompt: "Use $vibeshape-export to deliver the requested backup or geometry file from my saved VibeShape model."

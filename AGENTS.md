@@ -23,6 +23,8 @@
 
 ## Project skills
 
+For tasks using VibeShape as a CAD application, start with `vibeshape-use` and load its modeling, inspection, organization, or export workflows as needed. See [the portable application-use skill pack](docs/agent-skills.md). These tasks do not activate source-development verification or Git workflows unless repository changes are also requested.
+
 Use the repository-local skills under `.agents/skills` when their descriptions match the task:
 
 - `vibeshape-ui-workflow` for React, Tailwind, shadcn, accessibility, and CAD interaction work;

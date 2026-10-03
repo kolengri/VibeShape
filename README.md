@@ -87,6 +87,7 @@ Key decisions:
 | [Geometry and parametrics](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming, and caching |
 | [Extension architecture](docs/architecture/extensions.md) | Extension profiles, packages, version locks, capabilities, isolation, UX, and spike gate |
 | [Automation and MCP](docs/architecture/automation-and-mcp.md) | First-party module boundary, local MCP bridge, resources, tools, drafts, pairing, and safety gates |
+| [Skills for agents using VibeShape](docs/agent-skills.md) | Portable application-use skills, installation, local/remote connection, modeling, inspection, organization, and export |
 | [Data model and `.vshape`](docs/architecture/data-model-and-file-format.md) | Entities, events, units, and native format |
 | [Local-first persistence](docs/architecture/local-first-storage.md) | Autosave, recovery, OPFS, and portability |
 | [3D-printing workflow](docs/3d-printing.md) | Analysis, tolerances, export, and slicing boundary |

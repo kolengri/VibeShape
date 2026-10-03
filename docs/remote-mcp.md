@@ -5,6 +5,8 @@ It reuses existing CAD, sketch, variable, topology and metadata tools. The edito
 documents, review, persistence and Undo. The local Bun/stdio workflow remains available separately.
 See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
+The [application-use skill pack](agent-skills.md) provides portable operator instructions for the consuming agent, including remote pairing and the browser export fallback. Install it separately from configuring this endpoint.
+
 ## User workflow
 
 Open **FAQ → Connect an AI through MCP** in the editor for the deployed URL, pairing steps and a
