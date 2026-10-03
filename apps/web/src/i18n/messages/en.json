@@ -615,6 +615,26 @@
         "stopAiDescription": "Stop AI ends the entire paired AI session and turns auto-apply off immediately. An edit already saving may finish; use Undo to revert it.",
         "aiConnectionFailed": "AI connection ended. Enable it to reconnect."
       },
+      "remoteAi": {
+        "trigger": "Remote AI…",
+        "close": "Close remote pairing dialog",
+        "title": "Pair a remote AI client",
+        "consentTitle": "Allow this client in this tab?",
+        "scope": "Share only this project's reads and disposable drafts with the selected client. Apply requires browser review unless you separately enable session auto-apply. Disconnect, project changes and reload revoke access.",
+        "pairHelp": "Complete the browser challenge, create a pairing code, then enter it on the MCP authorization page.",
+        "create": "Create pairing code",
+        "codeHelp": "Enter this code on the authorization page. Return here to verify the client and approve this exact tab.",
+        "codeLabel": "Pairing code",
+        "waiting": "Waiting for client authorization…",
+        "connected": "Remote client connected. Manual Apply is the default.",
+        "client": "Client: {name}",
+        "returnAddress": "Return address: {address}",
+        "verifyClient": "The client supplies its name. Verify the return address before granting access. A loopback address may be owned by any local process.",
+        "allow": "Allow this client",
+        "deny": "Deny",
+        "disconnect": "Revoke remote session",
+        "failed": "Remote pairing ended or was unavailable. Inspect the current document before pairing again; pending writes will not be replayed."
+      },
       "workspaceLayout": {
         "title": "Workspace layout settings",
         "tree": "Model tree",

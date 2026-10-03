@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createLocalAutomationConnection } from "../automation/local-automation-connection"
+import { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
 import {
   type DocumentControllerState,
   getProjectActionBlock,
@@ -16,6 +17,7 @@ import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
 import { useEditorSessionStoreApi } from "../editor-session/editor-session-provider"
 import { LocalAutomationStatus } from "./local-automation-status"
+import { RemoteAutomationStatus } from "./remote-automation-status"
 import { SettingsDialog } from "./settings-dialog"
 import { useViewerPreferences } from "./viewer-preferences"
 
@@ -44,40 +46,8 @@ export function ApplicationBar({
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const commandsT = useTranslations("app.commands")
-  const editorStore = useEditorSessionStoreApi()
-  useSyncExternalStore(editorStore.subscribe, editorStore.getState, editorStore.getState)
-  const [connection] = useState(createLocalAutomationConnection)
-  const current = useSyncExternalStore(
-    connection.subscribe,
-    connection.getSnapshot,
-    connection.getSnapshot,
-  )
-  useSyncExternalStore(
-    automationReviews.subscribe,
-    automationReviews.getSnapshot,
-    automationReviews.getSnapshot,
-  )
+  const { connection, remoteConnection, current, remote } = useAutomationConnections(controller)
   const preferredExportFormat = useViewerPreferences((state) => state.preferredExportFormat)
-  useEffect(() => {
-    connection.start()
-    void connection.status()
-    return connection.dispose
-  }, [connection])
-  useEffect(
-    () =>
-      registerProjectActionGuard(() => {
-        const state = editorStore.getState()
-        if (
-          (state.activePartDesignTool && state.activePartDesignTool.kind !== "measure") ||
-          state.sketch.activeSketchTool ||
-          state.sketch.draft
-        )
-          return "editor-draft"
-        if (connection.getSnapshot().busy) return "automation-busy"
-        return null
-      }),
-    [connection, editorStore],
-  )
   const blockedReason = getProjectActionBlock()
   const unitChangesBlocked =
     controller.status !== "ready" ||
@@ -98,13 +68,14 @@ export function ApplicationBar({
       <DocumentRenameDialog controller={controller} />
       <DocumentProjectDialog controller={controller} blockedReason={blockedReason} />
       <SettingsDialog controller={controller} blocked={unitChangesBlocked} />
-      {current.available && controller.status === "ready" ? (
-        <LocalAutomationStatus
-          key={`${controller.report?.snapshot.id}:${current.connected}`}
-          connection={connection}
-          current={current}
-        />
-      ) : null}
+      <AutomationStatusControls
+        controller={controller}
+        blockedReason={blockedReason}
+        connection={connection}
+        remoteConnection={remoteConnection}
+        current={current}
+        remote={remote}
+      />
       <span
         className="sr-only sm:not-sr-only sm:ml-auto sm:min-w-0 sm:truncate sm:text-xs sm:text-muted-foreground"
         role="status"
@@ -150,5 +121,99 @@ export function ApplicationBar({
       </Tooltip>
       <DocumentExportDialog controller={controller} preferredFormat={preferredExportFormat} />
     </header>
+  )
+}
+
+function useAutomationConnections(controller: DocumentControllerState) {
+  const editorStore = useEditorSessionStoreApi()
+  useSyncExternalStore(editorStore.subscribe, editorStore.getState, editorStore.getState)
+  const [connection] = useState(createLocalAutomationConnection)
+  const [remoteConnection] = useState(() =>
+    createRemoteAutomationConnection(import.meta.env.VITE_REMOTE_MCP_URL),
+  )
+  const remote = useSyncExternalStore(
+    remoteConnection.subscribe,
+    remoteConnection.getSnapshot,
+    remoteConnection.getSnapshot,
+  )
+  const current = useSyncExternalStore(
+    connection.subscribe,
+    connection.getSnapshot,
+    connection.getSnapshot,
+  )
+  useSyncExternalStore(
+    automationReviews.subscribe,
+    automationReviews.getSnapshot,
+    automationReviews.getSnapshot,
+  )
+  useEffect(() => {
+    connection.start()
+    void connection.status()
+    return connection.dispose
+  }, [connection])
+  useEffect(() => {
+    remoteConnection.start()
+    return remoteConnection.dispose
+  }, [remoteConnection])
+  useEffect(
+    () => () => {
+      void remoteConnection.disable()
+    },
+    [remoteConnection, controller.report?.snapshot.id],
+  )
+  useEffect(() => {
+    if (controller.status !== "ready") void remoteConnection.disable()
+  }, [remoteConnection, controller.status])
+  useEffect(
+    () =>
+      registerProjectActionGuard(() => {
+        const state = editorStore.getState()
+        if (
+          (state.activePartDesignTool && state.activePartDesignTool.kind !== "measure") ||
+          state.sketch.activeSketchTool ||
+          state.sketch.draft
+        )
+          return "editor-draft"
+        if (connection.getSnapshot().busy || remoteConnection.getSnapshot().busy)
+          return "automation-busy"
+        return null
+      }),
+    [connection, remoteConnection, editorStore],
+  )
+  return { connection, remoteConnection, current, remote }
+}
+
+type AutomationConnections = ReturnType<typeof useAutomationConnections>
+function AutomationStatusControls({
+  controller,
+  blockedReason,
+  connection,
+  remoteConnection,
+  current,
+  remote,
+}: AutomationConnections & {
+  controller: DocumentControllerState
+  blockedReason: ReturnType<typeof getProjectActionBlock>
+}) {
+  return (
+    <>
+      {current.available &&
+      controller.status === "ready" &&
+      !remote.pairingCode &&
+      !remote.connecting ? (
+        <LocalAutomationStatus
+          key={`${controller.report?.snapshot.id}:${current.connected}`}
+          connection={connection}
+          current={current}
+        />
+      ) : null}
+      {remote.available && controller.status === "ready" ? (
+        <RemoteAutomationStatus
+          connection={remoteConnection}
+          current={remote}
+          blocked={current.connected || blockedReason !== null}
+        />
+      ) : null}
+    </>
   )
 }

@@ -1,4 +1,6 @@
 import {
+  chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -9,9 +11,14 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { createDistributionManifest, distributionHash } from "./local-distribution-files"
 import { prepareCloudflareSite } from "./prepare-cloudflare-site"
+
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs")>()
+  return { ...original, cpSync: vi.fn(original.cpSync) }
+})
 
 const temporary: string[] = []
 afterEach(() => {
@@ -32,6 +39,9 @@ function fixture(overrides: Record<string, string | Uint8Array> = {}) {
     "apps/web/dist/sources/solvespace-corresponding-source.tar.gz": "solver-source",
     "apps/web/dist/sources/LICENSE.txt": "license",
     "apps/web/dist/sources/OCCT-NOTICES.txt": "notices",
+    "apps/web/dist/sources/browser-licenses.txt": "browser dependency license texts",
+    "apps/web/dist/sources/worker-licenses.txt": "worker dependency license texts",
+    "apps/web/dist/sources/shadcn-LICENSE.txt": "copied UI component license text",
     "apps/web/dist/sources/OCCT-REPLACEMENT.txt": "replacement",
     "sources/vibeshape-source.tar": "application-source",
     LICENSE: "license",
@@ -50,6 +60,54 @@ function fixture(overrides: Record<string, string | Uint8Array> = {}) {
 }
 
 describe("Cloudflare static staging", () => {
+  it("allows only the configured relay and Turnstile on editor documents", () => {
+    const { source, output } = fixture()
+    prepareCloudflareSite(source, output, "https://vibeshape-mcp.example.com/mcp")
+    const headers = readFileSync(join(output, "_headers"), "utf8")
+    const sections = headers.split("\n\n")
+    const editor = sections.find((section) => section.startsWith("/\n"))
+    expect(editor).toContain(
+      "connect-src 'self' https://vibeshape-mcp.example.com wss://vibeshape-mcp.example.com",
+    )
+    expect(editor).toContain("frame-src https://challenges.cloudflare.com")
+    expect(
+      sections.find((section) => section.startsWith("/assets/worker-entry-*\n")),
+    ).not.toContain("example.com")
+    expect(headers).not.toContain("*.workers.dev")
+  })
+
+  it.each([
+    "http://example.com/mcp",
+    "https://example.com/wrong",
+    "https://example.com/mcp?token=1",
+    "https://user@example.com/mcp",
+    "https://example.com:8443/mcp",
+  ])("rejects an unsafe relay URL: %s", (url) => {
+    const { source, output } = fixture()
+    expect(() => prepareCloudflareSite(source, output, url)).toThrow("HTTPS /mcp URL")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("stages read-only installed source archives without rewriting them", () => {
+    const { source, output } = fixture({ "apps/web/dist/sources/index.html": "source index" })
+    const names = ["occt-corresponding-source.tar", "solvespace-corresponding-source.tar.gz"]
+    chmodSync(join(source, "apps/web/dist/sources/index.html"), 0o444)
+    for (const name of names) chmodSync(join(source, "apps/web/dist/sources", name), 0o444)
+    const report = prepareCloudflareSite(source, output)
+    for (const name of names) {
+      expect(readFileSync(join(output, "sources", name))).toEqual(
+        readFileSync(join(source, "apps/web/dist/sources", name)),
+      )
+      expect(report.archives.find(({ file }) => file === name)?.paths).toEqual([name])
+    }
+    expect(readFileSync(join(source, "apps/web/dist/sources/index.html"), "utf8")).toBe(
+      "source index",
+    )
+    expect(readFileSync(join(output, "sources/index.html"), "utf8")).toContain(
+      "Corresponding source and licenses",
+    )
+  })
+
   it("keeps complete reconstructable source while excluding the local MCP server", () => {
     const archive = Buffer.alloc(26 * 1024 * 1024, 37)
     const { source, output } = fixture({
@@ -76,6 +134,29 @@ describe("Cloudflare static staging", () => {
     const { source, output } = fixture()
     writeFileSync(join(source, "apps/web/dist/assets/kernel.wasm"), "changed")
     expect(() => prepareCloudflareSite(source, output)).toThrow("does not match")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("rejects application source changed after initial verification", () => {
+    const { source, output } = fixture()
+    const originalCopy = vi.mocked(cpSync).getMockImplementation()
+    if (!originalCopy) throw new Error("The filesystem copy mock is missing.")
+    vi.mocked(cpSync).mockImplementation((from, to, options) => {
+      if (String(from) === join(source, "sources/vibeshape-source.tar"))
+        writeFileSync(from, "replaced application source")
+      originalCopy(from, to, options)
+    })
+    try {
+      expect(() => prepareCloudflareSite(source, output)).toThrow("source changed while staging")
+      expect(existsSync(output)).toBe(false)
+    } finally {
+      vi.mocked(cpSync).mockImplementation(originalCopy)
+    }
+  })
+
+  it("refuses publication without bundled third-party notices", () => {
+    const { source, output } = fixture({ "apps/web/dist/sources/browser-licenses.txt": " " })
+    expect(() => prepareCloudflareSite(source, output)).toThrow("missing third-party notices")
     expect(existsSync(output)).toBe(false)
   })
 

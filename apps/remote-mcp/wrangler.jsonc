@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vibeshape-remote-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      { "name": "ADMISSION", "class_name": "Admission" },
+      { "name": "TAB_SESSIONS", "class_name": "TabSession" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Admission", "TabSession"] }],
+  // Provision OAuth KV separately; no placeholder namespace can accidentally be deployed.
+  "vars": {
+    "PUBLIC_ORIGIN": "",
+    "EDITOR_ORIGIN": "",
+    "TURNSTILE_SITE_KEY": "",
+    "MAX_ACTIVE_SESSIONS": "3",
+    "MAX_SESSIONS_PER_DAY": "12",
+    "MAX_CLIENTS_PER_DAY": "24",
+    "MAX_CONSENTS_PER_DAY": "24",
+    "MAX_TOKEN_REQUESTS_PER_DAY": "48"
+  },
+  // Stable project namespace; verify account-wide uniqueness before provisioning.
+  // Locality-based coarse limits run before OAuth/KV and per-tab DO routing.
+  "ratelimits": [
+    { "name": "IP_LIMIT", "namespace_id": "1598340211", "simple": { "limit": 60, "period": 60 } }
+  ],
+  "observability": { "enabled": false }
+}

@@ -12,6 +12,8 @@
     "./queries": "./src/queries.ts",
     "./local-tools": "./src/local-tools.ts",
     "./local-session": "./src/local-session.ts",
+    "./remote-session": "./src/remote-session.ts",
+    "./tool-metadata": "./src/tool-metadata.ts",
     "./authored-metadata": "./src/authored-metadata.ts",
     "./query-byte-budget": "./src/query-byte-budget.ts"
   },
