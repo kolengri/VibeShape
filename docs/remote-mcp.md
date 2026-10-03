@@ -9,12 +9,12 @@ The server bundles the [application-use skill pack](agent-skills.md), including 
 
 ## User workflow
 
-Open **FAQ → Connect an AI through MCP** in the editor for the deployed URL, pairing steps and a
+Open **VibeShape → FAQ and MCP setup… → Connect an AI through MCP** in the editor for the deployed URL, pairing steps and a
 copyable AI setup prompt. Builds without a configured relay show an unavailable message instead of
 advertising a connection. The other FAQ pages cover editable backups, export and reconnection.
 
 Configure the MCP client with the deployed HTTPS `/mcp` URL. Open the hosted editor, choose
-**Remote AI**, complete its browser challenge and create a pairing code. During OAuth authorization,
+**VibeShape → AI connections… → Remote AI**, complete its browser challenge and create a pairing code. During OAuth authorization,
 enter the code on the service's consent page. Return to that exact editor tab, verify the client and
 return address and choose **Allow this client**. A claimed client name is not proof of identity.
 

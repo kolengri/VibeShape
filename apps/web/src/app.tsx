@@ -410,6 +410,12 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
             kind: operation === "compound" ? "create-compound" : "create-union",
           }),
         measure: () => sessionActions.startPartDesignTool({ kind: "measure" }),
+        surfaceTexture: (featureId, outputRole) =>
+          sessionActions.startPartDesignTool({
+            kind: "surface-texture",
+            ...(featureId ? { featureId } : {}),
+            ...(outputRole ? { outputRole } : {}),
+          }),
         editFeature,
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
@@ -573,6 +579,7 @@ function resolveEditorApplicationCommands(
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
       measure: workspaceActions.measure,
+      surfaceTexture: () => workspaceActions.surfaceTexture(),
       redoSketch: workspaceActions.redoSketchDraft,
       setSketchCameraMode: sessionActions.setSketchCameraMode,
       setSketchConstruction: workspaceActions.setSketchConstruction,

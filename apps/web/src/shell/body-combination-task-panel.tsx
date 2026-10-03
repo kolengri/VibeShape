@@ -1,6 +1,6 @@
 import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import type { FeatureRecord } from "@vibeshape/domain"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import {
   readCompoundFeatureParameters,
   readUnionFeatureParameters,
@@ -29,7 +29,7 @@ import type { FeaturePreviewState } from "../features/preview/use-feature-previe
 
 type CombinationPanelProps = {
   activeTool: ActivePartDesignTool
-  authority: DocumentSnapshotV2 | null
+  authority: AuthoredDocumentSnapshot | null
   parts: readonly ResolvedAuthoredPart[]
   documentBusy: boolean
   report: NonNullable<DocumentControllerState["report"]>
@@ -41,7 +41,7 @@ type CombinationPanelProps = {
 }
 function combinationMode(
   tool: ActivePartDesignTool,
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   features: readonly FeatureRecord[],
   operation: BodyCombinationKind,
   label: string,

@@ -261,7 +261,8 @@
         "label": "Export scope",
         "all": "All parts",
         "description": "Exports include hidden parts. 3MF keeps the relative positions and names of the exported bodies."
-      }
+      },
+      "textureExportHint": "STL and 3MF include surface relief. STEP exports the original CAD geometry."
     },
     "commands": {
       "shortcutHelp": {
@@ -602,6 +603,10 @@
         "createPyramid": {
           "label": "Pyramid",
           "keywords": "create pyramid|primitive|solid|polygon|sides|facets"
+        },
+        "surfaceTexture": {
+          "label": "Surface texture",
+          "keywords": "texture|relief|heightmap|bump|pattern|grain|knurling"
         }
       }
     },
@@ -1872,6 +1877,98 @@
       "compoundLabel": "Compound {number}",
       "unionLabel": "Union {number}",
       "unavailable": "These input parts could not be resolved safely. Close the form and repair the earlier features before editing this combination."
+    },
+    "surfaceTexture": {
+      "title": "Surface texture",
+      "description": "Add printable relief while keeping the original CAD geometry editable.",
+      "body": "Body",
+      "selectBody": "Select a body…",
+      "unnamedBody": "Body",
+      "pickBodyHint": "Select a surface in the viewport or choose a body above.",
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "done": "Done",
+      "layers": "Texture layers",
+      "addLayer": "Add layer",
+      "layer": "Layer {number}",
+      "hideLayer": "Disable this layer",
+      "showLayer": "Enable this layer",
+      "removeLayer": "Remove layer",
+      "customImage": "Custom image",
+      "texture": "Texture",
+      "browse": "Browse textures",
+      "upload": "Upload image",
+      "uploadFailed": "Choose a PNG, JPEG or WebP image up to 8 MiB and 16 megapixels.",
+      "gallery": "Texture gallery",
+      "search": "Search textures…",
+      "all": "All",
+      "favorites": "Favorites",
+      "galleryHint": "Choose a texture to preview it on your model. Your changes remain a draft until Apply.",
+      "favoritePattern": "Favorite {pattern}",
+      "noTextures": "No matching textures.",
+      "patterns": {
+        "noise": "Fine grain",
+        "ridges": "Ribs",
+        "dots": "Dots",
+        "knurling": "Knurling",
+        "hexagons": "Hexagons",
+        "wood": "Wood grain"
+      },
+      "surfaces": "Surfaces",
+      "entireBody": "Entire body",
+      "selectedFaces": "{count, plural, one {# selected surface} other {# selected surfaces}}",
+      "face": "Surface {number}",
+      "removeFace": "Remove surface {number}",
+      "pickFaces": "Select surfaces",
+      "fillBody": "Entire body",
+      "navigate": "Navigate",
+      "paint": "Paint",
+      "erase": "Erase",
+      "paintHint": "Drag to paint. Hold Shift to erase. Use Navigate to orbit; right drag pans and scroll zooms.",
+      "brushRadius": "Radius (mm)",
+      "hardness": "Hardness",
+      "undoStroke": "Undo stroke",
+      "resetMask": "Reset mask",
+      "paintLimit": "This layer reached its brush limit. Undo a stroke or reset the mask to continue.",
+      "height": "Relief height (mm)",
+      "direction": "Direction",
+      "outward": "Outward",
+      "inward": "Inward",
+      "centered": "Centered",
+      "width": "Pattern width (mm)",
+      "length": "Pattern height (mm)",
+      "linkedSize": "Link width and height",
+      "rotation": "Rotation (°)",
+      "mapping": "Projection",
+      "axis": "Projection axis",
+      "projections": {
+        "triplanar": "Auto · triplanar",
+        "planar": "Planar",
+        "cylindrical": "Cylindrical",
+        "spherical": "Spherical"
+      },
+      "advanced": "Advanced",
+      "invert": "Invert heightmap",
+      "offsetU": "Offset U (mm)",
+      "offsetV": "Offset V (mm)",
+      "boundaryFade": "Boundary fade (mm)",
+      "overlap": "Overlapping layers",
+      "replace": "Replace lower layers",
+      "add": "Add relief to lower layers",
+      "showOriginal": "Show original",
+      "showTextured": "Show textured",
+      "preview": {
+        "idle": "Select a body to preview its texture.",
+        "loading": "Updating relief preview…",
+        "ready": "Relief preview ready.",
+        "error": "Relief preview is unavailable. Show the body and check its surfaces; reduce relief height or increase pattern size."
+      },
+      "boundaryHint": "Sharp CAD joins and selected surface boundaries stay fixed.",
+      "exportHint": "STL and 3MF include the printable relief. STEP keeps the original CAD geometry.",
+      "saveFailed": "The texture could not be saved. Your draft is preserved; try again.",
+      "stale": "The model changed while this texture was being edited. Cancel and reopen the tool to use the current model.",
+      "treeGroup": "Surface textures",
+      "bodyLayerCount": "{body} · {count, plural, one {# layer} other {# layers}}"
     }
   }
 }

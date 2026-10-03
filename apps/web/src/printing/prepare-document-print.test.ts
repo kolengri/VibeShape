@@ -1,5 +1,9 @@
 import { documentSnapshotSchema } from "@vibeshape/domain"
-import { printPreparationSettingsSchema } from "@vibeshape/protocol"
+import {
+  DEFAULT_SURFACE_TEXTURE_QUALITY,
+  type DocumentExportOptions,
+  printPreparationSettingsSchema,
+} from "@vibeshape/protocol"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { prepareDocumentPrint } from "./prepare-document-print"
 
@@ -47,6 +51,24 @@ describe("disposable print worker lifecycle", () => {
       await prepareDocumentPrint(snapshot, settings, new AbortController().signal, () => current),
     ).toMatchObject({ ok: false })
     expect(worker.terminate).toHaveBeenCalledOnce()
+  })
+  it("prepares only the captured terminal bodies and their texture groups", async () => {
+    const options: DocumentExportOptions = {
+      bodies: [{ featureId: "0195b5ac-b220-7a2c-8c33-000000000001", outputRole: "result" }],
+      surfaceTextures: [],
+    }
+    await prepareDocumentPrint(
+      snapshot,
+      settings,
+      new AbortController().signal,
+      () => true,
+      options,
+    )
+    expect(worker.exportDocument).toHaveBeenCalledWith("3mf", {
+      ...options,
+      printPreparation: settings,
+      textureQuality: DEFAULT_SURFACE_TEXTURE_QUALITY,
+    })
   })
   it("terminates in-flight work on abort without replay or export", async () => {
     const abort = new AbortController()

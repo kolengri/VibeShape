@@ -16,7 +16,7 @@ import {
   sphereFeatureType,
   torusFeatureType,
 } from "@vibeshape/domain"
-import type { DocumentWorkerResponse } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, type DocumentWorkerResponse } from "@vibeshape/protocol"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   createFeaturePreviewDocument,
@@ -93,7 +93,7 @@ function rebuiltResponse(
 ): Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> {
   return {
     type: "documentRebuilt",
-    protocolVersion: 22,
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
     requestId: previewDocumentId,
     documentId: documentId,
     revision: 4,

@@ -15,8 +15,14 @@ import {
   sketchWireRecordSchema,
   solvedSketchWireSchema,
 } from "./sketch"
+import {
+  type SurfaceTextureExportLayers,
+  type SurfaceTextureQuality,
+  surfaceTextureExportLayersSchema,
+  surfaceTextureQualitySchema,
+} from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 22 as const
+export const DOCUMENT_PROTOCOL_VERSION = 23 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -167,7 +173,11 @@ export const documentExportBodiesSchema = z
       context.addIssue({ code: "custom", message: "Export bodies must be unique." })
   })
 export type DocumentExportBodies = z.infer<typeof documentExportBodiesSchema>
-export type DocumentExportOptions = Readonly<{ bodies?: DocumentExportBodies }>
+export type DocumentExportOptions = Readonly<{
+  bodies?: DocumentExportBodies
+  surfaceTextures?: SurfaceTextureExportLayers
+  textureQuality?: SurfaceTextureQuality
+}>
 
 const exportDocumentRequestSchema = requestEnvelopeSchema
   .extend({
@@ -175,6 +185,8 @@ const exportDocumentRequestSchema = requestEnvelopeSchema
     format: geometryExportFormatSchema,
     bodies: documentExportBodiesSchema.optional(),
     printPreparation: printPreparationSettingsSchema.optional(),
+    surfaceTextures: surfaceTextureExportLayersSchema.optional(),
+    textureQuality: surfaceTextureQualitySchema.optional(),
   })
   .refine((request) => !request.printPreparation || request.format === "3mf", {
     message: "Print preparation is available only for 3MF export.",

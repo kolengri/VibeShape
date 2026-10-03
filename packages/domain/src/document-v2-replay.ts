@@ -7,6 +7,7 @@ import {
 } from "./document-v2-command-schemas"
 import { reduceDocumentV2Event } from "./document-v2-commands"
 import { reduceDocumentUpgradedV2Event } from "./document-v2-migration"
+import { reduceDocumentV3Event } from "./document-v3-commands"
 import { reduceVersionedDocumentEvent } from "./versioned-document-commands"
 
 export type DocumentAuthorityResult =
@@ -25,6 +26,15 @@ export function reduceDocumentAuthorityEvent(
       diagnostic: domainDiagnostic(
         "invalid-event",
         "The document event version or payload is unsupported.",
+      ),
+    }
+  if (event.data.schemaVersion === 3) return reduceDocumentV3Event(snapshot, event.data, target)
+  if (snapshot?.schemaVersion === 3)
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "Older events cannot mutate V3 texture authority.",
       ),
     }
   if (event.data.schemaVersion === 2) {

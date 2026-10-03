@@ -1,11 +1,17 @@
 import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
-import type { PartId } from "@vibeshape/domain/identifiers"
+import type { FeatureId, PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@vibeshape/ui/components/context-menu"
 import { ChevronDown, CircleAlert, Cuboid, Eye, EyeOff } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import { authoredPlacementTarget } from "../features/part-design/authored-part-selection"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
@@ -20,6 +26,7 @@ type PartsProps = {
   onCombine?: ((operation: "compound" | "union") => void) | undefined
   onPlace?: ((partId: PartId) => void) | undefined
   onPreselect?: ((body: ModelBodySelection | null) => void) | undefined
+  onSurfaceTexture?: ((featureId: FeatureId, outputRole: string) => void) | undefined
   onCommit: AuthoredMetadataCommit
 }
 
@@ -117,78 +124,115 @@ function AuthoredPartRow({
     }
   }
   return (
-    <div
-      role="none"
-      data-part-id={part.id}
-      data-part-status={status}
-      data-part-visible={part.visible}
-      onPointerEnter={() => props.onPreselect?.(highlight)}
-      onPointerLeave={() => props.onPreselect?.(null)}
+    <PartTextureContext
+      resolved={resolved}
+      disabled={props.disabled}
+      onSurfaceTexture={props.onSurfaceTexture}
     >
-      <div role="none" className="flex min-w-0 items-center">
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          role="treeitem"
-          tabIndex={-1}
-          aria-selected={selected}
-          aria-label={t("partLabel", { name: part.name })}
-          aria-describedby={`part-status-${part.id}`}
-          className={cn(
-            "min-w-0 flex-1 justify-start pl-6 font-normal",
-            selected && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-          )}
-          onClick={() => props.onSelect(part.id)}
-          onFocus={() => props.onPreselect?.(highlight)}
-          onBlur={() => props.onPreselect?.(null)}
-        >
-          <Cuboid aria-hidden="true" className="size-4 shrink-0" />
-          <span className="truncate">{part.name}</span>
-        </Button>
-        <AuthoredItemRename
-          item={part}
-          kind="part"
-          revision={props.revision}
-          disabled={props.disabled}
-          onCommit={props.onCommit}
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={props.disabled}
-              aria-label={visibilityLabel}
-              aria-pressed={part.visible}
-              onClick={toggleVisibility}
-            >
-              {part.visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{visibilityLabel}</TooltipContent>
-        </Tooltip>
-      </div>
-      <p
-        id={`part-status-${part.id}`}
-        className={cn(
-          "ml-8 flex items-center gap-1 px-2 text-[10px] text-muted-foreground",
-          status === "available" && "sr-only",
-        )}
+      <div
+        role="none"
+        data-part-id={part.id}
+        data-part-status={status}
+        data-part-visible={part.visible}
+        onPointerEnter={() => props.onPreselect?.(highlight)}
+        onPointerLeave={() => props.onPreselect?.(null)}
       >
-        {(status === "unavailable" || status === "upstream") && (
-          <CircleAlert className="size-3 shrink-0" aria-hidden="true" />
-        )}
-        {t(status)}
-      </p>
-      <PartPlacementAction resolved={resolved} {...props} />
-      {error && (
-        <p role="alert" className="px-2 text-xs text-destructive">
-          {error}
+        <div role="none" className="flex min-w-0 items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            role="treeitem"
+            tabIndex={-1}
+            aria-selected={selected}
+            aria-label={t("partLabel", { name: part.name })}
+            aria-describedby={`part-status-${part.id}`}
+            className={cn(
+              "min-w-0 flex-1 justify-start pl-6 font-normal",
+              selected && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+            )}
+            onClick={() => props.onSelect(part.id)}
+            onFocus={() => props.onPreselect?.(highlight)}
+            onBlur={() => props.onPreselect?.(null)}
+          >
+            <Cuboid aria-hidden="true" className="size-4 shrink-0" />
+            <span className="truncate">{part.name}</span>
+          </Button>
+          <AuthoredItemRename
+            item={part}
+            kind="part"
+            revision={props.revision}
+            disabled={props.disabled}
+            onCommit={props.onCommit}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                disabled={props.disabled}
+                aria-label={visibilityLabel}
+                aria-pressed={part.visible}
+                onClick={toggleVisibility}
+              >
+                {part.visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{visibilityLabel}</TooltipContent>
+          </Tooltip>
+        </div>
+        <p
+          id={`part-status-${part.id}`}
+          className={cn(
+            "ml-8 flex items-center gap-1 px-2 text-[10px] text-muted-foreground",
+            status === "available" && "sr-only",
+          )}
+        >
+          {(status === "unavailable" || status === "upstream") && (
+            <CircleAlert className="size-3 shrink-0" aria-hidden="true" />
+          )}
+          {t(status)}
         </p>
-      )}
-    </div>
+        <PartPlacementAction resolved={resolved} {...props} />
+        {error && (
+          <p role="alert" className="px-2 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
+    </PartTextureContext>
+  )
+}
+
+function PartTextureContext({
+  resolved,
+  disabled,
+  onSurfaceTexture,
+  children,
+}: {
+  resolved: ResolvedAuthoredPart
+  disabled: boolean
+  onSurfaceTexture: PartsProps["onSurfaceTexture"]
+  children: ReactNode
+}) {
+  const t = useTranslations("app.surfaceTexture")
+  if (!onSurfaceTexture) return children
+  const body = resolved.body
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          disabled={disabled || !body}
+          onSelect={() => {
+            if (body) onSurfaceTexture(body.featureId, body.outputRole ?? "result")
+          }}
+        >
+          {t("title")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

@@ -1,14 +1,16 @@
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import {
+  type AuthoredDocumentSnapshot,
   type DocumentAuthoritySnapshot,
-  type DocumentSnapshotV2,
   documentAuthoritySnapshotSchema,
 } from "@vibeshape/domain/document-v2"
 import type {
   DocumentAuthorityEvent,
   DocumentV2Event,
+  DocumentV3Event,
 } from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
+import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import {
   authorityFailure,
   capturePartAllocations,
@@ -80,15 +82,19 @@ export function createAuthorityPersistenceAdapter(
     history: DocumentHistoryPort
     semanticHistory: DocumentSemanticHistoryPort
   }> {
-  let authority = initialSnapshot?.schemaVersion === 2 ? initialSnapshot : null
+  let authority = initialSnapshot && initialSnapshot.schemaVersion !== 1 ? initialSnapshot : null
   let legacy = createVersionedPersistenceAdapter(
     repository,
     initialSnapshot?.schemaVersion === 1 ? initialSnapshot : null,
   )
-  const history = new DocumentUndoHistory<DocumentSnapshotV2>()
+  const history = new DocumentUndoHistory<AuthoredDocumentSnapshot>()
   const current = () => authority ?? legacy.currentV1Snapshot
 
-  async function persist(input: AuthorityCommitInput, next: DocumentSnapshotV2, record = true) {
+  async function persist(
+    input: AuthorityCommitInput,
+    next: AuthoredDocumentSnapshot,
+    record = true,
+  ) {
     let result: SessionPortResult<unknown>
     try {
       result = await repository.commitAuthority({
@@ -136,7 +142,10 @@ export function createAuthorityPersistenceAdapter(
                 },
               }
             : parsed.data
-        const result = applyDocumentV2Command(base, command)
+        const result =
+          command.schemaVersion === 3 || base.schemaVersion === 3
+            ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
+            : applyDocumentV2Command(base, command)
         if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
         return persist(
           {
@@ -244,7 +253,7 @@ export function createAuthorityPersistenceAdapter(
       const match = matchRuntimeProjection(base, input.baseSnapshot)
       if (match) return match
       let next = base
-      const events: DocumentV2Event[] = []
+      const events: (DocumentV2Event | DocumentV3Event)[] = []
       for (const event of input.events) {
         const translated = translateLegacyDocumentEvent(modelProjection(next), event)
         if ("ok" in translated) return translated
@@ -289,7 +298,7 @@ export function createAuthorityPersistenceAdapter(
       const projected = runtimeProjection(parsed.data)
       if (!projected.ok)
         return authorityFailure("invalid-recovered-document", projected.diagnostic.message)
-      authority = parsed.data.schemaVersion === 2 ? parsed.data : null
+      authority = parsed.data.schemaVersion !== 1 ? parsed.data : null
       legacy = createVersionedPersistenceAdapter(
         repository,
         parsed.data.schemaVersion === 1 ? parsed.data : null,

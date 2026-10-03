@@ -258,6 +258,28 @@ Mesh payload:
 
 Tessellation runs in the worker. The UI never builds an OCCT mesh. Changing display quality invalidates display mesh cache independently of B-Rep.
 
+### Surface relief meshes
+
+Authored texture layers are separate from feature-content identity and source B-Rep geometry.
+The application resolves enabled selected-face layers against the exact current body-scoped
+semantic topology evidence, then passes transient face masks to the worker. Missing or ambiguous
+references and another body's output role fail closed. Whole-body layers retain the explicit output
+role. The same bounded displacement processor derives preview meshes and STL/3MF export meshes;
+STEP exports the unchanged exact source body.
+
+Noise, Ridges, Dots, Knurling, Hexagons, Wood, or locally decoded grayscale maps use triplanar, planar,
+cylindrical, or spherical projection. Ordered displacement combines map sampling, axis and U/V
+placement, height/direction/inversion, boundary fade, and normal-aware paint/erase masks. Refinement
+is limited by mesh edge length, triangle count, allocation, and processing budgets. Sharp CAD joins
+stay fixed. Zero-area analytic pole/seam triangles are discarded only when the retained mesh proves
+positive volume and a closed, consistently oriented manifold; detected folds or collapsed triangles
+refuse output.
+
+This is digital relief-mesh validation. Global self-intersections and minimum wall thickness remain
+unproven, and no digital mesh check establishes physical fit, strength, slicer acceptance, or print
+success. Source documents remain editable through V3 authority/native format 4. See
+[ADR-0059](../adr/0059-editable-surface-texture-layers.md).
+
 ## B-Rep validation
 
 After every committed modeling operation, check:

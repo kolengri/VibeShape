@@ -162,7 +162,7 @@ function ExportPartSelection({
 }) {
   const t = useTranslations("app.export")
   const authority = controller.authoredSnapshot
-  if (authority?.schemaVersion !== 2 || !controller.report) return null
+  if (!authority || authority.schemaVersion === 1 || !controller.report) return null
   const parts =
     resolveAuthoredParts(authority, controller.report)?.filter(({ body }) => body !== null) ?? []
   if (parts.length === 0) return null
@@ -362,6 +362,10 @@ export function DocumentExportDialog({
           <DialogHeader>
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
+            {controller.authoredSnapshot?.schemaVersion === 3 &&
+              controller.authoredSnapshot.surfaceTextures.some(({ enabled }) => enabled) && (
+                <p className="text-xs text-muted-foreground">{t("textureExportHint")}</p>
+              )}
           </DialogHeader>
           {!showPreparation ? (
             <>
