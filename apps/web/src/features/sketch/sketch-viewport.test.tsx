@@ -516,6 +516,115 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it.each([false, true])("places a circle at the origin with Shift suppression %s", (shiftKey) => {
+    const empty = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: empty,
+      sketch: empty,
+      editorTool: "circle",
+      onDraftChange,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const center = { ...clientPointForSketch(drawing, { x: 0.2, y: -0.2 }), shiftKey }
+    fireEvent.pointerMove(drawing, center)
+    expect(Boolean(document.querySelector('[data-sketch-inference="coincident"]'))).toBe(!shiftKey)
+    fireEvent.pointerDown(drawing, center)
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 8, y: 0 }))
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const next: SketchRecord = onDraftChange.mock.calls[0]?.[0]
+    const circle = requiredSketchEntity(next, "circle")
+    const point = requiredSketchEntity(next, "point", circle.centerPointId)
+    expect(point.x).toBeCloseTo(shiftKey ? 0.2 : 0)
+    expect(point.y).toBeCloseTo(shiftKey ? -0.2 : 0)
+    expect(next.constraints.filter(({ type }) => type === "fixed")).toEqual(
+      shiftKey ? [] : [expect.objectContaining({ type: "fixed", pointId: point.id })],
+    )
+  })
+
+  it("anchors a dragged circle center to the origin in one draft edit", async () => {
+    const fixture = appendSketchCircle(
+      { ...sketch, entities: [], constraints: [] },
+      {
+        center: { kind: "new", point: { x: 5, y: 4 } },
+        perimeterPoint: { x: 13, y: 4 },
+        construction: false,
+        createEntityId: sequentialIdFactory(sketchEntityIdSchema.parse, "b280"),
+      },
+    ).sketch
+    const center = requiredSketchEntity(fixture, "point")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      sketch: fixture,
+      editorTool: "select",
+      onDraftChange,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const target = document.querySelector(`[data-sketch-entity-id="${center.id}"]`)
+    if (!target) throw new Error("The circle center must be rendered.")
+    fireEvent.pointerDown(target, { ...clientPointForSketch(drawing, center), pointerId: 12 })
+    const end = { ...clientPointForSketch(drawing, { x: 0.2, y: -0.2 }), pointerId: 12 }
+    fireEvent.pointerMove(drawing, end)
+    fireEvent.pointerUp(drawing, end)
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    const next: SketchRecord = onDraftChange.mock.calls[0]?.[0]
+    expect(requiredSketchEntity(next, "point", center.id)).toMatchObject({ x: 0, y: 0 })
+    expect(next.constraints).toEqual([
+      expect.objectContaining({ type: "fixed", pointId: center.id }),
+    ])
+  })
+
+  it("selects a fixed circle center without relocating it", () => {
+    const fixture = appendSketchCircle(
+      { ...sketch, entities: [], constraints: [] },
+      {
+        center: { kind: "new", point: { x: 0, y: 0 } },
+        perimeterPoint: { x: 8, y: 0 },
+        construction: false,
+        createEntityId: sequentialIdFactory(sketchEntityIdSchema.parse, "b281"),
+      },
+    ).sketch
+    const center = requiredSketchEntity(fixture, "point")
+    const fixed: SketchRecord = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: sketchConstraintIdSchema.parse("0195b5ac-b282-7a2c-8c33-000000000001"),
+          type: "fixed",
+          pointId: center.id,
+        },
+      ],
+    }
+    const onDraftChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    renderViewport({
+      draft: fixed,
+      sketch: fixed,
+      editorTool: "select",
+      onDraftChange,
+      onSelectionChange,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const target = document.querySelector(`[data-sketch-entity-id="${center.id}"]`)
+    if (!target) throw new Error("The fixed circle center must remain selectable.")
+    fireEvent.pointerDown(target, { ...clientPointForSketch(drawing, center), pointerId: 13 })
+    const end = { ...clientPointForSketch(drawing, { x: 5, y: 4 }), pointerId: 13 }
+    fireEvent.pointerMove(drawing, end)
+    fireEvent.pointerUp(drawing, end)
+    expect(onSelectionChange).toHaveBeenCalledWith([center.id])
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.hasAttribute("data-sketch-dragging-point-id")).toBe(false)
+  })
+
   it("publishes the live sketch view bounds for the aligned 3D projection", async () => {
     const onProjectionChange = vi.fn<(projection: SketchProjection | null) => void>()
     const frame = {
