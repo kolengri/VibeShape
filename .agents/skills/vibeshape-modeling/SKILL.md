@@ -21,6 +21,8 @@ Current MCP covers Box creation; sketch, Extrude, Revolve, Hole, Fillet, Chamfer
 
 Box update, Cylinder, Boolean, Datum Plane, Placement, Compound/Union, feature/sketch removal, suppression changes, project rename, and History navigation are not currently exposed as named CAD tools. Existing records may still be inspected and must survive supported upstream edits. Use the ordinary visible editor for a required unsupported operation when available and authorized; otherwise identify the exact limitation. A sketch-backed Extrude/Revolve is a valid alternative only when it preserves the requested design and editability.
 
+In the visible editor, select a current exact Part or its body/face to reveal the main toolbar Part icons. Place / align faces can calculate a numeric Placement from two uniquely resolved planar faces on different current bodies, with opposing/same normals and a signed offset. Use Pick faces in viewport to pause the numeric preview before selecting the committed moving face. This editor calculator does not add a named MCP face-alignment tool or an associative mate; later target edits do not reposition the placed source. Do not advertise surface or curved-face mating.
+
 ## Accept the model
 
 Before commit, compare exact bounds, volume, body count, intended feature parameters, and diagnostics with the requested outcome. Inspect visually when shape or spatial relationships cannot be established by these measurements. After commit, identify the saved revision and relevant changed parameters. Export or back up only when requested, using [vibeshape-export](../vibeshape-export/SKILL.md).

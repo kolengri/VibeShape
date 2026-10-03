@@ -1,12 +1,15 @@
+import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import type { FeatureRecord } from "@vibeshape/domain"
 import { readPlacementFeatureParameters } from "@vibeshape/domain/part-design-placement"
 import { useTranslations } from "@vibeshape/i18n"
-import type { ReactNode } from "react"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import { type ReactNode, useMemo } from "react"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
 } from "../document/document-controller"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
+import { placementAlignmentFaces } from "../features/placement/placement-face-alignment"
 import { PlacementForm, type PlacementFormCopy } from "../features/placement/placement-form"
 import type { PlacementFormMode } from "../features/placement/placement-form-model"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
@@ -21,6 +24,8 @@ type PlacementPanelProps = {
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   featurePreviewStatus: FeaturePreviewState["status"]
   renderDelete: (feature: FeatureRecord) => ReactNode
+  selectedFace?: ViewerSelection | null | undefined
+  parts: readonly ResolvedAuthoredPart[]
 }
 function placementMode(
   tool: ActivePartDesignTool,
@@ -75,6 +80,19 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
   const count = features.filter((feature) => readPlacementFeatureParameters(feature)).length
   const mode = placementMode(props.activeTool, features, t("featureLabel", { number: count + 1 }))
   const copy = usePlacementCopy(mode?.kind === "edit")
+  const source =
+    props.activeTool.kind === "create-placement"
+      ? props.activeTool.targetBody
+      : mode?.kind === "edit"
+        ? readPlacementFeatureParameters(mode.feature)?.targetBody
+        : undefined
+  const faces = useMemo(
+    () =>
+      source
+        ? placementAlignmentFaces(report.snapshot, report.rebuild, source, props.parts)
+        : undefined,
+    [report.snapshot, report.rebuild, props.parts, source],
+  )
   if (!mode) return null
   const key =
     mode.kind === "edit"
@@ -86,6 +104,8 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
         key={key}
         copy={copy}
         mode={mode}
+        alignmentFaces={faces}
+        selectedFace={props.selectedFace}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />

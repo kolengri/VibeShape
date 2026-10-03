@@ -17,6 +17,7 @@ async function verifyCompoundReorder(page: Page, testInfo: TestInfo) {
   const ids = await parts.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("data-part-id")),
   )
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await page.getByRole("button", { name: "Compound", exact: true }).click()
   let form = page.getByRole("form", { name: "Create Compound", exact: true })
   await form.getByRole("button", { name: "Add part Box 1", exact: true }).click()
@@ -38,6 +39,7 @@ async function verifyCompoundReorder(page: Page, testInfo: TestInfo) {
   expect(
     compound.project.snapshot.parts.map(({ bodyHistory }) => bodyHistory.at(-1)?.outputRole),
   ).toEqual(slots?.map(({ slotId }) => `body.${slotId}`))
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await expect(page.getByRole("button", { name: "Union", exact: true })).toBeEnabled()
   await page.getByRole("treeitem", { name: "Compound 1", exact: true }).click()
   form = page.getByRole("form", { name: "Edit Compound", exact: true })
@@ -77,6 +79,7 @@ async function createUnion(page: Page) {
   const allIds = await page
     .locator("[data-part-id]")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-part-id")))
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await page.getByRole("button", { name: "Union", exact: true }).click()
   const form = page.getByRole("form", { name: "Create Union", exact: true })
   await form.getByRole("button", { name: "Add part Cylinder 1", exact: true }).click()

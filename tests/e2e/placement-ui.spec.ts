@@ -28,12 +28,12 @@ test("places a stable part with editable expressions, Undo, reload, and a native
     nodes.map((node) => node.getAttribute("data-part-id")),
   )
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Place part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Place / align faces", exact: true }).click()
   let form = await placementValues(page, "Place part", "50 mm")
   await form.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Placement 1", exact: true })).toHaveCount(0)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Place part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Place / align faces", exact: true }).click()
   form = await placementValues(page, "Place part", "50 mm")
   await form.getByRole("button", { name: "Create placement", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Placement 1", exact: true })).toBeVisible({

@@ -2104,13 +2104,6 @@ function EditorModelTree({
       activeBody={props.selectedBody}
       selectedPartId={props.selectedPartId}
       onPartSelect={actions.selectPart}
-      onPartPlace={actions.placePart}
-      onPartMirror={actions.mirrorPart}
-      onPartShell={actions.shellPart}
-      onPartSplit={actions.splitPart}
-      onPartPattern={actions.patternPart}
-      onPartThread={actions.threadPart}
-      onPartsCombine={actions.combineParts}
       onSurfaceTexture={actions.surfaceTexture}
       onAuthoredMetadata={commitAuthoredMetadata}
       authoredMetadataBlocked={Boolean(activeTool || activeSketchTool)}

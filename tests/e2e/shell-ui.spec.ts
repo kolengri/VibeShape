@@ -22,7 +22,7 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   await createSolids(page)
   const before = await saveProject(page)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Shell Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Shell", exact: true }).click()
   let form = page.getByRole("form", { name: "Shell", exact: true })
   await expect(form.getByRole("button", { name: "Apply shell", exact: true })).toBeDisabled()
   // The box is symmetric in XY; its top face is the catalog entry with the greatest positive Z center.
@@ -38,7 +38,7 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   expect(canceled.project.snapshot.features).toEqual(before.project.snapshot.features)
   expect(canceled.project.snapshot.parts).toEqual(before.project.snapshot.parts)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Shell Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Shell", exact: true }).click()
   form = page.getByRole("form", { name: "Shell", exact: true })
   await form.getByRole("checkbox", { name: top }).check()
   await expect(form.getByRole("button", { name: "Apply shell", exact: true })).toBeEnabled({

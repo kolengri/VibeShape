@@ -15,7 +15,7 @@ test("previews, cancels, replaces a part, edits, undoes and reopens Mirror inten
     nodes.map((node) => node.getAttribute("data-part-id")),
   )
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Mirror part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Mirror", exact: true }).click()
   let form = page.getByRole("form", { name: "Mirror part", exact: true })
   await expect(form.getByText(/result replaces the current part/)).toBeVisible()
   await form.getByRole("radio", { name: "XZ", exact: true }).check()
@@ -25,7 +25,7 @@ test("previews, cancels, replaces a part, edits, undoes and reopens Mirror inten
   expect(canceled.project.snapshot.features).toEqual(before.project.snapshot.features)
   expect(canceled.project.snapshot.parts).toEqual(before.project.snapshot.parts)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Mirror part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Mirror", exact: true }).click()
   form = page.getByRole("form", { name: "Mirror part", exact: true })
   await form.getByRole("radio", { name: "XY", exact: true }).check()
   await expect(form.getByRole("button", { name: "Create mirror", exact: true })).toBeEnabled({

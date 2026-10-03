@@ -172,6 +172,8 @@ test.describe("Boolean subtraction", () => {
     await expect(page.getByRole("treeitem", { name: "Cylinder 2", exact: true })).not.toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
 
+    await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
+
     await page.getByRole("button", { name: "Compound", exact: true }).click()
     const compound = page.getByRole("form", { name: "Create Compound", exact: true })
     await compound.getByRole("button", { name: "Add part Box 1", exact: true }).click()

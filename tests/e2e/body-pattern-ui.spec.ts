@@ -11,7 +11,7 @@ function required<T>(value: T | undefined, message: string): T {
 }
 async function startPattern(page: Page, name = "Box 1") {
   await page.getByRole("treeitem", { name: `Part ${name}`, exact: true }).click()
-  await page.getByRole("button", { name: `Pattern ${name}`, exact: true }).click()
+  await page.getByRole("button", { name: "Pattern", exact: true }).click()
   return page.getByRole("form", { name: "Pattern body", exact: true })
 }
 async function renameInstance(page: Page, part: { id: string; name: string }, name: string) {
@@ -222,7 +222,7 @@ test("patterns a full circle without an endpoint copy, edits a signed partial an
   await renameInstance(page, instance, "Orbital copy")
   partial = await saveProject(page)
   await page.locator(`[data-part-id="${instance.id}"]`).getByRole("treeitem").click()
-  await page.getByRole("button", { name: "Place part Orbital copy", exact: true }).click()
+  await page.getByRole("button", { name: "Place / align faces", exact: true }).click()
   const placement = page.getByRole("form", { name: "Place part", exact: true })
   await placement.getByRole("combobox", { name: "Translate Z", exact: true }).fill("25 mm")
   await expect(

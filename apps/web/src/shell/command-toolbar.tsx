@@ -340,6 +340,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const group = (groupName: ResolvedEditorCommand["descriptor"]["toolbarGroup"]) =>
     visibleCommands.filter(({ descriptor }) => descriptor.toolbarGroup === groupName)
   const workspaceCommands = group("workspace")
+  const modelPartCommands = group("model-part")
   const modelPrimaryCommands = group("model-primary")
   const modelInspectionCommands = group("model-inspection")
   const modelPrimitiveCommands = group("model-primitives")
@@ -494,6 +495,15 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
             </>
           ) : (
             <>
+              {modelPartCommands.length > 0 ? (
+                <ToolbarCommandGroup
+                  framed
+                  commands={modelPartCommands}
+                  getDisabledReason={getDisabledReason}
+                  getLabel={getLabel}
+                  label={t("partActionsLabel")}
+                />
+              ) : null}
               <ToolbarCommandGroup
                 framed
                 commands={modelPrimaryCommands}
@@ -501,6 +511,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
                 getLabel={getLabel}
                 label={t("modelPrimaryLabel")}
               />
+
               <ToolbarCommandGroup
                 framed
                 commands={modelPrimitiveCommands}

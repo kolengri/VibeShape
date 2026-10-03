@@ -631,6 +631,38 @@
         "createSweep": {
           "label": "Sweep",
           "keywords": "sweep|path|profile along path"
+        },
+        "placePart": {
+          "label": "Place / align faces",
+          "keywords": "move|translate|rotate|align|face|surface|placement"
+        },
+        "mirrorPart": {
+          "label": "Mirror",
+          "keywords": "reflect|mirror|part"
+        },
+        "shellPart": {
+          "label": "Shell",
+          "keywords": "hollow|shell|wall|part"
+        },
+        "splitPart": {
+          "label": "Split",
+          "keywords": "cut|split|part"
+        },
+        "patternPart": {
+          "label": "Pattern",
+          "keywords": "repeat|array|pattern|part"
+        },
+        "threadPart": {
+          "label": "Thread",
+          "keywords": "screw|thread|part"
+        },
+        "compoundParts": {
+          "label": "Compound",
+          "keywords": "combine|group|compound|parts"
+        },
+        "unionParts": {
+          "label": "Union",
+          "keywords": "join|fuse|union|parts"
         }
       }
     },
@@ -716,7 +748,8 @@
         "sketchViewLabel": "Sketch view controls",
         "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace",
-        "inspectionLabel": "Inspection"
+        "inspectionLabel": "Inspection",
+        "partActionsLabel": "Selected part actions"
       },
       "sketchShortcutToolbar": {
         "ariaLabel": "Sketch shortcuts"
@@ -1826,7 +1859,25 @@
       "invalidRotationRange": "Each rotation must stay within one full turn in either direction.",
       "validationSummary": "Fix the highlighted placement values.",
       "staleRevision": "The document changed. Close this edit and reopen it before saving.",
-      "saveFailed": "The placement could not be saved. Your values remain available to retry."
+      "saveFailed": "The placement could not be saved. Your values remain available to retry.",
+      "alignmentTitle": "Align planar faces",
+      "alignmentDescription": "Choose faces here or pause the preview to pick them in the viewport. The smallest rotation aligns their normals and matches their centers. This calculates a fixed placement; it does not create an associative mate.",
+      "alignmentSource": "Moving face",
+      "alignmentTarget": "Target face on another part",
+      "alignmentChooseFace": "Select a planar face",
+      "alignmentFaceLabel": "{body} · normal ({normal}) · center ({center})",
+      "alignmentUseSource": "Use selected moving face",
+      "alignmentUseTarget": "Use selected target face",
+      "alignmentOrientation": "Face normals",
+      "alignmentOpposed": "Opposing · face to face",
+      "alignmentSame": "Same direction",
+      "alignmentOffset": "Face offset",
+      "alignmentOffsetDescription": "Signed distance along the target face outward normal. Positive values leave a gap for opposing faces.",
+      "alignmentCalculate": "Calculate face alignment",
+      "alignmentCalculated": "Placement values updated. Review the preview, then apply to save one placement.",
+      "alignmentUnavailable": "Alignment requires current, unambiguous planar faces on two different exact solid parts and a transform within 100,000 mm.",
+      "alignmentPickFaces": "Pick faces in viewport",
+      "alignmentPreviewPaused": "Preview paused for face picking. Calculate alignment or edit a placement value to resume."
     },
     "authoredTree": {
       "parts": "Parts",

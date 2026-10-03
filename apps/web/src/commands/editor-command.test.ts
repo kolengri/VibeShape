@@ -1,4 +1,5 @@
 import type { SketchId } from "@vibeshape/domain"
+import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import {
@@ -842,3 +843,34 @@ it.each(["createLoft", "createSweep"] as const)(
     ).toBe(false)
   },
 )
+
+it("guards selected-part commands against saving, read-only access and missing selection", () => {
+  const partId = partIdSchema.parse("10000000-0000-7000-8000-000000000001")
+  for (const state of [
+    {},
+    {
+      selectedExactPartId: partId,
+      controller: { ...readyController(), saveStatus: "saving" as const },
+    },
+    {
+      selectedExactPartId: partId,
+      controller: {
+        ...readyController(),
+        report: {
+          ...readyController().report,
+          mode: "read-only" as const,
+        } as DocumentControllerState["report"],
+      },
+    },
+  ]) {
+    const context = commandContext(state)
+    const placePart = vi.fn()
+    const command = resolveBuiltInEditorCommands({
+      ...context,
+      actions: { ...context.actions, placePart },
+    }).find(({ descriptor }) => descriptor.id === editorCommandIds.placePart)
+    expect(command?.eligibility.enabled).toBe(false)
+    command?.invoke()
+    expect(placePart).not.toHaveBeenCalled()
+  }
+})

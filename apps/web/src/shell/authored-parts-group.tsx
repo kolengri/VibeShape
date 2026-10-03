@@ -12,7 +12,6 @@ import { ChevronDown, CircleAlert, Cuboid, Eye, EyeOff } from "@vibeshape/ui/com
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useState } from "react"
-import { authoredPlacementTarget } from "../features/part-design/authored-part-selection"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { selectedAuthoredBody } from "./authored-tree-state"
@@ -23,196 +22,9 @@ type PartsProps = {
   selectedPartId: PartId | null
   disabled: boolean
   onSelect: (partId: PartId) => void
-  onCombine?: ((operation: "compound" | "union") => void) | undefined
-  onPlace?: ((partId: PartId) => void) | undefined
-  onShell?: ((partId: PartId) => void) | undefined
-  onSplit?: ((partId: PartId) => void) | undefined
-  onPattern?: ((partId: PartId) => void) | undefined
-  onThread?: ((partId: PartId) => void) | undefined
-  onMirror?: ((partId: PartId) => void) | undefined
   onPreselect?: ((body: ModelBodySelection | null) => void) | undefined
   onSurfaceTexture?: ((featureId: FeatureId, outputRole: string) => void) | undefined
   onCommit: AuthoredMetadataCommit
-}
-
-function PartPlacementAction({
-  resolved,
-  onPlace,
-  selectedPartId,
-  disabled,
-}: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
-  const t = useTranslations("app.authoredTree")
-  if (selectedPartId !== resolved.part.id || !onPlace) return null
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className="mb-1 ml-8"
-      aria-label={t("placePart", { name: resolved.part.name })}
-      disabled={disabled || !authoredPlacementTarget(resolved)}
-      onClick={() => onPlace(resolved.part.id)}
-    >
-      {t("place")}
-    </Button>
-  )
-}
-function PartMirrorAction({
-  resolved,
-  onMirror,
-  selectedPartId,
-  disabled,
-}: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
-  const t = useTranslations("app.mirror")
-  if (selectedPartId !== resolved.part.id || !onMirror) return null
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className="mb-1 ml-2"
-      aria-label={t("mirrorPart", { name: resolved.part.name })}
-      disabled={disabled || !authoredPlacementTarget(resolved)}
-      onClick={() => onMirror(resolved.part.id)}
-    >
-      {t("action")}
-    </Button>
-  )
-}
-
-function PartShellAction({
-  resolved,
-  onShell,
-  selectedPartId,
-  disabled,
-}: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
-  const t = useTranslations("app.shellOperation")
-  if (selectedPartId !== resolved.part.id || !onShell) return null
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className="mb-1 ml-2"
-      aria-label={t("shellPart", { name: resolved.part.name })}
-      disabled={disabled || !authoredPlacementTarget(resolved)}
-      onClick={() => onShell(resolved.part.id)}
-    >
-      {t("action")}
-    </Button>
-  )
-}
-
-function PartSplitAction({
-  resolved,
-  onSplit,
-  selectedPartId,
-  disabled,
-}: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
-  const t = useTranslations("app.split")
-  if (selectedPartId !== resolved.part.id || !onSplit) return null
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className="mb-1 ml-2"
-      aria-label={t("splitPart", { name: resolved.part.name })}
-      disabled={disabled || !authoredPlacementTarget(resolved)}
-      onClick={() => onSplit(resolved.part.id)}
-    >
-      {t("action")}
-    </Button>
-  )
-}
-
-function PartPatternAction({
-  resolved,
-  onPattern,
-  selectedPartId,
-  disabled,
-}: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
-  const t = useTranslations("app.bodyPattern")
-  if (selectedPartId !== resolved.part.id || !onPattern) return null
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className="mb-1 ml-2"
-      aria-label={t("patternPart", { name: resolved.part.name })}
-      disabled={disabled || !authoredPlacementTarget(resolved)}
-      onClick={() => onPattern(resolved.part.id)}
-    >
-      {t("action")}
-    </Button>
-  )
-}
-
-function PartThreadAction({
-  resolved,
-  onThread,
-  selectedPartId,
-  disabled,
-}: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
-  const t = useTranslations("app.thread")
-  if (selectedPartId !== resolved.part.id || !onThread) return null
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className="mb-1 ml-2"
-      aria-label={t("threadPart", { name: resolved.part.name })}
-      disabled={disabled || !authoredPlacementTarget(resolved)}
-      onClick={() => onThread(resolved.part.id)}
-    >
-      {t("action")}
-    </Button>
-  )
-}
-
-function PartCombinationActions({
-  parts,
-  disabled,
-  onCombine,
-}: Pick<PartsProps, "parts" | "disabled" | "onCombine">) {
-  const t = useTranslations("app.authoredTree")
-  if (!onCombine) return null
-  const bodies = parts.flatMap((part) => {
-    const body = authoredPlacementTarget(part)
-    return body ? [body] : []
-  })
-  const selections = new Set(
-    bodies.map(({ featureId, outputRole }) => `${featureId}:${outputRole}`),
-  )
-  return (
-    <div className="grid gap-1 px-2 py-1">
-      <div className="flex flex-wrap gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          disabled={disabled || selections.size < 2}
-          onClick={() => onCombine("compound")}
-        >
-          {t("compound")}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          disabled={disabled || selections.size < 2}
-          onClick={() => onCombine("union")}
-        >
-          {t("union")}
-        </Button>
-      </div>
-      {bodies.length >= 2 && selections.size < 2 && (
-        <p className="text-xs text-muted-foreground">{t("combinationSiblingRestriction")}</p>
-      )}
-    </div>
-  )
 }
 
 function MeshOperationNotice({
@@ -328,12 +140,6 @@ function AuthoredPartRow({
           {t(status)}
         </p>
         <MeshOperationNotice selected={selected} resolved={resolved} />
-        <PartPlacementAction resolved={resolved} {...props} />
-        <PartMirrorAction resolved={resolved} {...props} />
-        <PartShellAction resolved={resolved} {...props} />
-        <PartSplitAction resolved={resolved} {...props} />
-        <PartPatternAction resolved={resolved} {...props} />
-        <PartThreadAction resolved={resolved} {...props} />
         {error && (
           <p role="alert" className="px-2 text-xs text-destructive">
             {error}
@@ -400,7 +206,6 @@ export function AuthoredPartsGroup(props: PartsProps) {
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("parts")}</legend>
-          <PartCombinationActions {...props} />
           {props.parts.length ? (
             props.parts.map((resolved) => (
               <AuthoredPartRow key={resolved.part.id} {...props} resolved={resolved} />

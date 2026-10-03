@@ -131,7 +131,7 @@ test("inspects local exact solids without mutation, publishes captured assets at
   await rename.getByRole("button", { name: "Rename", exact: true }).click()
   await saved(page)
   await row.getByRole("treeitem").click()
-  await page.getByRole("button", { name: "Place part Captured body", exact: true }).click()
+  await page.getByRole("button", { name: "Place / align faces", exact: true }).click()
   const placement = page.getByRole("form", { name: "Place part", exact: true })
   await placement.getByRole("combobox", { name: "Translate Z", exact: true }).fill("30 mm")
   await expect(

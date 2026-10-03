@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
@@ -26,6 +27,13 @@ const controller = {
 } as unknown as DocumentControllerState
 
 const actions = {
+  placePart: vi.fn(),
+  mirrorPart: vi.fn(),
+  shellPart: vi.fn(),
+  splitPart: vi.fn(),
+  patternPart: vi.fn(),
+  threadPart: vi.fn(),
+  combineParts: vi.fn(),
   cancelActive: vi.fn(),
   documentRedo: vi.fn(() => Promise.resolve({ ok: true })),
   documentUndo: vi.fn(() => Promise.resolve({ ok: true })),
@@ -380,5 +388,45 @@ describe("CommandToolbar", () => {
     expect(actions.createRevolve).toHaveBeenCalledOnce()
     expect(screen.getByRole("button", { name: "Extrude" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Revolve" })).toBeTruthy()
+  })
+})
+
+describe("contextual Part toolbar", () => {
+  const selectedExactPartId = partIdSchema.parse("10000000-0000-7000-8000-000000000001")
+  it("reveals accessible icon actions for an exact current Part and dispatches its identity", async () => {
+    renderToolbar(commands({ selectedExactPartId, partCombinationAvailable: true }))
+    const group = screen.getByRole("group", { name: "Selected part actions" })
+    for (const name of [
+      "Place / align faces",
+      "Mirror",
+      "Shell",
+      "Split",
+      "Pattern",
+      "Thread",
+      "Compound",
+      "Union",
+    ]) {
+      const button = within(group).getByRole("button", { name })
+      expect(button.querySelector("svg")).toBeTruthy()
+      expect(button.textContent).toBe("")
+      await userEvent.click(button)
+    }
+    expect(actions.placePart).toHaveBeenCalledWith(selectedExactPartId)
+    expect(actions.threadPart).toHaveBeenCalledWith(selectedExactPartId)
+    expect(actions.combineParts.mock.calls).toEqual([["compound"], ["union"]])
+  })
+  it.each([
+    {},
+    { selectedExactPartId, activePartDesignCommand: "placement" as const },
+    { selectedExactPartId, workspace: "sketch" as const },
+  ])("hides Part actions outside an idle eligible selection", (state) => {
+    renderToolbar(commands(state))
+    expect(screen.queryByRole("group", { name: "Selected part actions" })).toBeNull()
+  })
+  it("hides combinations when fewer than two exact bodies are available", () => {
+    renderToolbar(commands({ selectedExactPartId, partCombinationAvailable: false }))
+    expect(screen.getByRole("button", { name: "Place / align faces" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Compound" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Union" })).toBeNull()
   })
 })

@@ -1,10 +1,13 @@
 import { useTranslations } from "@vibeshape/i18n"
 import {
   ArrowUpRight,
+  Bolt,
   Box as BoxIcon,
+  BoxSelect,
   Circle,
   CircleDashed,
   CircumscribedPolygonIcon,
+  Combine,
   ConstraintCoincidentIcon,
   ConstraintConcentricIcon,
   ConstraintEqualIcon,
@@ -61,6 +64,10 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  shell: BoxSelect,
+  thread: Bolt,
+  compound: Layers3,
+  union: Combine,
   "surface-texture": Grid2X2,
   keyboard: Keyboard,
   "aligned-rectangle": RectangleHorizontal,
