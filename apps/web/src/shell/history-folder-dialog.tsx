@@ -1,4 +1,4 @@
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentV2MetadataChange } from "@vibeshape/domain/document-v2-command-schemas"
 import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-folders"
 import { historyFolderIdSchema } from "@vibeshape/domain/identifiers"
@@ -24,14 +24,14 @@ import { folderRangeItems } from "./authored-tree-state"
 import type { HistoryViewRow } from "./model-tree-history"
 
 type FolderDialogProps = {
-  authority: DocumentSnapshotV2
+  authority: AuthoredDocumentSnapshot
   folder?: HistoryFolder
   rows: readonly HistoryViewRow[]
   disabled: boolean
   onCommit: AuthoredMetadataCommit
 }
 
-function initialFolderItem(authority: DocumentSnapshotV2, folder?: HistoryFolder) {
+function initialFolderItem(authority: AuthoredDocumentSnapshot, folder?: HistoryFolder) {
   const occupied = new Set(authority.folders.flatMap((item) => item.items.map(historyItemKey)))
   const first =
     folder?.items[0] ?? authority.history.find((item) => !occupied.has(historyItemKey(item)))
@@ -39,7 +39,7 @@ function initialFolderItem(authority: DocumentSnapshotV2, folder?: HistoryFolder
 }
 
 function folderFormChange(
-  base: DocumentSnapshotV2,
+  base: AuthoredDocumentSnapshot,
   folder: HistoryFolder | undefined,
   values: { name: string; first: string; last: string },
 ):

@@ -1,4 +1,3 @@
-import { authoredPartExportBodies } from "@vibeshape/application/authored-parts"
 import { openAuthorityDocumentSession } from "@vibeshape/application/authority-document-session"
 import { createAuthorityPersistenceAdapter } from "@vibeshape/application/authority-persistence-adapter"
 import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
@@ -69,15 +68,30 @@ import {
 } from "@vibeshape/domain"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentCommand } from "@vibeshape/domain/commands"
-import type { DocumentAuthoritySnapshot, DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type {
+  AuthoredDocumentSnapshot,
+  DocumentAuthoritySnapshot,
+} from "@vibeshape/domain/document-v2"
 import type {
   DocumentV2Command,
   DocumentV2MetadataChange,
 } from "@vibeshape/domain/document-v2-command-schemas"
-import { documentV2MetadataCommandSchema } from "@vibeshape/domain/document-v2-command-schemas"
+import {
+  type DocumentV3Command,
+  documentV2MetadataCommandSchema,
+  documentV3MetadataCommandSchema,
+} from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
+import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
-import { readAuthoredVShape, writeVShapeV2, writeVShapeV3 } from "@vibeshape/formats/vshape"
+import type { FeatureId } from "@vibeshape/domain/identifiers"
+import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
+import {
+  readAuthoredVShape,
+  writeVShapeV2,
+  writeVShapeV3,
+  writeVShapeV4,
+} from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
   type LocalProjectSummary,
@@ -98,6 +112,7 @@ import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
 import { BrowserProjectRepository } from "./browser-project-repository"
+import { prepareDocumentGeometryExport } from "./document-geometry-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { createProjectActionGuard } from "./project-action-guard"
 import { formatProjectCopyName } from "./versioned-project-file"
@@ -875,12 +890,15 @@ export function redoDocument(baseRevision: number) {
 }
 
 function canWriteAuthoredMetadata(active: PersistentDocumentSession | null) {
+  return canWriteAuthoredState(active) && !getProjectActiveWorkBlock()
+}
+
+function canWriteAuthoredState(active: PersistentDocumentSession | null) {
   return (
     active?.mode === "read-write" &&
     state.status === "ready" &&
     state.report !== null &&
-    state.saveStatus !== "saving" &&
-    !getProjectActiveWorkBlock()
+    state.saveStatus !== "saving"
   )
 }
 
@@ -893,13 +911,13 @@ function reviewedMetadataBase(active: PersistentDocumentSession, baseRevision: n
   )
     return null
   const base = active.authoredSnapshot
-  return base?.schemaVersion === 2 && base.revision === baseRevision ? base : null
+  return base && base.schemaVersion !== 1 && base.revision === baseRevision ? base : null
 }
 
 async function commitReviewedMetadata(
   active: PersistentDocumentSession,
   command: Extract<DocumentV2Command, { kind: "org.vibeshape.document.metadata-command" }>,
-  expected: DocumentSnapshotV2,
+  expected: AuthoredDocumentSnapshot,
 ) {
   const base = reviewedMetadataBase(active, command.baseRevision)
   if (!base)
@@ -911,7 +929,10 @@ async function commitReviewedMetadata(
         retryable: true,
       },
     }
-  const replayed = applyDocumentV2Command(base, command)
+  const replayed =
+    base.schemaVersion === 3
+      ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
+      : applyDocumentV2Command(base, command)
   if (!replayed.ok || canonicalJson(replayed.snapshot) !== canonicalJson(expected))
     return {
       ok: false as const,
@@ -971,9 +992,58 @@ export async function commitAuthoredMetadata(
   return result.ok ? { ok: true } : result
 }
 
+export async function replaceSurfaceTextureLayers(
+  baseRevision: number,
+  featureId: FeatureId,
+  layers: readonly SurfaceTextureLayer[],
+): Promise<DocumentMutationResult> {
+  const active = session
+  const work = getProjectActiveWorkBlock()
+  if (
+    !active ||
+    !canWriteAuthoredState(active) ||
+    (work !== null && work !== "surface-texture-draft") ||
+    active.snapshot.revision !== baseRevision
+  )
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "The texture source revision is no longer writable.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    }
+  const command = documentV3MetadataCommandSchema.safeParse({
+    kind: "org.vibeshape.document.metadata-command",
+    schemaVersion: 3,
+    commandId: browserUuidV7(),
+    documentId: active.snapshot.id,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { kind: "textures.replace-layers", featureId, layers },
+  })
+  if (!command.success)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "The surface texture layers are invalid.",
+        retryable: false,
+        sourceCode: null,
+      },
+    }
+  const result = await commitActiveAuthoredCommand(active, command.data)
+  return result.ok ? { ok: true } : result
+}
+
 async function commitActiveAuthoredCommand(
   active: PersistentDocumentSession,
-  command: Extract<DocumentV2Command, { kind: "org.vibeshape.document.metadata-command" }>,
+  command: Extract<
+    DocumentV2Command | DocumentV3Command,
+    { kind: "org.vibeshape.document.metadata-command" }
+  >,
 ) {
   publish({ ...state, saveStatus: "saving", diagnostic: null })
   const result = await active.commitAuthored(command)
@@ -1247,24 +1317,14 @@ export async function exportActiveDocument(
   }
   const active = session
   const { revision, name } = active.snapshot
-  const authority = active.authoredSnapshot
-  const bodies =
-    authority?.schemaVersion === 2
-      ? authoredPartExportBodies(authority, state.report, partId)
-      : partId
-        ? null
-        : undefined
-  if (bodies === null)
-    return {
-      ok: false,
-      diagnostic: {
-        code: "export-failed",
-        message: "The requested parts do not have current exportable geometry.",
-        retryable: true,
-        sourceCode: "stale-revision",
-      },
-    }
-  const result = await active.exportDocument(format, bodies?.length ? { bodies } : {})
+  const prepared = prepareDocumentGeometryExport(
+    active.authoredSnapshot,
+    state.report,
+    format,
+    partId,
+  )
+  if (!prepared.ok) return prepared
+  const result = await active.exportDocument(format, prepared.options)
   if (session !== active || active.snapshot.revision !== revision) {
     return {
       ok: false,
@@ -1307,11 +1367,14 @@ export async function prepareActiveDocumentPrint(
     }
   }
   const snapshot = active.snapshot
+  const plan = prepareDocumentGeometryExport(active.authoredSnapshot, state.report, "3mf")
+  if (!plan.ok) return plan
   return prepareDocumentPrint(
     snapshot,
     settings,
     signal,
     () => session === active && active.snapshot.revision === snapshot.revision,
+    plan.options,
   )
 }
 
@@ -1332,7 +1395,12 @@ export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupRe
   if (!portable.ok) return portable
   if (!action.current() || portable.value.project.snapshot.revision !== action.revision)
     return projectActionUnavailable()
-  const write = portable.value.version === 3 ? writeVShapeV3 : writeVShapeV2
+  const write =
+    portable.value.version === 4
+      ? writeVShapeV4
+      : portable.value.version === 3
+        ? writeVShapeV3
+        : writeVShapeV2
   const archived = await write({
     ...portable.value.project,
     exportedAt: new Date().toISOString(),

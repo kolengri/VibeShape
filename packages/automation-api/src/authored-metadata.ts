@@ -1,6 +1,6 @@
 import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { historyItemRefSchema } from "@vibeshape/domain/document-node"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-command-schemas"
 import {
   commandIdSchema,
@@ -105,7 +105,7 @@ export const metadataCommitViewSchema = z
 
 /** Metadata reads are bounded and belong to the exact paired document revision. */
 export function readAuthoredMetadata(
-  snapshot: DocumentSnapshotV2,
+  snapshot: AuthoredDocumentSnapshot,
   kind: "parts" | "folders" | "history",
   input: unknown,
 ) {

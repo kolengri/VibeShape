@@ -322,3 +322,29 @@ Compound and Union have separate actions. Choose an ordered list of two to eight
 New folder selects an explicit first and last History item. Folder collapse is presentation state; saved names and contiguous membership are organizational metadata. Ungroup removes only the folder. It never deletes or reorders geometry. Part names, visibility, folders, and feature history survive native Save/Open as a fresh document copy.
 
 Export scope chooses All parts or one named part, including hidden parts. STL exports the selected current solid; multipart 3MF retains names and positions. Opening Export resets the scope to All parts. Print preparation is available for All parts and creates a disposable print copy; it does not modify the authored model. A changed document or unavailable selected body produces an error instead of silently exporting another body.
+
+
+## Surface texture editing
+
+Start Surface texture and choose the current body output. The task can scope a layer to the whole
+body or selected faces, which become body-scoped semantic references. Choose a built-in pattern or
+upload an image for local grayscale conversion, then adjust projection/axis, height, size, rotation,
+offset, direction, inversion, boundary fade, and layer blending. Layers can be added, enabled, and removed within the four-layer feature limit; blending follows
+their saved order. Original/relief comparison and mesh statistics describe
+the disposable preview.
+
+Paint starts an empty regional mask; Erase removes relief locally. Brush dabs retain model positions
+and normals so the opposite surface is protected. Brush-mask Undo remains draft work until Apply.
+A missing or ambiguous selected face requires a replacement; another body or a nearby face is never
+chosen automatically. Resource or invalid-displacement errors preserve the reviewed settings.
+
+Apply requires the current writable source revision and a ready enabled-layer preview, prevents
+duplicate activation, and saves the complete reviewed collection in one transaction. Cancel discards
+that draft. The first Apply adopts V3 authority atomically; one document Undo clears that application
+without downgrading the document schema. Subsequent Undo/Redo restores layer settings, maps, and masks
+with the authored model. Native Save/Open preserves editable layers in format 4. STL/3MF include the
+derived relief, while STEP exports the exact source B-Rep. Digital preview and mesh checks do not
+prove wall thickness, absence of global self-intersections, physical fit, or a successful print.
+
+Browser Apply/reopen/export acceptance is pending at this revision; worker and native-format evidence
+remain separate from that workflow and from physical printing.

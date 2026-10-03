@@ -1,4 +1,4 @@
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import type { HistoryFolder } from "@vibeshape/domain/history-folders"
 import { useTranslations } from "@vibeshape/i18n"
 import {
@@ -107,7 +107,7 @@ export function HistoryFolderGroup({
   onCommit,
   children,
 }: {
-  authority: DocumentSnapshotV2
+  authority: AuthoredDocumentSnapshot
   folder: HistoryFolder
   rows: readonly HistoryViewRow[]
   disabled: boolean

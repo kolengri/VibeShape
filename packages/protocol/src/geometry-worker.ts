@@ -1,7 +1,13 @@
 import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
+import {
+  surfaceTextureMeshLayersSchema,
+  surfaceTextureMeshSchema,
+  surfaceTextureQualitySchema,
+  surfaceTextureStatisticsSchema,
+} from "./surface-texture"
 
-export const GEOMETRY_PROTOCOL_VERSION = 15 as const
+export const GEOMETRY_PROTOCOL_VERSION = 16 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -1495,6 +1501,13 @@ const cancelRequestSchema = requestEnvelopeSchema.extend({
   targetRequestId: identifierSchema,
 })
 
+const textureMeshRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("textureMesh"),
+  mesh: surfaceTextureMeshSchema,
+  layers: surfaceTextureMeshLayersSchema,
+  quality: surfaceTextureQualitySchema,
+})
+
 export const geometryWorkerRequestSchema = z.discriminatedUnion("type", [
   initializeEngineRequestSchema,
   runKernelSpikeRequestSchema,
@@ -1503,6 +1516,7 @@ export const geometryWorkerRequestSchema = z.discriminatedUnion("type", [
   healthCheckRequestSchema,
   disposeDocumentRequestSchema,
   cancelRequestSchema,
+  textureMeshRequestSchema,
 ])
 
 export const geometryProgressStageSchema = z.enum([
@@ -1519,6 +1533,7 @@ export const geometryProgressStageSchema = z.enum([
   "feature-validation",
   "feature-evaluation",
   "feature-tessellation",
+  "surface-texture",
   "complete",
 ])
 
@@ -1860,6 +1875,10 @@ export const geometryDiagnosticCodeSchema = z.enum([
   "invalid-feature-parameters",
   "invalid-feature-geometry",
   "missing-feature-dependency",
+  "surface-texture-invalid-mesh",
+  "surface-texture-resource-limit",
+  "surface-texture-invalid-target",
+  "surface-texture-invalid-displacement",
   "cancelled",
   "stale-generation",
   "internal-error",
@@ -1877,6 +1896,12 @@ const failureResponseSchema = responseEnvelopeSchema.extend({
     .strict(),
 })
 
+const surfaceTexturePreviewedResponseSchema = responseEnvelopeSchema.extend({
+  type: z.literal("surfaceTexturePreviewed"),
+  mesh: surfaceTextureMeshSchema,
+  statistics: surfaceTextureStatisticsSchema,
+})
+
 export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
   initializedResponseSchema,
   progressResponseSchema,
@@ -1888,6 +1913,7 @@ export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
   cancellationAcceptedResponseSchema,
   requestCancelledResponseSchema,
   failureResponseSchema,
+  surfaceTexturePreviewedResponseSchema,
 ])
 
 export type KernelSpikeParameters = z.infer<typeof kernelSpikeParametersSchema>

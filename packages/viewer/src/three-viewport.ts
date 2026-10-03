@@ -9,6 +9,7 @@ import {
   DoubleSide,
   EdgesGeometry,
   Group,
+  type Intersection,
   LineBasicMaterial,
   LineDashedMaterial,
   LineSegments,
@@ -112,6 +113,7 @@ export function createLatestFramePublisher<Value>(
 }
 
 export type ViewerMesh = Readonly<{
+  textureSource?: Omit<ViewerMesh, "textureSource">
   appearance?: "datum" | "model" | "preview"
   featureId: string
   outputRole?: string
@@ -468,6 +470,7 @@ export type ViewerSketchProjectionBounds = Readonly<{
 type ViewerCameraClipping = Readonly<{ far: number; near: number }>
 
 export type GeometryViewport = Readonly<{
+  setSurfaceTextureBrush: (brush: ViewerSurfaceTextureBrush | null, active?: boolean) => void
   clearSketchProjection: () => void
   orientToFrame: (frame: ViewerFrame) => boolean
   setSketchProjection: (frame: ViewerFrame, bounds: ViewerSketchProjectionBounds) => boolean
@@ -510,6 +513,24 @@ export type ViewerSelection = Readonly<{
   outputRole?: string
   faceId: number
   faceOrdinal: number
+}>
+
+export type ViewerSurfaceTextureDab = Readonly<{
+  center: [number, number, number]
+  normal: [number, number, number]
+  selection: ViewerSelection
+  erase: boolean
+}>
+
+export type ViewerSurfaceTextureBrush = Readonly<{
+  featureId: string | null
+  outputRole: string | null
+  mode: "faces" | "paint" | "erase"
+  radiusMm: number
+  hardness: number
+  onStart: () => void
+  onDab: (dab: ViewerSurfaceTextureDab) => void
+  onEnd: (cancelled: boolean) => void
 }>
 
 /** Returns the stable identity key for one feature body output. */
@@ -1119,6 +1140,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #renderer: WebGLRenderer
   readonly #scene = new Scene()
   readonly #camera = new OrthographicCamera(-50, 50, 50, -50, 0.01, 10_000)
+  #surfaceTextureBrush: ViewerSurfaceTextureBrush | null = null
+  #surfaceTexturePointer: number | null = null
+  #surfaceTextureLastPoint: Vector3 | null = null
+  #surfaceTextureControlsEnabled = true
   readonly #orientationScene = new Scene()
   readonly #orientationCamera = new PerspectiveCamera(35, 1, 0.1, 10)
   readonly #orientationAxes = new AxesHelper(1.05)
@@ -1155,6 +1180,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #pointer = new Vector2()
   readonly #meshSources = new Map<string, ViewerMesh>()
   readonly #surfaceMeshes: Mesh[] = []
+  readonly #textureSourceMeshes = new Map<string, { surface: Mesh; source: ViewerMesh }>()
   readonly #originPlaneMeshes = new Map<Mesh, ViewerOriginPlane>()
   readonly #originPlaneMeshesByPlane = new Map<ViewerOriginPlane, Mesh>()
   readonly #originPlaneEdges = new Map<LineSegments, ViewerOriginPlane>()
@@ -1500,6 +1526,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     window.addEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
+    canvas.addEventListener("pointercancel", this.#cancelSurfaceTextureStroke)
+    canvas.addEventListener("lostpointercapture", this.#cancelSurfaceTextureStroke)
+    document.addEventListener("keydown", this.#surfaceTextureKeyDown, true)
+    window.addEventListener("blur", this.#cancelSurfaceTextureStroke)
     canvas.addEventListener("pointercancel", this.#onTranslationGestureCancel)
     canvas.addEventListener("lostpointercapture", this.#onTranslationCaptureLost)
     document.addEventListener("keydown", this.#onTranslationGestureKeyDown, true)
@@ -1565,6 +1595,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#modelSurfaceMaterials.length = 0
     this.#modelEdgeMaterials.length = 0
     this.#surfaceMeshes.length = 0
+    this.#disposeTextureSourceMeshes()
     this.#meshSources.clear()
     for (const source of meshes) {
       const preview = source.appearance === "preview"
@@ -1585,6 +1616,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       if (!preview) {
         this.#meshSources.set(viewerBodyKey(source), source)
         this.#surfaceMeshes.push(surface)
+        this.#registerTextureSourceMesh(source, surfaceMaterial)
       }
       this.#modelGroup.add(surface)
       const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
@@ -1611,6 +1643,17 @@ class ThreeGeometryViewport implements GeometryViewport {
       visibleMesh,
       2,
     )
+  }
+
+  #registerTextureSourceMesh(source: ViewerMesh, material: Mesh["material"]) {
+    if (!source.textureSource) return
+    const surface = new Mesh(createViewerGeometry(source.textureSource), material)
+    this.#textureSourceMeshes.set(viewerBodyKey(source), { surface, source: source.textureSource })
+  }
+
+  #disposeTextureSourceMeshes() {
+    for (const { surface } of this.#textureSourceMeshes.values()) surface.geometry.dispose()
+    this.#textureSourceMeshes.clear()
   }
 
   setFeatureSelection(mesh: ViewerMesh | null) {
@@ -2031,6 +2074,12 @@ class ThreeGeometryViewport implements GeometryViewport {
   dispose() {
     if (this.#disposed) return
     this.#disposed = true
+    this.#disposeTextureSourceMeshes()
+    this.#finishSurfaceTextureStroke(true)
+    this.#canvas.removeEventListener("pointercancel", this.#cancelSurfaceTextureStroke)
+    this.#canvas.removeEventListener("lostpointercapture", this.#cancelSurfaceTextureStroke)
+    document.removeEventListener("keydown", this.#surfaceTextureKeyDown, true)
+    window.removeEventListener("blur", this.#cancelSurfaceTextureStroke)
     this.#resizeObserver.disconnect()
     this.#canvas.removeEventListener("pointerdown", this.#onPointerDown, true)
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
@@ -2282,17 +2331,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       return null
     }
     const source = this.#meshSources.get(intersection.object.name)
-    const faceId = source?.triangleFaceIds[intersection.faceIndex]
-    if (!source || faceId === undefined) return null
-    const faceOrdinal = viewerFaceOrdinal(source, faceId)
-    return faceOrdinal === null
-      ? null
-      : {
-          featureId: source.featureId,
-          ...(source.outputRole === undefined ? {} : { outputRole: source.outputRole }),
-          faceId,
-          faceOrdinal,
-        }
+    return source ? viewerSelectionFromSource(source, intersection.faceIndex) : null
   }
 
   #pickOriginPlane(event: PointerEvent): ViewerOriginPlane | null {
@@ -2827,7 +2866,102 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#commitIdleSelection(event)
   }
 
+  setSurfaceTextureBrush(brush: ViewerSurfaceTextureBrush | null, active = false) {
+    if (textureBrushTargetChanged(this.#surfaceTextureBrush, brush))
+      this.#finishSurfaceTextureStroke(true)
+    this.#surfaceTextureBrush = brush
+    for (const group of [
+      this.#featureSelectionGroup,
+      this.#featurePreselectionGroup,
+      this.#selectionGroup,
+      this.#preselectionGroup,
+    ])
+      group.visible = !active
+    this.#canvas.style.cursor = brush ? "crosshair" : ""
+    this.#render()
+  }
+
+  #surfaceTextureDab(event: PointerEvent): ViewerSurfaceTextureDab | null {
+    const brush = this.#surfaceTextureBrush
+    if (!brush || !this.#prepareRaycaster(event)) return null
+    for (const hit of this.#raycaster.intersectObjects(this.#surfaceMeshes, false)) {
+      const visibleSelection = this.#selectionFromIntersection(hit)
+      if (!visibleSelection) continue
+      if (!textureBrushAcceptsSelection(brush, visibleSelection)) return null
+      return this.#sourceSurfaceTextureDab(hit, visibleSelection, event.shiftKey)
+    }
+    return null
+  }
+
+  #sourceSurfaceTextureDab(
+    hit: Intersection,
+    visibleSelection: ViewerSelection,
+    erase: boolean,
+  ): ViewerSurfaceTextureDab | null {
+    const original = this.#textureSourceMeshes.get(hit.object.name)
+    const sourceHit = original ? this.#raycaster.intersectObject(original.surface, false)[0] : hit
+    if (!sourceHit?.face) return null
+    const selection = original
+      ? viewerSelectionFromSource(original.source, sourceHit.faceIndex)
+      : visibleSelection
+    if (!selection) return null
+    const normal = sourceHit.face.normal
+      .clone()
+      .transformDirection(sourceHit.object.matrixWorld)
+      .normalize()
+    return {
+      center: sourceHit.point.toArray() as [number, number, number],
+      normal: normal.toArray() as [number, number, number],
+      selection,
+      erase: erase,
+    }
+  }
+
+  #finishSurfaceTextureStroke(cancelled: boolean) {
+    const pointerId = this.#surfaceTexturePointer
+    if (pointerId === null) return
+    this.#surfaceTexturePointer = null
+    delete this.#canvas.dataset.surfaceTextureStroke
+    this.#surfaceTextureLastPoint = null
+    this.#controls.enabled = this.#surfaceTextureControlsEnabled
+    this.#surfaceTextureBrush?.onEnd(cancelled)
+    if (this.#canvas.hasPointerCapture(pointerId)) this.#canvas.releasePointerCapture(pointerId)
+  }
+
+  #cancelSurfaceTextureStroke = () => this.#finishSurfaceTextureStroke(true)
+  #surfaceTextureKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || this.#surfaceTexturePointer === null) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    this.#finishSurfaceTextureStroke(true)
+  }
+
+  #beginSurfaceTextureStroke(event: PointerEvent): boolean {
+    if (event.isPrimary && event.button === 0 && this.#surfaceTextureBrush) {
+      const dab = this.#surfaceTextureDab(event)
+      if (!dab) return false
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#surfaceTextureBrush.onStart()
+      if (this.#surfaceTextureBrush.mode === "faces") {
+        this.#surfaceTextureBrush.onDab(dab)
+        this.#surfaceTextureBrush.onEnd(false)
+        return true
+      }
+      this.#surfaceTexturePointer = event.pointerId
+      this.#canvas.dataset.surfaceTextureStroke = "true"
+      this.#surfaceTextureLastPoint = new Vector3(...dab.center)
+      this.#surfaceTextureControlsEnabled = this.#controls.enabled
+      this.#controls.enabled = false
+      this.#canvas.setPointerCapture(event.pointerId)
+      this.#surfaceTextureBrush.onDab(dab)
+      return true
+    }
+    return false
+  }
+
   #onPointerDown = (event: PointerEvent) => {
+    if (this.#beginSurfaceTextureStroke(event)) return
     if (this.#translationGizmoInteracting) return
     if (event.isPrimary && event.button === 0) {
       if (this.#beginAngularGizmoInteraction(event)) return
@@ -2835,7 +2969,29 @@ class ThreeGeometryViewport implements GeometryViewport {
     }
   }
 
+  #paintSurfaceTextureStroke(event: PointerEvent): boolean {
+    if (this.#surfaceTexturePointer === event.pointerId && this.#surfaceTextureBrush) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      const dab = this.#surfaceTextureDab(event)
+      if (dab) {
+        const point = new Vector3(...dab.center)
+        if (
+          !this.#surfaceTextureLastPoint ||
+          point.distanceTo(this.#surfaceTextureLastPoint) >=
+            this.#surfaceTextureBrush.radiusMm * 0.2
+        ) {
+          this.#surfaceTextureLastPoint = point
+          this.#surfaceTextureBrush.onDab(dab)
+        }
+      }
+      return true
+    }
+    return false
+  }
+
   #onPointerMove = (event: PointerEvent) => {
+    if (this.#paintSurfaceTextureStroke(event)) return
     if (!event.isPrimary) return
     if (this.#handleAngularGizmoPointerMove(event)) return
     if (this.#translationGizmoInteracting) return
@@ -2852,6 +3008,12 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerUp = (event: PointerEvent) => {
+    if (this.#surfaceTexturePointer === event.pointerId) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#finishSurfaceTextureStroke(false)
+      return
+    }
     if (this.#handleAngularGizmoPointerUp(event)) return
     if (this.#skipTranslationGizmoPointerUp) {
       this.#skipTranslationGizmoPointerUp = false
@@ -3121,4 +3283,44 @@ export function createGeometryViewport(
   options: GeometryViewportOptions = {},
 ): GeometryViewport {
   return new ThreeGeometryViewport(canvas, options)
+}
+
+function textureBrushAcceptsSelection(
+  brush: ViewerSurfaceTextureBrush,
+  selection: ViewerSelection,
+) {
+  if (!brush.featureId) return true
+  return (
+    selection.featureId === brush.featureId &&
+    (selection.outputRole ?? "result") === (brush.outputRole ?? "result")
+  )
+}
+
+function viewerSelectionFromSource(
+  source: ViewerMesh,
+  faceIndex: number | null | undefined,
+): ViewerSelection | null {
+  if (faceIndex === null || faceIndex === undefined) return null
+  const faceId = source.triangleFaceIds[faceIndex]
+  if (faceId === undefined) return null
+  const faceOrdinal = viewerFaceOrdinal(source, faceId)
+  if (faceOrdinal === null) return null
+  return {
+    featureId: source.featureId,
+    ...(source.outputRole === undefined ? {} : { outputRole: source.outputRole }),
+    faceId,
+    faceOrdinal,
+  }
+}
+
+function textureBrushTargetChanged(
+  previous: ViewerSurfaceTextureBrush | null,
+  next: ViewerSurfaceTextureBrush | null,
+) {
+  if (!next) return true
+  return (
+    next.mode !== previous?.mode ||
+    next.featureId !== previous?.featureId ||
+    next.outputRole !== previous?.outputRole
+  )
 }

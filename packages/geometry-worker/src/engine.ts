@@ -6,6 +6,7 @@ import {
   compoundFeatureContentParametersSchema,
   coneFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
+  DEFAULT_SURFACE_TEXTURE_QUALITY,
   datumPlaneFeatureContentParametersSchema,
   extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
@@ -32,6 +33,9 @@ import {
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
+  type SurfaceTextureExportLayers,
+  type SurfaceTextureMeshLayer,
+  type SurfaceTextureQuality,
   sphereFeatureContentParametersSchema,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
@@ -52,6 +56,7 @@ import {
   makeThreePointArc,
   measureShapeSurfaceProperties,
   type Shape3D,
+  type ShapeMesh,
   type SimplePoint,
   setOC,
   type Wire,
@@ -115,6 +120,7 @@ import {
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
+import { encodeSurfaceTextureStl, SurfaceTextureError, textureSurfaceMesh } from "./surface-texture"
 import {
   captureReplicadTopologyCandidates,
   captureReplicadTopologySnapshot,
@@ -191,6 +197,8 @@ export type DocumentGeometryExportInput = Readonly<{
   documentId: string
   features: readonly FeatureEvaluationDependency[]
   format: Exclude<GeometryExportFormat, "3mf">
+  surfaceTextures?: SurfaceTextureExportLayers
+  textureQuality?: SurfaceTextureQuality
 }>
 
 export type DocumentGeometryExportResult = Readonly<{
@@ -201,6 +209,8 @@ export type DocumentGeometryExportResult = Readonly<{
 export type DocumentPrintMeshExportInput = Readonly<{
   documentId: string
   features: readonly FeatureEvaluationDependency[]
+  surfaceTextures?: SurfaceTextureExportLayers
+  textureQuality?: SurfaceTextureQuality
 }>
 
 export type DocumentPrintMeshExportResult = Readonly<{
@@ -731,6 +741,10 @@ function tessellate(
     tolerance: parameters.meshTolerance,
     angularTolerance: parameters.angularTolerance,
   })
+  return tessellationPayload(source)
+}
+
+function tessellationPayload(source: ShapeMesh) {
   const positions = Float32Array.from(source.vertices)
   const normals = Float32Array.from(source.normals)
   const indices = Uint32Array.from(source.triangles)
@@ -747,6 +761,83 @@ function tessellate(
   }
 
   return { positions, normals, indices, triangleFaceIds }
+}
+
+function hasEnabledSurfaceTextures(input: DocumentPrintMeshExportInput) {
+  return (
+    input.surfaceTextures?.some((group) => group.layers.some((layer) => layer.enabled)) ?? false
+  )
+}
+
+function isTexturedStlExport(input: DocumentGeometryExportInput) {
+  return input.format === "stl" && hasEnabledSurfaceTextures(input)
+}
+
+function validateTextureExportBodies(input: DocumentPrintMeshExportInput) {
+  const selected = new Set(
+    input.features.map((feature) => `${feature.featureId}:${feature.outputRole ?? "result"}`),
+  )
+  for (const group of input.surfaceTextures ?? [])
+    if (
+      group.layers.some((layer) => layer.enabled) &&
+      !selected.has(`${group.featureId}:${group.outputRole}`)
+    )
+      throw new SurfaceTextureError(
+        "surface-texture-invalid-target",
+        "A textured body is missing from the selected export. Refresh the body selection before exporting.",
+      )
+}
+
+function createTextureExportBudget(input: DocumentPrintMeshExportInput) {
+  const quality = input.textureQuality ?? DEFAULT_SURFACE_TEXTURE_QUALITY
+  const enabled = hasEnabledSurfaceTextures(input)
+  let remainingTriangles = quality.maxTriangles
+  return {
+    currentQuality: (): SurfaceTextureQuality => ({ ...quality, maxTriangles: remainingTriangles }),
+    consume: (triangleCount: number) => {
+      if (!enabled) return
+      remainingTriangles -= triangleCount
+      if (remainingTriangles < 0)
+        throw new SurfaceTextureError(
+          "surface-texture-resource-limit",
+          "The combined export exceeds the texture triangle budget. Export fewer bodies or use a coarser mesh.",
+        )
+    },
+  }
+}
+
+function exportTextureLayers(
+  input: DocumentPrintMeshExportInput,
+  feature: FeatureEvaluationDependency,
+) {
+  return (
+    input.surfaceTextures
+      ?.filter(
+        (group) =>
+          group.featureId === feature.featureId &&
+          group.outputRole === (feature.outputRole ?? "result"),
+      )
+      .flatMap((group) => group.layers) ?? []
+  )
+}
+
+async function texturePrintMesh(
+  source: ShapeMesh,
+  layers: readonly SurfaceTextureMeshLayer[],
+  quality: SurfaceTextureQuality,
+) {
+  if (!layers.some((layer) => layer.enabled))
+    return { vertices: source.vertices, triangles: source.triangles }
+  if (quality.maxTriangles < 12)
+    throw new SurfaceTextureError(
+      "surface-texture-resource-limit",
+      "The combined export exceeds the texture triangle budget. Export fewer bodies or use a coarser mesh.",
+    )
+  const textured = await textureSurfaceMesh(tessellationPayload(source), layers, quality)
+  return {
+    vertices: Array.from(textured.mesh.positions),
+    triangles: Array.from(textured.mesh.indices),
+  }
 }
 
 function nearlyEqual(left: number, right: number, tolerance = 1e-6) {
@@ -3408,6 +3499,19 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     if (!opencascade) throw new Error("OpenCascade did not initialize.")
     if (input.features.length === 0) throw new Error("No exportable feature bodies were provided.")
 
+    if (isTexturedStlExport(input)) {
+      const result = await this.exportPrintMeshes(input)
+      const file = encodeSurfaceTextureStl(
+        result.meshes.map((mesh) => ({
+          positions: Float32Array.from(mesh.vertices),
+          normals: new Float32Array(mesh.vertices.length),
+          indices: Uint32Array.from(mesh.triangles),
+          triangleFaceIds: new Uint32Array(mesh.triangles.length / 3),
+        })),
+      )
+      return { file, bodyCount: result.meshes.length }
+    }
+
     const sourceShapes = this.#featureShapes.resolve(input.documentId, input.features)
     if (!sourceShapes) {
       throw new Error("One or more exact feature bodies are unavailable for export.")
@@ -3434,29 +3538,36 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     const opencascade = this.#opencascade
     if (!opencascade) throw new Error("OpenCascade did not initialize.")
     if (input.features.length === 0) throw new Error("No exportable feature bodies were provided.")
+    validateTextureExportBodies(input)
     const sourceShapes = this.#featureShapes.resolve(input.documentId, input.features)
     if (!sourceShapes)
       throw new Error("One or more exact feature bodies are unavailable for export.")
-    return {
-      meshes: sourceShapes.map((shape, index) => {
-        try {
-          const mesh = meshOcctShape(opencascade, shape, {
-            tolerance: PRINT_MESH_CHORD_TOLERANCE_MM,
-            angularTolerance: PRINT_MESH_ANGULAR_TOLERANCE_RAD,
-          })
-          return {
-            featureId: input.features[index]?.featureId ?? "unknown-feature",
-            ...(input.features[index]?.outputRole
-              ? { outputRole: input.features[index]?.outputRole }
-              : {}),
-            vertices: mesh.vertices,
-            triangles: mesh.triangles,
-          }
-        } finally {
-          opencascade.BRepTools.Clean(shape.wrapped, true)
-        }
-      }),
+    const budget = createTextureExportBudget(input)
+    const meshes: Array<DocumentPrintMeshExportResult["meshes"][number]> = []
+    for (const [index, shape] of sourceShapes.entries()) {
+      try {
+        const source = meshOcctShape(opencascade, shape, {
+          tolerance: PRINT_MESH_CHORD_TOLERANCE_MM,
+          angularTolerance: PRINT_MESH_ANGULAR_TOLERANCE_RAD,
+        })
+        const feature = input.features[index]
+        if (!feature) throw new Error("Print mesh export lost its selected body identity.")
+        const mesh = await texturePrintMesh(
+          source,
+          exportTextureLayers(input, feature),
+          budget.currentQuality(),
+        )
+        budget.consume(mesh.triangles.length / 3)
+        meshes.push({
+          featureId: feature.featureId,
+          ...(feature.outputRole ? { outputRole: feature.outputRole } : {}),
+          ...mesh,
+        })
+      } finally {
+        opencascade.BRepTools.Clean(shape.wrapped, true)
+      }
     }
+    return { meshes }
   }
 
   async runKernelSpike(parameters: KernelSpikeParameters, reportProgress: ProgressReporter) {

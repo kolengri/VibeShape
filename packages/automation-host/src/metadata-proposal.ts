@@ -1,7 +1,10 @@
 import type { metadataCommitViewSchema } from "@vibeshape/automation-api/authored-metadata"
 import type { QueryDispatcher } from "@vibeshape/automation-api/queries"
 import type { CommandActor } from "@vibeshape/domain/commands"
-import { type DocumentSnapshotV2, documentSnapshotV2Schema } from "@vibeshape/domain/document-v2"
+import {
+  type AuthoredDocumentSnapshot,
+  authoredDocumentSnapshotSchema,
+} from "@vibeshape/domain/document-v2"
 import { documentV2MetadataCommandSchema } from "@vibeshape/domain/document-v2-command-schemas"
 import type { DocumentId } from "@vibeshape/domain/identifiers"
 import type { z } from "zod"
@@ -28,7 +31,7 @@ export type MetadataProposalConfiguration = Readonly<{
   actor: CommandActor
   readSnapshot: () => unknown | PromiseLike<unknown>
   hasCommandId: (commandId: string) => Promise<boolean>
-  commit: (command: MetadataCommand, expected: DocumentSnapshotV2) => Promise<unknown>
+  commit: (command: MetadataCommand, expected: AuthoredDocumentSnapshot) => Promise<unknown>
   geometry: DraftGeometryPort
   queries: QueryDispatcher
   review: DraftReviewPort
@@ -84,7 +87,7 @@ export function createMetadataProposalCoordinator(configuration: MetadataProposa
     persisting = true
     const committed = await configuration.commit(
       documentV2MetadataCommandSchema.parse(proposal.command),
-      documentSnapshotV2Schema.parse(proposal.snapshot),
+      authoredDocumentSnapshotSchema.parse(proposal.snapshot),
     )
     return validateMetadataCommitReceipt(committed, proposal.value)
   }

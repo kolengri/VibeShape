@@ -46,6 +46,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createSketch: () => void
     createSubtract: () => void
     measure?: () => void
+    surfaceTexture?: () => void
     redoSketch: () => void
     setSketchCameraMode: (mode: SketchCameraMode) => void
     setSketchConstruction: (construction: boolean) => void
@@ -111,6 +112,14 @@ const constraintEditorCommandDescriptors: readonly EditorCommandDescriptor[] =
   }))
 
 const descriptors: readonly EditorCommandDescriptor[] = [
+  {
+    group: "modeling",
+    icon: "surface-texture",
+    id: editorCommandIds.surfaceTexture,
+    labelKey: "surfaceTexture",
+    ownerModuleId: editorOwner,
+    toolbarGroup: "model-primary",
+  },
   {
     group: "workspace",
     icon: "keyboard",
@@ -753,6 +762,17 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
         : editorCommandDisabled("documentUnavailable"),
     id: editorCommandIds.openShortcutHelp,
     isToolbarVisible: () => false,
+    ownerModuleId: editorOwner,
+  },
+  {
+    execute: ({ actions }) => actions.surfaceTexture?.(),
+    getEligibility: (context) =>
+      context.actions.surfaceTexture
+        ? writableDocumentEligibility(context)
+        : editorCommandDisabled("documentUnavailable"),
+    id: editorCommandIds.surfaceTexture,
+    isActive: ({ state }) => state.activePartDesignCommand === "surface-texture",
+    isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
     ownerModuleId: editorOwner,
   },
   {

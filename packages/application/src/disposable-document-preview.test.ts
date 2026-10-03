@@ -1,6 +1,6 @@
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
-import type { FeatureMeshPolicy } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, type FeatureMeshPolicy } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import type { DocumentRebuildPort } from "./persistent-document-session"
@@ -48,7 +48,7 @@ function snapshotWithFeatures(features: readonly string[]): DocumentSnapshot {
 
 function response(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 22,
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
     requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f2201",
     documentId,
     revision: 4,

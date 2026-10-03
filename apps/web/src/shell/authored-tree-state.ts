@@ -3,7 +3,7 @@ import {
   resolveAuthoredParts,
 } from "@vibeshape/application/authored-parts"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
-import type { DocumentSnapshotV2 } from "@vibeshape/domain/document-v2"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-folders"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import type { DocumentControllerState } from "../document/document-controller"
@@ -12,10 +12,11 @@ import type { HistoryViewRow } from "./model-tree-history"
 
 export function currentAuthoredSnapshot(
   controller: DocumentControllerState,
-): DocumentSnapshotV2 | null {
+): AuthoredDocumentSnapshot | null {
   const snapshot = controller.authoredSnapshot
   const report = controller.report
-  return snapshot?.schemaVersion === 2 &&
+  return snapshot &&
+    snapshot.schemaVersion !== 1 &&
     report &&
     snapshot.id === report.snapshot.id &&
     snapshot.revision === report.snapshot.revision
@@ -58,7 +59,7 @@ export function authoredBodyKey(body: {
   return `${body.featureId}:${body.outputRole ?? "result"}`
 }
 
-export function authoredBodyKeys(authority: DocumentSnapshotV2, hiddenOnly = false) {
+export function authoredBodyKeys(authority: AuthoredDocumentSnapshot, hiddenOnly = false) {
   return new Set(
     authority.parts.flatMap((part) =>
       hiddenOnly && part.visible ? [] : part.bodyHistory.map(authoredBodyKey),
@@ -91,7 +92,7 @@ export function groupFolderHistory(
 }
 
 export function folderRangeItems(
-  authority: DocumentSnapshotV2,
+  authority: AuthoredDocumentSnapshot,
   first: string,
   last: string,
   editingId?: string,

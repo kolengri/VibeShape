@@ -1,6 +1,7 @@
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import type { DocumentSnapshot } from "@vibeshape/domain"
-import type { PrintPreparationSettings } from "@vibeshape/protocol"
+import type { DocumentExportOptions, PrintPreparationSettings } from "@vibeshape/protocol"
+import { DEFAULT_SURFACE_TEXTURE_QUALITY } from "@vibeshape/protocol"
 import type { ActiveDocumentExportResult } from "../document/document-controller"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 
@@ -16,6 +17,7 @@ export async function prepareDocumentPrint(
   settings: PrintPreparationSettings,
   signal: AbortSignal,
   isCurrent: () => boolean,
+  options: DocumentExportOptions = {},
 ): Promise<ActiveDocumentExportResult> {
   if (signal.aborted || !isCurrent()) return failed("The print source is no longer current.")
   const worker = createDocumentWorkerSession(snapshot.id, { retryRecoverableFailure: false })
@@ -25,7 +27,11 @@ export async function prepareDocumentPrint(
     await worker.rebuild({ document: snapshot, mesh: PRODUCT_MESH_POLICY })
     if (signal.aborted || !isCurrent())
       return failed("Print preparation was canceled or its source changed.")
-    const response = await worker.exportDocument("3mf", { printPreparation: settings })
+    const response = await worker.exportDocument("3mf", {
+      ...options,
+      printPreparation: settings,
+      textureQuality: DEFAULT_SURFACE_TEXTURE_QUALITY,
+    })
     if (signal.aborted || !isCurrent())
       return failed("Print preparation was canceled or its source changed.")
     return {

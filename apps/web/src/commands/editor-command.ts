@@ -18,6 +18,7 @@ export const editorCommandIds = {
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
   measure: "org.vibeshape.editor.measurements.measure",
+  surfaceTexture: "org.vibeshape.editor.surface-texture",
   sketchDimension: "org.vibeshape.editor.sketch.tool.dimension",
   sketchConstraintCoincident: "org.vibeshape.editor.sketch.constraint.coincident",
   sketchConstraintConcentric: "org.vibeshape.editor.sketch.constraint.concentric",
@@ -117,6 +118,7 @@ export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBas
   )
 
 export type EditorCommandIcon =
+  | "surface-texture"
   | "keyboard"
   | "aligned-rectangle"
   | "arc"
@@ -185,6 +187,7 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "surfaceTexture"
   | "openShortcutHelp"
   | "createHole"
   | "cancelActive"

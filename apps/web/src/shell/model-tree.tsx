@@ -54,6 +54,7 @@ import type {
 } from "../document/document-controller"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
+import { SurfaceTextureTreeGroup } from "../features/surface-texture/surface-texture-tree-group"
 import type { AuthoredMetadataCommit } from "./authored-item-rename"
 import { AuthoredPartsGroup } from "./authored-parts-group"
 import {
@@ -731,6 +732,7 @@ function ModelTreeGroupItem({
 }
 
 type ModelTreeProps = {
+  onSurfaceTexture?: ((featureId: FeatureRecord["id"], outputRole: string) => void) | undefined
   authoredMetadataBlocked?: boolean | undefined
   selectedPartId?: PartId | null | undefined
   onPartsCombine?: ((operation: "compound" | "union") => void) | undefined
@@ -1697,10 +1699,18 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
             onPlace={props.onPartPlace}
             onCombine={props.onPartsCombine}
             onPreselect={props.onBodyPreselectionChange}
+            onSurfaceTexture={props.onSurfaceTexture}
             onCommit={props.onAuthoredMetadata}
           />
         )}
       <BodiesGroup {...props} expanded={bodiesExpanded} onExpandedChange={setBodiesExpanded} />
+      {props.onSurfaceTexture && (
+        <SurfaceTextureTreeGroup
+          controller={props.controller}
+          disabled={Boolean(props.authoredMetadataBlocked)}
+          onEdit={props.onSurfaceTexture}
+        />
+      )}
     </>
   )
 }

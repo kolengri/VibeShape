@@ -331,6 +331,18 @@ describe("DocumentWorkerSession", () => {
     ])
   })
 
+  it("retains surface texture export options at the client boundary", async () => {
+    const { clients, session } = createHarness()
+    await session.rebuild({ document: document(4), mesh })
+    const textureQuality = { maxEdgeLengthMm: 1, maxTriangles: 2_000 }
+    await session.exportDocument("3mf", { surfaceTextures: [], textureQuality })
+    expect(clients[0]?.requests.at(-1)).toMatchObject({
+      type: "exportDocument",
+      surfaceTextures: [],
+      textureQuality,
+    })
+  })
+
   it("rebuilds the committed snapshot before retrying export after a worker crash", async () => {
     const crashingExport: RequestHandler = async (request) => {
       if (request.type === "exportDocument") {

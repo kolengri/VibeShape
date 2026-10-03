@@ -318,6 +318,7 @@ function renderViewport(
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
+    setSurfaceTextureBrush: vi.fn(),
     orientToFrame: vi.fn(() => true),
     setSketchProjection: vi.fn(() => true),
     setSketchPlaneProjection: vi.fn(),

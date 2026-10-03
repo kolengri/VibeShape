@@ -2,6 +2,8 @@ import type { DocumentId } from "@vibeshape/domain"
 import { commandIdSchema } from "@vibeshape/domain/identifiers"
 import {
   LocalDocumentRepository,
+  portableProjectV3PayloadSchema,
+  portableProjectV4PayloadSchema,
   VersionedLocalDocumentRepository,
   type VibeShapeDatabase,
 } from "@vibeshape/persistence"
@@ -34,10 +36,22 @@ export class BrowserProjectRepository {
 
   async exportPortableProject(documentId: DocumentId) {
     const recovered = await this.versioned.recoverAuthority(documentId)
-    if (recovered.ok && recovered.value.snapshot.schemaVersion === 2) {
+    if (recovered.ok && recovered.value.snapshot.schemaVersion !== 1) {
       const exported = await this.versioned.exportPortableProjectV3(documentId)
       return exported.ok
-        ? { ok: true as const, value: { version: 3 as const, project: exported.value } }
+        ? {
+            ok: true as const,
+            value:
+              exported.value.snapshot.schemaVersion === 3
+                ? {
+                    version: 4 as const,
+                    project: portableProjectV4PayloadSchema.parse(exported.value),
+                  }
+                : {
+                    version: 3 as const,
+                    project: portableProjectV3PayloadSchema.parse(exported.value),
+                  },
+          }
         : exported
     }
     if (!recovered.ok && recovered.diagnostic.code !== "document-not-found") return recovered
@@ -48,9 +62,11 @@ export class BrowserProjectRepository {
   }
 
   copyPortableProject(source: BrowserPortableProject, copiedAt: string) {
-    return source.version === 3
-      ? this.versioned.copyPortableProjectV3({ ...source.project, copiedAt })
-      : this.versioned.copyPortableProjectV2({ ...source.project, copiedAt })
+    return source.version === 4
+      ? this.versioned.copyPortableProjectV4({ ...source.project, copiedAt })
+      : source.version === 3
+        ? this.versioned.copyPortableProjectV3({ ...source.project, copiedAt })
+        : this.versioned.copyPortableProjectV2({ ...source.project, copiedAt })
   }
 
   async exportPortableProjectV2(documentId: DocumentId) {

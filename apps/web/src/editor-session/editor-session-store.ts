@@ -739,7 +739,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
         startPartDesignTool: (tool) =>
           set((state) => {
             state.partDesignToolGeneration += 1
-            if (tool.kind !== "measure") {
+            if (tool.kind !== "measure" && tool.kind !== "surface-texture") {
               state.selectedBody = null
               state.selectedPartId = null
             }
