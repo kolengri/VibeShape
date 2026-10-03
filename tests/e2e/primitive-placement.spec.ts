@@ -93,6 +93,86 @@ test.describe("Primitive graphical placement", () => {
     ).toHaveValue(movedOrigin)
   })
 
+  test("retains placement when release loses pointer capture outside the canvas", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "Native release coordinates require CDP.")
+    await page.goto("/")
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Box", exact: true })
+      .click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    const canvas = viewport.locator("canvas")
+    const form = page.getByRole("form", { name: "Create box" })
+    const originX = form.getByRole("combobox", { name: "Origin X" })
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready")
+    const { x, y } = await translationXAxisHandle(canvas)
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + 90, y)
+    await expect(originX).not.toHaveValue("0 mm")
+    const movedOrigin = await originX.inputValue()
+    await canvas.evaluate((element) => element.releasePointerCapture(1))
+    // The native release is outside the canvas, so its pointer-up handler cannot finish the drag.
+    const session = await page.context().newCDPSession(page)
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: 10,
+      y: 10,
+      button: "left",
+      buttons: 0,
+      clickCount: 1,
+    })
+    await session.detach()
+    await page.mouse.up()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready")
+    await expect(originX).toHaveValue(movedOrigin)
+  })
+
+  test("retains the final placement across rapid repeated reversing drags", async ({ page }) => {
+    test.setTimeout(60_000)
+    await page.goto("/")
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Box", exact: true })
+      .click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
+    const form = page.getByRole("form", { name: "Edit box" })
+    const originX = form.getByRole("combobox", { name: "Origin X" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    const canvas = viewport.locator("canvas")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready")
+    for (let gesture = 0; gesture < 11; gesture += 1) {
+      const previousOrigin = await originX.inputValue()
+      const { x, y } = await translationXAxisHandle(canvas)
+      const direction = gesture % 2 === 0 ? 1 : -1
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x + direction * 60, y)
+      await page.mouse.move(x - direction * 30, y)
+      await page.mouse.move(x + direction * 90, y)
+      await page.mouse.up()
+      await expect(originX).not.toHaveValue(previousOrigin)
+    }
+    const releasedPosition = await originX.inputValue()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready")
+    await expect(originX).toHaveValue(releasedPosition)
+    await form.getByRole("button", { name: "Update box" }).click()
+    await expect(form).not.toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.reload()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
+    await expect(
+      page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Origin X" }),
+    ).toHaveValue(releasedPosition)
+  })
+
   for (const { editing, releaseOnly } of [
     { editing: false, releaseOnly: false },
     { editing: true, releaseOnly: false },

@@ -88,6 +88,11 @@ async function dragDepthArrow(
       return
     }
     await cancelHeldDepthArrow(page, canvas, cancel)
+    if (cancel === "capture") {
+      // Process pending capture loss while the button is still held, before testing release.
+      await page.mouse.move(x + 1, y + direction * 50)
+      await expect(distance).toHaveValue(original)
+    }
     await page.mouse.up()
     await page.evaluate(
       "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
