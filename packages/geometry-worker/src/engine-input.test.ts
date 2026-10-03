@@ -48,6 +48,11 @@ const namedInput: FeatureEvaluationInput = {
 
 describe("direct geometry engine input boundary", () => {
   it.each([
+    ["pyramid", { sides: 2, radius: 4, height: 12, centered: false }],
+    ["pyramid", { sides: 65, radius: 4, height: 12, centered: false }],
+    ["pyramid", { sides: 4.5, radius: 4, height: 12, centered: false }],
+    ["pyramid", { sides: 6, radius: 0.0005, height: 12, centered: false }],
+    ["pyramid", { sides: 6, radius: 4, height: 12, centered: false, origin: [0, 0, 99_990] }],
     ["sphere", { radius: 0 }],
     ["sphere", { radius: 0.0005 }],
     ["sphere", { radius: Number.POSITIVE_INFINITY }],
@@ -90,7 +95,7 @@ describe("direct geometry engine input boundary", () => {
     expect(engine.getHealth().ownedShapeCount).toBe(0)
   })
 
-  it.each(["sphere", "cone", "torus"])(
+  it.each(["sphere", "cone", "torus", "pyramid"])(
     "rejects dependency-bearing %s before kernel access",
     async (kind) => {
       const engine = new ReplicadGeometryEngine()

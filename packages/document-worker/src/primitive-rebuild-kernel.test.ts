@@ -1,4 +1,4 @@
-import { coneFeatureType, createLengthQuantity } from "@vibeshape/domain"
+import { coneFeatureType, createLengthQuantity, pyramidFeatureType } from "@vibeshape/domain"
 import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
 import {
   DOCUMENT_PROTOCOL_VERSION,
@@ -30,10 +30,20 @@ afterAll(() => {
   engine.disposeDocument(documentId)
 })
 
-describe("real cone document rebuild", () => {
-  it.each([false, true])(
-    "publishes valid coordinated worker geometry with centered=%s",
-    async (centered) => {
+const fixtures = [
+  { type: coneFeatureType, centered: false, parameters: {} },
+  { type: coneFeatureType, centered: true, parameters: {} },
+  ...[3, 4, 6, 64].map((sides) => ({
+    type: pyramidFeatureType,
+    centered: sides !== 3,
+    parameters: { sides },
+  })),
+]
+
+describe("real primitive document rebuild", () => {
+  it.each(fixtures)(
+    "publishes valid coordinated worker geometry $type.type.typeId $parameters centered=$centered",
+    async ({ type, centered, parameters }) => {
       const messages: DocumentWorkerResponse[] = []
       const runtime = new DocumentWorkerRuntime(engine, {
         postMessage: (message) => {
@@ -60,8 +70,9 @@ describe("real cone document rebuild", () => {
               {
                 schemaVersion: 0,
                 id: featureId,
-                type: coneFeatureType.type,
+                type: type.type,
                 parameters: {
+                  ...parameters,
                   radius: createLengthQuantity(12),
                   height: createLengthQuantity(35),
                   centered,
@@ -87,11 +98,12 @@ describe("real cone document rebuild", () => {
         expect(rebuilt.evaluation.records).toMatchObject([{ featureId, status: "succeeded" }])
         expect(rebuilt.geometry).toHaveLength(1)
         expect(rebuilt.geometry[0]?.geometry.shape).toMatchObject({ valid: true, solidCount: 1 })
-        expect(
-          rebuilt.geometry[0]?.geometry.topologyCandidates.filter(
-            ({ kind, signature }) => kind === "edge" && signature.measure === 0,
-          ),
-        ).toEqual([expect.not.objectContaining({ referenceGeometry: expect.anything() })])
+        if (type === coneFeatureType)
+          expect(
+            rebuilt.geometry[0]?.geometry.topologyCandidates.filter(
+              ({ kind, signature }) => kind === "edge" && signature.measure === 0,
+            ),
+          ).toEqual([expect.not.objectContaining({ referenceGeometry: expect.anything() })])
       } finally {
         engine.disposeDocument(documentId)
         expect(engine.getHealth().ownedShapeCount).toBe(0)

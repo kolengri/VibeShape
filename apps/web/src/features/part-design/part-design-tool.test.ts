@@ -15,6 +15,7 @@ import {
   legacyRevolveFeatureType,
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
+  pyramidFeatureType,
   revolveFeatureType,
   revolveFeatureTypeV6,
   sketchProfileSelectorSchema,
@@ -39,6 +40,7 @@ import {
   isDatumPlaneFeature,
   isExtrusionFeature,
   isPrimitivePartDesignTool,
+  isPyramidFeature,
   isRevolveFeature,
   isSphereFeature,
   isTorusFeature,
@@ -385,6 +387,7 @@ describe("basic primitive tool eligibility", () => {
   it.each([
     ["sphere", sphereFeatureType.type, isSphereFeature],
     ["cone", coneFeatureType.type, isConeFeature],
+    ["pyramid", pyramidFeatureType.type, isPyramidFeature],
     ["torus", torusFeatureType.type, isTorusFeature],
   ] as const)(
     "keeps %s editable, previewable, and eligible for downstream solid tools",

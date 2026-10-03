@@ -6,12 +6,15 @@ import {
   type FeatureRecord,
   featureRecordSchema,
   type LengthQuantity,
+  pyramidFeatureParametersSchema,
+  pyramidFeatureType,
   sphereFeatureParametersSchema,
   sphereFeatureType,
   torusFeatureParametersSchema,
   torusFeatureType,
   type VariableDefinition,
 } from "@vibeshape/domain"
+import { TextField } from "@vibeshape/ui/components/text-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useMemo, useState } from "react"
 import { defaultLengthExpression } from "../../document/document-display-units"
@@ -37,16 +40,19 @@ import { TaskPanelFormActions } from "./task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "./use-debounced-feature-preview"
 import { useParameterFormState } from "./use-parameter-form-state"
 
-export type BasicPrimitiveKind = "sphere" | "cone" | "torus"
+export type BasicPrimitiveKind = "sphere" | "cone" | "torus" | "pyramid"
 type DimensionField = "radius" | "height" | "majorRadius" | "minorRadius"
-type PrimitiveField = DimensionField | PrimitiveOriginField
+type PrimitiveField = DimensionField | PrimitiveOriginField | "sides"
 type PrimitiveFormValues = PrimitiveOriginFormValues &
   Readonly<Record<DimensionField, string>> &
-  Readonly<{ centered: boolean }>
+  Readonly<{ centered: boolean; sides: string }>
 
 export type BasicPrimitiveFormCopy = PrimitiveParameterPanelCopy &
   Readonly<Record<DimensionField | PrimitiveOriginField, string>> &
   Readonly<{
+    sides: string
+    sidesDescription: string
+    invalidSides: string
     positionDescription: string
     expressionDescription: string
     submit: string
@@ -80,6 +86,11 @@ const primitiveDefinitions = {
     schema: coneFeatureParametersSchema,
     type: coneFeatureType.type,
   },
+  pyramid: {
+    dimensions: ["radius", "height"],
+    schema: pyramidFeatureParametersSchema,
+    type: pyramidFeatureType.type,
+  },
   torus: {
     dimensions: ["majorRadius", "minorRadius"],
     schema: torusFeatureParametersSchema,
@@ -105,6 +116,7 @@ function initialPrimitiveValues(
     majorRadius: defaultLengthExpression(20, unit),
     minorRadius: defaultLengthExpression(5, unit),
     centered: false,
+    sides: "4",
     ...defaultPrimitiveOriginValues(unit),
   }
   if (mode.kind === "create") return values
@@ -124,6 +136,17 @@ function initialPrimitiveValues(
       radius: quantityExpression(parameters.radius),
       height: quantityExpression(parameters.height),
       centered: parameters.centered,
+    }
+  }
+  if (primitiveKind === "pyramid") {
+    const parameters = pyramidFeatureParametersSchema.parse(mode.feature.parameters)
+    return {
+      ...values,
+      ...primitiveOriginFormValues(parameters.origin),
+      radius: quantityExpression(parameters.radius),
+      height: quantityExpression(parameters.height),
+      centered: parameters.centered,
+      sides: String(parameters.sides),
     }
   }
   const parameters = torusFeatureParametersSchema.parse(mode.feature.parameters)
@@ -172,6 +195,17 @@ function coupledPrimitiveIssues(
   return issues
 }
 
+function primitiveSideIssues(
+  primitiveKind: BasicPrimitiveKind,
+  values: PrimitiveFormValues,
+  copy: BasicPrimitiveFormCopy,
+): Partial<Record<PrimitiveField, string>> {
+  if (primitiveKind !== "pyramid") return {}
+  return pyramidFeatureParametersSchema.shape.sides.safeParse(Number(values.sides)).success
+    ? {}
+    : { sides: copy.invalidSides }
+}
+
 function parsePrimitiveValues(
   primitiveKind: BasicPrimitiveKind,
   values: PrimitiveFormValues,
@@ -188,11 +222,16 @@ function parsePrimitiveValues(
     copy,
     displayUnit,
   )
-  const issues = { ...dimensionIssues, ...(origin.ok ? {} : origin.issues) }
+  const issues: Partial<Record<PrimitiveField, string>> = {
+    ...dimensionIssues,
+    ...(origin.ok ? {} : origin.issues),
+    ...primitiveSideIssues(primitiveKind, values, copy),
+  }
   if (!origin.ok || Object.keys(issues).length > 0) return { ok: false as const, issues }
   const parsed = definition.schema.safeParse({
     ...dimensions,
-    ...(primitiveKind === "cone" ? { centered: values.centered } : {}),
+    ...(["cone", "pyramid"].includes(primitiveKind) ? { centered: values.centered } : {}),
+    ...(primitiveKind === "pyramid" ? { sides: Number(values.sides) } : {}),
     origin: origin.origin,
   })
   if (!parsed.success) {
@@ -328,9 +367,9 @@ export function BasicPrimitiveForm({
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)
-        const firstField = ([...dimensions, "originX", "originY", "originZ"] as const).find(
-          (field) => parsed.issues[field],
-        )
+        const firstField = (
+          ["sides", ...dimensions, "originX", "originY", "originZ"] as const
+        ).find((field) => parsed.issues[field])
         if (firstField) {
           formElementRef.current?.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus()
         }
@@ -357,7 +396,7 @@ export function BasicPrimitiveForm({
     placementRequest,
   })
 
-  const lengthField = (fieldName: PrimitiveField, description: string) => (
+  const lengthField = (fieldName: Exclude<PrimitiveField, "sides">, description: string) => (
     <form.Field key={fieldName} name={fieldName}>
       {(field) => (
         <TanStackLengthExpressionField
@@ -405,9 +444,37 @@ export function BasicPrimitiveForm({
         copy={copy}
         disabled={disabled}
         message={message}
-        fields={dimensions.map((field) => lengthField(field, copy.expressionDescription))}
+        fields={
+          <>
+            {primitiveKind === "pyramid" ? (
+              <form.Field name="sides">
+                {(field) => (
+                  <TextField
+                    id="pyramid-sides"
+                    name={field.name}
+                    type="number"
+                    min={3}
+                    max={64}
+                    step={1}
+                    required
+                    label={copy.sides}
+                    description={copy.sidesDescription}
+                    error={issues.sides}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => {
+                      clearSubmissionErrors()
+                      field.handleChange(event.currentTarget.value)
+                    }}
+                  />
+                )}
+              </form.Field>
+            ) : null}
+            {dimensions.map((field) => lengthField(field, copy.expressionDescription))}
+          </>
+        }
         centeredField={
-          primitiveKind === "cone" ? (
+          ["cone", "pyramid"].includes(primitiveKind) ? (
             <form.Field name="centered">
               {(field) => (
                 <TanStackBooleanParameterField

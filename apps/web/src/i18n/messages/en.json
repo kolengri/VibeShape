@@ -598,6 +598,10 @@
         "createTorus": {
           "label": "Torus",
           "keywords": "create torus|primitive|solid|ring|donut"
+        },
+        "createPyramid": {
+          "label": "Pyramid",
+          "keywords": "create pyramid|primitive|solid|polygon|sides|facets"
         }
       }
     },
@@ -682,7 +686,8 @@
         "sketchToolsLabel": "Sketch geometry tools",
         "sketchViewLabel": "Sketch view controls",
         "slotToolsLabel": "Slot tools",
-        "workspaceLabel": "Editor workspace"
+        "workspaceLabel": "Editor workspace",
+        "inspectionLabel": "Inspection"
       },
       "sketchShortcutToolbar": {
         "ariaLabel": "Sketch shortcuts"
@@ -927,7 +932,7 @@
         "description": "Choose a support plane, define a constrained 2D profile, then turn that selected profile into a solid with Extrude.",
         "expandPanel": "Open task panel",
         "directSolids": "Direct solids (advanced)",
-        "directSolidsDescription": "Box, Cylinder, Sphere, Cone, and Torus create standalone solids for fast blocking. Use sketch-driven features for profile-based parametric modeling.",
+        "directSolidsDescription": "Box, Cylinder, Sphere, Cone, Torus, and Pyramid create standalone solids for fast blocking. Use sketch-driven features for profile-based parametric modeling.",
         "selectedProfileDescription": "The selected sketch contains a supported closed region. Use Extrude or Revolve in the modeling toolbar, or return to the sketch to edit its dimensions.",
         "selectedProfileReady": "Profile ready",
         "startModeling": "Start with a sketch",
@@ -1384,7 +1389,26 @@
           "invalidRange": "Enter a length from 0.001 mm to 100,000 mm.",
           "invalidPositionRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
           "invalidTorusRadii": "The major radius must be greater than the minor radius.",
-          "invalidWorkspaceBounds": "Reduce dimensions or move the origin to keep the solid within the supported workspace limits."
+          "invalidWorkspaceBounds": "Reduce dimensions or move the origin to keep the solid within the supported workspace limits.",
+          "sides": "Base sides",
+          "sidesDescription": "Enter a whole number from 3 to 64. Radius measures from the base center to a vertex.",
+          "invalidSides": "Enter a whole number from 3 to 64."
+        },
+        "createPyramid": "Create pyramid",
+        "pyramid": {
+          "title": "Create pyramid",
+          "description": "Create a regular pyramid with 3 to 64 base sides. Radius measures from the base center to a vertex; the apex points along +Z.",
+          "editTitle": "Edit pyramid",
+          "editDescription": "Update this Pyramid's dimensions and placement while preserving its identity and authored expressions.",
+          "parameters": "Pyramid definition",
+          "featureLabel": "Pyramid {number}",
+          "create": "Create pyramid",
+          "update": "Update pyramid",
+          "validationSummary": "Fix the highlighted parameters before creating the pyramid.",
+          "updateValidationSummary": "Fix the highlighted parameters before updating the pyramid.",
+          "staleRevision": "The document changed while this pyramid was being edited. Review the current model and try again.",
+          "createFailed": "The pyramid could not be created. Your parameter values are preserved.",
+          "updateFailed": "The pyramid could not be updated. Your parameter values are preserved."
         }
       },
       "viewport": {

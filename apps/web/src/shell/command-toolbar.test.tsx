@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -36,6 +36,7 @@ const actions = {
   createCylinder: vi.fn(),
   createSphere: vi.fn(),
   createCone: vi.fn(),
+  createPyramid: vi.fn(),
   createTorus: vi.fn(),
   createDatumPlane: vi.fn(),
   createExtrusion: vi.fn(),
@@ -278,11 +279,33 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
   })
 
+  it("keeps primitive creation, modeling operations, inspection, and history in distinct groups", () => {
+    renderToolbar()
+    const primitives = screen.getByRole("group", { name: "Primitives" })
+    const modeling = screen.getByRole("group", { name: "Modeling actions" })
+    const history = screen.getByRole("group", { name: "History" })
+    const inspection = screen.getByRole("group", { name: "Inspection" })
+    expect(within(primitives).getByRole("button", { name: "Pyramid" })).toBeTruthy()
+    expect(within(primitives).queryByRole("button", { name: "Subtract" })).toBeNull()
+    expect(within(modeling).getByRole("button", { name: "Subtract" })).toBeTruthy()
+    expect(within(inspection).getByRole("button", { name: "Measure" })).toBeTruthy()
+    expect(
+      within(history)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Undo", "Redo"])
+  })
+
   it("exposes all basic primitives through the shared command handlers", async () => {
     const user = userEvent.setup()
     renderToolbar()
-    for (const key of ["createSphere", "createCone", "createTorus"] as const) {
-      const label = { createSphere: "Sphere", createCone: "Cone", createTorus: "Torus" }[key]
+    for (const key of ["createSphere", "createCone", "createTorus", "createPyramid"] as const) {
+      const label = {
+        createSphere: "Sphere",
+        createCone: "Cone",
+        createTorus: "Torus",
+        createPyramid: "Pyramid",
+      }[key]
       await user.click(screen.getByRole("button", { name: label }))
       expect(actions[key]).toHaveBeenCalledOnce()
     }

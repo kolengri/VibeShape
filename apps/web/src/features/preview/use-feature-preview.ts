@@ -19,6 +19,7 @@ import {
   isConeFeature,
   isCylinderFeature,
   isFilletFeature,
+  isPyramidFeature,
   isSphereFeature,
   isTorusFeature,
 } from "../part-design/part-design-tool"
@@ -141,9 +142,14 @@ export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind
   if (readRevolveFeatureParameters(candidate)) return "revolve"
   if (isFilletFeature(candidate) || isChamferFeature(candidate)) return "edge-treatment"
   if (
-    [isBoxFeature, isCylinderFeature, isSphereFeature, isConeFeature, isTorusFeature].some(
-      (matches) => matches(candidate),
-    )
+    [
+      isBoxFeature,
+      isCylinderFeature,
+      isSphereFeature,
+      isConeFeature,
+      isPyramidFeature,
+      isTorusFeature,
+    ].some((matches) => matches(candidate))
   ) {
     return "primitive"
   }

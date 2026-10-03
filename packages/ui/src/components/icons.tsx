@@ -37,6 +37,7 @@ export {
   PanelsTopLeft,
   Pencil,
   PenLine,
+  Pyramid,
   RectangleHorizontal,
   Redo2,
   RotateCw,

@@ -28,6 +28,7 @@ import {
   type KernelSpikeParameters,
   type PlacementFeatureContentParameters,
   placementFeatureContentParametersSchema,
+  pyramidFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
@@ -100,6 +101,7 @@ import {
   createOcctBox,
   createOcctCone,
   createOcctCylinder,
+  createOcctPyramid,
   createOcctSphere,
   createOcctTorus,
   cutOcctShapes,
@@ -229,6 +231,8 @@ const SPHERE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.sphere#1"
 const CONE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#1"
+const PYRAMID_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.pyramid#1"
 const TORUS_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.torus#1"
 const BOOLEAN_FEATURE_TYPE_KEY =
@@ -797,6 +801,7 @@ type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type SphereContentParameters = ReturnType<typeof sphereFeatureContentParametersSchema.parse>
 type ConeContentParameters = ReturnType<typeof coneFeatureContentParametersSchema.parse>
+type PyramidContentParameters = ReturnType<typeof pyramidFeatureContentParametersSchema.parse>
 type TorusContentParameters = ReturnType<typeof torusFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<
   typeof extrusionFeatureContentParametersSchema.parse
@@ -967,6 +972,42 @@ function coneFeatureSemanticRole(
   }
 }
 
+function pyramidAngularRoleIndex(
+  centroid: readonly number[],
+  parameters: PyramidContentParameters,
+  midpoint: boolean,
+) {
+  const angle = Math.atan2(
+    (centroid[1] ?? 0) - parameters.origin[1],
+    (centroid[0] ?? 0) - parameters.origin[0],
+  )
+  const turns = angle / (2 * Math.PI)
+  const index = Math.round(turns * parameters.sides - (midpoint ? 0.5 : 0))
+  return ((index % parameters.sides) + parameters.sides) % parameters.sides
+}
+
+function pyramidFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: PyramidContentParameters,
+) {
+  const minimumZ = parameters.origin[2] - (parameters.centered ? parameters.height / 2 : 0)
+  const atBase = nearlyEqual(context.signature.centroid[2], minimumZ)
+  switch (context.kind) {
+    case "face":
+      return atBase
+        ? "primitive.pyramid.base"
+        : `primitive.pyramid.side.${pyramidAngularRoleIndex(context.signature.centroid, parameters, true)}`
+    case "edge":
+      return atBase
+        ? `primitive.pyramid.base.edge.${pyramidAngularRoleIndex(context.signature.centroid, parameters, true)}`
+        : `primitive.pyramid.ridge.${pyramidAngularRoleIndex(context.signature.centroid, parameters, false)}`
+    case "vertex":
+      return atBase
+        ? `primitive.pyramid.base.vertex.${pyramidAngularRoleIndex(context.signature.centroid, parameters, false)}`
+        : "primitive.pyramid.apex"
+  }
+}
+
 type ParsedFeature =
   | { kind: "boolean"; parameters: BooleanContentParameters }
   | { kind: "fillet"; parameters: FilletContentParameters }
@@ -985,6 +1026,7 @@ type ParsedFeature =
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "sphere"; parameters: SphereContentParameters }
   | { kind: "cone"; parameters: ConeContentParameters }
+  | { kind: "pyramid"; parameters: PyramidContentParameters }
   | { kind: "torus"; parameters: TorusContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
@@ -1007,7 +1049,7 @@ type ParsedFeature =
 
 type PrimitiveFeature = Extract<
   ParsedFeature,
-  { kind: "box" | "cylinder" | "sphere" | "cone" | "torus" }
+  { kind: "box" | "cylinder" | "sphere" | "cone" | "torus" | "pyramid" }
 >
 const PRIMITIVE_FEATURE_KINDS = new Set<ParsedFeature["kind"]>([
   "box",
@@ -1015,6 +1057,7 @@ const PRIMITIVE_FEATURE_KINDS = new Set<ParsedFeature["kind"]>([
   "sphere",
   "cone",
   "torus",
+  "pyramid",
 ])
 
 function isPrimitiveFeature(feature: ParsedFeature): feature is PrimitiveFeature {
@@ -1032,9 +1075,33 @@ function invalidInputCardinality(message: string) {
   return featureFailure("invalid-feature-parameters", message)
 }
 
+function parseRadialPrimitiveParameters(
+  parameters: unknown,
+  kind: "sphere" | "cone" | "torus" | "pyramid",
+): PrimitiveFeature | null {
+  switch (kind) {
+    case "sphere": {
+      const parsed = sphereFeatureContentParametersSchema.safeParse(parameters)
+      return parsed.success ? { kind, parameters: parsed.data } : null
+    }
+    case "cone": {
+      const parsed = coneFeatureContentParametersSchema.safeParse(parameters)
+      return parsed.success ? { kind, parameters: parsed.data } : null
+    }
+    case "torus": {
+      const parsed = torusFeatureContentParametersSchema.safeParse(parameters)
+      return parsed.success ? { kind, parameters: parsed.data } : null
+    }
+    case "pyramid": {
+      const parsed = pyramidFeatureContentParametersSchema.safeParse(parameters)
+      return parsed.success ? { kind, parameters: parsed.data } : null
+    }
+  }
+}
+
 function parseRadialPrimitiveFeature(
   input: FeatureEvaluationInput,
-  kind: "sphere" | "cone" | "torus",
+  kind: "sphere" | "cone" | "torus" | "pyramid",
 ): FeatureParseResult {
   const feature = input.content.feature
   if (
@@ -1046,20 +1113,13 @@ function parseRadialPrimitiveFeature(
       `${kind} features cannot declare dependency inputs or references.`,
     )
   }
-  if (kind === "sphere") {
-    const parameters = sphereFeatureContentParametersSchema.safeParse(feature.parameters)
-    if (parameters.success) return { ok: true, feature: { kind, parameters: parameters.data } }
-  } else if (kind === "cone") {
-    const parameters = coneFeatureContentParametersSchema.safeParse(feature.parameters)
-    if (parameters.success) return { ok: true, feature: { kind, parameters: parameters.data } }
-  } else {
-    const parameters = torusFeatureContentParametersSchema.safeParse(feature.parameters)
-    if (parameters.success) return { ok: true, feature: { kind, parameters: parameters.data } }
-  }
-  return featureFailure(
-    "invalid-feature-parameters",
-    `${kind} content dimensions or placement are invalid.`,
-  )
+  const parsed = parseRadialPrimitiveParameters(feature.parameters, kind)
+  return parsed
+    ? { ok: true, feature: parsed }
+    : featureFailure(
+        "invalid-feature-parameters",
+        `${kind} content dimensions or placement are invalid.`,
+      )
 }
 
 function parseBoxFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -1621,6 +1681,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [SPHERE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "sphere")],
   [CONE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "cone")],
+  [PYRAMID_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "pyramid")],
   [TORUS_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "torus")],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
@@ -1967,6 +2028,13 @@ function validateCombinationSources(opencascade: OpenCascadeInstance, sources: r
   }
 }
 
+function primitiveBaseOrigin(
+  parameters: CylinderContentParameters | ConeContentParameters | PyramidContentParameters,
+): [number, number, number] {
+  const { origin, height, centered } = parameters
+  return [origin[0], origin[1], origin[2] - (centered ? height / 2 : 0)]
+}
+
 function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: PrimitiveFeature) {
   switch (feature.kind) {
     case "box": {
@@ -1974,12 +2042,13 @@ function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: 
       return createOcctBox(opencascade, [width, depth, height], centered, origin)
     }
     case "cylinder": {
-      const { radius, height, centered, origin } = feature.parameters
-      return createOcctCylinder(opencascade, radius, height, [
-        origin[0],
-        origin[1],
-        origin[2] + (centered ? -height / 2 : 0),
-      ])
+      const { radius, height } = feature.parameters
+      return createOcctCylinder(
+        opencascade,
+        radius,
+        height,
+        primitiveBaseOrigin(feature.parameters),
+      )
     }
     case "sphere":
       return createOcctSphere(opencascade, feature.parameters.radius, feature.parameters.origin)
@@ -1991,12 +2060,18 @@ function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: 
         feature.parameters.origin,
       )
     case "cone": {
-      const { radius, height, centered, origin } = feature.parameters
-      return createOcctCone(opencascade, radius, height, [
-        origin[0],
-        origin[1],
-        origin[2] - (centered ? height / 2 : 0),
-      ])
+      const { radius, height } = feature.parameters
+      return createOcctCone(opencascade, radius, height, primitiveBaseOrigin(feature.parameters))
+    }
+    case "pyramid": {
+      const { sides, radius, height } = feature.parameters
+      return createOcctPyramid(
+        opencascade,
+        sides,
+        radius,
+        height,
+        primitiveBaseOrigin(feature.parameters),
+      )
     }
   }
 }
@@ -2668,6 +2743,8 @@ function primitiveFeatureSemanticRole(
       return cylinderFeatureSemanticRole(context, feature.parameters)
     case "cone":
       return coneFeatureSemanticRole(context, feature.parameters)
+    case "pyramid":
+      return pyramidFeatureSemanticRole(context, feature.parameters)
     default:
       return context.kind === "face"
         ? primitiveSurfaceRoles.get(`${feature.kind}:${context.signature.geometryClass}`)

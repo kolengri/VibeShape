@@ -20,6 +20,7 @@ const actions = {
   createCylinder: vi.fn(),
   createSphere: vi.fn(),
   createCone: vi.fn(),
+  createPyramid: vi.fn(),
   createTorus: vi.fn(),
   createDatumPlane: vi.fn(),
   createExtrusion: vi.fn(),
@@ -132,6 +133,7 @@ describe("EditorCommandPalette", () => {
     ["ball", "Sphere", "createSphere"],
     ["pointed", "Cone", "createCone"],
     ["donut", "Torus", "createTorus"],
+    ["facets", "Pyramid", "createPyramid"],
   ] as const)(
     "discovers %s and invokes its registered primitive command",
     async (keyword, label, key) => {

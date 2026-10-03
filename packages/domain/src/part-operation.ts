@@ -11,6 +11,7 @@ import {
   cylinderFeatureType,
   filletFeatureType,
   filletFeatureTypeV2,
+  pyramidFeatureType,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   sphereFeatureType,
@@ -34,9 +35,14 @@ export type PartOperation =
   | Readonly<{ kind: "unmanaged" }>
 
 const newTypes = new Set(
-  [boxFeatureType, cylinderFeatureType, sphereFeatureType, coneFeatureType, torusFeatureType].map(
-    (descriptor) => featureTypeKey(descriptor.type),
-  ),
+  [
+    boxFeatureType,
+    cylinderFeatureType,
+    sphereFeatureType,
+    coneFeatureType,
+    torusFeatureType,
+    pyramidFeatureType,
+  ].map((descriptor) => featureTypeKey(descriptor.type)),
 )
 const modifierTypes = new Set(
   [filletFeatureType, filletFeatureTypeV2, chamferFeatureType, chamferFeatureTypeV2].map(
