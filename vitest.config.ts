@@ -10,6 +10,6 @@ export default defineConfig({
       "scripts/**/*.test.ts",
     ],
     passWithNoTests: false,
-    exclude: ["apps/remote-mcp/**/*.worker.test.ts", "node_modules/**"],
+    exclude: ["apps/remote-mcp/**/*.worker.test.ts", "**/node_modules/**"],
   },
 })
