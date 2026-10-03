@@ -380,7 +380,11 @@ type PendingGeometry =
       kind: "centered-aligned-rectangle-width"
       side: SketchPointTarget
     }>
-  | Readonly<{ kind: "circle"; center: SketchPointTarget }>
+  | Readonly<{
+      kind: "circle"
+      center: SketchPointTarget
+      centerRelations: readonly SketchPointRelationInference[]
+    }>
   | Readonly<{ kind: "ellipse-primary"; center: SketchPointTarget }>
   | Readonly<{
       center: SketchPointTarget
@@ -3606,7 +3610,7 @@ function constraintGlyphClassName(
   return cn(
     variant,
     pointerEventsClass,
-    "absolute h-6 min-w-6 -translate-y-1/2 gap-0.5 bg-background/85 px-1.5 py-0 font-mono text-[11px] font-semibold shadow-xs",
+    "absolute h-6 min-w-6 translate-x-3 -translate-y-1/2 gap-0.5 bg-background/85 px-1.5 py-0 font-mono text-[11px] font-semibold shadow-xs",
     glyph.external ? "text-sketch-reference-context" : "text-primary",
   )
 }
@@ -4941,7 +4945,14 @@ function appendInferredPointRelations(
   relations: readonly SketchPointRelationInference[],
 ) {
   return relations.reduce(
-    (current, relation) => appendInferredPointRelation(current, pointId, relation),
+    (current, relation) =>
+      relation.type === "origin"
+        ? appendSketchConstraint(
+            current,
+            { type: "fixed", pointId },
+            createBrowserSketchConstraintId,
+          )
+        : appendInferredPointRelation(current, pointId, relation),
     sketch,
   )
 }
@@ -4949,7 +4960,7 @@ function appendInferredPointRelations(
 function appendInferredPointRelation(
   sketch: SketchRecord,
   pointId: SketchEntityId,
-  relation: SketchPointRelationInference,
+  relation: Exclude<SketchPointRelationInference, { type: "origin" }>,
 ) {
   if (relation.type === "coincident") {
     return appendInferredCoincidence(sketch, pointId, relation.pointId)
@@ -5298,7 +5309,10 @@ function InferenceGlyph({
 function inferenceSourceEntityIds(inference: SketchPointInference | null) {
   const ids = new Set<SketchEntityId>()
   if (!inference) return ids
-  for (const relation of inference.relations) ids.add(pointRelationEntityId(relation).id)
+  for (const relation of inference.relations) {
+    const reference = pointRelationEntityId(relation)
+    if (reference) ids.add(reference.id)
+  }
   if (inference.target.kind === "existing") ids.add(inference.target.pointId)
   switch (inference.direction?.type) {
     case "parallel":
@@ -6009,7 +6023,10 @@ function placeSlotFromSelection(input: PlacementInput): PlacementUpdate {
 
 function placeCircle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "circle") {
-    return { draft: null, pending: { kind: "circle", center: input.target } }
+    return {
+      draft: null,
+      pending: { kind: "circle", center: input.target, centerRelations: input.relations },
+    }
   }
   const result = appendSketchCircle(input.draft, {
     center: input.pending.center,
@@ -6020,9 +6037,19 @@ function placeCircle(input: PlacementInput): PlacementUpdate {
   const creationPrecision = curveCreationPrecision(result, "circle", [
     { anchor: input.point, initialKind: "diameter" },
   ])
+  const circle = result.sketch.entities.find(
+    (entity) => entity.type === "circle" && result.createdEntityIds.includes(entity.id),
+  )
   return {
     ...(creationPrecision ? { creationPrecision } : {}),
-    draft: result.sketch,
+    draft:
+      circle?.type === "circle"
+        ? appendInferredPointRelations(
+            result.sketch,
+            circle.centerPointId,
+            input.pending.centerRelations,
+          )
+        : result.sketch,
     pending: null,
   }
 }
@@ -7125,11 +7152,12 @@ const pointRelationReferenceKeys = {
   "point-on-line": "lineId",
   "vertical-points": "pointId",
 } as const satisfies Record<
-  SketchPointRelationInference["type"],
+  Exclude<SketchPointRelationInference["type"], "origin">,
   "arcId" | "curveId" | "ellipseId" | "ellipticalArcId" | "lineId" | "pointId"
 >
 
 function pointRelationEntityId(relation: SketchPointRelationInference) {
+  if (relation.type === "origin") return null
   const key = pointRelationReferenceKeys[relation.type]
   return {
     id: (relation as unknown as Record<typeof key, SketchEntityId>)[key],
@@ -7144,10 +7172,11 @@ function inferredExternalEntityIds(
   const ids = new Set<SketchEntityId>()
   const appendRelations = (relations: readonly SketchPointRelationInference[]) => {
     for (const relation of relations) {
-      ids.add(pointRelationEntityId(relation).id)
+      const reference = pointRelationEntityId(relation)
+      if (reference) ids.add(reference.id)
     }
   }
-  if (pending?.kind === "line") appendRelations(pending.startRelations)
+  appendRelations(pendingPointRelations(pending))
   if (inference) {
     appendRelations(inference.relations)
     if (inference.direction?.type === "parallel" || inference.direction?.type === "perpendicular") {
@@ -7157,11 +7186,24 @@ function inferredExternalEntityIds(
   return ids
 }
 
+function pendingPointRelations(pending: PendingGeometry | null) {
+  switch (pending?.kind) {
+    case "line":
+      return pending.startRelations
+    case "circle":
+      return pending.centerRelations
+    default:
+      return []
+  }
+}
+
 function remapPointRelation(
   relation: SketchPointRelationInference,
   projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
 ): SketchPointRelationInference {
-  const { id, key } = pointRelationEntityId(relation)
+  const reference = pointRelationEntityId(relation)
+  if (!reference) return relation
+  const { id, key } = reference
   return { ...relation, [key]: projectedIds.get(id) ?? id } as SketchPointRelationInference
 }
 
@@ -7177,6 +7219,14 @@ function remapPendingExternalInference(
   pending: PendingGeometry | null,
   projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
 ): PendingGeometry | null {
+  if (pending?.kind === "circle") {
+    return {
+      ...pending,
+      centerRelations: pending.centerRelations.map((relation) =>
+        remapPointRelation(relation, projectedIds),
+      ),
+    }
+  }
   return pending?.kind === "line"
     ? {
         ...pending,
@@ -8003,6 +8053,7 @@ function placementInference(input: {
   return inferSketchPoint({
     ...placementInferenceAnchorOptions(anchor),
     ...references,
+    includeOrigin: input.editorTool === "circle" || supportsRelations,
     point: input.point,
     points: candidates.points,
     tolerance,
@@ -8018,6 +8069,7 @@ function draggedPointInference(input: {
 }) {
   if (input.suppressed) return unsnappedInference(input.point)
   return inferSketchPoint({
+    includeOrigin: true,
     arcs: input.references.arcs,
     curves: input.references.curves,
     lines: input.references.lines,
@@ -8492,6 +8544,15 @@ function useSketchPointDrag({
   }, [candidatesByInferenceId, draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
   const start = useCallback(
     (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
+      if (
+        draft?.entities.some(
+          (entity) => entity.type === "circle" && entity.centerPointId === pointId,
+        ) &&
+        draft.constraints.some(
+          (constraint) => constraint.type === "fixed" && constraint.pointId === pointId,
+        )
+      )
+        return
       const rectangle = svgRef.current?.getBoundingClientRect()
       if (!rectangle) return
       if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
@@ -8510,7 +8571,7 @@ function useSketchPointDrag({
       }
       setDraggingPointId(pointId)
     },
-    [svgRef],
+    [draft, svgRef],
   )
   return { draggingPointId, finish, start, update }
 }
