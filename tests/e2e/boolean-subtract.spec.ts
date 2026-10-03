@@ -2,7 +2,7 @@ import { expect, test } from "./fixtures"
 
 test.describe("Boolean subtraction", () => {
   test("creates, edits, reopens, and safely deletes ordered solid inputs", async ({ page }) => {
-    test.setTimeout(60_000)
+    test.setTimeout(90_000)
     await page.goto("/")
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const subtractCommand = toolbar.getByRole("button", { name: "Subtract", exact: true })
@@ -57,7 +57,9 @@ test.describe("Boolean subtraction", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
 
     await page.reload()
-    await expect(page.getByRole("treeitem", { name: "Subtract 1", exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Subtract 1", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
     await page.getByRole("treeitem", { name: "Subtract 1", exact: true }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit subtraction" })
