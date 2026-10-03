@@ -1,0 +1,207 @@
+import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@vibeshape/ui/components/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@vibeshape/ui/components/dropdown-menu"
+import {
+  ChevronDown,
+  CommandIcon,
+  Download,
+  FolderOpen,
+  Keyboard,
+  Settings,
+} from "@vibeshape/ui/components/icons"
+import { type ReactNode, useRef, useState } from "react"
+import type { DocumentControllerState } from "../document/document-controller"
+import { DocumentExportDialog } from "../document/document-export-dialog"
+import { DocumentProjectDialog } from "../document/document-project-dialog"
+import { FaqDialog } from "./faq-dialog"
+import { SettingsDialog } from "./settings-dialog"
+import { useViewerPreferences } from "./viewer-preferences"
+
+type MenuDialog = "projects" | "export" | "settings" | "faq" | "ai"
+
+export function ApplicationMenu({
+  controller,
+  blockedReason,
+  unitChangesBlocked,
+  automationControls,
+  remoteEndpoint,
+  onOpenCommandPalette,
+  onOpenShortcutHelp,
+}: {
+  controller: DocumentControllerState
+  blockedReason: string | null
+  unitChangesBlocked: boolean
+  automationControls: ReactNode
+  remoteEndpoint?: string | undefined
+  onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
+  onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
+}) {
+  const t = useTranslations("app.shell.applicationMenu")
+  const commandsT = useTranslations("app.commands")
+  const preferredFormat = useViewerPreferences((state) => state.preferredExportFormat)
+  const [open, setOpen] = useState(false)
+  const [dialog, setDialog] = useState<MenuDialog | null>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const openingCommandDialog = useRef(false)
+  const closeDialogMenu = (event: Event) => {
+    event.preventDefault()
+    setOpen(false)
+    trigger.current?.focus()
+  }
+  const launchDialog = (next: MenuDialog) => {
+    openingCommandDialog.current = true
+    setDialog(next)
+  }
+  const dialogOpenChange = (next: boolean) => {
+    if (!next) setDialog(null)
+  }
+  return (
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            ref={trigger}
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="shrink-0 gap-1 px-2"
+            aria-label={t("trigger")}
+            data-application-menu-trigger
+          >
+            <strong className="text-sm">VibeShape</strong>
+            <ChevronDown aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="max-h-[calc(100svh-4rem)] w-64 max-w-[calc(100vw-1rem)] overflow-y-auto"
+          align="start"
+          onCloseAutoFocus={(event) => {
+            if (openingCommandDialog.current) {
+              event.preventDefault()
+              openingCommandDialog.current = false
+            }
+          }}
+        >
+          <DropdownMenuGroup aria-label={t("project")}>
+            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("project")}</p>
+            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("projects")}>
+              <FolderOpen aria-hidden="true" />
+              {t("files")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              aria-haspopup="dialog"
+              disabled={controller.status !== "ready" || controller.report === null}
+              onSelect={() => launchDialog("export")}
+            >
+              <Download aria-hidden="true" />
+              {t("export")}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuGroup aria-label={t("workspace")} className="mt-1 border-t pt-1">
+            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              {t("workspace")}
+            </p>
+            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("settings")}>
+              <Settings aria-hidden="true" />
+              {t("settings")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                if (trigger.current) {
+                  openingCommandDialog.current = true
+                  onOpenCommandPalette(trigger.current)
+                }
+              }}
+            >
+              <CommandIcon aria-hidden="true" />
+              {commandsT("open")}
+              <kbd className="ml-auto text-xs text-muted-foreground">
+                {commandsT("openShortcut")}
+              </kbd>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          {automationControls ? (
+            <DropdownMenuGroup aria-label={t("ai")} className="mt-1 border-t pt-1">
+              <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("ai")}</p>
+              <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("ai")}>
+                {t("aiConnections")}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          ) : null}
+          <DropdownMenuGroup aria-label={t("help")} className="mt-1 border-t pt-1">
+            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("help")}</p>
+            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("faq")}>
+              {t("faq")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              data-shortcut-help-trigger
+              onSelect={() => {
+                if (trigger.current) {
+                  openingCommandDialog.current = true
+                  onOpenShortcutHelp(trigger.current)
+                }
+              }}
+            >
+              <Keyboard aria-hidden="true" />
+              {commandsT("shortcutHelp.title")}
+              <kbd className="ml-auto text-xs text-muted-foreground">F1</kbd>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DocumentProjectDialog
+        controller={controller}
+        blockedReason={blockedReason}
+        showTrigger={false}
+        open={dialog === "projects"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <DocumentExportDialog
+        controller={controller}
+        preferredFormat={preferredFormat}
+        showTrigger={false}
+        open={dialog === "export"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <SettingsDialog
+        controller={controller}
+        blocked={unitChangesBlocked}
+        showTrigger={false}
+        open={dialog === "settings"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <FaqDialog
+        endpoint={remoteEndpoint}
+        showTrigger={false}
+        open={dialog === "faq"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <Dialog open={dialog === "ai"} onOpenChange={dialogOpenChange}>
+        <DialogContent closeLabel={t("closeAi")} onCloseAutoFocus={closeDialogMenu}>
+          <DialogHeader>
+            <DialogTitle>{t("aiConnections")}</DialogTitle>
+            <DialogDescription>{t("aiDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">{automationControls}</div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

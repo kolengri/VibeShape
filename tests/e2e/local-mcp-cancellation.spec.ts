@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
+import { enableLocalAi, openAiConnections } from "./application-menu-support"
 
 const commandId = "0195b5ac-b250-7a2c-8c33-000000000002"
 const featureId = "0195b5ac-b250-7a2c-8c33-000000000003"
@@ -25,7 +26,7 @@ async function cancelReview(
 ) {
   if (mode === "client-abort") input.controller.abort()
   if (mode === "browser-disable")
-    await input.page.getByRole("button", { name: /Disable AI session/ }).click()
+    await input.page.getByRole("button", { name: "Stop AI", exact: true }).click()
   if (mode === "client-close") await input.close()
 }
 
@@ -37,11 +38,9 @@ for (const mode of ["client-abort", "browser-disable", "client-close"] as const)
     const local = await createMcpTestClient(43400 + testInfo.parallelIndex)
     try {
       await page.goto(local.origin)
-      await expect(
-        page.getByRole("button", { name: "Enable AI session", exact: true }),
-      ).toBeVisible()
-      await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-      await expect(page.getByRole("button", { name: /Disable AI session/ })).toBeVisible()
+      await openAiConnections(page)
+      await enableLocalAi(page)
+      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
 
       const call = async (name: string, args: Record<string, unknown>) => {
         const response = await local.callTool({ name, arguments: args })
@@ -84,9 +83,13 @@ for (const mode of ["client-abort", "browser-disable", "client-close"] as const)
           localToolOutputs.commit_draft.parse(commitOutcome.value.structuredContent?.result).ok,
         ).toBe(false)
       else expect(commitOutcome.error).toBeDefined()
+      const connectionSettings = await openAiConnections(page)
       await expect(
-        page.getByRole("button", { name: "Enable AI session", exact: true }),
+        connectionSettings.getByRole("button", { name: "Enable AI session", exact: true }),
       ).toBeVisible()
+      await connectionSettings
+        .getByRole("button", { name: "Close AI connections", exact: true })
+        .click()
       await dismissErrorReview(page)
       await expect(
         page.getByRole("treeitem", { name: "Cancelled MCP box", exact: true }),

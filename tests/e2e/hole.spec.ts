@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 import type { Browser, Download, Page } from "@playwright/test"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -57,7 +58,7 @@ async function reopenHoleBackup(browser: Browser, download: Download, origin: st
   try {
     await page.goto(origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     await page.getByLabel("Choose VibeShape project file").setInputFiles({
       name: download.suggestedFilename(),
       mimeType: "application/octet-stream",
@@ -158,7 +159,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(edit.getByRole("checkbox", { name: "Point 1", exact: true })).toBeChecked()
     await inspectCompactHoleTask(page, theme)
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const downloading = page.waitForEvent("download")
     await page
       .getByRole("dialog", { name: "Projects" })

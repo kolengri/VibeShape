@@ -1551,6 +1551,20 @@
           "body": "Choose Stop AI to revoke access to this tab. After reload, a project change, cancellation or a disconnected session, create a new pairing code and authorize the client again. Auto-apply returns to off.",
           "detail": "Keep the tab open and finish any active manual edit before pairing. If the service rejects a request, retry later; daily admission limits protect the personal deployment. After an uncertain write, inspect the model and revision before proposing another change."
         }
+      },
+      "applicationMenu": {
+        "trigger": "Application menu",
+        "project": "Project",
+        "files": "Files and projects…",
+        "export": "Export geometry…",
+        "workspace": "Workspace",
+        "settings": "Settings…",
+        "ai": "AI",
+        "aiConnections": "AI connections…",
+        "aiDescription": "Connect a local or remote AI client and manage access for this project. Auto-apply requires separate consent.",
+        "closeAi": "Close AI connections",
+        "help": "Help",
+        "faq": "FAQ and MCP setup…"
       }
     },
     "sketch": {

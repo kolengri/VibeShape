@@ -13,6 +13,7 @@ import {
 import { Settings as SettingsIcon } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useState } from "react"
+import { useDialogOpen } from "../components/use-dialog-open"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentDisplayUnitsSettings } from "../document/document-display-units-dialog"
 import { useViewerPreferences } from "./viewer-preferences"
@@ -21,12 +22,20 @@ import { WorkspaceLayoutSettings } from "./workspace-layout-settings"
 export function SettingsDialog({
   controller,
   blocked,
+  showTrigger = true,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
 }: {
   controller: DocumentControllerState
   blocked: boolean
+  showTrigger?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
 }) {
   const t = useTranslations("app.settings")
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [pending, setPending] = useState(false)
   const preferences = useViewerPreferences((state) => state)
   return (
@@ -36,20 +45,23 @@ export function SettingsDialog({
         if (!pending) setOpen(next)
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          aria-label={t("title")}
-          title={t("title")}
-          className="max-sm:size-7 max-sm:p-0"
-        >
-          <SettingsIcon aria-hidden="true" />
-          <span className="hidden sm:inline">{t("title")}</span>
-        </Button>
-      </DialogTrigger>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            aria-label={t("title")}
+            title={t("title")}
+            className="max-sm:size-7 max-sm:p-0"
+          >
+            <SettingsIcon aria-hidden="true" />
+            <span className="hidden sm:inline">{t("title")}</span>
+          </Button>
+        </DialogTrigger>
+      ) : null}
       <DialogContent
+        onCloseAutoFocus={onCloseAutoFocus}
         showCloseButton={!pending}
         closeLabel={t("close")}
         className="flex max-w-xl flex-col overflow-hidden p-4"

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
 import { extrusionFeatureParametersV5Schema } from "../../packages/domain/src/part-design"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -184,7 +185,7 @@ test.describe("native project file", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const projectsDialog = page.getByRole("dialog", { name: "Projects" })
     await projectsDialog.getByRole("button", { name: "Rename Untitled project" }).click()
     const renameDialog = page.getByRole("dialog", { name: "Rename project" })
@@ -248,7 +249,7 @@ test.describe("native project file", () => {
       ),
     ).toHaveLength(4)
 
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const currentProjectDialog = page.getByRole("dialog", { name: "Projects" })
     const originalProjectId = await page.evaluate(() =>
       (
@@ -270,7 +271,7 @@ test.describe("native project file", () => {
       ).localStorage.getItem("vibeshape-active-document-id"),
     )
     expect(copiedProjectId).not.toBe(originalProjectId)
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const copiedProjectDialog = page.getByRole("dialog", { name: "Projects" })
     await expect(
       copiedProjectDialog.getByRole("listitem").filter({ hasText: "Calibration bracket imported" }),
@@ -296,7 +297,7 @@ test.describe("native project file", () => {
       await expect(importedPage.getByText("Saved in this browser", { exact: true })).toBeVisible({
         timeout: 30_000,
       })
-      await importedPage.getByRole("button", { name: "File" }).click()
+      await openApplicationMenuItem(importedPage, "Files and projects…")
       const transfer = await importedPage.evaluateHandle(
         (bytes) => {
           const browser = globalThis as unknown as {
@@ -361,7 +362,7 @@ test.describe("native project file", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const createdProjectNavigation = page.waitForEvent(
       "framenavigated",
       (frame) => frame === page.mainFrame(),
@@ -376,7 +377,7 @@ test.describe("native project file", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
 
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const dialog = page.getByRole("dialog", { name: "Projects" })
     const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 3" })
     await expect(previousProject).toHaveCount(1)
@@ -391,7 +392,7 @@ test.describe("native project file", () => {
       timeout: 30_000,
     })
 
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const sourceDialog = page.getByRole("dialog", { name: "Projects" })
     const sourceProject = sourceDialog.getByRole("listitem").filter({ hasText: "Revision 3" })
     await sourceProject.getByRole("button", { name: /Duplicate .*revision 3/ }).click()
@@ -423,7 +424,7 @@ test.describe("native project file", () => {
       .getByRole("button", { name: "Cancel", exact: true })
       .click()
 
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const copiedDialog = page.getByRole("dialog", { name: "Projects" })
     const originalProject = copiedDialog.getByRole("listitem").filter({ hasText: "Revision 3" })
     await expect(originalProject).toHaveCount(1)
@@ -439,7 +440,7 @@ test.describe("native project file", () => {
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByText("Untitled project copy", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "File" }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     await expect(page.getByRole("dialog", { name: "Projects" }).getByRole("listitem")).toHaveCount(
       2,
     )
@@ -447,7 +448,7 @@ test.describe("native project file", () => {
 })
 
 async function saveNativeProject(page: Page) {
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const downloading = page.waitForEvent("download")
   await page
     .getByRole("dialog", { name: "Projects", exact: true })
@@ -528,7 +529,7 @@ test("round trips reversed independent V5 extrusion depths through Save and a fr
     (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)) * 20
   expect(originalVolume).toBeCloseTo(expectedVolume, 3)
 
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   await page
     .getByRole("dialog", { name: "Projects", exact: true })
     .getByLabel("Choose VibeShape project file")

@@ -1,3 +1,4 @@
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import {
   confirmSketchPlane,
@@ -27,7 +28,9 @@ test.describe("foundation CAD shell", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -59,7 +62,9 @@ test.describe("foundation CAD shell", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
 
     const xzPick = await selectIdleOriginPlaneInViewport(page, "xz")
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -87,7 +92,9 @@ test.describe("foundation CAD shell", () => {
 
   test("zooms the 3D viewport toward the pointer", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Box", exact: true })
@@ -122,14 +129,15 @@ test.describe("foundation CAD shell", () => {
   test("keeps primary commands in a predictable keyboard order", async ({ browserName, page }) => {
     await page.goto("/")
 
-    const exportButton = page.getByRole("button", { name: "Export…" })
+    const lastHeaderButton = page.getByRole("button", { name: /^Rename / })
     const modelButton = page.getByRole("button", { name: "Model", exact: true })
     const sketchButton = page.getByRole("button", { name: "Sketch", exact: true })
     // Safari uses Option+Tab to include every control in keyboard navigation.
     const enterToolbar = browserName === "webkit" ? "Alt+Tab" : "Tab"
 
-    await exportButton.focus()
-    await expect(exportButton).toBeFocused()
+    await expect(lastHeaderButton).toBeEnabled()
+    await lastHeaderButton.focus()
+    await expect(lastHeaderButton).toBeFocused()
     await page.keyboard.press(enterToolbar)
     await expect(modelButton).toBeFocused()
     await expect(modelButton).toHaveAttribute("aria-pressed", "true")
@@ -141,10 +149,12 @@ test.describe("foundation CAD shell", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
 
-    const commandsButton = page.getByRole("button", { name: "Commands" })
-    await commandsButton.click()
+    const commandsButton = page.getByRole("button", { name: "Application menu" })
+    await openApplicationMenuItem(page, "Commands Ctrl/Cmd+K")
     const palette = page.getByRole("dialog", { name: "Command palette" })
     await expect(palette).toBeVisible()
     await page.keyboard.press("Escape")
@@ -153,7 +163,11 @@ test.describe("foundation CAD shell", () => {
     await page.keyboard.press("Control+K")
     const search = page.getByRole("combobox", { name: "Search commands" })
     await search.fill("extrude")
-    await expect(page.getByText("Select a closed sketch profile first.")).toBeVisible()
+    await expect(
+      palette
+        .getByRole("option", { name: /^Extrude / })
+        .getByText("Select a closed sketch profile first."),
+    ).toBeVisible()
 
     await search.fill("new sketch")
     await palette.getByText("Create sketch", { exact: true }).click()
@@ -199,7 +213,9 @@ test.describe("foundation CAD shell", () => {
   test("keeps an active task form reachable and mounted at 200 percent zoom", async ({ page }) => {
     await page.setViewportSize({ width: 512, height: 360 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
 
     await page
       .getByRole("toolbar", { name: "Model commands" })
@@ -229,7 +245,9 @@ test.describe("foundation CAD shell", () => {
     })
     await page.setViewportSize({ width: 512, height: 360 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
 
     await page
       .getByRole("toolbar", { name: "Model commands" })

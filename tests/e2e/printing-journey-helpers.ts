@@ -20,6 +20,7 @@ import {
 import { sketchRecordSchema } from "../../packages/domain/src/sketch"
 import { createLengthQuantity } from "../../packages/domain/src/units"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect } from "./fixtures"
 
 export type PrintingMcpClient = Awaited<ReturnType<typeof createMcpTestClient>>
@@ -232,7 +233,7 @@ function inspectThreeMf(bytes: Buffer) {
 }
 
 async function saveNativeBackup(page: Page, directory: string, revision: number) {
-  await page.getByRole("button", { name: "File" }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const downloading = page.waitForEvent("download")
   await page
     .getByRole("dialog", { name: "Projects" })

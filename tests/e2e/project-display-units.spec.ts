@@ -1,3 +1,4 @@
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 test.describe("project display units", () => {
@@ -7,7 +8,7 @@ test.describe("project display units", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await openApplicationMenuItem(page, "Settings…")
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
     await dialog.getByRole("combobox", { name: "Length unit" }).selectOption("in")
     await dialog.getByRole("combobox", { name: "Angle unit" }).selectOption("rad")

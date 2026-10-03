@@ -28,6 +28,18 @@ The implemented command surface composes stable localized presentation descripto
 
 The implemented viewport shows terminal authoritative meshes only after a successful document rebuild. Raw Three.js owns the canvas scene and GPU lifecycle outside React reconciliation; localized loading, empty, rebuild-failure, and WebGL2-unavailable states remain ordinary DOM overlays. It supports orthographic orbit, pan, pointer-centered zoom, responsive fit, shaded faces, derived feature edges, hover face preselection, and primary-click face selection. Hovering or keyboard-focusing a visible feature-tree row adds a cyan whole-feature preselection overlay, while activating the row opens edit and keeps an amber overlay on that exact feature until the task closes. These overlays use the feature's own rebuild result even when downstream operations consume it; an exact unsaved candidate mesh replaces the committed highlight during preview, and hidden features remain hidden. Whole-feature highlighting stays independent from transient face selection. XY, XZ, and YZ remain visible as translucent origin datums by default and each can be hidden independently through an icon-only, tooltip-labeled control. They are selectable only while choosing sketch support, so visible datums never block solid clicks. Independent terminal bodies use a stable display-only palette derived from their feature identities; merged or consumed features do not create a second body color. Primary drag and middle drag rotate, modifier-primary and secondary drag pan, and movement beyond the click threshold never activates a face or sketch plane. A camera-relative world-axis inset stays visible and updates during orbit without resetting the camera; its semantic X/Y/Z colors are paired with an accessible DOM legend. The selected feature and friendly face ordinal are mirrored into the DOM status bar, and an explicit canvas control clears face selection. Empty primary click and every geometry replacement clear transient face selection while preserving the current camera and any open-feature highlight. Fit runs once when the viewport is initialized and later only through the explicit user action. The icon-only camera menu exposes isometric and six orthographic standard views with localized labels and tooltips. Choosing one preserves the current orbit target, scale, and camera distance, and the same navigation remains available in sketch orbit mode. Current rendered-face identity is deliberately transient; body/edge/vertex selection, stable `TopoRef` selection, filters, perspective mode, and additional command overlays remain open.
 
+## Application menu
+
+The VibeShape menu groups global actions into Project (files, local projects, and geometry export),
+Workspace (settings and command palette), AI (connection and session controls when available), and
+Help (FAQ, MCP setup, and keyboard shortcuts). The header retains the project name, rename action,
+and save status. An active local or remote AI session keeps a direct **Stop AI** action and a compact
+session status in the header. Auto-apply consent remains in the existing session dialog.
+
+The menu supports arrow-key navigation, typeahead, Enter, and Escape. Opening a dialog preserves
+its existing guards and pending behavior; dismissing it closes the menu and returns focus to the
+VibeShape trigger. Palette and shortcut help also return focus to that persistent trigger.
+
 ## Command states
 
 Every modeling command uses the same state machine:

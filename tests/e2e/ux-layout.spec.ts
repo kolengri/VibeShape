@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 async function expectContained(dialog: Locator, page: Page) {
@@ -24,7 +25,7 @@ for (const theme of ["light", "dark"] as const) {
       .locator("html")
       .evaluate((element, theme) => element.classList.toggle("dark", theme === "dark"), theme)
     await page.setViewportSize({ width: 512, height: 384 })
-    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await openApplicationMenuItem(page, "Settings…")
     const units = page.getByRole("dialog", { name: "Settings", exact: true })
     await expectContained(units, page)
     await units.getByRole("button", { name: "Done", exact: true }).scrollIntoViewIfNeeded()
@@ -32,8 +33,8 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: test.info().outputPath("compact-units.png") })
     await page.keyboard.press("Escape")
     await expect(units).not.toBeVisible()
-    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused()
-    await page.getByRole("button", { name: "Commands", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeFocused()
+    await openApplicationMenuItem(page, "Commands Ctrl/Cmd+K")
     await expectContained(page.getByRole("dialog"), page)
     await page.getByRole("combobox").press("End")
     const lastAvailableCommand = page.locator('[role="option"]:not([aria-disabled="true"])').last()
@@ -41,7 +42,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(lastAvailableCommand).toBeInViewport()
     await page.screenshot({ path: test.info().outputPath("compact-command-palette.png") })
     await page.keyboard.press("Escape")
-    await page.getByRole("button", { name: "File", exact: true }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const projects = page.getByRole("dialog", { name: "Projects", exact: true })
     await expectContained(projects, page)
     await projects
@@ -110,7 +111,7 @@ test("keeps the model tree inside its column after a long feature rename", async
     .toEqual({ left: 0, width: 0 })
   await expect(page.getByRole("treeitem", { name, exact: true })).toBeInViewport()
   await expect(page.getByRole("treeitem", { name: "Variables", exact: true })).toBeInViewport()
-  await page.getByRole("treeitem", { name: "Body 1", exact: true }).click()
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await expect.poll(() => tree.evaluate((element) => element.scrollLeft)).toBe(0)
   await page.screenshot({ path: test.info().outputPath("long-name-model-tree.png") })
 })

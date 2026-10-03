@@ -1,6 +1,11 @@
 import type { Page } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
+import {
+  enableLocalAi,
+  openAiConnections,
+  openApplicationMenuItem,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 test.use({ actionTimeout: 15_000 })
@@ -41,8 +46,10 @@ async function boxDraft(local: Local, n: number, label: string) {
   return added
 }
 async function enableAutoApply(page: Page) {
+  await openAiConnections(page)
   await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
   await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
+  await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
   await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
 }
 async function inspectControls(page: Page) {
@@ -91,10 +98,11 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
       diagnostic: { code: "not-paired" },
     })
     await expect(page.getByText("Auto-apply on", { exact: true })).toHaveCount(0)
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const manual = await boxDraft(local, 10, "Manual box")
     const pendingManual = call(local, "commit_draft", { draftId: manual.draftId })
     await expect(review).toBeVisible()
+    await openAiConnections(page)
     await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
     await page.setViewportSize({ width: 512, height: 384 })
     const details = page.getByRole("region", { name: "Set up auto-apply", exact: true })
@@ -118,6 +126,7 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
       .getByRole("button", { name: "Cancel", exact: true })
       .first()
       .click()
+    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
     await page.setViewportSize({ width: 1280, height: 800 })
     await expect(page.getByRole("treeitem", { name: "Manual box", exact: true })).toHaveCount(0)
     await review.getByRole("button", { name: "Apply", exact: true }).click()
@@ -238,7 +247,7 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
       page.getByRole("treeitem", { name: "Automatic fillet", exact: true }),
     ).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Stale box", exact: true })).toHaveCount(0)
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     await expect(page.getByText("Auto-apply on", { exact: true })).toHaveCount(0)
     const reopened = success(localToolOutputs.model_info.parse(await call(local, "model_info", {})))
     const variables = success(
@@ -265,20 +274,20 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     ).toMatchObject({ ok: true })
     const pendingSwitch = call(local, "commit_draft", { draftId: switching.draftId })
     await expect(review).toBeVisible()
-    await page.getByRole("button", { name: "File", exact: true }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     await expect(page.getByRole("button", { name: "New project", exact: true })).toBeDisabled()
     await page.getByRole("button", { name: "Close projects dialog", exact: true }).click()
     await review.getByRole("button", { name: "Discard", exact: true }).click()
     expect(await pendingSwitch).toMatchObject({ ok: false })
     await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "File", exact: true }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     await expect(page.getByRole("button", { name: "New project", exact: true })).toBeEnabled()
     await page.getByRole("button", { name: "New project", exact: true }).click()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
     await expect(page.getByText("Auto-apply on", { exact: true })).toHaveCount(0)
-    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeVisible()
+    await openAiConnections(page)
     expect(await call(local, "model_info", {})).toMatchObject({
       ok: false,
       diagnostic: { code: "not-paired" },

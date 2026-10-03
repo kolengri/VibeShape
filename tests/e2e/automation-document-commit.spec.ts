@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test"
 import type { AutomationHost } from "../../packages/automation-host/src/host"
 import type { CommandActor } from "../../packages/domain/src/commands"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 type BrowserAutomationFactory = {
@@ -297,7 +298,7 @@ async function expectFailedAutomationCommit(
 }
 
 async function expectNativeAutomationTransaction(page: Page, draftId: string, actor: CommandActor) {
-  await page.getByRole("button", { name: "File" }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const projects = page.getByRole("dialog", { name: "Projects" })
   const downloading = page.waitForEvent("download")
   await projects.getByRole("button", { name: "Save project (.vshape)" }).click()

@@ -1,5 +1,6 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
+import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -20,7 +21,7 @@ test("inspects exact body faces and edges through MCP and rejects stale cursors 
   try {
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+    await enableLocalAi(page)
     const base = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
       .revision
     const draft = success(

@@ -1,4 +1,5 @@
 import type { Locator } from "@playwright/test"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 async function expectMetric(panel: Locator, label: string, value: string) {
@@ -75,7 +76,7 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await expectMetric(panel, "Volume", "8,000 mm³")
   await expectMetric(panel, "Surface area", "2,800 mm²")
   await panel.getByRole("button", { name: "Close", exact: true }).click()
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await openApplicationMenuItem(page, "Settings…")
   const units = page.getByRole("dialog", { name: "Settings", exact: true })
   await units.getByRole("combobox", { name: "Length unit" }).selectOption("cm")
   await units.getByRole("button", { name: "Apply project units" }).click()

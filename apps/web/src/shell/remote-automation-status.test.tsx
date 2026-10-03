@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ComponentProps } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import { i18n } from "../i18n"
-import { RemoteAutomationStatus } from "./remote-automation-status"
+import { RemoteAutomationConsentDialog, RemoteAutomationStatus } from "./remote-automation-status"
 
 type Props = ComponentProps<typeof RemoteAutomationStatus>
 afterEach(cleanup)
@@ -43,10 +43,15 @@ it("shows the exact consent client and return address, approves explicitly and d
   }
   const view = (state: Props["current"]) => (
     <I18nProvider i18n={i18n} initialLocale="en">
+      <button type="button">Editor action</button>
       <RemoteAutomationStatus connection={connection} current={state} blocked={false} />
+      <RemoteAutomationConsentDialog connection={connection} current={state} />
     </I18nProvider>
   )
-  const rendered = render(view(current))
+  const rendered = render(view({ ...current, consent: null }))
+  const editorAction = screen.getByRole("button", { name: "Editor action" })
+  editorAction.focus()
+  rendered.rerender(view(current))
   expect(screen.getByRole("dialog", { name: "Allow this client in this tab?" })).toBeTruthy()
   expect(screen.getByText("Return address: https://client.example/callback")).toBeTruthy()
   expect(screen.getByText("Client: CAD client")).toBeTruthy()
@@ -55,8 +60,11 @@ it("shows the exact consent client and return address, approves explicitly and d
   await userEvent.click(screen.getByRole("button", { name: "Allow this client" }))
   expect(consent).toHaveBeenCalledWith(true)
   rendered.rerender(view({ ...current, consent: null }))
+  await waitFor(() => expect(document.activeElement).toBe(editorAction))
   rendered.rerender(view(current))
   await userEvent.keyboard("{Escape}")
   expect(consent).toHaveBeenLastCalledWith(false)
+  rendered.rerender(view({ ...current, consent: null }))
+  await waitFor(() => expect(document.activeElement).toBe(editorAction))
   expect(connection.enableAutoApply).not.toHaveBeenCalled()
 })

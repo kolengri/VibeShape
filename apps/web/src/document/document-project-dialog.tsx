@@ -15,8 +15,9 @@ import {
 import { FolderOpen } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { type DropEvent, type FileRejection, useDropzone } from "react-dropzone"
+import { useDialogOpen } from "../components/use-dialog-open"
 import {
   activateLocalProject,
   createNewLocalProject,
@@ -482,23 +483,70 @@ function useProjectFileTarget(controller: DocumentControllerState, blockedReason
   return { target, stillCurrent }
 }
 
+function useProjectLibrary(open: boolean) {
+  const [library, setLibrary] = useState<ProjectLibraryState>({ status: "loading", projects: [] })
+  const listRequestRef = useRef(0)
+  const loadProjects = useCallback(async () => {
+    const request = listRequestRef.current + 1
+    listRequestRef.current = request
+    setLibrary((current) => ({ status: "loading", projects: current.projects }))
+    const result = await listLocalProjects()
+    if (listRequestRef.current !== request) return
+    setLibrary(
+      result.ok
+        ? { status: "ready", projects: result.projects }
+        : { status: "error", projects: [] },
+    )
+  }, [])
+
+  useEffect(() => {
+    if (open) void loadProjects()
+  }, [open, loadProjects])
+  return { library, loadProjects }
+}
+
+function ProjectDialogTrigger({ shown }: { shown: boolean }) {
+  const t = useTranslations("app.projectFile")
+  if (!shown) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <DialogTrigger asChild>
+          <Button type="button" size="xs" variant="outline" aria-label={t("file")}>
+            <FolderOpen aria-hidden="true" />
+            <span>{t("file")}</span>
+          </Button>
+        </DialogTrigger>
+      </TooltipTrigger>
+      <TooltipContent>{t("trigger")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function DocumentProjectDialog({
   controller,
   blockedReason = null,
+  showTrigger = true,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
 }: {
   controller: DocumentControllerState
   blockedReason?: string | null
+  showTrigger?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
 }) {
   const t = useTranslations("app.projectFile")
   const { target, stillCurrent } = useProjectFileTarget(controller, blockedReason)
   const importInProgressRef = useRef(false)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [activity, setActivity] = useState<ProjectActivity>("idle")
   const [feedback, setFeedback] = useState<ProjectFeedback | null>(null)
-  const [library, setLibrary] = useState<ProjectLibraryState>({ status: "loading", projects: [] })
+  const { library, loadProjects } = useProjectLibrary(open)
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
-  const listRequestRef = useRef(0)
   const disabled = controller.status !== "ready" || blockedReason !== null || activity !== "idle"
 
   const importAndActivate = async (
@@ -554,27 +602,15 @@ export function DocumentProjectDialog({
     }
   }
 
-  const loadProjects = async () => {
-    const request = listRequestRef.current + 1
-    listRequestRef.current = request
-    setLibrary((current) => ({ status: "loading", projects: current.projects }))
-    const result = await listLocalProjects()
-    if (listRequestRef.current !== request) return
-    setLibrary(
-      result.ok
-        ? { status: "ready", projects: result.projects }
-        : { status: "error", projects: [] },
-    )
-  }
-
   const changeOpen = (nextOpen: boolean) => {
     if (!nextOpen && activity !== "idle") return
     setOpen(nextOpen)
-    if (nextOpen) {
-      setFeedback(null)
-      void loadProjects()
-    }
   }
+  useEffect(() => {
+    if (open) {
+      setFeedback(null)
+    }
+  }, [open])
 
   const backup = async () => {
     const expected = target()
@@ -664,20 +700,11 @@ export function DocumentProjectDialog({
     <>
       <ProjectFileFeedback feedback={open ? null : feedback} kind="status" compact />
       <Dialog open={open} onOpenChange={changeOpen}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button type="button" size="xs" variant="outline" aria-label={t("file")}>
-                <FolderOpen aria-hidden="true" />
-                <span>{t("file")}</span>
-              </Button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{t("trigger")}</TooltipContent>
-        </Tooltip>
+        <ProjectDialogTrigger shown={showTrigger} />
         <DialogContent
           className="max-h-[min(90vh,48rem)] max-w-2xl overflow-y-auto"
           closeLabel={t("closeLabel")}
+          onCloseAutoFocus={onCloseAutoFocus}
           showCloseButton={activity === "idle"}
         >
           <DialogHeader>

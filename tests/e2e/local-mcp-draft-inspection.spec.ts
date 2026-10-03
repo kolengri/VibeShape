@@ -1,6 +1,7 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { modelEdgeViewSchema } from "../../packages/automation-api/src/queries"
+import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b260-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -29,7 +30,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     try {
       await page.goto(local.origin)
       await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-      await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+      await enableLocalAi(page)
       const info = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       const base = info.summary.revision
       const draft = success(
@@ -237,7 +238,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
         .toBeGreaterThan(committed.revision)
       await page.reload()
       await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-      await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
+      await enableLocalAi(page)
       const restored = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       const restoredTree = success(
         localToolOutputs.model_tree.parse(

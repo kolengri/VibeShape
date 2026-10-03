@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { unzipSync } from "fflate"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 async function createBox(page: import("@playwright/test").Page) {
@@ -17,7 +18,7 @@ test.describe("document export", () => {
     page,
   }) => {
     await page.goto("/")
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     const dialog = page.getByRole("dialog", { name: "Export model" })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByText("Create a valid solid body before exporting.")).toBeVisible()
@@ -38,7 +39,7 @@ test.describe("document export", () => {
       .click()
     await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
 
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     const threeMfDownloadPromise = page.waitForEvent("download")
     await dialog.getByRole("button", { name: "Export 3MF" }).click()
     const threeMfDownload = await threeMfDownloadPromise
@@ -53,7 +54,7 @@ test.describe("document export", () => {
     expect(model.match(/<item objectid=/g)).toHaveLength(1)
     await expect(page.getByText("3MF download started", { exact: true })).toBeVisible()
 
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     const stepDownloadPromise = page.waitForEvent("download")
     await dialog.getByRole("button", { name: "Export STEP" }).click()
     const stepDownload = await stepDownloadPromise
@@ -64,7 +65,7 @@ test.describe("document export", () => {
     expect(stepBytes.subarray(0, 13).toString("ascii")).toBe("ISO-10303-21;")
     await expect(page.getByText("STEP download started", { exact: true })).toBeVisible()
 
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     const stlDownloadPromise = page.waitForEvent("download")
     await dialog.getByRole("button", { name: "Export STL" }).click()
     const stlDownload = await stlDownloadPromise
@@ -82,7 +83,7 @@ test.describe("document export", () => {
     await page.goto("/")
     await createBox(page)
 
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     const dialog = page.getByRole("dialog", { name: "Export model" })
     const slicer = dialog.getByLabel("Preferred slicer")
     await slicer.selectOption("bambu-studio")
@@ -99,7 +100,7 @@ test.describe("document export", () => {
 
     await dialog.getByRole("button", { name: "Close", exact: true }).click()
     await page.reload()
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     await expect(
       page.getByRole("dialog", { name: "Export model" }).getByLabel("Preferred slicer"),
     ).toHaveValue("bambu-studio")
@@ -128,7 +129,7 @@ test.describe("document export", () => {
           headers: {
             "Access-Control-Allow-Headers": "authorization, content-type",
             "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Origin": "http://127.0.0.1:4173",
+            "Access-Control-Allow-Origin": new URL(page.url()).origin,
             "Access-Control-Allow-Private-Network": "true",
           },
         })
@@ -141,7 +142,7 @@ test.describe("document export", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        headers: { "Access-Control-Allow-Origin": "http://127.0.0.1:4173" },
+        headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin },
         body: JSON.stringify({
           protocolVersion: 1,
           ok: true,
@@ -154,7 +155,7 @@ test.describe("document export", () => {
 
     await page.goto("/")
     await createBox(page)
-    await page.getByRole("button", { name: "Export…" }).click()
+    await openApplicationMenuItem(page, "Export geometry…")
     await page
       .getByRole("dialog", { name: "Export model" })
       .getByRole("button", { name: "Open in Snapmaker Orca" })
