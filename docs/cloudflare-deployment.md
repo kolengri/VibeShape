@@ -47,8 +47,11 @@ The controlled TAR is stored as asset `607712548` in release `cloudflare-occt-0c
 On 2026-10-03 the owner explicitly authorized the first personal hosted release after technical
 checks, deferring the separate legal review required by `docs/licensing.md`. This is a scoped
 release decision, not a legal certification or a waiver of license/source obligations.
-Publication remains disabled until verification and first activation finish. No paid upgrade,
-Dealyv deployment, or Heyfoods credential change was performed.
+Publication was enabled and the automatic `main` run
+[37124957395](https://github.com/kolengri/VibeShape/actions/runs/37124957395) published commit
+`6d1017c0af0d9e586f17cdde6efdace139675613`. Its public Chromium, Firefox and WebKit acceptance
+passed creation/editing, native save/open, STEP/STL/3MF exports, worker/WASM loading and missing-route
+checks. No paid upgrade, Dealyv deployment, or Heyfoods credential change was performed.
 
 For another account or re-provisioning, use the following setup contract:
 
@@ -88,8 +91,9 @@ The config supplies WASM MIME, same-origin resource policy, immutable hashed ass
 for HTML/service-worker files. No COOP/COEP or SharedArrayBuffer is needed. A top-level `404.html`
 prevents Pages' SPA fallback from returning HTML for missing assets or nonexistent APIs.
 
-When a reviewed remote relay is enabled, set `VITE_REMOTE_MCP_URL` consistently for the build and
-staging commands. Staging accepts only an HTTPS `/mcp` endpoint, adds its exact HTTPS/WSS origin
+When a reviewed remote relay is enabled, set repository variable `VIBESHAPE_REMOTE_MCP_URL`.
+The existing workflow supplies it as `VITE_REMOTE_MCP_URL` consistently for the build and staging
+commands. Staging accepts only an HTTPS `/mcp` endpoint, adds its exact HTTPS/WSS origin
 and Cloudflare Turnstile script/frame origin to editor-document CSP, and leaves geometry-worker
 and source-document policies unchanged. A static-only build does not enable this allowance.
 See [license notice provenance](../deployment/licenses/README.md) for embedded dependency handling.

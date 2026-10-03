@@ -1,6 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "vibeshape-remote-mcp",
+  "account_id": "dddb9fcdf9bec709036b951ebb932642",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
@@ -12,11 +13,11 @@
     ]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Admission", "TabSession"] }],
-  // Provision OAuth KV separately; no placeholder namespace can accidentally be deployed.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "7f713754e68d449894bdca2c03a06075" }],
   "vars": {
-    "PUBLIC_ORIGIN": "",
-    "EDITOR_ORIGIN": "",
-    "TURNSTILE_SITE_KEY": "",
+    "PUBLIC_ORIGIN": "https://vibeshape-remote-mcp.greg-ddd.workers.dev",
+    "EDITOR_ORIGIN": "https://vibeshape-greg.pages.dev",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFMwmMa5dCtdT65r",
     "MAX_ACTIVE_SESSIONS": "3",
     "MAX_SESSIONS_PER_DAY": "12",
     "MAX_CLIENTS_PER_DAY": "24",

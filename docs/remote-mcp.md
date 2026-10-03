@@ -24,8 +24,9 @@ budget and lifecycle. The editor's existing STEP/STL/3MF file export remains ava
 
 ## Required deployment configuration
 
-The checked-in Worker configuration is deliberately disabled until its resources and exact origins
-are supplied. This is not proof that a remote endpoint is deployed or connected.
+The checked-in Worker configuration targets the personal Greg account and its dedicated OAuth KV
+namespace and Turnstile widget. Server-side Turnstile verification requires the separately provisioned
+Worker secret. Configuration alone is not proof that a remote endpoint is deployed or connected.
 
 | Setting or binding | Purpose |
 | --- | --- |
@@ -39,10 +40,11 @@ are supplied. This is not proof that a remote endpoint is deployed or connected.
 | `IP_LIMIT` | Workers Rate Limiting binding, initially 60 requests/minute per IP/location |
 | `VITE_REMOTE_MCP_URL` | Public HTTPS `/mcp` endpoint embedded in the editor build |
 
-For the current intended personal deployment, the editor origin is
+For the personal deployment, the editor origin is
 `https://vibeshape-greg.pages.dev`, and the endpoint implied by the checked-in Worker name is
 `https://vibeshape-remote-mcp.greg-ddd.workers.dev/mcp`. These are intended configuration values,
-not live remote verification receipts.
+not live remote verification receipts. The Greg dashboard showed Workers Free during provisioning;
+the owner must recheck the plan before later deployments or changes in admission limits.
 
 Keep secrets in Cloudflare's secret store. Do not put a browser credential, OAuth token, Turnstile
 secret or deployment credential in a URL, local/session storage, `.dev.vars`, project file, log or
