@@ -78,4 +78,6 @@ Before editing, state:
 5. the smallest vertical slice and required tests;
 6. whether an ADR or durable documentation update is required.
 
+For a capability available through MCP, include the affected operator workflow and skill owner in the delivery slice, even when the implementation changes only an existing tool's behavior. Use [the MCP operator synchronization workflow](../vibeshape-documentation-sync/SKILL.md#synchronize-mcp-operator-skills) to update its instructions and bundle in the same task. Keep manual-editor capabilities distinct from advertised MCP support.
+
 Use `vibeshape-documentation-sync` when the accepted architecture or public package boundary changes.
