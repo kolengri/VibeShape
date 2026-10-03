@@ -204,7 +204,9 @@ test("creates, repairs, applies and undoes Datum Plane and body combinations thr
     await expect(page.getByRole("treeitem", { name: "MCP feature 8", exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     const saved = success(localToolOutputs.model_info.parse(await call(local, "model_info", {})))
     expect(saved.summary.revision).toBe(committed.revision + 2)
     expect(exactVolume(saved.measurements, 8).volume).toBeCloseTo(1348, 6)
