@@ -100,6 +100,13 @@ stored document or hosted CAD kernel. The service still consumes Worker/DO reque
 duration during approval or a tool call, small SQLite metadata and OAuth KV. Actual CPU and quota
 headroom have not been measured on the deployed Free account.
 
+The SDK's Worker bundle uses AJV and its transitive `fast-uri`, pinned to 3.1.8 for the
+[host-normalization fix](https://github.com/fastify/fast-uri/security/advisories/GHSA-hrr3-gc8f-f4qj).
+The shared SDK Node adapter's `ip-address` is pinned to 10.7.3, and Worker development tooling's
+`sharp` to 0.35.4. These targeted pins preserve geometry dependencies and do not make the full
+repository audit clean. Verify installed transitive resolution and the built bundle after changing
+overrides; a successful lockfile check alone does not detect stale package links.
+
 ## Local verification and release gates
 
 `bun run test:remote-mcp` runs the official Workers Vitest pool in local workerd, exercising actual
