@@ -17,6 +17,9 @@ Configure the MCP client with the deployed HTTPS `/mcp` URL. Open the hosted edi
 **VibeShape → AI connections… → Remote AI**, complete its browser challenge and create a pairing code. During OAuth authorization,
 enter the code on the service's consent page. Return to that exact editor tab, verify the client and
 return address and choose **Allow this client**. A claimed client name is not proof of identity.
+**Request tab approval** locks after one valid submission and shows a pending status while the
+editor approval is outstanding. Returning to the form after a failed navigation resets its controls;
+the SDK's browser-bound consent handle remains one-use, so a consumed handle requires fresh OAuth authorization.
 
 Manual Apply is the default. **Set up auto-apply** is a separate browser opt-in for eligible CAD
 commands only, governed by [ADR-0052](adr/0052-session-cad-auto-apply.md). Metadata still requires
@@ -74,6 +77,13 @@ callback and provides a fallback link. This preserves `form-action 'self'` witho
 Chromium's return to an HTTPS or IPv4/IPv6 loopback client, or interpolating client origins into CSP.
 The consent form uses `Referrer-Policy: same-origin` so its POST retains the required same-origin
 `Origin` header; completion and other OAuth responses retain `no-referrer`.
+Only the consent form's submission guard can execute, using a fresh CSP nonce; client metadata
+remains escaped display data.
+
+The stateless MCP adapter returns JSON for POST requests. Authenticated GET requests to `/mcp`
+return `405 Method Not Allowed` with `Allow: POST`, as permitted by the
+[Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#listening-for-messages-from-the-server).
+It does not open a standalone SSE stream or buffer an unending stream before returning HTTP headers.
 
 Dynamic client registration validates the supported metadata and discards unsupported extension
 fields before handing the request to the OAuth SDK, as required by

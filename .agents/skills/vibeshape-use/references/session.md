@@ -12,6 +12,8 @@ Get the configured endpoint from the editor's **VibeShape â†’ FAQ and MCP setupâ
 
 Remote exposes the shared named CAD tools except `export_model`, plus the bundled skill catalog as MCP resources and `read_agent_skill`. It has no local session, authoring-guide, or binary export resources. Skill reads use the same authenticated live-tab authority but never invoke browser work. Use the live tool descriptions and schemas plus the modeling references in this pack. Remote access controls one approved browser tab, not every project or a headless CAD service. A claimed client name is not identity evidence.
 
+Remote uses stateless Streamable HTTP with JSON POST responses. `405 Method Not Allowed` for an authenticated GET to `/mcp` means the optional standalone SSE stream is unavailable; continue through POST rather than restarting OAuth. The consent page accepts one valid **Request tab approval** submission while waiting for approval in the editor. A consumed consent handle requires fresh OAuth authorization.
+
 ## Verify and retain the session
 
 After tool discovery and pairing, call `model_info` with `{}`. Check the actual project and `summary.revision`, and retain any measurement diagnostic. A failed invocation is a connectivity/access failure, not an empty model. Distinguish configuration, protocol initialization, tool discovery, pairing, and a successful invocation when reporting setup.
