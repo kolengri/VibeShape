@@ -266,6 +266,17 @@ describe("remote MCP in workerd", () => {
     expect((await bindings.OAUTH_KV.list()).keys).toHaveLength(0)
   })
 
+  it("caps pairing attempts per IP while preserving the global daily budget", async () => {
+    const admission = bindings.ADMISSION.getByName("global")
+    for (const ipHash of ["a".repeat(64), "b".repeat(64)]) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        expect(await admission.admit("session", ipHash)).toBe(true)
+      }
+      expect(await admission.admit("session", ipHash)).toBe(false)
+    }
+    expect(await admission.admit("session", "c".repeat(64))).toBe(false)
+  })
+
   it("caps unauthenticated registration before SDK KV writes and active tabs before per-tab allocation", async () => {
     const allocatedBefore = (await listDurableObjectIds(bindings.TAB_SESSIONS)).length
     const payload = JSON.stringify({ redirect_uris: ["https://client.example/callback"] })
