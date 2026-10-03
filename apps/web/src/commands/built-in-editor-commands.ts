@@ -172,7 +172,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "modeling",
-    icon: "dimension",
+    icon: "measure",
     id: editorCommandIds.measure,
     labelKey: "measure",
     shortcut: { key: "m", modifiers: ["shift"] },
@@ -546,7 +546,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
-    icon: "slot",
+    icon: "slot-around-line",
     id: editorCommandIds.sketchSlotAroundLine,
     labelKey: "sketchSlotAroundLine",
     ownerModuleId: sketchOwner,

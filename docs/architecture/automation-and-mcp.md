@@ -292,7 +292,8 @@ The loopback origin has these requirements:
 - authenticate every browser request with a session-bound, same-origin credential that is never placed in a URL;
 - bind one bridge session to an explicit set of shared documents and capabilities;
 - enforce sequence, size, frequency, lifetime, and concurrent-request limits;
-- revoke immediately from the VibeShape UI and close on browser or MCP-client disconnect;
+- revoke immediately from the VibeShape UI and on MCP-client disconnect; local tab reloads may
+  suspend access for authenticated, same-document recovery under [ADR-0075](../adr/0075-local-mcp-tab-reload-recovery.md);
 - fail startup rather than selecting a different storage origin silently when the configured local origin is unavailable;
 - never assume that loopback or same-origin delivery implies user consent.
 

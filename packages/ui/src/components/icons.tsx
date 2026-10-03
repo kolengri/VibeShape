@@ -57,6 +57,39 @@ export {
   Undo2,
   X,
 } from "lucide-react"
+export {
+  AlignedRectangleIcon,
+  CenterArcIcon,
+  CenteredAlignedRectangleIcon,
+  CenteredSlotIcon,
+  CenterRectangleIcon,
+  ChamferIcon,
+  CircularPatternIcon,
+  ConeIcon,
+  CylinderIcon,
+  DatumPlaneIcon,
+  DimensionIcon,
+  ExtrudeIcon,
+  FilletIcon,
+  HoleIcon,
+  LinearPatternIcon,
+  LoftIcon,
+  MidpointLineIcon,
+  NormalViewIcon,
+  OffsetIcon,
+  PointIcon,
+  RevolveIcon,
+  SlotAroundLineIcon,
+  SlotIcon,
+  SphereIcon,
+  SubtractIcon,
+  SurfaceTextureIcon,
+  SweepIcon,
+  TangentArcIcon,
+  ThreePointArcIcon,
+  ThreePointCircleIcon,
+  TorusIcon,
+} from "./cad-icons"
 
 import type { ReactNode, SVGProps } from "react"
 
@@ -107,7 +140,8 @@ export function ConstraintEqualIcon(props: SVGProps<SVGSVGElement>) {
 export function ConstraintFixedIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <ConstraintGlyph {...props}>
-      <path d="M7 20V4h10M7 11h8" {...constraintStrokeProps} />
+      <rect x="5" y="10" width="14" height="11" rx="2" {...constraintStrokeProps} />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" {...constraintStrokeProps} />
     </ConstraintGlyph>
   )
 }
