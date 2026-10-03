@@ -300,7 +300,9 @@ test("creates and updates a sketch-backed extrusion through real local MCP and b
       .toBeGreaterThan(updateCommit.revision)
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(page.getByRole("treeitem", { name: "MCP extrusion", exact: true })).toBeVisible()
     const afterUndo = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(featureVolume(afterUndo, featureId)).toBeCloseTo(1_000, 6)

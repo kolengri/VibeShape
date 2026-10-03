@@ -94,6 +94,7 @@ export function createLocalMcpAdapter(
         localFailure("invalid-operation", "The tool name or arguments are invalid."),
       )
     const token = extra._meta?.progressToken
+    const generation = broker.sessionGeneration()
     const result = await broker.invoke(operation.data, {
       signal: extra.signal,
       onProgress(stage) {
@@ -113,7 +114,7 @@ export function createLocalMcpAdapter(
     if (operation.data.tool === "export_model") {
       const parsed = localToolOutputs.export_model.parse(result)
       if (parsed.ok) {
-        if (!broker.isPaired())
+        if (!broker.isPaired(generation))
           return toolResult(localFailure("session-revoked", "The AI session was revoked."))
         const resource = exports.add(parsed.value)
         return {
