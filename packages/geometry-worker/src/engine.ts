@@ -4,6 +4,7 @@ import {
   type CompoundFeatureContentParameters,
   chamferFeatureContentParametersSchema,
   compoundFeatureContentParametersSchema,
+  coneFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   datumPlaneFeatureContentParametersSchema,
   extrusionExtentBounds,
@@ -30,9 +31,11 @@ import {
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
+  sphereFeatureContentParametersSchema,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
+  torusFeatureContentParametersSchema,
   unionFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
@@ -95,7 +98,10 @@ import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 import { placeOcctShape } from "./occt-placement"
 import {
   createOcctBox,
+  createOcctCone,
   createOcctCylinder,
+  createOcctSphere,
+  createOcctTorus,
   cutOcctShapes,
   cutOcctShapesWithHistory,
   cutOcctShapesWithLineage,
@@ -219,6 +225,12 @@ const BOX_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.box#1"
 const CYLINDER_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
+const SPHERE_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.sphere#1"
+const CONE_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#1"
+const TORUS_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.torus#1"
 const BOOLEAN_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#1"
 const FILLET_FEATURE_TYPE_KEY =
@@ -783,6 +795,9 @@ type FilletContentParameters = ReturnType<typeof filletFeatureContentParametersS
 type ChamferContentParameters = ReturnType<typeof chamferFeatureContentParametersSchema.parse>
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
+type SphereContentParameters = ReturnType<typeof sphereFeatureContentParametersSchema.parse>
+type ConeContentParameters = ReturnType<typeof coneFeatureContentParametersSchema.parse>
+type TorusContentParameters = ReturnType<typeof torusFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<
   typeof extrusionFeatureContentParametersSchema.parse
 > & {
@@ -932,6 +947,26 @@ function cylinderFeatureSemanticRole(
   ])
 }
 
+function coneFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: ConeContentParameters,
+) {
+  const minimumZ = parameters.origin[2] - (parameters.centered ? parameters.height / 2 : 0)
+  const z = context.signature.centroid[2]
+  switch (`${context.kind}:${context.signature.geometryClass}`) {
+    case "face:CONE":
+      return "primitive.cone.wall"
+    case "face:PLANE":
+      return nearlyEqual(z, minimumZ) ? "primitive.cone.cap.start" : undefined
+    case "edge:CIRCLE":
+      return nearlyEqual(z, minimumZ) ? "primitive.cone.edge.start" : undefined
+    case "vertex:POINT":
+      return nearlyEqual(z, minimumZ + parameters.height) ? "primitive.cone.apex" : undefined
+    default:
+      return undefined
+  }
+}
+
 type ParsedFeature =
   | { kind: "boolean"; parameters: BooleanContentParameters }
   | { kind: "fillet"; parameters: FilletContentParameters }
@@ -948,6 +983,9 @@ type ParsedFeature =
     }
   | { kind: "box"; parameters: BoxContentParameters }
   | { kind: "cylinder"; parameters: CylinderContentParameters }
+  | { kind: "sphere"; parameters: SphereContentParameters }
+  | { kind: "cone"; parameters: ConeContentParameters }
+  | { kind: "torus"; parameters: TorusContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
   | { kind: "extent-extrusion"; parameters: ExtrusionExtentContentParameters }
@@ -967,6 +1005,22 @@ type ParsedFeature =
   | { kind: "compound"; parameters: CompoundFeatureContentParameters }
   | { kind: "union" }
 
+type PrimitiveFeature = Extract<
+  ParsedFeature,
+  { kind: "box" | "cylinder" | "sphere" | "cone" | "torus" }
+>
+const PRIMITIVE_FEATURE_KINDS = new Set<ParsedFeature["kind"]>([
+  "box",
+  "cylinder",
+  "sphere",
+  "cone",
+  "torus",
+])
+
+function isPrimitiveFeature(feature: ParsedFeature): feature is PrimitiveFeature {
+  return PRIMITIVE_FEATURE_KINDS.has(feature.kind)
+}
+
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
   | {
@@ -976,6 +1030,36 @@ type FeatureParseResult =
 
 function invalidInputCardinality(message: string) {
   return featureFailure("invalid-feature-parameters", message)
+}
+
+function parseRadialPrimitiveFeature(
+  input: FeatureEvaluationInput,
+  kind: "sphere" | "cone" | "torus",
+): FeatureParseResult {
+  const feature = input.content.feature
+  if (
+    feature.inputs.length !== 0 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 0
+  ) {
+    return invalidInputCardinality(
+      `${kind} features cannot declare dependency inputs or references.`,
+    )
+  }
+  if (kind === "sphere") {
+    const parameters = sphereFeatureContentParametersSchema.safeParse(feature.parameters)
+    if (parameters.success) return { ok: true, feature: { kind, parameters: parameters.data } }
+  } else if (kind === "cone") {
+    const parameters = coneFeatureContentParametersSchema.safeParse(feature.parameters)
+    if (parameters.success) return { ok: true, feature: { kind, parameters: parameters.data } }
+  } else {
+    const parameters = torusFeatureContentParametersSchema.safeParse(feature.parameters)
+    if (parameters.success) return { ok: true, feature: { kind, parameters: parameters.data } }
+  }
+  return featureFailure(
+    "invalid-feature-parameters",
+    `${kind} content dimensions or placement are invalid.`,
+  )
 }
 
 function parseBoxFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -1535,6 +1619,9 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CHAMFER_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "chamfer")],
   [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
+  [SPHERE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "sphere")],
+  [CONE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "cone")],
+  [TORUS_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "torus")],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V3_KEY, parseMultiExtrusionFeature],
@@ -1880,14 +1967,7 @@ function validateCombinationSources(opencascade: OpenCascadeInstance, sources: r
   }
 }
 
-function createFeatureShape(
-  opencascade: OpenCascadeInstance,
-  feature: Exclude<
-    ParsedFeature,
-    { kind: "selected-fillet" | "selected-chamfer" | "placement" | "compound" | "union" }
-  >,
-  dependencyShapes: readonly Shape3D[],
-) {
+function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: PrimitiveFeature) {
   switch (feature.kind) {
     case "box": {
       const { width, depth, height, centered, origin } = feature.parameters
@@ -1901,6 +1981,36 @@ function createFeatureShape(
         origin[2] + (centered ? -height / 2 : 0),
       ])
     }
+    case "sphere":
+      return createOcctSphere(opencascade, feature.parameters.radius, feature.parameters.origin)
+    case "torus":
+      return createOcctTorus(
+        opencascade,
+        feature.parameters.majorRadius,
+        feature.parameters.minorRadius,
+        feature.parameters.origin,
+      )
+    case "cone": {
+      const { radius, height, centered, origin } = feature.parameters
+      return createOcctCone(opencascade, radius, height, [
+        origin[0],
+        origin[1],
+        origin[2] - (centered ? height / 2 : 0),
+      ])
+    }
+  }
+}
+
+function createFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature: Exclude<
+    ParsedFeature,
+    { kind: "selected-fillet" | "selected-chamfer" | "placement" | "compound" | "union" }
+  >,
+  dependencyShapes: readonly Shape3D[],
+) {
+  if (isPrimitiveFeature(feature)) return createPrimitiveFeatureShape(opencascade, feature)
+  switch (feature.kind) {
     case "datum-plane":
       return createDatumPlaneFeatureShape(opencascade, feature.parameters)
     case "boolean": {
@@ -2542,6 +2652,29 @@ function datumPlaneTopologySemanticRole(
   return Math.abs(dot3(direction, parameters.frame.normal)) > 0.999 ? "datum.plane" : undefined
 }
 
+const primitiveSurfaceRoles = new Map([
+  ["sphere:SPHERE", "primitive.sphere.surface"],
+  ["torus:TORUS", "primitive.torus.surface"],
+])
+
+function primitiveFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  feature: PrimitiveFeature,
+) {
+  switch (feature.kind) {
+    case "box":
+      return boxFeatureSemanticRole(context, feature.parameters)
+    case "cylinder":
+      return cylinderFeatureSemanticRole(context, feature.parameters)
+    case "cone":
+      return coneFeatureSemanticRole(context, feature.parameters)
+    default:
+      return context.kind === "face"
+        ? primitiveSurfaceRoles.get(`${feature.kind}:${context.signature.geometryClass}`)
+        : undefined
+  }
+}
+
 function featureTopologySemanticRole(
   context: TopologyCandidateContext,
   feature: ParsedFeature,
@@ -2551,8 +2684,7 @@ function featureTopologySemanticRole(
   if (extrusionParameters) {
     return extrusionFeatureSemanticRole(context, extrusionParameters, extrusionRoleIndex)
   }
-  if (feature.kind === "box") return boxFeatureSemanticRole(context, feature.parameters)
-  if (feature.kind === "cylinder") return cylinderFeatureSemanticRole(context, feature.parameters)
+  if (isPrimitiveFeature(feature)) return primitiveFeatureSemanticRole(context, feature)
   if (feature.kind === "datum-plane") {
     return datumPlaneTopologySemanticRole(context, feature.parameters)
   }

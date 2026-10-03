@@ -16,8 +16,11 @@ import { type ModelBodyGeometry, terminalModelBodies } from "../part-design/mode
 import {
   isBoxFeature,
   isChamferFeature,
+  isConeFeature,
   isCylinderFeature,
   isFilletFeature,
+  isSphereFeature,
+  isTorusFeature,
 } from "../part-design/part-design-tool"
 
 type PreviewSession = Pick<ReturnType<typeof createDocumentWorkerSession>, "rebuild" | "terminate">
@@ -137,7 +140,11 @@ export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind
   if (readDatumPlaneFeatureParameters(candidate)) return "datum-plane"
   if (readRevolveFeatureParameters(candidate)) return "revolve"
   if (isFilletFeature(candidate) || isChamferFeature(candidate)) return "edge-treatment"
-  if (isBoxFeature(candidate) || isCylinderFeature(candidate)) {
+  if (
+    [isBoxFeature, isCylinderFeature, isSphereFeature, isConeFeature, isTorusFeature].some(
+      (matches) => matches(candidate),
+    )
+  ) {
     return "primitive"
   }
   return "extrusion"

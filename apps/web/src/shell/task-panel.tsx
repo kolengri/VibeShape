@@ -54,6 +54,11 @@ import {
 } from "../features/hole/hole-form"
 import { holeTargetBodyOptions } from "../features/hole/hole-target-body"
 import { MeasurementTaskPanel } from "../features/measurement/measurement-task-panel"
+import {
+  BasicPrimitiveForm,
+  type BasicPrimitiveFormMode,
+  type BasicPrimitiveKind,
+} from "../features/part-design/basic-primitive-form"
 import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
 import {
   type FeatureDeleteEligibility,
@@ -65,12 +70,15 @@ import {
   isBooleanFeature,
   isBoxFeature,
   isChamferFeature,
+  isConeFeature,
   isCylinderFeature,
   isDatumPlaneFeature,
   isExtrusionFeature,
   isFilletFeature,
   isHoleFeature,
   isRevolveFeature,
+  isSphereFeature,
+  isTorusFeature,
   modifyingSolidTargetFeatures,
 } from "../features/part-design/part-design-tool"
 import type { PrimitivePlacementRequest } from "../features/part-design/primitive-placement"
@@ -130,6 +138,9 @@ type TaskPanelProps = Readonly<{
   onCompleteTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSphere: () => void
+  onCreateCone: () => void
+  onCreateTorus: () => void
   onCreateExtrusion: () => Promise<boolean>
   onCreateRevolve?: () => Promise<boolean>
   onCreateSketch: () => void
@@ -331,6 +342,44 @@ function useCylinderFormCopy(mode: CylinderFormMode["kind"]) {
     invalidRange: t("cylinder.invalidRange"),
     invalidPositionRange: t("cylinder.invalidPositionRange"),
     staleRevision: t("cylinder.staleRevision"),
+  }
+}
+
+function useBasicPrimitiveFormCopy(
+  primitiveKind: BasicPrimitiveKind,
+  mode: BasicPrimitiveFormMode["kind"],
+) {
+  const t = useTranslations("app.shell.taskPanel")
+  const shared = useTranslations("app.shell.taskPanel.basicPrimitive")
+  return {
+    title: t(`${primitiveKind}.${mode === "create" ? "title" : "editTitle"}`),
+    description: t(`${primitiveKind}.${mode === "create" ? "description" : "editDescription"}`),
+    submit: t(`${primitiveKind}.${mode === "create" ? "create" : "update"}`),
+    validationSummary: t(
+      `${primitiveKind}.${mode === "create" ? "validationSummary" : "updateValidationSummary"}`,
+    ),
+    saveFailed: t(`${primitiveKind}.${mode === "create" ? "createFailed" : "updateFailed"}`),
+    staleRevision: t(`${primitiveKind}.staleRevision`),
+    parameters: t(`${primitiveKind}.parameters`),
+    dimensions: shared("dimensions"),
+    radius: shared("radius"),
+    height: shared("height"),
+    majorRadius: shared("majorRadius"),
+    minorRadius: shared("minorRadius"),
+    centered: shared("centered"),
+    placement: shared("placement"),
+    originX: shared("originX"),
+    originY: shared("originY"),
+    originZ: shared("originZ"),
+    positionDescription: shared("positionDescription"),
+    expressionDescription: shared("expressionDescription"),
+    cancel: shared("cancel"),
+    invalidExpression: shared("invalidExpression"),
+    invalidDimension: shared("invalidDimension"),
+    invalidRange: shared("invalidRange"),
+    invalidPositionRange: shared("invalidPositionRange"),
+    invalidTorusRadii: shared("invalidTorusRadii"),
+    invalidWorkspaceBounds: shared("invalidWorkspaceBounds"),
   }
 }
 
@@ -1193,10 +1242,16 @@ function DirectSolidsActions({
   canCreate,
   onCreateBox,
   onCreateCylinder,
+  onCreateSphere,
+  onCreateCone,
+  onCreateTorus,
 }: {
   canCreate: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSphere: () => void
+  onCreateCone: () => void
+  onCreateTorus: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
   return (
@@ -1221,6 +1276,24 @@ function DirectSolidsActions({
       >
         {t("createCylinder")}
       </Button>
+      {(
+        [
+          ["createSphere", onCreateSphere],
+          ["createCone", onCreateCone],
+          ["createTorus", onCreateTorus],
+        ] as const
+      ).map(([labelKey, onClick]) => (
+        <Button
+          key={labelKey}
+          type="button"
+          variant="outline"
+          className="mt-2 w-full"
+          disabled={!canCreate}
+          onClick={onClick}
+        >
+          {t(labelKey)}
+        </Button>
+      ))}
     </details>
   )
 }
@@ -1231,6 +1304,9 @@ function StartTaskPanel({
   canSubtract,
   onCreateBox,
   onCreateCylinder,
+  onCreateSphere,
+  onCreateCone,
+  onCreateTorus,
   onCreateSketch,
   onCreateSubtract,
 }: {
@@ -1239,6 +1315,9 @@ function StartTaskPanel({
   canSubtract: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSphere: () => void
+  onCreateCone: () => void
+  onCreateTorus: () => void
   onCreateSketch: () => void
   onCreateSubtract: () => void
 }) {
@@ -1263,6 +1342,9 @@ function StartTaskPanel({
         canCreate={canCreate}
         onCreateBox={onCreateBox}
         onCreateCylinder={onCreateCylinder}
+        onCreateSphere={onCreateSphere}
+        onCreateCone={onCreateCone}
+        onCreateTorus={onCreateTorus}
       />
     </aside>
   )
@@ -1631,6 +1713,81 @@ function CylinderToolTaskPanel({
   )
 }
 
+const basicPrimitiveKindByTool: Partial<Record<ActivePartDesignTool["kind"], BasicPrimitiveKind>> =
+  {
+    "create-sphere": "sphere",
+    "edit-sphere": "sphere",
+    "create-cone": "cone",
+    "edit-cone": "cone",
+    "create-torus": "torus",
+    "edit-torus": "torus",
+  }
+
+const basicPrimitiveMatchers = {
+  sphere: isSphereFeature,
+  cone: isConeFeature,
+  torus: isTorusFeature,
+}
+
+function BasicPrimitiveToolTaskPanel(props: ActiveTaskPanelProps) {
+  const primitiveKind = basicPrimitiveKindByTool[props.activeTool.kind]
+  if (!primitiveKind) return null
+  return <ActiveBasicPrimitiveTaskPanel {...props} primitiveKind={primitiveKind} />
+}
+
+function ActiveBasicPrimitiveTaskPanel({
+  activeTool,
+  featurePreviewStatus,
+  onCloseTool,
+  onCompleteTool,
+  onFeaturePreviewChange,
+  primitiveKind,
+  primitivePlacementRequest,
+  report,
+}: ActiveTaskPanelProps & Readonly<{ primitiveKind: BasicPrimitiveKind }>) {
+  const t = useTranslations("app.shell.taskPanel")
+  const matches = basicPrimitiveMatchers[primitiveKind]
+  const feature =
+    "featureId" in activeTool
+      ? report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+      : null
+  const mode: BasicPrimitiveFormMode | null =
+    "featureId" in activeTool
+      ? feature && matches(feature)
+        ? { kind: "edit", feature }
+        : null
+      : {
+          kind: "create",
+          createFeatureId: createBrowserFeatureId,
+          featureLabel: t(`${primitiveKind}.featureLabel`, {
+            number: report.snapshot.features.filter(matches).length + 1,
+          }),
+        }
+  const copy = useBasicPrimitiveFormCopy(primitiveKind, mode?.kind ?? "create")
+  if (!mode) return null
+  const task = featureTaskContext(mode, report.snapshot.revision)
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <BasicPrimitiveForm
+        key={`${primitiveKind}:${task.key}`}
+        primitiveKind={primitiveKind}
+        baseRevision={report.snapshot.revision}
+        variables={report.snapshot.variables}
+        copy={copy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
+        onCancel={onCloseTool}
+        onPreviewChange={onFeaturePreviewChange}
+        onSave={task.onSave}
+        onSaved={onCompleteTool}
+        placementRequest={primitivePlacementRequest}
+        previewStatus={featurePreviewStatus}
+      />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+    </aside>
+  )
+}
+
 function DatumPlaneToolTaskPanel({
   activeTool,
   featurePreviewStatus,
@@ -1993,6 +2150,12 @@ const activeTaskPanelByKind = {
   "edit-box": BoxToolTaskPanel,
   "create-cylinder": CylinderToolTaskPanel,
   "edit-cylinder": CylinderToolTaskPanel,
+  "create-sphere": BasicPrimitiveToolTaskPanel,
+  "edit-sphere": BasicPrimitiveToolTaskPanel,
+  "create-cone": BasicPrimitiveToolTaskPanel,
+  "edit-cone": BasicPrimitiveToolTaskPanel,
+  "create-torus": BasicPrimitiveToolTaskPanel,
+  "edit-torus": BasicPrimitiveToolTaskPanel,
   "create-datum-plane": DatumPlaneToolTaskPanel,
   "edit-datum-plane": DatumPlaneToolTaskPanel,
   "create-extrusion": ExtrusionToolTaskPanel,
@@ -2080,6 +2243,9 @@ function ModelTaskPanel(props: TaskPanelProps) {
       canSubtract={canCreateSubtract(props.controller)}
       onCreateBox={props.onCreateBox}
       onCreateCylinder={props.onCreateCylinder}
+      onCreateSphere={props.onCreateSphere}
+      onCreateCone={props.onCreateCone}
+      onCreateTorus={props.onCreateTorus}
       onCreateSketch={props.onCreateSketch}
       onCreateSubtract={props.onCreateSubtract}
     />

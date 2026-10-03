@@ -6,6 +6,7 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  coneFeatureType,
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
@@ -22,6 +23,8 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  sphereFeatureType,
+  torusFeatureType,
 } from "./part-design"
 import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
@@ -42,6 +45,9 @@ const emptySemanticInputTypeKeys = new Set(
     compoundFeatureType,
     unionFeatureType,
     cylinderFeatureType,
+    sphereFeatureType,
+    coneFeatureType,
+    torusFeatureType,
     booleanFeatureType,
     datumPlaneFeatureType,
     filletFeatureType,

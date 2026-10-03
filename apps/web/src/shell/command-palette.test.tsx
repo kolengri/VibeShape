@@ -18,6 +18,9 @@ const actions = {
   createHole: vi.fn(),
   createBox: vi.fn(),
   createCylinder: vi.fn(),
+  createSphere: vi.fn(),
+  createCone: vi.fn(),
+  createTorus: vi.fn(),
   createDatumPlane: vi.fn(),
   createExtrusion: vi.fn(),
   createSketch: vi.fn(),
@@ -124,6 +127,21 @@ describe("EditorCommandPalette", () => {
       [editorCommandIds.createBox],
     )
   })
+
+  it.each([
+    ["ball", "Sphere", "createSphere"],
+    ["pointed", "Cone", "createCone"],
+    ["donut", "Torus", "createTorus"],
+  ] as const)(
+    "discovers %s and invokes its registered primitive command",
+    async (keyword, label, key) => {
+      const user = userEvent.setup()
+      renderPalette()
+      await user.type(screen.getByRole("combobox", { name: "Search commands" }), keyword)
+      await user.click(screen.getByText(label))
+      expect(actions[key]).toHaveBeenCalledOnce()
+    },
+  )
 
   it("retains recent ordering after invoking shortcut help and reopening the palette", async () => {
     const user = userEvent.setup()

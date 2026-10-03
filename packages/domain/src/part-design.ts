@@ -101,6 +101,134 @@ export const cylinderFeatureContentParametersSchema = z
   })
   .strict()
 
+const radialPrimitiveLengthSchema = primitiveLengthSchema.refine(
+  ({ value }) => value >= 0.001,
+  "Radial primitive dimensions must be at least 0.001 mm.",
+)
+const radialPrimitiveContentLengthSchema = primitiveContentLengthSchema.min(0.001)
+
+function radialPrimitiveWithinWorkspace(
+  origin: readonly [number, number, number],
+  radius: number,
+  minimumZ: number,
+  maximumZ: number,
+) {
+  return [
+    Math.abs(origin[0]) + radius,
+    Math.abs(origin[1]) + radius,
+    Math.abs(minimumZ),
+    Math.abs(maximumZ),
+  ].every((value) => value <= MAX_PRIMITIVE_POSITION_MM)
+}
+
+function quantityOrigin(origin: z.infer<typeof primitiveOriginSchema>): [number, number, number] {
+  return [origin.x.value, origin.y.value, origin.z.value]
+}
+
+export const sphereFeatureParametersSchema = z
+  .object({ radius: radialPrimitiveLengthSchema, origin: primitiveOriginWithDefaultSchema })
+  .strict()
+  .refine(
+    ({ radius, origin }) =>
+      radialPrimitiveWithinWorkspace(
+        quantityOrigin(origin),
+        radius.value,
+        origin.z.value - radius.value,
+        origin.z.value + radius.value,
+      ),
+    "Sphere dimensions and placement must remain within the 100000 mm workspace.",
+  )
+
+export const coneFeatureParametersSchema = z
+  .object({
+    radius: radialPrimitiveLengthSchema,
+    height: radialPrimitiveLengthSchema,
+    centered: z.boolean(),
+    origin: primitiveOriginWithDefaultSchema,
+  })
+  .strict()
+  .refine(({ radius, height, centered, origin }) => {
+    const minimumZ = origin.z.value - (centered ? height.value / 2 : 0)
+    return (
+      height.value <= MAX_PRIMITIVE_POSITION_MM &&
+      radialPrimitiveWithinWorkspace(
+        quantityOrigin(origin),
+        radius.value,
+        minimumZ,
+        minimumZ + height.value,
+      )
+    )
+  }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
+
+export const torusFeatureParametersSchema = z
+  .object({
+    majorRadius: radialPrimitiveLengthSchema,
+    minorRadius: radialPrimitiveLengthSchema,
+    origin: primitiveOriginWithDefaultSchema,
+  })
+  .strict()
+  .refine(({ majorRadius, minorRadius }) => majorRadius.value > minorRadius.value, {
+    path: ["minorRadius"],
+    message: "A ring torus requires majorRadius greater than minorRadius.",
+  })
+  .refine(
+    ({ majorRadius, minorRadius, origin }) =>
+      radialPrimitiveWithinWorkspace(
+        quantityOrigin(origin),
+        majorRadius.value + minorRadius.value,
+        origin.z.value - minorRadius.value,
+        origin.z.value + minorRadius.value,
+      ),
+    "Torus dimensions and placement must remain within the 100000 mm workspace.",
+  )
+
+export const sphereFeatureContentParametersSchema = z
+  .object({ radius: radialPrimitiveContentLengthSchema, origin: primitiveContentOriginSchema })
+  .strict()
+  .refine(
+    ({ radius, origin }) =>
+      radialPrimitiveWithinWorkspace(origin, radius, origin[2] - radius, origin[2] + radius),
+    "Sphere dimensions and placement must remain within the 100000 mm workspace.",
+  )
+
+export const coneFeatureContentParametersSchema = z
+  .object({
+    radius: radialPrimitiveContentLengthSchema,
+    height: radialPrimitiveContentLengthSchema,
+    centered: z.boolean(),
+    origin: primitiveContentOriginSchema,
+  })
+  .strict()
+  .refine(({ radius, height, centered, origin }) => {
+    const minimumZ = origin[2] - (centered ? height / 2 : 0)
+    return (
+      height <= MAX_PRIMITIVE_POSITION_MM &&
+      radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
+    )
+  }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
+
+export const torusFeatureContentParametersSchema = z
+  .object({
+    majorRadius: radialPrimitiveContentLengthSchema,
+    minorRadius: radialPrimitiveContentLengthSchema,
+    origin: primitiveContentOriginSchema,
+  })
+  .strict()
+  .refine(({ majorRadius, minorRadius }) => majorRadius > minorRadius, {
+    path: ["minorRadius"],
+    message: "A ring torus requires majorRadius greater than minorRadius.",
+  })
+  .refine(
+    ({ majorRadius, minorRadius, origin }) =>
+      radialPrimitiveWithinWorkspace(
+        origin,
+        majorRadius + minorRadius,
+        origin[2] - minorRadius,
+        origin[2] + minorRadius,
+      ),
+    "Torus dimensions and placement must remain within the 100000 mm workspace.",
+  )
+
 export const booleanFeatureParametersSchema = z
   .object({ operation: z.literal("subtract") })
   .strict()
@@ -478,6 +606,42 @@ function resolveCylinderParameters(parameters: unknown, variables: VariableValue
   } as const
 }
 
+function resolvedPrimitiveParameters(schema: z.ZodType, parameters: unknown) {
+  const parsed = schema.safeParse(parameters)
+  if (parsed.success) return { ok: true as const, parameters: parsed.data }
+  const issue = parsed.error.issues[0]
+  return expressionFailure(
+    issue?.path.join(".") ?? "",
+    issue?.message ?? "Resolved primitive parameters are invalid.",
+    "invalid-primitive-parameters",
+  )
+}
+
+function resolveRadialPrimitiveParameters(
+  schema:
+    | typeof sphereFeatureParametersSchema
+    | typeof coneFeatureParametersSchema
+    | typeof torusFeatureParametersSchema,
+  lengthParameters: readonly ("radius" | "height" | "majorRadius" | "minorRadius")[],
+) {
+  return (parameters: unknown, variables: VariableValues) => {
+    const parsed = schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true as const, parameters }
+    const resolvedParameters: Record<string, unknown> = { ...parsed.data }
+    for (const parameter of lengthParameters) {
+      const quantity = lengthQuantitySchema.safeParse(Reflect.get(parsed.data, parameter))
+      if (!quantity.success)
+        return expressionFailure(parameter, "Expected a primitive length.", "dimension-mismatch")
+      const resolved = resolveLengthParameter(parameter, quantity.data, variables)
+      if (!resolved.ok) return resolved
+      resolvedParameters[parameter] = resolved.quantity
+    }
+    const origin = resolvePrimitiveOrigin(parsed.data.origin, variables)
+    if (!origin.ok) return origin
+    return resolvedPrimitiveParameters(schema, { ...resolvedParameters, origin: origin.origin })
+  }
+}
+
 const legacyExtrusionExpressionParametersSchema = z.union([
   extrusionFeatureParametersV3Schema,
   extrusionFeatureParametersV4Schema,
@@ -550,6 +714,45 @@ export const cylinderFeatureType = featureTypeDescriptorSchema.parse({
     moduleId: "org.vibeshape.core.part-design",
     moduleVersion: "0.1.0",
     typeId: "org.vibeshape.feature.part-design.cylinder",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 0 },
+  references: { min: 0, max: 0 },
+})
+
+export const sphereFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.sphere",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 0 },
+  references: { min: 0, max: 0 },
+})
+
+export const coneFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.cone",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 0 },
+  references: { min: 0, max: 0 },
+})
+
+export const torusFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.torus",
     schemaVersion: 1,
   },
   classification: "solid",
@@ -1095,6 +1298,51 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         height: cylinder.height.value,
         centered: cylinder.centered,
         origin: [cylinder.origin.x.value, cylinder.origin.y.value, cylinder.origin.z.value],
+      })
+    },
+  },
+  {
+    type: sphereFeatureType.type,
+    parametersSchema: sphereFeatureParametersSchema,
+    resolveParameters: resolveRadialPrimitiveParameters(sphereFeatureParametersSchema, ["radius"]),
+    contentParameters(parameters) {
+      const sphere = sphereFeatureParametersSchema.parse(parameters)
+      return sphereFeatureContentParametersSchema.parse({
+        radius: sphere.radius.value,
+        origin: [sphere.origin.x.value, sphere.origin.y.value, sphere.origin.z.value],
+      })
+    },
+  },
+  {
+    type: coneFeatureType.type,
+    parametersSchema: coneFeatureParametersSchema,
+    resolveParameters: resolveRadialPrimitiveParameters(coneFeatureParametersSchema, [
+      "radius",
+      "height",
+    ]),
+    contentParameters(parameters) {
+      const cone = coneFeatureParametersSchema.parse(parameters)
+      return coneFeatureContentParametersSchema.parse({
+        radius: cone.radius.value,
+        height: cone.height.value,
+        centered: cone.centered,
+        origin: [cone.origin.x.value, cone.origin.y.value, cone.origin.z.value],
+      })
+    },
+  },
+  {
+    type: torusFeatureType.type,
+    parametersSchema: torusFeatureParametersSchema,
+    resolveParameters: resolveRadialPrimitiveParameters(torusFeatureParametersSchema, [
+      "majorRadius",
+      "minorRadius",
+    ]),
+    contentParameters(parameters) {
+      const torus = torusFeatureParametersSchema.parse(parameters)
+      return torusFeatureContentParametersSchema.parse({
+        majorRadius: torus.majorRadius.value,
+        minorRadius: torus.minorRadius.value,
+        origin: [torus.origin.x.value, torus.origin.y.value, torus.origin.z.value],
       })
     },
   },
