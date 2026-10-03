@@ -26,7 +26,7 @@ async function createConsent(request: Request, env: RemoteEnv, ipHash: string) {
   const headers = new Headers(consent.headers)
   headers.set("Content-Type", "text/html; charset=utf-8")
   headers.set("Cache-Control", "no-store")
-  headers.set("Referrer-Policy", "no-referrer")
+  headers.set("Referrer-Policy", "same-origin")
   headers.set(
     "Content-Security-Policy",
     "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
@@ -64,10 +64,19 @@ async function approveConsent(request: Request, env: RemoteEnv, config: RemoteCo
       revokeExistingGrants: false,
     })
     const headers = new Headers(approved.headers)
-    headers.set("Location", completed.redirectTo)
+    // A fresh navigation avoids Chromium's form-redirect CSP check, including IPv6 callbacks.
+    headers.set("Refresh", `0;url=${completed.redirectTo}`)
+    headers.set("Content-Type", "text/html; charset=utf-8")
+    headers.set(
+      "Content-Security-Policy",
+      "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    )
     headers.set("Cache-Control", "no-store")
     headers.set("Referrer-Policy", "no-referrer")
-    return new Response(null, { status: 302, headers })
+    return new Response(
+      `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Return to your MCP client</title><body><h1>MCP authorization complete</h1><p><a href="${escaped(completed.redirectTo)}">Return to your MCP client</a></p></body></html>`,
+      { headers },
+    )
   } catch (error) {
     await tab.cancel()
     throw error

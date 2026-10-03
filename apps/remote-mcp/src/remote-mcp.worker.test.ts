@@ -65,13 +65,13 @@ async function pair() {
   expect((await paired).type).toBe("paired")
   return { credential, socket }
 }
-async function registeredClient() {
+async function registeredClient(redirectUri = "https://client.example/callback") {
   const response = await call("/oauth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_name: "CAD test client",
-      redirect_uris: ["https://client.example/callback"],
+      redirect_uris: [redirectUri],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
@@ -80,7 +80,10 @@ async function registeredClient() {
   expect(response.status).toBe(201)
   return (await response.json()) as { client_id: string }
 }
-async function authorizationPage(clientId: string) {
+async function authorizationPage(
+  clientId: string,
+  redirectUri = "https://client.example/callback",
+) {
   const verifier = "a".repeat(43)
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
   const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
@@ -90,7 +93,7 @@ async function authorizationPage(clientId: string) {
   const query = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: "https://client.example/callback",
+    redirect_uri: redirectUri,
     scope: "editor:session",
     state: "test-csrf-state",
     code_challenge: codeChallenge,
@@ -99,16 +102,20 @@ async function authorizationPage(clientId: string) {
   })
   const response = await call(`/authorize?${query}`)
   expect(response.status).toBe(200)
+  expect(response.headers.get("Referrer-Policy")).toBe("same-origin")
   const html = await response.text()
   const handle = /name="handle" value="([^"]+)"/.exec(html)?.[1]
   if (!handle) throw new Error("Expected the official SDK consent handle.")
   const cookie = (response.headers.get("Set-Cookie") ?? "").split(";")[0] ?? ""
   expect(cookie).toMatch(/^__Host-/)
-  return { handle, cookie, verifier }
+  return { handle, cookie, verifier, policy: response.headers.get("Content-Security-Policy") }
 }
-async function authorizeTab(tab: Awaited<ReturnType<typeof pair>>) {
-  const client = await registeredClient()
-  const page = await authorizationPage(client.client_id)
+async function authorizeTab(
+  tab: Awaited<ReturnType<typeof pair>>,
+  redirectUri = "https://client.example/callback",
+) {
+  const client = await registeredClient(redirectUri)
+  const page = await authorizationPage(client.client_id, redirectUri)
   const consent = nextMessage(tab.socket)
   const response = call("/authorize", {
     method: "POST",
@@ -130,9 +137,17 @@ async function authorizeTab(tab: Awaited<ReturnType<typeof pair>>) {
   tab.socket.send(JSON.stringify({ type: "consent", requestId: request.requestId, approved: true }))
   expect((await ready).type).toBe("ready")
   const redirected = await response
-  expect(redirected.status).toBe(302)
-  const location = new URL(redirected.headers.get("Location") ?? "")
-  expect(location.origin).toBe("https://client.example")
+  expect(redirected.status).toBe(200)
+  expect(redirected.headers.get("Cache-Control")).toBe("no-store")
+  expect(redirected.headers.get("Referrer-Policy")).toBe("no-referrer")
+  expect(redirected.headers.get("Content-Security-Policy")).toBe(
+    "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+  )
+  const refresh = redirected.headers.get("Refresh") ?? ""
+  expect(refresh.startsWith("0;url=")).toBe(true)
+  const location = new URL(refresh.slice(6))
+  expect(location.origin).toBe(new URL(redirectUri).origin)
+  expect(location.pathname).toBe(new URL(redirectUri).pathname)
   expect(location.searchParams.get("state")).toBe("test-csrf-state")
   const code = location.searchParams.get("code")
   expect(code).toBeTruthy()
@@ -143,7 +158,7 @@ async function authorizeTab(tab: Awaited<ReturnType<typeof pair>>) {
       grant_type: "authorization_code",
       client_id: client.client_id,
       code: code ?? "",
-      redirect_uri: "https://client.example/callback",
+      redirect_uri: redirectUri,
       code_verifier: page.verifier,
       resource: "https://mcp.example/mcp",
     }).toString(),
@@ -185,7 +200,29 @@ afterEach(async () => {
 })
 
 describe("remote MCP in workerd", () => {
+  it.each([
+    "https://client.example/callback?context=one",
+    "http://127.0.0.1:8977/callback",
+    "http://[::1]:8977/callback",
+  ])("completes PKCE through a fresh navigation with restrictive CSP for %s", async (uri) => {
+    const tab = await pair()
+    const granted = await authorizeTab(tab, uri)
+    expect(granted.token).toBeTruthy()
+  })
+
+  it.each(["https://*.example/callback", "https://example;script-src/callback"])(
+    "does not interpolate client hostnames into consent CSP for %s",
+    async (uri) => {
+      const client = await registeredClient(uri)
+      const page = await authorizationPage(client.client_id, uri)
+      expect(page.policy).toBe(
+        "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      )
+    },
+  )
+
   it("fails closed before tab allocation for missing config, hostile origin, and a wrong challenge hostname", async () => {
+    const allocatedBefore = (await listDurableObjectIds(bindings.TAB_SESSIONS)).length
     const disabled = await call("/browser/pair", {}, { ...bindings, TURNSTILE_SITE_KEY: "" })
     expect(disabled.status).toBe(503)
     const hostile = await call("/browser/pair", {
@@ -200,7 +237,7 @@ describe("remote MCP in workerd", () => {
       body: JSON.stringify({ protocolVersion: 1, turnstileToken: "wrong-host" }),
     })
     expect(rejected.status).toBe(403)
-    expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(0)
+    expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(allocatedBefore)
   })
 
   it("rejects unauthenticated MCP and invalid DCR before writing OAuth state", async () => {
@@ -230,6 +267,7 @@ describe("remote MCP in workerd", () => {
   })
 
   it("caps unauthenticated registration before SDK KV writes and active tabs before per-tab allocation", async () => {
+    const allocatedBefore = (await listDurableObjectIds(bindings.TAB_SESSIONS)).length
     const payload = JSON.stringify({ redirect_uris: ["https://client.example/callback"] })
     for (let count = 0; count < 6; count++) {
       const registered = await call("/oauth/register", {
@@ -252,7 +290,7 @@ describe("remote MCP in workerd", () => {
       headers: { Origin: "https://editor.example", Upgrade: "websocket" },
     })
     expect(unknown.status).toBe(410)
-    expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(1)
+    expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(allocatedBefore + 1)
     await pair()
     await pair()
     ip = `198.51.100.${++address}`
@@ -263,7 +301,7 @@ describe("remote MCP in workerd", () => {
       body: JSON.stringify({ protocolVersion: 1, turnstileToken: "valid-challenge" }),
     })
     expect(fourth.status).toBe(429)
-    expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(3)
+    expect(await listDurableObjectIds(bindings.TAB_SESSIONS)).toHaveLength(allocatedBefore + 3)
   })
 
   it("requires the SDK browser-bound one-use consent and rejects cross-origin consent", async () => {
@@ -273,18 +311,19 @@ describe("remote MCP in workerd", () => {
       handle: page.handle,
       pairingCode: "A".repeat(16),
     }).toString()
-    expect(
-      (
-        await call("/authorize", {
-          method: "POST",
-          headers: {
-            Origin: "https://hostile.example",
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body,
-        })
-      ).status,
-    ).toBe(403)
+    for (const origin of ["https://hostile.example", "null"])
+      expect(
+        (
+          await call("/authorize", {
+            method: "POST",
+            headers: {
+              Origin: origin,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body,
+          })
+        ).status,
+      ).toBe(403)
     const noCookie = await call("/authorize", {
       method: "POST",
       headers: {
