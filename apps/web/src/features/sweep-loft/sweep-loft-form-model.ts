@@ -14,6 +14,7 @@ import {
 import {
   loftFeatureParametersSchema,
   loftFeatureType,
+  MAX_LOFT_SECTIONS,
   readLoftFeatureParameters,
 } from "@vibeshape/domain/part-design-loft"
 import {
@@ -154,7 +155,7 @@ export function sweepLoftFeatureRecord(
     sketchIds,
     references.map(({ featureId }) => featureId),
   )
-  if (dependencies.length > 8) return null
+  if (dependencies.length > (mode.operation === "loft" ? MAX_LOFT_SECTIONS : 8)) return null
   const type = mode.operation === "loft" ? loftFeatureType.type : sweepFeatureType.type
   const parsed = featureRecordSchema.safeParse(
     mode.kind === "edit"

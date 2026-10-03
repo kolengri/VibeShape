@@ -322,6 +322,40 @@ function externalSourceFixture(modelOwner = false) {
 }
 
 describe("document preparation for exact Sweep and Loft", () => {
+  it.each([19, 24])(
+    "prepares %i datum-supported Loft sections without collapsing owner order",
+    async (count) => {
+      const sketches = Array.from({ length: count }, (_, index) =>
+        supported(rectangle(10_000 + index * 100, "xy", 2), 30_000 + index),
+      )
+      const owners = sketches.map((_, index) => datum(30_000 + index, index))
+      const sections = sketches.map((sketch) => selector(sketch))
+      const feature = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: id(50_000),
+        type: loftFeatureType.type,
+        parameters: { sections, ruled: false },
+        dependencies: owners.map(({ id }) => id),
+        references: sketches.map((_, index) => planeReference(30_000 + index)),
+        suppressed: false,
+      })
+      const snapshot = document(sketches, [...owners, feature])
+      const solver = vi.fn(solve)
+      const prepared = await createDocumentFeatureContentPreparer(solver)({
+        document: snapshot,
+        feature,
+      })
+      if (!prepared?.ok) throw new Error(`Expected valid ${count}-section Loft preparation.`)
+      const content = loftFeatureContentParametersSchema.parse(prepared.parameters)
+      expect(content.sections.map(({ supportFeatureId }) => supportFeatureId)).toEqual(
+        owners.map(({ id }) => id),
+      )
+      expect(content.sections.map(({ frame }) => frame.origin)).toEqual(
+        sketches.map((_, index) => [0, 0, index]),
+      )
+      expect(solver).toHaveBeenCalledTimes(count)
+    },
+  )
   it("replaces ordered selectors with independently framed solved analytical sections", async () => {
     const source = loftFixture()
     const solver = vi.fn(solve)
@@ -562,9 +596,9 @@ describe("document preparation for exact Sweep and Loft", () => {
       },
     })
   })
-  it("rejects more than eight distinct scheduling owners before solving", async () => {
+  it("rejects more than twenty-four distinct Loft scheduling owners before solving", async () => {
     const source = loftFixture()
-    const sources = Array.from({ length: 7 }, (_, index) =>
+    const sources = Array.from({ length: 23 }, (_, index) =>
       supported(
         sketchRecordSchema.parse({
           schemaVersion: 0,
@@ -602,7 +636,7 @@ describe("document preparation for exact Sweep and Loft", () => {
       createDocumentFeatureContentPreparer(solver)({ document: snapshot, feature }),
     ).resolves.toMatchObject({
       ok: false,
-      diagnostic: { values: { reason: "dependency-budget-exceeded", count: 9 } },
+      diagnostic: { values: { reason: "dependency-budget-exceeded", count: 25 } },
     })
     expect(solver).not.toHaveBeenCalled()
   })

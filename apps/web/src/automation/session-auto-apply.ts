@@ -11,6 +11,8 @@ const featureVersions: Readonly<Record<string, readonly number[]>> = {
   box: [1],
   cylinder: [1],
   boolean: [1],
+  union: [2],
+  loft: [1],
   extrusion: [1, 2, 3, 4, 5],
   revolve: [1, 2, 3, 4, 5, 6],
   hole: [1, 2],

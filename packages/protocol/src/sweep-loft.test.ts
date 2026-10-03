@@ -36,6 +36,12 @@ const path = {
 }
 
 describe("prepared analytical Sweep and Loft contracts", () => {
+  it.each([19, 24])("accepts %i prepared ordered Loft sections", (count) => {
+    const sections = Array.from({ length: count }, (_, index) => profile(index + 1))
+    expect(
+      loftFeatureContentParametersSchema.parse({ sections, ruled: true }).sections,
+    ).toHaveLength(count)
+  })
   it("rejects an oversized spine before endpoint-neighborhood validation", () => {
     const segments = Array.from({ length: 2_001 }, (_, index) =>
       line(index + 2, [index, 0], [index + 1, 0]),
@@ -84,7 +90,7 @@ describe("prepared analytical Sweep and Loft contracts", () => {
   })
   it.each([
     { sections: [profile()], ruled: false },
-    { sections: Array.from({ length: 9 }, (_, index) => profile(index + 1)), ruled: false },
+    { sections: Array.from({ length: 25 }, (_, index) => profile(index + 1)), ruled: false },
     { sections: [profile(), profile()], ruled: false },
     { sections: [{ ...profile(), holes: [circle(4, 1)] }, profile(3)], ruled: false },
     { sections: [profile(), profile(3)], ruled: "false" },

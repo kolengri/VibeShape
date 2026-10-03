@@ -1,4 +1,5 @@
 import type { SketchProfileSelector } from "@vibeshape/domain"
+import { MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
@@ -60,7 +61,9 @@ export function LoftSectionFields({
         type="button"
         variant="outline"
         size="sm"
-        disabled={sections.length >= 8 || !available.some(({ key }) => key === candidate)}
+        disabled={
+          sections.length >= MAX_LOFT_SECTIONS || !available.some(({ key }) => key === candidate)
+        }
         onClick={() => {
           const option = available.find(({ key }) => key === candidate)
           if (option) {

@@ -214,10 +214,17 @@ describe.each(["Loft", "Sweep"] as const)("registered new-body %s", (kind) => {
         ]),
       ),
     ).toEqual([ownerBody, resultBody])
+    const dependencyLimit = kind === "Loft" ? 24 : 8
     expect(
       registry().validateFeature({
         ...value,
-        dependencies: Array.from({ length: 9 }, (_, index) => id(20 + index)),
+        dependencies: Array.from({ length: dependencyLimit }, (_, index) => id(20 + index)),
+      }).ok,
+    ).toBe(true)
+    expect(
+      registry().validateFeature({
+        ...value,
+        dependencies: Array.from({ length: dependencyLimit + 1 }, (_, index) => id(20 + index)),
       }).ok,
     ).toBe(false)
   })

@@ -1,4 +1,6 @@
-import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
+import { datumPlaneParametersSchema } from "@vibeshape/domain"
+import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
+import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import {
   commandIdSchema,
@@ -9,6 +11,7 @@ import {
   sketchIdSchema,
 } from "@vibeshape/domain/identifiers"
 import {
+  booleanFeatureParametersSchema,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV3Schema,
   extrusionFeatureParametersV4Schema,
@@ -17,7 +20,11 @@ import {
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
 } from "@vibeshape/domain/part-design"
-import { loftFeatureParametersSchema } from "@vibeshape/domain/part-design-loft"
+import {
+  compoundFeatureParametersV2Schema,
+  unionFeatureParametersV2Schema,
+} from "@vibeshape/domain/part-design-body-combination"
+import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
 import { mirrorFeatureParametersSchema } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureParametersSchema } from "@vibeshape/domain/part-design-pattern"
 import { shellFeatureParametersSchema } from "@vibeshape/domain/part-design-shell"
@@ -159,10 +166,118 @@ const multiSketchFeature = {
   dependencies: featureRecordSchema.shape.dependencies.max(8),
   references: featureRecordSchema.shape.references.max(4096),
 }
-const loft = z.object({ ...multiSketchFeature, parameters: loftFeatureParametersSchema }).strict()
+const loft = z
+  .object({
+    ...multiSketchFeature,
+    dependencies: featureRecordSchema.shape.dependencies.max(MAX_LOFT_SECTIONS),
+    parameters: loftFeatureParametersSchema,
+  })
+  .strict()
 const sweep = z.object({ ...multiSketchFeature, parameters: sweepFeatureParametersSchema }).strict()
 
+const datumPlane = z
+  .object({
+    ...feature,
+    dependencies: featureRecordSchema.shape.dependencies.max(1),
+    references: featureRecordSchema.shape.references.max(1),
+    parameters: datumPlaneParametersSchema.extend({
+      offset: lengthQuantitySchema.refine(({ value }) => Math.abs(value) <= 1_000_000),
+    }),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const support = input.parameters.support
+    const matches =
+      support.kind === "origin-plane"
+        ? input.dependencies.length === 0 && input.references.length === 0
+        : input.dependencies.length === 1 &&
+          support.reference.featureId !== input.featureId &&
+          input.dependencies[0] === support.reference.featureId &&
+          input.references.length === 1 &&
+          canonicalJson(input.references[0]) === canonicalJson(support.reference)
+    if (!matches)
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Datum Plane requires no inputs for origin support or exactly its face support owner and reference.",
+      })
+  })
+
+const boolean = z
+  .object({
+    ...feature,
+    dependencies: featureRecordSchema.shape.dependencies.length(2),
+    references: featureRecordSchema.shape.references.max(0),
+    parameters: booleanFeatureParametersSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (new Set(input.dependencies).size !== 2 || input.dependencies.includes(input.featureId))
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Boolean subtraction requires distinct target and tool dependencies in that order.",
+      })
+  })
+
+const bodyCombinationFeature = {
+  ...feature,
+  dependencies: featureRecordSchema.shape.dependencies.min(1).max(8),
+  references: featureRecordSchema.shape.references.max(0),
+}
+function matchingSelectedDependencies(
+  featureId: BodyReference["featureId"],
+  dependencies: readonly string[],
+  bodies: readonly BodyReference[],
+  context: z.RefinementCtx,
+) {
+  const owners = [...new Set(bodies.map(({ featureId }) => featureId))]
+  if (
+    owners.length !== dependencies.length ||
+    owners.includes(featureId) ||
+    owners.some((owner, index) => owner !== dependencies[index])
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["dependencies"],
+      message:
+        "Body combinations must declare each selected producer once in first-occurrence order.",
+    })
+}
+const union = z
+  .object({ ...bodyCombinationFeature, parameters: unionFeatureParametersV2Schema })
+  .strict()
+  .superRefine((input, context) =>
+    matchingSelectedDependencies(
+      input.featureId,
+      input.dependencies,
+      input.parameters.bodies,
+      context,
+    ),
+  )
+const compound = z
+  .object({ ...bodyCombinationFeature, parameters: compoundFeatureParametersV2Schema })
+  .strict()
+  .superRefine((input, context) =>
+    matchingSelectedDependencies(
+      input.featureId,
+      input.dependencies,
+      input.parameters.slots.map(({ targetBody }) => targetBody),
+      context,
+    ),
+  )
+
 export const localCadInputs = {
+  create_datum_plane: datumPlane,
+  update_datum_plane: datumPlane,
+  create_boolean: boolean,
+  update_boolean: boolean,
+  create_union: union,
+  update_union: union,
+  create_compound: compound,
+  update_compound: compound,
   create_sketch: sketch,
   update_sketch: sketch,
   create_extrude: extrude,
@@ -188,6 +303,14 @@ export const localCadInputs = {
 } as const
 
 export const localCadOperations = [
+  z.object({ tool: z.literal("create_datum_plane"), arguments: datumPlane }).strict(),
+  z.object({ tool: z.literal("update_datum_plane"), arguments: datumPlane }).strict(),
+  z.object({ tool: z.literal("create_boolean"), arguments: boolean }).strict(),
+  z.object({ tool: z.literal("update_boolean"), arguments: boolean }).strict(),
+  z.object({ tool: z.literal("create_union"), arguments: union }).strict(),
+  z.object({ tool: z.literal("update_union"), arguments: union }).strict(),
+  z.object({ tool: z.literal("create_compound"), arguments: compound }).strict(),
+  z.object({ tool: z.literal("update_compound"), arguments: compound }).strict(),
   z.object({ tool: z.literal("create_sketch"), arguments: sketch }).strict(),
   z.object({ tool: z.literal("update_sketch"), arguments: sketch }).strict(),
   z.object({ tool: z.literal("create_extrude"), arguments: extrude }).strict(),

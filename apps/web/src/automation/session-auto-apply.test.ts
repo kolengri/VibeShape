@@ -78,6 +78,82 @@ function input(): DraftReviewInput {
 
 describe("session CAD auto-apply allowlist", () => {
   it.each([
+    ["union", 2, true],
+    ["union", 1, false],
+    ["union", 3, false],
+    ["loft", 1, true],
+    ["loft", 2, false],
+    ["compound", 2, false],
+    ["sweep", 1, false],
+  ] as const)("bounds %s schema version %i to the explicit grant", (name, version, expected) => {
+    const review = input()
+    const addition = review.commands[0]
+    if (addition?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature")
+    const command = documentCommandSchema.parse({
+      ...addition,
+      payload: {
+        feature: {
+          ...addition.payload.feature,
+          type: {
+            moduleId: "org.vibeshape.core.part-design",
+            moduleVersion: "0.1.0",
+            typeId: `org.vibeshape.feature.part-design.${name}`,
+            schemaVersion: version,
+          },
+        },
+      },
+    })
+    expect(mayAutoApplyCadReview({ ...review, commands: [command] }, actor)).toBe(expected)
+    expect(mayAutoApplyCadReview({ ...review, commands: [command] }, null)).toBe(false)
+  })
+
+  it.each(["union", "loft"] as const)(
+    "keeps %s actor, geometry and update-version authority bounded",
+    (name) => {
+      const review = input()
+      const addition = review.commands[0]
+      if (addition?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature")
+      const command = documentCommandSchema.parse({
+        ...addition,
+        payload: {
+          feature: {
+            ...addition.payload.feature,
+            type: {
+              ...addition.payload.feature.type,
+              typeId: `org.vibeshape.feature.part-design.${name}`,
+              schemaVersion: name === "union" ? 2 : 1,
+            },
+          },
+        },
+      })
+      if (command.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature addition")
+      expect(mayAutoApplyCadReview({ ...review, commands: [command] }, actor)).toBe(true)
+      expect(
+        mayAutoApplyCadReview(
+          { ...review, commands: [command] },
+          commandActorSchema.parse({ ...actor, sessionId: id(9) }),
+        ),
+      ).toBe(false)
+      const update = documentCommandSchema.parse({
+        ...command,
+        kind: "org.vibeshape.feature.update",
+      })
+      expect(
+        mayAutoApplyCadReview({ ...review, commands: [update] }, actor, [command.payload.feature]),
+      ).toBe(true)
+      expect(
+        mayAutoApplyCadReview({ ...review, commands: [update] }, actor, [
+          featureRecordSchema.parse({
+            ...command.payload.feature,
+            type: { ...command.payload.feature.type, schemaVersion: 99 },
+          }),
+        ]),
+      ).toBe(false)
+      review.preview.geometry.status = "invalid"
+      expect(mayAutoApplyCadReview({ ...review, commands: [command] }, actor)).toBe(false)
+    },
+  )
+  it.each([
     [5, true],
     [6, false],
   ] as const)("explicitly bounds independent extrusion schema version %i", (version, expected) => {

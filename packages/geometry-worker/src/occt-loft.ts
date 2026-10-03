@@ -3,6 +3,7 @@ import {
   type ExtrusionMultiProfileContentParameters,
   extrusionFrameSchema,
   extrusionProfileLoopSchema,
+  MAX_ANALYTICAL_LOFT_SECTIONS,
 } from "@vibeshape/protocol"
 import { Edge, Face, type Shape3D, type SimplePoint, Wire } from "replicad"
 import type {
@@ -378,8 +379,14 @@ function sectionsAreCoplanar(previous: AnalyticalProfile, section: AnalyticalPro
 }
 
 function validateLoftSections(sections: readonly AnalyticalProfile[], ruled: boolean) {
-  if (sections.length < 2 || sections.length > 8 || typeof ruled !== "boolean")
-    throw new Error("Loft requires two to eight ordered sections and an explicit ruled setting.")
+  if (
+    sections.length < 2 ||
+    sections.length > MAX_ANALYTICAL_LOFT_SECTIONS ||
+    typeof ruled !== "boolean"
+  )
+    throw new Error(
+      "Loft requires two to twenty-four ordered sections and an explicit ruled setting.",
+    )
   const parsed = sections.map(parseAnalyticalProfile)
   if (parsed.some(({ holes }) => holes.length > 0))
     throw new Error(

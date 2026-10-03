@@ -614,8 +614,32 @@ export function createActiveDocumentAutomationSession() {
   const repository = activeRepository
   if (!active || !repository || state.status !== "ready" || !state.report)
     return automationCommitFailure("document-write-unavailable", "No local project is open.", true)
+  const capturedSession = active
+  const capturedRepository = repository
+  const capturedDocumentId = active.snapshot.id
+  let closed = false
+  const sourceSessionAvailable = () =>
+    !closed &&
+    session === capturedSession &&
+    activeRepository === capturedRepository &&
+    state.status === "ready" &&
+    capturedSession.snapshot.id === capturedDocumentId
+  async function materializeAutomationSourceAssets(input: unknown) {
+    const document = documentSnapshotSchema.parse(input)
+    if (!sourceSessionAvailable() || document.id !== capturedDocumentId)
+      throw new Error("The paired source document session is unavailable.")
+    const sourceRevision = capturedSession.snapshot.revision
+    // Draft revisions are private; the host owns stale-base checks against this committed session.
+    const assets = await capturedRepository.materializeSourceAssets(
+      capturedDocumentId,
+      document.features,
+    )
+    if (!sourceSessionAvailable() || capturedSession.snapshot.revision !== sourceRevision)
+      throw new Error("The paired source document changed during materialization.")
+    return assets
+  }
   const factory = createDocumentAutomationSession({
-    materializeSourceAssets: materializeActiveDocumentSourceAssets,
+    materializeSourceAssets: materializeAutomationSourceAssets,
     commands: coreCommandDispatcher(),
     modules: coreRegistries().modules,
     createDraftId: browserUuidV7,
@@ -638,8 +662,6 @@ export function createActiveDocumentAutomationSession() {
       true,
     )
   }
-  const capturedDocumentId = active.snapshot.id
-  let closed = false
   const currentReport = () => {
     if (
       closed ||
@@ -757,7 +779,7 @@ export function createActiveDocumentAutomationSession() {
     return result
   }
   const metadata = createMetadataAutomationSession({
-    materializeSourceAssets: materializeActiveDocumentSourceAssets,
+    materializeSourceAssets: materializeAutomationSourceAssets,
     documentId: active.snapshot.id,
     queries: queryDispatcher.dispatcher,
     createDraftId: browserUuidV7,

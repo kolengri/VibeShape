@@ -5,7 +5,7 @@ import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import type { FeatureId } from "./identifiers"
 import { sketchProfileSelectorKey, sketchProfileSelectorSchema } from "./sketch-profile-selector"
 
-const MAX_LOFT_SECTIONS = 8
+export const MAX_LOFT_SECTIONS = 24
 const MAX_LOFT_BOUNDARY_ENTITIES = 2_000
 
 export const loftFeatureParametersSchema = z
@@ -48,7 +48,7 @@ export const loftFeatureType = featureTypeDescriptorSchema.parse({
     schemaVersion: 1,
   },
   classification: "solid",
-  dependencies: { min: 0, max: 8 },
+  dependencies: { min: 0, max: MAX_LOFT_SECTIONS },
   references: { min: 0, max: 4_096 },
 })
 
