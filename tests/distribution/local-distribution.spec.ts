@@ -130,9 +130,15 @@ test("the relocated package preserves saved work across stop, restart, backup re
     await stopEditor()
     local = await createMcpTestClient(port, { command: executable, args: ["mcp"], cwd })
     const tools = (await local.client.listTools()).tools
-    expect(tools).toHaveLength(38)
+    expect(tools).toHaveLength(39)
     expect(tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(["model_parts", "model_folders", "model_history", "change_metadata"]),
+      expect.arrayContaining([
+        "read_agent_skill",
+        "model_parts",
+        "model_folders",
+        "model_history",
+        "change_metadata",
+      ]),
     )
     await page.reload()
     await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
