@@ -264,12 +264,15 @@ export function booleanInputFeatures(
   features: readonly FeatureRecord[],
   editingFeatureId?: FeatureId,
 ) {
-  const excludedIds = editingFeatureId
-    ? dependentFeatureIds(features, editingFeatureId)
-    : new Set<FeatureId>()
+  const candidates = modifyingSolidTargetFeatures(features, editingFeatureId)
+  const currentInputs = features.find(({ id }) => id === editingFeatureId)?.dependencies ?? []
+  const candidateIds = new Set(candidates.map(({ id }) => id))
   return features.filter(
     (feature) =>
-      !feature.suppressed && !excludedIds.has(feature.id) && isModifyingInputFeature(feature),
+      candidateIds.has(feature.id) ||
+      (currentInputs.includes(feature.id) &&
+        !feature.suppressed &&
+        isModifyingInputFeature(feature)),
   )
 }
 
@@ -280,11 +283,9 @@ export function modifyingSolidTargetFeatures(
   const excludedIds = editingFeatureId
     ? dependentFeatureIds(features, editingFeatureId)
     : new Set<FeatureId>()
-  const available = features.filter(
-    (feature) =>
-      !feature.suppressed && !excludedIds.has(feature.id) && isModifyingInputFeature(feature),
-  )
-  const dependedOnIds = new Set(available.flatMap(featureBodyDependencyIds))
+  const active = features.filter((feature) => !feature.suppressed && !excludedIds.has(feature.id))
+  const available = active.filter(isModifyingInputFeature)
+  const dependedOnIds = new Set(active.flatMap(featureBodyDependencyIds))
   const editingFeature = features.find(({ id }) => id === editingFeatureId)
   const currentTargetIds = new Set(editingFeature ? featureBodyDependencyIds(editingFeature) : [])
   return available.filter(({ id }) => !dependedOnIds.has(id) || currentTargetIds.has(id))

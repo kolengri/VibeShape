@@ -230,10 +230,12 @@ export const torusFeatureContentParametersSchema = z
   )
 
 export const booleanFeatureParametersSchema = z
-  .object({ operation: z.literal("subtract") })
+  .object({ operation: z.literal("subtract"), keepTools: z.boolean().optional() })
   .strict()
 
-export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema
+export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema.omit({
+  keepTools: true,
+})
 
 const edgeTreatmentLengthSchema = lengthQuantitySchema.refine(
   ({ value }) => value > 0 && value <= MAX_PRIMITIVE_LENGTH_MM,
@@ -1350,7 +1352,8 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     type: booleanFeatureType.type,
     parametersSchema: booleanFeatureParametersSchema,
     contentParameters(parameters) {
-      return booleanFeatureContentParametersSchema.parse(parameters)
+      const { operation } = booleanFeatureParametersSchema.parse(parameters)
+      return booleanFeatureContentParametersSchema.parse({ operation })
     },
   },
   {

@@ -406,6 +406,7 @@ function useBooleanFormCopy(mode: BooleanFormMode["kind"]) {
     tool: t("boolean.tool"),
     targetDescription: t("boolean.targetDescription"),
     toolDescription: t("boolean.toolDescription"),
+    keepTools: t("boolean.keepTools"),
     cancel: t("boolean.cancel"),
     missingInput: t("boolean.missingInput"),
     sameInput: t("boolean.sameInput"),

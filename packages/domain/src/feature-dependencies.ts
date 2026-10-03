@@ -1,6 +1,9 @@
 import type { FeatureRecord } from "./feature-graph"
+import { featureTypeKey } from "./feature-type-contracts"
 import type { FeatureId } from "./identifiers"
 import {
+  booleanFeatureParametersSchema,
+  booleanFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
   filletFeatureType,
@@ -18,6 +21,11 @@ import { readDatumPlaneFeatureParameters } from "./reference-geometry"
 
 export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
   if (readDatumPlaneFeatureParameters(feature)) return []
+  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type)) {
+    return booleanFeatureParametersSchema.safeParse(feature.parameters).data?.keepTools
+      ? feature.dependencies.slice(0, 1)
+      : feature.dependencies
+  }
   if (readHoleFeatureParameters(feature)) return feature.dependencies.slice(0, 1)
   if (
     feature.type &&

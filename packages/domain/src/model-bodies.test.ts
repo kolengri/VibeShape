@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { FeatureRecord } from "./feature-graph"
 import { terminalBodyOutputs } from "./model-bodies"
+import { booleanFeatureType } from "./part-design"
 import { holeFeatureTypeV2 } from "./part-design-hole"
 import { createLengthQuantity } from "./units"
 
@@ -27,6 +28,32 @@ function feature(
 }
 
 describe("terminalBodyOutputs", () => {
+  it.each([undefined, false, true])("applies subtract tool retention: %s", (keepTools) => {
+    const target = feature(ids.source)
+    const tool = feature("0195b5ac-b220-7a2c-8c33-67a36a7f3103")
+    const cut = feature(
+      ids.consumer,
+      [target.id, tool.id],
+      {
+        operation: "subtract",
+        ...(keepTools === undefined ? {} : { keepTools }),
+      },
+      booleanFeatureType.type,
+    )
+    const targetBody = { featureId: target.id }
+    const toolBody = { featureId: tool.id }
+    const resultBody = { featureId: cut.id }
+    const bodies = new Map([
+      [target.id, [targetBody]],
+      [tool.id, [toolBody]],
+      [cut.id, [resultBody]],
+    ])
+    expect(terminalBodyOutputs([target, tool, cut], bodies)).toEqual(
+      keepTools ? [toolBody, resultBody] : [resultBody],
+    )
+    bodies.delete(cut.id)
+    expect(terminalBodyOutputs([target, tool, cut], bodies)).toEqual([targetBody, toolBody])
+  })
   it("consumes one named role and preserves its sibling", () => {
     const source = feature(ids.source)
     const consumer = feature(ids.consumer, [ids.source], {

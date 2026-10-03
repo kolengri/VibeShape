@@ -9,6 +9,7 @@ import {
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { featureSubmissionMessage } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { BooleanParameterPanel, type BooleanParameterPanelCopy } from "./boolean-parameter-panel"
@@ -26,6 +27,7 @@ type BooleanFormCopy = BooleanParameterPanelCopy &
     tool: string
     targetDescription: string
     toolDescription: string
+    keepTools: string
     submit: string
     missingInput: string
     sameInput: string
@@ -37,6 +39,7 @@ type BooleanFormCopy = BooleanParameterPanelCopy &
 type BooleanFormValues = Readonly<{
   targetFeatureId: string
   toolFeatureId: string
+  keepTools: boolean
 }>
 
 export type BooleanFormMode =
@@ -54,15 +57,16 @@ function defaultBooleanValues(
   mode: BooleanFormMode,
   options: readonly BooleanInputOption[],
 ): BooleanFormValues {
-  if (mode.kind === "edit") {
-    return {
-      targetFeatureId: mode.feature.dependencies[0] ?? "",
-      toolFeatureId: mode.feature.dependencies[1] ?? "",
-    }
-  }
+  const inputIds = mode.kind === "edit" ? mode.feature.dependencies : options.map(({ id }) => id)
+  const [targetFeatureId = "", toolFeatureId = ""] = inputIds
   return {
-    targetFeatureId: options[0]?.id ?? "",
-    toolFeatureId: options[1]?.id ?? "",
+    targetFeatureId,
+    toolFeatureId,
+    keepTools:
+      mode.kind === "edit"
+        ? (booleanFeatureParametersSchema.safeParse(mode.feature.parameters).data?.keepTools ??
+          false)
+        : false,
   }
 }
 
@@ -100,8 +104,12 @@ function booleanFeatureRecord(
   mode: BooleanFormMode,
   targetFeatureId: FeatureId,
   toolFeatureId: FeatureId,
+  keepTools: boolean,
 ) {
-  const parameters = booleanFeatureParametersSchema.parse({ operation: "subtract" })
+  const parameters = booleanFeatureParametersSchema.parse({
+    operation: "subtract",
+    ...(keepTools ? { keepTools: true } : {}),
+  })
   if (mode.kind === "edit") {
     return featureRecordSchema.parse({
       ...mode.feature,
@@ -160,7 +168,12 @@ export function BooleanForm({
       const parsed = parseBooleanValues(value, options, copy)
       if (!parsed.ok) return
       setMessage(null)
-      const feature = booleanFeatureRecord(mode, parsed.targetFeatureId, parsed.toolFeatureId)
+      const feature = booleanFeatureRecord(
+        mode,
+        parsed.targetFeatureId,
+        parsed.toolFeatureId,
+        value.keepTools,
+      )
       const result = await onSave(baseRevision, feature)
       const resultMessage = featureSubmissionMessage(result, copy)
       setMessage(resultMessage)
@@ -206,6 +219,15 @@ export function BooleanForm({
           <>
             {inputField("targetFeatureId", copy.target, copy.targetDescription)}
             {inputField("toolFeatureId", copy.tool, copy.toolDescription)}
+            <form.AppField name="keepTools">
+              {(field) => (
+                <TanStackBooleanParameterField
+                  field={field}
+                  label={copy.keepTools}
+                  onBeforeChange={() => setMessage(null)}
+                />
+              )}
+            </form.AppField>
           </>
         }
       />
