@@ -16,7 +16,8 @@ function embeddedReplicadNotice(key: string) {
 }
 
 function missingPackageLicense(key: string) {
-  // This npm release omits LICENSE; retain the upstream maintainer's text.
+  // These exact npm releases omit LICENSE; retain their reviewed upstream notices.
+  if (key === "saxes@6.0.0:ISC") return retainedNotice("saxes-6.0.0-LICENSE.txt")
   if (key !== "react-remove-scroll-bar@2.3.8:MIT")
     throw new Error(`A bundled dependency is missing license text: ${key}`)
   return retainedNotice("react-remove-scroll-bar-2.3.8-LICENSE.txt")
@@ -53,11 +54,31 @@ function bundledLicensePlugins(fileName: string): Plugin[] {
   ]
 }
 
+function sketchTextNotices(): Plugin {
+  return {
+    name: "vibeshape-sketch-text-notices",
+    generateBundle() {
+      const directory = resolve(import.meta.dirname, "../../packages/formats/src/text-outline")
+      for (const [source, fileName] of [
+        ["fonts/OFL.txt", "sources/Noto-Sans-OFL.txt"],
+        ["fonts/provenance.md", "sources/Noto-Sans-provenance.md"],
+        ["LICENSE.opentype.txt", "sources/opentype-js-MIT.txt"],
+      ] as const)
+        this.emitFile({ type: "asset", fileName, source: readFileSync(resolve(directory, source)) })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const controlledOcct = mode === "controlled-occt"
 
   return {
-    plugins: [react(), tailwindcss(), ...bundledLicensePlugins("sources/browser-licenses.txt")],
+    plugins: [
+      react(),
+      tailwindcss(),
+      sketchTextNotices(),
+      ...bundledLicensePlugins("sources/browser-licenses.txt"),
+    ],
     worker: {
       plugins: () => bundledLicensePlugins("sources/worker-licenses.txt"),
     },

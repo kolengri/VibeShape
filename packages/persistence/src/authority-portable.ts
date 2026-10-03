@@ -1,12 +1,18 @@
 import {
-  type AuthoredDocumentSnapshot,
   canonicalJson,
   type DocumentId,
+  type DocumentSnapshotV2,
+  type DocumentSnapshotV3,
+  type DocumentSnapshotV4,
   documentIdSchema,
+  documentSourceAssetClosure,
   migrateDocumentSnapshot,
   replayDocumentAuthorityEvents,
   replayDocumentEvents,
+  type SourceAssetBlob,
 } from "@vibeshape/domain"
+import { sourceAssetBlobSchema } from "@vibeshape/domain/source-assets"
+import { z } from "zod"
 import {
   requireAuthorityProject,
   storeAuthorityEvent,
@@ -15,12 +21,18 @@ import {
 } from "./authority-records"
 import { authorityEventsThrough } from "./authority-recovery"
 import {
-  authoredPortableProjectPayloadSchema,
   type PortableProjectV3,
   type PortableProjectV4,
-  type ProjectAuthorityRecord,
+  type PortableProjectV5,
+  type ProjectRecordV2,
+  type ProjectRecordV3,
+  type ProjectRecordV4,
+  portableProjectV3PayloadSchema,
+  portableProjectV4PayloadSchema,
+  portableProjectV5PayloadSchema,
   projectRecordV2Schema,
   projectRecordV3Schema,
+  projectRecordV4Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -35,8 +47,60 @@ import {
   type PortableProjectImportReport,
 } from "./repository"
 import { projectRecordSchema } from "./schemas"
+import {
+  publishSourceAssetBytes,
+  readSourceAssetBytes,
+  verifySourceAssetBlobs,
+} from "./source-asset-store"
 
-function validatePortableAuthority(project: PortableProjectV3 | PortableProjectV4) {
+async function parsePortablePayload(
+  database: VibeShapeDatabase,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
+  input: unknown,
+): Promise<PortableProjectV3 | PortableProjectV4 | PortableProjectV5> {
+  if (project.schemaVersion === 2) return portableProjectV3PayloadSchema.parse(input)
+  if (project.schemaVersion === 3)
+    return portableProjectV4PayloadSchema.parse({
+      ...z.record(z.string(), z.unknown()).parse(input),
+      textureUpgradeRevision: project.textureUpgradeRevision,
+    })
+  const partial = z
+    .object({
+      ...portableProjectV5PayloadSchema.shape,
+      assetBlobs: z.array(sourceAssetBlobSchema).default([]),
+      textureUpgradeRevision: portableProjectV5PayloadSchema.shape.textureUpgradeRevision.default(
+        project.textureUpgradeRevision,
+      ),
+      sourceUpgradeRevision: portableProjectV5PayloadSchema.shape.sourceUpgradeRevision.default(
+        project.sourceUpgradeRevision,
+      ),
+    })
+    .strict()
+    .parse(input)
+  const closure = documentSourceAssetClosure(
+    partial.seed,
+    partial.versionedEvents,
+    partial.snapshot,
+  )
+  const digests = new Set<string>()
+  const assetBlobs: SourceAssetBlob[] = []
+  for (const asset of closure) {
+    if (digests.has(asset.digest)) continue
+    const read = await readSourceAssetBytes(database, asset.digest)
+    if (!read.ok)
+      throw persistenceInvariantError(
+        "corrupt-history",
+        "The full historical source closure cannot be exported.",
+      )
+    assetBlobs.push({ digest: asset.digest, bytes: Uint8Array.from(read.value) })
+    digests.add(asset.digest)
+  }
+  return portableProjectV5PayloadSchema.parse({ ...partial, assetBlobs })
+}
+
+function validatePortableAuthority(
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
+) {
   let legacySnapshot = null
   if (project.historyMode === "complete" && project.seed) {
     const legacy = replayDocumentEvents(project.legacyEvents)
@@ -75,12 +139,13 @@ async function exactSnapshot(
   return snapshot
 }
 
-function checkpoint(
-  snapshot: AuthoredDocumentSnapshot,
-  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
+async function checkpoint(
+  database: VibeShapeDatabase,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
   evidence: string[],
 ) {
-  return authoredPortableProjectPayloadSchema.parse({
+  return parsePortablePayload(database, project, {
     snapshot,
     seed: snapshot,
     legacyEvents: [],
@@ -88,9 +153,6 @@ function checkpoint(
     historyMode: "checkpoint",
     promotionRevision: snapshot.revision,
     upgradeRevision: project.upgradeRevision,
-    ...(project.schemaVersion === 3
-      ? { textureUpgradeRevision: project.textureUpgradeRevision }
-      : {}),
     migrationDiagnostic: {
       code: "legacy-journal-unavailable",
       message:
@@ -100,24 +162,31 @@ function checkpoint(
   })
 }
 
-function validatedCompleteOrCheckpoint(
+async function validatedCompleteOrCheckpoint(
+  database: VibeShapeDatabase,
   input: unknown,
-  snapshot: AuthoredDocumentSnapshot,
-  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
 ) {
-  const parsed = authoredPortableProjectPayloadSchema.safeParse(input)
-  if (!parsed.success) return checkpoint(snapshot, project, ["authority-boundary"])
+  let parsed: PortableProjectV3 | PortableProjectV4 | PortableProjectV5
   try {
-    validatePortableAuthority(parsed.data)
-  } catch {
-    return checkpoint(snapshot, project, ["authority-replay"])
+    parsed = await parsePortablePayload(database, project, input)
+  } catch (error) {
+    if (error instanceof Error && error.name === "ZodError")
+      return checkpoint(database, snapshot, project, ["authority-boundary"])
+    throw error
   }
-  return parsed.data
+  try {
+    validatePortableAuthority(parsed)
+  } catch {
+    return checkpoint(database, snapshot, project, ["authority-replay"])
+  }
+  return parsed
 }
 
 async function readLegacyBoundary(
   database: VibeShapeDatabase,
-  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
 ) {
   const record = await database.projects.get(project.documentId)
   if (!record) return { seed: null, events: [], evidence: [] }
@@ -137,11 +206,11 @@ async function readLegacyBoundary(
 
 async function assembleComplete(
   database: VibeShapeDatabase,
-  project: Extract<ProjectAuthorityRecord, { schemaVersion: 2 | 3 }>,
-  snapshot: AuthoredDocumentSnapshot,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
 ) {
   const boundary = await readLegacyBoundary(database, project)
-  if (boundary.evidence.length) return checkpoint(snapshot, project, boundary.evidence)
+  if (boundary.evidence.length) return checkpoint(database, snapshot, project, boundary.evidence)
   const corrupt: string[] = []
   const versionedEvents = await authorityEventsThrough(
     database,
@@ -150,8 +219,9 @@ async function assembleComplete(
     project.headRevision,
     corrupt,
   )
-  if (corrupt.length) return checkpoint(snapshot, project, corrupt)
+  if (corrupt.length) return checkpoint(database, snapshot, project, corrupt)
   return validatedCompleteOrCheckpoint(
+    database,
     {
       snapshot,
       seed: boundary.seed,
@@ -160,9 +230,6 @@ async function assembleComplete(
       historyMode: "complete",
       promotionRevision: boundary.seed?.revision ?? 0,
       upgradeRevision: project.upgradeRevision,
-      ...(project.schemaVersion === 3
-        ? { textureUpgradeRevision: project.textureUpgradeRevision }
-        : {}),
       migrationDiagnostic: null,
       unavailableRecords: [],
     },
@@ -174,7 +241,7 @@ async function assembleComplete(
 export async function exportDocumentAuthority(
   database: VibeShapeDatabase,
   input: unknown,
-): Promise<PersistenceResult<PortableProjectV3 | PortableProjectV4>> {
+): Promise<PersistenceResult<PortableProjectV3 | PortableProjectV4 | PortableProjectV5>> {
   const documentId = documentIdSchema.safeParse(input)
   if (!documentId.success)
     return {
@@ -186,10 +253,10 @@ export async function exportDocumentAuthority(
     if (project.schemaVersion === 1)
       throw persistenceInvariantError(
         "invalid-input",
-        "Native export requires an authored document.",
+        "Authored export requires a V2 or V3 document.",
       )
     const snapshot = await exactSnapshot(database, project.documentId, project.headRevision)
-    if (snapshot.schemaVersion === 1 || snapshot.schemaVersion !== project.schemaVersion)
+    if (snapshot.schemaVersion === 1)
       throw persistenceInvariantError(
         "corrupt-history",
         "The authority head and snapshot versions disagree.",
@@ -201,7 +268,7 @@ export async function exportDocumentAuthority(
 }
 
 async function preparePortableAuthority(
-  project: PortableProjectV3 | PortableProjectV4,
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
   storedAt: string,
   backupAt: string | null,
 ) {
@@ -218,32 +285,14 @@ async function preparePortableAuthority(
   const snapshots = project.seed ? [await storeAuthoritySnapshot(project.seed, storedAt)] : []
   if (!project.seed || project.seed.revision !== project.snapshot.revision)
     snapshots.push(await storeAuthoritySnapshot(project.snapshot, storedAt))
-  const head = (
-    project.snapshot.schemaVersion === 3 ? projectRecordV3Schema : projectRecordV2Schema
-  ).parse({
-    schemaVersion: project.snapshot.schemaVersion,
-    ...("textureUpgradeRevision" in project
-      ? { textureUpgradeRevision: project.textureUpgradeRevision }
-      : {}),
-    documentId: project.snapshot.id,
-    name: project.snapshot.name,
-    headRevision: project.snapshot.revision,
-    latestSnapshotRevision: project.snapshot.revision,
-    cleanCloseRevision: project.snapshot.revision,
-    createdAt: project.snapshot.createdAt,
-    updatedAt: storedAt,
-    lastExternalBackupAt: backupAt,
-    migrationProvenance: project.seed ? "journal-derived" : "current",
-    migrationDiagnostic: null,
-    unavailableRecords: [],
-    upgradeRevision: project.upgradeRevision,
-  })
-  return { legacy, events, snapshots, head }
+  const head = portableAuthorityHead(project, storedAt, backupAt)
+  const prepared = "assetBlobs" in project ? await verifySourceAssetBlobs(project.assetBlobs) : []
+  return { legacy, events, snapshots, head, prepared }
 }
 
 export async function publishPortableAuthority(
   database: VibeShapeDatabase,
-  project: PortableProjectV3 | PortableProjectV4,
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
   storedAt: string,
   backupAt: string | null,
 ): Promise<PortableProjectImportReport> {
@@ -265,6 +314,7 @@ export async function publishPortableAuthority(
       database.recovery,
       database.recoveryV1,
       database.leases,
+      database.assetBlobs,
     ],
     async () => {
       const id = project.snapshot.id
@@ -282,6 +332,11 @@ export async function publishPortableAuthority(
         await database.events.bulkAdd(records.legacy.events)
         await database.snapshots.add(records.legacy.snapshot)
       }
+      await publishSourceAssetBytes(
+        database,
+        documentSourceAssetClosure(project.seed, project.versionedEvents, project.snapshot),
+        records.prepared,
+      )
       await database.eventsV1.bulkAdd(records.events)
       await database.snapshotsV1.bulkAdd(records.snapshots)
       await database.projectsV1.add(records.head)
@@ -297,4 +352,34 @@ export async function publishPortableAuthority(
     ),
     snapshotChecksum: records.snapshots.at(-1)?.checksum ?? "",
   }
+}
+
+function portableAuthorityHead(
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
+  storedAt: string,
+  backupAt: string | null,
+) {
+  return { 2: projectRecordV2Schema, 3: projectRecordV3Schema, 4: projectRecordV4Schema }[
+    project.snapshot.schemaVersion
+  ].parse({
+    schemaVersion: project.snapshot.schemaVersion,
+    ...("textureUpgradeRevision" in project
+      ? { textureUpgradeRevision: project.textureUpgradeRevision }
+      : {}),
+    ...("sourceUpgradeRevision" in project
+      ? { sourceUpgradeRevision: project.sourceUpgradeRevision }
+      : {}),
+    documentId: project.snapshot.id,
+    name: project.snapshot.name,
+    headRevision: project.snapshot.revision,
+    latestSnapshotRevision: project.snapshot.revision,
+    cleanCloseRevision: project.snapshot.revision,
+    createdAt: project.snapshot.createdAt,
+    updatedAt: storedAt,
+    lastExternalBackupAt: backupAt,
+    migrationProvenance: project.seed ? "journal-derived" : "current",
+    migrationDiagnostic: null,
+    unavailableRecords: [],
+    upgradeRevision: project.upgradeRevision,
+  })
 }

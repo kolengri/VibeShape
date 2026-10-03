@@ -28,8 +28,15 @@ import {
   type FeatureMeshPolicy,
   featureMeshPolicySchema,
   type GeometryExportFormat,
+  type InspectMeshImportInput,
+  type InspectSourceImportInput,
+  inspectMeshImportInputSchema,
+  inspectSourceImportInputSchema,
+  type MeshImportInspection,
+  type SourceImportInspection,
 } from "@vibeshape/protocol"
 import { z } from "zod"
+import { authorityTransactionSchema } from "./authority-transaction"
 
 const DEFAULT_LEASE_DURATION_MS = 30_000
 
@@ -170,6 +177,7 @@ export type DocumentAuthoredMetadataPort = Readonly<{
 }>
 
 export type PersistentDocumentRepositoryPort = Readonly<{
+  authoredTransaction?: DocumentAuthoredMetadataPort
   authoredMetadata?: DocumentAuthoredMetadataPort
   history?: DocumentHistoryPort
   semanticHistory?: DocumentSemanticHistoryPort
@@ -208,6 +216,12 @@ export type DocumentRebuildPort = Readonly<{
     format: GeometryExportFormat,
     options?: DocumentExportOptions,
   ) => Promise<DocumentExportResponse>
+  inspectMeshImport?: (
+    input: InspectMeshImportInput,
+  ) => Promise<Extract<DocumentWorkerTerminalResponse, { type: "meshImportInspected" }>>
+  inspectSourceImport?: (
+    input: InspectSourceImportInput,
+  ) => Promise<Extract<DocumentWorkerTerminalResponse, { type: "sourceImportInspected" }>>
   solveSketch: (input: DocumentSketchSolveInput) => Promise<SketchSolveResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
@@ -466,11 +480,16 @@ async function persistHistoryRequest(
   }
 }
 
-function validateHistoryResult(value: DocumentSnapshot, documentId: DocumentId, revision: number) {
+function validateHistoryResult(
+  value: DocumentSnapshot,
+  documentId: DocumentId,
+  revision: number,
+  advance = 1,
+) {
   const restored = documentSnapshotSchema.safeParse(value)
   return restored.success &&
     restored.data.id === documentId &&
-    restored.data.revision === revision + 1
+    restored.data.revision === revision + advance
     ? restored.data
     : null
 }
@@ -536,6 +555,24 @@ export class PersistentDocumentSession {
     return this.#dependencies.repository.authoredMetadata?.snapshot ?? null
   }
 
+  commitAuthoredTransaction(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    return this.#enqueue(async () => {
+      const parsed = authorityTransactionSchema.safeParse(input)
+      if (!parsed.success)
+        return {
+          ok: false as const,
+          diagnostic: diagnostic("command-rejected", "The authored transaction is invalid."),
+        }
+      return this.#commitPortMutation(
+        parsed.data,
+        this.#dependencies.repository.authoredTransaction?.apply,
+        "The document does not expose authored transactions.",
+        "The authored transaction was not saved.",
+        parsed.data.commands.length,
+      )
+    })
+  }
+
   commitAuthored(input: unknown): Promise<PersistentDocumentHistoryResult> {
     return this.#enqueue(() =>
       this.#commitPortMutation(
@@ -561,6 +598,7 @@ export class PersistentDocumentSession {
     operation: DocumentSemanticHistoryPort["move"] | undefined,
     unavailableMessage: string,
     failureMessage: string,
+    advance = 1,
   ): Promise<PersistentDocumentHistoryResult> {
     if (this.#closed)
       return {
@@ -593,7 +631,12 @@ export class PersistentDocumentSession {
         ok: false,
         diagnostic: portDiagnostic("persistence-failed", failureMessage, result.diagnostic),
       }
-    const restored = validateHistoryResult(result.value, this.#documentId, this.#snapshot.revision)
+    const restored = validateHistoryResult(
+      result.value,
+      this.#documentId,
+      this.#snapshot.revision,
+      advance,
+    )
     if (!restored)
       return {
         ok: false,
@@ -667,6 +710,68 @@ export class PersistentDocumentSession {
     options: DocumentExportOptions = {},
   ): Promise<PersistentDocumentExportResult> {
     return this.#enqueue(() => this.#exportDocument(format, options))
+  }
+
+  inspectSourceImport(input: unknown): Promise<SessionPortResult<SourceImportInspection>> {
+    return this.#enqueue(async () => {
+      if (this.#closed)
+        return {
+          ok: false,
+          diagnostic: diagnostic("session-closed", "The document session is closed."),
+        }
+      const parsed = inspectSourceImportInputSchema.safeParse(input)
+      if (!parsed.success || !this.#rebuildPort.inspectSourceImport)
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "command-rejected",
+            "The source inspection request is invalid or unavailable.",
+          ),
+        }
+      try {
+        const response = await this.#rebuildPort.inspectSourceImport(parsed.data)
+        return { ok: true, value: response.inspection }
+      } catch (error) {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "command-rejected",
+            error instanceof Error ? error.message : "The source could not be inspected.",
+          ),
+        }
+      }
+    })
+  }
+
+  inspectMeshImport(input: unknown): Promise<SessionPortResult<MeshImportInspection>> {
+    return this.#enqueue(async () => {
+      if (this.#closed)
+        return {
+          ok: false,
+          diagnostic: diagnostic("session-closed", "The document session is closed."),
+        }
+      const parsed = inspectMeshImportInputSchema.safeParse(input)
+      if (!parsed.success || !this.#rebuildPort.inspectMeshImport)
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "command-rejected",
+            "The mesh inspection request is invalid or unavailable.",
+          ),
+        }
+      try {
+        const response = await this.#rebuildPort.inspectMeshImport(parsed.data)
+        return { ok: true, value: response.inspection }
+      } catch (error) {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "command-rejected",
+            error instanceof Error ? error.message : "The source could not be inspected.",
+          ),
+        }
+      }
+    })
   }
 
   solveSketch(

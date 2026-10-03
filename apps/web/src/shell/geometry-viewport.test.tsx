@@ -327,6 +327,9 @@ function renderViewport(
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
+    setSection: vi.fn(),
+    setPrintBed: vi.fn(),
+    setGroundGrid: vi.fn(),
     setSketchReferenceCandidates: vi.fn(),
     setSketchReferencePreselection: vi.fn(),
     setSketchProfilePreselection: vi.fn(),
@@ -1433,7 +1436,7 @@ describe("GeometryViewport", () => {
     const viewport = screen.getByRole("region", { name: "3D viewport" })
     expect(viewport.getAttribute("data-preview-status")).toBe("ready")
     expect(viewport.getAttribute("data-preview-feature-count")).toBe("1")
-    expect(screen.getByRole("status").textContent).toBe("Unsaved extrusion preview")
+    expect(screen.getByRole("status").textContent).toBe("Unsaved feature preview")
   })
 
   it.each([

@@ -33,12 +33,18 @@ export function bounds(points: Point[]) {
     }
   return { min, max }
 }
-export function rotate(p: Point, xDeg: number, yDeg: number): Point {
+export function rotate(p: Point, xDeg: number, yDeg: number, zDeg = 0): Point {
   const x = (xDeg * Math.PI) / 180,
     y = (yDeg * Math.PI) / 180
   const py = p[1] * Math.cos(x) - p[2] * Math.sin(x)
   const pz = p[1] * Math.sin(x) + p[2] * Math.cos(x)
-  return [p[0] * Math.cos(y) + pz * Math.sin(y), py, -p[0] * Math.sin(y) + pz * Math.cos(y)]
+  const px = p[0] * Math.cos(y) + pz * Math.sin(y)
+  const z = (zDeg * Math.PI) / 180
+  return [
+    px * Math.cos(z) - py * Math.sin(z),
+    px * Math.sin(z) + py * Math.cos(z),
+    -p[0] * Math.sin(y) + pz * Math.cos(y),
+  ]
 }
 export type Facet = { points: [Point, Point, Point]; normal: Point; plane: number; area: number }
 type EdgeState = { count: number; orientation: number }

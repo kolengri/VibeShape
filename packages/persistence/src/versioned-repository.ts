@@ -29,6 +29,8 @@ import {
   portableProjectV3CopySchema,
   portableProjectV3ImportSchema,
   portableProjectV4CopySchema,
+  portableProjectV5CopySchema,
+  portableProjectV5ImportSchema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -903,17 +905,80 @@ export class VersionedLocalDocumentRepository {
   exportPortableProjectV3(input: unknown) {
     return exportDocumentAuthority(this.database, input)
   }
-
-  async importPortableProjectV3(
+  async exportPortableProjectV4(documentId: unknown) {
+    return this.exportPortableProjectV3(documentId)
+  }
+  async copyPortableProjectV4(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
-    const input = portableProjectV3ImportSchema.safeParse(inputValue)
+    const input = portableProjectV4CopySchema.safeParse(inputValue)
     if (!input.success)
       return {
         ok: false,
         diagnostic: createPersistenceDiagnostic(
           "invalid-input",
-          "The portable V3 import is invalid.",
+          "The portable texture copy is invalid.",
+        ),
+      }
+    try {
+      return {
+        ok: true,
+        value: await publishPortableAuthority(this.database, input.data, input.data.copiedAt, null),
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+  async exportPortableProjectV5(input: unknown) {
+    const exported = await exportDocumentAuthority(this.database, input)
+    if (!exported.ok) return exported
+    return "sourceUpgradeRevision" in exported.value
+      ? { ok: true as const, value: exported.value }
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "V4 export requires V3 source authority.",
+          ),
+        }
+  }
+  async importPortableProjectV5(input: unknown) {
+    const parsed = portableProjectV5ImportSchema.safeParse(input)
+    return parsed.success
+      ? this.importPortableProjectV3(parsed.data)
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "The portable V4 import is invalid.",
+          ),
+        }
+  }
+  async copyPortableProjectV5(input: unknown) {
+    const parsed = portableProjectV5CopySchema.safeParse(input)
+    return parsed.success
+      ? this.copyPortableProjectV3(parsed.data)
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "The portable V4 copy is invalid.",
+          ),
+        }
+  }
+
+  async importPortableProjectV3(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<PortableProjectImportReport>> {
+    const input = z
+      .union([portableProjectV3ImportSchema, portableProjectV5ImportSchema])
+      .safeParse(inputValue)
+    if (!input.success)
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The portable authored import is invalid.",
         ),
       }
     try {
@@ -934,35 +999,15 @@ export class VersionedLocalDocumentRepository {
   async copyPortableProjectV3(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
-    const input = portableProjectV3CopySchema.safeParse(inputValue)
+    const input = z
+      .union([portableProjectV3CopySchema, portableProjectV5CopySchema])
+      .safeParse(inputValue)
     if (!input.success)
       return {
         ok: false,
         diagnostic: createPersistenceDiagnostic(
           "invalid-input",
-          "The portable V3 copy is invalid.",
-        ),
-      }
-    try {
-      return {
-        ok: true,
-        value: await publishPortableAuthority(this.database, input.data, input.data.copiedAt, null),
-      }
-    } catch (error) {
-      return { ok: false, diagnostic: classifyPersistenceError(error) }
-    }
-  }
-
-  async copyPortableProjectV4(
-    inputValue: unknown,
-  ): Promise<PersistenceResult<PortableProjectImportReport>> {
-    const input = portableProjectV4CopySchema.safeParse(inputValue)
-    if (!input.success)
-      return {
-        ok: false,
-        diagnostic: createPersistenceDiagnostic(
-          "invalid-input",
-          "The portable V4 copy is invalid.",
+          "The portable authored copy is invalid.",
         ),
       }
     try {

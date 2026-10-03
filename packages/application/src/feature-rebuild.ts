@@ -25,7 +25,10 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain/part-design"
+import { isBodyCombinationV2 } from "@vibeshape/domain/part-design-body-combination"
 import { readHoleFeatureParameters } from "@vibeshape/domain/part-design-hole"
+import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
+import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
 import {
@@ -358,7 +361,9 @@ function successfulDependencies(
   records: readonly FeatureEvaluationRecord[],
 ) {
   const bodyRoles = new Map(
-    featureBodyDependencies(feature).map(({ featureId, outputRole }) => [featureId, outputRole]),
+    (isBodyCombinationV2(feature) ? [] : featureBodyDependencies(feature)).map(
+      ({ featureId, outputRole }) => [featureId, outputRole],
+    ),
   )
   return records.map((record) => {
     const outputRole = bodyRoles.get(record.featureId)
@@ -814,42 +819,83 @@ function sketchModelFeatureIds(
   return [...featureIds]
 }
 
+/** Support and external-model owners follow the authored sketch order, without consuming bodies. */
+export function expectedSketchFeatureDependencyIds(
+  document: DocumentSnapshot,
+  sketchIds: readonly string[],
+  referenceFeatureIds: readonly FeatureId[] = [],
+): readonly FeatureId[] {
+  return [
+    ...new Set([
+      ...expectedSketchFeatureReferences(document, sketchIds).map(({ featureId }) => featureId),
+      ...referenceFeatureIds,
+    ]),
+  ]
+}
+
+export function expectedSketchFeatureReferences(
+  document: DocumentSnapshot,
+  sketchIds: readonly string[],
+): readonly FeatureRecord["references"][number][] {
+  const visited = new Set<string>()
+  const references: FeatureRecord["references"][number][] = []
+  const visit = (sketchId: string) => {
+    if (visited.has(sketchId)) return
+    visited.add(sketchId)
+    const sketch = document.sketches.find(({ id }) => id === sketchId)
+    if (!sketch) return
+    if (sketch.support) references.push(sketch.support.reference)
+    for (const reference of sketch.externalReferences ?? []) {
+      if (isSketchExternalModelReference(reference)) {
+        if (!isOrphanedModelReference(reference)) references.push(reference.reference)
+      } else visit(reference.sourceSketchId)
+    }
+  }
+  for (const id of sketchIds) visit(id)
+  return [
+    ...new Map(references.map((reference) => [JSON.stringify(reference), reference])).values(),
+  ]
+}
+
+function documentSketchSchedulingDependencies(document: DocumentSnapshot, feature: FeatureRecord) {
+  const loft = readLoftFeatureParameters(feature)
+  if (loft)
+    return expectedSketchFeatureDependencyIds(
+      document,
+      loft.sections.map(({ sketchId }) => sketchId),
+      feature.references.map(({ featureId }) => featureId),
+    )
+  const sweep = readSweepFeatureParameters(feature)
+  if (sweep)
+    return expectedSketchFeatureDependencyIds(
+      document,
+      [sweep.profile.sketchId, sweep.path.sketchId],
+      feature.references.map(({ featureId }) => featureId),
+    )
+  const hole = readHoleFeatureParameters(feature)
+  if (hole) return sketchModelFeatureIds(document, hole.sketchId)
+  const extrusion = readExtrusionFeatureParameters(feature)
+  const revolve = readRevolveFeatureParameters(feature)
+  const parameters = extrusion ?? revolve
+  if (!parameters) return []
+  return (parameters.profiles?.profiles ?? [parameters.profile]).flatMap(({ sketchId }) =>
+    sketchModelFeatureIds(document, sketchId),
+  )
+}
+
 function documentSchedulingFeatures(
   document: DocumentSnapshot,
   features: readonly FeatureRecord[],
 ) {
-  return features.map((feature) => {
-    const extrusion = readExtrusionFeatureParameters(feature)
-    const revolve = readRevolveFeatureParameters(feature)
-    const hole = readHoleFeatureParameters(feature)
-    return {
-      ...feature,
-      dependencies: [
-        ...new Set([
-          ...feature.dependencies,
-          ...(hole ? sketchModelFeatureIds(document, hole.sketchId) : []),
-          ...(extrusion
-            ? [
-                ...new Set(
-                  (extrusion.profiles?.profiles ?? [extrusion.profile]).flatMap((profile) =>
-                    sketchModelFeatureIds(document, profile.sketchId),
-                  ),
-                ),
-              ]
-            : []),
-          ...(revolve
-            ? [
-                ...new Set(
-                  (revolve.profiles?.profiles ?? [revolve.profile]).flatMap((profile) =>
-                    sketchModelFeatureIds(document, profile.sketchId),
-                  ),
-                ),
-              ]
-            : []),
-        ]),
-      ],
-    }
-  })
+  return features.map((feature) => ({
+    ...feature,
+    dependencies: [
+      ...new Set([
+        ...feature.dependencies,
+        ...documentSketchSchedulingDependencies(document, feature),
+      ]),
+    ],
+  }))
 }
 
 export async function rebuildDocumentFeatures(

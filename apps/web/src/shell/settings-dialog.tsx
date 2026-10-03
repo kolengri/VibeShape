@@ -13,9 +13,10 @@ import {
 import { Settings as SettingsIcon } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useState } from "react"
-import { useDialogOpen } from "../components/use-dialog-open"
+import { type DialogOpenProps, useDialogOpen } from "../components/use-dialog-open"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentDisplayUnitsSettings } from "../document/document-display-units-dialog"
+import { PrinterSettings } from "../printing/printer-settings"
 import { useViewerPreferences } from "./viewer-preferences"
 import { WorkspaceLayoutSettings } from "./workspace-layout-settings"
 
@@ -26,13 +27,9 @@ export function SettingsDialog({
   open: controlledOpen,
   onOpenChange,
   onCloseAutoFocus,
-}: {
+}: DialogOpenProps & {
   controller: DocumentControllerState
   blocked: boolean
-  showTrigger?: boolean
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onCloseAutoFocus?: (event: Event) => void
 }) {
   const t = useTranslations("app.settings")
   const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
@@ -102,6 +99,7 @@ export function SettingsDialog({
             <p className="text-xs text-muted-foreground">{t("autoHideDescription")}</p>
             <WorkspaceLayoutSettings />
           </section>
+          <PrinterSettings />
           <section className="grid gap-3 border-t pt-4" aria-label={t("project")}>
             <h3 className="font-medium">{t("project")}</h3>
             <DocumentDisplayUnitsSettings

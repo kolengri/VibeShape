@@ -273,6 +273,27 @@ describe("editor command registry", () => {
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
   })
 
+  it("exposes Spline through the ordinary sketch command eligibility and trusted handler", () => {
+    const unavailable = resolveBuiltInEditorCommands(commandContext()).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchSpline,
+    )
+    expect(unavailable?.eligibility.enabled).toBe(false)
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const command = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchSpline,
+    )
+    expect(command?.eligibility.enabled).toBe(true)
+    expect(command?.descriptor).toMatchObject({
+      labelKey: "sketchSpline",
+      toolbarGroup: "sketch-tools",
+    })
+    command?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledExactlyOnceWith("cubic-bezier")
+  })
+
   it("resolves eligibility and invokes the same trusted handler used by every surface", () => {
     const context = commandContext()
     const commands = resolveBuiltInEditorCommands(context)
@@ -791,3 +812,33 @@ it("allows Escape to clear idle body selection through the shared command", asyn
   await command?.invoke()
   expect(context.actions.cancelActive).toHaveBeenCalledOnce()
 })
+
+it.each(["createLoft", "createSweep"] as const)(
+  "routes %s through the registered saved-sketch guard",
+  (command) => {
+    const action = vi.fn()
+    const unavailable = commandContext()
+    const unavailableCommands = resolveBuiltInEditorCommands({
+      ...unavailable,
+      actions: { ...unavailable.actions, [command]: action },
+    })
+    expect(
+      unavailableCommands.find(({ descriptor }) => descriptor.id === editorCommandIds[command])
+        ?.eligibility,
+    ).toMatchObject({ enabled: false, reason: "noSavedSketches" })
+    const available = commandContext({ hasSavedSketches: true })
+    const entry = resolveBuiltInEditorCommands({
+      ...available,
+      actions: { ...available.actions, [command]: action },
+    }).find(({ descriptor }) => descriptor.id === editorCommandIds[command])
+    expect(entry?.eligibility.enabled).toBe(true)
+    entry?.invoke()
+    expect(action).toHaveBeenCalledOnce()
+    const editing = commandContext({ hasSavedSketches: true, activePartDesignCommand: "loft" })
+    expect(
+      resolveBuiltInEditorCommands(editing).find(
+        ({ descriptor }) => descriptor.id === editorCommandIds[command],
+      )?.eligibility.enabled,
+    ).toBe(false)
+  },
+)

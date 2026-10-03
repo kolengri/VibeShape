@@ -35,8 +35,10 @@ export function ApplicationBar({
   controller,
   onOpenCommandPalette,
   onOpenShortcutHelp,
+  hideModelExport = false,
 }: {
   controller: DocumentControllerState
+  hideModelExport?: boolean
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
 }) {
@@ -60,6 +62,7 @@ export function ApplicationBar({
       <RemoteAutomationConsentDialog connection={remoteConnection} current={remote} />
       <ApplicationMenu
         controller={controller}
+        hideModelExport={hideModelExport}
         blockedReason={blockedReason}
         unitChangesBlocked={unitChangesBlocked}
         remoteEndpoint={remote.available ? import.meta.env.VITE_REMOTE_MCP_URL : undefined}

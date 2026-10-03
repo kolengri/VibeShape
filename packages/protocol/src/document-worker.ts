@@ -1,4 +1,6 @@
 import { z } from "zod"
+import { exportAssemblyInputSchema } from "./assembly-export"
+import { assemblyInspectionSchema, inspectAssemblyInputSchema } from "./assembly-inspection"
 import {
   extrusionFrameSchema,
   featureEvaluationEngineResultSchema,
@@ -7,6 +9,12 @@ import {
   geometryProgressStageSchema,
   sha256Schema,
 } from "./geometry-worker"
+import {
+  importedSolidSignatureSchema,
+  importedSourceContentSchema,
+  sourceAssetMaterializationsSchema,
+} from "./import-content"
+import { inspectMeshImportInputSchema, meshImportInspectionSchema } from "./mesh-import"
 import { printPreparationResultSchema, printPreparationSettingsSchema } from "./print-preparation"
 import {
   sketchDragTargetWireSchema,
@@ -22,7 +30,7 @@ import {
   surfaceTextureQualitySchema,
 } from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 23 as const
+export const DOCUMENT_PROTOCOL_VERSION = 24 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -124,6 +132,7 @@ const requestEnvelopeSchema = z
 const rebuildDocumentRequestSchema = requestEnvelopeSchema
   .extend({
     type: z.literal("rebuildDocument"),
+    sourceAssets: sourceAssetMaterializationsSchema.optional(),
     document: documentRebuildSnapshotSchema,
     mesh: featureMeshPolicySchema,
   })
@@ -210,8 +219,37 @@ const solveSketchRequestSchema = requestEnvelopeSchema
     }
   })
 
+export const inspectSourceImportInputSchema = z
+  .object({
+    source: importedSourceContentSchema,
+    bytes: z.instanceof(Uint8Array).transform((bytes) => Uint8Array.from(bytes)),
+    mesh: featureMeshPolicySchema,
+  })
+  .strict()
+  .refine(({ source, bytes }) => source.byteLength === bytes.byteLength, {
+    message: "Source inspection bytes must match their declared size.",
+  })
+const inspectSourceImportRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("inspectSourceImport"),
+  input: inspectSourceImportInputSchema,
+})
+export type InspectSourceImportInput = z.infer<typeof inspectSourceImportInputSchema>
+
 export const documentWorkerRequestSchema = z.discriminatedUnion("type", [
   rebuildDocumentRequestSchema,
+  inspectSourceImportRequestSchema,
+  requestEnvelopeSchema.extend({
+    type: z.literal("inspectMeshImport"),
+    input: inspectMeshImportInputSchema,
+  }),
+  requestEnvelopeSchema.extend({
+    type: z.literal("inspectAssembly"),
+    input: inspectAssemblyInputSchema,
+  }),
+  requestEnvelopeSchema.extend({
+    type: z.literal("exportAssembly"),
+    input: exportAssemblyInputSchema,
+  }),
   solveSketchRequestSchema,
   exportDocumentRequestSchema,
   disposeDocumentRequestSchema,
@@ -329,7 +367,7 @@ const sketchProfileSelectorWireSchema = z
 const sketchDisplayProfileSegmentSchema = z
   .object({
     entityId: sketchWireIdSchema,
-    type: z.enum(["line", "arc", "circle", "ellipse", "elliptical-arc"]),
+    type: z.enum(["line", "arc", "circle", "ellipse", "elliptical-arc", "cubic-bezier"]),
     reversed: z.boolean(),
     samples: z.array(sketchDisplaySampleSchema).min(2).max(MAX_SKETCH_DISPLAY_SAMPLE_POINTS),
   })
@@ -637,33 +675,37 @@ const healthResponseSchema = responseEnvelopeSchema.extend({
   wasmHeapBytes: revisionSchema,
 })
 
-const documentExportedResponseSchema = responseEnvelopeSchema
-  .extend({
-    type: z.literal("documentExported"),
-    format: geometryExportFormatSchema,
-    file: z.instanceof(Uint8Array),
-    bodyCount: z.number().int().positive().safe(),
-    printPreparation: printPreparationResultSchema.optional(),
-  })
-  .superRefine((response, context) => {
-    if (
-      response.printPreparation &&
-      (response.format !== "3mf" ||
-        response.bodyCount !== response.printPreparation.report.bodyCount)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "A prepared print must be a 3MF with matching source body counts.",
-      })
-    }
-    if (response.file.byteLength === 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["file"],
-        message: "An exported document file must not be empty.",
-      })
-    }
-  })
+function exportedResponseSchema<T extends "documentExported" | "assemblyExported">(type: T) {
+  return responseEnvelopeSchema
+    .extend({
+      type: z.literal(type),
+      format: geometryExportFormatSchema,
+      file: z.instanceof(Uint8Array),
+      bodyCount: z.number().int().positive().safe(),
+      printPreparation: printPreparationResultSchema.optional(),
+    })
+    .superRefine((response, context) => {
+      if (
+        response.printPreparation &&
+        (response.format !== "3mf" ||
+          response.bodyCount !== response.printPreparation.report.bodyCount)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "A prepared print must be a 3MF with matching source body counts.",
+        })
+      }
+      if (response.file.byteLength === 0) {
+        context.addIssue({
+          code: "custom",
+          path: ["file"],
+          message: "An exported document file must not be empty.",
+        })
+      }
+    })
+}
+const documentExportedResponseSchema = exportedResponseSchema("documentExported")
+const assemblyExportedResponseSchema = exportedResponseSchema("assemblyExported")
 
 const sketchSolvedResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("sketchSolved"),
@@ -706,9 +748,48 @@ const failureResponseSchema = responseEnvelopeSchema.extend({
     .strict(),
 })
 
+export const sourceImportInspectionSchema = z
+  .object({
+    unitEvidence: z.literal("explicit-source-metadata"),
+    outputs: z
+      .array(
+        z
+          .object({
+            signature: importedSolidSignatureSchema,
+            mesh: featureEvaluationEngineResultSchema.shape.mesh,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(128),
+  })
+  .strict()
+  .superRefine(({ outputs }, context) => {
+    if (outputs.reduce((total, output) => total + output.mesh.positions.length, 0) > 2_000_000)
+      context.addIssue({
+        code: "custom",
+        message: "Source inspection exceeds its aggregate mesh transfer budget.",
+      })
+  })
+export type SourceImportInspection = z.infer<typeof sourceImportInspectionSchema>
+const sourceImportInspectedResponseSchema = responseEnvelopeSchema.extend({
+  type: z.literal("sourceImportInspected"),
+  inspection: sourceImportInspectionSchema,
+})
+
 export const documentWorkerResponseSchema = z.discriminatedUnion("type", [
   progressResponseSchema,
   documentRebuiltResponseSchema,
+  sourceImportInspectedResponseSchema,
+  responseEnvelopeSchema.extend({
+    type: z.literal("meshImportInspected"),
+    inspection: meshImportInspectionSchema,
+  }),
+  responseEnvelopeSchema.extend({
+    type: z.literal("assemblyInspected"),
+    inspection: assemblyInspectionSchema,
+  }),
+  assemblyExportedResponseSchema,
   sketchSolvedResponseSchema,
   documentExportedResponseSchema,
   documentDisposedResponseSchema,

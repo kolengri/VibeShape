@@ -34,6 +34,10 @@ type PendingRequest = {
 const terminalResponseTypeByRequest = {
   rebuildDocument: "documentRebuilt",
   solveSketch: "sketchSolved",
+  inspectSourceImport: "sourceImportInspected",
+  inspectMeshImport: "meshImportInspected",
+  inspectAssembly: "assemblyInspected",
+  exportAssembly: "assemblyExported",
   exportDocument: "documentExported",
   disposeDocument: "documentDisposed",
   healthCheck: "health",

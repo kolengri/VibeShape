@@ -147,12 +147,21 @@ describe("authored combination inputs", () => {
     expect(authoredPlacementTarget({ ...part, body: null })).toBeNull()
     expect(authoredPlacementTarget(undefined)).toBeNull()
   })
-  it("rejects sibling output roles from one producer, duplicates, and incomplete selections", () => {
+  it("accepts distinct sibling output roles and rejects duplicate bodies or incomplete selections", () => {
     const { inputs } = fixture()
     const first = requireAuthoredFixture(inputs[0])
     const second = requireAuthoredFixture(inputs[1])
     const sibling = { ...second, body: { ...first.body, outputRole: "body.second" } }
-    expect(selectedCombinationInputs([first.partId, second.partId], [first, sibling])).toBeNull()
+    expect(selectedCombinationInputs([first.partId, second.partId], [first, sibling])).toEqual([
+      first,
+      sibling,
+    ])
+    expect(
+      selectedCombinationInputs(
+        [first.partId, second.partId],
+        [first, { ...second, body: first.body }],
+      ),
+    ).toBeNull()
     expect(selectedCombinationInputs([first.partId, first.partId], inputs)).toBeNull()
     expect(selectedCombinationInputs([first.partId], inputs)).toBeNull()
     expect(selectedCombinationInputs([first.partId, second.partId], [first])).toBeNull()

@@ -4,13 +4,17 @@ import {
   commandActorsEqual,
   type DocumentAuthorityEvent,
   type DocumentAuthoritySnapshot,
+  documentEventSourceAssets,
+  documentSourceAssetClosure,
   reduceDocumentAuthorityEvent,
+  type SourceAssetBlob,
 } from "@vibeshape/domain"
 import {
   requireAuthorityProject,
   requireSupportedAuthorityVersion,
   storeAuthorityEvent,
   storeAuthoritySnapshot,
+  validAuthorityEvent,
 } from "./authority-records"
 import { loadAuthorityRestoreTarget, recoverAuthoritySnapshot } from "./authority-recovery"
 import {
@@ -19,9 +23,11 @@ import {
   persistenceAuthorityDraftCommitInputSchema,
   projectRecordV2Schema,
   projectRecordV3Schema,
+  projectRecordV4Schema,
   recoveryAuthorityRecordSchema,
   recoveryRecordV2Schema,
   recoveryRecordV3Schema,
+  recoveryRecordV4Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -31,6 +37,7 @@ import {
 } from "./diagnostics"
 import type { CommitReport, DraftCommitReport, PersistenceResult } from "./repository"
 import type { WriterLeaseClaim } from "./schemas"
+import { publishSourceAssetBytes, verifySourceAssetBlobs } from "./source-asset-store"
 import { versionedSemanticWriteTransaction } from "./versioned-storage-transaction"
 import { requireWriterLease } from "./writer-lease-authority"
 
@@ -41,6 +48,7 @@ type AuthorityWrite = Readonly<{
   baseSnapshot: DocumentAuthoritySnapshot
   snapshot: AuthoredDocumentSnapshot
   events: readonly DocumentAuthorityEvent[]
+  assetBlobs: readonly SourceAssetBlob[]
 }>
 
 async function validateSequence(database: VibeShapeDatabase, input: AuthorityWrite) {
@@ -89,22 +97,13 @@ async function verifyStoredBase(database: VibeShapeDatabase, input: AuthorityWri
 }
 
 function nextProject(current: ProjectAuthorityRecord, input: AuthorityWrite) {
-  const upgrade = input.events.find((event) => event.type === "org.vibeshape.document.upgraded-v2")
-  const upgradeRevision = current.schemaVersion !== 1 ? current.upgradeRevision : upgrade?.revision
-  const textureUpgrade = input.events.find(
-    (event) => event.type === "org.vibeshape.document.upgraded-v3",
-  )
-  const schema = input.snapshot.schemaVersion === 3 ? projectRecordV3Schema : projectRecordV2Schema
+  const schema = { 2: projectRecordV2Schema, 3: projectRecordV3Schema, 4: projectRecordV4Schema }[
+    input.snapshot.schemaVersion
+  ]
   return schema.parse({
     ...current,
     schemaVersion: input.snapshot.schemaVersion,
-    ...(input.snapshot.schemaVersion === 3
-      ? {
-          textureUpgradeRevision:
-            current.schemaVersion === 3 ? current.textureUpgradeRevision : textureUpgrade?.revision,
-        }
-      : {}),
-    upgradeRevision,
+    ...authorityUpgradeBoundaries(current, input),
     name: input.snapshot.name,
     headRevision: input.snapshot.revision,
     latestSnapshotRevision: input.snapshot.revision,
@@ -113,9 +112,48 @@ function nextProject(current: ProjectAuthorityRecord, input: AuthorityWrite) {
   })
 }
 
+async function publicationClosure(database: VibeShapeDatabase, input: AuthorityWrite) {
+  const historical: DocumentAuthorityEvent[] = []
+  if (input.events.some((event) => documentEventSourceAssets(event).length > 0)) {
+    const records = await database.eventsV1
+      .where("documentId")
+      .equals(input.snapshot.id)
+      .limit(100_001)
+      .toArray()
+    if (records.length > 100_000)
+      throw persistenceInvariantError(
+        "corrupt-history",
+        "The source journal exceeds its event budget.",
+      )
+    for (const record of records) {
+      const event = await validAuthorityEvent(record)
+      if (!event)
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The historical source authority journal is corrupt.",
+        )
+      historical.push(event)
+    }
+  }
+  try {
+    return documentSourceAssetClosure(
+      input.baseSnapshot,
+      [...historical, ...input.events],
+      input.snapshot,
+    )
+  } catch {
+    throw persistenceInvariantError(
+      "invalid-input",
+      "Source identities cannot change their immutable historical declarations.",
+    )
+  }
+}
+
 async function writeAuthorityRecords(database: VibeShapeDatabase, input: AuthorityWrite) {
   await validateSequence(database, input)
   await verifyStoredBase(database, input)
+  const prepared = await verifySourceAssetBlobs(input.assetBlobs)
+  const assets = await publicationClosure(database, input)
   const records = {
     events: await Promise.all(
       input.events.map((event) => storeAuthorityEvent(event, input.storedAt)),
@@ -134,11 +172,17 @@ async function writeAuthorityRecords(database: VibeShapeDatabase, input: Authori
     const marker = await database.recoveryV1.get(input.snapshot.id)
     requireSupportedAuthorityVersion(marker)
     const recovery = recoveryAuthorityRecordSchema.safeParse(marker)
+    await publishSourceAssetBytes(database, assets, prepared)
     await database.eventsV1.bulkAdd(records.events)
     await database.snapshotsV1.add(records.snapshot)
     await database.projectsV1.put(project)
     await database.recoveryV1.put(
-      (input.snapshot.schemaVersion === 3 ? recoveryRecordV3Schema : recoveryRecordV2Schema).parse({
+      (input.snapshot.schemaVersion === 4
+        ? recoveryRecordV4Schema
+        : input.snapshot.schemaVersion === 3
+          ? recoveryRecordV3Schema
+          : recoveryRecordV2Schema
+      ).parse({
         schemaVersion: input.snapshot.schemaVersion,
         documentId: input.snapshot.id,
         sessionId: input.sessionId,
@@ -163,13 +207,13 @@ export async function commitDocumentAuthority(
     !parsed.success ||
     parsed.data.baseSnapshot === null ||
     parsed.data.snapshot.schemaVersion === 1 ||
-    parsed.data.event.schemaVersion !== parsed.data.snapshot.schemaVersion
+    parsed.data.event.schemaVersion === 1
   )
     return {
       ok: false,
       diagnostic: createPersistenceDiagnostic(
         "invalid-input",
-        "An authority commit requires a base and one explicit authored event/result.",
+        "An authority commit requires a base and one explicitly versioned authored event/result.",
       ),
     }
   try {
@@ -204,7 +248,7 @@ function draftEnvelopesMatch(
     first !== undefined &&
     input.events.every(
       (event) =>
-        event.schemaVersion === input.snapshot.schemaVersion &&
+        event.schemaVersion !== 1 &&
         event.type !== "org.vibeshape.document.restored" &&
         event.transactionId === input.transactionId &&
         event.documentId === input.snapshot.id &&
@@ -247,4 +291,24 @@ export async function commitDocumentAuthorityDraft(
   } catch (error) {
     return { ok: false, diagnostic: classifyPersistenceError(error) }
   }
+}
+
+function authorityUpgradeBoundaries(current: ProjectAuthorityRecord, input: AuthorityWrite) {
+  const revision = (type: DocumentAuthorityEvent["type"]) =>
+    input.events.find((event) => event.type === type)?.revision
+  const upgradeRevision =
+    "upgradeRevision" in current
+      ? current.upgradeRevision
+      : revision("org.vibeshape.document.upgraded-v2")
+  if (input.snapshot.schemaVersion === 2) return { upgradeRevision }
+  const textureUpgradeRevision =
+    "textureUpgradeRevision" in current
+      ? current.textureUpgradeRevision
+      : revision("org.vibeshape.document.upgraded-v3")
+  if (input.snapshot.schemaVersion === 3) return { upgradeRevision, textureUpgradeRevision }
+  const sourceUpgradeRevision =
+    current.schemaVersion === 4
+      ? current.sourceUpgradeRevision
+      : revision("org.vibeshape.document.upgraded-v4")
+  return { upgradeRevision, textureUpgradeRevision, sourceUpgradeRevision }
 }

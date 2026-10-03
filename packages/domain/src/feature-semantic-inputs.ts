@@ -1,6 +1,7 @@
 import type { DocumentNodeRef } from "./document-node"
 import type { FeatureRecord, FeatureRecordV1 } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
+import type { SketchId } from "./identifiers"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -27,9 +28,23 @@ import {
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
-import { compoundFeatureType, unionFeatureType } from "./part-design-body-combination"
+import {
+  compoundFeatureType,
+  compoundFeatureTypeV2,
+  unionFeatureType,
+  unionFeatureTypeV2,
+} from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
+import { importedFeatureType } from "./part-design-import"
+import { loftFeatureType, readLoftFeatureParameters } from "./part-design-loft"
+import { meshImportFeatureType } from "./part-design-mesh-import"
+import { mirrorFeatureType } from "./part-design-mirror"
+import { patternFeatureType } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
+import { shellFeatureType } from "./part-design-shell"
+import { splitFeatureType } from "./part-design-split"
+import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
+import { threadFeatureType } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
@@ -42,9 +57,18 @@ export type FirstPartySemanticInputProjection =
 const emptySemanticInputTypeKeys = new Set(
   [
     boxFeatureType,
+    importedFeatureType,
+    meshImportFeatureType,
+    threadFeatureType,
     placementFeatureType,
+    mirrorFeatureType,
+    patternFeatureType,
+    shellFeatureType,
+    splitFeatureType,
     compoundFeatureType,
+    compoundFeatureTypeV2,
     unionFeatureType,
+    unionFeatureTypeV2,
     cylinderFeatureType,
     sphereFeatureType,
     coneFeatureType,
@@ -75,10 +99,43 @@ const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureTypeV6.type),
 ])
 
+const sketchSolidInputReaders = new Map<
+  string,
+  (feature: VersionedFeatureRecord) => readonly SketchId[] | null
+>([
+  [
+    featureTypeKey(loftFeatureType.type),
+    (feature) =>
+      readLoftFeatureParameters(feature)?.sections.map(({ sketchId }) => sketchId) ?? null,
+  ],
+  [
+    featureTypeKey(sweepFeatureType.type),
+    (feature) => {
+      const parameters = readSweepFeatureParameters(feature)
+      return parameters ? [parameters.profile.sketchId, parameters.path.sketchId] : null
+    },
+  ],
+])
+
 export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
 ): FirstPartySemanticInputProjection {
   const typeKey = featureTypeKey(feature.type)
+  const readSketchSolidInputs = sketchSolidInputReaders.get(typeKey)
+  if (readSketchSolidInputs) {
+    const sketchIds = readSketchSolidInputs(feature)
+    return sketchIds
+      ? {
+          recognized: true,
+          ok: true,
+          inputs: [...new Set(sketchIds)].map((id) => ({ kind: "sketch", id })),
+        }
+      : {
+          recognized: true,
+          ok: false,
+          message: "A sketch-based solid must contain valid ordered sketch selectors.",
+        }
+  }
   if (
     typeKey === featureTypeKey(holeFeatureType.type) ||
     typeKey === featureTypeKey(holeFeatureTypeV2.type)

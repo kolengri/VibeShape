@@ -80,6 +80,15 @@ function clonedCurve(
   id: SketchEntityId,
 ): SketchCurveEntity {
   switch (curve.type) {
+    case "cubic-bezier":
+      return {
+        ...curve,
+        id,
+        startPointId: mappedPointId(pointIds, curve.startPointId),
+        control1PointId: mappedPointId(pointIds, curve.control1PointId),
+        control2PointId: mappedPointId(pointIds, curve.control2PointId),
+        endPointId: mappedPointId(pointIds, curve.endPointId),
+      }
     case "line":
       return {
         ...curve,

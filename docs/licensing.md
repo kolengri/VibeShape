@@ -28,6 +28,8 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | RapidJSON source input | MIT for the library; the archive records additional terms for auxiliary material | Preserve the complete upstream license file; do not compile excluded auxiliary tools without a separate review |
 | FreeType source input | FreeType License selected for the controlled build | Preserve the FreeType license and attribution |
 | Replicad runtime transitives: Flatbush / FlatQueue; OpenType.js and polyfills | ISC; MIT | Include applicable notices from the exact lockfile in the generated third-party bundle |
+| Bundled Noto Sans Regular 2.008 | SIL Open Font License 1.1 | Preserve the complete OFL, Reserved Font Name terms, pinned provenance and digest; distribution includes `sources/Noto-Sans-OFL.txt` and `sources/Noto-Sans-provenance.md` |
+| OpenType.js 2.0.0 sketch-text reader | MIT | Preserve `sources/opentype-js-MIT.txt`; the font and reader are separately licensed |
 | SolveSpace | GPL-3.0-or-later | Publish sources, patches, and build scripts; keep the combined work GPL-compatible |
 | React | MIT | Include a third-party notice |
 | React DOM | MIT | Include a third-party notice |
@@ -125,6 +127,16 @@ The legal relationship between a public VibeShape extension API, the GPL applica
 
 VibeShape may reject packages from an official catalog for missing or incompatible license information, but a technical manifest validator is not a legal-compliance guarantee. Self-hosted catalogs remain responsible for their own distribution and notice obligations.
 
+## Sketch text assets
+
+The browser bundles the immutable Noto Sans Regular 2.008 font identified by
+`noto-sans-regular-2.008-v1`. Its full bytes, upstream commit, SHA-256 and license are recorded in
+`packages/formats/src/text-outline/fonts`. Vite emits the OFL, font provenance and OpenType.js MIT
+notice into every production build; the local distribution retains and links those files. Generated
+text geometry stores ordinary analytical curves plus editable intent and the fixed font identity.
+It does not request system fonts or download alternate fonts. See
+[ADR-0070](adr/0070-immutable-font-sketch-text-outlines.md).
+
 ## Release Checklist
 
 - Include the complete `LICENSE` file.
@@ -140,3 +152,7 @@ VibeShape may reject packages from an official catalog for missing or incompatib
 ## Name and Trademarks
 
 VibeShape is described as an independent browser-based CAD application. Onshape may be mentioned only for functional comparison. Do not use its logos, UI assets, or language that implies an official relationship.
+
+The bounded SVG/3MF parser bundles `saxes` 6.0.0. Its npm archive omits LICENSE; the exact
+upstream v6.0.0 notice is retained as `deployment/licenses/saxes-6.0.0-LICENSE.txt` and included
+in the generated worker notice. Source: [upstream v6.0.0 LICENSE](https://github.com/lddubeau/saxes/blob/v6.0.0/LICENSE).

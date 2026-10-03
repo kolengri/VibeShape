@@ -37,3 +37,15 @@ Use `model_variables`/`draft_variables` to read names, expressions, evaluated va
 - **Change thickness or diameter:** change the existing variable expression or feature parameter, retaining IDs, profiles, scopes, and support. Preview all dependent features; do not rebuild a parallel replacement.
 
 A recipe is design guidance, not a batch tool. Execute actual discovered tools sequentially and use their returned revisions.
+
+## Body operations and section features
+
+Use `model_body_measurements` to select the exact feature/output-role pair for Mirror, body Pattern, Split, Shell and Thread. Never infer a transient OCCT index or widen a body selection to its entire feature. Preserve the matching dependency and stable feature ID on update. Linear/circular body patterns produce independently addressable copies; inspect the live count and spacing/angle limits. Split takes an origin plane and signed offset and requires one connected solid per side.
+
+Shell requires exact body-bound opening references from `model_body_topology`, their source content hash, explicit inward/outward direction and positive thickness. Repair changed topology by inspecting and reselecting openings; stale references fail closed. Mirror retains its explicit origin plane/offset and copy intent.
+
+Sweep uses one solved profile and an open connected tangent-continuous line/arc path with sorted unique entity IDs and an explicit start point. The profile must already lie at the path start normal to its tangent; the tool does not reposition it. Loft uses two to eight ordered, unique, hole-free profile selectors and an explicit ruled setting. Preserve profile-before-path or section-order support/external dependencies and their references. Inspect exact preview for continuity and intended orientation.
+
+Thread creates custom 60-degree V-groove geometry, without ISO/DIN fit certification. Specify external/internal, axis and origin, nominal diameter, pitch, length, depth, clearance, handedness, one to four starts, phase and unthreaded run-in/run-out allowances. The authored band is bounded to sixteen total turns and depth to 0.75 times pitch. Preview and measure the intended cylindrical band before commit; kernel failures must not silently fall back to an unthreaded body.
+
+Geometry/planar file import, text generation, assembly authoring, library management and surface texture authoring are editor workflows, not named MCP construction tools. Source-backed features can be inspected and survive supported upstream edits. Use the visible editor for those workflows; discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named feature schemas and ordinary draft preview/review/commit path.

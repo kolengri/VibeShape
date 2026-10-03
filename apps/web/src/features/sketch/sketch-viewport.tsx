@@ -2,6 +2,7 @@ import type { ProjectedSketchCurve } from "@vibeshape/application/sketch-curve-p
 import {
   materializeSketchDisplay,
   type SketchDisplayRecord,
+  sampleCubicBezierPoints,
 } from "@vibeshape/application/sketch-display"
 import {
   alignedRectangleGeometry,
@@ -12,6 +13,7 @@ import {
   appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
+  appendSketchCubicBezier,
   appendSketchEllipse,
   appendSketchEllipticalArc,
   appendSketchLine,
@@ -384,6 +386,11 @@ type PendingGeometry =
       kind: "circle"
       center: SketchPointTarget
       centerRelations: readonly SketchPointRelationInference[]
+    }>
+  | Readonly<{
+      kind: "cubic-bezier"
+      start: SketchPointTarget
+      controls: readonly [] | readonly [SketchPoint2] | readonly [SketchPoint2, SketchPoint2]
     }>
   | Readonly<{ kind: "ellipse-primary"; center: SketchPointTarget }>
   | Readonly<{
@@ -1250,6 +1257,20 @@ function ellipticalArcSamples(
   return reversed ? samples.reverse() : samples
 }
 
+function cubicBezierSamples(
+  entity: Extract<SketchEntity, { type: "cubic-bezier" }>,
+  points: SketchPointLookup,
+  reversed = false,
+) {
+  const start = points.get(entity.startPointId),
+    control1 = points.get(entity.control1PointId)
+  const control2 = points.get(entity.control2PointId),
+    end = points.get(entity.endPointId)
+  if (!start || !control1 || !control2 || !end) return null
+  const samples = sampleCubicBezierPoints(start, control1, control2, end)
+  return reversed ? samples.reverse() : samples
+}
+
 function segmentSamples(
   entity: SketchEntity,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -1257,6 +1278,8 @@ function segmentSamples(
   reversed: boolean,
 ) {
   switch (entity.type) {
+    case "cubic-bezier":
+      return cubicBezierSamples(entity, points, reversed)
     case "line":
       return lineSamples(entity, points, reversed)
     case "arc":
@@ -1628,11 +1651,42 @@ function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | 
   )
 }
 
+function SketchCubicBezier(
+  props: CurveDrawingProps & { entity: Extract<SketchEntity, { type: "cubic-bezier" }> },
+) {
+  const start = props.points.get(props.entity.startPointId)
+  const control1 = props.points.get(props.entity.control1PointId)
+  const control2 = props.points.get(props.entity.control2PointId)
+  const end = props.points.get(props.entity.endPointId)
+  if (!start || !control1 || !control2 || !end) return null
+  const path = `M ${start.x} ${start.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${end.x} ${end.y}`
+  return (
+    <>
+      {props.interactive && !props.hidden ? (
+        <path {...curveHitAreaProps(props.entity.id, props.onPointerDown)} d={path} />
+      ) : null}
+      <path
+        {...curveDrawingProps(
+          props.entity,
+          props.hidden,
+          props.interactive,
+          props.preselected,
+          props.selected,
+          props.onPointerDown,
+        )}
+        d={path}
+      />
+    </>
+  )
+}
+
 const SketchCurve = memo(
   function SketchCurve(
     props: CurveDrawingProps & { entity: Exclude<SketchEntity, { type: "point" }> },
   ) {
     switch (props.entity.type) {
+      case "cubic-bezier":
+        return <SketchCubicBezier {...props} entity={props.entity} />
       case "line":
         return <SketchLine {...props} entity={props.entity} />
       case "circle":
@@ -3221,6 +3275,20 @@ function ellipticalArcEntityAnchor(
     : (points.get(entity.centerPointId) ?? null)
 }
 
+function cubicEntityAnchor(
+  entity: Extract<SketchEntity, { type: "cubic-bezier" }>,
+  points: SketchPointLookup,
+) {
+  return cubicBezierSamples(entity, points)?.[32] ?? null
+}
+function arcEntityAnchor(
+  entity: Extract<SketchEntity, { type: "arc" }>,
+  point: (id: SketchEntityId) => SketchPoint2 | null,
+) {
+  return (
+    midpointForIds(entity.startPointId, entity.endPointId, point) ?? point(entity.centerPointId)
+  )
+}
 function entityAnchor(
   entity: SketchEntity | undefined,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -3229,6 +3297,8 @@ function entityAnchor(
   if (!entity) return null
   const point = (id: SketchEntityId): SketchPoint2 | null => points.get(id) ?? null
   switch (entity.type) {
+    case "cubic-bezier":
+      return cubicEntityAnchor(entity, points)
     case "point":
       return point(entity.id)
     case "line":
@@ -3236,9 +3306,7 @@ function entityAnchor(
     case "circle":
       return circleEntityAnchor(entity, point, solvedCircles)
     case "arc":
-      return (
-        midpointForIds(entity.startPointId, entity.endPointId, point) ?? point(entity.centerPointId)
-      )
+      return arcEntityAnchor(entity, point)
     case "ellipse":
       return ellipseEntityAnchor(entity, points)
     case "elliptical-arc":
@@ -4039,11 +4107,13 @@ type PendingWithTargetStart = Extract<
   | { kind: "line" }
   | { kind: "slot-end" }
   | { kind: "slot-width" }
+  | { kind: "cubic-bezier" }
   | { kind: "three-point-arc-end" }
   | { kind: "three-point-arc-point" }
 >
 
 const pendingTargetStartKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
+  "cubic-bezier",
   "aligned-rectangle-end",
   "aligned-rectangle-width",
   "line",
@@ -4777,6 +4847,37 @@ function PendingAnalyticalCurveShape({
   return <PendingRoundCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
 }
 
+function PendingCubicBezierShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: Extract<PendingGeometry, { kind: "cubic-bezier" }>
+  sketch: SketchRecord
+}) {
+  const start = pointForTarget(sketch, pending.start)
+  const poles = [start, ...pending.controls, cursor]
+  const firstControl = pending.controls[0] ?? cursor
+  const secondControl = pending.controls[1] ?? cursor
+  const path = `M ${start.x} ${start.y} C ${firstControl.x} ${firstControl.y} ${secondControl.x} ${secondControl.y} ${cursor.x} ${cursor.y}`
+  return (
+    <>
+      <polyline
+        data-sketch-spline-control-polygon
+        points={poles.map(({ x, y }) => `${x},${y}`).join(" ")}
+        opacity={0.65}
+      />
+      {pending.controls.length > 0 ? (
+        <path data-sketch-spline-preview-curve d={path} strokeDasharray="none" strokeWidth={2} />
+      ) : null}
+      {poles.map((point, index) => (
+        <circle key={index} cx={point.x} cy={point.y} r={1.5} />
+      ))}
+    </>
+  )
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -4788,6 +4889,8 @@ function PendingCurveShape({
   sketch: SketchRecord
   start: SketchPoint2
 }) {
+  if (pending.kind === "cubic-bezier")
+    return <PendingCubicBezierShape cursor={cursor} pending={pending} sketch={sketch} />
   if (pending.kind === "midpoint-line") {
     const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
     return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
@@ -6054,6 +6157,44 @@ function placeCircle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function cubicEndpointTarget(
+  start: SketchPointTarget,
+  end: SketchPointTarget,
+  point: SketchPoint2,
+): SketchPointTarget {
+  // A closed curve retains two separately authored endpoint identities.
+  return start.kind === "existing" && end.kind === "existing" && start.pointId === end.pointId
+    ? { kind: "new", point }
+    : end
+}
+
+function placeCubicBezier(input: PlacementInput): PlacementUpdate {
+  const pending = input.pending
+  if (pending?.kind !== "cubic-bezier")
+    return { draft: null, pending: { kind: "cubic-bezier", start: input.target, controls: [] } }
+  if (pending.controls.length === 0) {
+    const start = pointForTarget(input.draft, pending.start)
+    if (Math.hypot(start.x - input.point.x, start.y - input.point.y) <= 1e-7)
+      return { draft: null, pending }
+    return { draft: null, pending: { ...pending, controls: [input.point] } }
+  }
+  if (pending.controls.length === 1)
+    return { draft: null, pending: { ...pending, controls: [pending.controls[0], input.point] } }
+  const lastControl = pending.controls[1]
+  if (Math.hypot(lastControl.x - input.point.x, lastControl.y - input.point.y) <= 1e-7)
+    return { draft: null, pending }
+  const end = cubicEndpointTarget(pending.start, input.target, input.point)
+  const result = appendSketchCubicBezier(input.draft, {
+    start: pending.start,
+    control1: { kind: "new", point: pending.controls[0] },
+    control2: { kind: "new", point: lastControl },
+    end,
+    construction: input.construction,
+    createEntityId: createBrowserSketchEntityId,
+  })
+  return { draft: result.sketch, pending: null }
+}
+
 function placeEllipse(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "ellipse-primary" && input.pending?.kind !== "ellipse-secondary") {
     return { draft: null, pending: { center: input.target, kind: "ellipse-primary" } }
@@ -6367,6 +6508,7 @@ const placementBuilders = {
   "centered-slot": placeCenteredSlot,
   circle: placeCircle,
   ellipse: placeEllipse,
+  "cubic-bezier": placeCubicBezier,
   "elliptical-arc": placeEllipticalArc,
   "circumscribed-polygon": placeCircumscribedPolygon,
   "inscribed-polygon": placeInscribedPolygon,
@@ -7448,6 +7590,7 @@ const pointInferenceSupport = {
   ellipse: (pending) => pending?.kind !== "ellipse-secondary",
   "elliptical-arc": (pending) =>
     pending?.kind !== "elliptical-arc-start" && pending?.kind !== "elliptical-arc-end",
+  "cubic-bezier": (pending) => pending?.kind !== "cubic-bezier" || pending.controls.length === 2,
   "circular-pattern": neverSupportsPointInference,
   "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
@@ -8080,6 +8223,8 @@ function draggedPointInference(input: {
 }
 
 function curveEntityPointIds(entity: SketchEntity): readonly SketchEntityId[] {
+  if (entity.type === "cubic-bezier")
+    return [entity.startPointId, entity.control1PointId, entity.control2PointId, entity.endPointId]
   if (entity.type === "arc") {
     return [entity.centerPointId, entity.startPointId, entity.endPointId]
   }
@@ -9290,6 +9435,7 @@ function SketchDrawingView({
         selectedEntityCount={configuration.selectedEntityIds.length}
       />
       <SketchOffsetInstruction editorTool={configuration.editorTool} pending={state.pending} />
+      <SketchSplineInstruction editorTool={configuration.editorTool} pending={state.pending} />
       <SketchTransformInstruction
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
@@ -9464,6 +9610,31 @@ function SketchUseInstruction({ editorTool }: Readonly<{ editorTool: SketchEdito
       role="status"
     >
       {t("sketchReferenceSelection")}
+    </div>
+  )
+}
+
+function SketchSplineInstruction({
+  editorTool,
+  pending,
+}: {
+  editorTool: SketchEditorTool
+  pending: PendingGeometry | null
+}) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "cubic-bezier") return null
+  const steps = ["control1", "control2", "end"] as const
+  const step = pending?.kind === "cubic-bezier" ? steps[pending.controls.length] : "start"
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
+      data-sketch-spline-instruction
+      role="status"
+    >
+      {t("splinePlacement", { step })}
     </div>
   )
 }

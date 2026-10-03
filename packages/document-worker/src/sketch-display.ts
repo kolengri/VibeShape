@@ -8,9 +8,9 @@ import type {
   ExternalModelMaterializationCache,
   PlanarFaceSectionPort,
   SketchSolveCache,
+  SketchSolvePort,
 } from "./external-sketch-references"
 import { solveSketchOnce } from "./extrusion-content"
-import type { SketchSolvePort } from "./runtime"
 
 export async function createSketchDisplayRecords(
   document: DocumentSnapshot,

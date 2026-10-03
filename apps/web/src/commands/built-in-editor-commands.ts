@@ -28,6 +28,7 @@ type PartDesignCommand = NonNullable<ReturnType<typeof activePartDesignCommand>>
 export type BuiltInEditorCommandContext = Readonly<{
   actions: Readonly<{
     openShortcutHelp?: () => void
+    openSketchText?: () => void
     cancelActive: () => void
     documentRedo?: (baseRevision: number) => Promise<unknown>
     documentUndo?: (baseRevision: number) => Promise<unknown>
@@ -43,6 +44,8 @@ export type BuiltInEditorCommandContext = Readonly<{
     createDatumPlane: () => void
     createExtrusion: () => unknown
     createRevolve?: () => unknown
+    createLoft?: () => void
+    createSweep?: () => void
     createSketch: () => void
     createSubtract: () => void
     measure?: () => void
@@ -214,6 +217,22 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     shortcut: { key: "e", modifiers: ["shift"] },
     ownerModuleId: partDesignOwner,
     sketchPresentation: { shortcutOrder: 10 },
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "loft",
+    id: editorCommandIds.createLoft,
+    labelKey: "createLoft",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "sweep",
+    id: editorCommandIds.createSweep,
+    labelKey: "createSweep",
+    ownerModuleId: partDesignOwner,
     toolbarGroup: "model-primary",
   },
   {
@@ -414,6 +433,22 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     labelKey: "sketchEllipse",
     ownerModuleId: sketchOwner,
     sketchPresentation: { family: "circle", familyOrder: 2 },
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
+    icon: "text",
+    id: editorCommandIds.sketchText,
+    labelKey: "sketchText",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
+    icon: "spline",
+    id: editorCommandIds.sketchSpline,
+    labelKey: "sketchSpline",
+    ownerModuleId: sketchOwner,
     toolbarGroup: "sketch-tools",
   },
   {
@@ -687,6 +722,14 @@ function canUseDocumentHistory(context: BuiltInEditorCommandContext, direction: 
     : editorCommandDisabled(direction === "undo" ? "noDocumentUndo" : "noDocumentRedo")
 }
 
+function canCreateSavedSketchFeature(context: BuiltInEditorCommandContext) {
+  const eligibility = canCreateFeature(context)
+  if (!eligibility.enabled) return eligibility
+  return context.state.hasSavedSketches
+    ? editorCommandEnabled()
+    : editorCommandDisabled("noSavedSketches")
+}
+
 function canCreateEdgeTreatment(context: BuiltInEditorCommandContext) {
   const eligibility = canCreateFeature(context)
   if (!eligibility.enabled) return eligibility
@@ -881,6 +924,22 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     ownerModuleId: partDesignOwner,
   },
   {
+    execute: ({ actions }) => actions.createLoft?.(),
+    getEligibility: canCreateSavedSketchFeature,
+    id: editorCommandIds.createLoft,
+    isActive: ({ state }) => state.activePartDesignCommand === "loft",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createSweep?.(),
+    getEligibility: canCreateSavedSketchFeature,
+    id: editorCommandIds.createSweep,
+    isActive: ({ state }) => state.activePartDesignCommand === "sweep",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
     execute: ({ actions }) => actions.createHole(),
     getEligibility: canCreateHole,
     id: editorCommandIds.createHole,
@@ -979,6 +1038,20 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchCenteredAlignedRectangle, "centered-aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
   sketchToolHandler(editorCommandIds.sketchEllipse, "ellipse"),
+  {
+    execute: ({ actions }) => actions.openSketchText?.(),
+    getEligibility: (context) => {
+      const eligible = writableDocumentEligibility(context, { allowActiveSketch: true })
+      if (!eligible.enabled) return eligible
+      return context.actions.openSketchText
+        ? requiresSketch(context)
+        : editorCommandDisabled("documentUnavailable")
+    },
+    id: editorCommandIds.sketchText,
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
+    ownerModuleId: sketchOwner,
+  },
+  sketchToolHandler(editorCommandIds.sketchSpline, "cubic-bezier"),
   sketchToolHandler(editorCommandIds.sketchEllipticalArc, "elliptical-arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
   sketchToolHandler(editorCommandIds.sketchInscribedPolygon, "inscribed-polygon"),

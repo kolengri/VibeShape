@@ -3,15 +3,14 @@ import { readPlacementFeatureParameters } from "@vibeshape/domain/part-design-pl
 import { useTranslations } from "@vibeshape/i18n"
 import type { ReactNode } from "react"
 import {
-  addFeature,
   createBrowserFeatureId,
   type DocumentControllerState,
-  updateFeature,
 } from "../document/document-controller"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import { PlacementForm, type PlacementFormCopy } from "../features/placement/placement-form"
 import type { PlacementFormMode } from "../features/placement/placement-form-model"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { featureTaskFormProps } from "./feature-task-form-props"
 
 type PlacementPanelProps = {
   activeTool: ActivePartDesignTool
@@ -85,16 +84,10 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
     <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <PlacementForm
         key={key}
-        baseRevision={report.snapshot.revision}
         copy={copy}
         mode={mode}
+        {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
-        disabled={props.documentBusy || report.mode === "read-only"}
-        onCancel={props.onCloseTool}
-        onSaved={props.onCompleteTool}
-        onSave={mode.kind === "edit" ? updateFeature : addFeature}
-        onPreviewChange={props.onFeaturePreviewChange}
-        previewStatus={props.featurePreviewStatus}
       />
       {mode.kind === "edit" && props.renderDelete(mode.feature)}
     </aside>

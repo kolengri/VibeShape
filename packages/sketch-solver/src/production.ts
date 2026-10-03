@@ -438,6 +438,20 @@ class ProductionSketchBuilder {
     this.#entityHandles.set(entity.id, handle)
   }
 
+  addCubicBezier(entity: Extract<SketchEntity, { type: "cubic-bezier" }>) {
+    const handle = this.#nextEntity++
+    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.cubic, {
+      points: [
+        this.entity(entity.startPointId),
+        this.entity(entity.control1PointId),
+        this.entity(entity.control2PointId),
+        this.entity(entity.endPointId),
+      ],
+      workplane: 200,
+    })
+    this.#entityHandles.set(entity.id, handle)
+  }
+
   addCircle(entity: Extract<SketchEntity, { type: "circle" }>, radius: number) {
     const radiusParameter = this.#addParameter(radius)
     const distanceHandle = this.#nextEntity++
@@ -1536,6 +1550,7 @@ function addSketchCurveEntity(
   circleRadii: ReadonlyMap<SketchEntityId, number>,
 ) {
   if (entity.type === "line") return builder.addLine(entity)
+  if (entity.type === "cubic-bezier") return builder.addCubicBezier(entity)
   if (entity.type === "arc") return builder.addArc(entity)
   if (entity.type === "ellipse") return builder.addEllipse(entity)
   if (entity.type === "elliptical-arc") return builder.addEllipticalArc(entity, pointValues)

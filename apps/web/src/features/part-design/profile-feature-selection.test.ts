@@ -16,10 +16,10 @@ import {
   ineligibleProfileSketchIds,
   initialProfileFeatureSelection,
   nextProfileFeatureSelection,
-  profileForFeatureTool,
   profileFeatureToolKey,
-  profilesForFeatureTool,
+  profileForFeatureTool,
   profileSelectorsEqual,
+  profilesForFeatureTool,
   revolveAxesEqual,
   revolveAxisAfterProfileSelection,
   topologyReferencesEqual,
@@ -171,10 +171,13 @@ describe("profile feature selection", () => {
     ).toBe(false)
   })
 
-  it("hides sketches after an edited profile feature", () => {
-    const tool = { kind: "edit-extrusion", featureId } satisfies ActivePartDesignTool
-    expect(ineligibleProfileSketchIds(snapshot, tool)).toEqual([laterSketchId])
-  })
+  it.each(["edit-extrusion", "edit-revolve", "edit-hole", "edit-loft", "edit-sweep"] as const)(
+    "hides sketches after an %s feature",
+    (kind) => {
+      const tool = { kind, featureId } satisfies ActivePartDesignTool
+      expect(ineligibleProfileSketchIds(snapshot, tool)).toEqual([laterSketchId])
+    },
+  )
 
   it("fails closed when the document graph cannot establish profile eligibility", () => {
     const tool = { kind: "edit-extrusion", featureId } satisfies ActivePartDesignTool

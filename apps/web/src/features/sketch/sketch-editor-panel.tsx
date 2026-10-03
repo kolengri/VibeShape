@@ -34,7 +34,6 @@ import { cn } from "@vibeshape/ui/lib/cn"
 import { useState } from "react"
 import { createPortal } from "react-dom"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
-import { useSketchConstraintManagerToolbarTarget } from "./sketch-toolbar-portals"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import {
@@ -42,6 +41,8 @@ import {
   externalReferenceMatchesCandidate,
 } from "./external-sketch-points"
 import { evaluateSketchDimensionValue } from "./sketch-dimension-value"
+import { useSketchConstraintManagerToolbarTarget } from "./sketch-toolbar-portals"
+import { SketchTextGroups } from "./text/text-groups"
 
 export type SketchEditorPanelCopy = Readonly<{
   angle: string
@@ -735,6 +736,7 @@ export function SketchEditorPanel({
           onDraftChange={onDraftChange}
           onSupportReplace={onSupportReplace}
         />
+        <SketchTextGroups draft={draft} disabled={disabled} />
         <ExternalReferencesSection
           candidates={externalPointCandidates}
           copy={copy}

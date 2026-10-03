@@ -7,7 +7,11 @@ export function authoredPlacementTarget(
 ): BodyReference | null {
   if (resolved?.status !== "available" || !resolved.part.visible) return null
   const body = resolved.body
-  return body
+  return body &&
+    body.representation !== "triangle-mesh" &&
+    body.shape.valid &&
+    body.shape.solidCount === 1 &&
+    body.shape.volume > 0
     ? { schemaVersion: 0, featureId: body.featureId, outputRole: body.outputRole ?? "result" }
     : null
 }

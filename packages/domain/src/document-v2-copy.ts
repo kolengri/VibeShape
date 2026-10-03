@@ -9,8 +9,10 @@ import {
 } from "./commands"
 import { type DocumentSnapshotV1, documentNameSchema, documentSnapshotV1Schema } from "./document"
 import { migrateDocumentSnapshot } from "./document-migration"
+import type { DocumentAuthoritySnapshot } from "./document-v2"
 import {
-  type AuthoredDocumentSnapshot,
+  type DocumentSnapshotV2,
+  type DocumentSnapshotV3,
   documentSnapshotV2Schema,
   documentSnapshotV3Schema,
 } from "./document-v2"
@@ -21,13 +23,19 @@ import {
 import { applyDocumentV2Command } from "./document-v2-commands"
 import { replayDocumentAuthorityEvents } from "./document-v2-replay"
 import { applyDocumentV3Command } from "./document-v3-commands"
+import { type DocumentSnapshotV4, documentSnapshotV4Schema } from "./document-v4"
+import { applyDocumentV4AuthoredCommand } from "./document-v4-commands"
 import { commandIdSchema, documentIdSchema, draftIdSchema, timestampSchema } from "./identifiers"
 
 const copyInputObjectSchema = z
   .object({
     sourceLegacyEvents: z.array(documentEventSchema).max(99_999),
     sourceSeed: documentSnapshotV1Schema.nullable(),
-    sourceSnapshot: z.union([documentSnapshotV2Schema, documentSnapshotV3Schema]),
+    sourceSnapshot: z.union([
+      documentSnapshotV2Schema,
+      documentSnapshotV3Schema,
+      documentSnapshotV4Schema,
+    ]),
     sourceEvents: z.array(documentAuthorityEventSchema).max(99_999),
     documentId: documentIdSchema,
     commandIds: z.array(commandIdSchema).min(1).max(100_000),
@@ -95,7 +103,7 @@ export type CompleteDocumentAuthorityCopyResult =
       ok: true
       legacyEvents: readonly DocumentEvent[]
       seed: DocumentSnapshotV1 | null
-      snapshot: AuthoredDocumentSnapshot
+      snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4
       versionedEvents: readonly DocumentAuthorityEvent[]
     }>
   | Readonly<{ ok: false; diagnostic: DomainDiagnostic }>
@@ -124,13 +132,13 @@ export function copyCompleteDocumentAuthorityHistory(
   inputValue: unknown,
 ): CompleteDocumentAuthorityCopyResult {
   const parsed = copyInputSchema.safeParse(inputValue)
-  if (!parsed.success) return invalidCopy("The complete V2 copy input is invalid.")
+  if (!parsed.success) return invalidCopy("The complete authority copy input is invalid.")
   const input = parsed.data
   if (!verifyLegacySeed(input.sourceSeed, input.sourceLegacyEvents))
     return invalidCopy("The legacy prefix does not reproduce its V1 migration seed.")
   const source = replayDocumentAuthorityEvents(input.sourceSeed, input.sourceEvents)
   if (!source.ok || canonicalJson(source.snapshot) !== canonicalJson(input.sourceSnapshot))
-    return invalidCopy("The source journal does not reproduce its V2 snapshot.")
+    return invalidCopy("The source journal does not reproduce its authority snapshot.")
   const transactionIds = new Map(
     input.transactionIds.map((mapping) => [mapping.source, mapping.target]),
   )
@@ -152,41 +160,17 @@ export function copyCompleteDocumentAuthorityHistory(
     return invalidCopy("The copied legacy prefix does not reproduce its seed.")
   const events = input.sourceEvents.map((event, index) => {
     const envelope = identities(event, index + legacyEvents.length)
-    return documentAuthorityEventSchema.parse({
-      ...event,
-      ...envelope,
-      ...(event.type === "org.vibeshape.document.model-changed"
-        ? { modelEvent: { ...event.modelEvent, ...envelope } }
-        : {}),
-    })
+    return remapAuthorityEvent(event, envelope)
   })
   const copied = replayDocumentAuthorityEvents(seed, events)
   if (
     !copied.ok ||
-    copied.snapshot.schemaVersion === 1 ||
+    copied.snapshot.schemaVersion !== input.sourceSnapshot.schemaVersion ||
     canonicalJson(copied.snapshot) !==
       canonicalJson({ ...input.sourceSnapshot, id: input.documentId })
   )
-    return invalidCopy("The copied V2 journal does not reproduce the expected snapshot.")
-  const commandId = input.commandIds.at(-1)
-  const command = {
-    kind: "org.vibeshape.document.rename",
-    schemaVersion: 1,
-    commandId,
-    documentId: input.documentId,
-    baseRevision: copied.snapshot.revision,
-    issuedAt: input.issuedAt,
-    actor: input.actor,
-    payload: { name: input.name },
-  }
-  const apply =
-    copied.snapshot.schemaVersion === 3 ? applyDocumentV3Command : applyDocumentV2Command
-  const renamed = apply(copied.snapshot, {
-    ...command,
-    kind: "org.vibeshape.document.model-command",
-    schemaVersion: copied.snapshot.schemaVersion,
-    payload: { command, partAllocations: [] },
-  })
+    return invalidCopy("The copied authority journal does not reproduce the expected snapshot.")
+  const renamed = renameCopiedAuthority(copied.snapshot, input)
   return renamed.ok
     ? {
         ok: true,
@@ -196,4 +180,49 @@ export function copyCompleteDocumentAuthorityHistory(
         versionedEvents: [...events, renamed.event],
       }
     : renamed
+}
+function renameCopiedAuthority(snapshot: DocumentAuthoritySnapshot, input: CopyInput) {
+  const command = {
+    kind: "org.vibeshape.document.rename",
+    schemaVersion: 1,
+    commandId: input.commandIds.at(-1),
+    documentId: input.documentId,
+    baseRevision: snapshot.revision,
+    issuedAt: input.issuedAt,
+    actor: input.actor,
+    payload: { name: input.name },
+  }
+  const authored = {
+    ...command,
+    kind: "org.vibeshape.document.model-command",
+    schemaVersion: snapshot.schemaVersion === 2 ? 2 : 3,
+    payload: { command, partAllocations: [] },
+  }
+  if (snapshot.schemaVersion === 4) return applyDocumentV4AuthoredCommand(snapshot, authored)
+  return snapshot.schemaVersion === 3
+    ? applyDocumentV3Command(snapshot, authored)
+    : applyDocumentV2Command(snapshot, authored)
+}
+
+function remapAuthorityEvent(
+  event: DocumentAuthorityEvent,
+  envelope: {
+    documentId: string
+    commandId: string | undefined
+    transactionId: string | null | undefined
+  },
+): DocumentAuthorityEvent {
+  if (event.type === "org.vibeshape.document.authored-changed")
+    return documentAuthorityEventSchema.parse({
+      ...event,
+      ...envelope,
+      authoredEvent: remapAuthorityEvent(event.authoredEvent, envelope),
+    })
+  if (event.type === "org.vibeshape.document.model-changed")
+    return documentAuthorityEventSchema.parse({
+      ...event,
+      ...envelope,
+      modelEvent: { ...event.modelEvent, ...envelope },
+    })
+  return documentAuthorityEventSchema.parse({ ...event, ...envelope })
 }

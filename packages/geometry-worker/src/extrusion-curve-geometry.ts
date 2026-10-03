@@ -1,5 +1,42 @@
 import type { SimplePoint } from "replicad"
 
+/** Exact scalar extrema of a cubic Bezier projected onto a planar direction. */
+export function cubicBezierProjectionBounds(
+  points: readonly [
+    readonly [number, number],
+    readonly [number, number],
+    readonly [number, number],
+    readonly [number, number],
+  ],
+  normal: readonly [number, number],
+) {
+  const [p0, p1, p2, p3] = points.map((point) => point[0] * normal[0] + point[1] * normal[1]) as [
+    number,
+    number,
+    number,
+    number,
+  ]
+  const a = -p0 + 3 * p1 - 3 * p2 + p3,
+    b = 3 * p0 - 6 * p1 + 3 * p2,
+    c = 3 * (p1 - p0)
+  const parameters = [0, 1]
+  if (a === 0) {
+    if (b !== 0) parameters.push(-c / (2 * b))
+  } else {
+    const discriminant = 4 * b * b - 12 * a * c
+    if (discriminant >= 0) {
+      const root = Math.sqrt(discriminant)
+      const q = -b - (b < 0 ? -root : root) / 2
+      if (q !== 0) parameters.push(q / (3 * a), c / q)
+      else parameters.push(-b / (3 * a))
+    }
+  }
+  const values = parameters
+    .filter((t) => t >= 0 && t <= 1)
+    .map((t) => ((a * t + b) * t + c) * t + p0)
+  return { min: Math.min(...values), max: Math.max(...values) }
+}
+
 function dot(left: SimplePoint, right: SimplePoint) {
   return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
 }

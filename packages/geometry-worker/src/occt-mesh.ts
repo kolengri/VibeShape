@@ -204,6 +204,19 @@ export function exportMeshedOcctStl(
   const filename = "/vibeshape-export.stl"
 
   try {
+    // Export cleanup clears shared face triangulations; every export must rebuild all selected faces.
+    const mesher = new opencascade.BRepMesh_IncrementalMesh_2(
+      shape.wrapped,
+      0.05,
+      false,
+      0.1,
+      false,
+    )
+    try {
+      if (!mesher.IsDone()) throw new Error("OCCT failed to triangulate the STL export.")
+    } finally {
+      mesher.delete()
+    }
     if (!opencascade.StlAPI.Write(shape.wrapped, filename, !binary)) {
       throw new Error("OCCT failed to write the STL file.")
     }

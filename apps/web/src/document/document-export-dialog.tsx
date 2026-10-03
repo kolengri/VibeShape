@@ -51,6 +51,7 @@ type ExportActivity = Readonly<{
   pendingFormat: GeometryExportFormat | null
   statusKey: string | null
   failed: boolean
+  errorKey?: "meshStepError"
 }>
 
 const idleActivity: ExportActivity = { pendingFormat: null, statusKey: null, failed: false }
@@ -59,10 +60,20 @@ function useDocumentExportAction(
   closeDialog: () => void,
   partId: string | undefined,
   open: boolean,
+  includesMesh = false,
 ) {
   const [activity, setActivity] = useState<ExportActivity>(idleActivity)
 
   const runExport = async (format: GeometryExportFormat) => {
+    if (format === "step" && includesMesh) {
+      setActivity({
+        pendingFormat: null,
+        statusKey: "status.failed",
+        failed: true,
+        errorKey: "meshStepError",
+      })
+      return
+    }
     setActivity({ pendingFormat: format, statusKey: formatCopy[format].pending, failed: false })
     try {
       const result = await exportActiveDocument(format, partId)
@@ -89,7 +100,27 @@ function documentHasExportableGeometry(controller: DocumentControllerState) {
   const rebuild = controller.report?.rebuild
   return (
     rebuild?.ok === true &&
-    rebuild.response.geometry.some(({ geometry }) => geometry.shape.solidCount > 0)
+    rebuild.response.geometry.some(
+      ({ geometry }) =>
+        geometry.shape.solidCount > 0 || geometry.representation === "triangle-mesh",
+    )
+  )
+}
+
+function exportSelectionIncludesMesh(controller: DocumentControllerState, partId?: string) {
+  const authority = controller.authoredSnapshot
+  const report = controller.report
+  if (partId && authority && authority.schemaVersion !== 1 && report) {
+    return (
+      resolveAuthoredParts(authority, report)?.find(({ part }) => part.id === partId)?.body
+        ?.representation === "triangle-mesh"
+    )
+  }
+  return (
+    report?.rebuild?.ok === true &&
+    report.rebuild.response.geometry.some(
+      ({ geometry }) => geometry.representation === "triangle-mesh",
+    )
   )
 }
 
@@ -138,13 +169,21 @@ function ExportFormatCard({
   )
 }
 
-function ExportNotice({ hasGeometry, failed }: { hasGeometry: boolean; failed: boolean }) {
+function ExportNotice({
+  hasGeometry,
+  failed,
+  errorKey,
+}: {
+  hasGeometry: boolean
+  failed: boolean
+  errorKey?: "meshStepError" | undefined
+}) {
   const t = useTranslations("app.export")
   if (!hasGeometry) return <p className="text-sm text-muted-foreground">{t("noBodies")}</p>
   if (!failed) return null
   return (
     <p className="text-sm text-destructive" role="alert">
-      {t("error")}
+      {t(errorKey ?? "error")}
     </p>
   )
 }
@@ -338,6 +377,7 @@ export function DocumentExportDialog({
     () => setOpen(false),
     selectedPartId,
     open,
+    exportSelectionIncludesMesh(controller, selectedPartId),
   )
   const hasGeometry = documentHasExportableGeometry(controller)
   const preparationDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
@@ -362,7 +402,8 @@ export function DocumentExportDialog({
           <DialogHeader>
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
-            {controller.authoredSnapshot?.schemaVersion === 3 &&
+            {(controller.authoredSnapshot?.schemaVersion === 3 ||
+              controller.authoredSnapshot?.schemaVersion === 4) &&
               controller.authoredSnapshot.surfaceTextures.some(({ enabled }) => enabled) && (
                 <p className="text-xs text-muted-foreground">{t("textureExportHint")}</p>
               )}
@@ -392,7 +433,11 @@ export function DocumentExportDialog({
               />
             </>
           ) : null}
-          <ExportNotice hasGeometry={hasGeometry} failed={activity.failed} />
+          <ExportNotice
+            hasGeometry={hasGeometry}
+            failed={activity.failed}
+            errorKey={activity.errorKey}
+          />
           <ExportPreparation
             controller={controller}
             available={exportPart === "all"}

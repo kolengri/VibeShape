@@ -27,6 +27,7 @@ import {
   sketchConstraintSchema,
   sketchRecordSchema,
 } from "./sketch"
+import { retainSketchSourceImport } from "./sketch-source-import"
 import type { AngleQuantity, LengthQuantity } from "./units"
 
 export type SketchPoint2 = Readonly<{ x: number; y: number }>
@@ -162,7 +163,7 @@ function resolvePointTarget(
 }
 
 function parsedSketch(sketch: SketchRecord, entities: readonly SketchEntity[]) {
-  return sketchRecordSchema.parse({ ...sketch, entities })
+  return sketchRecordSchema.parse(retainSketchSourceImport({ ...sketch, entities }))
 }
 
 function allocateFourEntityIds(createEntityId: EntityIdFactory) {
@@ -1201,6 +1202,46 @@ export function sketchEllipticalArcGeometry(
   }
 }
 
+export function appendSketchCubicBezier(
+  sketch: SketchRecord,
+  input: {
+    start: SketchPointTarget
+    control1: SketchPointTarget
+    control2: SketchPointTarget
+    end: SketchPointTarget
+    construction?: boolean
+    createEntityId: EntityIdFactory
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const targets = [input.start, input.control1, input.control2, input.end].map((target) =>
+    resolvePointTarget(sketch, target, construction, input.createEntityId),
+  )
+  const [start, control1, control2, end] = targets
+  if (!start || !control1 || !control2 || !end || new Set(targets.map(({ id }) => id)).size !== 4)
+    throw new RangeError("A cubic Bezier requires four distinct point entity identities.")
+  if (targets.every(({ point }) => distance(start.point, point) <= MIN_GEOMETRY_DISTANCE))
+    throw new RangeError("A cubic Bezier must have nonzero geometric extent.")
+  const curveId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...targets.flatMap(({ entity }) => (entity ? [entity] : [])),
+    {
+      schemaVersion: 0,
+      id: curveId,
+      type: "cubic-bezier",
+      construction,
+      startPointId: start.id,
+      control1PointId: control1.id,
+      control2PointId: control2.id,
+      endPointId: end.id,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
 export function appendSketchEllipse(
   sketch: SketchRecord,
   input: {
@@ -2114,6 +2155,8 @@ export function sketchCurvePointIds(curve: Exclude<SketchEntity, { type: "point"
   switch (curve.type) {
     case "line":
       return [curve.startPointId, curve.endPointId]
+    case "cubic-bezier":
+      return [curve.startPointId, curve.control1PointId, curve.control2PointId, curve.endPointId]
     case "circle":
       return [curve.centerPointId]
     case "arc":
@@ -2557,7 +2600,20 @@ export function removeSketchEntities(
   const constraints = sketch.constraints.filter((constraint) =>
     sketchConstraintEntityIds(constraint).every((entityId) => !removedIds.has(entityId)),
   )
-  return sketchRecordSchema.parse({ ...sketch, entities, constraints })
+  return sketchRecordSchema.parse(
+    retainSketchSourceImport({
+      ...sketch,
+      entities,
+      constraints,
+      ...(sketch.textGroups
+        ? {
+            textGroups: sketch.textGroups.filter(
+              (group) => ![...group.curveIds, ...group.pointIds].some((id) => removedIds.has(id)),
+            ),
+          }
+        : {}),
+    }),
+  )
 }
 
 export function removeSketchConstraints(

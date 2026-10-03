@@ -277,6 +277,15 @@ recompute the crossing from current exact edge geometry, while missing or ambigu
 reference-repair flow. Parallel, coplanar, degenerate, or outside-segment candidates are not offered. Normal to
 sketch cancels the pending pick without mutation.
 
+**Text** opens a parameter dialog inside the active sketch. The bundled immutable font generates exact
+line and cubic outlines in the current sketch frame; capital height, origin and spacing use explicit
+millimeters. Apply creates one sketch Undo step, while Cancel discards preparation. **Text groups**
+restore saved intent for editing, warn before replacing manually changed outlines, and require explicit
+removal of attached constraints. **Detach to curves** keeps geometry and constraints while removing
+editable text metadata. Native Save/Open retains group ownership and font binding; ordinary profile
+validation governs extrusion. See [Editable sketch text](editable-sketch-text.md) for supported text
+and regeneration behavior.
+
 In Select mode, a committed projected point, line, or compatible analytical curve joins the ordinary
 canvas multi-selection. Selecting it together with authored geometry exposes only relations that the
 solver can apply while keeping the projected entity fixed. Projected-only selections expose no mutating
@@ -331,10 +340,27 @@ The Parts group is separate from History. Select a part to highlight its current
 
 Compound and Union have separate actions. Choose an ordered list of two to eight current parts from distinct producing features. Compound preserves each part and its stable output slot when inputs are reordered. Union identifies the first selected part as the survivor and explains consumption of the remaining parts; disconnected solids cannot be accepted as one Union. Editing retains unresolved inputs for explicit repair and excludes new choices that would create dependency cycles.
 
+Split targets one selected part and previews an exact origin-plane cut with a signed offset. The negative side continues the source part and the positive side becomes independently owned. Plane changes retain the offset; the midpoint button explicitly recenters it. Invalid or tangent cuts block Apply. See [Split body](split-body.md) for ownership, failure, edit, undo, export, and MCP behavior.
+
+Loft and Sweep use saved solved sketch selectors in their task panels. Loft explicitly adds, removes, and orders two to eight hole-free sections and exposes ruled interpolation. Sweep selects one closed profile, authored line/arc path entities, and an explicit start point; its profile frame must already be normal to the path start tangent. Origin and datum planes author the source frames without hidden repositioning. Exact failed previews block Apply, while Cancel, edit, Undo/Redo, Save/Open, and selected-part STEP export share the ordinary lifecycle. See [Sweep and Loft](sweep-loft.md).
+
+Pattern targets one selected part with Linear or Circular placement, explicit XYZ axis, and a variable-aware scalar count including the seed. Signed spacing or total angle and explicit circular center coordinates retain authored intent. The seed continues its source part and each additional instance owns a stable independent part. A full circle excludes its duplicate endpoint. Failed counts and extents block Apply; edit, count changes, Undo/Redo, reopen, and selected-instance placement/export use ordinary authority. See [Body Pattern](body-pattern.md).
+
+Thread captures one selected part's exact current body and previews a custom external or internal 60-degree V groove. Core dimensions include radial clearance; advanced options expose an explicit XYZ axis/origin, handedness, scalar starts, phase and unthreaded axial allowances. Expressions retain their source intent. Invalid dimensions, missed bands and native failures block Apply. The result continues the same owned part; Cancel, edit, Undo/Redo, native Save/Open and selected-part export use the ordinary lifecycle. See [Modeled custom threads](modeled-threads.md).
+
 New folder selects an explicit first and last History item. Folder collapse is presentation state; saved names and contiguous membership are organizational metadata. Ungroup removes only the folder. It never deletes or reorders geometry. Part names, visibility, folders, and feature history survive native Save/Open as a fresh document copy.
 
 Export scope chooses All parts or one named part, including hidden parts. STL exports the selected current solid; multipart 3MF retains names and positions. Opening Export resets the scope to All parts. Print preparation is available for All parts and creates a disposable print copy; it does not modify the authored model. A changed document or unavailable selected body produces an error instead of silently exporting another body.
 
+Import inspects local STEP/BREP exact solids or STL/3MF triangle meshes in a detached read-only preview. STEP/BREP/STL require explicit known source units; 3MF uses declared units without an override. STEP units are converted by the reader, while BREP/STL scale once. Cancel publishes nothing. Apply atomically captures immutable source bytes, exact signatures or mesh source node keys, and independently owned Parts; stale inspection, reader failure and unreadable preview block it. Undo/Redo and portable Save/Open share ordinary authority. Exact imported Parts support Placement and STEP export. Mesh Parts support selection, metadata, print preparation and STL/3MF export; exact operations and Placement are disabled, and STEP explains that an exact solid is required. See [Source geometry imports](exact-source-imports.md).
+
+## Assembly and reusable components
+
+[Assembly workspace](assembly-workspace.md) describes frozen definitions, independently placed
+occurrences, static joints, exact interference and scoped STEP/STL/3MF export. The
+[local component library](local-component-library.md) provides immutable local versions and explicit
+copy/reference insertion, update and detach. These workflows use ordinary document History and
+portable native source closure.
 
 ## Surface texture editing
 

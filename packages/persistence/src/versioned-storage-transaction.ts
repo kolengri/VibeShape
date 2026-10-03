@@ -14,6 +14,7 @@ export function versionedSemanticWriteTransaction(
       database.snapshotsV1,
       database.recoveryV1,
       database.leases,
+      database.assetBlobs,
     ],
     operation,
   )

@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest"
+import { shellFeatureContentParametersSchema } from "./geometry-worker"
+
+const opening = {
+  schemaVersion: 1,
+  kind: "face",
+  outputRole: "result",
+  signature: {
+    kind: "face",
+    geometryClass: "plane",
+    measure: 25,
+    centroid: [0, 0, 10],
+    bounds: { min: [-2.5, -2.5, 10], max: [2.5, 2.5, 10] },
+    boundaryCount: 4,
+    adjacentGeometryClasses: [],
+  },
+}
+const parameters = {
+  thickness: 1,
+  direction: "inward",
+  sourceContentHash: "a".repeat(64),
+  openings: [opening],
+}
+describe("Shell v1 worker content", () => {
+  it("accepts only explicit direction, positive thickness and stable body-scoped face signatures", () => {
+    expect(shellFeatureContentParametersSchema.parse(parameters)).toEqual(parameters)
+    expect(
+      shellFeatureContentParametersSchema.safeParse({ ...parameters, thickness: -1 }).success,
+    ).toBe(false)
+    expect(
+      shellFeatureContentParametersSchema.safeParse({ ...parameters, direction: "auto" }).success,
+    ).toBe(false)
+    expect(
+      shellFeatureContentParametersSchema.safeParse({ ...parameters, openings: [] }).success,
+    ).toBe(false)
+    expect(
+      shellFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        openings: [{ ...opening, candidateId: "face:2" }],
+      }).success,
+    ).toBe(false)
+    expect(
+      shellFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        openings: [{ ...opening, featureId: "document-local-id" }],
+      }).success,
+    ).toBe(false)
+    expect(
+      shellFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        openings: [{ ...opening, signature: { ...opening.signature, kind: "edge" } }],
+      }).success,
+    ).toBe(false)
+  })
+})

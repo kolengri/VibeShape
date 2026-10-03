@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { historyFolderIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -227,7 +227,7 @@ describe("authored part operations", () => {
       true,
     )
   })
-  it("keeps Compound and Union explicit and disables combinations of sibling outputs", async () => {
+  it("keeps Compound and Union explicit for distinct sibling bodies and rejects duplicate body selections", async () => {
     const { authority } = authoredTreeFixture()
     const parts = authority.parts
       .slice(0, 2)
@@ -255,7 +255,54 @@ describe("authored part operations", () => {
         />,
       ),
     )
+    expect(screen.getByRole("button", { name: "Compound" }).hasAttribute("disabled")).toBe(false)
+    expect(screen.getByRole("button", { name: "Union" }).hasAttribute("disabled")).toBe(false)
+    rerender(
+      providers(<AuthoredPartsGroup {...props} parts={[first, { ...second, body: first.body }]} />),
+    )
     expect(screen.getByRole("button", { name: "Compound" }).hasAttribute("disabled")).toBe(true)
     expect(screen.getByRole("button", { name: "Union" }).hasAttribute("disabled")).toBe(true)
   })
+})
+
+describe("surface texture source eligibility", () => {
+  it.each(["exact", "triangle-mesh"] as const)(
+    "requires exact source geometry for %s Part texture actions",
+    async (representation) => {
+      const { authority } = authoredTreeFixture()
+      const part = requireAuthoredFixture(authority.parts[0])
+      const body = authoredTestBody(part)
+      const onSurfaceTexture = vi.fn()
+      render(
+        providers(
+          <AuthoredPartsGroup
+            parts={[
+              {
+                part,
+                body: representation === "triangle-mesh" ? { ...body, representation } : body,
+                status: "available",
+              },
+            ]}
+            revision={authority.revision}
+            selectedPartId={part.id}
+            disabled={false}
+            onSelect={vi.fn()}
+            onCommit={commit()}
+            onSurfaceTexture={onSurfaceTexture}
+          />,
+        ),
+      )
+      fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Part Part 1" }))
+      const action = screen.getByRole("menuitem", { name: "Surface texture" })
+      expect(action.getAttribute("aria-disabled")).toBe(
+        representation === "triangle-mesh" ? "true" : null,
+      )
+      await userEvent.click(action)
+      if (representation === "triangle-mesh") {
+        expect(onSurfaceTexture).not.toHaveBeenCalled()
+        expect(screen.getByText(/Triangle mesh/)).toBeTruthy()
+      } else
+        expect(onSurfaceTexture).toHaveBeenCalledExactlyOnceWith(body.featureId, body.outputRole)
+    },
+  )
 })

@@ -46,6 +46,7 @@ import {
   Slash,
   Spline,
   Split,
+  Type,
   Undo2,
   X,
 } from "@vibeshape/ui/components/icons"
@@ -100,6 +101,8 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   dimension: Ruler,
   extrude: BoxIcon,
   revolve: RotateCw,
+  loft: Layers3,
+  sweep: Spline,
   extend: ArrowUpRight,
   line: Slash,
   "linear-pattern": Grid2X2,
@@ -125,6 +128,8 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   trim: Scissors,
   "use-external-geometry": Link2,
   "three-point-arc": Spline,
+  spline: Spline,
+  text: Type,
   "three-point-circle": CircleDashed,
   undo: Undo2,
 }

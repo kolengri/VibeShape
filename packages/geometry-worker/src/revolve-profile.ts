@@ -143,6 +143,11 @@ function ellipticalArcParameter(
 }
 
 function segmentBounds(segment: Segment, normal: readonly [number, number]): Bounds {
+  if (segment.type === "cubic-bezier")
+    return cubicBezierProjectionBounds(
+      [segment.start, segment.control1, segment.control2, segment.end],
+      normal,
+    )
   if (segment.type === "line") {
     return {
       min: Math.min(projectedPoint(segment.start, normal), projectedPoint(segment.end, normal)),
@@ -225,3 +230,5 @@ export function revolveProfileCrossesAxis(parameters: RevolveParameters) {
     minimum < projection.offset - AXIS_TOLERANCE && maximum > projection.offset + AXIS_TOLERANCE
   )
 }
+
+import { cubicBezierProjectionBounds } from "./extrusion-curve-geometry"

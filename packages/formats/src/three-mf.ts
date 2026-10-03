@@ -91,7 +91,7 @@ const meshBaseSchema = z
 
 type MeshValues = z.infer<typeof meshBaseSchema>
 
-const meshSchema = meshBaseSchema.superRefine(validateMesh)
+export const threeMfModelMeshSchema = meshBaseSchema.superRefine(validateMesh)
 
 const meshObjectSchema = z
   .object({
@@ -99,7 +99,7 @@ const meshObjectSchema = z
     id: resourceIdSchema,
     name: xmlTextSchema.optional(),
     partNumber: xmlTextSchema.optional(),
-    mesh: meshSchema,
+    mesh: threeMfModelMeshSchema,
   })
   .strict()
 

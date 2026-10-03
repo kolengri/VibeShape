@@ -1,5 +1,6 @@
 import {
   type DocumentFeatureRebuildResult,
+  type FeatureGeometryEvaluationPort,
   type FeatureGeometryRecord,
   type FeatureRebuildState,
   rebuildDocumentFeatures,
@@ -21,6 +22,7 @@ import {
   type SketchRecord,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type {
   DocumentPrintMeshExportInput,
@@ -42,6 +44,8 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
+import { exportAssemblyRuntime } from "./assembly-export"
+import { inspectAssemblyRuntime } from "./assembly-inspection"
 import { exportBodyName, selectExportBodies } from "./export-bodies"
 import {
   type ExternalModelMaterializationCache,
@@ -53,7 +57,14 @@ import {
   createDocumentFeatureContentPreparer,
   shouldPrepareDocumentFeatureContent,
 } from "./extrusion-content"
+import {
+  collectDocumentPrintMeshes,
+  exportDocumentMeshStl,
+  exportIncludesMesh,
+} from "./mesh-source-export"
+import { inspectMeshSource, rebuildImportedMesh } from "./mesh-source-import"
 import { createSketchDisplayRecords } from "./sketch-display"
+import { validateRebuildSourceMaterialization } from "./source-materialization"
 
 export interface DocumentWorkerEndpoint {
   postMessage(message: DocumentWorkerResponse, transfer?: Transferable[]): void
@@ -155,7 +166,7 @@ function cloneGeometry(record: FeatureGeometryRecord): FeatureGeometryRecord {
 }
 
 function transferablesFor(response: DocumentWorkerResponse) {
-  if (response.type === "documentExported") {
+  if (response.type === "documentExported" || response.type === "assemblyExported") {
     return [response.file.buffer as ArrayBuffer]
   }
   if (response.type !== "documentRebuilt") return []
@@ -214,16 +225,19 @@ function validatePrintMeshExportIdentity(
 async function exportThreeMfDocument(
   engine: GeometryKernelEngine,
   document: RebuildDocumentSnapshot,
+  state: FeatureRebuildState,
   features: readonly FeatureEvaluationDependency[],
   names: ReadonlyMap<string, string>,
   settings?: PrintPreparationSettings,
   textureOptions?: TextureExportRequestOptions,
 ) {
-  const result = await engine.exportPrintMeshes({
-    documentId: document.id,
+  const result = await collectDocumentPrintMeshes(
+    engine,
+    document.id,
+    state,
     features,
-    ...textureOptions,
-  })
+    textureOptions,
+  )
   validatePrintMeshExportIdentity(result, features)
   const labels = new Map(document.features.map(({ id, label }) => [id, label]))
   const meshes = result.meshes.map((mesh, index) => ({
@@ -332,6 +346,47 @@ export class DocumentWorkerRuntime {
         await this.#rebuild(request)
         return
       }
+      if (request.type === "exportAssembly") {
+        const exported = await exportAssemblyRuntime(
+          this.engine,
+          this.registry,
+          this.solveSketch,
+          request.input.assembly,
+          request,
+          request.input.settings,
+        )
+        this.#post({
+          ...requestEnvelope(request),
+          type: "assemblyExported",
+          format: request.input.settings.format,
+          ...exported,
+        })
+        return
+      }
+      if (request.type === "inspectAssembly") {
+        const inspection = await inspectAssemblyRuntime(
+          this.engine,
+          this.registry,
+          this.solveSketch,
+          request.input,
+          request,
+        )
+        this.#post({ ...requestEnvelope(request), type: "assemblyInspected", inspection })
+        return
+      }
+      if (request.type === "inspectMeshImport") {
+        const inspection = await inspectMeshSource(
+          request.input.format,
+          request.input.bytes,
+          request.input.units,
+        )
+        this.#post({ ...requestEnvelope(request), type: "meshImportInspected", inspection })
+        return
+      }
+      if (request.type === "inspectSourceImport") {
+        await this.#inspectSource(request)
+        return
+      }
       if (request.type === "exportDocument") {
         await this.#exportDocument(request)
         return
@@ -349,7 +404,13 @@ export class DocumentWorkerRuntime {
     }
   }
 
-  async #exportDocument(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
+  async #inspectSource(request: Extract<DocumentWorkerRequest, { type: "inspectSourceImport" }>) {
+    if (!this.engine.inspectSourceImport) throw new Error("Exact source inspection is unavailable.")
+    const inspection = await this.engine.inspectSourceImport(request.input)
+    this.#post({ ...requestEnvelope(request), type: "sourceImportInspected", inspection })
+  }
+
+  #exportState(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
     const state = this.#states.get(request.documentId)
     const document = this.#documents.get(request.documentId)
     if (
@@ -357,7 +418,14 @@ export class DocumentWorkerRuntime {
       !document ||
       state.revision !== request.revision ||
       state.generation !== request.generation
-    ) {
+    )
+      return null
+    return { state, document }
+  }
+
+  async #exportDocument(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
+    const current = this.#exportState(request)
+    if (!current) {
       this.#postFailure(
         request,
         "export-state-unavailable",
@@ -367,6 +435,7 @@ export class DocumentWorkerRuntime {
       return
     }
 
+    const { state, document } = current
     try {
       const { features, names } = selectExportBodies(terminalExportFeatures(state), request.bodies)
       if (features.length === 0) {
@@ -379,23 +448,29 @@ export class DocumentWorkerRuntime {
         return
       }
 
+      const hasMeshes = exportIncludesMesh(state, features)
+      if (hasMeshes && request.format === "step")
+        throw new Error("STEP export requires exact solids. Export mesh parts as STL or 3MF.")
       const textureOptions = textureExportOptions(request)
       const exported =
         request.format === "3mf"
           ? await exportThreeMfDocument(
               this.engine,
               document,
+              state,
               features,
               names,
               request.printPreparation,
               textureOptions,
             )
-          : await this.engine.exportDocument({
-              documentId: request.documentId,
-              features,
-              format: request.format,
-              ...textureOptions,
-            })
+          : hasMeshes
+            ? await exportDocumentMeshStl(this.engine, document.id, state, features, textureOptions)
+            : await this.engine.exportDocument({
+                documentId: request.documentId,
+                features,
+                format: request.format,
+                ...textureOptions,
+              })
       this.#post({
         ...requestEnvelope(request),
         type: "documentExported",
@@ -514,19 +589,73 @@ export class DocumentWorkerRuntime {
     }
   }
 
+  #evaluationPort(
+    request: Extract<DocumentWorkerRequest, { type: "rebuildDocument" }>,
+    environment: Awaited<ReturnType<GeometryKernelEngine["initialize"]>>,
+  ): FeatureGeometryEvaluationPort {
+    return async (evaluation) => {
+      const sourceAssetId = request.document.features.find(({ id }) => id === evaluation.featureId)
+        ?.parameters.sourceAssetId
+      const source = request.sourceAssets?.find(({ asset }) => asset.id === sourceAssetId)
+      if (
+        Object.entries(meshImportFeatureType.type).every(
+          ([key, value]) =>
+            evaluation.content.feature.type[key as keyof typeof meshImportFeatureType.type] ===
+            value,
+        )
+      ) {
+        try {
+          return {
+            ok: true,
+            geometry: await rebuildImportedMesh(
+              evaluation.content.feature.parameters,
+              source,
+              environment,
+            ),
+          }
+        } catch {
+          return { ok: false, diagnosticCode: "invalid-feature-geometry" }
+        }
+      }
+      const evaluated = await this.engine.evaluateFeature(
+        { ...evaluation, dependencies: [...evaluation.dependencies] },
+        (stage, fraction) => evaluation.onProgress?.(stage, fraction),
+        source,
+      )
+      return evaluated.ok
+        ? { ok: true, geometry: evaluated.result }
+        : { ok: false, diagnosticCode: evaluated.diagnostic.code }
+    }
+  }
+
+  async #initializeRebuild(request: Extract<DocumentWorkerRequest, { type: "rebuildDocument" }>) {
+    try {
+      await validateRebuildSourceMaterialization(
+        documentSnapshotSchema.parse(request.document),
+        request.sourceAssets ?? [],
+      )
+    } catch (error) {
+      this.#postFailure(request, "invalid-document-snapshot", errorMessage(error), false)
+      return null
+    }
+    let engine: Awaited<ReturnType<GeometryKernelEngine["initialize"]>>
+    try {
+      engine = await this.engine.initialize()
+    } catch (error) {
+      this.#postFailure(request, "engine-initialization-failed", errorMessage(error), true)
+      return null
+    }
+    return engine
+  }
+
   async #rebuild(request: Extract<DocumentWorkerRequest, { type: "rebuildDocument" }>) {
     if (this.#isStale(request)) {
       this.#postFailure(request, "stale-generation", "The rebuild generation is stale.", false)
       return
     }
 
-    let engine: Awaited<ReturnType<GeometryKernelEngine["initialize"]>>
-    try {
-      engine = await this.engine.initialize()
-    } catch (error) {
-      this.#postFailure(request, "engine-initialization-failed", errorMessage(error), true)
-      return
-    }
+    const engine = await this.#initializeRebuild(request)
+    if (!engine) return
     const solvedBySketchId: SketchSolveCache = new Map()
     const modelMaterializationCache: ExternalModelMaterializationCache = new Map()
     const sectionPlanarFace = this.engine.sectionPlanarFace?.bind(this.engine)
@@ -544,17 +673,7 @@ export class DocumentWorkerRuntime {
         modelMaterializationCache,
       ),
       shouldPrepareFeatureContent: shouldPrepareDocumentFeatureContent,
-      evaluateGeometry: async (evaluation) => {
-        const evaluated = await this.engine.evaluateFeature(
-          { ...evaluation, dependencies: [...evaluation.dependencies] },
-          (stage, fraction) => {
-            evaluation.onProgress?.(stage, fraction)
-          },
-        )
-        return evaluated.ok
-          ? { ok: true, geometry: evaluated.result }
-          : { ok: false, diagnosticCode: evaluated.diagnostic.code }
-      },
+      evaluateGeometry: this.#evaluationPort(request, engine),
       onProgress: (featureId, stage, fraction) => {
         this.#post({ ...requestEnvelope(request), type: "progress", featureId, stage, fraction })
       },

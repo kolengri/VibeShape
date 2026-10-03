@@ -5,8 +5,10 @@ import {
   type PortableProjectV2,
   type PortableProjectV3,
   type PortableProjectV4,
+  type PortableProjectV5,
   portableProjectV3PayloadSchema,
   portableProjectV4PayloadSchema,
+  portableProjectV5PayloadSchema,
 } from "@vibeshape/persistence"
 import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
 
@@ -14,13 +16,14 @@ export type BrowserPortableProject =
   | Readonly<{ version: 2; project: PortableProjectV2 }>
   | Readonly<{ version: 3; project: PortableProjectV3 }>
   | Readonly<{ version: 4; project: PortableProjectV4 }>
+  | Readonly<{ version: 5; project: PortableProjectV5 }>
 
 type PortableResult =
   | Readonly<{ ok: true; value: BrowserPortableProject }>
   | Readonly<{ ok: false; diagnostic: Readonly<{ code: string; message: string }> }>
 
 export function portableProjectFromArchive(archive: AuthoredVShapeProject): PortableResult {
-  if (archive.version !== 3 && archive.version !== 4) {
+  if (archive.version !== 3 && archive.version !== 4 && archive.version !== 5) {
     const converted = portableProjectV2FromArchive(archive)
     return converted.ok
       ? { ok: true, value: { version: 2, project: converted.project } }
@@ -32,15 +35,20 @@ export function portableProjectFromArchive(archive: AuthoredVShapeProject): Port
     historyMode: manifest.historyMode,
     promotionRevision: manifest.promotionRevision,
     upgradeRevision: manifest.upgradeRevision,
-    ...(archive.version === 4
+    ...(archive.version === 4 || archive.version === 5
       ? { textureUpgradeRevision: archive.project.manifest.textureUpgradeRevision }
+      : {}),
+    ...(archive.version === 5
+      ? { sourceUpgradeRevision: archive.project.manifest.sourceUpgradeRevision }
       : {}),
     migrationDiagnostic: manifest.migrationDiagnostic,
     unavailableRecords: manifest.unavailableRecords,
   }
-  return archive.version === 4
-    ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(value) } }
-    : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(value) } }
+  return archive.version === 5
+    ? { ok: true, value: { version: 5, project: portableProjectV5PayloadSchema.parse(value) } }
+    : archive.version === 4
+      ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(value) } }
+      : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(value) } }
 }
 
 type CopyInput = {
@@ -62,7 +70,7 @@ export function copyBrowserPortableProject(input: CopyInput): PortableResult {
 
 function copyAuthoredProject(
   input: CopyInput,
-  source: PortableProjectV3 | PortableProjectV4,
+  source: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
 ): PortableResult {
   if (source.historyMode !== "complete" || (source.seed && source.seed.schemaVersion !== 1))
     return {
@@ -103,10 +111,21 @@ function copyAuthoredProject(
     ...("textureUpgradeRevision" in source
       ? { textureUpgradeRevision: source.textureUpgradeRevision }
       : {}),
+    ...("sourceUpgradeRevision" in source
+      ? {
+          sourceUpgradeRevision: source.sourceUpgradeRevision,
+          assetBlobs: source.assetBlobs.map(({ digest, bytes }) => ({
+            digest,
+            bytes: Uint8Array.from(bytes),
+          })),
+        }
+      : {}),
     migrationDiagnostic: null,
     unavailableRecords: [],
   }
-  return source.snapshot.schemaVersion === 3
-    ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(payload) } }
-    : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(payload) } }
+  return source.snapshot.schemaVersion === 4
+    ? { ok: true, value: { version: 5, project: portableProjectV5PayloadSchema.parse(payload) } }
+    : source.snapshot.schemaVersion === 3
+      ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(payload) } }
+      : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(payload) } }
 }

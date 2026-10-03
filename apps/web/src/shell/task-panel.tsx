@@ -123,7 +123,13 @@ import {
 import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-texture-task-panel"
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
+import { MirrorTaskPanel } from "./mirror-task-panel"
+import { PatternTaskPanel } from "./pattern-task-panel"
 import { PlacementTaskPanel } from "./placement-task-panel"
+import { ShellTaskPanel } from "./shell-task-panel"
+import { SplitTaskPanel } from "./split-task-panel"
+import { SweepLoftTaskPanel } from "./sweep-loft-task-panel"
+import { ThreadTaskPanel } from "./thread-task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -2133,34 +2139,39 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
   )
 }
 
-function PlacementToolTaskPanel(props: ActiveTaskPanelProps) {
-  return (
-    <PlacementTaskPanel
-      {...props}
-      renderDelete={(feature) => (
-        <ActiveFeatureDeleteAction
-          feature={feature}
-          onDeleted={props.onCompleteTool}
-          report={props.report}
-        />
-      )}
+function featureTaskDeleteAction(props: ActiveTaskPanelProps) {
+  return (feature: FeatureRecord) => (
+    <ActiveFeatureDeleteAction
+      feature={feature}
+      onDeleted={props.onCompleteTool}
+      report={props.report}
     />
   )
 }
+function PlacementToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <PlacementTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
+function ShellToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <ShellTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
 
+function SweepLoftToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <SweepLoftTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
+function ThreadToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <ThreadTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
+function PatternToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <PatternTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
+function SplitToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <SplitTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
+function MirrorToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <MirrorTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
 function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
-  return (
-    <BodyCombinationTaskPanel
-      {...props}
-      renderDelete={(feature) => (
-        <ActiveFeatureDeleteAction
-          feature={feature}
-          onDeleted={props.onCompleteTool}
-          report={props.report}
-        />
-      )}
-    />
-  )
+  return <BodyCombinationTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
 }
 
 const activeTaskPanelByKind = {
@@ -2170,6 +2181,20 @@ const activeTaskPanelByKind = {
   "edit-union": CombinationToolTaskPanel,
   "create-placement": PlacementToolTaskPanel,
   "edit-placement": PlacementToolTaskPanel,
+  "create-mirror": MirrorToolTaskPanel,
+  "edit-mirror": MirrorToolTaskPanel,
+  "create-shell": ShellToolTaskPanel,
+  "edit-shell": ShellToolTaskPanel,
+  "create-thread": ThreadToolTaskPanel,
+  "edit-thread": ThreadToolTaskPanel,
+  "create-pattern": PatternToolTaskPanel,
+  "edit-pattern": PatternToolTaskPanel,
+  "create-split": SplitToolTaskPanel,
+  "edit-split": SplitToolTaskPanel,
+  "create-loft": SweepLoftToolTaskPanel,
+  "edit-loft": SweepLoftToolTaskPanel,
+  "create-sweep": SweepLoftToolTaskPanel,
+  "edit-sweep": SweepLoftToolTaskPanel,
   "create-hole": HoleToolTaskPanel,
   "edit-hole": HoleToolTaskPanel,
   "create-fillet": EdgeTreatmentToolTaskPanel,

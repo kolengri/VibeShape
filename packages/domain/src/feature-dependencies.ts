@@ -16,34 +16,38 @@ import {
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
+import { readImportedFeatureParameters } from "./part-design-import"
+import { readLoftFeatureParameters } from "./part-design-loft"
+import { readMeshImportFeatureParameters } from "./part-design-mesh-import"
+import { readMirrorFeatureParameters } from "./part-design-mirror"
+import { readPatternFeatureParameters } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
+import { readShellFeatureParameters } from "./part-design-shell"
+import { readSplitFeatureParameters } from "./part-design-split"
+import { readSweepFeatureParameters } from "./part-design-sweep"
+import { readThreadFeatureParameters } from "./part-design-thread"
 import { readDatumPlaneFeatureParameters } from "./reference-geometry"
 
+const independentBodyReaders = [
+  readDatumPlaneFeatureParameters,
+  readImportedFeatureParameters,
+  readMeshImportFeatureParameters,
+  readLoftFeatureParameters,
+  readSweepFeatureParameters,
+]
+const edgeModifierTypes = new Set(
+  [filletFeatureType, chamferFeatureType, filletFeatureTypeV2, chamferFeatureTypeV2].map(
+    ({ type }) => featureTypeKey(type),
+  ),
+)
 export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
-  if (readDatumPlaneFeatureParameters(feature)) return []
-  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type)) {
+  if (independentBodyReaders.some((read) => read(feature) !== null)) return []
+  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type))
     return booleanFeatureParametersSchema.safeParse(feature.parameters).data?.keepTools
       ? feature.dependencies.slice(0, 1)
       : feature.dependencies
-  }
-  if (readHoleFeatureParameters(feature)) return feature.dependencies.slice(0, 1)
-  if (
-    feature.type &&
-    [
-      filletFeatureType.type,
-      chamferFeatureType.type,
-      filletFeatureTypeV2.type,
-      chamferFeatureTypeV2.type,
-    ].some(
-      (type) =>
-        feature.type?.moduleId === type.moduleId &&
-        feature.type.moduleVersion === type.moduleVersion &&
-        feature.type.typeId === type.typeId &&
-        feature.type.schemaVersion === type.schemaVersion,
-    )
-  ) {
+  if (readHoleFeatureParameters(feature) || edgeModifierTypes.has(featureTypeKey(feature.type)))
     return feature.dependencies.slice(0, 1)
-  }
   const revolve = readRevolveFeatureParameters(feature)
   if (revolve) return revolve.operation === "new" ? [] : feature.dependencies.slice(0, 1)
   const extrusion = readExtrusionFeatureParameters(feature)
@@ -58,7 +62,14 @@ export function featureBodyDependencies(
   if (compound) return compound.slots.map(({ targetBody }) => targetBody)
   const union = readUnionFeatureParameters(feature)
   if (union) return union.bodies
-  const target = readHoleBodyTarget(feature) ?? readPlacementFeatureParameters(feature)?.targetBody
+  const target =
+    readThreadFeatureParameters(feature)?.targetBody ??
+    readHoleBodyTarget(feature) ??
+    readPlacementFeatureParameters(feature)?.targetBody ??
+    readMirrorFeatureParameters(feature)?.targetBody ??
+    readPatternFeatureParameters(feature)?.targetBody ??
+    readShellFeatureParameters(feature)?.targetBody ??
+    readSplitFeatureParameters(feature)?.targetBody
   if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
 }

@@ -1,8 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
-import type { PrintPreparationResult } from "@vibeshape/protocol"
+import { checkPrintVolume } from "@vibeshape/print-analysis"
+import type { PrinterProfile, PrintPreparationResult } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import type { GeometryViewport, ViewerMesh } from "@vibeshape/viewer/three-viewport"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 function previewMeshes(result: PrintPreparationResult): ViewerMesh[] {
   return result.meshes.map((mesh, index) => {
@@ -17,27 +18,64 @@ function previewMeshes(result: PrintPreparationResult): ViewerMesh[] {
       positions,
       normals,
       indices,
-      triangleFaceIds: new Uint32Array(indices.length / 3),
+      triangleFaceIds: Uint32Array.from(
+        { length: indices.length / 3 },
+        (_, triangle) => triangle + 1,
+      ),
     }
   })
 }
 
-export function PrintPreparationPreview({ result }: { result: PrintPreparationResult }) {
+export function PrintPreparationPreview({
+  result,
+  profile = null,
+  onLayFace,
+  disabled = false,
+}: {
+  result: PrintPreparationResult
+  disabled?: boolean
+  profile?: PrinterProfile | null
+  onLayFace?: (meshIndex: number, triangleIndex: number) => Promise<void>
+}) {
   const t = useTranslations("app.printPreparation")
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewport | null>(null)
   const [failed, setFailed] = useState(false)
+  const [facet, setFacet] = useState<{ meshIndex: number; triangleIndex: number } | null>(null)
+  const bed = useMemo(
+    () =>
+      profile ? { ...profile, exceeded: !checkPrintVolume(result.meshes, profile).fits } : null,
+    [profile, result],
+  )
+  const bedRef = useRef(bed)
+  bedRef.current = bed
   useEffect(() => {
     let disposed = false
+    setFailed(false)
+    setFacet(null)
     const canvas = canvasRef.current
     if (!canvas) return
     void import("@vibeshape/viewer/three-viewport")
       .then(({ createGeometryViewport }) => {
         if (disposed) return
-        const viewport = createGeometryViewport(canvas, {})
+        const viewport = createGeometryViewport(canvas, {
+          onSelectionChange: (selection) => {
+            const meshIndex = selection ? Number(selection.featureId.slice("print-".length)) : -1
+            const triangleIndex = selection ? selection.faceId - 1 : -1
+            setFacet(
+              Number.isInteger(meshIndex) &&
+                meshIndex >= 0 &&
+                meshIndex < result.report.bodyCount &&
+                triangleIndex >= 0
+                ? { meshIndex, triangleIndex }
+                : null,
+            )
+          },
+        })
         viewportRef.current = viewport
         viewport.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
         viewport.setMeshes(previewMeshes(result))
+        viewport.setPrintBed(bedRef.current)
         viewport.fit()
       })
       .catch(() => {
@@ -49,6 +87,9 @@ export function PrintPreparationPreview({ result }: { result: PrintPreparationRe
       viewportRef.current = null
     }
   }, [result])
+  useEffect(() => {
+    viewportRef.current?.setPrintBed(bed)
+  }, [bed])
   return (
     <div className="grid gap-2">
       <div className="relative h-72 min-w-0 overflow-hidden rounded-md border bg-background">
@@ -69,7 +110,21 @@ export function PrintPreparationPreview({ result }: { result: PrintPreparationRe
           {t("fit")}
         </Button>
         <p className="text-xs text-muted-foreground">{t("navigation")}</p>
+        {onLayFace ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled || !facet}
+            onClick={() =>
+              !disabled && facet ? onLayFace(facet.meshIndex, facet.triangleIndex) : undefined
+            }
+          >
+            {t("layFace")}
+          </Button>
+        ) : null}
       </div>
+      {onLayFace ? <p className="text-xs text-muted-foreground">{t("selectFace")}</p> : null}
     </div>
   )
 }

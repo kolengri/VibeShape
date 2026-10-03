@@ -81,6 +81,9 @@ describe("coherent browser and project settings", () => {
     await userEvent.click(autoHide)
     expect(JSON.parse(localStorage.getItem("vibeshape.viewer-preferences.v1") ?? "null")).toEqual({
       version: 1,
+      printerProfile: null,
+      printBedVisible: false,
+      groundGridVisible: true,
       theme: "light",
       autoHideConsumedSketches: false,
       preferredExportFormat: "step",

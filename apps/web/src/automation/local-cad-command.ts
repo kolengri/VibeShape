@@ -16,6 +16,13 @@ import {
   holeFeatureType,
   holeFeatureTypeV2,
 } from "@vibeshape/domain/part-design-hole"
+import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
+import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
+import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
+import { splitFeatureType } from "@vibeshape/domain/part-design-split"
+import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
+import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 
 type CadOperation = Extract<
   LocalOperation,
@@ -29,24 +36,80 @@ type CadOperation = Extract<
       | "update_revolve"
       | "create_hole"
       | "update_hole"
+      | "create_mirror"
+      | "update_mirror"
+      | "create_shell"
+      | "update_shell"
+      | "create_thread"
+      | "update_thread"
+      | "create_body_pattern"
+      | "update_body_pattern"
+      | "create_split"
+      | "update_split"
+      | "create_loft"
+      | "update_loft"
+      | "create_sweep"
+      | "update_sweep"
   }
 >
 
+const directCadFeatureTypes = {
+  create_shell: shellFeatureType.type,
+  update_shell: shellFeatureType.type,
+  create_mirror: mirrorFeatureType.type,
+  update_mirror: mirrorFeatureType.type,
+  create_thread: threadFeatureType.type,
+  update_thread: threadFeatureType.type,
+  create_body_pattern: patternFeatureType.type,
+  update_body_pattern: patternFeatureType.type,
+  create_split: splitFeatureType.type,
+  update_split: splitFeatureType.type,
+  create_loft: loftFeatureType.type,
+  update_loft: loftFeatureType.type,
+  create_sweep: sweepFeatureType.type,
+  update_sweep: sweepFeatureType.type,
+} as const
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
-  if (operation.tool === "create_hole" || operation.tool === "update_hole") {
+  if (operation.tool === "create_hole" || operation.tool === "update_hole")
     return "targetBody" in operation.arguments.parameters
       ? holeFeatureTypeV2.type
       : holeFeatureType.type
-  }
-  return profileFeatureType(operation)
+  if (
+    operation.tool === "create_extrude" ||
+    operation.tool === "update_extrude" ||
+    operation.tool === "create_revolve" ||
+    operation.tool === "update_revolve"
+  )
+    return profileFeatureType(operation)
+  return directCadFeatureTypes[operation.tool]
 }
 
 function profileFeatureType(
   operation: Exclude<
     CadOperation,
-    { tool: "create_sketch" | "update_sketch" | "create_hole" | "update_hole" }
+    {
+      tool:
+        | "create_sketch"
+        | "update_sketch"
+        | "create_hole"
+        | "update_hole"
+        | "create_mirror"
+        | "update_mirror"
+        | "create_shell"
+        | "update_shell"
+        | "create_thread"
+        | "update_thread"
+        | "create_body_pattern"
+        | "update_body_pattern"
+        | "create_split"
+        | "update_split"
+        | "create_loft"
+        | "update_loft"
+        | "create_sweep"
+        | "update_sweep"
+    }
   >,
 ) {
   const parameters = operation.arguments.parameters
@@ -112,12 +175,9 @@ export function createLocalCadCommand(
     draftId: input.draftId,
     command: {
       ...envelope,
-      kind:
-        operation.tool === "create_extrude" ||
-        operation.tool === "create_revolve" ||
-        operation.tool === "create_hole"
-          ? "org.vibeshape.feature.add"
-          : "org.vibeshape.feature.update",
+      kind: operation.tool.startsWith("create_")
+        ? "org.vibeshape.feature.add"
+        : "org.vibeshape.feature.update",
       payload: { feature },
     },
   })

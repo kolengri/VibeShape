@@ -4,6 +4,7 @@ import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain"
 import { useMemo, useState } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { MeasurementPanel } from "./measurement-panel"
+import { TopologyMeasurementPanel } from "./topology-measurement-panel"
 
 const dispatcher = (() => {
   const modules = createModuleRegistry([documentCoreModule])
@@ -103,6 +104,13 @@ export function MeasurementTaskPanel({
       unavailable={!view}
       unavailableMessage={unavailableMessage(result)}
       onClose={onClose}
+      renderTopology={(entry) => (
+        <TopologyMeasurementPanel
+          controller={controller}
+          featureId={entry.featureId}
+          outputRole={entry.outputRole}
+        />
+      )}
       onPrevious={
         cursors.length > 1 ? () => setCursors((previous) => previous.slice(0, -1)) : undefined
       }

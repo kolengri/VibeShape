@@ -8,12 +8,12 @@ import { historyItemKey } from "@vibeshape/domain/history-folders"
 import type { CompoundSlotId, PartId } from "@vibeshape/domain/identifiers"
 import {
   compoundBodyOutputRole,
-  compoundFeatureParametersSchema,
-  compoundFeatureType,
+  compoundFeatureParametersV2Schema,
+  compoundFeatureTypeV2,
   readCompoundFeatureParameters,
   readUnionFeatureParameters,
-  unionFeatureParametersSchema,
-  unionFeatureType,
+  unionFeatureParametersV2Schema,
+  unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
 import { authoredPlacementTarget } from "../part-design/authored-part-selection"
 
@@ -143,7 +143,10 @@ export function selectedCombinationInputs(
     return null
   const inputs = selected.map((id) => options.find(({ partId }) => partId === id))
   if (!inputs.every((input) => input !== undefined)) return null
-  return new Set(inputs.map(({ body }) => body.featureId)).size === inputs.length ? inputs : null
+  return new Set(inputs.map(({ body }) => `${body.featureId}:${body.outputRole}`)).size ===
+    inputs.length
+    ? inputs
+    : null
 }
 
 export function bodyCombinationFeature(
@@ -154,21 +157,26 @@ export function bodyCombinationFeature(
 ): FeatureRecord {
   const parameters =
     mode.operation === "compound"
-      ? compoundFeatureParametersSchema.parse({
+      ? compoundFeatureParametersV2Schema.parse({
           slots: inputs.map((input) => ({
             slotId: slots.get(input.partId),
             targetBody: input.body,
           })),
         })
-      : unionFeatureParametersSchema.parse({ bodies: inputs.map(({ body }) => body) })
-  const dependencies = inputs.map(({ body }) => body.featureId)
+      : unionFeatureParametersV2Schema.parse({ bodies: inputs.map(({ body }) => body) })
+  const dependencies = [...new Set(inputs.map(({ body }) => body.featureId))]
   if (mode.kind === "edit")
-    return featureRecordSchema.parse({ ...mode.feature, parameters, dependencies })
+    return featureRecordSchema.parse({
+      ...mode.feature,
+      type: (mode.operation === "compound" ? compoundFeatureTypeV2 : unionFeatureTypeV2).type,
+      parameters,
+      dependencies,
+    })
   return featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureId,
     label: mode.featureLabel,
-    type: (mode.operation === "compound" ? compoundFeatureType : unionFeatureType).type,
+    type: (mode.operation === "compound" ? compoundFeatureTypeV2 : unionFeatureTypeV2).type,
     parameters,
     dependencies,
     references: [],

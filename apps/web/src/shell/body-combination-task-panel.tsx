@@ -9,10 +9,8 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ReactNode } from "react"
 import {
-  addFeature,
   createBrowserFeatureId,
   type DocumentControllerState,
-  updateFeature,
 } from "../document/document-controller"
 import {
   type BodyCombinationCopy,
@@ -26,6 +24,7 @@ import {
 } from "../features/body-combination/body-combination-model"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { featureTaskFormProps } from "./feature-task-form-props"
 
 type CombinationPanelProps = {
   activeTool: ActivePartDesignTool
@@ -122,16 +121,10 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
     <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <BodyCombinationForm
         key={key}
-        baseRevision={props.report.snapshot.revision}
         copy={copy}
         mode={mode}
+        {...featureTaskFormProps(props, mode)}
         options={options}
-        disabled={props.documentBusy || props.report.mode === "read-only"}
-        onCancel={props.onCloseTool}
-        onSaved={props.onCompleteTool}
-        onSave={mode.kind === "edit" ? updateFeature : addFeature}
-        onPreviewChange={props.onFeaturePreviewChange}
-        previewStatus={props.featurePreviewStatus}
       />
       {mode.kind === "edit" && props.renderDelete(mode.feature)}
     </aside>

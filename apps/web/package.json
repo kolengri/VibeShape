@@ -39,7 +39,8 @@
     "react-dom": "catalog:",
     "react-dropzone": "catalog:",
     "zod": "catalog:",
-    "zustand": "catalog:"
+    "zustand": "catalog:",
+    "@vibeshape/print-analysis": "workspace:*"
   },
   "devDependencies": {
     "rollup-plugin-license": "3.7.1",

@@ -90,7 +90,7 @@ function BodyCombinationInputs(props: SelectionProps) {
   const selectedInputs = props.selected.flatMap((id) =>
     props.options.filter(({ partId }) => partId === id),
   )
-  const producers = new Set(selectedInputs.map(({ body }) => body.featureId))
+  const bodies = new Set(selectedInputs.map(({ body }) => `${body.featureId}:${body.outputRole}`))
   const available = props.options.filter(({ partId }) => !props.selected.includes(partId))
   return (
     <>
@@ -116,7 +116,10 @@ function BodyCombinationInputs(props: SelectionProps) {
             className="h-auto min-h-8 justify-start whitespace-normal text-left"
             aria-label={props.copy.selectPart(input.name)}
             aria-describedby="combination-selection-rules"
-            disabled={props.selected.length >= 8 || producers.has(input.body.featureId)}
+            disabled={
+              props.selected.length >= 8 ||
+              bodies.has(`${input.body.featureId}:${input.body.outputRole}`)
+            }
             onClick={() => props.onChange([...props.selected, input.partId])}
           >
             {input.name}

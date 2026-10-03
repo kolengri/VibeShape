@@ -1,9 +1,11 @@
+type AuthoredDocumentSnapshot = DocumentSnapshotV2 | DocumentSnapshotV3
+
 import { z } from "zod"
 import { canonicalJson } from "./canonical-json"
 import { type DomainDiagnostic, domainDiagnostic } from "./command-support"
 import { createDocumentDependencyGraph } from "./document-graph"
 import {
-  type AuthoredDocumentSnapshot,
+  type DocumentSnapshotV2,
   type DocumentSnapshotV3,
   documentSnapshotV2Schema,
   documentSnapshotV3Schema,

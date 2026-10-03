@@ -17,6 +17,13 @@ import {
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
 } from "@vibeshape/domain/part-design"
+import { loftFeatureParametersSchema } from "@vibeshape/domain/part-design-loft"
+import { mirrorFeatureParametersSchema } from "@vibeshape/domain/part-design-mirror"
+import { patternFeatureParametersSchema } from "@vibeshape/domain/part-design-pattern"
+import { shellFeatureParametersSchema } from "@vibeshape/domain/part-design-shell"
+import { splitFeatureParametersSchema } from "@vibeshape/domain/part-design-split"
+import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
+import { threadFeatureParametersSchema } from "@vibeshape/domain/part-design-thread"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { lengthQuantitySchema } from "@vibeshape/domain/units"
 import { z } from "zod"
@@ -106,6 +113,55 @@ const hole = z
   })
   .strict()
 
+const exactBodyFeature = {
+  ...feature,
+  dependencies: featureRecordSchema.shape.dependencies.length(1),
+  references: featureRecordSchema.shape.references.max(0),
+}
+function matchingBodyDependency(operation: string) {
+  return (
+    input: { dependencies: readonly string[]; parameters: { targetBody: { featureId: string } } },
+    context: z.RefinementCtx,
+  ) => {
+    if (input.parameters.targetBody.featureId !== input.dependencies[0])
+      context.addIssue({
+        code: "custom",
+        path: ["parameters", "targetBody", "featureId"],
+        message: `${operation} must target its sole dependency.`,
+      })
+  }
+}
+const mirror = z
+  .object({ ...exactBodyFeature, parameters: mirrorFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Mirror"))
+const shell = z
+  .object({ ...exactBodyFeature, parameters: shellFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Shell"))
+const split = z
+  .object({ ...exactBodyFeature, parameters: splitFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Split"))
+
+const bodyPattern = z
+  .object({ ...exactBodyFeature, parameters: patternFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Pattern"))
+
+const thread = z
+  .object({ ...exactBodyFeature, parameters: threadFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Thread"))
+
+const multiSketchFeature = {
+  ...feature,
+  dependencies: featureRecordSchema.shape.dependencies.max(8),
+  references: featureRecordSchema.shape.references.max(4096),
+}
+const loft = z.object({ ...multiSketchFeature, parameters: loftFeatureParametersSchema }).strict()
+const sweep = z.object({ ...multiSketchFeature, parameters: sweepFeatureParametersSchema }).strict()
+
 export const localCadInputs = {
   create_sketch: sketch,
   update_sketch: sketch,
@@ -115,6 +171,20 @@ export const localCadInputs = {
   update_revolve: revolve,
   create_hole: hole,
   update_hole: hole,
+  create_mirror: mirror,
+  update_mirror: mirror,
+  create_shell: shell,
+  update_shell: shell,
+  create_thread: thread,
+  update_thread: thread,
+  create_body_pattern: bodyPattern,
+  update_body_pattern: bodyPattern,
+  create_split: split,
+  update_split: split,
+  create_loft: loft,
+  update_loft: loft,
+  create_sweep: sweep,
+  update_sweep: sweep,
 } as const
 
 export const localCadOperations = [
@@ -126,4 +196,18 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_revolve"), arguments: revolve }).strict(),
   z.object({ tool: z.literal("create_hole"), arguments: hole }).strict(),
   z.object({ tool: z.literal("update_hole"), arguments: hole }).strict(),
+  z.object({ tool: z.literal("create_mirror"), arguments: mirror }).strict(),
+  z.object({ tool: z.literal("update_mirror"), arguments: mirror }).strict(),
+  z.object({ tool: z.literal("create_shell"), arguments: shell }).strict(),
+  z.object({ tool: z.literal("update_shell"), arguments: shell }).strict(),
+  z.object({ tool: z.literal("create_thread"), arguments: thread }).strict(),
+  z.object({ tool: z.literal("update_thread"), arguments: thread }).strict(),
+  z.object({ tool: z.literal("create_body_pattern"), arguments: bodyPattern }).strict(),
+  z.object({ tool: z.literal("update_body_pattern"), arguments: bodyPattern }).strict(),
+  z.object({ tool: z.literal("create_split"), arguments: split }).strict(),
+  z.object({ tool: z.literal("update_split"), arguments: split }).strict(),
+  z.object({ tool: z.literal("create_loft"), arguments: loft }).strict(),
+  z.object({ tool: z.literal("update_loft"), arguments: loft }).strict(),
+  z.object({ tool: z.literal("create_sweep"), arguments: sweep }).strict(),
+  z.object({ tool: z.literal("update_sweep"), arguments: sweep }).strict(),
 ] as const

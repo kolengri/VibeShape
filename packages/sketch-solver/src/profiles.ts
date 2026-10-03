@@ -1,10 +1,16 @@
 import type { SketchEntityId } from "@vibeshape/domain/identifiers"
 import type { SketchEntity, SketchRecord } from "@vibeshape/domain/sketch"
 import {
+  cubicBounds,
+  cubicHasDegenerateTangent,
+  cubicSelfIntersects,
+} from "./cubic-profile-geometry"
+import {
   boundsOverlap,
   curveAreaContribution,
   curveIntersections,
   curveLength,
+  curveRayCrossings,
   curveStartAngle,
   distance,
   ellipseBounds,
@@ -33,6 +39,7 @@ export type SketchProfileDiagnosticCode =
   | "duplicate-entity"
   | "intersecting-entities"
   | "open-chain"
+  | "ambiguous-curve-topology"
 
 export type SketchProfileDiagnostic = Readonly<{
   code: SketchProfileDiagnosticCode
@@ -42,7 +49,7 @@ export type SketchProfileDiagnostic = Readonly<{
 
 export type SketchProfileLoopSegment = Readonly<{
   entityId: SketchEntityId
-  type: "line" | "arc" | "circle" | "ellipse" | "elliptical-arc"
+  type: ProfileCurve["type"]
   reversed: boolean
 }>
 
@@ -85,6 +92,7 @@ type RawLoop = Readonly<{
   sourceEntityIds: readonly SketchEntityId[]
   segments: readonly SketchProfileLoopSegment[]
   samples: readonly ProfilePoint[]
+  curves: readonly ProfileCurve[]
 }>
 
 type GraphEdge = Readonly<{
@@ -342,6 +350,30 @@ function ellipticalArcCurve(
   } satisfies ProfileCurve
 }
 
+function cubicBezierCurve(
+  entity: Extract<SketchEntity, { type: "cubic-bezier" }>,
+  points: ReadonlyMap<SketchEntityId, ProfilePoint>,
+  tolerance: number,
+) {
+  const start = pointFor(points, entity.startPointId),
+    control1 = pointFor(points, entity.control1PointId)
+  const control2 = pointFor(points, entity.control2PointId),
+    end = pointFor(points, entity.endPointId)
+  if (!start || !control1 || !control2 || !end) return null
+  const curve = {
+    entityId: entity.id,
+    type: entity.type,
+    startPointId: entity.startPointId,
+    endPointId: entity.endPointId,
+    start,
+    control1,
+    control2,
+    end,
+  }
+  const bounded = { ...curve, bounds: cubicBounds(curve) }
+  return cubicHasDegenerateTangent(bounded, tolerance) ? null : bounded
+}
+
 function entityCurve(
   entity: Exclude<SketchEntity, { type: "point" }>,
   points: ReadonlyMap<SketchEntityId, ProfilePoint>,
@@ -352,6 +384,7 @@ function entityCurve(
   if (entity.type === "circle") return circleCurve(entity, points, radii)
   if (entity.type === "arc") return arcCurve(entity, points, tolerance)
   if (entity.type === "ellipse") return ellipseCurve(entity, points, tolerance)
+  if (entity.type === "cubic-bezier") return cubicBezierCurve(entity, points, tolerance)
   return ellipticalArcCurve(entity, points, tolerance)
 }
 
@@ -363,6 +396,16 @@ function collectCurves(sketch: SketchRecord, solution: SketchProfileSolution, to
   for (const entity of sketch.entities) {
     if (entity.type === "point" || entity.construction) continue
     const curve = entityCurve(entity, points, radii, tolerance)
+    if (curve?.type === "cubic-bezier" && cubicSelfIntersects(curve, tolerance)) {
+      diagnostics.push(
+        profileDiagnostic(
+          "intersecting-entities",
+          "A cubic Bezier self-intersects and requires explicit splitting.",
+          [entity.id],
+        ),
+      )
+      continue
+    }
     if (!curve || curveLength(curve) <= tolerance) {
       diagnostics.push(
         profileDiagnostic(
@@ -397,15 +440,7 @@ function coincidentCurvesOverlap(
   right: Exclude<ProfileCurve, { type: "line" }>,
   tolerance: number,
 ) {
-  if (
-    left.type === "ellipse" ||
-    left.type === "elliptical-arc" ||
-    right.type === "ellipse" ||
-    right.type === "elliptical-arc"
-  ) {
-    return true
-  }
-  if (left.type === "circle" || right.type === "circle") return true
+  if (left.type !== "arc" || right.type !== "arc") return true
   const leftMiddle = pointOnRoundCurveAt(left, 0.5)
   const rightMiddle = pointOnRoundCurveAt(right, 0.5)
   return (
@@ -426,7 +461,10 @@ function intersectionIsOnlySharedEndpoints(
       [minX, minY, maxX, maxY].map(Math.abs),
     ),
   )
-  const numericalTolerance = Math.max(tolerance, Math.sqrt(Number.EPSILON) * coordinateScale)
+  const numericalTolerance =
+    left.type === "cubic-bezier" || right.type === "cubic-bezier"
+      ? tolerance
+      : Math.max(tolerance, Math.sqrt(Number.EPSILON) * coordinateScale)
   const leftEndpoints = [
     { id: left.startPointId, point: left.start },
     { id: left.endPointId, point: left.end },
@@ -467,7 +505,7 @@ function curvesHaveAmbiguousCoincidence(
 
 type CurvePairClassification = Extract<
   SketchProfileDiagnosticCode,
-  "duplicate-entity" | "intersecting-entities"
+  "duplicate-entity" | "intersecting-entities" | "ambiguous-curve-topology"
 >
 
 function classifyCurvePair(
@@ -477,6 +515,7 @@ function classifyCurvePair(
 ): CurvePairClassification | null {
   if (!boundsOverlap(left.bounds, right.bounds, tolerance)) return null
   const intersection = curveIntersections(left, right, tolerance)
+  if ("uncertain" in intersection && intersection.uncertain) return "ambiguous-curve-topology"
   if (curvesHaveAmbiguousCoincidence(left, right, intersection.coincident, tolerance)) {
     return "duplicate-entity"
   }
@@ -498,7 +537,9 @@ function curvePairDiagnostic(
     classification,
     classification === "duplicate-entity"
       ? "Coincident or overlapping profile entities are ambiguous."
-      : "Profile entities intersect away from shared endpoints and require splitting.",
+      : classification === "ambiguous-curve-topology"
+        ? "Curve topology exceeds the bounded subdivision or numerical conditioning tolerance."
+        : "Profile entities intersect away from shared endpoints and require splitting.",
     [left.entityId, right.entityId],
   )
 }
@@ -650,10 +691,18 @@ function rawLoopFromHalfEdges(cycle: readonly HalfEdge[], edges: readonly GraphE
       0,
     ),
     perimeter: curves.reduce((total, { curve }) => total + curveLength(curve), 0),
-    bounds: pointBounds(samples),
+    bounds: curves.some(({ curve }) => curve.type === "cubic-bezier")
+      ? pointBounds(
+          curves.flatMap(({ curve }) => [
+            { x: curve.bounds.minX, y: curve.bounds.minY },
+            { x: curve.bounds.maxX, y: curve.bounds.maxY },
+          ]),
+        )
+      : pointBounds(samples),
     sourceEntityIds: [...new Set(segments.map(({ entityId }) => entityId))],
     segments,
     samples,
+    curves: curves.map(({ curve }) => curve),
   } satisfies RawLoop
 }
 
@@ -701,6 +750,7 @@ function closedCurveLoop(curve: Extract<ProfileCurve, { type: "circle" | "ellips
     sourceEntityIds: [curve.entityId],
     segments: [{ entityId: curve.entityId, type: curve.type, reversed: false }],
     samples,
+    curves: [curve],
   }
 }
 
@@ -723,6 +773,15 @@ function pointInPolygon(point: ProfilePoint, polygon: readonly ProfilePoint[]) {
     if (crosses) inside = !inside
   }
   return inside
+}
+
+function pointInLoop(point: ProfilePoint, loop: RawLoop) {
+  if (!loop.curves.some((curve) => curve.type === "cubic-bezier"))
+    return pointInPolygon(point, loop.samples)
+  const crossings = loop.curves
+    .flatMap((curve) => curveRayCrossings(curve, point))
+    .filter((x) => x > point.x)
+  return crossings.length % 2 === 1
 }
 
 function closedCurveInteriorPoint(loop: RawLoop) {
@@ -753,7 +812,7 @@ function edgeInteriorPoint(
       x: midpoint.x - ((end.y - start.y) / length) * offset,
       y: midpoint.y + ((end.x - start.x) / length) * offset,
     }
-    if (pointInPolygon(candidate, loop.samples)) return candidate
+    if (pointInLoop(candidate, loop)) return candidate
   }
   return null
 }
@@ -788,7 +847,7 @@ function finalizeProfiles(rawLoops: readonly RawLoop[], tolerance: number) {
     const sample = loopInteriorPoint(loop, tolerance)
     for (let candidateIndex = index - 1; candidateIndex >= 0; candidateIndex -= 1) {
       const candidate = sorted[candidateIndex]
-      if (candidate && pointInPolygon(sample, candidate.samples)) {
+      if (candidate && pointInLoop(sample, candidate)) {
         parents[index] = candidateIndex
         depths[index] = (depths[candidateIndex] ?? 0) + 1
         break

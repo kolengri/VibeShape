@@ -165,7 +165,7 @@ describe.each(["placement", "compound", "union"] as const)(
     it("keeps unknown versions and providers opaque instead of trusting a matching typeId", () => {
       const feature = selectionFeature(kind)
       for (const type of [
-        { ...feature.type, schemaVersion: 2 },
+        { ...feature.type, schemaVersion: kind === "compound" || kind === "union" ? 3 : 2 },
         { ...feature.type, moduleId: "org.example.foreign" },
       ]) {
         const unsupported = featureRecordSchema.parse({ ...feature, type })

@@ -161,12 +161,46 @@ function ellipseSamples(
   return start && end ? sampledEllipticalArc(center, primary, secondary, start, end) : []
 }
 
+/** Disposable display samples; analytical feature inputs retain all four exact control points. */
+export function sampleCubicBezierPoints(
+  start: SketchPoint2,
+  control1: SketchPoint2,
+  control2: SketchPoint2,
+  end: SketchPoint2,
+) {
+  return Array.from({ length: CURVE_SEGMENTS + 1 }, (_, index) => {
+    const t = index / CURVE_SEGMENTS
+    const u = 1 - t
+    const coordinate = (axis: "x" | "y") =>
+      u ** 3 * start[axis] +
+      3 * u * u * t * control1[axis] +
+      3 * u * t * t * control2[axis] +
+      t ** 3 * end[axis]
+    return { x: coordinate("x"), y: coordinate("y") }
+  })
+}
+
+function cubicBezierSamples(
+  entity: Extract<CurveEntity, { type: "cubic-bezier" }>,
+  points: PointLookup,
+) {
+  const start = point(points, entity.startPointId)
+  const control1 = point(points, entity.control1PointId)
+  const control2 = point(points, entity.control2PointId)
+  const end = point(points, entity.endPointId)
+  return start && control1 && control2 && end
+    ? sampleCubicBezierPoints(start, control1, control2, end)
+    : []
+}
+
 function curveSamples(
   entity: CurveEntity,
   points: PointLookup,
   radii: ReadonlyMap<string, number>,
 ) {
   switch (entity.type) {
+    case "cubic-bezier":
+      return cubicBezierSamples(entity, points)
     case "line":
       return lineSamples(entity, points)
     case "circle":

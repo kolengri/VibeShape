@@ -1,0 +1,52 @@
+import { createSolids, saved, saveProject } from "./authored-parts-ui-support"
+import { expect, test } from "./fixtures"
+
+test("clips the viewport with reversible sections while preserving saved solids", async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  page.setDefaultTimeout(10_000)
+  await page.goto("/")
+  await saved(page)
+  await createSolids(page)
+  const original = await saveProject(page)
+  await page.getByRole("button", { name: "Fit view", exact: true }).click()
+  await page.getByText("Section view", { exact: true }).click()
+  const section = page
+    .locator("details")
+    .filter({ has: page.getByText("Section view", { exact: true }) })
+  await section.getByLabel("Enable section view", { exact: true }).check()
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  await expect(viewport).toHaveAttribute("data-section-axis", "z")
+  await section.getByLabel("Section offset (mm)").fill("10")
+  await expect(viewport).toHaveAttribute("data-section-offset", "10")
+  await page.screenshot({ path: test.info().outputPath("section-lower.png") })
+  await section.getByLabel("Keep the opposite side").check()
+  await page.screenshot({ path: test.info().outputPath("section-upper.png") })
+  await section.getByLabel("Section offset (mm)").fill("100001")
+  await expect(section.getByText(/finite offset/)).toBeVisible()
+  await expect(viewport).toHaveAttribute("data-section-offset", "10")
+  await section.getByLabel("Section offset (mm)").fill("5")
+  await section.getByLabel("Section normal axis").selectOption("x")
+  await expect(viewport).toHaveAttribute("data-section-axis", "x")
+  const sectioned = await saveProject(page)
+  expect(sectioned.project.snapshot.features).toEqual(original.project.snapshot.features)
+  expect(sectioned.project.snapshot.parts).toEqual(original.project.snapshot.parts)
+  await section.getByLabel("Section normal axis").selectOption("z")
+  await section.getByLabel("Keep the opposite side").uncheck()
+  await section.getByLabel("Section offset (mm)").fill("-100")
+  const canvas = viewport.locator("canvas")
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("Viewport canvas must be visible.")
+  await canvas.hover({ position: { x: bounds.width / 2, y: bounds.height / 2 } })
+  await expect(viewport).not.toHaveAttribute("data-preselected-feature")
+  await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } })
+  await expect(viewport).not.toHaveAttribute("data-selected-feature")
+  await section.getByLabel("Enable section view", { exact: true }).uncheck()
+  await expect(viewport).not.toHaveAttribute("data-section-axis")
+  await page.reload()
+  await saved(page)
+  await expect(page.getByRole("region", { name: "3D viewport", exact: true })).not.toHaveAttribute(
+    "data-section-axis",
+  )
+})

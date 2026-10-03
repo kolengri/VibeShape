@@ -13,7 +13,7 @@ export const featureTypeDescriptorSchema = z
   .object({
     schemaVersion: z.literal(0),
     type: featureTypeSchema,
-    classification: z.enum(["sketch", "solid", "reference", "analysis"]),
+    classification: z.enum(["sketch", "solid", "mesh", "reference", "analysis"]),
     dependencies: contributionCardinalitySchema,
     references: contributionCardinalitySchema,
   })

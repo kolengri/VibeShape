@@ -6,8 +6,13 @@ import {
   documentRebuildSnapshotSchema,
   documentWorkerDocumentIdSchema,
   documentWorkerRequestSchema,
+  type ExportAssemblyInput,
   type GeometryExportFormat,
+  type InspectAssemblyInput,
+  type InspectMeshImportInput,
+  type InspectSourceImportInput,
   type PrintPreparationSettings,
+  type SourceAssetMaterialization,
 } from "@vibeshape/protocol"
 import {
   type DocumentWorkerClientErrorCode,
@@ -28,6 +33,7 @@ type ExportOptions = DocumentWorkerRequestOptions &
 export type DocumentWorkerRebuildInput = Readonly<{
   document: unknown
   mesh: unknown
+  sourceAssets?: unknown
 }>
 
 export type DocumentWorkerSolveSketchInput = Readonly<
@@ -48,9 +54,12 @@ export type DocumentWorkerClientFactory = () => DocumentWorkerClientPort
 export type DocumentWorkerSessionOptions = Readonly<{
   initialGeneration?: number
   retryRecoverableFailure?: boolean
+  materializeSourceAssets?: (
+    document: RebuildRequest["document"],
+  ) => Promise<readonly SourceAssetMaterialization[]>
 }>
 
-type RecoverySnapshot = Pick<RebuildRequest, "document" | "mesh">
+type RecoverySnapshot = Pick<RebuildRequest, "document" | "mesh" | "sourceAssets">
 
 const recoverableClientCodes = new Set<DocumentWorkerClientErrorCode>([
   "request-timeout",
@@ -82,6 +91,7 @@ function parseGeneration(value: unknown) {
 export class DocumentWorkerSession {
   readonly #documentId: string
   readonly #retryRecoverableFailure: boolean
+  readonly #materializeSourceAssets: DocumentWorkerSessionOptions["materializeSourceAssets"]
   #client: DocumentWorkerClientPort
   #closed = false
   #generation: number
@@ -96,6 +106,7 @@ export class DocumentWorkerSession {
     this.#documentId = documentWorkerDocumentIdSchema.parse(documentId)
     this.#generation = parseGeneration(options.initialGeneration ?? 1)
     this.#retryRecoverableFailure = options.retryRecoverableFailure ?? true
+    this.#materializeSourceAssets = options.materializeSourceAssets
     this.#client = this.clientFactory()
   }
 
@@ -109,6 +120,86 @@ export class DocumentWorkerSession {
 
   exportDocument(format: GeometryExportFormat, options: ExportOptions = {}) {
     return this.#enqueue(() => this.#exportWithRecovery(format, options))
+  }
+
+  inspectAssembly(
+    input: InspectAssemblyInput,
+    revision: number,
+    options: DocumentWorkerRequestOptions = {},
+  ) {
+    return this.#enqueue(async () => {
+      this.#assertOpen()
+      const request = documentWorkerRequestSchema.parse({
+        ...this.#envelope(revision),
+        type: "inspectAssembly",
+        input,
+      })
+      const response = await this.#client.request(request, options)
+      if (response.type !== "assemblyInspected")
+        throw new DocumentWorkerRequestError(
+          "Assembly inspection returned an unexpected response.",
+          "mismatched-response-type",
+        )
+      return response
+    })
+  }
+
+  exportAssembly(
+    input: ExportAssemblyInput,
+    revision: number,
+    options: DocumentWorkerRequestOptions = {},
+  ) {
+    return this.#enqueue(async () => {
+      this.#assertOpen()
+      const request = documentWorkerRequestSchema.parse({
+        ...this.#envelope(revision),
+        type: "exportAssembly",
+        input,
+      })
+      const response = await this.#client.request(request, options)
+      if (response.type !== "assemblyExported")
+        throw new DocumentWorkerRequestError(
+          "Assembly export returned an unexpected response.",
+          "mismatched-response-type",
+        )
+      return response
+    })
+  }
+
+  inspectSourceImport(input: InspectSourceImportInput, options: DocumentWorkerRequestOptions = {}) {
+    return this.#enqueue(async () => {
+      this.#assertOpen()
+      const request = documentWorkerRequestSchema.parse({
+        ...this.#envelope(this.#lastSuccessfulSnapshot?.document.revision ?? 0),
+        type: "inspectSourceImport",
+        input,
+      })
+      const response = await this.#client.request(request, options)
+      if (response.type !== "sourceImportInspected")
+        throw new DocumentWorkerRequestError(
+          "Source inspection returned an unexpected response.",
+          "mismatched-response-type",
+        )
+      return response
+    })
+  }
+
+  inspectMeshImport(input: InspectMeshImportInput, options: DocumentWorkerRequestOptions = {}) {
+    return this.#enqueue(async () => {
+      this.#assertOpen()
+      const request = documentWorkerRequestSchema.parse({
+        ...this.#envelope(this.#lastSuccessfulSnapshot?.document.revision ?? 0),
+        type: "inspectMeshImport",
+        input,
+      })
+      const response = await this.#client.request(request, options)
+      if (response.type !== "meshImportInspected")
+        throw new DocumentWorkerRequestError(
+          "Mesh inspection returned an unexpected response.",
+          "mismatched-response-type",
+        )
+      return response
+    })
   }
 
   solveSketch(input: DocumentWorkerSolveSketchInput, options: DocumentWorkerRequestOptions = {}) {
@@ -286,9 +377,13 @@ export class DocumentWorkerSession {
     options: DocumentWorkerRequestOptions,
   ): Promise<RebuildResponse> {
     const document = documentRebuildSnapshotSchema.parse(input.document)
+    let sourceAssets = input.sourceAssets
+    if (sourceAssets === undefined && this.#materializeSourceAssets)
+      sourceAssets = await this.#materializeSourceAssets(document)
     const request = documentWorkerRequestSchema.parse({
       ...this.#envelope(document.revision),
       type: "rebuildDocument",
+      ...(sourceAssets ? { sourceAssets } : {}),
       document,
       mesh: input.mesh,
     })
@@ -302,7 +397,11 @@ export class DocumentWorkerSession {
         "mismatched-response-type",
       )
     }
-    this.#lastSuccessfulSnapshot = { document: request.document, mesh: request.mesh }
+    this.#lastSuccessfulSnapshot = {
+      document: request.document,
+      mesh: request.mesh,
+      ...(request.sourceAssets ? { sourceAssets: request.sourceAssets } : {}),
+    }
     return response
   }
 

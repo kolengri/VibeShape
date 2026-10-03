@@ -42,6 +42,8 @@ import {
   type ViewerOriginPlaneVisibility,
   viewerOriginPlanes,
 } from "./origin-planes"
+import { PrintBedDecoration, type ViewerPrintBed } from "./print-bed"
+import { sectionClipPlanes, sectionPointVisible, type ViewerSection } from "./section-view"
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import { viewerBodyColor } from "./viewer-appearance"
 
@@ -469,6 +471,8 @@ export type ViewerSketchProjectionBounds = Readonly<{
 
 type ViewerCameraClipping = Readonly<{ far: number; near: number }>
 
+export type { ViewerSection } from "./section-view"
+
 export type GeometryViewport = Readonly<{
   setSurfaceTextureBrush: (brush: ViewerSurfaceTextureBrush | null, active?: boolean) => void
   clearSketchProjection: () => void
@@ -482,6 +486,9 @@ export type GeometryViewport = Readonly<{
   setInteractionMode: (mode: ViewerInteractionMode) => void
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
+  setSection: (section: ViewerSection | null) => void
+  setPrintBed: (bed: ViewerPrintBed | null) => void
+  setGroundGrid: (enabled: boolean) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
   setSketchReferenceCandidates: (candidates: readonly ViewerSketchReferenceCandidate[]) => void
   setSketchReferencePreselection: (candidate: ViewerSketchReferenceCandidate | null) => void
@@ -1164,6 +1171,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     size: 10,
     sizeAttenuation: false,
   })
+  #sectionPlanes: Plane[] | null = null
+  readonly #printDecoration = new PrintBedDecoration(() => this.#render())
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
   readonly #sketchProfileGroup = new Group()
@@ -1474,8 +1483,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     })
     if (!context) throw new Error("WebGL2 is unavailable.")
     this.#renderer = new WebGLRenderer({ canvas, context, alpha: true, antialias: true })
+    this.#renderer.localClippingEnabled = true
     this.#renderer.setClearAlpha(0)
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
+    this.#scene.add(this.#printDecoration.bed, this.#printDecoration.ground)
     this.#scene.add(this.#modelGroup)
     this.#scene.add(this.#sketchGroup)
     this.#scene.add(this.#sketchProfileGroup)
@@ -1581,6 +1592,26 @@ class ThreeGeometryViewport implements GeometryViewport {
       observer.observe(this.#orientationInsetOffsetElement)
     }
     return observer
+  }
+
+  setSection(section: ViewerSection | null) {
+    if (this.#disposed) return
+    this.#sectionPlanes = sectionClipPlanes(section)
+    this.clearSelection()
+    this.#setPreselection(null)
+    this.#render()
+  }
+
+  setPrintBed(bed: ViewerPrintBed | null) {
+    if (this.#disposed) return
+    this.#printDecoration.setBed(bed)
+    this.#render()
+  }
+
+  setGroundGrid(enabled: boolean) {
+    if (this.#disposed) return
+    this.#printDecoration.setGround(enabled)
+    this.#render()
   }
 
   setMeshes(meshes: readonly ViewerMesh[]) {
@@ -2027,7 +2058,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
-    const bounds = new Box3().setFromObject(this.#modelGroup).expandByObject(this.#sketchGroup)
+    const bounds = new Box3()
+      .setFromObject(this.#modelGroup)
+      .expandByObject(this.#sketchGroup)
+      .expandByObject(this.#printDecoration.bed)
     if (bounds.isEmpty()) {
       this.#viewHeight = DEFAULT_VIEW_HEIGHT
       this.#controls.target.set(0, 0, 0)
@@ -2072,6 +2106,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   dispose() {
+    this.#printDecoration.dispose()
     if (this.#disposed) return
     this.#disposed = true
     this.#disposeTextureSourceMeshes()
@@ -2226,6 +2261,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #pickIdleSelectionTarget(event: PointerEvent): IdleSelectionTarget {
     if (!this.#prepareRaycaster(event)) return { kind: "empty" }
     const modelHit = this.#raycaster.intersectObjects(this.#surfaceMeshes, false).flatMap((hit) => {
+      if (!sectionPointVisible(this.#sectionPlanes, hit.point)) return []
       const selection = this.#selectionFromIntersection(hit)
       return selection ? [{ selection, distance: hit.distance }] : []
     })[0]
@@ -2312,6 +2348,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (!this.#prepareRaycaster(event)) return []
     const hits: ViewerSelectionHit[] = []
     for (const intersection of this.#raycaster.intersectObjects(this.#surfaceMeshes, false)) {
+      if (!sectionPointVisible(this.#sectionPlanes, intersection.point)) continue
       const selection = this.#selectionFromIntersection({
         object: intersection.object,
         faceIndex: intersection.faceIndex,
@@ -3130,8 +3167,29 @@ class ThreeGeometryViewport implements GeometryViewport {
     }
   }
 
+  #applySectionClipping() {
+    const groups = [
+      this.#modelGroup,
+      this.#featurePreselectionGroup,
+      this.#featureSelectionGroup,
+      this.#preselectionGroup,
+      this.#selectionGroup,
+    ]
+    for (const group of groups)
+      group.traverse((object) => {
+        if (!(object instanceof Mesh || object instanceof LineSegments)) return
+        const materials = Array.isArray(object.material) ? object.material : [object.material]
+        for (const material of materials) {
+          if (material.clippingPlanes === this.#sectionPlanes) continue
+          material.clippingPlanes = this.#sectionPlanes
+          material.needsUpdate = true
+        }
+      })
+  }
+
   #render = () => {
     if (this.#disposed) return
+    this.#applySectionClipping()
     const width = this.#canvas.clientWidth
     const height = this.#canvas.clientHeight
     this.#publishSketchPlaneProjection()

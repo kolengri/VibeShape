@@ -1,6 +1,7 @@
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
-import { DOCUMENT_PROTOCOL_VERSION, type FeatureMeshPolicy } from "@vibeshape/protocol"
+import type { FeatureMeshPolicy } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import type { DocumentRebuildPort } from "./persistent-document-session"

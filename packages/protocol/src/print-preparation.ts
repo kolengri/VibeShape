@@ -23,6 +23,7 @@ const printMeshSchema = z
 export const printPreparationSettingsSchema = z.strictObject({
   rotationX: z.number().finite().min(-180).max(180).default(45),
   rotationY: z.number().finite().min(-180).max(180).default(0),
+  rotationZ: z.number().finite().min(-180).max(180).default(0),
   layerHeight: z.number().min(0.05).max(1).default(0.2),
   clearance: z.number().min(0.05).max(2).default(0.2),
   thickness: z.number().min(0.2).max(2).default(0.6),

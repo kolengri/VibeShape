@@ -21,13 +21,16 @@ import {
   compoundBodyOutputRole,
   compoundFeatureParametersSchema,
   compoundFeatureType,
+  compoundFeatureTypeV2,
   readCompoundFeatureParameters,
   unionFeatureParametersSchema,
   unionFeatureType,
+  unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { patternFeatureType } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
 import { partBodyReference } from "./parts"
-import { createAngleQuantity, createLengthQuantity } from "./units"
+import { createAngleQuantity, createLengthQuantity, createScalarQuantity } from "./units"
 import { applyVersionedDocumentCommand } from "./versioned-document-commands"
 
 const id = (value: number) => `0195b5ac-b220-7a2c-8c33-${String(value).padStart(12, "0")}`
@@ -107,7 +110,7 @@ describe("trusted bounded body combinations", () => {
       }).success,
     ).toBe(false)
     expect(
-      readCompoundFeatureParameters({ ...feature, type: { ...feature.type, schemaVersion: 2 } }),
+      readCompoundFeatureParameters({ ...feature, type: { ...feature.type, schemaVersion: 3 } }),
     ).toBeNull()
   })
   it.each([0, 1, 9])("rejects %i selected bodies at the trusted boundary", (count) => {
@@ -444,5 +447,125 @@ describe("body combination authored identities", () => {
     expect(partBinding(exposed, id(102))).toEqual(forkBody)
     expect(exposed.parts.find(({ id: partId }) => partId === id(102))?.origin).toBe("fork")
     expect(exposed.parts.find(({ id: partId }) => partId === id(100))?.consumedBy).toBe(id(5))
+  })
+})
+
+function patternedRoots() {
+  return insert(
+    roots(),
+    {
+      schemaVersion: 0,
+      id: id(6),
+      type: patternFeatureType.type,
+      dependencies: [id(2)],
+      references: [],
+      suppressed: false,
+      parameters: {
+        kind: "linear",
+        targetBody: body(id(2)),
+        count: createScalarQuantity(3),
+        axis: "X",
+        spacing: createLengthQuantity(5),
+      },
+    },
+    [1, 2].map((index) => ({
+      id: id(101 + index),
+      name: `Copy ${index}`,
+      origin: "independent",
+      body: body(id(6), `pattern.instance.${index}`),
+    })),
+  ).snapshot
+}
+function v2Combination(kind: "compound" | "union", suppressed = false) {
+  const selected = [1, 2].map((index) => body(id(6), `pattern.instance.${index}`))
+  return {
+    ...combined(kind, suppressed),
+    type: kind === "compound" ? compoundFeatureTypeV2.type : unionFeatureTypeV2.type,
+    dependencies: [id(6)],
+    parameters:
+      kind === "compound"
+        ? { slots: selected.map((targetBody, index) => ({ slotId: id(700 + index), targetBody })) }
+        : { bodies: selected },
+  }
+}
+describe("ordered same-producer body ownership", () => {
+  it.each(["compound", "union"] as const)(
+    "binds both %s inputs independently and restores every source on suppression",
+    (kind) => {
+      const before = patternedRoots()
+      const added = insert(before, v2Combination(kind))
+      expect(partBinding(added.snapshot, id(102))).toEqual(
+        body(id(5), kind === "compound" ? `body.${id(700)}` : "result"),
+      )
+      if (kind === "compound")
+        expect(partBinding(added.snapshot, id(103))).toEqual(body(id(5), `body.${id(701)}`))
+      else expect(added.snapshot.parts.find((part) => part.id === id(103))?.consumedBy).toBe(id(5))
+      expect(partBinding(added.snapshot, id(100))).toEqual(body(id(6), "pattern.instance.0"))
+      expect(partBinding(added.snapshot, id(101))).toEqual(body(id(3)))
+      expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
+      const suppressed = success(
+        model(added.snapshot, "org.vibeshape.feature.update", {
+          feature: v2Combination(kind, true),
+        }),
+      ).snapshot
+      expect(suppressed.parts).toEqual(before.parts)
+    },
+  )
+  it.each(["compound", "union"] as const)(
+    "keeps unavailable or invalid %s intent from consuming any source body",
+    (kind) => {
+      const before = patternedRoots()
+      const parameters =
+        kind === "compound"
+          ? {
+              slots: [
+                { slotId: id(700), targetBody: body(id(6), "pattern.instance.1") },
+                { slotId: id(701), targetBody: body(id(6), "pattern.instance.99") },
+              ],
+            }
+          : { bodies: [body(id(6), "pattern.instance.1"), body(id(6), "pattern.instance.99")] }
+      const unavailable = insert(before, { ...v2Combination(kind), parameters }).snapshot
+      expect(unavailable.parts).toEqual(before.parts)
+      const duplicate =
+        kind === "compound"
+          ? {
+              slots: [700, 701].map((index) => ({
+                slotId: id(index),
+                targetBody: body(id(6), "pattern.instance.1"),
+              })),
+            }
+          : { bodies: [body(id(6), "pattern.instance.1"), body(id(6), "pattern.instance.1")] }
+      const result = model(unavailable, "org.vibeshape.feature.update", {
+        feature: { ...v2Combination(kind), parameters: duplicate },
+      })
+      expect(registry().validateFeature({ ...v2Combination(kind), parameters: duplicate }).ok).toBe(
+        false,
+      )
+      expect(success(result).snapshot.parts).toEqual(before.parts)
+      expect(unavailable.parts).toEqual(before.parts)
+    },
+  )
+  it("migrates only on explicit version 2 update and preserves authored output slots", () => {
+    const before = patternedRoots()
+    const legacy = {
+      ...combined("compound"),
+      dependencies: [id(6), id(3)],
+      parameters: {
+        slots: [
+          { slotId: id(700), targetBody: body(id(6), "pattern.instance.1") },
+          { slotId: id(701), targetBody: body(id(3)) },
+        ],
+      },
+    }
+    const old = insert(before, legacy).snapshot
+    expect(old.features.find((feature) => feature.id === id(5))?.type?.schemaVersion).toBe(1)
+    const upgraded = success(
+      model(old, "org.vibeshape.feature.update", { feature: v2Combination("compound") }),
+    ).snapshot
+    expect(upgraded.features.find((feature) => feature.id === id(5))?.type?.schemaVersion).toBe(2)
+    expect(partBinding(upgraded, id(102))).toEqual(body(id(5), `body.${id(700)}`))
+    expect(partBinding(upgraded, id(103))).toEqual(body(id(5), `body.${id(701)}`))
+    expect(partBinding(upgraded, id(101))).toEqual(body(id(3)))
+    expect(old.features.find((feature) => feature.id === id(5))?.type?.schemaVersion).toBe(1)
   })
 })

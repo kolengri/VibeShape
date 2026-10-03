@@ -97,7 +97,7 @@ unsupported grants. Payload and admission budgets still apply before SDK writes.
 | Pending tool operation | Six minutes, one operation in flight |
 | Operations | 30/minute and 128 per tab lifetime |
 | MCP request/browser frame | 192 KiB UTF-8; onboarding bodies have smaller limits |
-| Complete MCP response | 512 KiB, including SDK text/structured output duplication |
+| Complete MCP response | 512 KiB, including SDK text/structured output duplication; static tool discovery catalog up to 1 MiB |
 
 Invalid configuration fails closed. The quota configuration requires
 `2 * clients + 4 * consents + 4 * tokens <= 800`, reserving conservative SDK writes below Free's

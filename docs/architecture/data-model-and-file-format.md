@@ -61,7 +61,51 @@ A built-in feature stores a stable first-party module ID, module version, contri
 
 The document preserves unknown custom-feature payloads without interpreting or rewriting them. Exact extension bytes are installed and stored separately; they are never authoritative entries inside the project archive.
 
+## Expanded CAD authority
+
+Document V4 adds immutable source descriptors and frozen assembly authority. The nested V2 model
+still owns editable sketches, feature intent, Parts and History. Exact source import captures every
+output's UUID and role before commit; triangle-mesh import explicitly carries mesh representation,
+zero exact solids and no fabricated B-Rep topology. Only exact bodies are eligible for exact
+modeling operations or STEP export. Meshes retain their explicit source units and remain exportable
+as STL/3MF. Source bytes and descriptors publish atomically with the authoring transaction.
+
+Sketch curves include analytical cubic Bézier entities with durable point identities. Editable text
+groups bind ordinary outline curves to a strict fixed-font parameter record and outline hash;
+manual curve edits are detectable, and detaching keeps the authored curves. SVG/DXF import stores
+optional `sourceImport` provenance: source asset identity, normalization policy, captured ordered
+path/curve/point UUIDs and directions. Coordinate edits retain provenance; removing or changing a
+captured entity detaches the whole provenance record. Unsupported drawings fail inspection before
+IDs, assets or sketches are committed. See [ADR-0068](../adr/0068-exact-cubic-bezier-sketch-curves.md),
+[ADR-0070](../adr/0070-immutable-font-sketch-text-outlines.md) and
+[ADR-0065](../adr/0065-bounded-exchange-geometry-import.md).
+
+Assembly definitions pin the selected exact body roles or mesh sources together with their frozen
+model dependency closure, source descriptors and content hashes. Instance UUIDs, rigid frames,
+fixed/revolute/prismatic joints, limits and drives are separate authority. Deleting or changing the
+original Part cannot silently replace a pin. Explicit relinking creates a new pin revision while
+preserving instance and joint identity. Read-only materialization verifies the complete source
+closure in disposable worker scopes. Occurrence meshes and bounds already occupy world
+coordinates. Exact interference measures transformed native Common material; touching is clear,
+and an overlapping mesh pair reports unsupported. See
+[ADR-0069](../adr/0069-frozen-assembly-source-authority.md) and
+[ADR-0072](../adr/0072-derived-assembly-geometry-and-exact-interference.md).
+
+The reusable local library stores immutable definition versions outside the project database.
+An inserted copy is unbound; a reference stores explicit `libraryBinding {itemId, version}`.
+Updating a reference is an ordinary undoable CAD transaction, and detaching retains its frozen
+geometry. Project backups carry pinned source closure and never depend on the library still being
+present. See [ADR-0073](../adr/0073-immutable-local-assembly-library.md).
+
 ## Command and event model
+
+Document V4 adds strict source-asset descriptors through an explicit upgrade event with an empty
+`assets` collection. Descriptors distinguish exact solids, triangle meshes and sketch curves and carry
+content digests plus captured UUIDv7 output identities. Immutable source bytes reside in IndexedDB
+outside snapshots. Native format 5 declares exact digest-addressed byte entries for the full journal
+closure, including assets required only by historical Undo/Redo targets. Published V3 texture authority and native format 4 remain unchanged, as do historical V2 schemas
+and format-3 files. V4 extends V3 and preserves surface texture layers on every edit; V5 native
+archives retain both texture and source upgrade boundaries. See [ADR-0062](../adr/0062-durable-source-assets-and-portable-closure.md).
 
 Alpha uses a hybrid model:
 

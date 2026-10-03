@@ -78,7 +78,12 @@ export function resolveAuthoredParts(
   if (!terminal) return null
   const bodies = new Map(
     terminal
-      .filter((body) => body.shape.valid && body.shape.solidCount === 1 && body.shape.volume > 0)
+      .filter(
+        (body) =>
+          body.shape.valid &&
+          (body.representation === "triangle-mesh" ||
+            (body.shape.solidCount === 1 && body.shape.volume > 0)),
+      )
       .map((body) => [bodyKey(body), body]),
   )
   return authority.parts.map((part) => resolvePart(part, bodies))

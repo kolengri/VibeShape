@@ -46,7 +46,7 @@ test("authored authority preserves journals, rolls back failures, and reopens po
     checkpoint: true,
     draftRace: true,
     legacyBridge: true,
-    schemaVersion: 3,
+    schemaVersion: 4,
   })
 })
 

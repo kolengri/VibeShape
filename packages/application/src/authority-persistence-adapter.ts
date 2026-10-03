@@ -1,27 +1,24 @@
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import {
-  type AuthoredDocumentSnapshot,
   type DocumentAuthoritySnapshot,
   documentAuthoritySnapshotSchema,
 } from "@vibeshape/domain/document-v2"
-import type {
-  DocumentAuthorityEvent,
-  DocumentV2Event,
-  DocumentV3Event,
-} from "@vibeshape/domain/document-v2-command-schemas"
-import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
-import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
+import type { DocumentAuthorityEvent } from "@vibeshape/domain/document-v2-command-schemas"
+import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import {
+  type AuthoredAuthoritySnapshot,
   authorityFailure,
   capturePartAllocations,
   documentAuthoredCommandRequestSchema,
   matchRuntimeProjection,
   modelProjection,
   type PartAllocationFactory,
+  prepareAuthorityMetadataCommand,
   prepareAuthorityModelEvent,
   prepareAuthorityRestore,
   runtimeProjection,
 } from "./authority-persistence-operations"
+import { prepareAuthorityTransaction } from "./authority-transaction"
 import { DocumentUndoHistory } from "./document-undo-history"
 import {
   type DocumentAuthoredMetadataPort,
@@ -46,6 +43,7 @@ export type AuthorityCommitInput = Readonly<
     baseSnapshot: DocumentAuthoritySnapshot
     snapshot: DocumentAuthoritySnapshot
     event: DocumentAuthorityEvent
+    assetBlobs?: readonly SourceAssetBlob[]
   }
 >
 export type AuthorityDraftInput = Readonly<
@@ -53,6 +51,7 @@ export type AuthorityDraftInput = Readonly<
     baseSnapshot: DocumentAuthoritySnapshot
     snapshot: DocumentAuthoritySnapshot
     events: readonly DocumentAuthorityEvent[]
+    assetBlobs?: readonly SourceAssetBlob[]
   }
 >
 export type AuthorityRecoveryReport = Readonly<
@@ -70,7 +69,7 @@ export type AuthorityDocumentRepositoryPort = VersionedDocumentRepositoryPort &
     closeAuthorityCleanly: (input: VersionedCloseInput) => Promise<SessionPortResult<unknown>>
   }>
 
-/** V0 remains disposable runtime data; all V2 writes retain full authored authority. */
+/** V0 remains disposable runtime data; all authored writes retain full authored authority. */
 export function createAuthorityPersistenceAdapter(
   repository: AuthorityDocumentRepositoryPort,
   createPart: PartAllocationFactory,
@@ -78,6 +77,7 @@ export function createAuthorityPersistenceAdapter(
 ): PersistentDocumentRepositoryPort &
   Readonly<{
     readonly currentAuthoritySnapshot: DocumentAuthoritySnapshot | null
+    authoredTransaction: DocumentAuthoredMetadataPort
     authoredMetadata: DocumentAuthoredMetadataPort
     history: DocumentHistoryPort
     semanticHistory: DocumentSemanticHistoryPort
@@ -87,12 +87,12 @@ export function createAuthorityPersistenceAdapter(
     repository,
     initialSnapshot?.schemaVersion === 1 ? initialSnapshot : null,
   )
-  const history = new DocumentUndoHistory<AuthoredDocumentSnapshot>()
+  const history = new DocumentUndoHistory<AuthoredAuthoritySnapshot>()
   const current = () => authority ?? legacy.currentV1Snapshot
 
   async function persist(
     input: AuthorityCommitInput,
-    next: AuthoredDocumentSnapshot,
+    next: AuthoredAuthoritySnapshot,
     record = true,
   ) {
     let result: SessionPortResult<unknown>
@@ -109,7 +109,8 @@ export function createAuthorityPersistenceAdapter(
       return authorityFailure("persistence-failed", "The authored document change was not saved.")
     }
     if (!result.ok) return result
-    if (record) history.record(authority, next)
+    if (authority?.schemaVersion !== next.schemaVersion) history.clear()
+    if (record && authority) history.record(authority, next)
     authority = next
     const projected = runtimeProjection(next)
     return projected.ok
@@ -120,6 +121,46 @@ export function createAuthorityPersistenceAdapter(
   return {
     get currentAuthoritySnapshot() {
       return current()
+    },
+    authoredTransaction: {
+      get snapshot() {
+        return current()
+      },
+      async apply(input) {
+        if (!authority)
+          return authorityFailure(
+            "invalid-command",
+            "An authored transaction requires authored authority.",
+          )
+        const base = authority
+        const match = matchRuntimeProjection(base, input.baseSnapshot)
+        if (match) return match
+        const prepared = prepareAuthorityTransaction(base, input.command, createPart)
+        if (!prepared.ok) return prepared
+        let saved: SessionPortResult<unknown>
+        try {
+          saved = await repository.commitAuthorityDraft({
+            sessionId: input.sessionId,
+            lease: input.lease,
+            baseSnapshot: base,
+            snapshot: prepared.snapshot,
+            events: prepared.events,
+            assetBlobs: prepared.assetBlobs,
+            transactionId: prepared.transactionId,
+            storedAt: prepared.snapshot.updatedAt,
+          })
+        } catch {
+          return authorityFailure("persistence-failed", "The authored transaction was not saved.")
+        }
+        if (!saved.ok) return saved
+        if (base.schemaVersion !== prepared.snapshot.schemaVersion) history.clear()
+        history.record(prepared.historyBase, prepared.snapshot)
+        authority = prepared.snapshot
+        const projected = runtimeProjection(prepared.snapshot)
+        return projected.ok
+          ? { ok: true as const, value: projected.snapshot }
+          : authorityFailure("invalid-event", projected.diagnostic.message)
+      },
     },
     authoredMetadata: {
       get snapshot() {
@@ -142,10 +183,7 @@ export function createAuthorityPersistenceAdapter(
                 },
               }
             : parsed.data
-        const result =
-          command.schemaVersion === 3 || base.schemaVersion === 3
-            ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
-            : applyDocumentV2Command(base, command)
+        const result = prepareAuthorityMetadataCommand(base, command)
         if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
         return persist(
           {
@@ -253,7 +291,7 @@ export function createAuthorityPersistenceAdapter(
       const match = matchRuntimeProjection(base, input.baseSnapshot)
       if (match) return match
       let next = base
-      const events: (DocumentV2Event | DocumentV3Event)[] = []
+      const events: DocumentAuthorityEvent[] = []
       for (const event of input.events) {
         const translated = translateLegacyDocumentEvent(modelProjection(next), event)
         if ("ok" in translated) return translated
