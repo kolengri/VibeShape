@@ -1,6 +1,18 @@
 # Skills for agents using VibeShape
 
-This pack teaches an external agent to operate VibeShape as a CAD application through its paired MCP session and ordinary browser UI. It is separate from the repository's engineering skills, which teach agents to develop VibeShape. Installing skills does not configure MCP, authorize a browser tab, or grant auto-apply.
+This pack teaches an external agent to operate VibeShape as a CAD application through its paired MCP session and ordinary browser UI. Both servers bundle it and advertise it in their MCP initialization instructions. It is separate from the repository's engineering skills, which teach agents to develop VibeShape. Loading or installing skills does not configure MCP, authorize a browser tab, or grant auto-apply.
+
+## Load through MCP
+
+No checkout or local skill installation is needed for a connected client:
+
+1. Read `vibeshape://agent-skills` through MCP resources/read. Its JSON index contains the entrypoint, skill descriptions, document URIs, and conditional references.
+2. Read the `vibeshape-use` entrypoint and only the task workflows/references needed. Markdown links in served documents point to other MCP resource URIs, not repository paths.
+3. For clients that expose only tools to the model, call `read_agent_skill` with `{}` for the index, then `{ "uri": "<listed document URI>" }`. The same content is available through both interfaces.
+
+Local skill reads work before document pairing. Remote reads require the existing OAuth scope and live approved browser tab, like every request to `/mcp`. They never dispatch browser work or consume a CAD draft operation. The remote server still omits local session/authoring-guide resources and binary exports.
+
+The server tells the agent to read the index; the client must expose resources or the fallback tool, and the agent must follow that instruction. This is runtime instruction loading, not silent installation into the client's filesystem.
 
 ## Included skills
 
@@ -14,7 +26,7 @@ This pack teaches an external agent to operate VibeShape as a CAD application th
 
 Each folder contains a `SKILL.md`, Codex UI metadata, and references only where needed. Install all five sibling folders together: their relative links form one portable pack. Runtime instructions need no repository checkout, developer dependencies, global engineering skills, or source-code edits. Existing server/client dependencies still apply.
 
-## Install in the consuming agent
+## Optional local installation
 
 In a checkout of this repository, the skills already live under `.agents/skills`. For another Codex project, copy just the five application-use folders into that project's `.agents/skills`. For personal Codex use, copy them into the active Codex home's `skills` directory (normally `~/.codex/skills`). Inspect same-name destinations first; do not overwrite a different pack or unrelated skill. For a clean destination, from the VibeShape repository root:
 
@@ -39,7 +51,7 @@ Preserve existing model intent and use the ordinary browser review path.
 ## Connect separately
 
 - **Local:** follow the [local MCP quickstart](mcp-quickstart.md). Read the advertised session/authoring-guide resources, open the returned editor URL, and have the owner enable the AI session.
-- **Remote:** follow [remote MCP operation](remote-mcp.md) and the deployed endpoint shown in the editor FAQ. Complete OAuth/PKCE and approval in the exact target tab. Remote currently exposes tools only and omits MCP binary export; files use the visible editor's export controls.
+- **Remote:** follow [remote MCP operation](remote-mcp.md) and the deployed endpoint shown in the editor FAQ. Complete OAuth/PKCE and approval in the exact target tab. Remote exposes the bundled skill resources and shared modeling tools, and omits MCP binary export; files use the visible editor's export controls.
 
 After tool discovery and pairing, use one safe `model_info` invocation to establish current access. A configuration file or OAuth success alone is not this evidence. Live server schemas are authoritative; supported operations can change without a skill update.
 
@@ -47,4 +59,4 @@ After tool discovery and pairing, use one safe `model_info` invocation to establ
 
 The pack distinguishes private draft, exact preview, committed browser save, exported geometry, editable backup, slicer open, and physical print. Manual Apply remains the default; auto-apply is a separate browser opt-in and never covers metadata proposals. Lost or uncertain write outcomes require reading saved state before retrying.
 
-When the MCP vocabulary or authority changes, update the relevant pack contract alongside the canonical [automation documentation](architecture/automation-and-mcp.md), local authoring guide, or remote operation guide. Validate metadata with `bun run skills:validate` and check relative links after moving/copying the pack. Static validation does not prove a live client connection or a successful modeling task.
+When the MCP vocabulary or authority changes, update the relevant pack contract alongside the canonical [automation documentation](architecture/automation-and-mcp.md), local authoring guide, or remote operation guide. The five folders under `.agents/skills` remain the source of truth. Run `bun run skills:bundle` after editing their Markdown; it rewrites relative document links to MCP URIs and generates the JSON included by both server bundles. `bun run skills:validate` fails when that bundle is missing or stale. Check relative links after moving/copying the portable pack. Static validation does not prove a live client connection or a successful modeling task.

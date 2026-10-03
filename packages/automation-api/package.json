@@ -15,6 +15,7 @@
     "./remote-session": "./src/remote-session.ts",
     "./tool-metadata": "./src/tool-metadata.ts",
     "./authored-metadata": "./src/authored-metadata.ts",
+    "./agent-skills": "./src/agent-skills.ts",
     "./query-byte-budget": "./src/query-byte-budget.ts"
   },
   "scripts": {

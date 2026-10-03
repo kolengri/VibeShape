@@ -9,7 +9,7 @@
 5. Call `preview_draft` with `{ "draftId": draftId }`. Check exact `geometry.status`, diagnostics, bounds, and volume against the requested design. Fix invalid intent through a supported update with a new command ID; inspect the updated draft revision before continuing.
 6. Call `commit_draft` with `{ "draftId": draftId }`. The default waits for browser Apply/Discard; an existing explicit session auto-apply grant may apply eligible CAD changes. A successful commit saves once and creates one Undo entry. Verify the returned result and observe the saved revision with `model_info`.
 
-Read-only draft tools do not rebuild or extend expiry. Use `preview_draft` when exact geometry is needed. An uncommitted draft cannot be exported by `export_model`.
+`draft_tree`, `draft_entity`, and `draft_variables` read semantic intent without rebuilding. An uncached `draft_edges` read may perform a disposable exact geometry rebuild to resolve selectable edges. None of these inspection reads renews draft expiry. Use `preview_draft` to validate the entire draft and obtain its exact measurements. An uncommitted draft cannot be exported by `export_model`.
 
 ## Conflict and interruption
 

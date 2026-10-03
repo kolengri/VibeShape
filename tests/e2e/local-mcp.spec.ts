@@ -70,6 +70,7 @@ test("creates, repairs, reviews, commits and exports a model through real local 
       "model_tree",
       "model_variables",
       "preview_draft",
+      "read_agent_skill",
       "remove_variable",
       "rename_variable",
       "replace_variable_table",

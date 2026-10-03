@@ -5,7 +5,7 @@ It reuses existing CAD, sketch, variable, topology and metadata tools. The edito
 documents, review, persistence and Undo. The local Bun/stdio workflow remains available separately.
 See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
-The [application-use skill pack](agent-skills.md) provides portable operator instructions for the consuming agent, including remote pairing and the browser export fallback. Install it separately from configuring this endpoint.
+The server bundles the [application-use skill pack](agent-skills.md), including modeling, recovery and the browser export fallback. After authentication, read `vibeshape://agent-skills`, then the entrypoint and relevant document URIs. Clients exposing only tools can use `read_agent_skill`. Both routes retain live-tab OAuth checks, return static instructions only, and never dispatch browser work. No checkout or local skill installation is required.
 
 ## User workflow
 

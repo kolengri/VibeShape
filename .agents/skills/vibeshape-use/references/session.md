@@ -10,7 +10,7 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 
 Get the configured endpoint from the editor's **FAQ → Connect an AI through MCP**, rather than guessing a hostname. Configure a client supporting Streamable HTTP and OAuth/PKCE. The person opens **Remote AI**, completes the browser challenge, creates a pairing code, enters it on the OAuth consent page, verifies the client and return address in that exact editor tab, and chooses **Allow this client**. Do not solve the challenge, expose the code, or grant consent on their behalf.
 
-Remote currently exposes the shared named tools except `export_model`, with no local session, guide, or binary export resources. Use the live tool descriptions and schemas plus the modeling references in this pack. Remote access controls one approved browser tab, not every project or a headless CAD service. A claimed client name is not identity evidence.
+Remote exposes the shared named CAD tools except `export_model`, plus the bundled skill catalog as MCP resources and `read_agent_skill`. It has no local session, authoring-guide, or binary export resources. Skill reads use the same authenticated live-tab authority but never invoke browser work. Use the live tool descriptions and schemas plus the modeling references in this pack. Remote access controls one approved browser tab, not every project or a headless CAD service. A claimed client name is not identity evidence.
 
 ## Verify and retain the session
 

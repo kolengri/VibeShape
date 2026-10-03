@@ -220,6 +220,14 @@ There is no generic `apply_command`, `execute`, `run_script`, `install_extension
 
 Optional prompts may guide user-selected workflows such as inspecting printability, designing a bracket, or repairing a failed feature. Prompts do not gain authority, hide tool invocations, or commit changes. Their output remains subject to the same draft and confirmation flow.
 
+## Bundled operator instructions
+
+Both transports expose `vibeshape://agent-skills` and the finite Markdown documents it indexes, plus a read-only `read_agent_skill` fallback for clients exposing only tools. Initialization instructions direct the agent to the index and relevant workflows. This loads instructions at runtime; it does not install client files, grant document access, or enable auto-apply.
+
+The canonical five application-use skills live under `.agents/skills`. `bun run skills:bundle` embeds their Markdown in `automation-api/agent-skills`, rewriting relative links to resource URIs. `skills:validate` rejects missing/stale generated data. Both Worker and relocatable Bun builds include the content, with no runtime filesystem or outbound-network reads. Resource lookup accepts only exact catalog URIs and each generated document is limited to 64 KiB.
+
+Local static reads are available before pairing. Remote static reads retain the `/mcp` OAuth scope/client/live-tab checks and response-size limit, but do not invoke browser work or CAD operation budgets. Document and export authority remain separate. See [the skill pack](../agent-skills.md) for discovery, installation and maintenance.
+
 ## Host-owned browser review
 
 The required review port receives detached parsed commands, actor identity, and an exact version-2
