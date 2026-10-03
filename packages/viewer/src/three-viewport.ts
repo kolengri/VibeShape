@@ -1481,6 +1481,13 @@ class ThreeGeometryViewport implements GeometryViewport {
 
     this.#camera.up.set(0, 0, 1)
     this.#camera.position.set(80, -80, 65)
+    // Claim gizmo pointer-downs before OrbitControls can start tracking the same gesture.
+    this.#translationControls = new TransformControls(this.#camera, canvas)
+    this.#translationControls.setMode("translate")
+    this.#translationControls.setSpace("world")
+    this.#translationHelper = this.#translationControls.getHelper()
+    this.#translationHelper.visible = false
+    this.#scene.add(this.#translationHelper)
     this.#controls = new OrbitControls(this.#camera, canvas)
     this.#controls.enableDamping = false
     this.#controls.zoomToCursor = true
@@ -1490,12 +1497,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.target.set(0, 0, 0)
     this.#controls.addEventListener("change", this.#onControlsChange)
     this.#controls.update()
-    this.#translationControls = new TransformControls(this.#camera, canvas)
-    this.#translationControls.setMode("translate")
-    this.#translationControls.setSpace("world")
-    this.#translationHelper = this.#translationControls.getHelper()
-    this.#translationHelper.visible = false
-    this.#scene.add(this.#translationHelper)
     this.#translationControls.addEventListener("change", this.#onTranslationControlsChange)
     this.#translationControls.addEventListener("objectChange", this.#onTranslationObjectChange)
     this.#translationControls.addEventListener("mouseDown", this.#onTranslationControlsMouseDown)
@@ -1504,6 +1505,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#raycaster.params.Line.threshold = 2
     canvas.addEventListener("pointerdown", this.#onPointerDown, true)
     canvas.addEventListener("pointermove", this.#onPointerMove)
+    canvas.addEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
     canvas.addEventListener("pointercancel", this.#onTranslationGestureCancel)
@@ -2008,6 +2010,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#resizeObserver.disconnect()
     this.#canvas.removeEventListener("pointerdown", this.#onPointerDown, true)
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
+    this.#canvas.removeEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
     this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
     this.#canvas.removeEventListener("pointercancel", this.#onTranslationGestureCancel)
@@ -2412,6 +2415,24 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#skipTranslationGizmoPointerUp = true
     this.#orbitControlsEnabledBeforeTranslation = this.#controls.enabled
     this.#controls.enabled = false
+  }
+
+  #onTranslationPointerUpCapture = (event: PointerEvent) => {
+    if (
+      !this.#translationGizmoInteracting ||
+      !event.isPrimary ||
+      event.button !== 0 ||
+      !this.#prepareRaycaster(event)
+    )
+      return
+    // Consume the release endpoint before TransformControls ends and flushes the gesture.
+    this.#translationControls.pointerMove(
+      new PointerEvent("pointermove", {
+        clientX: this.#pointer.x,
+        clientY: this.#pointer.y,
+        button: -1,
+      }),
+    )
   }
 
   #onTranslationControlsMouseUp = () => {
@@ -2901,6 +2922,17 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchProfilePreselection(null)
   }
 
+  #publishTranslationGizmoOrigin(width: number, height: number) {
+    if (this.#translationHelper.visible) {
+      const projected = this.#translationObject
+        .getWorldPosition(new Vector3())
+        .project(this.#camera)
+      this.#canvas.dataset.translationGizmoOrigin = `${((projected.x + 1) / 2) * width},${((1 - projected.y) / 2) * height}`
+    } else {
+      delete this.#canvas.dataset.translationGizmoOrigin
+    }
+  }
+
   #render = () => {
     if (this.#disposed) return
     const width = this.#canvas.clientWidth
@@ -2908,6 +2940,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#publishSketchPlaneProjection()
     this.#publishAxialGizmoAvailability()
     if (width <= 0 || height <= 0) return
+    this.#publishTranslationGizmoOrigin(width, height)
     const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
     if (angularHandle) {
       const projected = new Vector3(...angularHandle).project(this.#camera)
