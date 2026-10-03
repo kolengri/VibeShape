@@ -10,9 +10,7 @@ import { isSortable, isSortableOperation, useSortable } from "@dnd-kit/react/sor
 import {
   type FeatureRecord,
   type HistoryItemRef,
-  isSketchExternalModelReference,
   readDatumPlaneFeatureParameters,
-  readExtrusionFeatureParameters,
   readExtrusionProfileSet,
   readRevolveProfileSet,
   type SketchId,
@@ -174,24 +172,6 @@ type SketchRemoveHandler = (
   baseRevision: number,
   sketchId: SketchId,
 ) => Promise<DocumentMutationResult>
-
-function sketchHasDependents(
-  sketch: SketchRecord,
-  features: readonly FeatureRecord[],
-  sketches: readonly SketchRecord[],
-) {
-  return (
-    features.some(
-      (feature) => readExtrusionFeatureParameters(feature)?.profile.sketchId === sketch.id,
-    ) ||
-    sketches.some((candidate) =>
-      (candidate.externalReferences ?? []).some(
-        (reference) =>
-          !isSketchExternalModelReference(reference) && reference.sourceSketchId === sketch.id,
-      ),
-    )
-  )
-}
 
 function FeatureVisibilityAction({
   feature,
@@ -391,6 +371,7 @@ function FeatureTreeItem({
 
 function SketchTreeActions({
   controller,
+  deletionBlocked,
   onRenameOpenChange,
   onFeatureRename,
   onSketchDeleted,
@@ -402,6 +383,7 @@ function SketchTreeActions({
   unnamedSketch,
 }: {
   controller: DocumentControllerState
+  deletionBlocked: boolean
   onRenameOpenChange: (open: boolean) => void
   onFeatureRename: FeatureRenameHandler
   onSketchDeleted: () => void
@@ -413,11 +395,6 @@ function SketchTreeActions({
   unnamedSketch: string
 }) {
   const label = sketch.label || unnamedSketch
-  const dependents = sketchHasDependents(
-    sketch,
-    controller.report?.snapshot.features ?? [],
-    controller.report?.snapshot.sketches ?? [],
-  )
 
   return (
     <>
@@ -433,7 +410,7 @@ function SketchTreeActions({
       />
       <SketchDeleteAction
         baseRevision={controller.report?.snapshot.revision ?? 0}
-        blocked={renameBlocked || dependents}
+        blocked={renameBlocked || deletionBlocked}
         disabled={controller.status !== "ready" || controller.report?.mode !== "read-write"}
         sketch={sketch}
         sketchName={label}
@@ -519,6 +496,7 @@ function SketchTreeLabelButton({
 function SketchTreeItem({
   active,
   controller,
+  deletionBlocked,
   onActivate,
   onSketchSupportRepair,
   onFeatureRename,
@@ -527,14 +505,13 @@ function SketchTreeItem({
   onSketchRename,
   onVisibilityChange,
   renameBlocked,
-  referenceHealth,
-  supportHealth,
-  sketch,
+  row,
   unnamedSketch,
   visible,
 }: {
   active: boolean
   controller: DocumentControllerState
+  deletionBlocked: boolean
   onActivate: (sketchId: SketchId) => void
   onSketchSupportRepair: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
@@ -543,17 +520,17 @@ function SketchTreeItem({
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
-  referenceHealth: HistoryViewRow["referenceHealth"]
-  supportHealth: HistoryViewRow["supportHealth"]
-  sketch: SketchRecord
+  row: HistoryViewRow
   unnamedSketch: string
   visible: boolean
 }) {
   const t = useTranslations("app.shell.modelTree")
   const [renameOpen, setRenameOpen] = useState(false)
+  const sketch = row.record as SketchRecord
   const label = sketch.label || unnamedSketch
   const renameDisabled =
     renameBlocked || controller.status !== "ready" || controller.report?.mode !== "read-write"
+  const activateSketch = () => onActivate(sketch.id)
 
   return (
     <div className="flex min-w-0 items-center gap-0.5">
@@ -566,20 +543,21 @@ function SketchTreeItem({
       <SketchTreeLabelButton
         active={active}
         label={label}
-        onActivate={() => onActivate(sketch.id)}
+        onActivate={activateSketch}
         onRenameOpen={() => setRenameOpen(true)}
         renameDisabled={renameDisabled}
       />
       <BrokenSketchReferenceAction
-        referenceHealth={referenceHealth}
-        supportHealth={supportHealth}
+        referenceHealth={row.referenceHealth}
+        supportHealth={row.supportHealth}
         label={label}
-        onActivate={() => onActivate(sketch.id)}
+        onActivate={activateSketch}
         onSupportRepair={() => onSketchSupportRepair(sketch.id)}
         t={t}
       />
       <SketchTreeActions
         controller={controller}
+        deletionBlocked={deletionBlocked}
         onRenameOpenChange={setRenameOpen}
         onFeatureRename={onFeatureRename}
         onSketchDeleted={onSketchDeleted}
@@ -1262,6 +1240,7 @@ function SketchHistoryRow({
         <SketchTreeItem
           active={row.ref.id === props.activeSketchId}
           controller={props.controller}
+          deletionBlocked={view.graphFailed || view.reorderUnavailable || row.dependents.length > 0}
           onActivate={props.onSketchActivate}
           onSketchSupportRepair={props.onSketchSupportRepair}
           onFeatureRename={props.onFeatureRename}
@@ -1270,9 +1249,7 @@ function SketchHistoryRow({
           onSketchRename={props.onSketchRename}
           onVisibilityChange={props.onSketchVisibilityChange}
           renameBlocked={row.ref.id === props.sketchRenameBlockedId}
-          referenceHealth={row.referenceHealth}
-          supportHealth={row.supportHealth}
-          sketch={sketch}
+          row={row}
           unnamedSketch={t("unnamedSketch")}
           visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
         />

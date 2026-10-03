@@ -1032,12 +1032,88 @@ describe("ModelTree visibility and deletion", () => {
 
     renderTree({ onSketchDeleted, onSketchRemove })
 
-    await user.click(screen.getByRole("button", { name: "Delete Profile" }))
+    expect(screen.queryByRole("button", { name: /Delete Profile/ })).toBeNull()
+    expect(screen.queryByRole("menuitem", { name: /Delete Profile/ })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
+    expect(onSketchRemove).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("menuitem", { name: "Delete Profile…" }))
+    expect(onSketchRemove).not.toHaveBeenCalled()
+    expect(screen.queryByRole("menu")).toBeNull()
     await user.click(screen.getByRole("button", { name: "Delete sketch" }))
 
     expect(onSketchRemove).toHaveBeenCalledWith(7, sketchId)
     expect(onSketchDeleted).toHaveBeenCalledOnce()
   })
+
+  it("opens sketch deletion from the keyboard and restores focus after cancellation", async () => {
+    const user = userEvent.setup()
+    const onSketchRemove = vi.fn()
+    renderTree({ onSketchRemove })
+    const actions = screen.getByRole("button", { name: "Actions for Profile" })
+    actions.focus()
+    await user.keyboard("{Enter}{ArrowDown}{Enter}")
+    expect(screen.getByRole("alertdialog", { name: "Delete Profile?" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Keep sketch" }))
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(document.activeElement).toBe(actions)
+    expect(onSketchRemove).not.toHaveBeenCalled()
+  })
+
+  it.each(["legacy", "multi"] as const)(
+    "disables deletion of a sketch used by multiple %s extrusions",
+    async (kind) => {
+      const user = userEvent.setup()
+      const onSketchRemove = vi.fn()
+      const profile = {
+        schemaVersion: 0 as const,
+        sketchId,
+        outerBoundaryEntityIds: [
+          sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2901"),
+        ],
+        holeBoundaryEntityIds: [],
+      }
+      const extrusion = featureRecordSchema.parse({
+        ...feature,
+        type:
+          kind === "legacy"
+            ? legacyExtrusionFeatureType.type
+            : multiProfileExtrusionFeatureType.type,
+        parameters: {
+          ...(kind === "legacy" ? { profile } : { profiles: createSketchProfileSet([profile]) }),
+          distance: createLengthQuantity(10),
+          symmetric: false,
+          operation: "new",
+        },
+      })
+      const source = {
+        ...controller,
+        report: {
+          ...controllerReport,
+          snapshot: {
+            ...controllerReport.snapshot,
+            features: [
+              extrusion,
+              featureRecordSchema.parse({
+                ...extrusion,
+                id: "0195b5ac-b220-7a2c-8c33-67a36a7f2903",
+                suppressed: true,
+              }),
+            ],
+          },
+        },
+      } as DocumentControllerState
+      renderTree({ controller: source, onSketchRemove })
+      await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
+      const deletion = screen.getByRole("menuitem", { name: "Delete Profile…" })
+      expect(deletion.getAttribute("aria-disabled")).toBe("true")
+      expect(
+        screen.getByText(/Remove dependent features or external sketch references/),
+      ).toBeTruthy()
+      await user.click(deletion)
+      expect(screen.queryByRole("alertdialog")).toBeNull()
+      expect(onSketchRemove).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe("ModelTree rename", () => {
