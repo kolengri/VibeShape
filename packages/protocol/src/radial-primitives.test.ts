@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   coneFeatureContentParametersSchema,
+  pyramidFeatureContentParametersSchema,
   sphereFeatureContentParametersSchema,
   torusFeatureContentParametersSchema,
 } from "./geometry-worker"
@@ -23,6 +24,12 @@ const cases = [
     schema: torusFeatureContentParametersSchema,
     parameters: { majorRadius: 20, minorRadius: 5 },
     extent: 25,
+  },
+  {
+    kind: "pyramid",
+    schema: pyramidFeatureContentParametersSchema,
+    parameters: { sides: 6, radius: 20, height: 30, centered: true },
+    extent: 20,
   },
 ] as const
 
@@ -72,4 +79,20 @@ describe("radial primitive worker content schemas", () => {
         torusFeatureContentParametersSchema.safeParse({ majorRadius: 20, minorRadius }).success,
       ).toBe(false)
   })
+})
+
+it("keeps pyramid sides literal, integral, and bounded", () => {
+  const parameters = { sides: 3, radius: 0.001, height: 0.001, centered: false }
+  for (const sides of [3, 4, 6, 64])
+    expect(pyramidFeatureContentParametersSchema.safeParse({ ...parameters, sides }).success).toBe(
+      true,
+    )
+  for (const sides of [2, 65, 3.5, "6", Number.NaN])
+    expect(pyramidFeatureContentParametersSchema.safeParse({ ...parameters, sides }).success).toBe(
+      false,
+    )
+  expect(
+    pyramidFeatureContentParametersSchema.safeParse({ ...parameters, origin: [0, 0, 100_000] })
+      .success,
+  ).toBe(false)
 })

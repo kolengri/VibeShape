@@ -2,7 +2,7 @@ import { measureShapeVolumeProperties, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import { createMemoryProfile } from "./memory-profile"
-import { createOcctCone, createOcctSphere, createOcctTorus } from "./occt-shapes"
+import { createOcctCone, createOcctPyramid, createOcctSphere, createOcctTorus } from "./occt-shapes"
 
 let controlledBuild = false
 let opencascade: OpenCascadeInstance
@@ -118,13 +118,46 @@ describe("real OCCT radial primitives", () => {
     },
   )
 
-  it("releases native allocations across repeated sphere, cone, and torus cycles", () => {
+  it.each([3, 4, 6, 64])("builds an exact %s-sided placed pyramid with planar faces", (sides) => {
+    const radius = 12
+    const height = 35
+    const origin = [8, -4, -17.5] as const
+    const shape = createOcctPyramid(opencascade, sides, radius, height, origin)
+    try {
+      const metrics = inspect(shape)
+      const vertices = Array.from({ length: sides }, (_, index) => {
+        const angle = (2 * Math.PI * index) / sides
+        return [origin[0] + radius * Math.cos(angle), origin[1] + radius * Math.sin(angle)]
+      })
+      expect(metrics.valid).toBe(true)
+      expect(metrics.faces).toEqual(Array(sides + 1).fill("PLANE"))
+      expect(
+        metrics.volume / ((sides * radius ** 2 * Math.sin((2 * Math.PI) / sides) * height) / 6),
+      ).toBeCloseTo(1, 7)
+      expectCoordinates(metrics.centroid, [8, -4, -17.5 + height / 4])
+      expectCoordinates(metrics.bounds[0] ?? [], [
+        Math.min(...vertices.map((v) => v[0] ?? 0)),
+        Math.min(...vertices.map((v) => v[1] ?? 0)),
+        origin[2],
+      ])
+      expectCoordinates(metrics.bounds[1] ?? [], [
+        Math.max(...vertices.map((v) => v[0] ?? 0)),
+        Math.max(...vertices.map((v) => v[1] ?? 0)),
+        origin[2] + height,
+      ])
+    } finally {
+      shape.delete()
+    }
+  })
+
+  it("releases native allocations across repeated radial and pyramid cycles", () => {
     const memory = createMemoryProfile(opencascade)
     const cycle = () => {
       const shapes = [
         createOcctSphere(opencascade, 4, [0, 0, 0]),
         createOcctCone(opencascade, 4, 12, [0, 0, -6]),
         createOcctTorus(opencascade, 12, 4, [0, 0, 0]),
+        createOcctPyramid(opencascade, 6, 4, 12, [0, 0, -6]),
       ]
       for (const shape of shapes) shape.delete()
     }

@@ -19,6 +19,7 @@ import {
   legacyRevolveFeatureTypeV3,
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
+  pyramidFeatureType,
   readExtrusionFeatureParameters,
   revolveFeatureType,
   revolveFeatureTypeV6,
@@ -47,8 +48,11 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-box"; featureId: FeatureId }>
   | Readonly<{ kind: "create-cylinder" }>
   | Readonly<{ kind: "edit-cylinder"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-sphere" | "create-cone" | "create-torus" }>
-  | Readonly<{ kind: "edit-sphere" | "edit-cone" | "edit-torus"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-sphere" | "create-cone" | "create-torus" | "create-pyramid" }>
+  | Readonly<{
+      kind: "edit-sphere" | "edit-cone" | "edit-torus" | "edit-pyramid"
+      featureId: FeatureId
+    }>
   | Readonly<{ kind: "create-extrusion"; profiles: readonly SketchProfileSelector[] }>
   | Readonly<{ kind: "edit-extrusion"; featureId: FeatureId }>
   | Readonly<{ kind: "create-revolve"; profiles: readonly SketchProfileSelector[] }>
@@ -75,7 +79,9 @@ export type ActivePrimitivePartDesignTool = Extract<
       | "create-sphere"
       | "edit-sphere"
       | "create-cone"
+      | "create-pyramid"
       | "edit-cone"
+      | "edit-pyramid"
       | "create-torus"
       | "edit-torus"
   }
@@ -99,7 +105,9 @@ const primitivePartDesignToolKinds = new Set<ActivePartDesignTool["kind"]>([
   "create-sphere",
   "edit-sphere",
   "create-cone",
+  "create-pyramid",
   "edit-cone",
+  "edit-pyramid",
   "create-torus",
   "edit-torus",
 ])
@@ -155,6 +163,10 @@ export function isSphereFeature(feature: FeatureRecord) {
 
 export function isConeFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, coneFeatureType.type)
+}
+
+export function isPyramidFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, pyramidFeatureType.type)
 }
 
 export function isTorusFeature(feature: FeatureRecord) {
@@ -218,6 +230,7 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isCylinderFeature,
     isSphereFeature,
     isConeFeature,
+    isPyramidFeature,
     isTorusFeature,
     isExtrusionFeature,
     isRevolveFeature,
@@ -372,6 +385,7 @@ const editableFeatureTools: readonly [
   [isCylinderFeature, "edit-cylinder"],
   [isSphereFeature, "edit-sphere"],
   [isConeFeature, "edit-cone"],
+  [isPyramidFeature, "edit-pyramid"],
   [isTorusFeature, "edit-torus"],
   [isExtrusionFeature, "edit-extrusion"],
   [isRevolveFeature, "edit-revolve"],
@@ -404,7 +418,9 @@ const commandByToolKind = {
   "create-sphere": "sphere",
   "edit-sphere": "sphere",
   "create-cone": "cone",
+  "create-pyramid": "pyramid",
   "edit-cone": "cone",
+  "edit-pyramid": "pyramid",
   "create-torus": "torus",
   "edit-torus": "torus",
   "create-extrusion": "extrusion",

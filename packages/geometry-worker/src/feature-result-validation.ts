@@ -6,6 +6,7 @@ export type GeometryFeatureKind =
   | "cylinder"
   | "sphere"
   | "cone"
+  | "pyramid"
   | "torus"
   | "placement"
   | "compound"

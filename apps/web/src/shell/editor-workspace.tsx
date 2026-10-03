@@ -13,6 +13,7 @@ import {
   type FeatureId,
   type FeatureRecord,
   type PartId,
+  pyramidFeatureParametersSchema,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   type revolveFeatureParametersSchema,
@@ -180,7 +181,9 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "create-sphere",
   "edit-sphere",
   "create-cone",
+  "create-pyramid",
   "edit-cone",
+  "edit-pyramid",
   "create-torus",
   "edit-torus",
 ])
@@ -431,7 +434,9 @@ function primitiveManipulator(
     "create-sphere": sphereFeatureParametersSchema,
     "edit-sphere": sphereFeatureParametersSchema,
     "create-cone": coneFeatureParametersSchema,
+    "create-pyramid": pyramidFeatureParametersSchema,
     "edit-cone": coneFeatureParametersSchema,
+    "edit-pyramid": pyramidFeatureParametersSchema,
     "create-torus": torusFeatureParametersSchema,
     "edit-torus": torusFeatureParametersSchema,
   } as const
@@ -1745,6 +1750,7 @@ export type EditorWorkspaceActions = Readonly<{
   createCylinder: () => void
   createSphere: () => void
   createCone: () => void
+  createPyramid: () => void
   createTorus: () => void
   createDatumPlane: () => void
   createExtrusion: () => Promise<boolean>
@@ -2315,6 +2321,7 @@ function EditorTaskPanel({
       onCreateCylinder={actions.createCylinder}
       onCreateSphere={actions.createSphere}
       onCreateCone={actions.createCone}
+      onCreatePyramid={actions.createPyramid}
       onCreateTorus={actions.createTorus}
       onCreateExtrusion={actions.createExtrusion}
       onCreateRevolve={actions.createRevolve}

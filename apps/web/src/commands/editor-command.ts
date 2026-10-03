@@ -10,6 +10,7 @@ export const editorCommandIds = {
   createCylinder: "org.vibeshape.editor.part-design.create-cylinder",
   createSphere: "org.vibeshape.editor.part-design.create-sphere",
   createCone: "org.vibeshape.editor.part-design.create-cone",
+  createPyramid: "org.vibeshape.editor.part-design.create-pyramid",
   createTorus: "org.vibeshape.editor.part-design.create-torus",
   createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
@@ -78,6 +79,7 @@ export type EditorCommandGroup = "workspace" | "modeling" | "sketch" | "history"
 export type EditorCommandToolbarGroup =
   | "workspace"
   | "model-primary"
+  | "model-inspection"
   | "model-primitives"
   | "sketch-tools"
   | "sketch-precision"
@@ -148,6 +150,7 @@ export type EditorCommandIcon =
   | "cylinder"
   | "sphere"
   | "cone"
+  | "pyramid"
   | "torus"
   | "datum-plane"
   | "dimension"
@@ -193,6 +196,7 @@ export type EditorCommandLabelKey =
   | "createCylinder"
   | "createSphere"
   | "createCone"
+  | "createPyramid"
   | "createTorus"
   | "createDatumPlane"
   | "createExtrusion"

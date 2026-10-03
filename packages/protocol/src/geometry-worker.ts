@@ -177,6 +177,20 @@ export const coneFeatureContentParametersSchema = z
     return radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
   }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
 
+export const pyramidFeatureContentParametersSchema = z
+  .object({
+    sides: z.number().int().min(3).max(64),
+    radius: cadLengthSchema,
+    height: cadLengthSchema,
+    centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
+  })
+  .strict()
+  .refine(({ radius, height, centered, origin }) => {
+    const minimumZ = origin[2] - (centered ? height / 2 : 0)
+    return radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
+  }, "Pyramid dimensions and placement must remain within the 100000 mm workspace.")
+
 export const torusFeatureContentParametersSchema = z
   .object({
     majorRadius: cadLengthSchema,

@@ -203,6 +203,53 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     }
   }
 
+  function createPyramid(
+    opencascade: OpenCascadeInstance,
+    sides: number,
+    radius: number,
+    height: number,
+    origin: Vector3,
+  ): Shape3D {
+    // The shipped kernel has no MakePolygon binding; own the exact closed line wire explicitly.
+    const owned: { delete(): void }[] = []
+    const own = <T extends { delete(): void }>(value: T) => {
+      owned.push(value)
+      return value
+    }
+    try {
+      const [x, y, z] = origin
+      const vertices = Array.from({ length: sides }, (_, index) => {
+        const angle = (2 * Math.PI * index) / sides
+        return own(
+          new opencascade.gp_Pnt_3(x + radius * Math.cos(angle), y + radius * Math.sin(angle), z),
+        )
+      })
+      const wireMaker = own(new opencascade.BRepBuilderAPI_MakeWire_1())
+      for (let index = 0; index < sides; index += 1) {
+        const start = vertices[index]
+        const end = vertices[(index + 1) % sides]
+        if (!start || !end) throw new Error("Pyramid base vertices are incomplete.")
+        const edgeMaker = own(new opencascade.BRepBuilderAPI_MakeEdge_3(start, end))
+        wireMaker.Add_1(own(edgeMaker.Edge()))
+      }
+      if (!wireMaker.IsDone()) throw new Error("Pyramid base wire construction failed.")
+      const wire = own(wireMaker.Wire())
+      const apexPoint = own(new opencascade.gp_Pnt_3(x, y, z + height))
+      const apexMaker = own(new opencascade.BRepBuilderAPI_MakeVertex(apexPoint))
+      const apex = own(apexMaker.Vertex())
+      const loft = own(new opencascade.BRepOffsetAPI_ThruSections(true, true, 1e-7))
+      loft.CheckCompatibility(false)
+      loft.AddWire(wire)
+      loft.AddVertex(apex)
+      const progress = own(new opencascade.Message_ProgressRange_1())
+      loft.Build(progress)
+      if (!loft.IsDone()) throw new Error("Pyramid solid construction failed.")
+      return adoptOcctShape(loft.Shape(), castShape)
+    } finally {
+      for (const binding of owned.reverse()) binding.delete()
+    }
+  }
+
   function createCone(
     opencascade: OpenCascadeInstance,
     radius: number,
@@ -406,6 +453,7 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     createCylinder,
     createSphere,
     createCone,
+    createPyramid,
     createTorus,
     cutShapes,
     cutShapesWithHistory,
@@ -423,6 +471,7 @@ export const {
   createCylinder: createOcctCylinder,
   createSphere: createOcctSphere,
   createCone: createOcctCone,
+  createPyramid: createOcctPyramid,
   createTorus: createOcctTorus,
   cutShapes: cutOcctShapes,
   cutShapesWithHistory: cutOcctShapesWithHistory,

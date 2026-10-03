@@ -76,6 +76,7 @@ import {
   isExtrusionFeature,
   isFilletFeature,
   isHoleFeature,
+  isPyramidFeature,
   isRevolveFeature,
   isSphereFeature,
   isTorusFeature,
@@ -140,6 +141,7 @@ type TaskPanelProps = Readonly<{
   onCreateCylinder: () => void
   onCreateSphere: () => void
   onCreateCone: () => void
+  onCreatePyramid: () => void
   onCreateTorus: () => void
   onCreateExtrusion: () => Promise<boolean>
   onCreateRevolve?: () => Promise<boolean>
@@ -366,6 +368,9 @@ function useBasicPrimitiveFormCopy(
     height: shared("height"),
     majorRadius: shared("majorRadius"),
     minorRadius: shared("minorRadius"),
+    sides: shared("sides"),
+    sidesDescription: shared("sidesDescription"),
+    invalidSides: shared("invalidSides"),
     centered: shared("centered"),
     placement: shared("placement"),
     originX: shared("originX"),
@@ -1251,6 +1256,7 @@ function DirectSolidsActions({
   onCreateCylinder,
   onCreateSphere,
   onCreateCone,
+  onCreatePyramid,
   onCreateTorus,
 }: {
   canCreate: boolean
@@ -1258,6 +1264,7 @@ function DirectSolidsActions({
   onCreateCylinder: () => void
   onCreateSphere: () => void
   onCreateCone: () => void
+  onCreatePyramid: () => void
   onCreateTorus: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
@@ -1287,6 +1294,7 @@ function DirectSolidsActions({
         [
           ["createSphere", onCreateSphere],
           ["createCone", onCreateCone],
+          ["createPyramid", onCreatePyramid],
           ["createTorus", onCreateTorus],
         ] as const
       ).map(([labelKey, onClick]) => (
@@ -1313,6 +1321,7 @@ function StartTaskPanel({
   onCreateCylinder,
   onCreateSphere,
   onCreateCone,
+  onCreatePyramid,
   onCreateTorus,
   onCreateSketch,
   onCreateSubtract,
@@ -1324,6 +1333,7 @@ function StartTaskPanel({
   onCreateCylinder: () => void
   onCreateSphere: () => void
   onCreateCone: () => void
+  onCreatePyramid: () => void
   onCreateTorus: () => void
   onCreateSketch: () => void
   onCreateSubtract: () => void
@@ -1351,6 +1361,7 @@ function StartTaskPanel({
         onCreateCylinder={onCreateCylinder}
         onCreateSphere={onCreateSphere}
         onCreateCone={onCreateCone}
+        onCreatePyramid={onCreatePyramid}
         onCreateTorus={onCreateTorus}
       />
     </aside>
@@ -1731,7 +1742,9 @@ const basicPrimitiveKindByTool: Partial<Record<ActivePartDesignTool["kind"], Bas
     "create-sphere": "sphere",
     "edit-sphere": "sphere",
     "create-cone": "cone",
+    "create-pyramid": "pyramid",
     "edit-cone": "cone",
+    "edit-pyramid": "pyramid",
     "create-torus": "torus",
     "edit-torus": "torus",
   }
@@ -1739,6 +1752,7 @@ const basicPrimitiveKindByTool: Partial<Record<ActivePartDesignTool["kind"], Bas
 const basicPrimitiveMatchers = {
   sphere: isSphereFeature,
   cone: isConeFeature,
+  pyramid: isPyramidFeature,
   torus: isTorusFeature,
 }
 
@@ -2168,7 +2182,9 @@ const activeTaskPanelByKind = {
   "create-sphere": BasicPrimitiveToolTaskPanel,
   "edit-sphere": BasicPrimitiveToolTaskPanel,
   "create-cone": BasicPrimitiveToolTaskPanel,
+  "create-pyramid": BasicPrimitiveToolTaskPanel,
   "edit-cone": BasicPrimitiveToolTaskPanel,
+  "edit-pyramid": BasicPrimitiveToolTaskPanel,
   "create-torus": BasicPrimitiveToolTaskPanel,
   "edit-torus": BasicPrimitiveToolTaskPanel,
   "create-datum-plane": DatumPlaneToolTaskPanel,
@@ -2260,6 +2276,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
       onCreateCylinder={props.onCreateCylinder}
       onCreateSphere={props.onCreateSphere}
       onCreateCone={props.onCreateCone}
+      onCreatePyramid={props.onCreatePyramid}
       onCreateTorus={props.onCreateTorus}
       onCreateSketch={props.onCreateSketch}
       onCreateSubtract={props.onCreateSubtract}

@@ -20,6 +20,9 @@ import {
   coneFeatureParametersSchema,
   coneFeatureType,
   partDesignFeatureTypeHandlers,
+  pyramidFeatureContentParametersSchema,
+  pyramidFeatureParametersSchema,
+  pyramidFeatureType,
   sphereFeatureParametersSchema,
   sphereFeatureType,
   torusFeatureParametersSchema,
@@ -68,6 +71,17 @@ const primitives = [
       minorRadius: createLengthQuantity(5),
     },
     content: { majorRadius: 20, minorRadius: 5, origin: [0, 0, 0] },
+  },
+  {
+    type: pyramidFeatureType,
+    schema: pyramidFeatureParametersSchema,
+    parameters: {
+      sides: 6,
+      radius: createLengthQuantity(2, "cm"),
+      height: createLengthQuantity(30),
+      centered: true,
+    },
+    content: { sides: 6, radius: 20, height: 30, centered: true, origin: [0, 0, 0] },
   },
 ] as const
 
@@ -416,4 +430,110 @@ describe("radial part-design primitives", () => {
       ).toBe(false)
     },
   )
+})
+
+describe("regular pyramid authoring boundary", () => {
+  const dimensions = {
+    radius: createLengthQuantity(12),
+    height: createLengthQuantity(35),
+    centered: false,
+  }
+  it.each([2, 65, 3.5, Number.NaN, Number.POSITIVE_INFINITY, "6", { expression: "#sides" }])(
+    "rejects invalid or expression-valued side counts: %j",
+    (sides) => {
+      expect(pyramidFeatureParametersSchema.safeParse({ ...dimensions, sides }).success).toBe(false)
+      expect(
+        pyramidFeatureContentParametersSchema.safeParse({
+          sides,
+          radius: 12,
+          height: 35,
+          centered: false,
+        }).success,
+      ).toBe(false)
+    },
+  )
+  it.each([3, 4, 6, 64])("accepts a bounded regular %s-sided pyramid", (sides) => {
+    expect(pyramidFeatureParametersSchema.parse({ ...dimensions, sides }).sides).toBe(sides)
+    expect(
+      pyramidFeatureContentParametersSchema.parse({
+        sides,
+        radius: 0.001,
+        height: 0.001,
+        centered: true,
+      }).sides,
+    ).toBe(sides)
+  })
+  it("resolves height independently and revalidates its complete Z extent", () => {
+    const primitive = primitives[3]
+    const authored = feature(primitive, {
+      ...primitive.parameters,
+      height: createLengthQuantity(30, "mm", "#height"),
+      origin: { ...origin(0), z: createLengthQuantity(0, "mm", "#z") },
+    })
+    const types = registry()
+    for (const height of [0, -1, 0.0005, 100_001]) {
+      expect(
+        types.resolveFeatureParameters(
+          authored,
+          new Map<string, ExpressionValue>([
+            ["height", { dimension: "length", value: height }],
+            ["z", { dimension: "length", value: 0 }],
+          ]),
+        ),
+      ).toMatchObject({ ok: false })
+    }
+    expect(
+      types.resolveFeatureParameters(
+        authored,
+        new Map<string, ExpressionValue>([
+          ["height", { dimension: "length", value: 40 }],
+          ["z", { dimension: "length", value: 99_981 }],
+        ]),
+      ),
+    ).toMatchObject({ ok: false })
+    const resolved = types.resolveFeatureParameters(
+      authored,
+      new Map<string, ExpressionValue>([
+        ["height", { dimension: "length", value: 40 }],
+        ["z", { dimension: "length", value: 99_980 }],
+      ]),
+    )
+    expect(resolved).toMatchObject({
+      ok: true,
+      feature: { parameters: { sides: 6, height: { value: 40 } } },
+    })
+  })
+  it("keeps sides in canonical identity when dimensions are equivalent", () => {
+    const primitive = primitives[3]
+    const identify = (sides: number) =>
+      createFeatureContentIdentity(registry(), {
+        feature: feature(primitive, { ...primitive.parameters, sides }),
+        environment,
+        dependencies: [],
+      })
+    const triangle = identify(3)
+    const square = identify(4)
+    expect(triangle.ok).toBe(true)
+    expect(square.ok).toBe(true)
+    if (!triangle.ok || !square.ok) throw new Error("Expected canonical pyramid identity")
+    expect(triangle.canonicalPayload).not.toBe(square.canonicalPayload)
+  })
+  it("includes the complete conservative radial and centered height extents", () => {
+    const parameters = {
+      ...dimensions,
+      sides: 3,
+      centered: true,
+      origin: origin(99_988, 0, 99_982.5),
+    }
+    expect(pyramidFeatureParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      pyramidFeatureParametersSchema.safeParse({
+        ...parameters,
+        origin: origin(99_988.001, 0, 99_982.5),
+      }).success,
+    ).toBe(false)
+    expect(
+      pyramidFeatureParametersSchema.safeParse({ ...parameters, centered: false }).success,
+    ).toBe(false)
+  })
 })

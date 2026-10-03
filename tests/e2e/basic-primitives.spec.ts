@@ -6,6 +6,7 @@ const expect = baseExpect.configure({ timeout: 15_000 })
 const primitives = [
   { name: "Sphere", fields: { Radius: "14 mm" } },
   { name: "Cone", fields: { Radius: "12 mm", Height: "35 mm" } },
+  { name: "Pyramid", fields: { Radius: "18 mm", Height: "40 mm" } },
   { name: "Torus", fields: { "Major radius": "24 mm", "Minor radius": "6 mm" } },
 ] as const
 
@@ -21,6 +22,9 @@ for (const primitive of primitives) {
     const createForm = page.getByRole("form", { name: `Create ${primitive.name.toLowerCase()}` })
     for (const [name, value] of Object.entries(primitive.fields)) {
       await createForm.getByRole("combobox", { name, exact: true }).fill(value)
+    }
+    if (primitive.name === "Pyramid") {
+      await createForm.getByRole("spinbutton", { name: "Base sides", exact: true }).fill("6")
     }
     await createForm.getByRole("combobox", { name: "Origin X", exact: true }).fill("40 mm")
     await createForm.getByRole("combobox", { name: "Origin Y", exact: true }).fill("-8 mm")
@@ -42,6 +46,12 @@ for (const primitive of primitives) {
     for (const [name, value] of Object.entries(primitive.fields)) {
       await expect(editForm.getByRole("combobox", { name, exact: true })).toHaveValue(value)
     }
+    if (primitive.name === "Pyramid") {
+      await expect(
+        editForm.getByRole("spinbutton", { name: "Base sides", exact: true }),
+      ).toHaveValue("6")
+      await editForm.getByRole("spinbutton", { name: "Base sides", exact: true }).fill("8")
+    }
     await editForm.getByRole("combobox", { name: "Origin X", exact: true }).fill("52 mm")
     await editForm
       .getByRole("button", { name: `Update ${primitive.name.toLowerCase()}`, exact: true })
@@ -53,6 +63,11 @@ for (const primitive of primitives) {
     await treeItem.click()
     for (const [name, value] of Object.entries(primitive.fields)) {
       await expect(editForm.getByRole("combobox", { name, exact: true })).toHaveValue(value)
+    }
+    if (primitive.name === "Pyramid") {
+      await expect(
+        editForm.getByRole("spinbutton", { name: "Base sides", exact: true }),
+      ).toHaveValue("8")
     }
     await expect(editForm.getByRole("combobox", { name: "Origin X", exact: true })).toHaveValue(
       "52 mm",
@@ -88,5 +103,32 @@ test("Torus rejects overlapping radii and cancels its preview without a committe
   await expect(form).not.toBeVisible()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
   await expect(page.getByRole("treeitem", { name: "Torus 1", exact: true })).toHaveCount(0)
+  await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
+})
+
+test("Pyramid bounds base sides and cancels a valid 64-sided preview without committing", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  await toolbar.getByRole("button", { name: "Pyramid", exact: true }).click()
+  const form = page.getByRole("form", { name: "Create pyramid" })
+  const sides = form.getByRole("spinbutton", { name: "Base sides", exact: true })
+  const apply = form.getByRole("button", { name: "Create pyramid", exact: true })
+  await expect(sides).toHaveValue("4")
+  for (const value of ["2", "3.5", "65", ""]) {
+    await sides.fill(value)
+    await sides.blur()
+    await expect(sides).toHaveAttribute("aria-invalid", "true")
+    await expect(apply).toBeDisabled()
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
+    await expect(page.getByRole("treeitem", { name: "Pyramid 1", exact: true })).toHaveCount(0)
+  }
+  await sides.fill("64")
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready")
+  await form.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(form).not.toBeVisible()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
   await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
 })
