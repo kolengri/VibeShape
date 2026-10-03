@@ -1,5 +1,8 @@
 # Local deployment
 
+For the separately configured static website and protected-branch GitHub Actions pipeline, see
+[Cloudflare deployment](cloudflare-deployment.md). Local packaging remains independent of hosting.
+
 ## Decision
 
 Production VibeShape is a set of static files, but it cannot run through `file://`. It requires a local or self-hosted HTTP(S) server because module workers, WASM, service workers, and storage APIs depend on an origin and secure context.
@@ -109,6 +112,11 @@ A release MAY include:
 - Windows, macOS, and Linux instructions.
 
 Production web builds, Playwright browser matrices, OCCT and SolveSpace source builds, native evidence, stable topology evidence, persistence and extension corpora, and corresponding-source bundle generation run on reviewed local hardware, not the ordinary GitHub pull-request workflow. Dedicated heavy entry points fail when a truthy `CI` environment is present. A release consumes locally generated artifacts only after their verification and records manifests and checksums with the release evidence.
+
+The explicitly enabled Cloudflare production workflow may build the browser application from an
+already verified, checksum-pinned OCCT bundle and run the bounded Chromium package smoke. It does
+not compile OCCT or SolveSpace, generate their compliance bundles, or replace the locally verified
+geometry and browser matrix. PR validation receives no deployment credentials.
 
 The launcher does not access projects and does not expose a backend API without a separate requirement. Browser launch and auto-update are packaging details, not CAD architecture.
 
