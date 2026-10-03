@@ -1,6 +1,12 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { clickSavedProfileInViewport, confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
+import { resultOperationLabels, selectResultOperation } from "./result-operation-helpers"
+import {
+  clickSavedProfileInViewport,
+  confirmSketchPlane,
+  fitIsometricView,
+  selectSketchTool,
+} from "./sketch-helpers"
 
 async function drawProfileAwayFromBothOriginAxes(page: Page) {
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
@@ -70,6 +76,7 @@ test.describe("selector-backed revolve", () => {
     await drawProfileAwayFromBothOriginAxes(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
 
+    await fitIsometricView(page)
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
       timeout: 120_000,
@@ -139,6 +146,9 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
 
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
@@ -189,7 +199,7 @@ test.describe("selector-backed revolve", () => {
       await page.getByRole("button", { name: "Hide Box 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await page.getByRole("button", { name: "Show Box 1" }).click()
-      await form.getByRole("combobox", { name: "Result operation" }).selectOption(operation)
+      await selectResultOperation(page, form, operation)
       await expect(
         form.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
       ).toHaveText("Box 1")
@@ -202,8 +212,8 @@ test.describe("selector-backed revolve", () => {
       })
       await page.getByRole("treeitem", { name: "Revolve 1" }).click()
       const editForm = page.getByRole("form", { name: "Edit revolve" })
-      await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveValue(
-        operation,
+      await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveText(
+        resultOperationLabels[operation],
       )
       await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
       await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
@@ -223,9 +233,7 @@ test.describe("selector-backed revolve", () => {
       await page.getByRole("button", { name: "Hide Box 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await page.getByRole("button", { name: "Show Box 1" }).click()
-      await downstreamForm
-        .getByRole("combobox", { name: "Result operation" })
-        .selectOption(operation)
+      await selectResultOperation(page, downstreamForm, operation)
       await expect(
         downstreamForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
       ).toHaveText("Revolve 1")
@@ -270,7 +278,7 @@ test.describe("selector-backed revolve", () => {
     const form = page.getByRole("form", { name: "Revolve profile" })
     await form.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
     await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
-    await form.getByRole("combobox", { name: "Result operation" }).selectOption("intersect")
+    await selectResultOperation(page, form, "intersect")
 
     await expect(viewport).toHaveAttribute("data-preview-status", "error", {
       timeout: 120_000,
@@ -397,7 +405,7 @@ test.describe("selector-backed revolve", () => {
     await expect(editForm.getByText("Sketch 1 · Line 1")).toBeVisible()
     await expect(editForm.getByRole("combobox", { name: "Angle" })).toHaveValue("180 deg")
     await editForm.getByRole("combobox", { name: "Angle" }).fill("270 deg")
-    await editForm.getByRole("combobox", { name: "Result operation" }).selectOption("remove")
+    await selectResultOperation(page, editForm, "remove")
     await editForm.getByRole("combobox", { name: "Target body" }).selectOption({ label: "Box 1" })
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
       timeout: 120_000,
@@ -418,8 +426,8 @@ test.describe("selector-backed revolve", () => {
     const reopenedForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(reopenedForm.getByRole("combobox", { name: "Angle" })).toHaveValue("270 deg")
     await expect(reopenedForm.getByText("Sketch 1 · Line 1")).toBeVisible()
-    await expect(reopenedForm.getByRole("combobox", { name: "Result operation" })).toHaveValue(
-      "remove",
+    await expect(reopenedForm.getByRole("combobox", { name: "Result operation" })).toHaveText(
+      "Remove from body",
     )
     await expect(
       reopenedForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),

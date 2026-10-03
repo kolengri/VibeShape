@@ -340,6 +340,47 @@ describe("createDocumentDependencyGraph", () => {
     })
   })
 
+  it("recognizes v5 sketch intent and protects multi-profile New targets", () => {
+    const legacySource = multiProfileExtrusion("2", "1")
+    const source = {
+      ...legacySource,
+      type: { ...legacySource.type, schemaVersion: 5 },
+      parameters: {
+        ...legacySource.parameters,
+        reversed: true,
+        secondDistance: createLengthQuantity(3),
+      },
+    }
+    const consumer = modifyingExtrusion("4", "1", "2")
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [sketch("1")],
+        features: [source, consumer],
+      }),
+    ).toMatchObject({ ok: false })
+    const single = {
+      ...source,
+      parameters: {
+        ...source.parameters,
+        profiles: {
+          ...source.parameters.profiles,
+          profiles: source.parameters.profiles.profiles.slice(0, 1),
+        },
+      },
+    }
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [sketch("1")],
+        features: [single, consumer],
+      }),
+    ).toMatchObject({ ok: true })
+    expect(
+      createDocumentDependencyGraphFromSnapshot({ sketches: [], features: [single] }),
+    ).toMatchObject({
+      ok: false,
+    })
+  })
+
   it("rejects multi-profile results as modifying and Boolean inputs", () => {
     const source = multiProfileExtrusion("2", "1")
     const tool = feature("3")

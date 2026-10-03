@@ -131,7 +131,7 @@ export type EditorSessionActions = Readonly<{
   setBodyPreselection: (body: ModelBodySelection | null) => void
   setSelectedBody: (body: ModelBodySelection | null) => void
   setFeaturePreselection: (featureId: FeatureId | null) => void
-  setExtrusionDistance: (featureId: FeatureId, distance: number) => void
+  setExtrusionDistance: (featureId: FeatureId, distance: number, side?: "first" | "second") => void
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setRevolveAngle: (featureId: FeatureId, angle: number) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
@@ -162,7 +162,7 @@ function createSketchState(): SketchEditorSessionState {
   return {
     activeSketchId: null,
     activeSketchTool: null,
-    cameraMode: "normal",
+    cameraMode: "orbit",
     construction: false,
     draft: null,
     editorTool: "select",
@@ -225,7 +225,8 @@ function resetSketchPresentation(
   sketch: Draft<SketchEditorSessionState>,
   editorTool: SketchEditorTool,
 ) {
-  sketch.cameraMode = "normal"
+  // A new sketch session observes the current camera; only an explicit view command aligns it.
+  sketch.cameraMode = "orbit"
   sketch.editorTool = editorTool
   sketch.failedConstraintIds = []
   sketch.profiles = []
@@ -350,12 +351,11 @@ export function createEditorSessionStore() {
             state.sketch.activeSketchTool = {
               kind: "select-sketch-plane",
               returnTo: {
-                cameraMode: state.sketch.cameraMode,
                 showFinalContext: state.sketch.showFinalContext,
                 tool,
               },
             }
-            state.sketch.cameraMode = "normal"
+            state.sketch.cameraMode = "orbit"
             state.sketch.showFinalContext = false
           }),
         closeActiveTool: () =>
@@ -381,7 +381,7 @@ export function createEditorSessionStore() {
               state.selection = null
               state.selectedBody = null
               state.sketch.activeSketchTool = activeSketchTool.returnTo.tool
-              state.sketch.cameraMode = activeSketchTool.returnTo.cameraMode
+              state.sketch.cameraMode = "orbit"
               state.sketch.showFinalContext = activeSketchTool.returnTo.showFinalContext
               return
             }
@@ -414,7 +414,7 @@ export function createEditorSessionStore() {
             state.profileFeatureReturn = null
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = null
-            state.sketch.cameraMode = "normal"
+            state.sketch.cameraMode = "orbit"
             resetSketchDraft(state.sketch, null)
             state.sketch.editorTool = "select"
             state.sketch.failedConstraintIds = []
@@ -523,7 +523,7 @@ export function createEditorSessionStore() {
             state.preselectedFeatureId = featureId
             state.preselectedBody = null
           }),
-        setExtrusionDistance: (featureId, distance) =>
+        setExtrusionDistance: (featureId, distance, side) =>
           set((state) => {
             if (!finiteExtrusionDistance(distance)) return
             if (!isExtrusionPartDesignTool(state.activePartDesignTool)) return
@@ -531,6 +531,7 @@ export function createEditorSessionStore() {
               distance,
               featureId,
               sequence: (state.extrusionDistanceRequest?.sequence ?? 0) + 1,
+              ...(side ? { side } : {}),
             }
           }),
         setRevolveAngle: (featureId, angle) =>

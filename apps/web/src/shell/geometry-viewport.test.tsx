@@ -279,6 +279,7 @@ function renderViewport(
     onSelect: (plane: "xy" | "xz" | "yz" | null) => void
   }>,
   sketchProfileSelection?: Readonly<{
+    excludedSketchIds?: readonly string[]
     selectedProfiles: readonly SketchProfileSelector[]
     onSelect: (
       profile: SketchProfileSelector | null,
@@ -297,6 +298,10 @@ function renderViewport(
     featureId: string
     onDistanceChange: (distance: number) => void
     origin: readonly [number, number, number]
+    opposite?: Readonly<{
+      distance: number
+      onDistanceChange: (distance: number) => void
+    }>
   }>,
   angularGizmo?: Readonly<{
     angle: number
@@ -308,6 +313,7 @@ function renderViewport(
   }>,
   sketchProfilePreview?: SketchProfileSelector | null,
   hiddenSketchIds: readonly string[] = [],
+  axialGizmoPending = false,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -348,6 +354,8 @@ function renderViewport(
     nextSketchContext = sketchContext,
     nextSketchProfilePreview = sketchProfilePreview,
     nextHiddenSketchIds = hiddenSketchIds,
+    nextAxialGizmo: typeof axialGizmo | null = axialGizmo,
+    nextAxialGizmoPending = axialGizmoPending,
   ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
@@ -366,7 +374,8 @@ function renderViewport(
           {...optionalProp("sketchProfilePreview", nextSketchProfilePreview)}
           hiddenSketchIds={nextHiddenSketchIds}
           {...optionalProp("translationGizmo", translationGizmo)}
-          {...optionalProp("axialGizmo", axialGizmo)}
+          {...optionalProp("axialGizmo", nextAxialGizmo ?? undefined)}
+          axialGizmoPending={nextAxialGizmoPending}
           {...optionalProp("angularGizmo", angularGizmo)}
         />
       </TooltipProvider>
@@ -386,6 +395,17 @@ function renderViewport(
     ) => result.rerender(element(controller, sketchContext, nextPreview, nextHiddenSketchIds)),
     rerenderSketchContext: (nextSketchContext?: GeometryViewportSketchContext) =>
       result.rerender(element(controller, nextSketchContext)),
+    rerenderAxialGizmo: (nextGizmo: typeof axialGizmo, pending: boolean) =>
+      result.rerender(
+        element(
+          controller,
+          sketchContext,
+          sketchProfilePreview,
+          hiddenSketchIds,
+          nextGizmo ?? null,
+          pending,
+        ),
+      ),
   }
 }
 
@@ -456,6 +476,96 @@ describe("GeometryViewport", () => {
     const options = createViewport.mock.calls[0]?.[1]
     act(() => options?.onAxialGizmoDistanceChange?.(18))
     expect(onDistanceChange).toHaveBeenCalledWith(18)
+  })
+
+  it("moves the selected extrusion endpoint and routes each depth independently", async () => {
+    const onFirstDistanceChange = vi.fn()
+    const onSecondDistanceChange = vi.fn()
+    const { createViewport, port } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        direction: [0, 0, -1],
+        distance: 12,
+        origin: [2, 3, 4],
+        featureId: boxId,
+        onDistanceChange: onFirstDistanceChange,
+        opposite: { distance: 7, onDistanceChange: onSecondDistanceChange },
+      },
+    )
+    await waitFor(() => expect(port.showAxialTranslationGizmo).toHaveBeenCalled())
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onAxialGizmoDistanceChange?.(18))
+    expect(onFirstDistanceChange).toHaveBeenCalledWith(18)
+    expect(onSecondDistanceChange).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Second depth" }))
+    await waitFor(() =>
+      expect(port.showAxialTranslationGizmo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          direction: [expect.closeTo(0), expect.closeTo(0), 1],
+          distance: 7,
+          origin: [2, 3, 4],
+        }),
+      ),
+    )
+    act(() => options?.onAxialGizmoDistanceChange?.(9))
+    expect(onSecondDistanceChange).toHaveBeenCalledWith(9)
+    expect(onFirstDistanceChange).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "Second depth" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "First depth" }))
+    await waitFor(() =>
+      expect(port.showAxialTranslationGizmo).toHaveBeenLastCalledWith(
+        expect.objectContaining({ direction: [0, 0, -1], distance: 12 }),
+      ),
+    )
+    act(() => options?.onAxialGizmoDistanceChange?.(20))
+    expect(onFirstDistanceChange).toHaveBeenLastCalledWith(20)
+    expect(onSecondDistanceChange).toHaveBeenCalledTimes(1)
+    expect(createViewport).toHaveBeenCalledOnce()
+  })
+
+  it("retains drag callbacks during pending preview resolution and clears them when the tool closes", async () => {
+    const onDistanceChange = vi.fn()
+    const { createViewport, port, rerenderAxialGizmo } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { direction: [0, 0, 1], distance: 10, origin: [0, 0, 0], featureId: boxId, onDistanceChange },
+    )
+    await waitFor(() => expect(port.showAxialTranslationGizmo).toHaveBeenCalled())
+    const options = createViewport.mock.calls[0]?.[1]
+    rerenderAxialGizmo(undefined, true)
+    await waitFor(() =>
+      expect(port.hideTranslationGizmo).toHaveBeenLastCalledWith({ preserveActiveGesture: true }),
+    )
+    act(() => options?.onAxialGizmoDistanceChange?.(17))
+    expect(onDistanceChange).toHaveBeenCalledWith(17)
+    rerenderAxialGizmo(undefined, false)
+    await waitFor(() =>
+      expect(port.hideTranslationGizmo).toHaveBeenLastCalledWith({ preserveActiveGesture: false }),
+    )
+    act(() => options?.onAxialGizmoDistanceChange?.(22))
+    expect(onDistanceChange).toHaveBeenCalledTimes(1)
+    expect(createViewport).toHaveBeenCalledOnce()
   })
 
   it("shows an angular feature gizmo and forwards scalar angle changes", async () => {
@@ -712,6 +822,31 @@ describe("GeometryViewport", () => {
     expect(document.activeElement).toBe(profilePicker)
     fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
     expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "replace")
+  })
+
+  it("keeps hidden saved profiles reusable while excluding dependency-ineligible sketches", async () => {
+    const onSelect = vi.fn()
+    const { port, rerenderSketchProfilePreview } = renderViewport(
+      readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfiles: [], excludedSketchIds: [secondProfileSketchId], onSelect },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    rerenderSketchProfilePreview(null, [sketchDisplay.sketchId, secondProfileSketchId])
+    await waitFor(() => expect(port.setSketches).toHaveBeenLastCalledWith([]))
+
+    const picker = screen.getByRole("combobox", { name: "Select saved profile" })
+    expect(screen.queryByRole("option", { name: "Sketch 2 · Profile 1" })).toBeNull()
+    const option = screen.getByRole("option", { name: "Sketch 1 · Profile 1" })
+    fireEvent.change(picker, { target: { value: option.getAttribute("value") } })
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "replace")
+    expect(port.setSketches).toHaveBeenLastCalledWith([])
   })
 
   it("keeps the maximum supported profile set in one compact native picker", async () => {
@@ -1334,6 +1469,91 @@ describe("GeometryViewport", () => {
       expect(port.setMeshes).toHaveBeenLastCalledWith([{ featureId: boxId, ...updatedMesh }]),
     )
     expect(port.fit).toHaveBeenCalledOnce()
+  })
+
+  it("keeps the viewer mounted when sketch plane callbacks change and forwards the latest actions", async () => {
+    const controller = readyController([], [])
+    const port = renderViewport(controller).port
+    await waitFor(() => expect(port.fit).toHaveBeenCalledOnce())
+    cleanup()
+    vi.mocked(port.fit).mockClear()
+    vi.mocked(port.dispose).mockClear()
+    const createViewport = vi.fn(
+      async (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
+    )
+    const idlePlaneSelect = vi.fn()
+    const createPlaneSelect = vi.fn()
+    const initialSelection = vi.fn()
+    const currentSelection = vi.fn()
+    const element = (creating: boolean) => (
+      <I18nProvider i18n={i18n}>
+        <TooltipProvider>
+          <GeometryViewport
+            controller={controller}
+            createViewport={createViewport}
+            onSelectionChange={creating ? currentSelection : initialSelection}
+            selection={null}
+            {...(creating
+              ? {
+                  originPlaneSelection: {
+                    mode: "create" as const,
+                    selectedPlane: null,
+                    onSelect: createPlaneSelect,
+                  },
+                }
+              : { idleOriginPlaneSelection: { selectedPlane: null, onSelect: idlePlaneSelect } })}
+          />
+        </TooltipProvider>
+      </I18nProvider>
+    )
+    const { rerender } = render(element(false))
+    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    const options = createViewport.mock.calls[0]?.[1] as GeometryViewportOptions | undefined
+    options?.onOriginPlaneSelectionChange?.("xy")
+    expect(idlePlaneSelect).toHaveBeenCalledWith("xy")
+    rerender(element(true))
+    options?.onOriginPlaneSelectionChange?.("xz")
+    options?.onSelectionChange?.({ featureId: boxId, faceId: 7, faceOrdinal: 2 })
+    expect(createPlaneSelect).toHaveBeenCalledWith("xz")
+    expect(currentSelection).toHaveBeenCalledOnce()
+    expect(initialSelection).not.toHaveBeenCalled()
+    expect(createViewport).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.dispose).not.toHaveBeenCalled()
+  })
+
+  it("preserves the current standard view through history navigation and failed or empty rebuilds", async () => {
+    const first = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const { createViewport, port, rerenderController, rerenderSketchContext } =
+      renderViewport(first)
+    await waitFor(() => expect(port.fit).toHaveBeenCalledOnce())
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Standard views" }))
+    await user.click(screen.getByRole("menuitem", { name: "Isometric" }))
+    expect(port.setStandardView).toHaveBeenLastCalledWith("isometric")
+
+    const frame = sketchDisplay.frame
+    rerenderSketchContext({ frame, mode: "orbit" })
+    expect(port.setSketchPlaneProjection).toHaveBeenLastCalledWith(frame, expect.any(Function))
+    rerenderSketchContext({ frame: null, mode: "orbit" })
+    rerenderSketchContext()
+    for (const controller of [
+      readyController([], []),
+      { ...first, status: "loading" as const },
+      { ...first, report: { ...first.report, rebuild: { ok: false } } } as DocumentControllerState,
+      first,
+    ]) {
+      rerenderController(controller)
+    }
+    expect(createViewport).toHaveBeenCalledOnce()
+    expect(port.dispose).not.toHaveBeenCalled()
+    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.setStandardView).toHaveBeenCalledOnce()
+    expect(port.orientToFrame).not.toHaveBeenCalled()
+    expect(port.setSketchProjection).not.toHaveBeenCalled()
   })
 
   it("renders only terminal feature geometry and retains origin-plane context for an empty model", async () => {

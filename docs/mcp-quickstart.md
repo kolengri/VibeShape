@@ -1,7 +1,7 @@
 # Local MCP quickstart
 
 VibeShape is a browser CAD editor with an opt-in local stdio MCP bridge. External agents use
-named tools; the browser remains the document owner and the person approves each draft commit.
+named tools; the browser remains the document owner and manual approval is the default.
 There is no embedded chat. The bridge serves the production editor at a stable loopback origin;
 use the same origin to retain browser-local projects.
 
@@ -38,6 +38,13 @@ preview exact geometry, and request `commit_draft`. Click Apply in the browser r
 the new revision and export STEP/STL/3MF. The export response contains a resource link; read it,
 decode the returned base64 blob and save it with the client's file tools. Ordinary saved state,
 manual editing and Undo use the same document session.
+
+For this project and paired session only, **Set up auto-apply** offers an explicit opt-in for valid
+CAD creation and parameter edits. The visible **Auto-apply on** indicator always includes **Stop AI**,
+which ends the pairing immediately. Destructive or unsupported drafts still require review; an
+already pending review cannot be auto-approved. Invalid geometry and stale revisions are rejected.
+The grant resets on disconnect, project change, and reload. Reconnect manually and opt in again if
+desired. An edit already saving may finish after Stop; inspect the result and use Undo if needed.
 
 For an agent editing a person's existing model, reread the current full feature/sketch/variable
 records and preserve their IDs and unaffected intent. If manual work changes the base revision,

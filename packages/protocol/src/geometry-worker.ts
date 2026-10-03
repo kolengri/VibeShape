@@ -407,6 +407,47 @@ export const extrusionMultiProfileModifyingFeatureContentParametersSchema = z
   })
   .strict()
 
+/** Reference-normal bounds; symmetric distance retains its legacy total-span meaning. */
+export function extrusionExtentBounds(
+  parameters: Readonly<{
+    distance: number
+    symmetric: boolean
+    reversed?: boolean
+    secondDistance?: number | null
+  }>,
+) {
+  if (parameters.symmetric) {
+    return { start: -parameters.distance / 2, end: parameters.distance / 2 }
+  }
+  const second = parameters.secondDistance ?? 0
+  return parameters.reversed
+    ? { start: -parameters.distance, end: second }
+    : { start: second === 0 ? 0 : -second, end: parameters.distance }
+}
+
+/** Independent one- or two-sided extrusion content; schema-version 5 only. */
+export const extrusionFeatureContentParametersV5Schema = z
+  .object({
+    sketchId: sketchIdSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    frame: extrusionFrameSchema,
+    profiles: multiProfileListSchema,
+    distance: cadLengthSchema,
+    symmetric: z.boolean(),
+    reversed: z.boolean(),
+    secondDistance: cadLengthSchema.nullable(),
+    operation: z.enum(["new", "add", "remove", "intersect"]),
+  })
+  .strict()
+  .refine(({ symmetric, secondDistance }) => !symmetric || secondDistance === null, {
+    path: ["secondDistance"],
+    message: "Symmetric extrusion cannot enable a second depth.",
+  })
+  .refine(({ distance, secondDistance }) => distance + (secondDistance ?? 0) <= 100_000, {
+    path: ["distance"],
+    message: "The total extrusion span must be at most 100,000 mm.",
+  })
+
 const revolveMultiProfileFeatureContentBaseSchema = z
   .object({
     sketchId: sketchIdSchema,

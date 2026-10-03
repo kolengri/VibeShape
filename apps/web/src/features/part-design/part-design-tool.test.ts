@@ -8,6 +8,7 @@ import {
   datumPlaneFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   featureIdSchema,
   featureRecordSchema,
   legacyRevolveFeatureType,
@@ -170,6 +171,34 @@ const datumPlane = featureRecordSchema.parse({
 })
 
 describe("part-design tool routing", () => {
+  it("edits independent extents and excludes ambiguous new multi-solid targets", () => {
+    const single = featureRecordSchema.parse({
+      ...extrusion,
+      type: extrusionFeatureTypeV5.type,
+      parameters: {
+        profiles: createSketchProfileSet([profile]),
+        distance: createLengthQuantity(10),
+        secondDistance: createLengthQuantity(3),
+        reversed: true,
+        symmetric: false,
+        operation: "new",
+      },
+    })
+    const multi = featureRecordSchema.parse({
+      ...single,
+      parameters: {
+        ...single.parameters,
+        profiles: createSketchProfileSet([profile, secondProfile]),
+      },
+    })
+    expect(isExtrusionFeature(single)).toBe(true)
+    expect(editPartDesignTool(single)).toEqual({ kind: "edit-extrusion", featureId: single.id })
+    expect(editPartDesignTool(multi)).toEqual({ kind: "edit-extrusion", featureId: multi.id })
+    expect(booleanInputFeatures([single])).toEqual([single])
+    expect(booleanInputFeatures([multi])).toEqual([])
+    expect(modifyingSolidTargetFeatures([multi])).toEqual([])
+  })
+
   it("matches feature types by their full contribution identity", () => {
     expect(isBoxFeature(box)).toBe(true)
     expect(isCylinderFeature(box)).toBe(false)

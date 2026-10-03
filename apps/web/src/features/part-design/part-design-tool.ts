@@ -5,8 +5,6 @@ import {
   chamferFeatureTypeV2,
   cylinderFeatureType,
   datumPlaneFeatureType,
-  extrusionFeatureType,
-  extrusionFeatureTypeV4,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
@@ -14,17 +12,18 @@ import {
   filletFeatureTypeV2,
   holeFeatureType,
   holeFeatureTypeV2,
-  legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
+  readExtrusionFeatureParameters,
   revolveFeatureType,
   revolveFeatureTypeV6,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
 } from "@vibeshape/domain"
+import { isExtrusionType } from "@vibeshape/domain/part-design"
 
 export type ActivePartDesignTool =
   | Readonly<{ kind: "measure" }>
@@ -139,12 +138,7 @@ export function isBooleanFeature(feature: FeatureRecord) {
 }
 
 export function isExtrusionFeature(feature: FeatureRecord) {
-  return (
-    hasFeatureType(feature, extrusionFeatureType.type) ||
-    hasFeatureType(feature, multiProfileExtrusionFeatureType.type) ||
-    hasFeatureType(feature, extrusionFeatureTypeV4.type) ||
-    hasFeatureType(feature, legacyExtrusionFeatureType.type)
-  )
+  return isExtrusionType(feature)
 }
 
 export function isRevolveFeature(feature: FeatureRecord) {
@@ -176,11 +170,14 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
 }
 
 function isModifyingInputFeature(feature: FeatureRecord) {
-  return (
-    isPartDesignSolidFeature(feature) &&
-    !hasFeatureType(feature, multiProfileExtrusionFeatureType.type) &&
-    !hasFeatureType(feature, multiProfileRevolveFeatureType.type)
+  if (!isPartDesignSolidFeature(feature)) return false
+  if (
+    hasFeatureType(feature, multiProfileExtrusionFeatureType.type) ||
+    hasFeatureType(feature, multiProfileRevolveFeatureType.type)
   )
+    return false
+  const extrusion = readExtrusionFeatureParameters(feature)
+  return extrusion?.operation !== "new" || (extrusion.profiles?.profiles.length ?? 1) <= 1
 }
 
 function dependentFeatureIds(features: readonly FeatureRecord[], rootFeatureId: FeatureId) {

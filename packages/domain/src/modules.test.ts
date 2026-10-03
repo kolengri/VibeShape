@@ -131,6 +131,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
+        "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.hole",

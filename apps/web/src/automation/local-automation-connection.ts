@@ -16,6 +16,7 @@ type Handle = Extract<ReturnType<typeof createActiveDocumentAutomationSession>, 
 type Snapshot = Readonly<{
   available: boolean
   connected: boolean
+  autoApply: boolean
   client: LocalConnection["client"] | null
   error: boolean
 }>
@@ -30,7 +31,13 @@ type Pair = {
 const acknowledgement = z.object({ ok: z.literal(true) }).strict()
 
 export function createLocalAutomationConnection() {
-  let snapshot: Snapshot = { available: false, connected: false, client: null, error: false }
+  let snapshot: Snapshot = {
+    available: false,
+    connected: false,
+    autoApply: false,
+    client: null,
+    error: false,
+  }
   let pair: Pair | null = null
   let generation = 0
   let enabling = false
@@ -52,7 +59,7 @@ export function createLocalAutomationConnection() {
     generation += 1
     const current = pair
     if (current) closeLocal(current)
-    if (snapshot.connected) publish({ ...snapshot, connected: false })
+    if (snapshot.connected) publish({ ...snapshot, connected: false, autoApply: false })
     if (current) await revokeCredential(current.credential)
   }
   async function fail(current: Pair) {
@@ -181,7 +188,13 @@ export function createLocalAutomationConnection() {
       timer: null,
     }
     pair = current
-    publish({ available: true, connected: true, client: credential.client, error: false })
+    publish({
+      available: true,
+      connected: true,
+      autoApply: false,
+      client: credential.client,
+      error: false,
+    })
     void poll(current)
     return true
   }
@@ -204,6 +217,18 @@ export function createLocalAutomationConnection() {
   const onPageHide = () => void disable()
   return {
     enable,
+    enableAutoApply() {
+      const current = pair
+      if (
+        !current ||
+        current.active ||
+        !current.handle.readInfo() ||
+        !current.handle.enableAutoApply(current.credential.actor)
+      )
+        return false
+      publish({ ...snapshot, autoApply: true })
+      return true
+    },
     disable,
     status,
     start() {

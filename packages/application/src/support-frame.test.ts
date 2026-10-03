@@ -5,6 +5,7 @@ import {
   datumPlaneFeatureType,
   documentSnapshotSchema,
   extrusionFeatureType,
+  extrusionFeatureTypeV5,
   featureRecordSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
@@ -73,6 +74,59 @@ function sketch(support?: unknown, id = sketchId) {
 }
 
 describe("support-frame resolution", () => {
+  it.each([
+    [false, false, 3, -3, 10],
+    [true, false, 3, -10, 3],
+    [true, false, null, -10, 0],
+    [true, true, null, -5, 5],
+  ] as const)(
+    "anchors v5 cap supports to their physical normal bounds (%s, %s, %s)",
+    (reversed, symmetric, second, start, end) => {
+      const source = sketch(undefined, sourceSketchId)
+      const extrusion = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: extrusionId,
+        type: extrusionFeatureTypeV5.type,
+        parameters: {
+          profiles: {
+            schemaVersion: 0,
+            profiles: [
+              {
+                schemaVersion: 0,
+                sketchId: sourceSketchId,
+                outerBoundaryEntityIds: [profileEntityId],
+                holeBoundaryEntityIds: [],
+              },
+            ],
+          },
+          distance: createLengthQuantity(10),
+          symmetric,
+          reversed,
+          secondDistance: second === null ? null : createLengthQuantity(second),
+          operation: "new",
+        },
+        dependencies: [],
+        references: [],
+        suppressed: false,
+      })
+      for (const [role, coordinate, normal] of [
+        ["start", start, [0, 0, -1]],
+        ["end", end, [0, 0, 1]],
+      ] as const) {
+        const supported = sketch({
+          kind: "feature-face",
+          reference: faceReference(extrusionId, `extrusion.cap.${role}`),
+        })
+        const document = documentWith([source, supported], [extrusion])
+        const frame = sketchFrame(supported, document, [extrusion])
+        expect(frame?.origin).toEqual([0, 0, coordinate])
+        for (const [index, component] of normal.entries()) {
+          expect(frame?.normal[index]).toBeCloseTo(component, 8)
+        }
+      }
+    },
+  )
+
   it("projects a point from one support frame into another through world space", () => {
     const source: SupportFrame = {
       origin: [10, 20, 30],

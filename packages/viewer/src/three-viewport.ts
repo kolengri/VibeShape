@@ -497,7 +497,7 @@ export type GeometryViewport = Readonly<{
   showTranslationGizmo: (position: ViewerVector3) => void
   showAxialTranslationGizmo: (gizmo: ViewerAxialGizmo) => void
   showAngularGizmo: (gizmo: ViewerAngularGizmo) => void
-  hideTranslationGizmo: () => void
+  hideTranslationGizmo: (options?: Readonly<{ preserveActiveGesture?: boolean }>) => void
   hideAngularGizmo: () => void
   setStandardView: (view: ViewerStandardView) => void
   fit: () => void
@@ -1350,7 +1350,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
-  #pointerDown: Readonly<{ x: number; y: number }> | null = null
+  #pointerDown: Readonly<{ x: number; y: number; pointerId: number }> | null = null
   #originPlaneSelection: ViewerOriginPlane | null = null
   #originPlaneSelectionActive = false
   #originPlaneIdleSelectionEnabled = false
@@ -1389,6 +1389,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchNavigationControlsEnabledBeforePointer: boolean | null = null
   #sketchNavigationPointerId: number | null = null
   #translationGizmoInteracting = false
+  #translationGizmoHidePending = false
+  #translationGizmoPointerId: number | null = null
   #axialGizmo: ViewerAxialGizmo | null = null
   #angularGizmo: ViewerAngularGizmo | null = null
   #angularGizmoHandle: Points | null = null
@@ -1764,6 +1766,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   showTranslationGizmo(position: ViewerVector3) {
     if (this.#disposed || !isFiniteViewerVector3(position)) return
+    this.#translationGizmoHidePending = false
     this.hideAngularGizmo()
     this.#axialDistancePublisher.cancel()
     this.#axialGizmo = null
@@ -1783,6 +1786,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const position = viewerAxialGizmoHandlePosition(gizmo)
     const direction = normalizedViewerDirection(gizmo.direction)
     if (this.#disposed || !position || !direction) return
+    this.#translationGizmoHidePending = false
     this.hideAngularGizmo()
     this.#translationPositionPublisher.cancel()
     this.#axialGizmo = { ...gizmo, direction: [direction.x, direction.y, direction.z] }
@@ -1800,11 +1804,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
-  hideTranslationGizmo() {
+  hideTranslationGizmo(options?: Readonly<{ preserveActiveGesture?: boolean }>) {
     if (this.#disposed) return
+    if (this.#translationGizmoInteracting && options?.preserveActiveGesture) {
+      this.#translationGizmoHidePending = true
+      return
+    }
+    if (this.#translationGizmoInteracting) this.#cancelTranslationGesture()
+    this.#translationGizmoHidePending = false
     this.#translationControls.detach()
     this.#translationHelper.visible = false
     this.#translationGizmoInteracting = false
+    delete this.#canvas.dataset.translationGizmoDragging
     this.#skipTranslationGizmoPointerUp = false
     this.#pointerDown = null
     if (!this.#angularGizmoInteracting) {
@@ -2396,6 +2407,8 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onTranslationControlsMouseDown = () => {
     this.#translationGizmoInteracting = true
+    this.#translationGizmoPointerId = this.#pointerDown?.pointerId ?? null
+    this.#canvas.dataset.translationGizmoDragging = "true"
     this.#skipTranslationGizmoPointerUp = true
     this.#orbitControlsEnabledBeforeTranslation = this.#controls.enabled
     this.#controls.enabled = false
@@ -2405,7 +2418,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationPositionPublisher.flush()
     this.#axialDistancePublisher.flush()
     this.#translationGizmoInteracting = false
+    const pointerId = this.#translationGizmoPointerId
+    this.#translationGizmoPointerId = null
+    delete this.#canvas.dataset.translationGizmoDragging
     this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+    if (pointerId !== null && this.#canvas.hasPointerCapture(pointerId)) {
+      this.#canvas.releasePointerCapture(pointerId)
+    }
+    if (this.#translationGizmoHidePending) this.hideTranslationGizmo()
   }
 
   #renderAngularGizmo() {
@@ -2755,7 +2775,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#translationGizmoInteracting) return
     if (event.isPrimary && event.button === 0) {
       if (this.#beginAngularGizmoInteraction(event)) return
-      this.#pointerDown = { x: event.clientX, y: event.clientY }
+      this.#pointerDown = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }
     }
   }
 
@@ -2886,6 +2906,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const width = this.#canvas.clientWidth
     const height = this.#canvas.clientHeight
     this.#publishSketchPlaneProjection()
+    this.#publishAxialGizmoAvailability()
     if (width <= 0 || height <= 0) return
     const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
     if (angularHandle) {
@@ -2925,6 +2946,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.render(this.#orientationScene, this.#orientationCamera)
     this.#renderer.setScissorTest(false)
     this.#renderer.setViewport(0, 0, width, height)
+  }
+
+  #publishAxialGizmoAvailability() {
+    if (!this.#axialGizmo) {
+      delete this.#canvas.dataset.axialGizmoDragAvailable
+      return
+    }
+    const direction = new Vector3(...this.#axialGizmo.direction)
+    const viewDirection = this.#camera.getWorldDirection(new Vector3())
+    // TransformControls hides a translation axis at this view alignment.
+    const available = Math.abs(direction.dot(viewDirection)) <= 0.99
+    this.#canvas.dataset.axialGizmoDragAvailable = String(available)
   }
 
   #publishSketchPlaneProjection() {

@@ -21,8 +21,10 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
    omitting \`targetBody\` changes exact-body scope to legacy whole-feature scope.
 4. Call \`preview_draft\`. Check \`geometry.status\`, diagnostics, exact bounds and volume.
    Repair invalid intent with a new command ID and the returned current draft revision.
-5. Call \`commit_draft\`; the person reviews and clicks Apply or Discard in the browser.
-   Allow up to six minutes and observe progress. A successful Apply saves once with one Undo entry.
+5. Call \`commit_draft\`; by default the person reviews and clicks Apply or Discard in the browser.
+   A person may explicitly enable session-only auto-apply for valid allowlisted CAD edits in the
+   browser. No tool can enable it; destructive or unsupported drafts still require review.
+   Allow up to six minutes and observe progress. A successful commit saves once with one Undo entry.
    Read \`model_info\` again to observe the committed revision. Manual edits use the same saved model.
 6. If a manual edit or another writer changed the committed revision, reread the model and create
    a fresh draft. Do not blindly replay a full replacement over the person's changes.
@@ -385,6 +387,19 @@ with the preceding solid as the first dependency. Preview checks cutting directi
 never guess transient face/edge indices. A supported alternative is two sketch-backed Extrudes,
 with the second using Add and target-first dependencies. For existing complex sketches, complete
 profile/face discovery is not yet exposed; do not infer a profile from arbitrary edge order.
+
+## Independent extrusion depths
+
+For independent extents, supply a profile set in \`profiles\` (including a single profile),
+\`distance\`, \`secondDistance\`, \`reversed\`, \`symmetric\`, and \`operation\`.
+This selects Extrude schema version 5. With \`distance: 10 mm\`, \`secondDistance: 3 mm\`,
+\`reversed: false\`, and \`symmetric: false\`, the solid spans -3 to +10 mm along the
+sketch normal. Reversing spans -10 to +3 mm. Use ordinary length-quantity objects as above,
+not strings. Each enabled depth must be at least 0.001 mm; total span is at most 100,000 mm.
+\`secondDistance: null\` selects a single direction. Symmetric requires null second depth;
+its stored Distance remains the total span split equally about the sketch plane, including
+existing schema versions 1–4. There is no starting offset or arbitrary direction in this contract.
+All four result operations preserve their existing explicit target/support dependencies.
 
 ## Inspection, scope and limits
 

@@ -9,6 +9,7 @@ import { DocumentDisplayUnitsDialog } from "../document/document-display-units-d
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
+import { LocalAutomationStatus } from "./local-automation-status"
 import { WorkspaceLayoutSettings } from "./workspace-layout-settings"
 
 function saveStatusMessage(
@@ -38,45 +39,12 @@ function LocalAutomationControl({ controller }: { controller: DocumentController
     return connection.dispose
   }, [connection])
   if (!current.available || controller.status !== "ready") return null
-  return <LocalAutomationStatus connection={connection} current={current} />
-}
-
-function LocalAutomationStatus({
-  connection,
-  current,
-}: {
-  connection: ReturnType<typeof createLocalAutomationConnection>
-  current: ReturnType<ReturnType<typeof createLocalAutomationConnection>["getSnapshot"]>
-}) {
-  const t = useTranslations("app.shell.applicationBar")
-  const action = current.connected
-    ? { label: "disableAi" as const, run: connection.disable, disabled: false }
-    : { label: "enableAi" as const, run: connection.enable, disabled: current.client === null }
-  const clientName = current.client?.name
-
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={action.disabled}
-        onClick={action.run}
-      >
-        {t(action.label)}
-      </Button>
-      <span
-        className="hidden max-w-32 truncate text-xs text-muted-foreground lg:block"
-        title={clientName}
-      >
-        {clientName}
-      </span>
-      {current.error ? (
-        <span role="status" className="max-w-48 text-xs text-destructive">
-          {t("aiConnectionFailed")}
-        </span>
-      ) : null}
-    </div>
+    <LocalAutomationStatus
+      key={`${controller.report?.snapshot.id}:${current.connected}`}
+      connection={connection}
+      current={current}
+    />
   )
 }
 
@@ -100,14 +68,17 @@ export function ApplicationBar({
   })
 
   return (
-    <header className="flex min-w-0 items-center gap-3 border-b bg-toolbar px-2">
-      <strong className="truncate text-sm">VibeShape</strong>
-      <span className="truncate text-muted-foreground">{documentName}</span>
+    <header className="flex min-w-0 items-center gap-1 border-b bg-toolbar px-2 sm:gap-3">
+      <strong className="hidden truncate text-sm sm:block">VibeShape</strong>
+      <span className="min-w-0 truncate text-muted-foreground">{documentName}</span>
       <DocumentRenameDialog controller={controller} />
       <DocumentDisplayUnitsDialog controller={controller} />
       <WorkspaceLayoutSettings />
       <LocalAutomationControl controller={controller} />
-      <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground" role="status">
+      <span
+        className="sr-only sm:not-sr-only sm:ml-auto sm:min-w-0 sm:truncate sm:text-xs sm:text-muted-foreground"
+        role="status"
+      >
         {saveStatus}
       </span>
       <Tooltip>
@@ -136,6 +107,7 @@ export function ApplicationBar({
             type="button"
             size="icon-sm"
             variant="ghost"
+            className="hidden sm:inline-flex"
             data-shortcut-help-trigger
             aria-label={commandsT("shortcutHelp.title")}
             onClick={(event) => onOpenShortcutHelp(event.currentTarget)}

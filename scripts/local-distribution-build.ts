@@ -39,6 +39,7 @@ function requireCommittedExecutableSource() {
         "bun.lock",
         "package.json",
         "docs/local-distribution.md",
+        "docs/mcp-quickstart.md",
         "docs/deployment.md",
         "docs/licensing.md",
       ].includes(path) ||
@@ -137,7 +138,12 @@ function writeLaunchers(output: string) {
 function copyCorrespondingSource(output: string, commit: string) {
   writeFileSync(join(output, "LICENSE"), `${git(["show", `${commit}:LICENSE`])}\n`)
   mkdirSync(join(output, "docs"))
-  for (const name of ["local-distribution.md", "deployment.md", "licensing.md"])
+  for (const name of [
+    "local-distribution.md",
+    "mcp-quickstart.md",
+    "deployment.md",
+    "licensing.md",
+  ])
     writeFileSync(join(output, "docs", name), `${git(["show", `${commit}:docs/${name}`])}\n`)
   mkdirSync(join(output, "sources"))
   git([

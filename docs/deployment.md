@@ -44,7 +44,9 @@ Export `.vshape` backups before upgrades. Never clear browser storage as a rollb
 Restart loses uncommitted drafts and session Undo/Redo navigation; committed projects persist in
 the browser. A lost commit response requires inspecting the current revision before retrying.
 
-The current local delivery does not claim unattended commits, headless geometry, remote HTTP MCP,
+Auto-apply is an explicit opt-in for valid allowlisted CAD edits in one paired browser session;
+it is off by default and ends on disconnect, reload, or project change. It grants no background
+or cross-project authority. The current local delivery does not claim headless geometry, remote HTTP MCP,
 full feature parity, or an installed/offline update lifecycle. Public hosting still requires the
 release gates below and in [Licensing](licensing.md).
 

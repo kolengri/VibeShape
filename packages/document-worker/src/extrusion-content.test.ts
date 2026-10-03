@@ -8,6 +8,7 @@ import {
   documentSnapshotSchema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   featureRecordSchema,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
@@ -17,6 +18,7 @@ import {
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
+  sketchProfileSelectorSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import {
@@ -370,6 +372,74 @@ function ellipticalArcFixture() {
 }
 
 describe("document extrusion content preparation", () => {
+  it.each([false, true])(
+    "materializes both version-5 depths deterministically with reversed=%s",
+    async (reversed) => {
+      const source = fixture()
+      const feature = featureRecordSchema.parse({
+        ...source.feature,
+        type: extrusionFeatureTypeV5.type,
+        parameters: {
+          profiles: createSketchProfileSet([
+            sketchProfileSelectorSchema.parse(source.feature.parameters.profile),
+          ]),
+          distance: createLengthQuantity(1, "cm", "#forward"),
+          secondDistance: createLengthQuantity(3, "mm", "#backward"),
+          symmetric: false,
+          reversed,
+          operation: "new",
+        },
+      })
+      const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+      const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution: source.solution }))
+      const prepare = createDocumentFeatureContentPreparer(solve)
+      const first = await prepare({ document, feature })
+      expect(first).toMatchObject({
+        ok: true,
+        parameters: {
+          distance: 10,
+          secondDistance: 3,
+          reversed,
+          symmetric: false,
+          profiles: [{ outer: expect.any(Object), holes: [] }],
+        },
+      })
+      expect(await prepare({ document, feature })).toEqual(first)
+      expect(solve).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it("prepares all v5 profiles and preserves a one-sided symmetric total span", async () => {
+    const source = multiCircleFixture()
+    const parameters = multiProfileExtrusionFeatureParametersSchema.parse(source.feature.parameters)
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      type: extrusionFeatureTypeV5.type,
+      parameters: {
+        ...parameters,
+        distance: createLengthQuantity(10),
+        symmetric: true,
+        reversed: true,
+        secondDistance: null,
+      },
+    })
+    const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        profiles: [{ outer: expect.any(Object) }, { outer: expect.any(Object) }],
+        distance: 10,
+        secondDistance: null,
+        symmetric: true,
+        reversed: true,
+      },
+    })
+  })
+
   it("resolves a signed origin-offset datum plane into an exact world frame", async () => {
     const feature = featureRecordSchema.parse({
       schemaVersion: 0,

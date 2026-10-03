@@ -20,6 +20,7 @@ import {
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -182,6 +183,7 @@ const extrusionTypeKeys = new Set(
     extrusionFeatureType,
     extrusionFeatureTypeV3,
     extrusionFeatureTypeV4,
+    extrusionFeatureTypeV5,
   ].map(({ type }) => featureTypeKey(type)),
 )
 const multiProfileResultTypeKeys = new Set([
@@ -752,11 +754,12 @@ function validateMultiProfileResultInputs(
     const dependencyId = feature.dependencies[dependencyIndex]
     if (!dependencyId) return false
     const source = document.byKey.get(key({ kind: "feature", id: dependencyId }))
-    return (
-      source?.ref.kind === "feature" &&
-      "type" in source.record &&
-      multiProfileResultTypeKeys.has(featureTypeKey(source.record.type))
-    )
+    if (source?.ref.kind !== "feature" || !("type" in source.record)) return false
+    const sourceTypeKey = featureTypeKey(source.record.type)
+    if (multiProfileResultTypeKeys.has(sourceTypeKey)) return true
+    if (sourceTypeKey !== featureTypeKey(extrusionFeatureTypeV5.type)) return false
+    const extrusion = readExtrusionFeatureParameters(source.record as FeatureRecord)
+    return extrusion?.operation === "new" && (extrusion.profiles?.profiles.length ?? 0) > 1
   })
   if (invalidDependencyIndex === undefined) return
   return diagnostic(

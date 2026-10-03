@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createAngleQuantity,
@@ -18,7 +18,7 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import { RevolveForm, type RevolveFormMode } from "./revolve-form"
 
@@ -161,7 +161,24 @@ function renderForm(
   return { formCopy, onPreviewChange, onSave, onSaved }
 }
 
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+})
+
 afterEach(cleanup)
+
+async function selectOperation(user: ReturnType<typeof userEvent.setup>, operation: string) {
+  const labels: Record<string, string> = {
+    new: "New body",
+    add: "Add to body",
+    remove: "Remove from body",
+    intersect: "Intersect with body",
+  }
+  const label = labels[operation]
+  if (!label) throw new Error("Unknown result operation fixture.")
+  fireEvent.keyDown(screen.getByRole("combobox", { name: copy.operation }), { key: "Enter" })
+  await user.click(await screen.findByRole("option", { name: label }))
+}
 
 describe("RevolveForm", () => {
   it("synchronizes graphical angle into the exact angle field and preview", async () => {
@@ -316,7 +333,7 @@ describe("RevolveForm", () => {
       vi.fn(),
       [{ id: targetFeatureId, label: "Box 1" }],
     )
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), "add")
+    await selectOperation(user, "add")
     expect(screen.getByRole("combobox", { name: copy.target })).toBeTruthy()
     await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), targetFeatureId)
     await user.click(screen.getByRole("button", { name: copy.submit }))
@@ -338,7 +355,7 @@ describe("RevolveForm", () => {
       profiles: [secondProfile, profile],
     })
     expect(
-      (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).disabled,
+      (screen.getByRole("combobox", { name: copy.operation }) as HTMLButtonElement).disabled,
     ).toBe(false)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
@@ -370,7 +387,7 @@ describe("RevolveForm", () => {
         [{ id: targetFeatureId, label: "Box 1" }],
       )
 
-      await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), operation)
+      await selectOperation(user, operation)
       await user.click(screen.getByRole("button", { name: copy.submit }))
 
       expect(onSave).toHaveBeenCalledWith(
@@ -391,7 +408,7 @@ describe("RevolveForm", () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()
 
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), "remove")
+    await selectOperation(user, "remove")
     await user.click(screen.getByRole("button", { name: copy.submit }))
 
     const target = screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement
@@ -416,9 +433,9 @@ describe("RevolveForm", () => {
       [{ id: targetFeatureId, label: "Box 1" }],
     )
 
-    expect(
-      (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).value,
-    ).toBe("intersect")
+    expect(screen.getByRole("combobox", { name: copy.operation }).textContent).toBe(
+      "Intersect with body",
+    )
     expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
       targetFeatureId,
     )

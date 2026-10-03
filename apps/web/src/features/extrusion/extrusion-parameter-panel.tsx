@@ -21,6 +21,7 @@ export function ExtrusionParameterPanel({
   onProfilesClear,
   operationField,
   symmetricField,
+  extentFields,
   targetField,
 }: {
   actions: ReactNode
@@ -33,6 +34,7 @@ export function ExtrusionParameterPanel({
   onProfilesClear?: (() => void) | undefined
   operationField: ReactNode
   symmetricField: ReactNode
+  extentFields?: ReactNode
   targetField?: ReactNode
 }) {
   return (
@@ -59,6 +61,7 @@ export function ExtrusionParameterPanel({
       {targetField}
       {distanceField}
       <div className="pt-1">{symmetricField}</div>
+      {extentFields}
     </ParameterPanel>
   )
 }

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createLengthQuantity,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
+  extrusionFeatureTypeV5,
   featureIdSchema,
   featureRecordSchema,
   multiProfileExtrusionFeatureType,
@@ -14,7 +15,7 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import { ExtrusionForm, type ExtrusionFormMode } from "./extrusion-form"
@@ -80,6 +81,11 @@ const copy = {
   missingTarget: "Select a target body.",
   distance: "Distance",
   symmetric: "Extrude symmetrically",
+  reversed: "Reverse first direction",
+  secondDirection: "Second direction",
+  secondDistance: "Second distance",
+  symmetricDescription: "Symmetric distance is the total span.",
+  extentInvalidRange: "Each depth must be at least 0.001 mm; total span at most 100,000 mm.",
   expressionDescription: "Enter a length or #variable.",
   submit: "Create extrusion",
   cancel: "Cancel",
@@ -153,9 +159,124 @@ function renderForm(
   return { formCopy, onPreviewChange, onSave, onSaved }
 }
 
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+})
+
 afterEach(cleanup)
 
+async function selectOperation(user: ReturnType<typeof userEvent.setup>, operation: string) {
+  const labels: Record<string, string> = {
+    new: "New body",
+    add: "Add to body",
+    remove: "Remove from body",
+    intersect: "Intersect with body",
+  }
+  const label = labels[operation]
+  if (!label) throw new Error("Unknown result operation fixture.")
+  fireEvent.keyDown(screen.getByRole("combobox", { name: copy.operation }), { key: "Enter" })
+  await user.click(await screen.findByRole("option", { name: label }))
+}
+
 describe("ExtrusionForm", () => {
+  it("reopens independent extents and changes only the second depth from its handle", async () => {
+    const feature = featureRecordSchema.parse({
+      ...existingFeature,
+      type: extrusionFeatureTypeV5.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile] },
+        distance: createLengthQuantity(18, "mm", "#depth"),
+        secondDistance: createLengthQuantity(3),
+        symmetric: false,
+        reversed: true,
+        operation: "new",
+      },
+    })
+    const { onPreviewChange } = renderForm(
+      undefined,
+      undefined,
+      { kind: "edit", feature, profiles: [profile] },
+      undefined,
+      { featureId, distance: 6.5, sequence: 1, side: "second" },
+    )
+    expect((screen.getByRole("combobox", { name: copy.distance }) as HTMLInputElement).value).toBe(
+      "#depth",
+    )
+    expect(
+      (screen.getByRole("combobox", { name: copy.secondDistance }) as HTMLInputElement).value,
+    ).toBe("6.5 mm")
+    expect(
+      (screen.getByRole("checkbox", { name: copy.reversed }) as HTMLInputElement).checked,
+    ).toBe(true)
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: featureId,
+          parameters: expect.objectContaining({
+            distance: expect.objectContaining({
+              source: expect.objectContaining({ expression: "#depth" }),
+              value: 18,
+            }),
+            secondDistance: expect.objectContaining({ value: 6.5 }),
+          }),
+        }),
+      ),
+    )
+  })
+  it("creates unequal two-sided extents and switches explicitly to total-span symmetry", async () => {
+    const user = userEvent.setup()
+    const { onPreviewChange, onSave } = renderForm()
+    await user.click(screen.getByRole("checkbox", { name: copy.secondDirection }))
+    fireEvent.change(screen.getByRole("combobox", { name: copy.secondDistance }), {
+      target: { value: "3 mm" },
+    })
+    await user.click(screen.getByRole("checkbox", { name: copy.reversed }))
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: expect.objectContaining({ schemaVersion: 5 }),
+          parameters: expect.objectContaining({
+            distance: expect.objectContaining({ value: 10 }),
+            secondDistance: expect.objectContaining({ value: 3 }),
+            reversed: true,
+            symmetric: false,
+          }),
+        }),
+      ),
+    )
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole("checkbox", { name: copy.symmetric }))
+    expect(screen.queryByRole("combobox", { name: copy.secondDistance })).toBeNull()
+    expect(
+      (screen.getByRole("checkbox", { name: copy.reversed }) as HTMLInputElement).disabled,
+    ).toBe(true)
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({
+            distance: expect.objectContaining({ value: 10 }),
+            symmetric: true,
+          }),
+        }),
+      ),
+    )
+  })
+
+  it.each(["0 mm", "-3 mm", "100001 mm"])(
+    "rejects invalid second distance %s without saving",
+    async (value) => {
+      const user = userEvent.setup()
+      const { onSave } = renderForm()
+      await user.click(screen.getByRole("checkbox", { name: copy.secondDirection }))
+      fireEvent.change(screen.getByRole("combobox", { name: copy.secondDistance }), {
+        target: { value },
+      })
+      await user.click(screen.getByRole("button", { name: copy.submit }))
+      expect(onSave).not.toHaveBeenCalled()
+    },
+  )
+
   it("synchronizes graphical depth into the exact distance field and preview", async () => {
     const onPreviewChange = vi.fn()
     renderForm(undefined, undefined, undefined, onPreviewChange, {
@@ -285,7 +406,7 @@ describe("ExtrusionForm", () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()
 
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), "remove")
+    await selectOperation(user, "remove")
     await user.click(screen.getByRole("button", { name: copy.submit }))
 
     expect(onSave).toHaveBeenCalledWith(
@@ -307,7 +428,7 @@ describe("ExtrusionForm", () => {
       profiles: [secondProfile, profile],
     })
     expect(
-      (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).disabled,
+      (screen.getByRole("combobox", { name: copy.operation }) as HTMLButtonElement).disabled,
     ).toBe(false)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
@@ -333,7 +454,7 @@ describe("ExtrusionForm", () => {
         profiles: [secondProfile, profile],
       })
 
-      await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), operation)
+      await selectOperation(user, operation)
       await user.click(screen.getByRole("button", { name: copy.submit }))
 
       expect(onSave).toHaveBeenCalledWith(

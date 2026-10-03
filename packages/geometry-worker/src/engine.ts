@@ -4,7 +4,9 @@ import {
   chamferFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   datumPlaneFeatureContentParametersSchema,
+  extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
+  extrusionFeatureContentParametersV5Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   type FeatureContentEnvironment,
@@ -217,6 +219,8 @@ const EXTRUSION_FEATURE_TYPE_V3_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#3"
 const EXTRUSION_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#4"
+const EXTRUSION_FEATURE_TYPE_V5_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#5"
 const REVOLVE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#1"
 const REVOLVE_FEATURE_TYPE_V2_KEY =
@@ -761,7 +765,15 @@ type FilletContentParameters = ReturnType<typeof filletFeatureContentParametersS
 type ChamferContentParameters = ReturnType<typeof chamferFeatureContentParametersSchema.parse>
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
-type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
+type ExtrusionContentParameters = ReturnType<
+  typeof extrusionFeatureContentParametersSchema.parse
+> & {
+  reversed?: boolean
+  secondDistance?: number | null
+}
+type ExtrusionExtentContentParameters = ReturnType<
+  typeof extrusionFeatureContentParametersV5Schema.parse
+>
 type ExtrusionMultiProfileContentParameters = ReturnType<
   typeof extrusionMultiProfileFeatureContentParametersSchema.parse
 >
@@ -920,6 +932,7 @@ type ParsedFeature =
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
+  | { kind: "extent-extrusion"; parameters: ExtrusionExtentContentParameters }
   | { kind: "multi-extrusion"; parameters: ExtrusionMultiProfileContentParameters }
   | {
       kind: "multi-extrusion-modifying"
@@ -1200,6 +1213,27 @@ function parseMultiExtrusionModifyingFeature(input: FeatureEvaluationInput): Fea
   }
 }
 
+function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = extrusionFeatureContentParametersV5Schema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Extrusion extent content parameters are invalid.",
+    )
+  }
+  if (
+    !extrusionInputCardinalityIsValid(input, parameters.data) ||
+    !supportReferencesAreValid(input, parameters.data.supportFeatureId)
+  ) {
+    return invalidInputCardinality(
+      "Extrusion extent inputs must match the explicit target and sketch support.",
+    )
+  }
+  return { ok: true, feature: { kind: "extent-extrusion", parameters: parameters.data } }
+}
+
 function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
   const parameters = revolveFeatureContentParametersSchema.safeParse(feature.parameters)
@@ -1426,6 +1460,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V3_KEY, parseMultiExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V4_KEY, parseMultiExtrusionModifyingFeature],
+  [EXTRUSION_FEATURE_TYPE_V5_KEY, parseExtrusionExtentFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
@@ -1544,6 +1579,7 @@ function createProfileFeatureShape(
     {
       kind:
         | "extrusion"
+        | "extent-extrusion"
         | "multi-extrusion"
         | "multi-extrusion-modifying"
         | "revolve"
@@ -1556,6 +1592,14 @@ function createProfileFeatureShape(
   switch (feature.kind) {
     case "extrusion":
       return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
+    case "extent-extrusion":
+      return feature.parameters.operation === "new"
+        ? createMultiExtrusionFeatureShape(opencascade, feature.parameters)
+        : createMultiExtrusionModifyingFeatureShape(
+            opencascade,
+            feature.parameters,
+            dependencyShapes,
+          )
     case "multi-extrusion":
       return createMultiExtrusionFeatureShape(opencascade, feature.parameters)
     case "multi-extrusion-modifying":
@@ -1842,11 +1886,11 @@ function extrusionCapRole(
   ) {
     return undefined
   }
-  const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
+  const { start: startOffset, end: endOffset } = extrusionExtentBounds(parameters)
   const coordinate = plane.coordinate(context.signature.centroid)
   return firstMatchingRole([
     [nearlyEqual(coordinate, startOffset), "extrusion.cap.start"],
-    [nearlyEqual(coordinate, startOffset + parameters.distance), "extrusion.cap.end"],
+    [nearlyEqual(coordinate, endOffset), "extrusion.cap.end"],
   ])
 }
 
@@ -2009,8 +2053,7 @@ function extrusionVertexOrEdgeRole(
     return undefined
   }
   const plane = extrusionPlane(parameters)
-  const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
-  const endOffset = startOffset + parameters.distance
+  const { start: startOffset, end: endOffset } = extrusionExtentBounds(parameters)
   const coordinate = plane.coordinate(context.signature.centroid)
   const localCentroid = plane.local(context.signature.centroid)
   const endpointIds = matchingRoleIds(roleIndex.endpointBuckets, localCentroid)
@@ -2155,19 +2198,22 @@ function createExtrusionShape(
   opencascade: OpenCascadeInstance,
   parameters: Pick<ExtrusionContentParameters, "frame" | "plane" | "distance" | "symmetric"> &
     Readonly<{
+      reversed?: boolean
+      secondDistance?: number | null
       outer: ExtrusionContentParameters["outer"]
       holes: ExtrusionContentParameters["holes"]
     }>,
 ) {
   const plane = extrusionPlane(parameters)
-  const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
+  const { start: startOffset, end: endOffset } = extrusionExtentBounds(parameters)
+  const span = endOffset - startOffset
   const outer = extrusionLoopWire(parameters, parameters.outer, startOffset, false)
   const holes: Wire[] = []
   let face: ReturnType<typeof makeFace> | null = null
   const vector = new opencascade.gp_Vec_4(
-    plane.normal[0] * parameters.distance,
-    plane.normal[1] * parameters.distance,
-    plane.normal[2] * parameters.distance,
+    plane.normal[0] * span,
+    plane.normal[1] * span,
+    plane.normal[2] * span,
   )
   try {
     for (const hole of parameters.holes) {
@@ -2320,7 +2366,7 @@ function combineMultiProfileTools<Profile>(
 
 function createMultiExtrusionFeatureShape(
   opencascade: OpenCascadeInstance,
-  parameters: ExtrusionMultiProfileContentParameters,
+  parameters: ExtrusionMultiProfileContentParameters | ExtrusionExtentContentParameters,
 ) {
   return combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
     createExtrusionShape(opencascade, { ...parameters, ...profile }),
@@ -2329,7 +2375,7 @@ function createMultiExtrusionFeatureShape(
 
 function createMultiExtrusionModifyingFeatureShape(
   opencascade: OpenCascadeInstance,
-  parameters: ExtrusionMultiProfileModifyingContentParameters,
+  parameters: ExtrusionMultiProfileModifyingContentParameters | ExtrusionExtentContentParameters,
   dependencyShapes: readonly Shape3D[],
 ) {
   const target = dependencyShapes[0]
@@ -2373,7 +2419,8 @@ function createMultiRevolveModifyingFeatureShape(
 function multiExtrusionRoleParameters(
   parameters:
     | ExtrusionMultiProfileContentParameters
-    | ExtrusionMultiProfileModifyingContentParameters,
+    | ExtrusionMultiProfileModifyingContentParameters
+    | ExtrusionExtentContentParameters,
 ): ExtrusionContentParameters | undefined {
   const [first, ...rest] = parameters.profiles
   if (!first) return undefined
@@ -2416,7 +2463,9 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   const extrusionParameters =
     feature.kind === "extrusion"
       ? feature.parameters
-      : feature.kind === "multi-extrusion" || feature.kind === "multi-extrusion-modifying"
+      : feature.kind === "multi-extrusion" ||
+          feature.kind === "multi-extrusion-modifying" ||
+          feature.kind === "extent-extrusion"
         ? multiExtrusionRoleParameters(feature.parameters)
         : undefined
   const extrusionRoleIndex = extrusionParameters
@@ -2429,13 +2478,19 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
 }
 
 function featureProfileCount(feature: ParsedFeature) {
-  return feature.kind === "multi-extrusion" || feature.kind === "multi-revolve"
+  return feature.kind === "multi-extrusion" ||
+    feature.kind === "multi-revolve" ||
+    feature.kind === "extent-extrusion"
     ? feature.parameters.profiles.length
     : 1
 }
 
 function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSolidCountLimit>[0] {
   switch (feature.kind) {
+    case "extent-extrusion":
+      return feature.parameters.operation === "new"
+        ? "multi-extrusion"
+        : "multi-extrusion-modifying"
     case "selected-fillet":
       return "fillet"
     case "selected-chamfer":

@@ -1,9 +1,11 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
+import { resultOperationLabels, selectResultOperation } from "./result-operation-helpers"
 import {
   clickSavedProfileInViewport,
   confirmSketchPlane,
   drawRectangle,
+  fitIsometricView,
   selectSketchTool,
 } from "./sketch-helpers"
 
@@ -82,6 +84,7 @@ test.describe("selector-backed extrusion", () => {
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
 
+    await fitIsometricView(page)
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
       timeout: 120_000,
@@ -185,6 +188,7 @@ test.describe("selector-backed extrusion", () => {
       else await drawTwoProfilesForDefaultBox(page)
       await page.getByRole("button", { name: "Finish sketch" }).click()
 
+      await fitIsometricView(page)
       const viewport = page.getByRole("region", { name: "3D viewport" })
       await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
         timeout: 120_000,
@@ -195,7 +199,7 @@ test.describe("selector-backed extrusion", () => {
       await extrudeCommand(page).click()
       const form = page.getByRole("form", { name: "Extrude profile" })
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
-      await form.getByRole("combobox", { name: "Result operation" }).selectOption(operation)
+      await selectResultOperation(page, form, operation)
       await expect(form.getByRole("combobox", { name: "Target body" })).toHaveValue(/.+/)
       await expect(
         form.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
@@ -209,8 +213,8 @@ test.describe("selector-backed extrusion", () => {
       })
       await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
       const editForm = page.getByRole("form", { name: "Edit extrusion" })
-      await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveValue(
-        operation,
+      await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveText(
+        resultOperationLabels[operation],
       )
       await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
       await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
@@ -225,9 +229,7 @@ test.describe("selector-backed extrusion", () => {
       await extrudeCommand(page).click()
       const downstreamForm = page.getByRole("form", { name: "Extrude profile" })
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
-      await downstreamForm
-        .getByRole("combobox", { name: "Result operation" })
-        .selectOption(operation)
+      await selectResultOperation(page, downstreamForm, operation)
       await expect(
         downstreamForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
       ).toHaveText("Extrusion 1")
@@ -439,6 +441,8 @@ test.describe("selector-backed extrusion", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toBeVisible()
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     const normalSketchViewport = page.locator("section[data-sketch-context-mode='normal']")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-sketch-count", "0")
@@ -470,11 +474,16 @@ test.describe("selector-backed extrusion", () => {
     await expect(page.getByTestId("sketch-final-context-status")).toContainText(
       "Final result · display only",
     )
+    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toBeVisible()
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitSketchViewport = page.locator("section[data-sketch-context-mode='orbit']")
     await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
-    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-sketch-count", "1")
+    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-sketch-count", "0")
+    const spatialDraft = page.getByRole("img", { name: "Editable sketch geometry" })
+    await expect(spatialDraft).toHaveAttribute("data-sketch-spatial", "true")
+    await expect(spatialDraft.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
     await page.getByRole("button", { name: "Show final result", exact: true }).click()
     await expect(page.getByTestId("sketch-final-context-status")).toHaveCount(0)
     await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
@@ -559,6 +568,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("feature-face")
     await expect(page.getByRole("combobox", { name: "Support plane" })).toBeDisabled()
 
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await drawRectangle(page)
     await page
       .getByRole("toolbar", { name: "Model commands" })
@@ -580,6 +590,8 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toBeVisible()
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     const sketchContext = page.locator("section[data-sketch-context-mode='normal']")
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(page.getByTestId("sketch-rollback-guidance")).toHaveCount(0)
@@ -677,6 +689,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
+    await fitIsometricView(page)
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
@@ -687,6 +700,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(support).toHaveValue("feature-face")
     const sideLabel = await support.locator("option:checked").textContent()
     if (!sideLabel) throw new Error("The planar extrusion side has no readable label.")
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
@@ -694,8 +708,17 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
       "data-rendered-sketch-count",
-      "2",
+      "1",
     )
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveAttribute(
+      "data-sketch-spatial",
+      "true",
+    )
+    await expect(
+      page
+        .getByRole("img", { name: "Editable sketch geometry" })
+        .locator('[data-sketch-entity-type="line"]'),
+    ).toHaveCount(4)
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Finish sketch" }).click()
 
@@ -720,8 +743,17 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
       "data-rendered-sketch-count",
-      "2",
+      "1",
     )
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveAttribute(
+      "data-sketch-spatial",
+      "true",
+    )
+    await expect(
+      page
+        .getByRole("img", { name: "Editable sketch geometry" })
+        .locator('[data-sketch-entity-type="line"]'),
+    ).toHaveCount(4)
   })
 
   test("chooses an exact sketch support when model faces overlap", async ({ page }) => {

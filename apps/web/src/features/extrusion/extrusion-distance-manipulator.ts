@@ -4,6 +4,7 @@ export type ExtrusionDistanceRequest = Readonly<{
   distance: number
   featureId: FeatureId
   sequence: number
+  side?: "first" | "second"
 }>
 
 export function finiteExtrusionDistance(distance: number): boolean {

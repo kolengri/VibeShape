@@ -28,6 +28,7 @@ import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/
 import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
+  extrusionFeatureContentParametersV5Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   holeFeatureContentParametersSchema,
@@ -284,6 +285,8 @@ type MultiProfileParameters = Readonly<{
   profiles: SketchProfileSet
   distance?: { readonly value: number }
   symmetric?: boolean
+  reversed?: boolean
+  secondDistance?: { readonly value: number } | null
   angle?: { readonly value: number }
   operation: "new" | "add" | "remove" | "intersect"
   axis?: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>["axis"]
@@ -312,11 +315,30 @@ function prepareExtrusion(
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
 }
 
+function validateMultiExtrusionContent(
+  content: unknown,
+  operation: MultiProfileParameters["operation"],
+  independentExtent: boolean,
+) {
+  const schema = independentExtent
+    ? extrusionFeatureContentParametersV5Schema
+    : operation === "new"
+      ? extrusionMultiProfileFeatureContentParametersSchema
+      : extrusionMultiProfileModifyingFeatureContentParametersSchema
+  const prepared = schema.safeParse(content)
+  return prepared.success
+    ? ({ ok: true, parameters: prepared.data as never } as const)
+    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile-set", {
+        issue: prepared.error.issues[0]?.message ?? "unknown-schema-issue",
+      })
+}
+
 function prepareMultiExtrusion(
   sketch: SketchRecord,
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
   parameters: MultiProfileParameters,
   frame: SupportFrame,
+  independentExtent: boolean,
 ) {
   if (!parameters.distance || parameters.symmetric === undefined) {
     return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
@@ -331,16 +353,11 @@ function prepareMultiExtrusion(
     distance: parameters.distance.value,
     symmetric: parameters.symmetric,
     operation: parameters.operation,
+    ...(independentExtent
+      ? { reversed: parameters.reversed, secondDistance: parameters.secondDistance?.value ?? null }
+      : {}),
   }
-  const prepared =
-    parameters.operation === "new"
-      ? extrusionMultiProfileFeatureContentParametersSchema.safeParse(content)
-      : extrusionMultiProfileModifyingFeatureContentParametersSchema.safeParse(content)
-  return prepared.success
-    ? ({ ok: true, parameters: prepared.data as never } as const)
-    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile-set", {
-        issue: prepared.error.issues[0]?.message ?? "unknown-schema-issue",
-      })
+  return validateMultiExtrusionContent(content, parameters.operation, independentExtent)
 }
 
 function prepareRevolve(
@@ -620,7 +637,8 @@ function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null
     return {
       kind: "extrusion",
       parameters: extrusion,
-      multiProfile: feature.type.schemaVersion === 3 || feature.type.schemaVersion === 4,
+      multiProfile: feature.type.schemaVersion >= 3,
+      independentExtent: feature.type.schemaVersion === 5,
     }
   }
   const revolve = readRevolveFeatureParameters(feature)
@@ -694,6 +712,7 @@ type ProfileFeature =
       kind: "extrusion"
       parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>
       multiProfile: boolean
+      independentExtent: boolean
     }>
   | Readonly<{
       kind: "revolve"
@@ -801,7 +820,7 @@ function prepareSolvedProfileFeature(
   if (multiProfile) {
     const multiParameters = { ...feature.parameters, profiles: multiProfile }
     return feature.kind === "extrusion"
-      ? prepareMultiExtrusion(sketch, solution, multiParameters, frame)
+      ? prepareMultiExtrusion(sketch, solution, multiParameters, frame, feature.independentExtent)
       : prepareMultiRevolve(sketch, solution, multiParameters, frame, geometry)
   }
   return feature.kind === "extrusion"

@@ -676,6 +676,7 @@ export function createActiveDocumentAutomationSession() {
       return active.snapshot.revision
     },
     host: factory.host,
+    enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
     readCad,
     exportRevisionBound,
