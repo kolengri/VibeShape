@@ -35,9 +35,11 @@ Use the repository-local skills under `.agents/skills` when their descriptions m
 - `vibeshape-fallow` for changed-code intelligence, cleanup evidence, duplication, complexity, styling drift, and package-boundary findings;
 - `vibeshape-local-diagnostics` for local runtime, browser, worker, WASM, persistence, and stale-UI failures;
 - `vibeshape-type-guards` for runtime narrowing and schema-boundary decisions;
-- `vibeshape-documentation-sync` after durable implementation or architecture changes.
+- `vibeshape-documentation-sync` after durable implementation, architecture, or changes to MCP contracts and agent workflows.
 
 Keep detailed procedures in skills rather than expanding this always-loaded file.
+
+When a change affects a capability available through MCP, its tool/resource contract, or the agent workflow, use `vibeshape-documentation-sync` to update the affected operator skills and their bundle in the same task. UI availability alone does not establish MCP support.
 
 Default source lookup to scoped `rg` and direct reads, including multi-step investigations. Use the optional global `efficient-code-tools` skill only for structural code queries, dependency/consumer graphs, or verbose diagnostics. Reuse current evidence; repository verification remains authoritative.
 
