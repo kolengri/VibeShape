@@ -684,7 +684,8 @@ describe("modeled threads with pinned real OCCT", () => {
         source.delete()
       }
     },
-    60_000,
+    // Four-start native cuts need more than 60 seconds on hosted CI runners.
+    90_000,
   )
   it("removes radial protrusions throughout the band while restoring all material outside it", () => {
     const cylinder = createOcctCylinder(occt, 5, 8, [0, 0, 0])
