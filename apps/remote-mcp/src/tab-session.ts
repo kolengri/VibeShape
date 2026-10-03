@@ -26,6 +26,7 @@ const metadataSchema = z
     clientId: z.string().max(256).nullable(),
     revoked: z.boolean(),
     active: z.string().uuid().nullable(),
+    activeKey: z.string().length(64).nullable().default(null),
     seen: z.array(z.string().length(64)).max(REMOTE_SESSION_MAX_OPERATIONS),
     window: z
       .object({ minute: z.number().int(), operations: z.number().int().nonnegative() })
@@ -66,13 +67,16 @@ export class TabSession extends DurableObject<RemoteEnv> {
   }
 
   // fallow-ignore-next-line unused-class-member -- Called through Cloudflare Durable Object RPC.
-  async initialize(input: Omit<Metadata, "clientId" | "revoked" | "active" | "seen" | "window">) {
+  async initialize(
+    input: Omit<Metadata, "clientId" | "revoked" | "active" | "activeKey" | "seen" | "window">,
+  ) {
     if (this.metadata) throw new Error("A tab session cannot be reinitialized.")
     this.metadata = metadataSchema.parse({
       ...input,
       clientId: null,
       revoked: false,
       active: null,
+      activeKey: null,
       seen: [],
       window: { minute: Math.floor(Date.now() / 60_000), operations: 0 },
     })
@@ -160,6 +164,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     this.metadata.seen.push(requestKey)
     this.metadata.window.operations += 1
     this.metadata.active = id
+    this.metadata.activeKey = requestKey
     await this.save()
     if (!this.live() || !this.browser())
       return localFailure("session-revoked", "The browser session closed.")
@@ -197,6 +202,14 @@ export class TabSession extends DurableObject<RemoteEnv> {
     await this.revoke()
   }
   // fallow-ignore-next-line unused-class-member -- Called through Cloudflare Durable Object RPC.
+  async cancelRequest(input: RemoteGrant, requestKey: string) {
+    z.string().length(64).parse(requestKey)
+    if (!(await this.isAuthorized(input)) || !this.metadata?.active) return false
+    if (this.metadata.activeKey !== requestKey) return false
+    await this.revoke()
+    return true
+  }
+  // fallow-ignore-next-line unused-class-member -- Called through Cloudflare Durable Object RPC.
   async revokeBrowser(token: string) {
     if (!this.metadata || (await digest(token)) !== this.metadata.tokenHash) return false
     await this.revoke()
@@ -206,6 +219,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     if (!this.metadata) return
     this.metadata.revoked = true
     this.metadata.active = null
+    this.metadata.activeKey = null
     if (this.pending) {
       clearTimeout(this.pending.timer)
       this.pending.resolve(
@@ -311,6 +325,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     const pending = this.pending
     this.pending = null
     this.metadata.active = null
+    this.metadata.activeKey = null
     clearTimeout(pending.timer)
     await this.save()
     pending.resolve(result)

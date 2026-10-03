@@ -7,6 +7,10 @@ See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
 ## User workflow
 
+Open **FAQ → Connect an AI through MCP** in the editor for the deployed URL, pairing steps and a
+copyable AI setup prompt. Builds without a configured relay show an unavailable message instead of
+advertising a connection. The other FAQ pages cover editable backups, export and reconnection.
+
 Configure the MCP client with the deployed HTTPS `/mcp` URL. Open the hosted editor, choose
 **Remote AI**, complete its browser challenge and create a pairing code. During OAuth authorization,
 enter the code on the service's consent page. Return to that exact editor tab, verify the client and

@@ -16,6 +16,7 @@ import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
 import { useEditorSessionStoreApi } from "../editor-session/editor-session-provider"
+import { FaqDialog } from "./faq-dialog"
 import { LocalAutomationStatus } from "./local-automation-status"
 import { RemoteAutomationStatus } from "./remote-automation-status"
 import { SettingsDialog } from "./settings-dialog"
@@ -68,6 +69,7 @@ export function ApplicationBar({
       <DocumentRenameDialog controller={controller} />
       <DocumentProjectDialog controller={controller} blockedReason={blockedReason} />
       <SettingsDialog controller={controller} blocked={unitChangesBlocked} />
+      <FaqDialog endpoint={remote.available ? import.meta.env.VITE_REMOTE_MCP_URL : undefined} />
       <AutomationStatusControls
         controller={controller}
         blockedReason={blockedReason}

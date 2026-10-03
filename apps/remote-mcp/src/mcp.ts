@@ -1,6 +1,11 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+import {
+  CallToolRequestSchema,
+  CancelledNotificationSchema,
+  isJSONRPCNotification,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js"
 import {
   localFailure,
   localOperationSchema,
@@ -11,6 +16,7 @@ import {
 import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_SCOPE,
+  type RemoteGrant,
   remoteGrantSchema,
 } from "@vibeshape/automation-api/remote-session"
 import {
@@ -20,6 +26,7 @@ import {
 import { z } from "zod"
 import type { RemoteEnv } from "./environment"
 import { digest, failure } from "./request-security"
+import type { TabSession } from "./tab-session"
 
 const tools = localToolNameSchema.options.filter((name) => name !== "export_model")
 
@@ -28,6 +35,38 @@ function toolResult(result: unknown) {
     content: [{ type: "text" as const, text: JSON.stringify(result) }],
     structuredContent: { result },
     isError: typeof result === "object" && result !== null && "ok" in result && result.ok === false,
+  }
+}
+
+function cancellationRoute(
+  transport: WebStandardStreamableHTTPServerTransport,
+  tab: DurableObjectStub<TabSession>,
+  grant: RemoteGrant,
+) {
+  const receive = transport.onmessage
+  const pending: Promise<boolean>[] = []
+  let invalid = false
+  // Transport dispatch happens only after SDK HTTP, protocol and JSON-RPC validation.
+  transport.onmessage = (message, extra) => {
+    if (!isJSONRPCNotification(message) || message.method !== "notifications/cancelled") {
+      receive?.(message, extra)
+      return
+    }
+    const notification = CancelledNotificationSchema.safeParse(message)
+    if (!notification.success) {
+      invalid = true
+      return
+    }
+    pending.push(
+      digest(JSON.stringify(notification.data.params.requestId)).then((key) =>
+        tab.cancelRequest(grant, key),
+      ),
+    )
+  }
+  return async () => {
+    // The SDK acknowledges notifications synchronously; authority must end before that 202 escapes.
+    await Promise.all(pending)
+    return !invalid
   }
 }
 
@@ -109,8 +148,10 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
   })
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
   await server.connect(transport)
+  const finishCancellation = cancellationRoute(transport, tab, grant.data)
   try {
     const response = await transport.handleRequest(request)
+    if (!(await finishCancellation())) return failure(400, "invalid_cancellation")
     // SDK text and structuredContent duplicate a bounded browser result; cap their whole JSON envelope.
     const serialized = await response.text()
     if (new TextEncoder().encode(serialized).byteLength > 512 * 1024)

@@ -159,7 +159,7 @@ async function authorizeTab(tab: Awaited<ReturnType<typeof pair>>) {
   expect(token.expires_in).toBe(900)
   return { token: token.access_token, clientId: client.client_id }
 }
-function mcp(token: string, id: number, method: string, params: unknown = {}) {
+function mcp(token: string, id: number | undefined, method: string, params: unknown = {}) {
   return call("/mcp", {
     method: "POST",
     headers: {
@@ -382,5 +382,74 @@ describe("remote MCP in workerd", () => {
       }),
     ).toBe(false)
     expect((await mcp(authenticated.token, 4, "tools/list")).status).toBe(401)
+  })
+
+  it("cancels an in-flight operation through a separate authenticated POST before acknowledging it", async () => {
+    const a = await pair()
+    const b = await pair()
+    const authenticatedA = await authorizeTab(a)
+    const authenticatedB = await authorizeTab(b)
+    const grantA = { sessionId: a.credential.sessionId, clientId: authenticatedA.clientId }
+    const grantB = { sessionId: b.credential.sessionId, clientId: authenticatedB.clientId }
+    const tabA = bindings.TAB_SESSIONS.getByName(grantA.sessionId)
+    const tabB = bindings.TAB_SESSIONS.getByName(grantB.sessionId)
+    const work = nextMessage(a.socket)
+    let settled = false
+    const running = mcp(authenticatedA.token, 41, "tools/call", {
+      name: "model_info",
+      arguments: {},
+    }).then((response) => {
+      settled = true
+      return response
+    })
+    expect((await work).type).toBe("work")
+
+    // Request IDs preserve JSON-RPC type, and a different grant cannot cancel this tab.
+    for (const [token, requestId] of [
+      [authenticatedA.token, "41"],
+      [authenticatedA.token, 42],
+      [authenticatedB.token, 41],
+    ] as const) {
+      const ignored = await mcp(token, undefined, "notifications/cancelled", { requestId })
+      expect(ignored.status).toBe(202)
+      expect(settled).toBe(false)
+      expect(await tabA.isAuthorized(grantA)).toBe(true)
+    }
+    const invalid = await mcp(authenticatedA.token, undefined, "notifications/cancelled", {
+      requestId: [41],
+    })
+    expect(invalid.status).toBe(400)
+    const unacceptable = await call("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authenticatedA.token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/cancelled",
+        params: { requestId: 41 },
+      }),
+    })
+    expect(unacceptable.status).toBe(406)
+    expect(settled).toBe(false)
+    expect(await tabA.isAuthorized(grantA)).toBe(true)
+
+    const revocation = nextMessage(a.socket)
+    const cancelled = await mcp(authenticatedA.token, undefined, "notifications/cancelled", {
+      requestId: 41,
+    })
+    expect(cancelled.status).toBe(202)
+    expect(await tabA.isAuthorized(grantA)).toBe(false)
+    expect((await revocation).type).toBe("revoked")
+    const outcome = await running
+    expect(outcome.status).toBe(200)
+    expect(await outcome.json()).toMatchObject({
+      result: { structuredContent: { result: { diagnostic: { code: "outcome-unknown" } } } },
+    })
+    expect((await mcp(authenticatedA.token, 43, "tools/list")).status).toBe(401)
+    expect(await tabB.isAuthorized(grantB)).toBe(true)
   })
 })
