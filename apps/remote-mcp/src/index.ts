@@ -41,7 +41,7 @@ const clientMetadata = z
       .optional(),
     scope: z.literal(REMOTE_SCOPE).optional(),
   })
-  .strict()
+  .strip()
 
 function provider(env: RemoteEnv) {
   const config = remoteConfig(env)
@@ -113,9 +113,9 @@ async function oauthRequest(
     const body = await readBoundedBody(original, limit)
     request = new Request(original, { body })
   }
-  const rejected = await admitOAuth(request, env, pathname, ipHash)
-  if (rejected) return rejected
-  const response = await provider(env).fetch(request, env, ctx)
+  const admitted = await admitOAuth(request, env, pathname, ipHash)
+  if (admitted instanceof Response) return admitted
+  const response = await provider(env).fetch(admitted, env, ctx)
   const headers = new Headers(response.headers)
   headers.set("Cache-Control", "no-store")
   headers.set(
@@ -130,13 +130,19 @@ async function oauthRequest(
 async function admitOAuth(request: Request, env: RemoteEnv, pathname: string, ipHash: string) {
   if (pathname.startsWith("/oauth/register/")) return failure(404, "unknown_route")
   const kind = pathname === "/oauth/register" ? "client" : "token"
-  if (pathname !== "/oauth/register" && pathname !== "/oauth/token") return null
+  if (pathname !== "/oauth/register" && pathname !== "/oauth/token") return request
   if (request.method !== "POST") return failure(405, "unsupported_method")
-  if (kind === "client" && !clientMetadata.safeParse(await request.clone().json()).success)
-    return failure(400, "invalid_client_metadata")
+  if (kind === "client") {
+    const parsed = clientMetadata.safeParse(await request.clone().json())
+    if (!parsed.success) return failure(400, "invalid_client_metadata")
+    // RFC 7591 extension fields cannot override the bounded registration policy.
+    const headers = new Headers(request.headers)
+    headers.delete("Content-Length")
+    request = new Request(request, { headers, body: JSON.stringify(parsed.data) })
+  }
   if (!(await env.ADMISSION.getByName("global").admit(kind, ipHash)))
     return failure(429, "admission_limit")
-  return null
+  return request
 }
 
 function requestOrigin(request: Request, config: RemoteConfig) {
