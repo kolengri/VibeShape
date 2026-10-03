@@ -112,10 +112,11 @@ invoking Point on curve.
 
 ## Parametric 3D features
 
-The Primitives toolbar and command palette provide Box, Cylinder, Sphere, Cone, and Torus.
+The Primitives toolbar and command palette provide Box, Cylinder, Sphere, Cone, Torus, and Pyramid.
 Sphere uses a radius and center; Cone uses a base radius, height, and optional centered height;
 Torus uses a major radius and a smaller tube radius, centered on its placement origin with a Z axis.
-All five support expression-aware dimensions and signed placement, disposable exact preview,
+Pyramid uses 3 to 64 regular base sides, a circumradius, height, and optional centered height.
+All six support expression-aware dimensions and signed placement, disposable exact preview,
 create/edit, committed undo/redo, and persisted reopening through the existing Part Design owner.
 Cone currently produces a pointed cone; truncated cones and horn or spindle tori are not supported.
 

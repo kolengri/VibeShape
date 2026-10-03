@@ -38,6 +38,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createCylinder: () => void
     createSphere: () => void
     createCone: () => void
+    createPyramid: () => void
     createTorus: () => void
     createDatumPlane: () => void
     createExtrusion: () => unknown
@@ -125,7 +126,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     labelKey: "measure",
     shortcut: { key: "m", modifiers: ["shift"] },
     ownerModuleId: editorOwner,
-    toolbarGroup: "model-primary",
+    toolbarGroup: "model-inspection",
   },
   {
     group: "history",
@@ -264,6 +265,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "modeling",
+    icon: "pyramid",
+    id: editorCommandIds.createPyramid,
+    labelKey: "createPyramid",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primitives",
+  },
+  {
+    group: "modeling",
     icon: "torus",
     id: editorCommandIds.createTorus,
     labelKey: "createTorus",
@@ -276,7 +285,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.createSubtract,
     labelKey: "createSubtract",
     ownerModuleId: partDesignOwner,
-    toolbarGroup: "model-primitives",
+    toolbarGroup: "model-primary",
   },
   {
     group: "sketch",
@@ -904,6 +913,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: canCreateFeature,
     id: editorCommandIds.createCone,
     isActive: ({ state }) => state.activePartDesignCommand === "cone",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createPyramid(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createPyramid,
+    isActive: ({ state }) => state.activePartDesignCommand === "pyramid",
     isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: partDesignOwner,
   },

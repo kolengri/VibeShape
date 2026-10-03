@@ -233,18 +233,32 @@ function ToolbarCommandFamilyAction({
 
 function ToolbarCommandGroup({
   commands,
+  framed = false,
   getDisabledReason,
   getLabel,
   label,
 }: {
+  framed?: boolean
   commands: readonly ResolvedEditorCommand[]
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
   label: string
 }) {
   return (
-    <fieldset className="contents">
-      <legend className="sr-only">{label}</legend>
+    <fieldset
+      aria-label={framed ? label : undefined}
+      className={
+        framed
+          ? "flex shrink-0 items-center gap-1 rounded-md border border-border px-1"
+          : "contents"
+      }
+    >
+      {!framed ? <legend className="sr-only">{label}</legend> : null}
+      {framed ? (
+        <span className="px-1 text-xs text-muted-foreground" aria-hidden="true">
+          {label}
+        </span>
+      ) : null}
       {commands.map((command) => (
         <ToolbarAction
           key={command.descriptor.id}
@@ -327,6 +341,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
     visibleCommands.filter(({ descriptor }) => descriptor.toolbarGroup === groupName)
   const workspaceCommands = group("workspace")
   const modelPrimaryCommands = group("model-primary")
+  const modelInspectionCommands = group("model-inspection")
   const modelPrimitiveCommands = group("model-primitives")
   const sketchToolCommands = group("sketch-tools")
   const sketchPrecisionCommands = group("sketch-precision")
@@ -370,150 +385,147 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
     <Toolbar
       asChild
       aria-label={t("ariaLabel")}
-      className="min-w-0 gap-1 overflow-x-auto border-b bg-toolbar px-2"
+      className="min-w-0 gap-2 border-b bg-toolbar px-2 py-1"
     >
       <nav>
-        {sketchMode ? null : (
-          <>
-            <ToolbarCommandGroup
-              commands={workspaceCommands}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("workspaceLabel")}
-            />
-            <ToolbarSeparator />
-          </>
-        )}
-        {sketchMode ? (
-          <>
-            <ToolbarCommandGroup
-              commands={profileFeatureCommands}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("profileFeaturesLabel")}
-            />
-            <ToolbarSeparator />
-            <ToolbarCommandGroup
-              commands={sketchToolCommands.filter(
-                ({ descriptor }) => !descriptor.sketchPresentation?.family,
-              )}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("sketchToolsLabel")}
-            />
-            {sketchGeometryFamilies.map((family) => (
-              <ToolbarCommandFamilyAction
-                key={family.id}
-                commands={familyCommands(sketchToolCommands, family.id)}
-                disabledReason={getDisabledReason}
-                familyLabel={t(family.labelKey)}
-                label={getLabel}
-                lastUsedCommandId={lastUsedFamilyCommands[family.id]}
-                onCommandSelect={(command) => selectFamilyCommand(family.id, command)}
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {sketchMode ? null : (
+            <>
+              <ToolbarCommandGroup
+                commands={workspaceCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("workspaceLabel")}
               />
-            ))}
-            <ToolbarSeparator />
-            <ToolbarCommandGroup
-              commands={sketchPrecisionCommands.filter(
-                ({ descriptor }) => !descriptor.sketchPresentation?.family,
-              )}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("sketchPrecisionLabel")}
-            />
-            <ToolbarCommandFamilyAction
-              commands={familyCommands(sketchPrecisionCommands, sketchConstraintFamily.id)}
-              disabledReason={getDisabledReason}
-              familyLabel={t(sketchConstraintFamily.labelKey)}
-              label={getLabel}
-              lastUsedCommandId={lastUsedFamilyCommands[sketchConstraintFamily.id]}
-              onCommandSelect={(command) => selectFamilyCommand(sketchConstraintFamily.id, command)}
-            />
-            <ToolbarCommandGroup
-              commands={sketchModeCommands}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("sketchModeLabel")}
-            />
-            <ToolbarSeparator />
-            <ToolbarCommandGroup
-              commands={sketchModifyCommands.filter(
-                ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar === "visible",
-              )}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("sketchModifyLabel")}
-            />
-            <span className="hidden xl:contents">
+              <ToolbarSeparator />
+            </>
+          )}
+          {sketchMode ? (
+            <>
+              <ToolbarCommandGroup
+                commands={profileFeatureCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("profileFeaturesLabel")}
+              />
+              <ToolbarSeparator />
+              <ToolbarCommandGroup
+                commands={sketchToolCommands.filter(
+                  ({ descriptor }) => !descriptor.sketchPresentation?.family,
+                )}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("sketchToolsLabel")}
+              />
+              {sketchGeometryFamilies.map((family) => (
+                <ToolbarCommandFamilyAction
+                  key={family.id}
+                  commands={familyCommands(sketchToolCommands, family.id)}
+                  disabledReason={getDisabledReason}
+                  familyLabel={t(family.labelKey)}
+                  label={getLabel}
+                  lastUsedCommandId={lastUsedFamilyCommands[family.id]}
+                  onCommandSelect={(command) => selectFamilyCommand(family.id, command)}
+                />
+              ))}
+              <ToolbarSeparator />
+              <ToolbarCommandGroup
+                commands={sketchPrecisionCommands.filter(
+                  ({ descriptor }) => !descriptor.sketchPresentation?.family,
+                )}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("sketchPrecisionLabel")}
+              />
+              <ToolbarCommandFamilyAction
+                commands={familyCommands(sketchPrecisionCommands, sketchConstraintFamily.id)}
+                disabledReason={getDisabledReason}
+                familyLabel={t(sketchConstraintFamily.labelKey)}
+                label={getLabel}
+                lastUsedCommandId={lastUsedFamilyCommands[sketchConstraintFamily.id]}
+                onCommandSelect={(command) =>
+                  selectFamilyCommand(sketchConstraintFamily.id, command)
+                }
+              />
+              <ToolbarCommandGroup
+                commands={sketchModeCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("sketchModeLabel")}
+              />
+              <ToolbarSeparator />
               <ToolbarCommandGroup
                 commands={sketchModifyCommands.filter(
-                  ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar !== "visible",
+                  ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar === "visible",
                 )}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
                 label={t("sketchModifyLabel")}
               />
-            </span>
-            <span className="contents xl:hidden">
-              <ToolbarCommandMenu
-                commands={sketchModifyCommands.filter(
-                  ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar !== "visible",
-                )}
+              <span className="hidden xl:contents">
+                <ToolbarCommandGroup
+                  commands={sketchModifyCommands.filter(
+                    ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar !== "visible",
+                  )}
+                  getDisabledReason={getDisabledReason}
+                  getLabel={getLabel}
+                  label={t("sketchModifyLabel")}
+                />
+              </span>
+              <span className="contents xl:hidden">
+                <ToolbarCommandMenu
+                  commands={sketchModifyCommands.filter(
+                    ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar !== "visible",
+                  )}
+                  getDisabledReason={getDisabledReason}
+                  getLabel={getLabel}
+                  label={t("sketchModifyLabel")}
+                />
+              </span>
+              <ToolbarSeparator />
+              <ToolbarCommandGroup
+                commands={sketchViewCommands}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
-                label={t("sketchModifyLabel")}
+                label={t("sketchViewLabel")}
               />
-            </span>
-            <ToolbarSeparator />
-            <ToolbarCommandGroup
-              commands={sketchViewCommands}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("sketchViewLabel")}
-            />
-            <ToolbarSeparator />
-            <SketchConstraintManagerToolbarSlot />
-            <ToolbarSeparator />
-            {historyCommands.map((command) => (
-              <ToolbarAction
-                key={command.descriptor.id}
-                command={command}
-                disabledReason={getDisabledReason(command)}
-                label={getLabel(command)}
+              <ToolbarSeparator />
+              <SketchConstraintManagerToolbarSlot />
+            </>
+          ) : (
+            <>
+              <ToolbarCommandGroup
+                framed
+                commands={modelPrimaryCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("modelPrimaryLabel")}
               />
-            ))}
-          </>
-        ) : (
-          <>
-            {modelPrimaryCommands.map((command) => (
-              <ToolbarAction
-                key={command.descriptor.id}
-                command={command}
-                disabledReason={getDisabledReason(command)}
-                label={getLabel(command)}
+              <ToolbarCommandGroup
+                framed
+                commands={modelPrimitiveCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("primitives")}
               />
-            ))}
-            <ToolbarSeparator />
-            <span className="px-1 text-xs text-muted-foreground" aria-hidden="true">
-              {t("primitives")}
-            </span>
-            {modelPrimitiveCommands.map((command) => (
-              <ToolbarAction
-                key={command.descriptor.id}
-                command={command}
-                disabledReason={getDisabledReason(command)}
-                label={getLabel(command)}
+              <ToolbarCommandGroup
+                commands={modelInspectionCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("inspectionLabel")}
               />
-            ))}
-            <ToolbarSeparator />
-            <ToolbarCommandGroup
-              commands={historyCommands}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("historyLabel")}
-            />
-          </>
-        )}
+            </>
+          )}
+        </div>
+        {historyCommands.length > 0 ? (
+          <ToolbarCommandGroup
+            framed
+            commands={historyCommands}
+            getDisabledReason={getDisabledReason}
+            getLabel={getLabel}
+            label={t("historyLabel")}
+          />
+        ) : null}
       </nav>
     </Toolbar>
   )

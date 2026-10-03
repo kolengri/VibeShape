@@ -8,6 +8,7 @@ import {
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
+  pyramidFeatureType,
   sphereFeatureType,
   torusFeatureType,
   variableIdSchema,
@@ -30,6 +31,7 @@ const variables = [
 const types = {
   sphere: sphereFeatureType.type,
   cone: coneFeatureType.type,
+  pyramid: pyramidFeatureType.type,
   torus: torusFeatureType.type,
 }
 
@@ -88,7 +90,29 @@ async function setLength(user: ReturnType<typeof userEvent.setup>, label: string
 afterEach(cleanup)
 
 describe("BasicPrimitiveForm", () => {
-  it.each(["sphere", "cone", "torus"] as const)(
+  it.each(["2", "3.5", "65", ""])(
+    "rejects pyramid base sides %s and clears the disposable preview",
+    async (value) => {
+      const user = userEvent.setup()
+      const { copy, onPreviewChange, onSave } = renderPrimitive("pyramid", {
+        previewStatus: "idle",
+      })
+      const sides = screen.getByRole("spinbutton", { name: copy.sides })
+      expect((sides as HTMLInputElement).value).toBe("4")
+      await user.clear(sides)
+      if (value) await user.type(sides, value)
+      await user.tab()
+      await screen.findByText(copy.invalidSides)
+      expect(sides.getAttribute("aria-invalid")).toBe("true")
+      await waitFor(() => expect(onPreviewChange).toHaveBeenLastCalledWith(null))
+      expect(onSave).not.toHaveBeenCalled()
+      expect(
+        (screen.getByRole("button", { name: copy.submit }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+    },
+  )
+
+  it.each(["sphere", "cone", "torus", "pyramid"] as const)(
     "previews and saves %s expressions and signed coordinates through one feature identity",
     async (primitiveKind) => {
       const user = userEvent.setup()
@@ -98,7 +122,7 @@ describe("BasicPrimitiveForm", () => {
       await setLength(user, copy.originX, "-15")
       await setLength(user, copy.originY, "2 cm")
       await setLength(user, copy.originZ, "5 mm")
-      if (primitiveKind === "cone")
+      if (primitiveKind === "cone" || primitiveKind === "pyramid")
         await user.click(screen.getByRole("checkbox", { name: copy.centered }))
       else expect(screen.queryByRole("checkbox")).toBeNull()
 
@@ -112,7 +136,7 @@ describe("BasicPrimitiveForm", () => {
           y: expect.objectContaining({ value: 20 }),
           z: expect.objectContaining({ value: 5 }),
         },
-        ...(primitiveKind === "cone" ? { centered: true } : {}),
+        ...(primitiveKind === "cone" || primitiveKind === "pyramid" ? { centered: true } : {}),
       })
       await waitFor(() =>
         expect(onPreviewChange).toHaveBeenLastCalledWith(
@@ -134,7 +158,7 @@ describe("BasicPrimitiveForm", () => {
     },
   )
 
-  it.each(["sphere", "cone", "torus"] as const)(
+  it.each(["sphere", "cone", "torus", "pyramid"] as const)(
     "restores %s authored expressions and updates the saved feature",
     async (primitiveKind) => {
       const user = userEvent.setup()
@@ -146,7 +170,7 @@ describe("BasicPrimitiveForm", () => {
             }
           : {
               radius: createLengthQuantity(12, "mm", "#radius"),
-              ...(primitiveKind === "cone"
+              ...(primitiveKind === "cone" || primitiveKind === "pyramid"
                 ? { height: createLengthQuantity(30, "mm", "30 mm"), centered: true }
                 : {}),
             }
@@ -156,6 +180,7 @@ describe("BasicPrimitiveForm", () => {
         type: types[primitiveKind],
         parameters: {
           ...dimensions,
+          ...(primitiveKind === "pyramid" ? { sides: 6 } : {}),
           origin: {
             x: createLengthQuantity(12, "mm", "#radius"),
             y: createLengthQuantity(-6),
@@ -175,10 +200,16 @@ describe("BasicPrimitiveForm", () => {
       expect((screen.getByRole("combobox", { name: copy.originX }) as HTMLInputElement).value).toBe(
         "#radius",
       )
-      if (primitiveKind === "cone")
+      if (primitiveKind === "cone" || primitiveKind === "pyramid")
         expect(
           (screen.getByRole("checkbox", { name: copy.centered }) as HTMLInputElement).checked,
         ).toBe(true)
+      if (primitiveKind === "pyramid") {
+        const sides = screen.getByRole("spinbutton", { name: copy.sides })
+        expect((sides as HTMLInputElement).value).toBe("6")
+        await user.clear(sides)
+        await user.type(sides, "8")
+      }
       await setLength(user, copy.originZ, "18 mm")
       await user.click(screen.getByRole("button", { name: copy.submit }))
       expect(onSave).toHaveBeenCalledWith(
@@ -264,7 +295,7 @@ describe("BasicPrimitiveForm", () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it.each(["sphere", "cone", "torus"] as const)(
+  it.each(["sphere", "cone", "torus", "pyramid"] as const)(
     "applies graphical %s placement without a document write",
     async (primitiveKind) => {
       const { copy, onSave, onPreviewChange } = renderPrimitive(primitiveKind, {

@@ -160,6 +160,28 @@ export const coneFeatureParametersSchema = z
     )
   }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
 
+export const pyramidFeatureParametersSchema = z
+  .object({
+    sides: z.number().int().min(3).max(64),
+    radius: radialPrimitiveLengthSchema,
+    height: radialPrimitiveLengthSchema,
+    centered: z.boolean(),
+    origin: primitiveOriginWithDefaultSchema,
+  })
+  .strict()
+  .refine(({ radius, height, centered, origin }) => {
+    const minimumZ = origin.z.value - (centered ? height.value / 2 : 0)
+    return (
+      height.value <= MAX_PRIMITIVE_POSITION_MM &&
+      radialPrimitiveWithinWorkspace(
+        quantityOrigin(origin),
+        radius.value,
+        minimumZ,
+        minimumZ + height.value,
+      )
+    )
+  }, "Pyramid dimensions and placement must remain within the 100000 mm workspace.")
+
 export const torusFeatureParametersSchema = z
   .object({
     majorRadius: radialPrimitiveLengthSchema,
@@ -206,6 +228,23 @@ export const coneFeatureContentParametersSchema = z
       radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
     )
   }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
+
+export const pyramidFeatureContentParametersSchema = z
+  .object({
+    sides: z.number().int().min(3).max(64),
+    radius: radialPrimitiveContentLengthSchema,
+    height: radialPrimitiveContentLengthSchema,
+    centered: z.boolean(),
+    origin: primitiveContentOriginSchema,
+  })
+  .strict()
+  .refine(({ radius, height, centered, origin }) => {
+    const minimumZ = origin[2] - (centered ? height / 2 : 0)
+    return (
+      height <= MAX_PRIMITIVE_POSITION_MM &&
+      radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
+    )
+  }, "Pyramid dimensions and placement must remain within the 100000 mm workspace.")
 
 export const torusFeatureContentParametersSchema = z
   .object({
@@ -623,6 +662,7 @@ function resolveRadialPrimitiveParameters(
   schema:
     | typeof sphereFeatureParametersSchema
     | typeof coneFeatureParametersSchema
+    | typeof pyramidFeatureParametersSchema
     | typeof torusFeatureParametersSchema,
   lengthParameters: readonly ("radius" | "height" | "majorRadius" | "minorRadius")[],
 ) {
@@ -742,6 +782,19 @@ export const coneFeatureType = featureTypeDescriptorSchema.parse({
     moduleId: "org.vibeshape.core.part-design",
     moduleVersion: "0.1.0",
     typeId: "org.vibeshape.feature.part-design.cone",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 0 },
+  references: { min: 0, max: 0 },
+})
+
+export const pyramidFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.pyramid",
     schemaVersion: 1,
   },
   classification: "solid",
@@ -1329,6 +1382,24 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         height: cone.height.value,
         centered: cone.centered,
         origin: [cone.origin.x.value, cone.origin.y.value, cone.origin.z.value],
+      })
+    },
+  },
+  {
+    type: pyramidFeatureType.type,
+    parametersSchema: pyramidFeatureParametersSchema,
+    resolveParameters: resolveRadialPrimitiveParameters(pyramidFeatureParametersSchema, [
+      "radius",
+      "height",
+    ]),
+    contentParameters(parameters) {
+      const pyramid = pyramidFeatureParametersSchema.parse(parameters)
+      return pyramidFeatureContentParametersSchema.parse({
+        sides: pyramid.sides,
+        radius: pyramid.radius.value,
+        height: pyramid.height.value,
+        centered: pyramid.centered,
+        origin: [pyramid.origin.x.value, pyramid.origin.y.value, pyramid.origin.z.value],
       })
     },
   },

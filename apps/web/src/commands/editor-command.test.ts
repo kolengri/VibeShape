@@ -89,6 +89,7 @@ function commandContext(
       createCylinder: vi.fn(),
       createSphere: vi.fn(),
       createCone: vi.fn(),
+      createPyramid: vi.fn(),
       createTorus: vi.fn(),
       createDatumPlane: vi.fn(),
       createExtrusion: vi.fn(),
@@ -290,7 +291,7 @@ describe("editor command registry", () => {
     expect(context.actions.createExtrusion).not.toHaveBeenCalled()
   })
 
-  it.each(["createSphere", "createCone", "createTorus"] as const)(
+  it.each(["createSphere", "createCone", "createTorus", "createPyramid"] as const)(
     "owns %s across command surfaces and preserves feature creation eligibility",
     async (key) => {
       const context = commandContext()

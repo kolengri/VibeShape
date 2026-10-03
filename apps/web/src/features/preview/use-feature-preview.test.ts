@@ -12,6 +12,7 @@ import {
   featureIdSchema,
   featureRecordSchema,
   holeFeatureTypeV2,
+  pyramidFeatureType,
   sphereFeatureType,
   torusFeatureType,
 } from "@vibeshape/domain"
@@ -198,14 +199,16 @@ describe("feature preview composition", () => {
     expect(featurePreviewKind(candidate)).toBe("primitive")
   })
 
-  it.each([sphereFeatureType.type, coneFeatureType.type, torusFeatureType.type])(
-    "classifies $typeId as a primitive preview",
-    (type) => {
-      expect(featurePreviewKind(featureRecordSchema.parse({ ...feature(candidateId), type }))).toBe(
-        "primitive",
-      )
-    },
-  )
+  it.each([
+    sphereFeatureType.type,
+    coneFeatureType.type,
+    pyramidFeatureType.type,
+    torusFeatureType.type,
+  ])("classifies $typeId as a primitive preview", (type) => {
+    expect(featurePreviewKind(featureRecordSchema.parse({ ...feature(candidateId), type }))).toBe(
+      "primitive",
+    )
+  })
 
   it("creates a disposable document without mutating the committed snapshot", () => {
     const candidate = feature(candidateId, [baseId])
