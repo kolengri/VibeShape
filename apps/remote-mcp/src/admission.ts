@@ -46,7 +46,7 @@ export class Admission extends DurableObject<RemoteEnv> {
       consent: config.consents,
       token: config.tokens,
     }
-    const ipCeilings: Record<Kind, number> = { session: 3, client: 6, consent: 6, token: 12 }
+    const ipCeilings: Record<Kind, number> = { session: 6, client: 6, consent: 6, token: 12 }
     return this.ctx.storage.transaction(async (storage) => {
       const state = await this.state(storage)
       const ip = state.ips[ipHash] ?? emptyCounts()
