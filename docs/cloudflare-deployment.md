@@ -34,6 +34,8 @@ account, Worker name, origin and current protected `main`, then publishes with W
 before the editor. Neither publication job installs project dependencies. Relay failure blocks the
 new editor deployment; an empty relay URL preserves the static-only path. PRs receive no deployment
 credentials. Configure the separately approved Worker token before activating this workflow version.
+The entire production workflow shares a non-cancelling concurrency group, so a newer run cannot
+publish its Worker while an older run is still publishing its editor.
 
 The `cloudflare-production` GitHub environment owns publication credentials. Restrict it to `main`
 and obtain the owner's approval before initial activation. PRs and fork code never receive the token.

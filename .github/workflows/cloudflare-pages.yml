@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: vibeshape-cloudflare-production
+  cancel-in-progress: false
+
 jobs:
   verify:
     if: github.repository == 'kolengri/VibeShape' && github.ref == 'refs/heads/main' && vars.VIBESHAPE_CLOUDFLARE_ENABLED == 'true'
@@ -103,15 +107,12 @@ jobs:
 
   publish-relay:
     needs: build
-    if: vars.VIBESHAPE_REMOTE_MCP_URL != ''
+    if: needs.build.outputs.relay-manifest-sha256 != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
       name: cloudflare-mcp-production
       url: ${{ vars.VIBESHAPE_REMOTE_MCP_URL }}
-    concurrency:
-      group: vibeshape-cloudflare-relay-production
-      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -155,7 +156,7 @@ jobs:
 
   publish:
     needs: [build, publish-relay]
-    if: always() && needs.build.result == 'success' && (needs.publish-relay.result == 'success' || needs.publish-relay.result == 'skipped')
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.publish-relay.result == 'success' || (needs.publish-relay.result == 'skipped' && needs.build.outputs.relay-manifest-sha256 == '')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -163,9 +164,6 @@ jobs:
     environment:
       name: cloudflare-production
       url: ${{ steps.deploy.outputs.deployment-url }}
-    concurrency:
-      group: vibeshape-cloudflare-production
-      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
