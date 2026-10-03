@@ -42,6 +42,7 @@ let connection: ReturnType<typeof createLocalAutomationConnection>
 const dispose = vi.fn()
 const enableAutoApply = vi.fn()
 beforeEach(() => {
+  sessionStorage.clear()
   vi.useFakeTimers()
   vi.clearAllMocks()
   enableAutoApply.mockReturnValue(true)
@@ -57,6 +58,7 @@ beforeEach(() => {
   mocks.execute.mockResolvedValue(failedResult)
   mocks.request.mockImplementation(async (path: string) => {
     if (path === "/status") return ok({ protocolVersion: 1, client, paired: false })
+    if (path === "/resume") return ok({ ...credential, token: "B".repeat(43) })
     if (path === "/connect") return ok(credential)
     if (path === "/poll") return emptyPoll
     if (path === "/revoke") return { ok: true, status: 204, data: null }
@@ -224,4 +226,116 @@ describe("browser-owned local AI connection lifecycle", () => {
       expect(dispose).toHaveBeenCalledTimes(1)
     },
   )
+})
+
+describe("local AI reload recovery", () => {
+  it("restores the same project in a fresh connection with auto-apply off", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    window.dispatchEvent(new Event("pagehide"))
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    expect(mocks.request).toHaveBeenCalledWith("/suspend", {}, credential.token, true)
+    const previous = connection
+    connection = createLocalAutomationConnection()
+    await ready()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/resume",
+      {
+        protocolVersion: 1,
+        document: { id, name: "Bracket", revision: 4 },
+      },
+      credential.token,
+    )
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    previous.dispose()
+  })
+  it("waits for the document to open before resuming", async () => {
+    await ready()
+    await connection.enable()
+    window.dispatchEvent(new Event("pagehide"))
+    const create = mocks.createHandle.getMockImplementation()
+    if (!create) throw new Error("The document handle mock is unavailable.")
+    mocks.createHandle.mockReturnValue({ ok: false })
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
+    mocks.createHandle.mockImplementation(create)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot().connected).toBe(true)
+  })
+  it("does not grant access to a different project", async () => {
+    await ready()
+    await connection.enable()
+    window.dispatchEvent(new Event("pagehide"))
+    mocks.createHandle.mockReturnValue({
+      ok: true,
+      dispose,
+      readInfo: () => ({
+        summary: {
+          documentId: "0195b5ac-b250-7a2c-8c33-000000000002",
+          revision: 0,
+          data: { name: "Other" },
+        },
+      }),
+    })
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+  })
+  it("does not resume after Stop AI or a rejected resume", async () => {
+    await ready()
+    await connection.enable()
+    window.dispatchEvent(new Event("pagehide"))
+    await connection.disable()
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
+    await connection.enable()
+    window.dispatchEvent(new Event("pagehide"))
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/resume"
+        ? Promise.resolve({ ok: false, status: 401, data: {} })
+        : original?.(path, ...args),
+    )
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+  })
+  it("expires the reload allowance and ignores malformed storage", async () => {
+    await ready()
+    await connection.enable()
+    window.dispatchEvent(new Event("pagehide"))
+    await vi.advanceTimersByTimeAsync(60_001)
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    sessionStorage.setItem("vibeshape-local-ai-resume", "{invalid")
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot().connected).toBe(false)
+  })
+})
+
+it("transfers reload recovery across the loading-to-ready owner remount", async () => {
+  await ready()
+  await connection.enable()
+  window.dispatchEvent(new Event("pagehide"))
+  connection.dispose()
+  expect(sessionStorage.getItem("vibeshape-local-ai-resume")).not.toBeNull()
+  connection = createLocalAutomationConnection()
+  await ready()
+  connection.dispose()
+  connection = createLocalAutomationConnection()
+  await ready()
+  await vi.advanceTimersByTimeAsync(250)
+  expect(connection.getSnapshot().connected).toBe(true)
 })

@@ -46,8 +46,11 @@ For this project and paired session only, **Set up auto-apply** offers an explic
 CAD creation and parameter edits. The visible **Auto-apply on** indicator always includes **Stop AI**,
 which ends the pairing immediately. Destructive or unsupported drafts still require review; an
 already pending review cannot be auto-approved. Invalid geometry and stale revisions are rejected.
-The grant resets on disconnect, project change, and reload. Reconnect manually and opt in again if
-desired. An edit already saving may finish after Stop; inspect the result and use Undo if needed.
+The grant resets on disconnect, project change, and reload. Local MCP restores the same project
+after a reload in the same tab within 60 seconds, without extending the original session expiry.
+Stop AI prevents recovery. Interrupted commands and drafts are never replayed; call `model_info`
+and inspect the saved revision before continuing. Opt in to auto-apply again if desired.
+See [ADR-0075](adr/0075-local-mcp-tab-reload-recovery.md) for recovery boundaries. An edit already saving may finish after Stop; inspect the result and use Undo if needed.
 
 `model_parts`, `model_folders`, and `model_history` provide bounded, exact-revision views of authored metadata and canonical History order. `change_metadata` proposes one typed part/folder change through exact preview and browser Apply/Discard. Metadata proposals always require manual review, including when CAD auto-apply is on. The accepted command keeps the paired agent actor and supplied command identity in the native history. Reuse neither a stale revision nor an already committed command ID.
 

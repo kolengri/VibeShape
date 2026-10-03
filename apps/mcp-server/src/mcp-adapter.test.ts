@@ -318,3 +318,75 @@ it("publishes read-only body measurements with client-valid labeled output", asy
     broker.dispose()
   }
 })
+
+it("does not recreate an old export resource after concurrent session recovery", async () => {
+  const origin = "http://127.0.0.1:43114"
+  const document = {
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f6101",
+    name: "Bracket",
+    revision: 4,
+  }
+  const resources = createExportResources()
+  const add = vi.spyOn(resources, "add")
+  const broker = createBrowserBroker({ origin, onRevoke: resources.clear })
+  const request = (path: string, body: unknown, token?: string) =>
+    new Request(`${origin}${LOCAL_AUTOMATION_PATH}/${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin,
+        host: "127.0.0.1:43114",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+  const adapter = createLocalMcpAdapter(broker, resources)
+  const client = new Client({ name: "reload-race", version: "1" })
+  try {
+    const [ct, st] = InMemoryTransport.createLinkedPair()
+    await Promise.all([adapter.connect(st), client.connect(ct)])
+    const { token } = (await (
+      await broker.handle(request("connect", { protocolVersion: 1, document }))
+    ).json()) as { token: string }
+    const pending = client.callTool({
+      name: "export_model",
+      arguments: { revision: 4, format: "step" },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const polled = (await (
+      await broker.handle(
+        request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+      )
+    ).json()) as { work: { requestId: string } }
+    const result = {
+      ok: true,
+      value: {
+        documentId: document.id,
+        revision: 4,
+        format: "step",
+        filename: "model.step",
+        mimeType: "model/step",
+        base64: "U1RFUA==",
+      },
+    }
+    const responses = await Promise.all([
+      broker.handle(
+        request(
+          "result",
+          { protocolVersion: 1, requestId: polled.work.requestId, tool: "export_model", result },
+          token,
+        ),
+      ),
+      broker.handle(request("resume", { protocolVersion: 1, document }, token)),
+    ])
+    expect(responses.map((r) => r.status)).toEqual([200, 200])
+    expect((await pending).structuredContent).toMatchObject({
+      result: { ok: false, diagnostic: { code: "session-revoked" } },
+    })
+    expect(add).not.toHaveBeenCalled()
+  } finally {
+    await client.close()
+    await adapter.close()
+    broker.dispose()
+  }
+})

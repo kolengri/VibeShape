@@ -292,7 +292,9 @@ test("creates and repairs a variable-driven chamfer through real local MCP", asy
     expect(volumeFor(undone, chamferId)).toBe(originalVolume)
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await enableLocalAi(page)
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     const restoredInfo = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const restored = success(
       localToolOutputs.model_variables.parse(
