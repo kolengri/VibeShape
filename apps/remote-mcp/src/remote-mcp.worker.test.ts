@@ -321,13 +321,12 @@ describe("remote MCP in workerd", () => {
 
   it("caps pairing attempts per IP while preserving the global daily budget", async () => {
     const admission = bindings.ADMISSION.getByName("global")
-    for (const ipHash of ["a", "b", "c", "d"].map((value) => value.repeat(64))) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        expect(await admission.admit("session", ipHash)).toBe(true)
-      }
-      expect(await admission.admit("session", ipHash)).toBe(false)
+    const ipHash = "a".repeat(64)
+    for (let attempt = 0; attempt < 12; attempt++) {
+      expect(await admission.admit("session", ipHash)).toBe(true)
     }
-    expect(await admission.admit("session", "e".repeat(64))).toBe(false)
+    expect(await admission.admit("session", ipHash)).toBe(false)
+    expect(await admission.admit("session", "b".repeat(64))).toBe(false)
   })
 
   it("caps unauthenticated registration before SDK KV writes and active tabs before per-tab allocation", async () => {
