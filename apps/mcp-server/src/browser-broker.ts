@@ -47,6 +47,11 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import {
+  isLocalPlanarImport,
+  type LocalPlanarImportOperation,
+  planarImportResultMatches,
+} from "@vibeshape/automation-api/planar-imports"
+import {
   cadInspectionDetailViewSchema,
   cadInspectionListViewSchema,
   modelBodyMeasurementViewSchema,
@@ -57,6 +62,7 @@ import {
   sketchSolutionViewSchema,
   variableListViewSchema,
 } from "@vibeshape/automation-api/queries"
+import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/surface-texture-result-context"
 import { z } from "zod"
 import { BrowserRequestError, readBrowserJson } from "./browser-request"
 import { draftInspectionMatches } from "./draft-inspection-result"
@@ -321,12 +327,16 @@ function resultContextMatches(
   if (history !== null) return history
   const assembly = assemblyResultContextMatches(operation, result, documentId)
   if (assembly !== null) return assembly
+  const texture = surfaceTextureResultContextMatches(operation, result, documentId)
+  if (texture !== null) return texture
   if (!result.ok) return true
   if (isLocalMetadataRead(operation))
     return metadataListMatches(operation, result.value, documentId)
   if (operation.tool === "change_metadata")
     return metadataCommitMatches(operation, result.value, documentId)
   if (isLocalImport(operation)) return importResultMatches(operation, result.value, documentId)
+  if (isLocalPlanarImport(operation))
+    return planarImportResultMatches(operation, result.value, documentId)
   return resultMatches(operation, result, documentId)
 }
 function resultMatches(
@@ -335,6 +345,7 @@ function resultMatches(
     | LocalMetadataReadOperation
     | Extract<LocalOperation, { tool: "change_metadata" }>
     | LocalImportOperation
+    | LocalPlanarImportOperation
   >,
   result: LocalToolResult,
   documentId: string,

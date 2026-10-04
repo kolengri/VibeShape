@@ -6,6 +6,7 @@ description: Create or edit parametric models in VibeShape using named MCP sketc
 # VibeShape modeling
 
 Establish the session with [vibeshape-use](../vibeshape-use/SKILL.md) and follow [draft transactions](../vibeshape-use/references/transactions.md). Read [modeling contracts and recipes](references/modeling.md) for the requested feature family. For assemblies and reusable components, read [assembly and library transactions](references/assembly-and-library.md). Live schemas determine the exact input shape.
+For editable printable relief, read [surface texture proposals](references/surface-textures.md). Their native preview and manual review are separate from a CAD draft.
 
 ## Author or revise intent
 
@@ -23,6 +24,7 @@ Use the [inspection skill](../vibeshape-inspection/SKILL.md) to choose targets a
 ## Capability boundaries
 
 For an authorized STEP/STP/BREP/STL/3MF source import, read [native source import](references/native-import.md).
+For SVG/DXF editable sketch import, read [planar source import](references/planar-import.md).
 Its upload, inspection and manual review flow is separate from CAD draft construction; it does not accept
 caller source hashes or bypass ordinary atomic persistence.
 

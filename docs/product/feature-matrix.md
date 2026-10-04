@@ -208,6 +208,13 @@ minimum wall thickness, physical fit, and print success are separate verificatio
 native, worker, and Chromium/Firefox/WebKit Apply/reopen/export checks pass.
 See [ADR-0059](../adr/0059-editable-surface-texture-layers.md) and [UX flows](ux-flows.md).
 
+Local and paired remote MCP expose bounded layer summaries and named create/update/remove proposals.
+Custom maps use lossless packed 8-bit grayscale up to 256 by 256. Updates preserve omitted maps,
+targets and masks and can append ordered brush dabs within the existing total limit. Native relief
+preflight runs before and after manual browser review; CAD auto-apply does not cover these changes.
+The same viewport preview and ordinary V3/V4 command, Undo and portable replay path are used.
+See [ADR-0090](../adr/0090-owned-surface-texture-mcp-proposals.md).
+
 ## Variables and expressions
 
 P1 includes:
@@ -266,7 +273,7 @@ A printability warning is a heuristic, not a guarantee of a successful print.
 | STEP AP242/AP214 | P0 | P0 | Exact B-Rep exchange |
 | Binary STL | P0 | P0 | Mesh compatibility |
 | 3MF Core | P1 in alpha, P0 for v1 | P0 | Primary printing exchange |
-| SVG/DXF 2D | P1 | P1 | Sketches and templates |
+| SVG/DXF 2D | P1 | P1 | Editable exact Sketch curves through editor and paired MCP source review |
 | OBJ/glTF | P2 | P2 | Visual mesh workflows |
 | IGES | P2 | P2 | Legacy CAD |
 | Proprietary CAD | Out | Out | Requires commercial SDKs or converters |

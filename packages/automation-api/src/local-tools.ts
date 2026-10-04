@@ -82,6 +82,13 @@ import {
 import { localSketchTextInputs, localSketchTextOperations } from "./local-sketch-text-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
+  localPlanarImportInputs,
+  localPlanarImportOperations,
+  planarUploadCommitSchema,
+  planarUploadDescriptorSchema,
+  planarUploadInspectionSchema,
+} from "./planar-imports"
+import {
   cadInspectionDetailQuerySchema,
   cadInspectionDetailViewSchema,
   cadInspectionListQuerySchema,
@@ -99,6 +106,13 @@ import {
   variableListViewSchema,
 } from "./queries"
 import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
+import {
+  surfaceTextureCommitViewSchema,
+  surfaceTextureOperations,
+  surfaceTexturesViewSchema,
+  surfaceTextureToolInputs,
+  surfaceTextureToolNames,
+} from "./surface-texture-tools"
 
 export const localFailureSchema = z
   .object({
@@ -152,6 +166,7 @@ const chamfer = z
   .strict()
 export const localToolInputs = {
   ...historyToolInputs,
+  ...localPlanarImportInputs,
   ...localImportInputs,
   model_sketch_solution: sketchSolutionArgumentsSchema,
   ...localBinaryExportInputs,
@@ -162,6 +177,7 @@ export const localToolInputs = {
   }),
   ...assemblyToolInputs,
   ...libraryToolInputs,
+  ...surfaceTextureToolInputs,
   model_history: authoredHistoryListArgumentsSchema,
   model_parts: authoredListArgumentsSchema,
   model_folders: authoredListArgumentsSchema,
@@ -246,6 +262,15 @@ export const localToolOutputs = {
   model_history_state: resultOf(historyStateViewSchema),
   undo_model: resultOf(historyCommitViewSchema),
   redo_model: resultOf(historyCommitViewSchema),
+  model_surface_textures: resultOf(surfaceTexturesViewSchema),
+  create_surface_texture: resultOf(surfaceTextureCommitViewSchema),
+  update_surface_texture: resultOf(surfaceTextureCommitViewSchema),
+  remove_surface_texture: resultOf(surfaceTextureCommitViewSchema),
+  begin_planar_import_upload: resultOf(planarUploadDescriptorSchema),
+  append_planar_import_chunk: resultOf(planarUploadDescriptorSchema),
+  inspect_planar_import_upload: resultOf(planarUploadInspectionSchema),
+  commit_planar_import_upload: resultOf(planarUploadCommitSchema),
+  discard_planar_import_upload: resultOf(importUploadDiscardSchema),
   update_box: resultOf(automationDraftStateSchema),
   create_cylinder: resultOf(automationDraftStateSchema),
   update_cylinder: resultOf(automationDraftStateSchema),
@@ -384,6 +409,11 @@ export const localToolNameSchema = z.enum([
   "model_history_state",
   "undo_model",
   "redo_model",
+  "begin_planar_import_upload",
+  "append_planar_import_chunk",
+  "inspect_planar_import_upload",
+  "commit_planar_import_upload",
+  "discard_planar_import_upload",
   ...primitiveToolNames,
   ...lifecycleToolNames,
   "create_placement",
@@ -405,6 +435,7 @@ export const localToolNameSchema = z.enum([
   "model_measurements",
   "draft_measurements",
   ...assemblyToolNames,
+  ...surfaceTextureToolNames,
   "library_items",
   "library_version",
   "save_library_definition",
@@ -490,6 +521,7 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  ...localPlanarImportOperations,
   ...localBinaryExportOperations,
   ...localImportOperations,
   z
@@ -507,6 +539,7 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
   ...historyOperations,
   ...assemblyOperations,
   ...libraryOperations,
+  ...surfaceTextureOperations,
   z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),
   z.object({ tool: z.literal("model_parts"), arguments: localToolInputs.model_parts }).strict(),
   z.object({ tool: z.literal("model_folders"), arguments: localToolInputs.model_folders }).strict(),

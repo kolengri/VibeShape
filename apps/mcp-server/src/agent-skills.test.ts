@@ -58,12 +58,18 @@ it("loads the complete operator pack through resources or tools without browser 
       skill.uri,
       ...skill.references.map((reference) => reference.uri),
     ])
-    expect(documents).toHaveLength(11)
+    expect(documents).toHaveLength(13)
+    expect(documents).toContain(
+      "vibeshape://agent-skills/vibeshape-modeling/references/planar-import.md",
+    )
     expect(documents).toContain(
       "vibeshape://agent-skills/vibeshape-modeling/references/native-import.md",
     )
     expect(documents).toContain(
       "vibeshape://agent-skills/vibeshape-modeling/references/assembly-and-library.md",
+    )
+    expect(documents).toContain(
+      "vibeshape://agent-skills/vibeshape-modeling/references/surface-textures.md",
     )
     for (const documentUri of documents) {
       const read = await client.readResource({ uri: documentUri })

@@ -11,9 +11,18 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
+import {
+  type SurfaceTextureReviewInput,
+  surfaceTextureCommandSchema,
+} from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { commandActorSchema, documentCommandSchema } from "@vibeshape/domain/commands"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import {
+  surfaceTextureProjectFixture,
+  textureFixtureId,
+} from "../../../../tests/fixtures/surface-texture-project"
+import * as texturePreview from "../features/surface-texture/surface-texture-preview-context"
 import { i18n } from "../i18n"
 import { automationReviews } from "./automation-review-controller"
 import { AutomationReviewPanel } from "./automation-review-panel"
@@ -111,6 +120,97 @@ function renderPanel(state: AutomationReviewState) {
     </I18nProvider>,
   )
 }
+
+function textureReview(operation: "create" | "remove" = "create") {
+  const { snapshot, layer } = surfaceTextureProjectFixture()
+  const actor = commandActorSchema.parse({
+    type: "mcp",
+    clientId: "client.test",
+    sessionId: textureFixtureId(9),
+  })
+  const input: SurfaceTextureReviewInput = {
+    kind: "surface-texture",
+    actor,
+    operation,
+    layerId: layer.id,
+    documentName: snapshot.name,
+    featureName: "Housing",
+    draft: {
+      draftId: textureFixtureId(500),
+      baseRevision: snapshot.revision,
+      draftVersion: 0,
+      expiresAt: "2099-01-01T00:00:00Z",
+    },
+    command: surfaceTextureCommandSchema.parse({
+      schemaVersion: 3,
+      kind: "org.vibeshape.document.metadata-command",
+      commandId: textureFixtureId(501),
+      documentId: snapshot.id,
+      baseRevision: snapshot.revision,
+      issuedAt: "2026-10-04T00:00:00Z",
+      actor,
+      payload: {
+        kind: "textures.replace-layers",
+        featureId: layer.featureId,
+        layers: operation === "create" ? [layer] : [],
+      },
+    }),
+    preview: { bodyCount: 1, sourceTriangleCount: 12, triangleCount: 48, vertexCount: 26 },
+  }
+  return { id: "texture-review", status: "ready", diagnostic: null, input } as const
+}
+
+it("keeps Apply locked until the exact current texture viewport draft is ready", () => {
+  const state = textureReview()
+  const draft = {
+    documentId: state.input.command.documentId,
+    revision: state.input.draft.baseRevision,
+    featureId: state.input.command.payload.featureId,
+    layers: state.input.command.payload.layers,
+  }
+  const preview = {
+    active: true,
+    draft,
+    readyDraft: { ...draft },
+    status: "ready" as const,
+    showOriginal: false,
+    brush: null,
+    setDraft: vi.fn(),
+    setReadyDraft: vi.fn(),
+    setStatus: vi.fn(),
+    setShowOriginal: vi.fn(),
+    setBrush: vi.fn(),
+  }
+  vi.spyOn(texturePreview, "useSurfaceTexturePreviewContext").mockReturnValue(preview)
+  renderPanel(state)
+  expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(true)
+  expect(screen.getByRole("button", { name: "Discard" }).hasAttribute("disabled")).toBe(false)
+  cleanup()
+  vi.mocked(texturePreview.useSurfaceTexturePreviewContext).mockReturnValue({
+    ...preview,
+    readyDraft: draft,
+    status: "error",
+  })
+  renderPanel(state)
+  expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(true)
+  cleanup()
+  vi.mocked(texturePreview.useSurfaceTexturePreviewContext).mockReturnValue({
+    ...preview,
+    readyDraft: draft,
+  })
+  renderPanel(state)
+  expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(false)
+})
+
+it("requires destructive confirmation before removing the reviewed texture collection", async () => {
+  const decide = vi.spyOn(automationReviews, "decide").mockResolvedValue()
+  renderPanel(textureReview("remove"))
+  await userEvent.click(screen.getByRole("button", { name: "Apply" }))
+  expect(screen.getByRole("alertdialog")).toBeTruthy()
+  expect(decide).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole("button", { name: "Apply changes" }))
+  expect(decide).toHaveBeenCalledExactlyOnceWith("texture-review", "approved")
+})
 
 describe("AutomationReviewPanel", () => {
   it("locks Apply and Discard while the approved transaction is being saved", () => {

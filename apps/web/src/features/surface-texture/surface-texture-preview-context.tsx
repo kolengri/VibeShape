@@ -1,6 +1,14 @@
 import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
 import type { ViewerSurfaceTextureBrush } from "@vibeshape/viewer/three-viewport"
-import { createContext, type ReactNode, useContext, useMemo, useState } from "react"
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react"
+import { automationReviews } from "../../automation/automation-review-controller"
 
 type SurfaceTextureDraft = Readonly<{
   documentId: string
@@ -32,6 +40,25 @@ export function SurfaceTexturePreviewProvider({
   active: boolean
   children: ReactNode
 }) {
+  const review = useSyncExternalStore(
+    automationReviews.subscribe,
+    automationReviews.getSnapshot,
+    automationReviews.getSnapshot,
+  )
+  const automationDraft = useMemo<SurfaceTextureDraft | null>(() => {
+    const input = review?.input
+    return review?.status !== "error" &&
+      input &&
+      "kind" in input &&
+      input.kind === "surface-texture"
+      ? {
+          documentId: input.command.documentId,
+          revision: input.draft.baseRevision,
+          featureId: input.command.payload.featureId,
+          layers: input.command.payload.layers,
+        }
+      : null
+  }, [review?.input, review?.status === "error"])
   const [draft, setDraft] = useState<SurfaceTextureDraft | null>(null)
   const [readyDraft, setReadyDraft] = useState<SurfaceTextureDraft | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
@@ -39,8 +66,8 @@ export function SurfaceTexturePreviewProvider({
   const [status, setStatus] = useState<PreviewState["status"]>("idle")
   const value = useMemo(
     () => ({
-      active,
-      draft: active ? draft : null,
+      active: active || automationDraft !== null,
+      draft: automationDraft ?? (active ? draft : null),
       readyDraft,
       showOriginal: active && showOriginal,
       brush: active ? brush : null,
@@ -51,7 +78,7 @@ export function SurfaceTexturePreviewProvider({
       setBrush,
       setStatus,
     }),
-    [active, draft, readyDraft, showOriginal, brush, status],
+    [active, automationDraft, draft, readyDraft, showOriginal, brush, status],
   )
   return (
     <SurfaceTexturePreviewContext.Provider value={value}>

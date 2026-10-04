@@ -96,7 +96,8 @@
     "shadcn:add": "shadcn add --cwd apps/web",
     "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run test:remote-mcp && bun run build",
     "mcp:local": "bun run --cwd apps/mcp-server start",
-    "test:assembly-library-persistence": "playwright test --config scripts/assembly-library-persistence.config.ts"
+    "test:assembly-library-persistence": "playwright test --config scripts/assembly-library-persistence.config.ts",
+    "test:surface-texture-mcp": "playwright test --config scripts/surface-texture-mcp.config.ts"
   },
   "dependencies": {
     "fflate": "catalog:",

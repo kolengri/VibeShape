@@ -42,6 +42,7 @@ import {
   historyRequestSchema,
 } from "@vibeshape/automation-host/history-session"
 import type { AutomationDocumentPort, AutomationHostResult } from "@vibeshape/automation-host/host"
+import type { SurfaceTextureReviewedInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { DocumentWorkerRequestError } from "@vibeshape/document-worker/client"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
@@ -139,13 +140,23 @@ import {
 } from "../automation/assembly-automation-session"
 import { assemblyInspectionView } from "../automation/assembly-inspection-view"
 import { automationReviews } from "../automation/automation-review-controller"
-import { isImportReview } from "../automation/automation-review-state"
+import { isImportReview, isPlanarImportReview } from "../automation/automation-review-state"
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import { createImportAutomationSession } from "../automation/import-automation-session"
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { createPlanarImportAutomationSession } from "../automation/planar-import-automation-session"
+import type {
+  PlanarImportReviewedCommit,
+  PlanarImportReviewInput,
+} from "../automation/planar-import-upload-session"
+import {
+  previewOwnedSurfaceTextures,
+  surfaceTextureReviewedInputMatches,
+} from "../automation/surface-texture-automation-preview"
+import { createBrowserSurfaceTextureAutomationSession } from "../automation/surface-texture-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
@@ -834,21 +845,22 @@ export function createActiveDocumentAutomationSession() {
     isActive: () => currentReport() !== null,
     commit: (command, expected) => commitReviewedMetadata(active, command, expected),
   })
+  function readSourceContext() {
+    const snapshot = currentReport() ? active?.authoredSnapshot : null
+    return snapshot && snapshot.schemaVersion !== 1
+      ? {
+          documentId: capturedDocumentId,
+          revision: snapshot.revision,
+          authorityVersion: snapshot.schemaVersion,
+          historyAfter: state.report?.historyItems?.at(-1) ?? null,
+        }
+      : null
+  }
   const imports = createImportAutomationSession({
     documentId: capturedDocumentId,
     isActive: sourceSessionAvailable,
     createId: browserUuidV7,
-    readContext() {
-      const snapshot = currentReport() ? active.authoredSnapshot : null
-      return snapshot && snapshot.schemaVersion !== 1
-        ? {
-            documentId: capturedDocumentId,
-            revision: snapshot.revision,
-            authorityVersion: snapshot.schemaVersion,
-            historyAfter: state.report?.historyItems?.at(-1) ?? null,
-          }
-        : null
-    },
+    readContext: readSourceContext,
     async commit(input) {
       if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
         return localFailure(
@@ -856,6 +868,20 @@ export function createActiveDocumentAutomationSession() {
           "The captured import review no longer matches.",
         )
       return commitReviewedImport(active, input)
+    },
+  })
+  const planarImports = createPlanarImportAutomationSession({
+    documentId: capturedDocumentId,
+    isActive: sourceSessionAvailable,
+    createId: browserUuidV7,
+    readContext: readSourceContext,
+    async commit(input) {
+      if (!sourceSessionAvailable() || !planarImportReviewedInputMatches(input))
+        return localFailure(
+          "planar-import-review-mismatch",
+          "The captured planar import review no longer matches.",
+        )
+      return commitReviewedPlanarImport(active, input)
     },
   })
   const assembly = createBrowserAssemblyAutomationSession({
@@ -965,6 +991,53 @@ export function createActiveDocumentAutomationSession() {
     },
     commit: (input) => commitReviewedHistory(active, input),
   })
+  function texturePreviewAvailable(input: SurfaceTextureReviewedInput) {
+    if (
+      !sourceSessionAvailable() ||
+      capturedSession.snapshot.revision !== input.draft.baseRevision ||
+      assemblyEditorDraftBlock()
+    )
+      return false
+    const review = automationReviews.getSnapshot()
+    return !review || review.status === "error" || surfaceTextureReviewedInputMatches(review, input)
+  }
+  const surfaceTextures = createBrowserSurfaceTextureAutomationSession({
+    documentId: capturedDocumentId,
+    createId: browserUuidV7,
+    isActive: sourceSessionAvailable,
+    readSnapshot: () => (sourceSessionAvailable() ? active.authoredSnapshot : null),
+    async preview(input, signal) {
+      if (!texturePreviewAvailable(input))
+        return localFailure(
+          "stale-revision",
+          "The texture source is no longer available for preview.",
+          true,
+        )
+      try {
+        const evidence = await previewOwnedSurfaceTextures(
+          getDocumentControllerState(),
+          input.command.payload.layers,
+          signal,
+        )
+        if (!texturePreviewAvailable(input) || signal.aborted)
+          return localFailure("stale-revision", "The texture source changed during preview.", true)
+        return { ok: true, value: evidence }
+      } catch (error) {
+        return localFailure(
+          "surface-texture-preview-failed",
+          error instanceof Error
+            ? error.message.slice(0, 512)
+            : "The native surface relief preview failed.",
+        )
+      }
+    },
+    commit: (input) =>
+      sourceSessionAvailable()
+        ? commitReviewedSurfaceTexture(active, input)
+        : Promise.resolve(
+            localFailure("session-revoked", "The texture source session is unavailable."),
+          ),
+  })
   const exports = createBinaryExportSession({
     documentId: capturedDocumentId,
     currentRevision: () => active.snapshot.revision,
@@ -1019,8 +1092,10 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel("stale-revision")
       metadata.cancel("stale-revision")
       imports.cancel("stale-revision")
+      planarImports.cancel("stale-revision")
       assembly.cancel("stale-revision")
       history.cancel("stale-revision")
+      surfaceTextures.cancel("stale-revision")
     }
   })
   function dispose() {
@@ -1030,8 +1105,10 @@ export function createActiveDocumentAutomationSession() {
     closeAutomation()
     metadata.dispose()
     imports.dispose()
+    planarImports.dispose()
     assembly.dispose()
     history.dispose()
+    surfaceTextures.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -1044,8 +1121,10 @@ export function createActiveDocumentAutomationSession() {
     host: factory.host,
     metadata,
     imports,
+    planarImports,
     assembly,
     history,
+    surfaceTextures,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
@@ -1056,8 +1135,10 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel(reason)
       metadata.cancel(reason)
       imports.cancel(reason)
+      planarImports.cancel(reason)
       assembly.cancel(reason)
       history.cancel(reason)
+      surfaceTextures.cancel(reason)
       exports.cancel()
     },
     dispose,
@@ -1210,6 +1291,49 @@ function reviewedMetadataBase(active: PersistentDocumentSession, baseRevision: n
     return null
   const base = active.authoredSnapshot
   return base && base.schemaVersion !== 1 && base.revision === baseRevision ? base : null
+}
+
+function planarImportReviewedInputMatches(input: PlanarImportReviewedCommit) {
+  const review = automationReviews.getSnapshot()
+  if (review?.status !== "applying" || !isPlanarImportReview(review.input)) return false
+  return (
+    commandActorsEqual(review.input.actor, input.actor) &&
+    planarImportReviewIdentity(review.input) === planarImportReviewIdentity(input)
+  )
+}
+function planarImportReviewIdentity(input: PlanarImportReviewInput) {
+  return canonicalJson({
+    draft: input.draft,
+    source: input.source,
+    label: input.label,
+    inspection: input.inspection,
+    transaction: input.transaction,
+  })
+}
+async function commitReviewedPlanarImport(
+  active: PersistentDocumentSession,
+  input: PlanarImportReviewedCommit,
+) {
+  if (
+    !reviewedMetadataBase(active, input.draft.baseRevision) ||
+    active.snapshot.id !== input.draft.documentId ||
+    projectActionGuard.read((block) => block !== "automation-busy") ||
+    !planarImportReviewedInputMatches(input)
+  )
+    return localFailure(
+      "stale-revision",
+      "The reviewed planar import base has an active edit or changed.",
+      true,
+    )
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.commitAuthoredTransaction({
+    ...input.transaction,
+    assetBlobs: input.assetBlobs,
+  })
+  publishAuthoredResult(active, result)
+  return result.ok
+    ? { ok: true as const, value: { revision: result.snapshot.revision } }
+    : localFailure(result.diagnostic.code, result.diagnostic.message, result.diagnostic.retryable)
 }
 
 function importReviewedInputMatches(input: ImportReviewedCommit) {
@@ -1658,6 +1782,48 @@ async function commitReviewedAssembly(
   return result.ok
     ? { ok: true as const, value: { revision: active.snapshot.revision } }
     : assemblyPortFailure(result.diagnostic)
+}
+
+function reviewedSurfaceTextureBase(
+  active: PersistentDocumentSession,
+  input: SurfaceTextureReviewedInput,
+) {
+  const base = reviewedMetadataBase(active, input.draft.baseRevision)
+  if (!base || input.command.documentId !== base.id) return null
+  const review = automationReviews.getSnapshot()
+  return review?.status === "applying" &&
+    !assemblyEditorDraftBlock() &&
+    surfaceTextureReviewedInputMatches(review, input)
+    ? base
+    : null
+}
+async function commitReviewedSurfaceTexture(
+  active: PersistentDocumentSession,
+  input: SurfaceTextureReviewedInput,
+) {
+  const base = reviewedSurfaceTextureBase(active, input)
+  if (!base)
+    return localFailure("stale-revision", "The reviewed texture base is no longer writable.", true)
+  const checked =
+    base.schemaVersion === 4
+      ? applyDocumentV4AuthoredCommand(base, input.command)
+      : applyDocumentV3Command(base, input.command)
+  if (!checked.ok)
+    return localFailure(
+      "surface-texture-command-rejected",
+      checked.diagnostic.message.slice(0, 512),
+    )
+  const result = await commitActiveAuthoredCommand(active, input.command)
+  return result.ok
+    ? {
+        ok: true as const,
+        value: { documentId: input.command.documentId, revision: result.snapshot.revision },
+      }
+    : localFailure(
+        result.diagnostic.sourceCode ?? result.diagnostic.code,
+        result.diagnostic.message.slice(0, 512),
+        result.diagnostic.retryable,
+      )
 }
 
 export async function commitAuthoredTransaction(

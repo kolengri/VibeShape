@@ -353,6 +353,56 @@ describe("remote MCP in workerd", () => {
       ).toBe(false)
     },
   )
+  it.each(["revision", "featureId"] as const)(
+    "revokes a surface texture read receipt with the wrong %s",
+    async (field) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const featureId = "0195b5ac-b280-7a2c-8c33-000000000001"
+      const value = {
+        schemaVersion: 1,
+        documentId: "0195b5ac-b280-7a2c-8c33-000000000002",
+        revision: 4,
+        featureId,
+        layers: [],
+      }
+      const send = async (id: number, patch: Record<string, unknown>) => {
+        const work = nextMessage(tab.socket)
+        const pending = mcp(authenticated.token, id, "tools/call", {
+          name: "model_surface_textures",
+          arguments: { revision: 4, featureId },
+        })
+        const operation = await work
+        if (operation.type !== "work") throw new Error("Expected surface texture work")
+        tab.socket.send(
+          JSON.stringify({
+            type: "result",
+            protocolVersion: 1,
+            requestId: operation.requestId,
+            tool: "model_surface_textures",
+            result: { ok: true, value: { ...value, ...patch } },
+          }),
+        )
+        return (await pending).json()
+      }
+      expect(await send(1, {})).toMatchObject({
+        result: { structuredContent: { result: { ok: true, value } } },
+      })
+      expect(
+        await send(2, field === "revision" ? { revision: 5 } : { featureId: value.documentId }),
+      ).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+      expect(
+        await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(false)
+    },
+  )
   it("revokes a forged exact-solid result for a mesh import", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -727,6 +777,9 @@ describe("remote MCP in workerd", () => {
       expect.objectContaining({ uri: "vibeshape://model" }),
     )
     const indexUri = "vibeshape://agent-skills"
+    expect(
+      resources.result.resources.some((resource) => resource.uri.endsWith("/planar-import.md")),
+    ).toBe(true)
     const read = await mcp(authenticated.token, 4, "resources/read", { uri: indexUri })
     const indexContent = ((await read.json()) as { result: { contents: { text: string }[] } })
       .result.contents[0]

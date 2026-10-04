@@ -185,10 +185,14 @@ export function createLocalAutomationConnection() {
     const review = [
       "commit_draft",
       "commit_import_upload",
+      "commit_planar_import_upload",
       "change_metadata",
       "commit_assembly_draft",
       "save_library_definition",
       "update_library_metadata",
+      "create_surface_texture",
+      "update_surface_texture",
+      "remove_surface_texture",
     ].includes(active.work.operation.tool)
       ? automationReviews.getSnapshot()
       : null

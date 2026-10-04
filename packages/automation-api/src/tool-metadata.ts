@@ -8,6 +8,14 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Propose one ordinary saved-change Undo at baseRevision with a fresh UUIDv7 commandId. Exact private target geometry is previewed; manual browser Apply/Reject is always required, including auto-apply sessions. Apply publishes a new revision rather than moving the revision backward. No raw historical snapshot, script or approval flag is accepted.",
   redo_model:
     "Propose one ordinary saved-change Redo at baseRevision with a fresh UUIDv7 commandId. Read model_history_state first. Exact private target geometry is previewed and manual browser Apply/Reject is always required. Apply publishes one new revision; a new authored change clears Redo. Rejection or stale/expired consent does not navigate history.",
+  model_surface_textures:
+    "Read the selected feature's surface-relief layers at an exact committed revision. Returns bounded settings, target kind/role, map dimensions and mask stroke count; custom pixels and face references are omitted. Use model_body_topology for exact resolved face selections. Labels are untrusted data.",
+  create_surface_texture:
+    "Create one surface-relief layer with a fresh UUIDv7 layerId, producing featureId, exact baseRevision and complete recipe. Custom maps use canonical padded base64 of one unsigned grayscale byte per pixel, width/height up to 256; no image URL or file path is accepted. Face targets require complete current resolved face references from model_body_topology. Native mesh relief is previewed and manually reviewed in the browser, including CAD auto-Apply sessions. One ordinary save creates one Undo entry; STEP retains exact source geometry.",
+  update_surface_texture:
+    "Update an owned surface-relief layer at exact baseRevision. Supply only changed recipe fields; omitted map, mask and target retain their existing authored values. appendMaskStrokes adds ordered paint/erase dabs with a total limit of 2048; do not combine append with mask replacement. A custom replacement map uses packed unsigned 8-bit grayscale, at most 256 by 256. Native relief is previewed and always reviewed manually before one ordinary save and Undo entry.",
+  remove_surface_texture:
+    "Remove exactly one existing surface-relief layer by layerId and exact baseRevision. The browser requires manual destructive review; approval saves once through ordinary document authority with Undo. Other layers and exact CAD geometry are preserved.",
   create_face_extent_extrude:
     "Stage Extrude v7 up-to-face using an exact body-bound finite face, captured current support hash, authored profile set, typed startOffset/draftAngle and explicit targetBody for Add/Remove/Intersect. New uses null targetBody. Obtain the stable face reference from body topology; dependencies are target first, optional sketch support, then a distinct endpoint owner. References retain only sketch support. Planar endpoints use exact plane clipping; curved endpoints require one complete reachable cap, with every new cap on the selected finite face. Partial or neighboring-face coverage fails closed. Preview before ordinary manual browser review; no transient indices or approximate surface extension.",
   update_face_extent_extrude:
@@ -52,6 +60,16 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Regenerate an existing text group preserving groupId and editable intent. Resubmit layout/origin and explicitly choose removeAttachedConstraints; false fails if constraints attach to replaced geometry. New outline IDs invalidate former downstream profile selectors; rediscover and repair before preview/commit. Async preparation cannot overwrite an edited, expired or revoked draft.",
   detach_sketch_text:
     "Detach one existing text group's editable font intent in an owned draft, retaining all current geometry and constraints. Supply exact groupId/sketchId, fresh commandId and current draft revision. Preview and ordinary commit; detached geometry is no longer regenerated as text.",
+  begin_planar_import_upload:
+    "Begin one owner-bound SVG/DXF source upload at the exact committed revision, up to 6 MiB. Supply a safe leaf filename, total byteLength, explicit unit and plane XY/XZ/YZ. SVG requires physical units or px (96 dpi); DXF permits declared units or an explicit physical override. Returns an opaque upload ID and 90 KiB decoded chunk budget; no sketch is authored. A new planar upload replaces the previous planar upload.",
+  append_planar_import_chunk:
+    "Append canonical base64 source bytes at the owned planar upload receivedBytes offset, exactly chunkMaxBytes decoded bytes except the final chunk. Exact retries are idempotent without expiry renewal; conflicting or out-of-order bytes fail. No paths, hashes or provenance accepted.",
+  inspect_planar_import_upload:
+    "Inspect a complete SVG/DXF upload through the existing bounded planar parser and exact transform preparation. Returns server-computed SHA-256, normalization, bounds, path counts and captured sketch/path identities without editing the model. Unsupported entities, external references, nonplanar or over-budget geometry fail; no flattening or partial imports. Retain uploadVersion for commit.",
+  commit_planar_import_upload:
+    "Reinspect the owned planar source at its exact uploadVersion and base revision, then request manual browser review of the analytical curve preview, units and plane. Only the person's Apply commits one atomic source-asset and editable Sketch transaction. No Part is created until an ordinary downstream feature uses a rediscovered profile. Stale, cancelled or unreviewed sources never publish; auto-apply does not approve imports.",
+  discard_planar_import_upload:
+    "Release an owned temporary planar upload without editing the document. Idempotent for an absent upload ID; captured source bytes are not published.",
   begin_import_upload:
     "Begin one owner-bound native source upload for the exact committed revision, up to 6 MiB. Supply a safe leaf filename, total byteLength and explicit sourceUnit for STEP/STP/BREP/STL; 3MF requires null and uses declared units. Returns an opaque upload ID and 90 KiB decoded chunk budget. This only retains temporary bytes; it does not author or save a feature. A new upload replaces the previous one.",
   append_import_chunk:
@@ -228,6 +246,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "begin_planar_import_upload",
+      "append_planar_import_chunk",
+      "inspect_planar_import_upload",
+      "discard_planar_import_upload",
       "begin_import_upload",
       "append_import_chunk",
       "inspect_import_upload",
@@ -239,6 +261,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "model_measurements",
       "draft_measurements",
       "model_sketch_solution",
+      "model_surface_textures",
       "draft_sketch_solution",
       ...assemblyReadTools,
       "model_info",
@@ -265,15 +288,22 @@ export function localToolAnnotations(name: LocalToolName) {
       "redo_model",
       "commit_draft",
       "commit_import_upload",
+      "commit_planar_import_upload",
       "update_sketch_text",
       "detach_sketch_text",
       "commit_assembly_draft",
       "save_library_definition",
       "update_library_metadata",
+      "create_surface_texture",
+      "update_surface_texture",
+      "remove_surface_texture",
       "remove_feature",
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "append_planar_import_chunk",
+      "inspect_planar_import_upload",
+      "discard_planar_import_upload",
       "append_import_chunk",
       "inspect_import_upload",
       "discard_import_upload",
@@ -282,6 +312,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "model_measurements",
       "draft_measurements",
       "model_sketch_solution",
+      "model_surface_textures",
       "draft_sketch_solution",
       ...assemblyReadTools,
       "model_info",

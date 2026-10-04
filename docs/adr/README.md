@@ -88,6 +88,7 @@
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 | [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
+| [0090](0090-owned-surface-texture-mcp-proposals.md) | Accepted | Owned SurfaceTexture MCP proposals with lossless packed maps, native relief preflight and manual review |
 
 | [0093](0093-reviewed-mcp-history-navigation.md) | Accepted | Reviewed MCP history navigation |
 | [0088](0088-named-primitive-and-lifecycle-mcp-commands.md) | Accepted | Registered primitive and review-bound lifecycle MCP commands |
@@ -97,6 +98,7 @@
 | [0094](0094-finite-curved-face-extrusion.md) | Accepted | Exact finite curved-face extrusion and additive v7 authoring |
 | [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
 | [0091](0091-paired-native-source-imports.md) | Accepted | Paired native source uploads, inspection and manual atomic import |
+| [0092](0092-paired-planar-source-imports.md) | Accepted | Paired SVG/DXF source uploads, analytical review and editable Sketch publication |
 
 Statuses:
 

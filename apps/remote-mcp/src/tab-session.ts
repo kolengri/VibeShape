@@ -15,6 +15,10 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import {
+  isLocalPlanarImport,
+  planarImportResultMatches,
+} from "@vibeshape/automation-api/planar-imports"
+import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_REQUEST_TIMEOUT_MS,
   REMOTE_SESSION_MAX_OPERATIONS,
@@ -26,6 +30,7 @@ import {
   remoteGrantSchema,
   remoteOperationSchema,
 } from "@vibeshape/automation-api/remote-session"
+import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/surface-texture-result-context"
 import { z } from "zod"
 import type { RemoteEnv } from "./environment"
 import { digest, failure } from "./request-security"
@@ -346,6 +351,8 @@ export class TabSession extends DurableObject<RemoteEnv> {
     const result = localToolOutputs[message.tool].parse(message.result)
     if (historyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
     if (assemblyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
+    if (surfaceTextureResultContextMatches(this.pending.operation, result) === false)
+      return this.revoke()
     if (!this.transferResultMatches(result)) return this.revoke()
     if (!draftInspectionResultMatches(this.pending.operation, result)) return this.revoke()
     const pending = this.pending
@@ -359,6 +366,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     const operation = this.pending?.operation
     if (!operation || !result.ok) return true
     if (isLocalImport(operation)) return importResultMatches(operation, result.value)
+    if (isLocalPlanarImport(operation)) return planarImportResultMatches(operation, result.value)
     return !isLocalBinaryExport(operation) || binaryExportResultMatches(operation, result.value)
   }
   private async confirmResult(pending: Pending, result: unknown) {
