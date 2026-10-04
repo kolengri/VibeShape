@@ -6,7 +6,7 @@ import { featureRecordSchema } from "./feature-graph"
 import { terminalBodyOutputs } from "./model-bodies"
 import { boxFeatureType } from "./part-design"
 import { unionFeatureTypeV2 } from "./part-design-body-combination"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
+import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { partBodyReference } from "./parts"
 import { createLengthQuantity } from "./units"
@@ -231,159 +231,166 @@ describe.each(["Mirror", "Shell", "Shell v2", "Closed Shell"] as const)(
   },
 )
 
-describe("preserve-source Mirror authored ownership", () => {
-  function copyFeature(suppressed = false, offset = 10) {
-    const feature = modifyingFeature("Mirror")
-    return {
-      ...feature,
-      type: mirrorFeatureTypeV2.type,
-      suppressed,
-      parameters: {
-        ...feature.parameters,
-        offset: createLengthQuantity(offset),
-        preserveSource: true,
-      },
+describe.each([mirrorFeatureTypeV2, mirrorFeatureTypeV3])(
+  "preserve-source Mirror v$type.schemaVersion authored ownership",
+  (mirrorType) => {
+    function copyFeature(suppressed = false, offset = 10) {
+      const feature = modifyingFeature("Mirror")
+      return {
+        ...feature,
+        type: mirrorType.type,
+        suppressed,
+        parameters: {
+          ...feature.parameters,
+          plane:
+            mirrorType.type.schemaVersion === 3
+              ? { kind: "explicit-plane", origin: [3, 4, 5], normal: [0.6, 0.8, 0] }
+              : feature.parameters.plane,
+          offset: createLengthQuantity(offset),
+          preserveSource: true,
+        },
+      }
     }
-  }
-  function addCopy(snapshot: DocumentSnapshotV2) {
-    return model(
-      snapshot,
-      "org.vibeshape.history.insert-feature",
-      { feature: copyFeature(), historyAfter: snapshot.history.at(-1) },
-      [
+    function addCopy(snapshot: DocumentSnapshotV2) {
+      return model(
+        snapshot,
+        "org.vibeshape.history.insert-feature",
+        { feature: copyFeature(), historyAfter: snapshot.history.at(-1) },
+        [
+          {
+            id: id(101),
+            name: "Reflected housing",
+            origin: "independent",
+            body: { schemaVersion: 0, featureId: id(3), outputRole: "result" },
+          },
+        ],
+      )
+    }
+    it("captures an independent reflected PartId, preserves source metadata/history, and replays edits and suppression", () => {
+      const before = original().snapshot
+      const added = addCopy(before)
+      expect(added.snapshot.parts).toHaveLength(2)
+      expect(added.snapshot.parts[0]).toEqual(before.parts[0])
+      expect(added.snapshot.parts[1]).toMatchObject({
+        id: id(101),
+        name: "Reflected housing",
+        origin: "independent",
+        consumedBy: null,
+        bodyHistory: [{ schemaVersion: 0, featureId: id(3), outputRole: "result" }],
+      })
+      expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
+      const edited = model(added.snapshot, "org.vibeshape.feature.update", {
+        feature: copyFeature(false, -25.4),
+      })
+      expect(edited.snapshot.parts).toEqual(added.snapshot.parts)
+      expect(success(reduceDocumentV2Event(added.snapshot, edited.event)).snapshot).toEqual(
+        edited.snapshot,
+      )
+      const suppressed = model(edited.snapshot, "org.vibeshape.feature.update", {
+        feature: copyFeature(true, -25.4),
+      }).snapshot
+      expect(suppressed.parts[0]).toEqual(before.parts[0])
+      const restored = model(suppressed, "org.vibeshape.feature.update", {
+        feature: copyFeature(false, -25.4),
+      }).snapshot
+      expect(restored.parts).toEqual(added.snapshot.parts)
+    })
+    it("keeps exact selected source and siblings terminal while requiring the requested role", () => {
+      const before = original().snapshot.features[0]
+      if (!before) throw new Error("Source must remain authored.")
+      const feature = featureRecordSchema.parse(copyFeature())
+      const source = { featureId: id(2), outputRole: "result" }
+      const sibling = { featureId: id(2), outputRole: "body.sibling" }
+      const reflection = { featureId: id(3), outputRole: "result" }
+      expect(
+        terminalBodyOutputs(
+          [{ ...before, schemaVersion: 0 }, feature],
+          new Map([
+            [id(2), [source, sibling]],
+            [id(3), [reflection]],
+          ]),
+        ),
+      ).toEqual([source, sibling, reflection])
+      expect(
+        terminalBodyOutputs(
+          [{ ...before, schemaVersion: 0 }, feature],
+          new Map([
+            [id(2), [sibling]],
+            [id(3), [reflection]],
+          ]),
+        ),
+      ).toBeNull()
+    })
+    it("reallocates only the independent copy when preservation is toggled and replays both transitions", () => {
+      const before = original().snapshot
+      const copied = addCopy(before).snapshot
+      const feature = copyFeature()
+      const replaced = model(copied, "org.vibeshape.feature.update", {
+        feature: { ...feature, parameters: { ...feature.parameters, preserveSource: false } },
+      })
+      expect(replaced.snapshot.parts).toHaveLength(1)
+      expect(replaced.snapshot.parts[0]).toMatchObject({
+        id: id(100),
+        name: "Housing",
+        consumedBy: null,
+      })
+      expect(partBodyReference(currentPart(replaced.snapshot))).toMatchObject({
+        featureId: id(3),
+        outputRole: "result",
+      })
+      expect(success(reduceDocumentV2Event(copied, replaced.event)).snapshot).toEqual(
+        replaced.snapshot,
+      )
+      const restored = model(replaced.snapshot, "org.vibeshape.feature.update", { feature }, [
         {
-          id: id(101),
+          id: id(102),
           name: "Reflected housing",
           origin: "independent",
           body: { schemaVersion: 0, featureId: id(3), outputRole: "result" },
         },
-      ],
-    )
-  }
-  it("captures an independent reflected PartId, preserves source metadata/history, and replays edits and suppression", () => {
-    const before = original().snapshot
-    const added = addCopy(before)
-    expect(added.snapshot.parts).toHaveLength(2)
-    expect(added.snapshot.parts[0]).toEqual(before.parts[0])
-    expect(added.snapshot.parts[1]).toMatchObject({
-      id: id(101),
-      name: "Reflected housing",
-      origin: "independent",
-      consumedBy: null,
-      bodyHistory: [{ schemaVersion: 0, featureId: id(3), outputRole: "result" }],
+      ])
+      expect(restored.snapshot.parts).toHaveLength(2)
+      expect(restored.snapshot.parts[0]).toEqual(before.parts[0])
+      expect(restored.snapshot.parts[1]).toMatchObject({ id: id(102), consumedBy: null })
+      expect(success(reduceDocumentV2Event(replaced.snapshot, restored.event)).snapshot).toEqual(
+        restored.snapshot,
+      )
     })
-    expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
-    const edited = model(added.snapshot, "org.vibeshape.feature.update", {
-      feature: copyFeature(false, -25.4),
+    it("lets a later Union select both bodies with distinct producers and consume only the reflected PartId", () => {
+      const added = addCopy(original().snapshot).snapshot
+      const source = { schemaVersion: 0, featureId: id(2), outputRole: "result" }
+      const reflection = { schemaVersion: 0, featureId: id(3), outputRole: "result" }
+      const union = model(added, "org.vibeshape.history.insert-feature", {
+        historyAfter: added.history.at(-1),
+        feature: {
+          schemaVersion: 0,
+          id: id(4),
+          type: unionFeatureTypeV2.type,
+          parameters: { bodies: [source, reflection] },
+          dependencies: [id(2), id(3)],
+          references: [],
+          suppressed: false,
+        },
+      })
+      const survivingPart = union.snapshot.parts[0]
+      if (!survivingPart) throw new Error("Union must retain the source authored PartId.")
+      expect(partBodyReference(survivingPart)).toMatchObject({
+        featureId: id(4),
+        outputRole: "result",
+      })
+      expect(union.snapshot.parts[0]?.id).toBe(id(100))
+      expect(union.snapshot.parts[1]).toMatchObject({ id: id(101), consumedBy: id(4) })
+      expect(success(reduceDocumentV2Event(added, union.event)).snapshot).toEqual(union.snapshot)
+      expect(
+        terminalBodyOutputs(
+          union.snapshot.features.map((feature) => ({ ...feature, schemaVersion: 0 })),
+          new Map([
+            [id(2), [source]],
+            [id(3), [reflection]],
+            [id(4), [{ featureId: id(4), outputRole: "result" }]],
+          ]),
+        ),
+      ).toEqual([{ featureId: id(4), outputRole: "result" }])
     })
-    expect(edited.snapshot.parts).toEqual(added.snapshot.parts)
-    expect(success(reduceDocumentV2Event(added.snapshot, edited.event)).snapshot).toEqual(
-      edited.snapshot,
-    )
-    const suppressed = model(edited.snapshot, "org.vibeshape.feature.update", {
-      feature: copyFeature(true, -25.4),
-    }).snapshot
-    expect(suppressed.parts[0]).toEqual(before.parts[0])
-    const restored = model(suppressed, "org.vibeshape.feature.update", {
-      feature: copyFeature(false, -25.4),
-    }).snapshot
-    expect(restored.parts).toEqual(added.snapshot.parts)
-  })
-  it("keeps exact selected source and siblings terminal while requiring the requested role", () => {
-    const before = original().snapshot.features[0]
-    if (!before) throw new Error("Source must remain authored.")
-    const feature = featureRecordSchema.parse(copyFeature())
-    const source = { featureId: id(2), outputRole: "result" }
-    const sibling = { featureId: id(2), outputRole: "body.sibling" }
-    const reflection = { featureId: id(3), outputRole: "result" }
-    expect(
-      terminalBodyOutputs(
-        [{ ...before, schemaVersion: 0 }, feature],
-        new Map([
-          [id(2), [source, sibling]],
-          [id(3), [reflection]],
-        ]),
-      ),
-    ).toEqual([source, sibling, reflection])
-    expect(
-      terminalBodyOutputs(
-        [{ ...before, schemaVersion: 0 }, feature],
-        new Map([
-          [id(2), [sibling]],
-          [id(3), [reflection]],
-        ]),
-      ),
-    ).toBeNull()
-  })
-  it("reallocates only the independent copy when preservation is toggled and replays both transitions", () => {
-    const before = original().snapshot
-    const copied = addCopy(before).snapshot
-    const feature = copyFeature()
-    const replaced = model(copied, "org.vibeshape.feature.update", {
-      feature: { ...feature, parameters: { ...feature.parameters, preserveSource: false } },
-    })
-    expect(replaced.snapshot.parts).toHaveLength(1)
-    expect(replaced.snapshot.parts[0]).toMatchObject({
-      id: id(100),
-      name: "Housing",
-      consumedBy: null,
-    })
-    expect(partBodyReference(currentPart(replaced.snapshot))).toMatchObject({
-      featureId: id(3),
-      outputRole: "result",
-    })
-    expect(success(reduceDocumentV2Event(copied, replaced.event)).snapshot).toEqual(
-      replaced.snapshot,
-    )
-    const restored = model(replaced.snapshot, "org.vibeshape.feature.update", { feature }, [
-      {
-        id: id(102),
-        name: "Reflected housing",
-        origin: "independent",
-        body: { schemaVersion: 0, featureId: id(3), outputRole: "result" },
-      },
-    ])
-    expect(restored.snapshot.parts).toHaveLength(2)
-    expect(restored.snapshot.parts[0]).toEqual(before.parts[0])
-    expect(restored.snapshot.parts[1]).toMatchObject({ id: id(102), consumedBy: null })
-    expect(success(reduceDocumentV2Event(replaced.snapshot, restored.event)).snapshot).toEqual(
-      restored.snapshot,
-    )
-  })
-  it("lets a later Union select both bodies with distinct producers and consume only the reflected PartId", () => {
-    const added = addCopy(original().snapshot).snapshot
-    const source = { schemaVersion: 0, featureId: id(2), outputRole: "result" }
-    const reflection = { schemaVersion: 0, featureId: id(3), outputRole: "result" }
-    const union = model(added, "org.vibeshape.history.insert-feature", {
-      historyAfter: added.history.at(-1),
-      feature: {
-        schemaVersion: 0,
-        id: id(4),
-        type: unionFeatureTypeV2.type,
-        parameters: { bodies: [source, reflection] },
-        dependencies: [id(2), id(3)],
-        references: [],
-        suppressed: false,
-      },
-    })
-    const survivingPart = union.snapshot.parts[0]
-    if (!survivingPart) throw new Error("Union must retain the source authored PartId.")
-    expect(partBodyReference(survivingPart)).toMatchObject({
-      featureId: id(4),
-      outputRole: "result",
-    })
-    expect(union.snapshot.parts[0]?.id).toBe(id(100))
-    expect(union.snapshot.parts[1]).toMatchObject({ id: id(101), consumedBy: id(4) })
-    expect(success(reduceDocumentV2Event(added, union.event)).snapshot).toEqual(union.snapshot)
-    expect(
-      terminalBodyOutputs(
-        union.snapshot.features.map((feature) => ({ ...feature, schemaVersion: 0 })),
-        new Map([
-          [id(2), [source]],
-          [id(3), [reflection]],
-          [id(4), [{ featureId: id(4), outputRole: "result" }]],
-        ]),
-      ),
-    ).toEqual([{ featureId: id(4), outputRole: "result" }])
-  })
-})
+  },
+)

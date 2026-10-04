@@ -45,6 +45,10 @@ import {
   type SketchSolveCache,
 } from "./external-sketch-references"
 import {
+  prepareReferenceFrameFeatureContent,
+  shouldPrepareReferenceFrameFeatureContent,
+} from "./reference-frame-content"
+import {
   prepareSweepLoftFeatureContent,
   shouldPrepareSweepLoftFeatureContent,
 } from "./sweep-loft-content"
@@ -474,6 +478,8 @@ async function prepareFeatureContent(
   sectionPlanarFace: PlanarFaceSectionPort | undefined,
   modelMaterializationCache: ExternalModelMaterializationCache,
 ) {
+  if (shouldPrepareReferenceFrameFeatureContent(feature))
+    return prepareReferenceFrameFeatureContent({ document, feature, features, geometry })
   if (shouldPrepareSweepLoftFeatureContent(feature)) {
     const sketchInput = {
       document,
@@ -681,7 +687,8 @@ async function prepareProfileFeatureContent(input: ProfileFeatureContentInput) {
 
 export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
   return Boolean(
-    readDatumPlaneFeatureParameters(feature) ||
+    shouldPrepareReferenceFrameFeatureContent(feature) ||
+      readDatumPlaneFeatureParameters(feature) ||
       readExtrusionFeatureParameters(feature) ||
       readRevolveFeatureParameters(feature) ||
       readHoleFeatureParameters(feature) ||

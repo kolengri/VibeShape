@@ -5,6 +5,13 @@ reference, including its semantic output role. Choose Linear or Circular, an X, 
 scalar instance count from two to 256, including the seed. Count accepts expressions and document
 variables. Switching kinds preserves the buffered spacing, angle, and center values.
 
+Version 2 additionally accepts a Datum Plane frame axis, a stable straight edge on an exact named
+body, or an explicit world axis. **Reference source** lists current earlier geometry. Datum frames
+offer X, Y and normal axes. Explicit origins use millimeters and direction fields are normalized.
+Circular Pattern uses the chosen axis origin as its center; linear placement uses its direction.
+Missing or ambiguous edge references and zero directions block Apply. Supporting bodies remain
+available, and version 1 axis and variable-driven circular-center semantics are preserved.
+
 Linear Pattern uses a signed nonzero spacing between instances. Spacing and total displacement are
 bounded to 100,000 mm. Circular Pattern uses a signed nonzero total angle of at most one revolution
 and explicit X, Y, and Z center coordinates. Partial patterns include the angular endpoint. A full

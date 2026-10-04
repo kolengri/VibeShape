@@ -8,6 +8,13 @@ A new task starts at the midpoint of the exact source body's Z bounds. Changing 
 entered offset. **Use body midpoint** explicitly centers the selected plane using its normal axis.
 No plane choice silently translates the source model.
 
+Version 2 supports authored Datum Planes, stable planar faces on exact named bodies, and explicit
+world planes. Choose the current viewport face with **Use selected planar face**, or use the
+**Reference source** control. Its signed offset follows the selected plane normal. Explicit direction
+fields are normalized; zero directions and unavailable or ambiguous supports block Apply. The
+midpoint action belongs to the origin-plane workflow. Supporting bodies are retained. Existing
+version 1 records retain their original coordinate-axis offsets.
+
 Preview is disposable. The plane must cross the source and produce exactly one connected valid solid
 on each side. Missing, tangent, or disconnected-half cuts fail and block Apply. Cancel preserves the
 committed document. Apply makes one ordinary transaction; editing its History row preserves feature

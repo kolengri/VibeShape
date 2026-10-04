@@ -4,7 +4,10 @@ import type {
   FeatureRecord,
   VariableDefinition,
 } from "@vibeshape/domain"
+import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
+import type { ReferenceAxis } from "@vibeshape/domain/reference-frame"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
@@ -16,6 +19,8 @@ import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
+import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
+import { ReferenceAxisSelection } from "../reference-geometry/reference-support-fields"
 import {
   type PatternFormMode,
   type PatternFormValues,
@@ -51,6 +56,8 @@ export type PatternFormCopy = ParameterPanelCopy &
   }
 type Props = FeatureParameterFormProps<PatternFormMode, PatternFormCopy> & {
   sourceAvailable: boolean
+  referenceOptions?: ReferenceFrameOptions | undefined
+  selectedFace?: ViewerSelection | null | undefined
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
 }
 function PatternPreview({
@@ -60,6 +67,7 @@ function PatternPreview({
   copy,
   mode,
   featureId,
+  referenceAxis,
   onPreviewChange,
 }: {
   values: PatternFormValues
@@ -68,18 +76,31 @@ function PatternPreview({
   copy: PatternFormCopy
   mode: PatternFormMode
   featureId: FeatureId
+  referenceAxis: ReferenceAxis | null | undefined
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
   const parsed = parsePatternForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: parsed.ok ? patternFeatureRecord(mode, featureId, parsed) : null,
+    preview:
+      parsed.ok && referenceAxis !== null
+        ? patternFeatureRecord(mode, featureId, parsed, referenceAxis)
+        : null,
   })
   return null
 }
 const commonExpressionFields = ["count"] as const
 const linearFields = ["spacing"] as const
 const circularFields = ["angle", "centerX", "centerY", "centerZ"] as const
+function patternExpressionFields(
+  kind: PatternFormValues["kind"],
+  referenceAxis: ReferenceAxis | null | undefined,
+) {
+  if (kind === "linear") return [...commonExpressionFields, ...linearFields] as const
+  return referenceAxis === undefined
+    ? ([...commonExpressionFields, ...circularFields] as const)
+    : (["count", "angle"] as const)
+}
 function panelMessage(
   message: string | null,
   sourceAvailable: boolean,
@@ -102,6 +123,8 @@ export function PatternForm({
   copy,
   disabled = false,
   mode,
+  referenceOptions,
+  selectedFace,
   sourceAvailable,
   onCancel,
   onPreviewChange,
@@ -111,12 +134,16 @@ export function PatternForm({
   variables,
 }: Props) {
   const state = useParameterFormState(variables)
+  const [referenceAxis, setReference] = useState<ReferenceAxis | null | undefined>(() =>
+    mode.kind === "edit" ? readPatternFeatureParametersV2(mode.feature)?.axis : undefined,
+  )
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const form = useAppForm({
     defaultValues: patternFormValues(mode, state.displayUnits),
     onSubmit: async ({ value }) => {
+      if (referenceAxis === null) return
       const parsed = parsePatternForm(value, variables, state.displayUnits, copy)
       if (!parsed.ok) {
         state.setIssues(parsed.issues)
@@ -129,7 +156,7 @@ export function PatternForm({
         await submitFeatureMutation({
           baseRevision,
           copy,
-          feature: patternFeatureRecord(mode, featureId, parsed),
+          feature: patternFeatureRecord(mode, featureId, parsed, referenceAxis),
           onSave,
           onSaved,
           setMessage: state.setMessage,
@@ -144,10 +171,7 @@ export function PatternForm({
       <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
         {([values, pending]) => {
           const parsed = parsePatternForm(values, variables, state.displayUnits, copy)
-          const fields = [
-            ...commonExpressionFields,
-            ...(values.kind === "linear" ? linearFields : circularFields),
-          ]
+          const fields = patternExpressionFields(values.kind, referenceAxis)
           const description = {
             count: copy.countDescription,
             spacing: copy.spacingDescription,
@@ -166,6 +190,7 @@ export function PatternForm({
                   copy={copy}
                   mode={mode}
                   featureId={featureId}
+                  referenceAxis={referenceAxis}
                   onPreviewChange={onPreviewChange}
                 />
               )}
@@ -179,7 +204,7 @@ export function PatternForm({
                     acceptLabel={copy.submit}
                     ariaLabel={copy.title}
                     cancelLabel={copy.cancel}
-                    disabled={disabled || !sourceAvailable || !parsed.ok}
+                    disabled={disabled || !sourceAvailable || !parsed.ok || referenceAxis === null}
                     onCancel={onCancel}
                     previewStatus={previewStatus}
                   />
@@ -208,29 +233,36 @@ export function PatternForm({
                     </fieldset>
                   )}
                 </form.Field>
-                <form.Field name="axis">
-                  {(field) => (
-                    <fieldset className="grid gap-2">
-                      <legend className="mb-2 text-xs font-medium">{copy.axis}</legend>
-                      {(["X", "Y", "Z"] as const).map((axis) => (
-                        <label key={axis} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="axis"
-                            value={axis}
-                            checked={field.state.value === axis}
-                            onBlur={field.handleBlur}
-                            onChange={() => {
-                              state.clearSubmissionErrors()
-                              field.handleChange(axis)
-                            }}
-                          />
-                          {axis}
-                        </label>
-                      ))}
-                    </fieldset>
-                  )}
-                </form.Field>
+                <ReferenceAxisSelection
+                  options={referenceOptions}
+                  value={referenceAxis}
+                  selectedFace={selectedFace}
+                  onChange={setReference}
+                >
+                  <form.Field name="axis">
+                    {(field) => (
+                      <fieldset className="grid gap-2">
+                        <legend className="mb-2 text-xs font-medium">{copy.axis}</legend>
+                        {(["X", "Y", "Z"] as const).map((axis) => (
+                          <label key={axis} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name="axis"
+                              value={axis}
+                              checked={field.state.value === axis}
+                              onBlur={field.handleBlur}
+                              onChange={() => {
+                                state.clearSubmissionErrors()
+                                field.handleChange(axis)
+                              }}
+                            />
+                            {axis}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
+                  </form.Field>
+                </ReferenceAxisSelection>
                 {fields.map((name) => (
                   <form.Field name={name} key={name}>
                     {(field) => (

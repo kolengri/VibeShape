@@ -115,26 +115,44 @@ export function resolveReferenceAxis(
           }
         : null
     }
-    case "linear-edge": {
-      const candidate = currentBodyCandidate(support.reference, context)
-      const line = candidate?.referenceGeometry
-      if (candidate?.kind !== "edge" || line?.kind !== "line-edge") return null
-      const delta = line.end.map((value, index) => value - (line.start[index] ?? 0))
-      const length = Math.hypot(...delta)
-      if (!Number.isFinite(length) || length <= 1e-8) return null
-      let direction = delta.map((value) => value / length) as [number, number, number]
-      // Native edge orientation may flip after rebuild; the authored direction retains axis sign.
-      const authored = support.reference.signature.direction
-      if (
-        authored &&
-        direction.reduce((sum, value, index) => sum + value * (authored[index] ?? 0), 0) < 0
-      )
-        direction = direction.map((value) => -value || 0) as [number, number, number]
-      const parsedDirection = referenceDirectionSchema.safeParse(direction)
-      const origin = referenceOriginSchema.safeParse(line.start)
-      return parsedDirection.success && origin.success
-        ? { origin: origin.data, direction: parsedDirection.data }
-        : null
-    }
+    case "linear-edge":
+      return resolveLinearEdgeAxis(support, context)
   }
+}
+
+function resolveLinearEdgeAxis(
+  support: Extract<ReferenceAxis, { kind: "linear-edge" }>,
+  context: Context,
+): ResolvedReferenceAxis | null {
+  const candidate = currentBodyCandidate(support.reference, context)
+  const line = candidate?.referenceGeometry
+  if (candidate?.kind !== "edge" || line?.kind !== "line-edge") return null
+  const delta = line.end.map((value, index) => value - (line.start[index] ?? 0))
+  const length = Math.hypot(...delta)
+  if (!Number.isFinite(length) || length <= 1e-8) return null
+  const direction = orientedLineDirection(delta, length, support.reference.signature.direction)
+  return validatedReferenceAxis(line.start, direction)
+}
+
+function validatedReferenceAxis(origin: unknown, direction: unknown): ResolvedReferenceAxis | null {
+  const parsedDirection = referenceDirectionSchema.safeParse(direction)
+  const parsedOrigin = referenceOriginSchema.safeParse(origin)
+  return parsedDirection.success && parsedOrigin.success
+    ? { origin: parsedOrigin.data, direction: parsedDirection.data }
+    : null
+}
+
+function orientedLineDirection(
+  delta: readonly number[],
+  length: number,
+  authored?: readonly number[],
+) {
+  const direction = delta.map((value) => value / length) as [number, number, number]
+  // Native edge orientation may flip after rebuild; the authored direction retains axis sign.
+  if (
+    authored &&
+    direction.reduce((sum, value, index) => sum + value * (authored[index] ?? 0), 0) < 0
+  )
+    return direction.map((value) => -value || 0) as [number, number, number]
+  return direction
 }

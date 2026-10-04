@@ -26,16 +26,22 @@ import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hol
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
 import { loftFeatureType } from "./part-design-loft"
 import { meshImportOutputRole, readMeshImportFeatureParameters } from "./part-design-mesh-import"
-import { mirrorPreservesSource, readMirrorFeatureParameters } from "./part-design-mirror"
+import {
+  mirrorPreservesSource,
+  readMirrorFeatureParameters,
+  readMirrorFeatureParametersV3,
+} from "./part-design-mirror"
 import {
   patternInstanceOutputRole,
   patternOutputRoles,
   readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
 } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readShellFeatureParameters } from "./part-design-shell"
 import {
   readSplitFeatureParameters,
+  readSplitFeatureParametersV2,
   SPLIT_NEGATIVE_OUTPUT_ROLE,
   SPLIT_POSITIVE_OUTPUT_ROLE,
 } from "./part-design-split"
@@ -86,7 +92,7 @@ function classifyFanOutOperation(
   feature: FeatureRecordV1,
   resolvedPatternCount?: number,
 ): PartOperation | null {
-  const pattern = readPatternFeatureParameters(feature)
+  const pattern = readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature)
   if (pattern) {
     const count =
       resolvedPatternCount ??
@@ -105,7 +111,7 @@ function classifyFanOutOperation(
       retainableCreatedOutputs: patternOutputRoles(256).slice(1).map(output),
     }
   }
-  const split = readSplitFeatureParameters(feature)
+  const split = readSplitFeatureParameters(feature) ?? readSplitFeatureParametersV2(feature)
   if (split)
     return {
       kind: "fan-out",
@@ -126,13 +132,10 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
   const thread = readThreadFeatureParameters(feature)
   if (thread) return { kind: "modify", target: thread.targetBody, consumed: [] }
   const placement = readPlacementFeatureParameters(feature)
-  const mirror = readMirrorFeatureParameters(feature)
+  const mirror = classifyMirrorOperation(feature)
   const shell = readShellFeatureParameters(feature)
   if (shell) return { kind: "modify", target: shell.targetBody, consumed: [] }
-  if (mirror)
-    return mirrorPreservesSource(feature)
-      ? { kind: "new" }
-      : { kind: "modify", target: mirror.targetBody, consumed: [] }
+  if (mirror) return mirror
   if (placement) return { kind: "modify", target: placement.targetBody, consumed: [] }
   const compound = readCompoundFeatureParameters(feature)
   if (compound)
@@ -152,6 +155,14 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
   if (union && unionTarget)
     return { kind: "modify", target: unionTarget, consumed: union.bodies.slice(1) }
   return null
+}
+
+function classifyMirrorOperation(feature: FeatureRecordV1): PartOperation | null {
+  const mirror = readMirrorFeatureParameters(feature) ?? readMirrorFeatureParametersV3(feature)
+  if (!mirror) return null
+  return mirrorPreservesSource(feature)
+    ? { kind: "new" }
+    : { kind: "modify", target: mirror.targetBody, consumed: [] }
 }
 
 /** Exact first-party type identity owns this policy; unknown/aggregate outputs are not inferred. */

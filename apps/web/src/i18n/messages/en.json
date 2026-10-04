@@ -2067,7 +2067,7 @@
       "update": "Update mirror",
       "cancel": "Cancel",
       "featureLabel": "Mirror {number}",
-      "description": "Reflect the selected body across a world plane. By default, the reflected result replaces the current part and retains its identity and source history.",
+      "description": "Reflect the selected body across a reference plane. By default, the reflected result replaces the current part and retains its identity and source history.",
       "parameters": "Mirror",
       "plane": "Plane orientation",
       "offset": "Plane offset",

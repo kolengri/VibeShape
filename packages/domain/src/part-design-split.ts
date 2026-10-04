@@ -3,6 +3,7 @@ import { bodyReferenceSchema } from "./body-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
+import { referenceFrameInvariant, referencePlaneSchema } from "./reference-frame"
 import { lengthQuantitySchema } from "./units"
 import { resolveQuantityExpression } from "./variables"
 
@@ -79,6 +80,50 @@ export const splitFeatureTypeHandler: TrustedFeatureTypeHandler = {
   contentParameters(parameters) {
     const { plane, offset } = splitFeatureParametersSchema.parse(parameters)
     // Exact input hash and role own body identity; document UUIDs are excluded here.
+    return { plane, offset: offset.value }
+  },
+}
+
+export const splitFeatureParametersV2Schema = z
+  .object({
+    targetBody: bodyReferenceSchema,
+    plane: referencePlaneSchema,
+    offset: offsetSchema,
+  })
+  .strict()
+export type SplitFeatureParametersV2 = Readonly<z.infer<typeof splitFeatureParametersV2Schema>>
+export const splitFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  ...splitFeatureType,
+  type: { ...splitFeatureType.type, schemaVersion: 2 },
+  dependencies: { min: 1, max: 2 },
+  references: { min: 0, max: 0 },
+})
+export function readSplitFeatureParametersV2(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+): SplitFeatureParametersV2 | null {
+  if (featureTypeKey(feature.type) !== featureTypeKey(splitFeatureTypeV2.type)) return null
+  return splitFeatureParametersV2Schema.safeParse(feature.parameters).data ?? null
+}
+export const splitFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
+  type: splitFeatureTypeV2.type,
+  parametersSchema: splitFeatureParametersV2Schema,
+  resolveParameters(parameters, variables) {
+    const parsed = splitFeatureParametersV2Schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true, parameters }
+    const result = splitFeatureTypeHandler.resolveParameters?.(
+      { ...parsed.data, plane: "XY" },
+      variables,
+    )
+    if (!result?.ok) return result ?? { ok: true, parameters }
+    const { offset } = splitFeatureParametersSchema.parse(result.parameters)
+    return { ok: true, parameters: { ...parsed.data, offset } }
+  },
+  validateFeature(feature) {
+    const { targetBody, plane } = splitFeatureParametersV2Schema.parse(feature.parameters)
+    return referenceFrameInvariant(feature, targetBody.featureId, plane)
+  },
+  contentParameters(parameters) {
+    const { plane, offset } = splitFeatureParametersV2Schema.parse(parameters)
     return { plane, offset: offset.value }
   },
 }

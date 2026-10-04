@@ -49,8 +49,9 @@ export const referenceAxisSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("linear-edge"),
       reference: bodyTopoRefSchema.refine(
-        ({ kind, signature }) => kind === "edge" && signature.geometryClass === "LINE",
-        "Axis support requires a stable straight edge.",
+        ({ kind, signature }) =>
+          kind === "edge" && signature.geometryClass === "LINE" && Boolean(signature.direction),
+        "Axis support requires a stable straight edge with an authored direction.",
       ),
     })
     .strict(),
@@ -95,7 +96,7 @@ export function referenceFrameInvariant(
         {
           path: "dependencies",
           message:
-            "Reference-frame features require the ordered target and support dependencies and their stable topology reference.",
+            "Reference-frame features require ordered target and support dependencies with body-bound topology stored in parameters.",
         },
       ]
 }

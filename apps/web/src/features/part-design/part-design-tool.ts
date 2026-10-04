@@ -39,11 +39,15 @@ import {
 } from "@vibeshape/domain/part-design-body-combination"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "@vibeshape/domain/part-design-mirror"
-import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
+import {
+  mirrorFeatureType,
+  mirrorFeatureTypeV2,
+  mirrorFeatureTypeV3,
+} from "@vibeshape/domain/part-design-mirror"
+import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
-import { splitFeatureType } from "@vibeshape/domain/part-design-split"
+import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
@@ -255,15 +259,22 @@ function isThreadFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, threadFeatureType.type)
 }
 function isPatternFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, patternFeatureType.type)
+  return (
+    hasFeatureType(feature, patternFeatureType.type) ||
+    hasFeatureType(feature, patternFeatureTypeV2.type)
+  )
 }
 function isSplitFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, splitFeatureType.type)
+  return (
+    hasFeatureType(feature, splitFeatureType.type) ||
+    hasFeatureType(feature, splitFeatureTypeV2.type)
+  )
 }
 function isMirrorFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, mirrorFeatureType.type) ||
-    hasFeatureType(feature, mirrorFeatureTypeV2.type)
+    hasFeatureType(feature, mirrorFeatureTypeV2.type) ||
+    hasFeatureType(feature, mirrorFeatureTypeV3.type)
   )
 }
 

@@ -4,8 +4,11 @@ import type {
   FeatureRecord,
   VariableDefinition,
 } from "@vibeshape/domain"
+import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-split"
+import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Button } from "@vibeshape/ui/components/button"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
@@ -17,6 +20,8 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
+import { ReferencePlaneSelection } from "../reference-geometry/reference-support-fields"
 import {
   parseSplitForm,
   type SplitBounds,
@@ -43,6 +48,8 @@ export type SplitFormCopy = ParameterPanelCopy &
   }
 type SplitFormProps = FeatureParameterFormProps<SplitFormMode, SplitFormCopy> & {
   sourceBounds: SplitBounds | null
+  referenceOptions?: ReferenceFrameOptions | undefined
+  selectedFace?: ViewerSelection | null | undefined
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
 }
 function SplitPreview({
@@ -52,6 +59,7 @@ function SplitPreview({
   copy,
   mode,
   featureId,
+  referencePlane,
   onPreviewChange,
 }: {
   values: SplitFormValues
@@ -60,12 +68,16 @@ function SplitPreview({
   copy: SplitFormCopy
   mode: SplitFormMode
   featureId: FeatureId
+  referencePlane: ReferencePlane | null | undefined
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
   const parsed = parseSplitForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: parsed.ok ? splitFeatureRecord(mode, featureId, parsed) : null,
+    preview:
+      parsed.ok && referencePlane !== null
+        ? splitFeatureRecord(mode, featureId, parsed, referencePlane)
+        : null,
   })
   return null
 }
@@ -74,6 +86,8 @@ export function SplitForm({
   copy,
   disabled = false,
   mode,
+  referenceOptions,
+  selectedFace,
   sourceBounds,
   onCancel,
   onPreviewChange,
@@ -83,12 +97,16 @@ export function SplitForm({
   variables,
 }: SplitFormProps) {
   const state = useParameterFormState(variables)
+  const [referencePlane, setReference] = useState<ReferencePlane | null | undefined>(() =>
+    mode.kind === "edit" ? readSplitFeatureParametersV2(mode.feature)?.plane : undefined,
+  )
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const form = useAppForm({
     defaultValues: splitFormValues(mode, sourceBounds, state.displayUnits),
     onSubmit: async ({ value }) => {
+      if (referencePlane === null) return
       const parsed = parseSplitForm(value, variables, state.displayUnits, copy)
       if (!parsed.ok) {
         state.setIssues(parsed.issues)
@@ -101,7 +119,7 @@ export function SplitForm({
         await submitFeatureMutation({
           baseRevision,
           copy,
-          feature: splitFeatureRecord(mode, featureId, parsed),
+          feature: splitFeatureRecord(mode, featureId, parsed, referencePlane),
           onSave,
           onSaved,
           setMessage: state.setMessage,
@@ -128,6 +146,7 @@ export function SplitForm({
               copy={copy}
               mode={mode}
               featureId={featureId}
+              referencePlane={referencePlane}
               onPreviewChange={onPreviewChange}
             />
           )}
@@ -145,36 +164,43 @@ export function SplitForm({
                 acceptLabel={copy.submit}
                 ariaLabel={copy.title}
                 cancelLabel={copy.cancel}
-                disabled={disabled || !sourceBounds}
+                disabled={disabled || !sourceBounds || referencePlane === null}
                 onCancel={onCancel}
                 previewStatus={previewStatus}
               />
             }
           >
-            <form.Field name="plane">
-              {(field) => (
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.plane}</legend>
-                  {(["XY", "XZ", "YZ"] as const).map((plane) => (
-                    <label key={plane} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="plane"
-                        value={plane}
-                        checked={field.state.value === plane}
-                        onBlur={field.handleBlur}
-                        onChange={() => {
-                          state.clearSubmissionErrors()
-                          field.handleChange(plane)
-                        }}
-                      />
-                      {plane}
-                    </label>
-                  ))}
-                  <p className="text-xs text-muted-foreground">{copy.planeDescription}</p>
-                </fieldset>
-              )}
-            </form.Field>
+            <ReferencePlaneSelection
+              options={referenceOptions}
+              value={referencePlane}
+              selectedFace={selectedFace}
+              onChange={setReference}
+            >
+              <form.Field name="plane">
+                {(field) => (
+                  <fieldset className="grid gap-2">
+                    <legend className="mb-2 text-xs font-medium">{copy.plane}</legend>
+                    {(["XY", "XZ", "YZ"] as const).map((plane) => (
+                      <label key={plane} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="plane"
+                          value={plane}
+                          checked={field.state.value === plane}
+                          onBlur={field.handleBlur}
+                          onChange={() => {
+                            state.clearSubmissionErrors()
+                            field.handleChange(plane)
+                          }}
+                        />
+                        {plane}
+                      </label>
+                    ))}
+                    <p className="text-xs text-muted-foreground">{copy.planeDescription}</p>
+                  </fieldset>
+                )}
+              </form.Field>
+            </ReferencePlaneSelection>
             <form.Field name="offset">
               {(field) => (
                 <LengthExpressionField
@@ -197,7 +223,7 @@ export function SplitForm({
               type="button"
               variant="outline"
               size="sm"
-              disabled={!sourceBounds}
+              disabled={!sourceBounds || referencePlane !== undefined}
               onClick={() => {
                 if (!sourceBounds) return
                 state.clearSubmissionErrors()

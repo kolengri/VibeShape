@@ -38,11 +38,11 @@ import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from ".
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, readLoftFeatureParameters } from "./part-design-loft"
 import { meshImportFeatureType } from "./part-design-mesh-import"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
-import { patternFeatureType } from "./part-design-pattern"
+import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
+import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
-import { splitFeatureType } from "./part-design-split"
+import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
@@ -63,10 +63,13 @@ const emptySemanticInputTypeKeys = new Set(
     placementFeatureType,
     mirrorFeatureType,
     mirrorFeatureTypeV2,
+    mirrorFeatureTypeV3,
     patternFeatureType,
+    patternFeatureTypeV2,
     shellFeatureType,
     shellFeatureTypeV2,
     splitFeatureType,
+    splitFeatureTypeV2,
     compoundFeatureType,
     compoundFeatureTypeV2,
     unionFeatureType,

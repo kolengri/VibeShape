@@ -1,17 +1,27 @@
-# Origin-plane Mirror
+# Mirror
 
 Mirror v1 reflects one exact named body across the XY, XZ or YZ world-origin plane.
 Select an available visible part in Parts, then choose Mirror. The task panel previews a disposable
 candidate. Apply adds one feature and one Undo entry; Cancel leaves document intent unchanged.
 Click the Mirror feature in History to edit its plane.
 
+Version 2 adds a signed plane offset and **Keep source part**. The offset follows +Z for XY, +Y
+for XZ, and +X for YZ. Keeping the source creates an independent reflected part and retains the
+original for further modeling. Version 3 retains these options and also supports an authored Datum Plane, a stable planar face on an exact named body,
+or an explicit world origin and normal. **Reference source** lists current earlier supports;
+**Use selected planar face** binds the viewport selection. Explicit coordinates use millimeters
+and the direction fields are normalized. Invalid or ambiguous supports block Apply. The supporting
+body remains available; a replacing operation consumes only the exact target part. Version 1 origin-plane records retain their
+existing semantics. See [ADR-0084](../adr/0084-body-reference-planes-and-axes.md).
+
 The reflected result replaces the current authored part while preserving its PartId, name, visibility
-and source body history. Source features remain available to rebuild dependents. Mirror does not
-keep a second source part or fuse source and reflection. Suppression or removal restores the prior
+and source body history. Source features remain available to rebuild dependents. **Keep source part** instead leaves the original available and allocates a new part for the reflected
+result. Source and reflection remain separate until an explicit Union. Suppression or removal restores the prior
 body binding through the existing modifier policy.
 
-The persisted feature has exactly one `targetBody` (`BodyReference`) and one matching producer
-dependency, no topology references, and a canonical plane. Its result role is `result` and contains
+The persisted feature has exactly one `targetBody` (`BodyReference`), its matching producer dependency,
+and any distinct reference support producer in that order. Stable body topology stays in parameters;
+generic topology references remain empty. Version 3 content carries a resolved numeric plane, signed offset, and source-retention intent. Its result role is `result` and contains
 one valid positive-volume solid. Dependency hashes and exact output roles own source identity;
 document-local UUIDs do not enter canonical parameters. Missing roles and stale source content fail
 closed. Ordinary local save, reopen, native project import/export, STEP and STL export reuse the
