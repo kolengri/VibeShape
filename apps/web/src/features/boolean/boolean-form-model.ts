@@ -24,19 +24,8 @@ export type BooleanFormValues = Readonly<{
   keepTools: boolean
 }>
 type InputField = "targetFeatureId" | "toolFeatureId"
-function selectedId(
-  featureId: string | undefined,
-  body: BodyReference | undefined,
-  options: readonly BooleanInputOption[],
-) {
-  if (body) return exactBodyOptionId(body)
-  return (
-    options.find(
-      (option) => option.body?.featureId === featureId && option.body?.outputRole === "result",
-    )?.id ??
-    featureId ??
-    ""
-  )
+function selectedId(featureId: string | undefined, body: BodyReference | undefined) {
+  return body ? exactBodyOptionId(body) : (featureId ?? "")
 }
 export function defaultBooleanValues(
   mode: BooleanFormMode,
@@ -50,8 +39,8 @@ export function defaultBooleanValues(
     }
   const parameters = readBooleanFeatureParametersV2(mode.feature)
   return {
-    targetFeatureId: selectedId(mode.feature.dependencies[0], parameters?.targetBody, options),
-    toolFeatureId: selectedId(mode.feature.dependencies[1], parameters?.toolBody, options),
+    targetFeatureId: selectedId(mode.feature.dependencies[0], parameters?.targetBody),
+    toolFeatureId: selectedId(mode.feature.dependencies[1], parameters?.toolBody),
     keepTools:
       parameters?.keepTools ??
       booleanFeatureParametersSchema.safeParse(mode.feature.parameters).data?.keepTools ??

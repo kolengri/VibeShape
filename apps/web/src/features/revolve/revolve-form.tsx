@@ -110,7 +110,6 @@ function valuesFromFeature(
   feature: FeatureRecord,
   profiles: readonly SketchProfileSelector[],
   supportReference: TopoRef | undefined,
-  options: readonly RevolveTargetOption[],
 ): Values {
   const p = readRevolveFeatureParameters(feature)
   if (!p) throw new Error("Revolve parameters are unavailable.")
@@ -122,13 +121,7 @@ function valuesFromFeature(
     supportReference: supportReference ?? null,
     targetFeatureId: p.targetBody
       ? exactBodyOptionId(p.targetBody)
-      : (options.find(
-          (option) =>
-            option.body?.featureId === feature.dependencies[0] &&
-            option.body?.outputRole === "result",
-        )?.id ??
-        feature.dependencies[0] ??
-        ""),
+      : (feature.dependencies[0] ?? ""),
   }
 }
 function featureIdForMode(mode: RevolveFormMode) {
@@ -141,7 +134,7 @@ function defaultValuesForMode(
   targetOptions: readonly RevolveTargetOption[],
 ): Values {
   if (mode.kind === "edit")
-    return valuesFromFeature(mode.feature, mode.profiles, mode.supportReference, targetOptions)
+    return valuesFromFeature(mode.feature, mode.profiles, mode.supportReference)
   return {
     axis: { kind: "origin-axis", axis: "x" },
     angle: defaultAngleExpression(Math.PI * 2, angleUnit),

@@ -1,13 +1,18 @@
 import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
-import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
+import {
+  booleanFeatureType,
+  type DocumentSnapshot,
+  type FeatureRecord,
+  featureTypeKey,
+} from "@vibeshape/domain"
 import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { readRevolveFeatureParameters } from "@vibeshape/domain/part-design"
 import { readBooleanFeatureParametersV2 } from "@vibeshape/domain/part-design-subtract"
 import type { FeatureEvaluatedResponse } from "@vibeshape/protocol"
 import { terminalModelBodies } from "./model-bodies"
 
-export type ExactBodyOption = Readonly<{ id: string; label: string; body: BodyReference }>
+export type ExactBodyOption = Readonly<{ id: string; label: string; body?: BodyReference }>
 export function exactBodyOptionId(body: BodyReference) {
   return JSON.stringify([body.featureId, body.outputRole])
 }
@@ -47,12 +52,36 @@ function selectableBody(geometry: GeometryBody) {
     geometry.representation !== "triangle-mesh"
   )
 }
+function currentGeometry(
+  feature: FeatureRecord,
+  rebuild: Extract<DocumentRebuildOutcome, { ok: true }>,
+) {
+  const record = rebuild.response.geometry.find(({ featureId }) => featureId === feature.id)
+  return rebuild.response.evaluation.records.some(
+    (entry) =>
+      entry.featureId === feature.id &&
+      entry.status === "succeeded" &&
+      entry.contentHash === record?.contentHash,
+  )
+    ? record?.geometry
+    : undefined
+}
+function legacyProducerIds(feature: FeatureRecord | undefined): readonly string[] {
+  if (!feature) return []
+  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type))
+    return feature.dependencies.slice(0, 2)
+  const revolve = readRevolveFeatureParameters(feature)
+  return revolve && !revolve.targetBody && revolve.operation !== "new"
+    ? feature.dependencies.slice(0, 1)
+    : []
+}
 function featureBodyOptions(
   feature: FeatureRecord,
   bodies: readonly GeometryBody[],
   visible: Set<string>,
   parts: readonly ResolvedAuthoredPart[],
   unnamed: string,
+  retainedProducer: boolean,
 ): readonly ExactBodyOption[] {
   return bodies.filter(selectableBody).flatMap((geometry) => {
     const body = bodyReferenceSchema.parse({
@@ -61,7 +90,9 @@ function featureBodyOptions(
       outputRole: geometry.outputRole,
     })
     const id = exactBodyOptionId(body)
-    return visible.has(id) ? [{ id, body, label: bodyLabel(body, feature, parts, unnamed) }] : []
+    return visible.has(id) || retainedProducer
+      ? [{ id, body, label: bodyLabel(body, feature, parts, unnamed) }]
+      : []
   })
 }
 /** Retains explicit edit inputs while excluding later History and non-solid outputs. */
@@ -71,6 +102,7 @@ export function exactSolidBodyOptions(
   editingFeatureId: string | undefined,
   parts: readonly ResolvedAuthoredPart[],
   unnamed: string,
+  legacyLabel: (name: string) => string = (name) => name,
 ): readonly ExactBodyOption[] {
   if (!rebuild?.ok) return []
   const stop = editingFeatureId
@@ -90,18 +122,30 @@ export function exactSolidBodyOptions(
       }),
     ),
   ])
+  const edited = snapshot.features.find(({ id }) => id === editingFeatureId)
+  const legacyIds = new Set(legacyProducerIds(edited))
   return snapshot.features
     .filter((feature) => !feature.suppressed && !excluded.has(feature.id))
     .flatMap((feature) => {
-      const record = rebuild.response.geometry.find(({ featureId }) => featureId === feature.id)
-      const current = rebuild.response.evaluation.records.some(
-        (entry) =>
-          entry.featureId === feature.id &&
-          entry.status === "succeeded" &&
-          entry.contentHash === record?.contentHash,
-      )
-      return current
-        ? featureBodyOptions(feature, record?.geometry.bodies ?? [], visible, parts, unnamed)
-        : []
+      const geometry = currentGeometry(feature, rebuild)
+      if (!geometry) return []
+      const legacy =
+        legacyIds.has(feature.id) &&
+        geometry.shape.valid &&
+        geometry.shape.solidCount >= 1 &&
+        geometry.shape.volume > 0
+          ? [{ id: feature.id, label: legacyLabel(feature.label ?? unnamed) }]
+          : []
+      return [
+        ...legacy,
+        ...featureBodyOptions(
+          feature,
+          geometry.bodies ?? [],
+          visible,
+          parts,
+          unnamed,
+          legacyIds.has(feature.id),
+        ),
+      ]
     })
 }

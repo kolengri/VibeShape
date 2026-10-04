@@ -1179,6 +1179,7 @@ function booleanOptions(
   editingFeatureId: string | undefined,
   unnamedFeature: string,
   parts: readonly ResolvedAuthoredPart[],
+  legacyLabel: (name: string) => string,
 ) {
   return exactSolidBodyOptions(
     report.snapshot,
@@ -1186,6 +1187,7 @@ function booleanOptions(
     editingFeatureId,
     parts,
     unnamedFeature,
+    legacyLabel,
   )
 }
 
@@ -1209,6 +1211,7 @@ function revolveOptions(
   editingFeatureId: string | undefined,
   unnamedFeature: string,
   parts: readonly ResolvedAuthoredPart[],
+  legacyLabel: (name: string) => string,
 ) {
   return exactSolidBodyOptions(
     report.snapshot,
@@ -1216,6 +1219,7 @@ function revolveOptions(
     editingFeatureId,
     parts,
     unnamedFeature,
+    legacyLabel,
   )
 }
 
@@ -1681,6 +1685,7 @@ function ActiveSubtractTaskPanel({
     mode.kind === "edit" ? mode.feature.id : undefined,
     modelTreeT("unnamedFeature"),
     parts,
+    (label) => t("legacyBodyLabel", { label }),
   )
   return (
     <BooleanTaskPanel
@@ -1912,6 +1917,7 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
   if (props.activeTool.kind !== "create-revolve" && props.activeTool.kind !== "edit-revolve")
     return null
   const t = useTranslations("app.shell.taskPanel.revolve")
+  const taskT = useTranslations("app.shell.taskPanel")
   const count = props.report.snapshot.features.filter(isRevolveFeature).length
   const mode = revolveFormMode(
     props.activeTool,
@@ -1926,6 +1932,7 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
         mode.kind === "edit" ? mode.feature.id : undefined,
         modelTreeT("unnamedFeature"),
         props.parts,
+        (label) => taskT("legacyBodyLabel", { label }),
       )
     : []
   return mode ? (

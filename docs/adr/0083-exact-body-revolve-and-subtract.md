@@ -33,6 +33,9 @@ Task panels offer current valid single-solid bodies, exclude later History durin
 saved exact input selections. Distinct roles of one producer remain separate choices. Preview,
 Apply, undo/replay, suppression, and persistence use ordinary registered document commands.
 Legacy form interfaces remain compatible for existing whole-producer callers.
+Editing an existing legacy modifier retains its whole-producer choice, including a multi-solid
+aggregate, and its original single- or multi-profile schema. Selecting an exact role explicitly
+opts into the new contract; merely opening and applying an existing feature does not migrate it.
 
 The additive named `create_body_revolve`/`update_body_revolve` and
 `create_body_subtract`/`update_body_subtract` MCP tools use those same authored commands and owned

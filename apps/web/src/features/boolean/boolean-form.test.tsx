@@ -7,6 +7,7 @@ import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
+import { currentBodyOptions } from "../part-design/exact-body-options.test-fixtures"
 import { BooleanForm, type BooleanFormMode, type BooleanInputOption } from "./boolean-form"
 
 const ids = {
@@ -90,6 +91,44 @@ function renderForm(
 afterEach(cleanup)
 
 describe("BooleanForm", () => {
+  it.each([["result"], ["pattern.instance.0", "pattern.instance.1"]])(
+    "retains legacy whole-producer scope from current collector options with %j roles",
+    async (...roles) => {
+      const user = userEvent.setup()
+      const producers = [ids.box, ids.cylinder].map((id) => ({
+        ...existingFeature,
+        id,
+        dependencies: [],
+        label: id === ids.box ? "Target" : "Tool",
+      }))
+      const collected = currentBodyOptions([...producers, existingFeature], existingFeature, roles)
+      const { onSave, copy: formCopy } = renderForm(
+        undefined,
+        undefined,
+        { kind: "edit", feature: existingFeature },
+        collected,
+      )
+      expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
+        ids.box,
+      )
+      await user.click(screen.getByRole("button", { name: formCopy.submit }))
+      expect(onSave).toHaveBeenLastCalledWith(4, existingFeature)
+      const exact = collected.filter((option) => option.body)
+      const target = exact[0]
+      const tool = exact.find(({ body }) => body?.featureId === ids.cylinder)
+      if (!target || !tool) throw new Error("Expected explicit target and tool body choices.")
+      await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), target.id)
+      await user.selectOptions(screen.getByRole("combobox", { name: copy.tool }), tool.id)
+      await user.click(screen.getByRole("button", { name: formCopy.submit }))
+      expect(onSave).toHaveBeenLastCalledWith(
+        4,
+        expect.objectContaining({
+          type: booleanFeatureTypeV2.type,
+          parameters: expect.objectContaining({ targetBody: target.body }),
+        }),
+      )
+    },
+  )
   it("saves tool retention and restores it when editing", async () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()

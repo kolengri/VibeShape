@@ -257,7 +257,7 @@ describe("exact solid body options", () => {
     ])
     expect(
       exactSolidBodyOptions(snapshot(features), outcome, cut.id, [], "Body").map(
-        ({ body }) => body.outputRole,
+        ({ body }) => body?.outputRole,
       ),
     ).toEqual(["pattern.instance.0", "pattern.instance.1", "pattern.instance.2"])
   })
