@@ -13,6 +13,7 @@ import {
   type DocumentSnapshot,
   type EdgeTopoRef,
   extrusionFeatureParametersV6Schema,
+  extrusionFeatureParametersV7Schema,
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
@@ -31,6 +32,7 @@ import {
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
   extrusionFeatureContentParametersV6Schema,
+  extrusionFeatureContentParametersV7Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   holeFeatureContentParametersSchema,
@@ -151,14 +153,19 @@ function prepareAdvancedExtrusion(
   advanced: { feature: FeatureRecord; context: Parameters<typeof prepareExtrusionEndContent>[2] },
   frame: SupportFrame,
 ) {
-  const value = extrusionFeatureParametersV6Schema.parse(advanced.feature.parameters)
+  const v7 = advanced.feature.type.schemaVersion === 7
+  const value = (
+    v7 ? extrusionFeatureParametersV7Schema : extrusionFeatureParametersV6Schema
+  ).parse(advanced.feature.parameters)
   const end = prepareExtrusionEndContent(advanced.feature, value, advanced.context, frame)
   if (!end.ok)
     return failure(
       "org.vibeshape.feature.sketch-support-missing",
       "extrusion-end-support-stale-or-unreachable",
     )
-  const resolved = extrusionFeatureContentParametersV6Schema.safeParse({
+  const resolved = (
+    v7 ? extrusionFeatureContentParametersV7Schema : extrusionFeatureContentParametersV6Schema
+  ).safeParse({
     ...(content as Record<string, unknown>),
     distance: end.distance,
     startOffset: value.startOffset.value,
@@ -715,7 +722,7 @@ function prepareSolvedProfileFeature(
           multiParameters,
           frame,
           feature.independentExtent,
-          feature.record.type.schemaVersion === 6
+          feature.record.type.schemaVersion === 6 || feature.record.type.schemaVersion === 7
             ? {
                 feature: feature.record,
                 context: {

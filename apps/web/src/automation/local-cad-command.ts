@@ -8,6 +8,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
@@ -49,6 +50,8 @@ type CadOperation = Extract<
       | "update_sketch"
       | "create_extrude"
       | "update_extrude"
+      | "create_face_extent_extrude"
+      | "update_face_extent_extrude"
       | "create_body_revolve"
       | "update_body_revolve"
       | "create_body_subtract"
@@ -89,6 +92,8 @@ type CadOperation = Extract<
 >
 
 const directCadFeatureTypes = {
+  create_face_extent_extrude: extrusionFeatureTypeV7.type,
+  update_face_extent_extrude: extrusionFeatureTypeV7.type,
   create_body_revolve: revolveFeatureTypeV7.type,
   update_body_revolve: revolveFeatureTypeV7.type,
   create_body_subtract: booleanFeatureTypeV2.type,

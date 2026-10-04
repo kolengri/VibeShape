@@ -4,7 +4,9 @@ import {
   createLengthQuantity,
   documentSnapshotSchema,
   extrusionFeatureParametersV6Schema,
+  extrusionFeatureParametersV7Schema,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   featureRecordSchema,
   topologySignatureSchema,
 } from "@vibeshape/domain"
@@ -95,6 +97,67 @@ function context(contentHash = hash, outputRole = role, candidates = [candidate]
   return { document, features: [feature], geometry }
 }
 describe("captured exact extrusion end preparation", () => {
+  it("prepares v7 curved endpoints without invented plane data and rejects ambiguous or stale bodies", () => {
+    const curvedSignature = topologySignatureSchema.parse({
+      kind: "face",
+      geometryClass: "SPHERE",
+      measure: 64 * Math.PI,
+      centroid: [0, 0, 8],
+      bounds: { min: [-4, -4, 4], max: [4, 4, 12] },
+      boundaryCount: 1,
+      adjacentGeometryClasses: [],
+    })
+    const curved = extrusionFeatureParametersV7Schema.parse({
+      ...parameters,
+      endCondition: {
+        kind: "up-to-face",
+        targetBody: body,
+        sourceContentHash: hash,
+        face: { ...face, signature: curvedSignature },
+      },
+    })
+    const owner = featureRecordSchema.parse({
+      ...feature,
+      type: extrusionFeatureTypeV7.type,
+      parameters: curved,
+    })
+    const curvedCandidate = { ...candidate, signature: curvedSignature }
+    const candidates = [
+      curvedCandidate,
+      {
+        ...curvedCandidate,
+        candidateId: "edge:seam",
+        kind: "edge",
+        meshFaceId: undefined,
+        signature: topologySignatureSchema.parse({
+          ...curvedSignature,
+          kind: "edge",
+          geometryClass: "LINE",
+        }),
+        referenceGeometry: { kind: "line-edge", start: [0, 0, 4], end: [0, 0, 12] },
+      },
+    ]
+    const prepared = prepareExtrusionEndContent(
+      owner,
+      curved,
+      context(hash, role, candidates),
+      frame,
+    )
+    expect(prepared).toMatchObject({
+      ok: true,
+      endCondition: { kind: "up-to-curved-face", inputIndex: 0, outputRole: role },
+    })
+    if (!prepared.ok) throw new Error("Expected a resolved curved endpoint.")
+    expect(prepared.endCondition).not.toHaveProperty("planeOrigin")
+    expect(prepared.endCondition).not.toHaveProperty("planeNormal")
+    for (const invalid of [
+      context("b".repeat(64), role, candidates),
+      context(hash, "pattern.instance.0", candidates),
+      context(hash, role, [curvedCandidate, { ...curvedCandidate, candidateId: "face:other" }]),
+      context(hash, role, []),
+    ])
+      expect(prepareExtrusionEndContent(owner, curved, invalid, frame)).toEqual({ ok: false })
+  })
   it("derives through-all distance from the exact body's bounds and shifted start", () => {
     expect(prepareExtrusionEndContent(feature, parameters, context(), frame)).toMatchObject({
       ok: true,
