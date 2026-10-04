@@ -42,7 +42,7 @@ All four lifecycle tools use fresh command IDs and the current owned draft revis
 require ordinary manual browser review, including with CAD auto-apply enabled. Stage a coherent
 edit, run exact preview, then `commit_draft`; the accepted transaction persists once and creates
 one normal Undo entry. Reuse the returned revision and inspect affected intent after Apply.
-History navigation and generic command execution are not new MCP authorities.
+These lifecycle tools stage authored changes; they do not navigate saved-change History or execute generic commands. For committed Undo/Redo, follow the [organization workflow](../../vibeshape-organization/SKILL.md).
 
 ## Sketches and profiles
 
@@ -52,7 +52,7 @@ Constrain relationships and driving dimensions without redundantly fixing the sa
 
 Horizontal/vertical distance constraints are signed: the first point's coordinate minus the second point's coordinate equals the specified value. For a positive X offset from an origin anchor, the positive point is `firstPointId` and the anchor is `secondPointId`. XY coordinates map to world X/Y; preview bounds confirm placement on other planes.
 
-Extrude/Revolve profiles identify the sketch and its boundary entity IDs. Boundary ID arrays must be unique and sorted as required by the schema; polygon winding or storage order is not an identity contract. For an existing complex sketch, full profile/face discovery is not exposed through MCP. Obtain a known authored profile or use visible editor selection rather than guessing one from arbitrary edges.
+Extrude/Revolve profiles identify the sketch and its boundary entity IDs. Boundary ID arrays must be unique and sorted as required by the schema; polygon winding or storage order is not an identity contract. Discover solved profile selectors with `model_sketch_solution` or `draft_sketch_solution` at the exact revision. Discover exact body faces separately with `model_body_topology` or `draft_body_topology`; use the returned selectors and durable references rather than arbitrary edge order.
 
 ## Extrude and Revolve
 

@@ -15,7 +15,7 @@
 
 If the committed model changes while drafting, read the updated model and create a new draft, retaining the person's changes. Do not replay a stale full record. Use `discard_draft` to abandon private intent; it does not alter the saved model. MCP cancellation revokes the entire pairing and cannot undo a transaction already accepted by persistence.
 
-After a timeout or unconfirmed commit, re-pair if needed and inspect the saved revision and affected IDs/parameters before retrying. Do not treat a reused command ID as an idempotency key. Ordinary Undo/Redo is a browser operation, not an MCP tool.
+After a timeout or unconfirmed commit, re-pair if needed and inspect the saved revision and affected IDs/parameters before retrying. Do not treat a reused command ID as an idempotency key. For committed Undo/Redo, follow the [saved-change History workflow](../../vibeshape-organization/SKILL.md), using its document/revision-bound tools and manual browser review.
 
 ## Quantity and ID contract
 

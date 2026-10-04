@@ -17,7 +17,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | What drives a dimension or fails expression evaluation? | `model_variables` or `draft_variables` |
 | Which authored parts/folders or canonical History order? | `model_parts`, `model_folders`, `model_history` |
 | Which exact body is available, with which output role? | `model_body_measurements` or `draft_body_measurements` |
-| Which body faces/edges can be measured or selected for Shell? | `model_body_topology` or `draft_body_topology` |
+| Which exact body faces/edges can be measured or selected by supported features? | `model_body_topology` or `draft_body_topology` |
 | Which edge references can a treatment select? | `model_edges` or `draft_edges` |
 | What unsaved intent is in the draft? | `draft_tree`, `draft_entity` at the current draft revision |
 | Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |
@@ -30,7 +30,7 @@ Tree dependency summaries include authored sketch inputs for Hole, Loft and Swee
 
 ## Interpret evidence
 
-Stable feature/part IDs and semantic body output roles identify authored intent. Transient OCCT face/edge indices, kernel handles, display names, and mesh order do not. Use only resolved durable references from the edge-selection tools for modeling. The body-topology tools supply current exact face references and content hash for Shell openings, including unsaved draft producers. Their references are not Hole/Fillet/Chamfer inputs; those operations retain their separate body/edge selection contracts.
+Stable feature/part IDs and semantic body output roles identify authored intent. Transient OCCT face/edge indices, kernel handles, display names, and mesh order do not. Use only resolved durable references from the edge-selection tools for modeling. Body-topology tools supply current exact references and content hashes, including unsaved draft producers. Shell openings, planar Extrude endpoints (v6/v7), finite curved-face Extrude endpoints (v7), and Loft v3 end constraints consume their supported face contracts; follow the [modeling reference](../vibeshape-modeling/references/modeling.md) for each version. These face references are not Hole/Fillet/Chamfer inputs; those operations retain their separate body/edge selection contracts.
 
 Draft body measurements and topology evaluate disposable exact geometry at the owned draft's current revision. Retain returned content hashes and cursor provenance; after a source edit, restart stale discovery. Existing Shell v2 openings can retain unique durable face identity within the same exact body; explicitly reselect missing, ambiguous or unsupported openings. These reads do not save the draft or renew its expiry. `draft_tree`/`draft_entity` are authored records; `draft_edges` selects supported feature edges. Solved sketch profiles are discovered through `model_sketch_solution` or `draft_sketch_solution`. A missing or ambiguous reference must be repaired through a supported selection route, not reconstructed from an index.
 
