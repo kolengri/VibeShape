@@ -83,6 +83,7 @@
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
+| [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 
 | [0079](0079-exact-sweep-hollow-loft-and-sketch-corners.md) | Accepted | Exact Sweep curves, hollow Loft, and Sketch corners |
 | [0081](0081-constrained-loft-native-patch-networks.md) | Accepted | Constrained Loft native patch networks |
