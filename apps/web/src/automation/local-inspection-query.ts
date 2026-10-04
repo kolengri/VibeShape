@@ -9,6 +9,7 @@ import {
   modelBodyTopologyQuerySchema,
   modelEdgeQuerySchema,
   modelMeasurementQuerySchema,
+  sketchSolutionQuerySchema,
   variableListQuerySchema,
 } from "@vibeshape/automation-api/queries"
 
@@ -19,6 +20,13 @@ export function createLocalInspectionQuery(
   const common = { schemaVersion: 1, documentId }
   const { draftId: _draftId, ...argumentsInput } = { draftId: undefined, ...operation.arguments }
   switch (operation.tool) {
+    case "model_sketch_solution":
+    case "draft_sketch_solution":
+      return sketchSolutionQuerySchema.parse({
+        ...common,
+        ...argumentsInput,
+        kind: "org.vibeshape.sketch.solution",
+      })
     case "model_tree":
     case "draft_tree":
       return cadInspectionListQuerySchema.parse({

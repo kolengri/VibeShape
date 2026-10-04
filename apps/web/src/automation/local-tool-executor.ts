@@ -20,6 +20,7 @@ import type {
   ModelEdgeQuery,
   ModelMeasurementQuery,
   QueryResult,
+  SketchSolutionQuery,
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
@@ -41,6 +42,7 @@ type LocalSessionPort = Readonly<{
   revision: number
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
+  readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -238,10 +240,7 @@ export function createLocalToolExecutor(
       })
       return hostResult(result)
     }
-    if (isLocalInspection(operation)) {
-      const result = session.readCad(createLocalInspectionQuery(operation, session.documentId))
-      return result.ok ? { ok: true as const, value: result.view } : diagnostic(result)
-    }
+    if (isLocalInspection(operation)) return readCommittedInspection(session, operation)
     switch (operation.tool) {
       case "model_info":
         return readModelInfo(session)
@@ -264,3 +263,23 @@ export function createLocalToolExecutor(
 }
 
 export type { LocalOperation }
+
+async function readCommittedInspection(
+  session: LocalSessionPort,
+  operation: import("@vibeshape/automation-api/local-tools").LocalInspectionOperation,
+) {
+  const query = createLocalInspectionQuery(operation, session.documentId)
+  if (query.kind === "org.vibeshape.sketch.solution" && !session.readSketchSolution)
+    return localFailure(
+      "geometry-unavailable",
+      "The paired session cannot inspect solved sketches.",
+      true,
+    )
+  const result =
+    query.kind === "org.vibeshape.sketch.solution"
+      ? await session.readSketchSolution?.(query)
+      : session.readCad(query)
+  if (!result)
+    return localFailure("geometry-unavailable", "Solved sketch inspection is unavailable.", true)
+  return result.ok ? { ok: true, value: result.view } : diagnostic(result)
+}

@@ -9,10 +9,12 @@ import {
   modelMeasurementQuerySchema,
   variableListQuerySchema,
 } from "./queries"
+import { sketchSolutionArgumentsSchema } from "./sketch-solution-queries"
 
 const omit = { kind: true, schemaVersion: true, documentId: true } as const
 const draft = { draftId: draftIdSchema }
 export const localDraftInspectionInputs = {
+  draft_sketch_solution: sketchSolutionArgumentsSchema.extend(draft),
   draft_measurements: modelMeasurementQuerySchema.omit(omit).extend(draft),
   draft_tree: cadInspectionListQuerySchema.omit(omit).extend(draft),
   draft_entity: cadInspectionDetailQuerySchema.omit(omit).extend(draft),
@@ -23,6 +25,12 @@ export const localDraftInspectionInputs = {
 } as const
 
 export const localDraftInspectionOperations = [
+  z
+    .object({
+      tool: z.literal("draft_sketch_solution"),
+      arguments: localDraftInspectionInputs.draft_sketch_solution,
+    })
+    .strict(),
   z
     .object({
       tool: z.literal("draft_measurements"),

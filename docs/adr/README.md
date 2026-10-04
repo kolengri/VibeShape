@@ -82,6 +82,8 @@
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 
+| [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
+
 Statuses:
 
 - `Proposed` — under discussion
