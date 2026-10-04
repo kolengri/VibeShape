@@ -598,6 +598,8 @@ describe("remote MCP in workerd", () => {
           "update_body_subtract",
           "draft_body_measurements",
           "draft_body_topology",
+          "create_face_extent_extrude",
+          "update_face_extent_extrude",
           "create_reference_mirror",
           "update_reference_mirror",
           "create_reference_split",

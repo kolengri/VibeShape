@@ -12,6 +12,7 @@ import {
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
   extrusionFeatureContentParametersV6Schema,
+  extrusionFeatureContentParametersV7Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   type FeatureContentEnvironment,
@@ -144,6 +145,7 @@ import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import {
   draftExtrusionTool,
   terminateExtrusionAtBody,
+  terminateExtrusionAtFace,
   terminateExtrusionAtPlane,
 } from "./occt-extrusion-end"
 import { createOcctCountersink } from "./occt-hole-recess"
@@ -348,6 +350,8 @@ const EXTRUSION_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#4"
 const EXTRUSION_FEATURE_TYPE_V6_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#6"
+const EXTRUSION_FEATURE_TYPE_V7_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#7"
 const EXTRUSION_FEATURE_TYPE_V5_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#5"
 const REVOLVE_FEATURE_TYPE_KEY =
@@ -987,9 +991,12 @@ type ExtrusionContentParameters = ReturnType<
   reversed?: boolean
   secondDistance?: number | null
 }
+type AdvancedExtrusionContentParameters =
+  | ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>
+  | ReturnType<typeof extrusionFeatureContentParametersV7Schema.parse>
 type ExtrusionExtentContentParameters =
   | ReturnType<typeof extrusionFeatureContentParametersV5Schema.parse>
-  | ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>
+  | AdvancedExtrusionContentParameters
 type ExtrusionMultiProfileContentParameters = ReturnType<
   typeof extrusionMultiProfileFeatureContentParametersSchema.parse
 >
@@ -1606,7 +1613,7 @@ function parseMultiExtrusionModifyingFeature(input: FeatureEvaluationInput): Fea
 
 function extrusionV6InputsAreValid(
   input: FeatureEvaluationInput,
-  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+  parameters: AdvancedExtrusionContentParameters,
 ) {
   const content = input.content.feature
   const roles =
@@ -1626,7 +1633,7 @@ function extrusionV6InputsAreValid(
 
 function extrusionTargetAndSupportSlots(
   input: FeatureEvaluationInput,
-  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+  parameters: AdvancedExtrusionContentParameters,
   roles: readonly (string | null)[],
 ) {
   const expected = new Set<number>()
@@ -1646,7 +1653,7 @@ function extrusionTargetAndSupportSlots(
 }
 
 function extrusionSupportRoleIsValid(
-  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+  parameters: AdvancedExtrusionContentParameters,
   role: string | null | undefined,
   slot: number,
 ) {
@@ -1661,10 +1668,7 @@ function extrusionSupportRoleIsValid(
 
 function extrusionEndBindingIsValid(
   input: FeatureEvaluationInput,
-  end: Exclude<
-    ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>["endCondition"],
-    { kind: "distance" }
-  >,
+  end: Exclude<AdvancedExtrusionContentParameters["endCondition"], { kind: "distance" }>,
   roles: readonly (string | null)[],
 ) {
   const dependency = input.dependencies[end.inputIndex]
@@ -1678,9 +1682,11 @@ function extrusionEndBindingIsValid(
 
 function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const parameters = (
-    input.content.feature.type.schemaVersion === 6
-      ? extrusionFeatureContentParametersV6Schema
-      : extrusionFeatureContentParametersV5Schema
+    input.content.feature.type.schemaVersion === 7
+      ? extrusionFeatureContentParametersV7Schema
+      : input.content.feature.type.schemaVersion === 6
+        ? extrusionFeatureContentParametersV6Schema
+        : extrusionFeatureContentParametersV5Schema
   ).safeParse(input.content.feature.parameters)
   if (!parameters.success) {
     return featureFailure(
@@ -1692,7 +1698,10 @@ function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeaturePars
     !("endCondition" in parameters.data
       ? extrusionV6InputsAreValid(
           input,
-          extrusionFeatureContentParametersV6Schema.parse(parameters.data),
+          (input.content.feature.type.schemaVersion === 7
+            ? extrusionFeatureContentParametersV7Schema
+            : extrusionFeatureContentParametersV6Schema
+          ).parse(parameters.data),
         )
       : extrusionInputCardinalityIsValid(input, parameters.data)) ||
     !supportReferencesAreValid(input, parameters.data.supportFeatureId)
@@ -2296,6 +2305,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [EXTRUSION_FEATURE_TYPE_V4_KEY, parseMultiExtrusionModifyingFeature],
   [EXTRUSION_FEATURE_TYPE_V5_KEY, parseExtrusionExtentFeature],
   [EXTRUSION_FEATURE_TYPE_V6_KEY, parseExtrusionExtentFeature],
+  [EXTRUSION_FEATURE_TYPE_V7_KEY, parseExtrusionExtentFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
@@ -3260,9 +3270,7 @@ function applyExtrusionDraft(
 function createExtrusionExtentTool(
   occt: OpenCascadeInstance,
   parameters: Parameters<typeof createExtrusionShape>[1] & {
-    endCondition?: ReturnType<
-      typeof extrusionFeatureContentParametersV6Schema.parse
-    >["endCondition"]
+    endCondition?: AdvancedExtrusionContentParameters["endCondition"]
   },
   dependencies: readonly Shape3D[],
   endFace?: ReturnType<typeof takeResolvedFace>,
@@ -3271,6 +3279,24 @@ function createExtrusionExtentTool(
   if (parameters.draftAngle) tool = applyExtrusionDraft(occt, tool, parameters)
   const condition = parameters.endCondition
   if (!condition || condition.kind === "distance" || condition.kind === "through-all") return tool
+  try {
+    return terminateDynamicExtrusion(occt, tool, parameters, condition, dependencies, endFace)
+  } finally {
+    tool.delete()
+  }
+}
+
+function terminateDynamicExtrusion(
+  occt: OpenCascadeInstance,
+  tool: Shape3D,
+  parameters: Parameters<typeof createExtrusionShape>[1],
+  condition: Exclude<
+    AdvancedExtrusionContentParameters["endCondition"],
+    { kind: "distance" | "through-all" }
+  >,
+  dependencies: readonly Shape3D[],
+  endFace?: ReturnType<typeof takeResolvedFace>,
+) {
   const frame = extrusionPlane(parameters)
   const { start, end } = extrusionExtentBounds(parameters)
   const a = frame.normal.map((v, i) => (parameters.frame?.origin[i] ?? 0) + v * start) as [
@@ -3285,24 +3311,25 @@ function createExtrusionExtentTool(
   ]
   const from = parameters.reversed ? b : a
   const to = parameters.reversed ? a : b
-  try {
-    if (condition.kind === "up-to-face")
-      return terminateExtrusionAtPlane(
-        occt,
-        tool,
-        condition.planeOrigin,
-        condition.planeNormal,
-        from,
-        to,
-        frame.normal,
-        endFace,
-      )
+  if (condition.kind === "up-to-curved-face") {
     const target = dependencies[condition.inputIndex]
-    if (!target) throw new Error("Extrusion endpoint body is unavailable.")
-    return terminateExtrusionAtBody(occt, tool, target, from, to, frame.normal)
-  } finally {
-    tool.delete()
+    if (!target || !endFace) throw new Error("Exact curved extrusion end face is unavailable.")
+    return terminateExtrusionAtFace(occt, tool, target, endFace, from, to, frame.normal)
   }
+  if (condition.kind === "up-to-face")
+    return terminateExtrusionAtPlane(
+      occt,
+      tool,
+      condition.planeOrigin,
+      condition.planeNormal,
+      from,
+      to,
+      frame.normal,
+      endFace,
+    )
+  const target = dependencies[condition.inputIndex]
+  if (!target) throw new Error("Extrusion endpoint body is unavailable.")
+  return terminateExtrusionAtBody(occt, tool, target, from, to, frame.normal)
 }
 
 function createRevolveShape(
@@ -4415,7 +4442,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   ) {
     if (
       "endCondition" in feature.parameters &&
-      feature.parameters.endCondition.kind === "up-to-face"
+      (feature.parameters.endCondition.kind === "up-to-face" ||
+        feature.parameters.endCondition.kind === "up-to-curved-face")
     )
       return this.#createFaceTerminatedExtrusion(
         opencascade,
@@ -4429,10 +4457,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
   #createFaceTerminatedExtrusion(
     opencascade: OpenCascadeInstance,
-    parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+    parameters: AdvancedExtrusionContentParameters,
     end: Extract<
-      ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>["endCondition"],
-      { kind: "up-to-face" }
+      AdvancedExtrusionContentParameters["endCondition"],
+      { kind: "up-to-face" | "up-to-curved-face" }
     >,
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
