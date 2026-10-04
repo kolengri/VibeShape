@@ -1581,28 +1581,32 @@ const featureEvaluationInputFields = {
   featureId: featureIdSchema,
   content: featureContentIdentitySchema,
   contentHash: sha256Schema,
-  dependencies: z.array(featureEvaluationDependencySchema).max(MAX_ANALYTICAL_LOFT_SECTIONS),
+  dependencies: z.array(featureEvaluationDependencySchema).max(128),
   mesh: featureMeshPolicySchema,
 } as const
 
 const featureEvaluationInputBaseSchema = z.object(featureEvaluationInputFields)
 type FeatureEvaluationInput = z.infer<typeof featureEvaluationInputBaseSchema>
 
+const registeredLoftDependencyLimits = new Map(
+  [1, 2, 3].map((version) => [
+    `org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.loft#${version}`,
+    version === 3 ? 128 : MAX_ANALYTICAL_LOFT_SECTIONS,
+  ]),
+)
+
 function validateFeatureEvaluationDependencyBudget(
   request: FeatureEvaluationInput,
   context: z.RefinementCtx,
 ) {
   const type = request.content.feature.type
-  const loftV1 =
-    type.moduleId === "org.vibeshape.core.part-design" &&
-    type.moduleVersion === "0.1.0" &&
-    type.typeId === "org.vibeshape.feature.part-design.loft" &&
-    (type.schemaVersion === 1 || type.schemaVersion === 2)
-  if (!loftV1 && request.dependencies.length > 8)
+  const key = `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
+  const limit = registeredLoftDependencyLimits.get(key) ?? 8
+  if (request.dependencies.length > limit)
     context.addIssue({
       code: "custom",
       path: ["dependencies"],
-      message: "Only Loft v1/v2 may evaluate more than eight producer dependencies.",
+      message: "Feature producer dependencies exceed the registered version budget.",
     })
 }
 

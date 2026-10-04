@@ -21,17 +21,29 @@ import {
   readLoftFeatureParameters,
 } from "@vibeshape/domain/part-design-loft"
 import {
+  type LoftFeatureParametersV3,
+  loftFeatureParametersV3Schema,
+  loftFeatureTypeV3,
+  loftV3SketchIds,
+  loftV3SupportBodies,
+  MAX_LOFT_V3_DEPENDENCIES,
+  readLoftFeatureParametersV3,
+} from "@vibeshape/domain/part-design-loft-v3"
+import {
   readSweepFeatureParameters,
   sweepFeatureParametersSchema,
   sweepFeatureType,
 } from "@vibeshape/domain/part-design-sweep"
 import { isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import type { SketchPathSelector } from "@vibeshape/domain/sketch-path-selector"
+import type { AnalyticalSweepPathContent } from "@vibeshape/protocol"
 import {
   analyticalProfileSchema,
   analyticalSweepPathSchema,
+  type LoftFeatureContentParametersV3,
   loftFeatureContentParametersSchema,
   loftFeatureContentParametersV2Schema,
+  loftFeatureContentParametersV3Schema,
   sweepFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import type { SolveSketchRecordResult } from "@vibeshape/sketch-solver"
@@ -64,17 +76,25 @@ export function shouldPrepareSweepLoftFeatureContent(feature: FeatureRecord) {
   return (
     key === featureTypeKey(loftFeatureType.type) ||
     key === featureTypeKey(loftFeatureTypeV2.type) ||
+    key === featureTypeKey(loftFeatureTypeV3.type) ||
     key === featureTypeKey(sweepFeatureType.type)
   )
 }
 
-function validateDependencies(input: PreparationInput, sketchIds: readonly string[]) {
-  const expected = expectedSketchFeatureDependencyIds(
-    input.document,
-    sketchIds,
-    input.feature.references.map(({ featureId }) => featureId),
-  )
-  const limit = readLoftFeatureParameters(input.feature) ? MAX_LOFT_SECTIONS : 8
+function validateDependencies(
+  input: PreparationInput,
+  sketchIds: readonly string[],
+  additionalOwners: readonly FeatureRecord["id"][] = [],
+) {
+  const expected = expectedSketchFeatureDependencyIds(input.document, sketchIds, [
+    ...input.feature.references.map(({ featureId }) => featureId),
+    ...additionalOwners,
+  ])
+  const limit = readLoftFeatureParametersV3(input.feature)
+    ? MAX_LOFT_V3_DEPENDENCIES
+    : readLoftFeatureParameters(input.feature)
+      ? MAX_LOFT_SECTIONS
+      : 8
   if (expected.length > limit)
     return failure("dependency-budget-exceeded", { count: expected.length })
   if (
@@ -378,6 +398,64 @@ async function prepareLoft(
       })
 }
 
+async function prepareLoftPaths<T extends { path: SketchPathSelector }>(
+  input: PreparationInput,
+  entries: readonly T[],
+): Promise<
+  Failure | { ok: true; entries: (Omit<T, "path"> & { path: AnalyticalSweepPathContent })[] }
+> {
+  const result: (Omit<T, "path"> & { path: AnalyticalSweepPathContent })[] = []
+  for (const entry of entries) {
+    const path = await preparePath(input, entry.path)
+    if (!path.ok) return path
+    result.push({ ...entry, path: path.path })
+  }
+  return { ok: true, entries: result }
+}
+
+async function prepareConstrainedLoft(
+  input: PreparationInput,
+  loft: LoftFeatureParametersV3,
+): Promise<DocumentFeatureContentPreparationResult> {
+  const invalid = validateDependencies(
+    input,
+    loftV3SketchIds(loft),
+    loftV3SupportBodies(loft).map(({ featureId }) => featureId),
+  )
+  if (invalid) return invalid
+  const sections = []
+  for (const selector of loft.sections) {
+    const result = await prepareProfile(input, selector)
+    if (!result.ok) return result
+    sections.push(result.profile)
+  }
+  const rails = await prepareLoftPaths(input, loft.rails)
+  if (!rails.ok) return rails
+  const guides = await prepareLoftPaths(input, loft.guides)
+  if (!guides.ok) return guides
+  const materializeEnd = (
+    entries: LoftFeatureParametersV3["start"],
+  ): LoftFeatureContentParametersV3["start"] =>
+    entries.map(({ support: { featureId, ...support }, ...condition }) => ({
+      ...condition,
+      support,
+      supportInputIndex: input.feature.dependencies.indexOf(featureId),
+    }))
+  const parsed = loftFeatureContentParametersV3Schema.safeParse({
+    ...loft,
+    sections,
+    rails: rails.entries,
+    guides: guides.entries,
+    start: materializeEnd(loft.start),
+    end: materializeEnd(loft.end),
+  })
+  return parsed.success
+    ? { ok: true, parameters: parsed.data }
+    : failure("invalid-materialized-constrained-loft", {
+        issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
+      })
+}
+
 async function prepareSweep(
   input: PreparationInput,
   sweep: NonNullable<ReturnType<typeof readSweepFeatureParameters>>,
@@ -406,17 +484,21 @@ export async function prepareSweepLoftFeatureContent(
   input: PreparationInput,
 ): Promise<DocumentFeatureContentPreparationResult | null> {
   if (!shouldPrepareSweepLoftFeatureContent(input.feature)) return null
+  const constrainedLoft = readLoftFeatureParametersV3(input.feature)
+  if (constrainedLoft) return prepareConstrainedLoft(input, constrainedLoft)
   const loft = readLoftFeatureParameters(input.feature)
   if (loft) return prepareLoft(input, loft)
   const sweep = readSweepFeatureParameters(input.feature)
   if (sweep) return prepareSweep(input, sweep)
   const key = featureTypeKey(input.feature.type)
   const schema =
-    key === featureTypeKey(loftFeatureTypeV2.type)
-      ? loftFeatureParametersV2Schema
-      : key === featureTypeKey(loftFeatureType.type)
-        ? loftFeatureParametersSchema
-        : sweepFeatureParametersSchema
+    key === featureTypeKey(loftFeatureTypeV3.type)
+      ? loftFeatureParametersV3Schema
+      : key === featureTypeKey(loftFeatureTypeV2.type)
+        ? loftFeatureParametersV2Schema
+        : key === featureTypeKey(loftFeatureType.type)
+          ? loftFeatureParametersSchema
+          : sweepFeatureParametersSchema
   const invalid = schema.safeParse(input.feature.parameters)
   return failure("invalid-authored-parameters", {
     issue: invalid.success

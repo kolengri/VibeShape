@@ -81,6 +81,9 @@
 | [0076](0076-closed-shells-and-durable-opening-identity.md) | Accepted | Closed Shells and durable opening identity |
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 
+| [0079](0079-exact-sweep-hollow-loft-and-sketch-corners.md) | Accepted | Exact Sweep curves, hollow Loft, and Sketch corners |
+| [0081](0081-constrained-loft-native-patch-networks.md) | Accepted | Constrained Loft native patch networks |
+
 Statuses:
 
 - `Proposed` — under discussion

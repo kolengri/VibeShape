@@ -28,6 +28,11 @@ import {
 import { isBodyCombinationV2 } from "@vibeshape/domain/part-design-body-combination"
 import { readHoleFeatureParameters } from "@vibeshape/domain/part-design-hole"
 import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
+import {
+  loftV3SketchIds,
+  loftV3SupportBodies,
+  readLoftFeatureParametersV3,
+} from "@vibeshape/domain/part-design-loft-v3"
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
@@ -858,6 +863,12 @@ export function expectedSketchFeatureReferences(
 }
 
 function documentSketchSchedulingDependencies(document: DocumentSnapshot, feature: FeatureRecord) {
+  const constrainedLoft = readLoftFeatureParametersV3(feature)
+  if (constrainedLoft)
+    return expectedSketchFeatureDependencyIds(document, loftV3SketchIds(constrainedLoft), [
+      ...feature.references.map(({ featureId }) => featureId),
+      ...loftV3SupportBodies(constrainedLoft).map(({ featureId }) => featureId),
+    ])
   const loft = readLoftFeatureParameters(feature)
   if (loft)
     return expectedSketchFeatureDependencyIds(

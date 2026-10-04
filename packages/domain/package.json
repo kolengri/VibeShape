@@ -66,6 +66,7 @@
     "./part-design-shell": "./src/part-design-shell.ts",
     "./part-design-split": "./src/part-design-split.ts",
     "./part-design-loft": "./src/part-design-loft.ts",
+    "./part-design-loft-v3": "./src/part-design-loft-v3.ts",
     "./part-design-sweep": "./src/part-design-sweep.ts",
     "./part-design-pattern": "./src/part-design-pattern.ts",
     "./sketch-path-selector": "./src/sketch-path-selector.ts",

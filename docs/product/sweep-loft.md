@@ -12,15 +12,25 @@ Neither feature moves or rotates the source sketches to make a preview succeed.
 
 ## Loft
 
-Add two to twenty-four distinct closed, hole-free sections within the 2,000-curve aggregate budget. The list order defines the loft; use the explicit
-earlier, later, and removal actions to change it. **Ruled** selects straight interpolation between
-sections. Hole correspondence is not supported in this version. Degenerate or incompatible sections
-fail exact native preview instead of producing an approximate mesh.
+Add two to twenty-four distinct closed sections within the 2,000-curve aggregate budget. The list
+order defines the loft; use the explicit earlier, later, and removal actions to change it. **Ruled**
+selects straight interpolation between sections.
+
+For profiles with holes, add an explicit hole track and select one stable hole boundary in every
+ordered section. Every section must have the same number of holes, and every hole must occur exactly
+once. Reordering sections preserves their chosen track columns. Version 2 stores this correspondence;
+version 1 retains its hole-free replay. Editing version 2 to hole-free sections clears its tracks and
+preserves version 2 with an empty correspondence array.
+
+Holes must remain entirely inside the outer solid and must not cross other tracks. Degenerate or
+incompatible sections fail native preview. Guide and independent end-continuity data use the separate
+[version-3 native patch contract](../adr/0081-constrained-loft-native-patch-networks.md); live UI and MCP
+schemas establish whether an authoring adapter exposes that contract.
 
 ## Sweep
 
 Choose one closed profile, including its authored holes, then a saved path sketch and its analytical
-line or circular-arc entities. Select the path start point explicitly. Changing path sketches clears
+line, circular-arc, cubic Bezier, or bounded elliptical-arc entities. Select the path start point explicitly. Changing path sketches clears
 the selected curves and direction. The chosen entities persist in canonical ID order; the start point
 owns traversal direction independently of that ordering.
 

@@ -164,7 +164,11 @@ an explicit start point and G1-compatible joins. Loft v1 preserves hole-free rep
 stable hole tracks across ordered sections. Every hole must be matched once, and crossing or
 escaping inner solids fail exact preview. Section ordering and correspondence remain authored
 intent. Guide curves and independent end continuity are outside v2. See
-[ADR-0079](../adr/0079-exact-sweep-hollow-loft-and-sketch-corners.md).
+[ADR-0079](../adr/0079-exact-sweep-hollow-loft-and-sketch-corners.md). The separate
+[Loft v3 native contract](../adr/0081-constrained-loft-native-patch-networks.md) adds explicit outer
+correspondence, named C0 guides, and independently measured G1/G2 support-face constraints. Its bounded
+kernel contract does not establish UI or named MCP authoring availability; live schemas own that claim.
+
 
 Every feature requires:
 
