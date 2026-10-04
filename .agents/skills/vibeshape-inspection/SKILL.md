@@ -23,6 +23,8 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 
 Use the exact committed revision from `model_info` for model reads; draft reads use the draft's current revision and host-returned draft ID. Follow `nextCursor` until null for a complete requested collection, or stop when a targeted question is answered. Start with `cursor: null` where required. Reduce page size when a response exceeds budget. Do not mix pages across revisions.
 
+Tree dependency summaries include authored sketch inputs for Hole, Loft and Sweep, profile inputs and Revolve axis inputs as well as producer dependencies. Read complete entity records before changing those inputs; a summary does not include all parameters or establish current geometry availability.
+
 ## Interpret evidence
 
 Stable feature/part IDs and semantic body output roles identify authored intent. Transient OCCT face/edge indices, kernel handles, display names, and mesh order do not. Use only resolved durable references from the edge-selection tools for modeling. `model_body_topology` supplies current exact face references and content hash for Shell openings. Its references are not Hole/Fillet/Chamfer inputs; those operations retain their separate body/edge selection contracts.

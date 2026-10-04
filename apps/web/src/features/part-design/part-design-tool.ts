@@ -37,6 +37,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
 import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
@@ -294,6 +295,17 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
   ].some((matches) => matches(feature))
 }
 
+function isBodyTargetFeature(feature: FeatureRecord) {
+  return (
+    isPartDesignSolidFeature(feature) ||
+    hasFeatureType(feature, importedFeatureType.type) ||
+    hasFeatureType(feature, patternFeatureType.type) ||
+    hasFeatureType(feature, splitFeatureType.type) ||
+    hasFeatureType(feature, compoundFeatureType.type) ||
+    hasFeatureType(feature, compoundFeatureTypeV2.type)
+  )
+}
+
 function isModifyingInputFeature(feature: FeatureRecord) {
   if (!isPartDesignSolidFeature(feature)) return false
   if (
@@ -417,7 +429,7 @@ export function eligibleHoleTargetFeatures(
     : new Set<FeatureId>()
   return features.filter(
     (feature) =>
-      !feature.suppressed && !excludedIds.has(feature.id) && isModifyingInputFeature(feature),
+      !feature.suppressed && !excludedIds.has(feature.id) && isBodyTargetFeature(feature),
   )
 }
 

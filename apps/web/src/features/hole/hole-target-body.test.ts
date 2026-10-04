@@ -9,6 +9,10 @@ import {
   holeFeatureTypeV2,
 } from "@vibeshape/domain"
 import { modelBodyMeasurementEvidenceSchema } from "@vibeshape/domain/model-body-measurements"
+import { compoundFeatureTypeV2 } from "@vibeshape/domain/part-design-body-combination"
+import { importedFeatureType } from "@vibeshape/domain/part-design-import"
+import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
+import { splitFeatureType } from "@vibeshape/domain/part-design-split"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { holeTargetBodyOptions } from "./hole-target-body"
 
@@ -99,6 +103,24 @@ function fixture(features: FeatureRecord[] = [source], roles: (string | undefine
 beforeEach(() => vi.resetAllMocks())
 
 describe("Hole target body selection", () => {
+  it.each([
+    ["import", importedFeatureType.type, ["import.first", "import.second"]],
+    ["pattern", patternFeatureType.type, ["pattern.instance.0", "pattern.instance.1"]],
+    ["split", splitFeatureType.type, ["split.negative", "split.positive"]],
+    ["compound", compoundFeatureTypeV2.type, [`body.${id(20)}`, `body.${id(21)}`]],
+  ] as const)(
+    "offers exact %s outputs without widening selection to the producer",
+    (_kind, type, roles) => {
+      const target = featureRecordSchema.parse({ ...source, type })
+      const options = holeTargetBodyOptions(fixture([target], [...roles]))
+      expect(options.map(({ featureId, outputRole }) => ({ featureId, outputRole }))).toEqual(
+        roles.map((outputRole) => ({ featureId: target.id, outputRole })),
+      )
+      expect(holeTargetBodyOptions(fixture([{ ...target, suppressed: true }], [...roles]))).toEqual(
+        [],
+      )
+    },
+  )
   it("offers unconsumed sibling bodies and excludes the consumed source role", () => {
     const hole = consumer()
     const args = fixture([source, hole], ["pattern.instance.0", "pattern.instance.1"])
