@@ -50,6 +50,63 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("moves pairing only after an exact project transition receipt and rejects old target guards", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const target = { id: "0195b5ac-b220-7a2c-8c33-67a36a7f6102", name: "Target", revision: 2 }
+    const pending = broker.invoke(
+      localOperationSchema.parse({
+        tool: "open_project",
+        arguments: {
+          expectedProjectId: document.id,
+          expectedRevision: document.revision,
+          projectId: target.id,
+        },
+      }),
+    )
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = (await poll.json()) as { work: { requestId: string } }
+    const respond = (projectId: string) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: "open_project",
+            result: {
+              ok: true,
+              value: { projectId, name: target.name, revision: target.revision },
+            },
+          },
+          token,
+        ),
+      )
+    expect((await respond(document.id)).status).toBe(400)
+    expect((await respond(target.id)).status).toBe(200)
+    await expect(pending).resolves.toMatchObject({ ok: true, value: { projectId: target.id } })
+    expect((await respond(target.id)).status).toBe(200)
+    const next = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 2, document: target, progress: null }, token),
+    )
+    expect(next.status).toBe(200)
+    await expect(
+      broker.invoke(
+        localOperationSchema.parse({ tool: "model_info", projectId: document.id, arguments: {} }),
+      ),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "project-target-mismatch" } })
+    await expect(
+      broker.invoke(
+        localOperationSchema.parse({
+          tool: "open_project",
+          arguments: { expectedProjectId: document.id, expectedRevision: 4, projectId: target.id },
+        }),
+      ),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "stale-project" } })
+  })
+
   it("rejects forged history document, base, direction and command receipts before forwarding the exact save", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)

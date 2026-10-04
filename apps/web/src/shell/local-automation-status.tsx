@@ -11,12 +11,14 @@ import {
 } from "@vibeshape/ui/components/dialog"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
-import { useRef, useState } from "react"
+import { useId, useRef, useState } from "react"
 import type { createLocalAutomationConnection } from "../automation/local-automation-connection"
 
 type Connection = ReturnType<typeof createLocalAutomationConnection>
@@ -25,7 +27,10 @@ export function LocalAutomationStatus({
   connection,
   current,
 }: {
-  connection: Pick<Connection, "enable" | "disable" | "enableAutoApply" | "disableAutoApply">
+  connection: Pick<
+    Connection,
+    "enable" | "disable" | "enableAutoApply" | "disableAutoApply" | "setProjectManagement"
+  >
   current: ReturnType<Connection["getSnapshot"]>
 }) {
   const t = useTranslations("app.shell.applicationBar")
@@ -33,6 +38,7 @@ export function LocalAutomationStatus({
   const [failed, setFailed] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const openingDialog = useRef(false)
+  const projectScopeId = useId()
   return (
     <div className="flex shrink-0 items-center gap-1">
       {current.connected ? (
@@ -84,6 +90,7 @@ export function LocalAutomationStatus({
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem
                   value="automatic"
+                  disabled={current.busy}
                   onSelect={() => {
                     if (!current.autoApply) {
                       setFailed(false)
@@ -95,6 +102,20 @@ export function LocalAutomationStatus({
                   {t("automaticApproval")}
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={current.projectManagement}
+                disabled={current.busy}
+                aria-describedby={projectScopeId}
+                onCheckedChange={(enabled) => {
+                  setFailed(!connection.setProjectManagement(enabled === true))
+                }}
+              >
+                {t("allowProjectManagement")}
+              </DropdownMenuCheckboxItem>
+              <p id={projectScopeId} className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">
+                {t("projectManagementScope")}
+              </p>
             </DropdownMenuContent>
           </DropdownMenu>
           <AutoApplyConsentContent

@@ -689,6 +689,8 @@
         "approvalStatus": "AI on · {mode}",
         "manualApproval": "Approve each change",
         "automaticApproval": "Apply automatically",
+        "allowProjectManagement": "Allow project management",
+        "projectManagementScope": "Allow this AI session to list project names and create or open projects saved in this browser. Opening another project resets auto-apply. This permission ends when you stop AI, navigate manually, or reload.",
         "autoApplySetup": "Set up auto-apply",
         "autoApplySetupShort": "Auto…",
         "autoApplyScope": "Auto-apply is off by default. Enable it only for this project and this paired AI session.",

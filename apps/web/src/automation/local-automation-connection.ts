@@ -12,13 +12,16 @@ import { createActiveDocumentAutomationSession } from "../document/document-cont
 import { automationReviews } from "./automation-review-controller"
 import { LocalAutomationTransportError, localAutomationRequest } from "./local-automation-http"
 import { createLocalToolExecutor } from "./local-tool-executor"
+import { createProjectToolPort } from "./project-tool-port"
 
 type Handle = Extract<ReturnType<typeof createActiveDocumentAutomationSession>, { ok: true }>
+type Identity = ReturnType<Handle["readIdentity"]>
 type Snapshot = Readonly<{
   available: boolean
   connected: boolean
   recovering: boolean
   autoApply: boolean
+  projectManagement: boolean
   busy: boolean
   client: LocalConnection["client"] | null
   error: boolean
@@ -26,9 +29,15 @@ type Snapshot = Readonly<{
 type Pair = {
   credential: LocalConnection
   handle: Handle
-  executor: ReturnType<typeof createLocalToolExecutor>
+  executor: ReturnType<typeof createLocalToolExecutor> | null
   sequence: number
-  active: { work: LocalWork; controller: AbortController; acknowledging: boolean } | null
+  active: {
+    work: LocalWork
+    controller: AbortController
+    acknowledging: boolean
+    sourceIdentity: Identity
+  } | null
+  polling: Promise<void> | null
   queuedWork: LocalWork | null
   timer: ReturnType<typeof setTimeout> | null
 }
@@ -69,6 +78,7 @@ export function createLocalAutomationConnection() {
     connected: false,
     recovering: false,
     autoApply: false,
+    projectManagement: false,
     busy: false,
     client: null,
     error: false,
@@ -84,8 +94,12 @@ export function createLocalAutomationConnection() {
     snapshot = next
     for (const listener of listeners) listener()
   }
-  function saveResume(current: Pair) {
-    const info = current.handle.readIdentity()
+  function retainedIdentity(current: Pair) {
+    return isProjectChange(current)
+      ? (current.active?.sourceIdentity ?? null)
+      : current.handle.readIdentity()
+  }
+  function saveResume(current: Pair, info: Identity = retainedIdentity(current)) {
     if (!info) return false
     try {
       sessionStorage.setItem(
@@ -127,6 +141,7 @@ export function createLocalAutomationConnection() {
       connected: false,
       recovering: true,
       autoApply: false,
+      projectManagement: false,
       busy: false,
       error: true,
     })
@@ -157,7 +172,14 @@ export function createLocalAutomationConnection() {
     const current = pair
     if (current) closeLocal(current)
     if (snapshot.connected || snapshot.recovering)
-      publish({ ...snapshot, connected: false, recovering: false, autoApply: false, busy: false })
+      publish({
+        ...snapshot,
+        connected: false,
+        recovering: false,
+        autoApply: false,
+        projectManagement: false,
+        busy: false,
+      })
     const credential = current?.credential ?? saved
     if (credential && !(await revokeCredential(credential))) publish({ ...snapshot, error: true })
   }
@@ -165,6 +187,46 @@ export function createLocalAutomationConnection() {
     if (pair !== current) return
     await disable()
     publish({ ...snapshot, error: true })
+  }
+  function isProjectChange(current: Pair) {
+    const tool = current.active?.work.operation.tool
+    return tool === "create_project" || tool === "open_project"
+  }
+  function validateDocumentScope() {
+    const current = pair
+    if (!current || (snapshot.projectManagement && isProjectChange(current))) return
+    if (!current.handle.readIdentity()) void disable()
+  }
+  function createExecutor(current: Pair) {
+    return createLocalToolExecutor(
+      current.handle,
+      current.credential.actor,
+      createProjectToolPort({
+        actor: current.credential.actor,
+        isAllowed: () =>
+          pair === current &&
+          snapshot.connected &&
+          snapshot.projectManagement &&
+          current.active?.controller.signal.aborted !== true,
+        readIdentity: () => current.handle.readIdentity(),
+        replaceSession: () => {
+          if (
+            pair !== current ||
+            !snapshot.projectManagement ||
+            !current.active ||
+            current.active.controller.signal.aborted
+          )
+            return false
+          const created = createActiveDocumentAutomationSession()
+          if (!created.ok) return false
+          current.handle.dispose()
+          current.handle = created
+          current.executor = createExecutor(current)
+          publish({ ...snapshot, autoApply: false })
+          return true
+        },
+      }),
+    )
   }
   async function status() {
     if (disposed || !document.querySelector('meta[name="vibeshape-local-automation"][content="1"]'))
@@ -195,12 +257,17 @@ export function createLocalAutomationConnection() {
   }
   async function dispatch(current: Pair, work: LocalWork) {
     if (pair !== current) return
-    if (current.active) {
+    if (current.active || !current.executor) {
       await fail(current)
       return
     }
     const controller = new AbortController()
-    current.active = { work, controller, acknowledging: false }
+    current.active = {
+      work,
+      controller,
+      acknowledging: false,
+      sourceIdentity: current.handle.readIdentity(),
+    }
     publish({ ...snapshot, busy: true })
     let result: unknown
     try {
@@ -212,37 +279,55 @@ export function createLocalAutomationConnection() {
     if (pair !== current || controller.signal.aborted) return
     await sendOperationResult(current, work, result)
   }
-  async function sendOperationResult(current: Pair, work: LocalWork, result: unknown) {
-    if (current.active) current.active.acknowledging = true
-    try {
-      const response = await localAutomationRequest(
-        "/result",
-        {
-          protocolVersion: 1,
-          requestId: work.requestId,
-          tool: work.operation.tool,
-          result,
-        },
-        current.credential.token,
+  async function acknowledgeOperationResult(current: Pair, work: LocalWork, result: unknown) {
+    const response = await localAutomationRequest(
+      "/result",
+      {
+        protocolVersion: 1,
+        requestId: work.requestId,
+        tool: work.operation.tool,
+        result,
+      },
+      current.credential.token,
+    )
+    if (retryableResponse(response))
+      throw new LocalAutomationTransportError(
+        "The result acknowledgement is temporarily unavailable.",
       )
-      if (retryableResponse(response))
-        throw new LocalAutomationTransportError(
-          "The result acknowledgement is temporarily unavailable.",
-        )
-      if (!response.ok || !acknowledgement.safeParse(response.data).success)
-        throw new Error("The operation result was not accepted.")
+    if (!response.ok || !acknowledgement.safeParse(response.data).success)
+      throw new Error("The operation result was not accepted.")
+  }
+  function finishOperation(current: Pair) {
+    current.active = null
+    if (pair !== current) return
+    const queued = current.queuedWork
+    current.queuedWork = null
+    if (queued) void dispatch(current, queued)
+    else {
+      publish({ ...snapshot, busy: false })
+      validateDocumentScope()
+    }
+  }
+  async function sendOperationResult(current: Pair, work: LocalWork, result: unknown) {
+    try {
+      if (!(await prepareOperationResult(current))) return
+      await acknowledgeOperationResult(current, work, result)
+      if (pair === current && isProjectChange(current))
+        saveResume(current, current.handle.readIdentity())
     } catch (error) {
       if (error instanceof LocalAutomationTransportError) await recover(current)
       else await fail(current)
     } finally {
-      current.active = null
-      if (pair === current) {
-        const queued = current.queuedWork
-        current.queuedWork = null
-        if (queued) void dispatch(current, queued)
-        else publish({ ...snapshot, busy: false })
-      }
+      finishOperation(current)
     }
+  }
+  async function prepareOperationResult(current: Pair) {
+    const active = current.active
+    if (!active) return false
+    active.acknowledging = true
+    // Drain source heartbeats before a successful result authorizes the target identity.
+    if (isProjectChange(current)) await current.polling
+    return pair === current && !active.controller.signal.aborted
   }
   function acceptWork(current: Pair, work: LocalWork) {
     const active = current.active
@@ -326,10 +411,10 @@ export function createLocalAutomationConnection() {
       throw new Error("The session was revoked.")
     if (value.work) acceptWork(current, value.work)
   }
-  async function poll(current: Pair) {
-    if (pair !== current) return
+  async function pollSession(current: Pair) {
     try {
-      const info = current.handle.readIdentity()
+      if (isProjectChange(current) && current.active?.acknowledging) return
+      const info = retainedIdentity(current)
       if (!info) {
         await disable()
         return
@@ -340,7 +425,16 @@ export function createLocalAutomationConnection() {
     } catch (error) {
       if (error instanceof LocalAutomationTransportError) await recover(current)
       else await fail(current)
+    }
+  }
+  async function poll(current: Pair) {
+    if (pair !== current || current.polling) return
+    const polling = pollSession(current)
+    current.polling = polling
+    try {
+      await polling
     } finally {
+      if (current.polling === polling) current.polling = null
       if (pair === current) current.timer = setTimeout(() => void poll(current), 500)
     }
   }
@@ -351,6 +445,7 @@ export function createLocalAutomationConnection() {
       connected: true,
       recovering: false,
       autoApply,
+      projectManagement: false,
       busy: false,
       client: current.credential.client,
       error: false,
@@ -388,13 +483,15 @@ export function createLocalAutomationConnection() {
     const current: Pair = {
       credential,
       handle: created,
-      executor: createLocalToolExecutor(created, credential.actor),
+      executor: null,
       sequence: 0,
       active: null,
+      polling: null,
       queuedWork: null,
       timer: null,
     }
     pair = current
+    current.executor = createExecutor(current)
     publishConnection(current, saved?.autoApply === true)
     saveResume(current)
     void poll(current)
@@ -515,7 +612,14 @@ export function createLocalAutomationConnection() {
       return
     }
     closeLocal(current)
-    publish({ ...snapshot, connected: false, recovering: true, autoApply: false, busy: false })
+    publish({
+      ...snapshot,
+      connected: false,
+      recovering: true,
+      autoApply: false,
+      projectManagement: false,
+      busy: false,
+    })
     void localAutomationRequest("/suspend", {}, current.credential.token, true).catch(
       () => undefined,
     )
@@ -531,6 +635,22 @@ export function createLocalAutomationConnection() {
   }
   return {
     enable,
+    validateDocumentScope,
+    isProjectActionPending: () =>
+      pair !== null && snapshot.projectManagement && isProjectChange(pair),
+    setProjectManagement(enabled: boolean) {
+      const current = pair
+      if (
+        !current ||
+        !snapshot.connected ||
+        current.active ||
+        automationReviews.getSnapshot() ||
+        !current.handle.readIdentity()
+      )
+        return false
+      publish({ ...snapshot, projectManagement: enabled })
+      return true
+    },
     enableAutoApply() {
       const current = pair
       if (

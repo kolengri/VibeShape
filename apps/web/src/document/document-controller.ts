@@ -13,6 +13,7 @@ import {
   type PersistentDocumentRepositoryPort,
   type PersistentDocumentSession,
   type PersistentDocumentSessionDiagnostic,
+  type PersistentDocumentSessionOpenResult,
   type PersistentDocumentSessionReport,
   type PersistentSketchSolveOptions,
   type PersistentSketchSolveResult,
@@ -87,8 +88,12 @@ import {
 } from "@vibeshape/domain/assembly-authority"
 import { mergeCapturedAssemblyAssets } from "@vibeshape/domain/assembly-pinned-insertion"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
-import { commandActorsEqual, type DocumentCommand } from "@vibeshape/domain/commands"
-import { documentSnapshotSchema } from "@vibeshape/domain/document"
+import {
+  type CommandActor,
+  commandActorsEqual,
+  type DocumentCommand,
+} from "@vibeshape/domain/commands"
+import { documentNameInputSchema, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type {
   AuthoredDocumentSnapshot,
   DocumentAuthoritySnapshot,
@@ -229,6 +234,11 @@ export type ProjectSwitchResult =
   | { ok: true }
   | { ok: false; diagnostic: { code: string; message: string } }
 
+export type AutomationProjectExpectation = Readonly<{ documentId: string; revision: number }>
+export type AutomationProjectResult =
+  | { ok: true; value: { projectId: string; name: string; revision: number } }
+  | { ok: false; diagnostic: { code: string; message: string; retryable: boolean } }
+
 export type ProjectDeleteResult = ProjectSwitchResult
 export type ProjectThumbnailWriteResult = ProjectSwitchResult
 
@@ -248,6 +258,8 @@ let state: DocumentControllerState = {
 }
 let session: PersistentDocumentSession | null = null
 let activeRepository: BrowserProjectRepository | null = null
+let activeDatabase: VibeShapeDatabase | null = null
+let defaultProjectName = "Untitled project"
 let startPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
 const projectActionGuard = createProjectActionGuard()
@@ -277,8 +289,10 @@ function captureProjectAction() {
     repository,
     id,
     revision,
-    current: () =>
-      !getProjectActionBlock() &&
+    current: (saveStatus: SaveStatus = "saved") =>
+      state.status === "ready" &&
+      state.saveStatus === saveStatus &&
+      !getProjectActiveWorkBlock() &&
       session === active &&
       activeRepository === repository &&
       active.snapshot.id === id &&
@@ -324,16 +338,6 @@ function writeStoredId(storage: Storage, key: string, value: string) {
   try {
     storage.setItem(key, value)
     return storage.getItem(key) === value
-  } catch {
-    // IndexedDB remains authoritative when browser key-value storage is unavailable.
-    return false
-  }
-}
-
-function removeStoredId(storage: Storage, key: string) {
-  try {
-    storage.removeItem(key)
-    return storage.getItem(key) === null
   } catch {
     // IndexedDB remains authoritative when browser key-value storage is unavailable.
     return false
@@ -412,7 +416,11 @@ function currentSessionId() {
   return created
 }
 
-function createCommand(documentId: ReturnType<typeof documentIdSchema.parse>, name: string) {
+function createCommand(
+  documentId: ReturnType<typeof documentIdSchema.parse>,
+  name: string,
+  actor: CommandActor = { type: "user", userId: null },
+) {
   return {
     kind: "org.vibeshape.document.create",
     schemaVersion: 1,
@@ -420,50 +428,32 @@ function createCommand(documentId: ReturnType<typeof documentIdSchema.parse>, na
     documentId,
     baseRevision: 0,
     issuedAt: new Date().toISOString(),
-    actor: { type: "user", userId: null },
+    actor,
     payload: { name },
   } as const
 }
 
 async function openOrCreate(defaultDocumentName: string) {
   const database = new VibeShapeDatabase(DATABASE_NAME)
+  activeDatabase = database
   const repository = new BrowserProjectRepository(database)
   activeRepository = repository
-  const versionedAdapter = createAuthorityPersistenceAdapter(
-    repository.versioned,
-    createBrowserPart,
-  )
-  const sessionDependencies = dependencies(database, versionedAdapter, repository)
-  const sessionId = currentSessionId()
   const storedDocumentId = documentIdSchema.safeParse(
     readStoredId(localStorage, DOCUMENT_STORAGE_KEY),
   )
-
   if (storedDocumentId.success) {
-    const opened = await openAuthorityDocumentSession(
-      {
-        ...sessionDependencies,
-        legacyRepository: repository.legacy,
-        versionedRepository: repository.versioned,
-        createPart: createBrowserPart,
-      },
-      {
-        documentId: storedDocumentId.data,
-        sessionId,
-        mesh: PRODUCT_MESH_POLICY,
-        storedAt: new Date().toISOString(),
-      },
-    )
-    if (opened.ok) return enableAuthoredDocument(opened)
-    if (opened.diagnostic.sourceCode !== "document-not-found") return opened
+    const opened = await openControllerProject(database, repository, storedDocumentId.data)
+    if (opened.ok || opened.diagnostic.sourceCode !== "document-not-found") return opened
   }
-
   const documentId = createBrowserDocumentId()
-  const created = await createPersistentDocumentSession(sessionDependencies, {
-    sessionId,
-    mesh: PRODUCT_MESH_POLICY,
-    command: createCommand(documentId, defaultDocumentName),
-  })
+  const created = await createPersistentDocumentSession(
+    browserProjectDependencies(database, repository),
+    {
+      sessionId: currentSessionId(),
+      mesh: PRODUCT_MESH_POLICY,
+      command: createCommand(documentId, defaultDocumentName),
+    },
+  )
   if (created.ok) writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId)
   return enableAuthoredDocument(created)
 }
@@ -498,6 +488,7 @@ async function start(defaultDocumentName: string) {
 }
 
 function startDocumentController(defaultDocumentName: string) {
+  defaultProjectName = defaultDocumentName
   startPromise ??= start(defaultDocumentName)
   return startPromise
 }
@@ -1179,7 +1170,7 @@ export async function applyVariableTable(
   baseRevision: number,
   variables: readonly VariableDefinition[],
 ): Promise<ApplyVariableTableResult> {
-  if (!session || state.status !== "ready" || !state.report) {
+  if (!session || state.status !== "ready" || !state.report || state.saveStatus === "saving") {
     return {
       ok: false,
       diagnostic: {
@@ -1997,7 +1988,7 @@ async function commitDocumentCommand(
     documentId: ReturnType<typeof documentIdSchema.parse>,
   ) => Parameters<NonNullable<typeof session>["commit"]>[0],
 ): Promise<ApplyVariableTableResult> {
-  if (!session || state.status !== "ready" || !state.report) {
+  if (!session || state.status !== "ready" || !state.report || state.saveStatus === "saving") {
     return {
       ok: false,
       diagnostic: {
@@ -2440,91 +2431,419 @@ export async function saveActiveProjectThumbnail(
   return stored.ok ? { ok: true } : { ok: false, diagnostic: stored.diagnostic }
 }
 
+type AutomationProjectRequest =
+  | {
+      kind: "create"
+      documentId: ReturnType<typeof documentIdSchema.parse>
+      name: string
+      actor: CommandActor
+    }
+  | { kind: "open"; documentId: ReturnType<typeof documentIdSchema.parse> }
+
+function automationProjectFailure(code: string, message: string, retryable = false) {
+  return { ok: false as const, diagnostic: { code, message, retryable } }
+}
+
+function automationProjectValue(
+  active: PersistentDocumentSession,
+  requireWritable = false,
+): AutomationProjectResult {
+  const blocked = projectWriteAccessBlock(
+    active,
+    state.report?.writeAccessDiagnostic,
+    requireWritable,
+  )
+  if (blocked) return blocked
+  const { id, name, revision } = active.snapshot
+  return { ok: true, value: { projectId: id, name, revision } }
+}
+
+function browserProjectDependencies(
+  database: VibeShapeDatabase,
+  repository: BrowserProjectRepository,
+) {
+  return {
+    ...dependencies(
+      database,
+      createAuthorityPersistenceAdapter(repository.versioned, createBrowserPart),
+      repository,
+    ),
+    legacyRepository: repository.legacy,
+    versionedRepository: repository.versioned,
+    createPart: createBrowserPart,
+  }
+}
+
+async function openControllerProject(
+  database: VibeShapeDatabase,
+  repository: BrowserProjectRepository,
+  documentId: ReturnType<typeof documentIdSchema.parse>,
+) {
+  return enableAuthoredDocument(
+    await openAuthorityDocumentSession(browserProjectDependencies(database, repository), {
+      documentId,
+      sessionId: currentSessionId(),
+      mesh: PRODUCT_MESH_POLICY,
+      storedAt: new Date().toISOString(),
+    }),
+  )
+}
+
+function publishOpenedProject(opened: Extract<PersistentDocumentSessionOpenResult, { ok: true }>) {
+  session = opened.session
+  publish({
+    status: "ready",
+    report: opened.report,
+    saveStatus: "saved",
+    diagnostic: opened.report.writeAccessDiagnostic,
+  })
+}
+
+async function prepareAutomationTarget(
+  transition: AutomationProjectTransition,
+  request: AutomationProjectRequest,
+): Promise<PersistentDocumentSessionOpenResult> {
+  if (request.kind === "open") {
+    const projects = await transition.action.repository.listProjects()
+    if (!projects.ok)
+      return {
+        ok: false,
+        diagnostic: {
+          code: "persistence-failed",
+          message: projects.diagnostic.message,
+          retryable: projects.diagnostic.retryable,
+          sourceCode: projects.diagnostic.code,
+        },
+      }
+    if (!projects.value.some((project) => project.documentId === request.documentId))
+      return {
+        ok: false,
+        diagnostic: {
+          code: "persistence-failed",
+          message: "The local project does not exist.",
+          retryable: false,
+          sourceCode: "document-not-found",
+        },
+      }
+    const stopped = projectTransitionInterruption(transition)
+    if (stopped)
+      return {
+        ok: false,
+        diagnostic: {
+          code: "session-closed",
+          message: stopped.diagnostic.message,
+          retryable: stopped.diagnostic.retryable,
+          sourceCode: stopped.diagnostic.code,
+        },
+      }
+    return openControllerProject(
+      transition.database,
+      transition.action.repository,
+      request.documentId,
+    )
+  }
+  return enableAuthoredDocument(
+    await createPersistentDocumentSession(
+      browserProjectDependencies(transition.database, transition.action.repository),
+      {
+        sessionId: currentSessionId(),
+        mesh: PRODUCT_MESH_POLICY,
+        command: createCommand(request.documentId, request.name, request.actor),
+      },
+    ),
+  )
+}
+
+type AutomationProjectTransition = {
+  action: NonNullable<ReturnType<typeof captureProjectAction>>
+  database: VibeShapeDatabase
+  previousState: DocumentControllerState
+  prepared: Extract<PersistentDocumentSessionOpenResult, { ok: true }> | null
+  sourceClosed: boolean
+  selectionChanged: boolean
+  signal: AbortSignal | undefined
+  requireWritable: boolean
+}
+
+function projectTransitionInterruption(transition: AutomationProjectTransition) {
+  if (transition.signal?.aborted)
+    return automationProjectFailure("cancelled", "The project action was cancelled.")
+  if (!transition.action.current("saving"))
+    return automationProjectFailure(
+      "stale-revision",
+      "The active project changed during this action.",
+      true,
+    )
+  return null
+}
+
+function automationProjectDiagnostic(diagnostic: {
+  code: string
+  message: string
+  retryable: boolean
+  sourceCode?: string | null
+}) {
+  return automationProjectFailure(
+    diagnostic.sourceCode ?? diagnostic.code,
+    diagnostic.message,
+    diagnostic.retryable,
+  )
+}
+
+function projectWriteAccessBlock(
+  active: PersistentDocumentSession,
+  diagnostic: PersistentDocumentSessionDiagnostic | null | undefined,
+  requireWritable: boolean,
+) {
+  if (!requireWritable || active.mode === "read-write") return null
+  return diagnostic
+    ? automationProjectDiagnostic(diagnostic)
+    : automationProjectFailure(
+        "write-access-unavailable",
+        "The requested project is not available for writing.",
+        true,
+      )
+}
+
+async function activateAutomationTarget(
+  transition: AutomationProjectTransition,
+  target: Extract<PersistentDocumentSessionOpenResult, { ok: true }>,
+): Promise<AutomationProjectResult> {
+  const blocked =
+    projectTransitionInterruption(transition) ??
+    projectWriteAccessBlock(
+      target.session,
+      target.report.writeAccessDiagnostic,
+      transition.requireWritable,
+    )
+  if (blocked) return blocked
+  transition.selectionChanged = true
+  if (!writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, target.session.snapshot.id))
+    return automationProjectFailure(
+      "storage-unavailable",
+      "The active project selection could not be stored in this browser.",
+      true,
+    )
+  // Close terminates the source even on failure; rollback must open a new session.
+  transition.sourceClosed = true
+  const closed = await transition.action.active.close()
+  if (!closed.ok)
+    return automationProjectFailure(
+      closed.diagnostic.code,
+      closed.diagnostic.message,
+      closed.diagnostic.retryable,
+    )
+  const cancelled = projectTransitionInterruption(transition)
+  if (cancelled) return cancelled
+  publishOpenedProject(target)
+  transition.prepared = null
+  transition.selectionChanged = false
+  return automationProjectValue(target.session)
+}
+
+async function closePreparedAutomationTarget(transition: AutomationProjectTransition) {
+  if (!transition.prepared) return null
+  try {
+    const closed = await transition.prepared.session.close()
+    return closed.ok
+      ? null
+      : automationProjectFailure(
+          closed.diagnostic.code,
+          closed.diagnostic.message,
+          closed.diagnostic.retryable,
+        )
+  } catch {
+    return automationProjectFailure(
+      "close-failed",
+      "The requested project could not be closed cleanly.",
+      true,
+    )
+  }
+}
+
+function publishProjectRecoveryFailure(
+  previousState: DocumentControllerState,
+  diagnostic: PersistentDocumentSessionDiagnostic,
+) {
+  session = null
+  publish({ ...previousState, status: "error", diagnostic })
+  return automationProjectFailure(
+    "project-recovery-failed",
+    "The prior project is saved but could not be reopened.",
+    true,
+  )
+}
+
+async function recoverAutomationSource(transition: AutomationProjectTransition) {
+  try {
+    const restored = await openControllerProject(
+      transition.database,
+      transition.action.repository,
+      transition.action.id,
+    )
+    if (!restored.ok)
+      return publishProjectRecoveryFailure(transition.previousState, restored.diagnostic)
+    publishOpenedProject(restored)
+    return null
+  } catch {
+    return publishProjectRecoveryFailure(transition.previousState, {
+      code: "persistence-failed",
+      message: "The prior project is saved but could not be reopened.",
+      retryable: true,
+      sourceCode: null,
+    })
+  }
+}
+
+async function rollbackAutomationTransition(
+  transition: AutomationProjectTransition,
+  failure: Extract<AutomationProjectResult, { ok: false }>,
+): Promise<AutomationProjectResult> {
+  let result = (await closePreparedAutomationTarget(transition)) ?? failure
+  if (
+    transition.selectionChanged &&
+    !writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, transition.action.id)
+  )
+    result = automationProjectFailure(
+      "storage-unavailable",
+      "The prior project selection could not be restored.",
+      true,
+    )
+  if (transition.sourceClosed) result = (await recoverAutomationSource(transition)) ?? result
+  else if (session === transition.action.active) publish(transition.previousState)
+  return result
+}
+
+function captureAutomationProjectAction(
+  expectedProject: AutomationProjectExpectation,
+  signal?: AbortSignal,
+) {
+  if (signal?.aborted)
+    return automationProjectFailure("cancelled", "The project action was cancelled.")
+  const action = captureProjectAction()
+  const database = activeDatabase
+  if (!action || !database)
+    return automationProjectFailure(
+      "project-action-blocked",
+      "Finish the active edit, save, or AI operation before switching projects.",
+      true,
+    )
+  if (action.id !== expectedProject.documentId || action.revision !== expectedProject.revision)
+    return automationProjectFailure(
+      "stale-revision",
+      "The active project changed before this action.",
+      true,
+    )
+  return { ok: true as const, action, database }
+}
+
+async function switchAutomationProject(
+  request: AutomationProjectRequest,
+  expectedProject: AutomationProjectExpectation,
+  signal?: AbortSignal,
+  requireWritable = true,
+): Promise<AutomationProjectResult> {
+  const captured = captureAutomationProjectAction(expectedProject, signal)
+  if (!captured.ok) return captured
+  const { action, database } = captured
+  if (request.kind === "open" && request.documentId === action.id)
+    return automationProjectValue(action.active, requireWritable)
+  const transition: AutomationProjectTransition = {
+    action,
+    database,
+    previousState: state,
+    prepared: null,
+    sourceClosed: false,
+    selectionChanged: false,
+    signal,
+    requireWritable,
+  }
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  let result: AutomationProjectResult
+  try {
+    const target = await prepareAutomationTarget(transition, request)
+    if (target.ok) {
+      transition.prepared = target
+      result = await activateAutomationTarget(transition, target)
+    } else result = automationProjectDiagnostic(target.diagnostic)
+  } catch {
+    result = automationProjectFailure(
+      "persistence-failed",
+      "The project action could not be completed.",
+      true,
+    )
+  }
+  return result.ok ? result : rollbackAutomationTransition(transition, result)
+}
+
+export async function createAutomationProject(
+  name: string,
+  expectedProject: AutomationProjectExpectation,
+  signal?: AbortSignal,
+  actor: CommandActor = { type: "user", userId: null },
+): Promise<AutomationProjectResult> {
+  const parsed = documentNameInputSchema.safeParse(name)
+  if (!parsed.success)
+    return automationProjectFailure("invalid-input", "The project name is invalid.")
+  return switchAutomationProject(
+    { kind: "create", documentId: createBrowserDocumentId(), name: parsed.data, actor },
+    expectedProject,
+    signal,
+  )
+}
+
+export async function openAutomationProject(
+  documentIdInput: string,
+  expectedProject: AutomationProjectExpectation,
+  signal?: AbortSignal,
+): Promise<AutomationProjectResult> {
+  const documentId = documentIdSchema.safeParse(documentIdInput)
+  if (!documentId.success)
+    return automationProjectFailure("invalid-input", "The project ID is invalid.")
+  return switchAutomationProject(
+    { kind: "open", documentId: documentId.data },
+    expectedProject,
+    signal,
+  )
+}
+
 export async function activateLocalProject(
   documentIdInput: unknown,
-  expectedProject?: { documentId: string; revision: number },
+  expectedProject?: AutomationProjectExpectation,
 ): Promise<ProjectSwitchResult> {
   const action = captureProjectAction()
   if (!action) return projectActionUnavailable()
-  if (
-    expectedProject &&
-    (action.id !== expectedProject.documentId || action.revision !== expectedProject.revision)
-  )
-    return projectActionUnavailable()
   const documentId = documentIdSchema.safeParse(documentIdInput)
-  if (!documentId.success) {
+  if (!documentId.success)
     return {
       ok: false,
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
-  }
-  if (action.id === documentId.data) return { ok: true }
-  const projects = await action.repository.listProjects()
-  if (!projects.ok) return { ok: false, diagnostic: projects.diagnostic }
-  if (!projects.value.some((project) => project.documentId === documentId.data)) {
-    return {
-      ok: false,
-      diagnostic: { code: "document-not-found", message: "The local project does not exist." },
-    }
-  }
-  if (!action.current()) return projectActionUnavailable()
-  const closed = await action.active.close()
-  if (!action.current()) {
-    window.location.reload()
-    return projectActionUnavailable()
-  }
-  session = null
-  if (!closed.ok) {
-    window.location.reload()
-    return { ok: false, diagnostic: closed.diagnostic }
-  }
-  if (!writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId.data)) {
-    window.location.reload()
-    return {
-      ok: false,
-      diagnostic: {
-        code: "storage-unavailable",
-        message: "The active project selection could not be stored in this browser.",
-      },
-    }
-  }
-  window.location.reload()
-  return { ok: true }
+  const result = await switchAutomationProject(
+    { kind: "open", documentId: documentId.data },
+    expectedProject ?? { documentId: action.id, revision: action.revision },
+    undefined,
+    false,
+  )
+  return result.ok ? { ok: true } : result
 }
 
 export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
   const action = captureProjectAction()
   if (!action) return projectActionUnavailable()
-  const closed = await action.active.close()
-  if (!action.current()) {
-    window.location.reload()
-    return projectActionUnavailable()
-  }
-  session = null
-  if (!closed.ok) {
-    window.location.reload()
-    return { ok: false, diagnostic: closed.diagnostic }
-  }
-  if (!removeStoredId(localStorage, DOCUMENT_STORAGE_KEY)) {
-    window.location.reload()
-    return {
-      ok: false,
-      diagnostic: {
-        code: "storage-unavailable",
-        message: "The active project selection could not be cleared in this browser.",
-      },
-    }
-  }
-  window.location.reload()
-  return { ok: true }
+  const result = await createAutomationProject(defaultProjectName, {
+    documentId: action.id,
+    revision: action.revision,
+  })
+  return result.ok ? { ok: true } : result
 }
 
 export async function deleteLocalProject(
   documentIdInput: unknown,
   expectedHeadRevision: number,
 ): Promise<ProjectDeleteResult> {
-  if (!session || !activeRepository || state.status !== "ready") {
-    return unavailableProjectFileResult()
+  if (!session || !activeRepository || getProjectActionBlock()) {
+    return projectActionUnavailable()
   }
   const documentId = documentIdSchema.safeParse(documentIdInput)
   if (!documentId.success) {

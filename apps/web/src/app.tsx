@@ -66,7 +66,7 @@ import { SketchTextActionsProvider } from "./features/sketch/text/text-context"
 import { SketchTextDialog } from "./features/sketch/text/text-dialog"
 import { ApplicationBar } from "./shell/application-bar"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
-import { AutomationConnectionsProvider } from "./shell/automation-status"
+import { AutomationConnectionsProvider, AutomationEditorScope } from "./shell/automation-status"
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
@@ -868,71 +868,69 @@ function EditorApplication({
     />
   )
   return (
-    <AutomationConnectionsProvider controller={controller}>
-      <main className="cad-shell bg-background text-[13px] text-foreground">
-        <ApplicationBar
-          controller={controller}
-          hideModelExport={assemblyMode.active}
-          onOpenShortcutHelp={shortcutHelp.show}
-          onOpenCommandPalette={(returnFocusTarget) =>
-            commandPaletteFocus.setOpen(true, returnFocusTarget)
+    <main className="cad-shell bg-background text-[13px] text-foreground">
+      <ApplicationBar
+        controller={controller}
+        hideModelExport={assemblyMode.active}
+        onOpenShortcutHelp={shortcutHelp.show}
+        onOpenCommandPalette={(returnFocusTarget) =>
+          commandPaletteFocus.setOpen(true, returnFocusTarget)
+        }
+      >
+        <AssemblyModeSwitch
+          active={assemblyMode.active}
+          disabled={
+            controller.status !== "ready" ||
+            controller.saveStatus === "saving" ||
+            Boolean(session.activePartDesignTool || session.sketch.activeSketchTool)
           }
-        >
-          <AssemblyModeSwitch
+          onChange={assemblyMode.onChange}
+        />
+      </ApplicationBar>
+      <ShortcutHelpDialog
+        commands={commands}
+        open={shortcutHelp.open}
+        onOpenChange={shortcutHelp.setOpen}
+        returnFocusRef={shortcutHelp.returnFocusRef}
+      />
+      <EditorCommandPalette
+        commands={commands}
+        open={session.commandPaletteOpen}
+        returnFocusRef={commandPaletteFocus.returnFocusRef}
+        onOpenChange={commandPaletteFocus.setOpen}
+      />
+      <SketchShortcutToolbar
+        anchor={sketchShortcutAnchor}
+        commands={commands}
+        open={sketchShortcutToolbarOpen}
+        returnFocusRef={sketchShortcutReturnFocusRef}
+        onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
+      />
+      <SketchTextActionsProvider actions={textDialog.actions}>
+        <SketchToolbarPortalsProvider>
+          <CommandToolbar commands={commands} />
+          <AssemblyContent
             active={assemblyMode.active}
-            disabled={
-              controller.status !== "ready" ||
-              controller.saveStatus === "saving" ||
-              Boolean(session.activePartDesignTool || session.sketch.activeSketchTool)
-            }
-            onChange={assemblyMode.onChange}
-          />
-        </ApplicationBar>
-        <ShortcutHelpDialog
-          commands={commands}
-          open={shortcutHelp.open}
-          onOpenChange={shortcutHelp.setOpen}
-          returnFocusRef={shortcutHelp.returnFocusRef}
+            controller={controller}
+            selectedPartId={session.selectedPartId}
+          >
+            {modelWorkspace}
+          </AssemblyContent>
+        </SketchToolbarPortalsProvider>
+        <SketchTextDialog
+          target={textDialog.target}
+          getDraft={textDialog.getDraft}
+          onDraftChange={textDialog.commitDraft}
+          onClose={textDialog.close}
         />
-        <EditorCommandPalette
-          commands={commands}
-          open={session.commandPaletteOpen}
-          returnFocusRef={commandPaletteFocus.returnFocusRef}
-          onOpenChange={commandPaletteFocus.setOpen}
-        />
-        <SketchShortcutToolbar
-          anchor={sketchShortcutAnchor}
-          commands={commands}
-          open={sketchShortcutToolbarOpen}
-          returnFocusRef={sketchShortcutReturnFocusRef}
-          onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
-        />
-        <SketchTextActionsProvider actions={textDialog.actions}>
-          <SketchToolbarPortalsProvider>
-            <CommandToolbar commands={commands} />
-            <AssemblyContent
-              active={assemblyMode.active}
-              controller={controller}
-              selectedPartId={session.selectedPartId}
-            >
-              {modelWorkspace}
-            </AssemblyContent>
-          </SketchToolbarPortalsProvider>
-          <SketchTextDialog
-            target={textDialog.target}
-            getDraft={textDialog.getDraft}
-            onDraftChange={textDialog.commitDraft}
-            onClose={textDialog.close}
-          />
-        </SketchTextActionsProvider>
-        <StatusBar
-          selectedBody={session.selectedBody}
-          controller={controller}
-          selectedOriginPlane={session.selectedOriginPlane}
-          selection={session.selection}
-        />
-      </main>
-    </AutomationConnectionsProvider>
+      </SketchTextActionsProvider>
+      <StatusBar
+        selectedBody={session.selectedBody}
+        controller={controller}
+        selectedOriginPlane={session.selectedOriginPlane}
+        selection={session.selection}
+      />
+    </main>
   )
 }
 
@@ -946,12 +944,15 @@ export function App() {
     >
       <ViewerPreferencesProvider>
         <WorkspaceLayoutPreferencesProvider>
-          <EditorSessionProvider
-            key={controller.report?.snapshot.id ?? "loading"}
-            documentId={controller.report?.snapshot.id}
-          >
-            <EditorApplication controller={controller} />
-          </EditorSessionProvider>
+          <AutomationConnectionsProvider controller={controller}>
+            <EditorSessionProvider
+              key={controller.report?.snapshot.id ?? "loading"}
+              documentId={controller.report?.snapshot.id}
+            >
+              <AutomationEditorScope />
+              <EditorApplication controller={controller} />
+            </EditorSessionProvider>
+          </AutomationConnectionsProvider>
         </WorkspaceLayoutPreferencesProvider>
       </ViewerPreferencesProvider>
     </DocumentDisplayUnitsProvider>

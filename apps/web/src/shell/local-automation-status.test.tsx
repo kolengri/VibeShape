@@ -15,6 +15,7 @@ const manual: Props["current"] = {
   connected: true,
   recovering: false,
   autoApply: false,
+  projectManagement: false,
   busy: false,
   client: { name: "Test CAD client", version: "1" },
   error: false,
@@ -26,6 +27,7 @@ function setup(current: Props["current"] = manual) {
     disable: vi.fn().mockResolvedValue(undefined),
     enableAutoApply: vi.fn().mockReturnValue(true),
     disableAutoApply: vi.fn().mockReturnValue(true),
+    setProjectManagement: vi.fn().mockReturnValue(true),
   }
   const content = (snapshot: Props["current"]) => (
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -47,6 +49,31 @@ async function openSetup() {
 afterEach(cleanup)
 
 describe("local AI auto-apply controls", () => {
+  it("offers project management as a separate explicit grant with a described browser-local scope", async () => {
+    const { connection, rerender } = setup()
+    await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+    const grant = screen.getByRole("menuitemcheckbox", { name: "Allow project management" })
+    expect(grant.getAttribute("aria-checked")).toBe("false")
+    expect(
+      document.getElementById(grant.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toContain("list project names and create or open projects saved in this browser")
+    await userEvent.click(grant)
+    expect(connection.setProjectManagement).toHaveBeenCalledWith(true)
+    expect(connection.enableAutoApply).not.toHaveBeenCalled()
+    expect(connection.disable).not.toHaveBeenCalled()
+    rerender({ ...manual, projectManagement: true })
+    await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "Allow project management" })
+        .getAttribute("aria-checked"),
+    ).toBe("true")
+    await userEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Allow project management" }),
+    )
+    expect(connection.setProjectManagement).toHaveBeenLastCalledWith(false)
+  })
+
   it("keeps Stop AI available while an approved session is reconnecting", async () => {
     const { connection } = setup({ ...manual, connected: false, recovering: true })
     expect(screen.getByRole("status").textContent).toBe("Reconnecting AI…")
@@ -130,6 +157,16 @@ describe("local AI auto-apply controls", () => {
     expect(
       screen
         .getByRole("menuitemradio", { name: "Approve each change" })
+        .hasAttribute("data-disabled"),
+    ).toBe(true)
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "Allow project management" })
+        .hasAttribute("data-disabled"),
+    ).toBe(true)
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Apply automatically" })
         .hasAttribute("data-disabled"),
     ).toBe(true)
     expect(connection.disableAutoApply).not.toHaveBeenCalled()

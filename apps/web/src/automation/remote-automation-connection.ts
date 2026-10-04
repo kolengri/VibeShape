@@ -16,6 +16,7 @@ import {
 } from "../document/document-controller"
 import { automationReviews } from "./automation-review-controller"
 import { createLocalToolExecutor } from "./local-tool-executor"
+import { createProjectToolPort } from "./project-tool-port"
 
 type Handle = Extract<ReturnType<typeof createActiveDocumentAutomationSession>, { ok: true }>
 type Pair = {
@@ -26,6 +27,7 @@ type Pair = {
   actor: CommandActor | null
   approvedClient: RemoteClient | null
   active: AbortController | null
+  projectChange: boolean
   expiry: ReturnType<typeof setTimeout>
 }
 type Snapshot = Readonly<{
@@ -34,6 +36,7 @@ type Snapshot = Readonly<{
   connected: boolean
   connecting: boolean
   autoApply: boolean
+  projectManagement: boolean
   busy: boolean
   client: RemoteClient | null
   consent: Extract<RemoteServerMessage, { type: "consent" }> | null
@@ -65,6 +68,7 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
     connected: false,
     connecting: false,
     autoApply: false,
+    projectManagement: false,
     busy: false,
     client: null,
     consent: null,
@@ -112,6 +116,7 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
       connected: false,
       connecting: false,
       autoApply: false,
+      projectManagement: false,
       busy: false,
       client: null,
       consent: null,
@@ -123,8 +128,47 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
     void disable()
     publish({ error: true })
   }
+  function validateDocumentScope() {
+    const current = pair
+    if (!current || (snapshot.projectManagement && current.active && current.projectChange)) return
+    if (!current.handle.readIdentity()) void disable()
+  }
+  function createExecutor(current: Pair, actor: CommandActor) {
+    return createLocalToolExecutor(
+      current.handle,
+      actor,
+      createProjectToolPort({
+        actor,
+        isAllowed: () =>
+          pair === current &&
+          snapshot.connected &&
+          snapshot.projectManagement &&
+          current.active?.signal.aborted !== true,
+        readIdentity: () => current.handle.readIdentity(),
+        replaceSession: () => {
+          if (
+            pair !== current ||
+            !snapshot.projectManagement ||
+            !current.active ||
+            current.active.signal.aborted
+          )
+            return false
+          const created = createActiveDocumentAutomationSession()
+          if (!created.ok) return false
+          current.handle.dispose()
+          current.handle = created
+          current.executor = createExecutor(current, actor)
+          publish({ autoApply: false })
+          return true
+        },
+      }),
+    )
+  }
+  function canAcceptWork(current: Pair) {
+    return snapshot.connected && !current.active && current.handle.readInfo() !== null
+  }
   async function work(current: Pair, message: Extract<RemoteServerMessage, { type: "work" }>) {
-    if (!current.executor || !snapshot.connected || current.active || !current.handle.readInfo()) {
+    if (!current.executor || !canAcceptWork(current)) {
       fail(current)
       return
     }
@@ -135,6 +179,8 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
     }
     const controller = new AbortController()
     current.active = controller
+    current.projectChange =
+      operation.data.tool === "create_project" || operation.data.tool === "open_project"
     publish({ busy: true })
     let result: unknown
     try {
@@ -173,7 +219,9 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
       return
     }
     current.active = null
+    current.projectChange = false
     publish({ busy: false })
+    validateDocumentScope()
   }
   function receivePaired(current: Pair, message: Extract<RemoteServerMessage, { type: "paired" }>) {
     if (
@@ -198,7 +246,7 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
       return
     }
     current.actor = message.actor
-    current.executor = createLocalToolExecutor(current.handle, message.actor)
+    current.executor = createExecutor(current, message.actor)
     publish({
       connected: true,
       connecting: false,
@@ -262,6 +310,7 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
       actor: null,
       approvedClient: null,
       active: null,
+      projectChange: false,
       expiry: setTimeout(() => {
         if (pair === current) void disable()
       }, credential.expiresAt - Date.now()),
@@ -355,6 +404,23 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
     enable,
     disable,
     consent,
+    validateDocumentScope,
+    isProjectActionPending: () =>
+      pair !== null && snapshot.projectManagement && pair.active !== null && pair.projectChange,
+    setProjectManagement(enabled: boolean) {
+      const current = pair
+      if (
+        !current ||
+        !snapshot.connected ||
+        current.active ||
+        snapshot.consent ||
+        automationReviews.getSnapshot() ||
+        !current.handle.readIdentity()
+      )
+        return false
+      publish({ projectManagement: enabled })
+      return true
+    },
     async configuration() {
       const response = await request("/browser/config")
       if (!response.ok) throw new Error("Remote admission is unavailable.")

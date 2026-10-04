@@ -39,6 +39,7 @@ import {
   isLocalInspection,
   isLocalMetadataRead,
   isLocalMetadataTool,
+  isProjectOperation,
   type LocalDraftCommandOperation,
   type LocalInspectionOperation,
   type LocalMetadataReadOperation,
@@ -53,6 +54,7 @@ import {
   type LocalPlanarImportOperation,
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
+import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
   cadInspectionDetailViewSchema,
   cadInspectionListViewSchema,
@@ -343,6 +345,8 @@ function resultContextMatches(
   result: LocalToolResult,
   documentId: string,
 ) {
+  const { projectId: _projectId, ...command } = operation
+  operation = command
   const context = [
     renderPreviewResultContextMatches(operation, result, documentId),
     historyResultContextMatches(operation, result, documentId),
@@ -372,6 +376,8 @@ function resultMatches(
   documentId: string,
 ) {
   if (!result.ok) return true
+  if (isProjectOperation(operation))
+    return projectResultContextMatches(operation, result, documentId)
   if (isLocalBinaryExport(operation))
     return binaryExportResultMatches(operation, result.value, documentId)
   if (isLocalDraftCommand(operation)) return stateMatches(operation, result.value, documentId)
@@ -435,6 +441,17 @@ function reportProgress(
   } catch {
     /* Observers do not own settlement. */
   }
+}
+
+function projectRequestBlock(operation: LocalOperation, activeProjectId: string) {
+  if (operation.projectId && operation.projectId !== activeProjectId)
+    return failure("project-target-mismatch", "The requested project is not active.")
+  if (
+    (operation.tool === "create_project" || operation.tool === "open_project") &&
+    operation.arguments.expectedProjectId !== activeProjectId
+  )
+    return failure("stale-project", "Read model_info again before changing projects.")
+  return null
 }
 
 function matchesPending(
@@ -852,6 +869,21 @@ export function createBrowserBroker({
       )
     if (!resultBudgetFits(data.tool, output.data))
       return response(400, failure("result-too-large", "The metadata result exceeds 128 KiB."))
+    if (
+      output.data.ok &&
+      (pending.operation.tool === "create_project" || pending.operation.tool === "open_project")
+    ) {
+      const project = localToolOutputs.open_project.parse(output.data)
+      if (project.ok) {
+        authorized.document = {
+          id: project.value.projectId,
+          name: project.value.name,
+          revision: project.value.revision,
+        }
+        authorized.lastPoll = null
+        checkpoint(authorized)
+      }
+    }
     authorized.pending = null
     authorized.lastResult = {
       requestId: data.requestId,
@@ -862,30 +894,41 @@ export function createBrowserBroker({
     return response(200, { ok: true })
   }
 
+  function validateOperationInput(operation: LocalOperation, signal?: AbortSignal) {
+    if (signal?.aborted)
+      return failure("session-revoked", "The local automation session was revoked.")
+    const parsed = localOperationSchema.safeParse(operation)
+    if (!parsed.success) return failure("invalid-operation", "The local operation is invalid.")
+    // Reserve space for the poll envelope inside the browser's 256 KiB response budget.
+    if (Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > 192 * 1024)
+      return failure("operation-too-large", "The local operation exceeds 192 KiB.")
+    return { ok: true as const, operation: parsed.data }
+  }
   function invoke(
     operation: LocalOperation,
     options: { signal?: AbortSignal; onProgress?: Progress } = {},
   ) {
     expire()
-    if (options.signal?.aborted)
-      return Promise.resolve(
-        failure("session-revoked", "The local automation session was revoked."),
-      )
-    const parsed = localOperationSchema.safeParse(operation)
-    if (!parsed.success)
-      return Promise.resolve(failure("invalid-operation", "The local operation is invalid."))
-    // Reserve space for the poll envelope inside the browser's 256 KiB response budget.
-    if (Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > 192 * 1024)
-      return Promise.resolve(failure("operation-too-large", "The local operation exceeds 192 KiB."))
+    const input = validateOperationInput(operation, options.signal)
+    if (!input.ok) return Promise.resolve(input)
     if (!pair || pair.suspendedUntil !== null)
       return Promise.resolve(failure("not-paired", "The browser is not paired."))
     const activePair = pair
+    const projectBlock = projectRequestBlock(input.operation, activePair.document.id)
+    if (projectBlock) return Promise.resolve(projectBlock)
     if (activePair.pending)
       return Promise.resolve(failure("busy", "Another local operation is pending.", true))
     if (!withinRateLimit(toolTimes, now(), 60_000, 120))
       return Promise.resolve(
         failure("rate-limited", "The local tool rate limit was reached.", true),
       )
+    return enqueueOperation(activePair, input.operation, options)
+  }
+  function enqueueOperation(
+    activePair: Pair,
+    operation: LocalOperation,
+    options: { signal?: AbortSignal; onProgress?: Progress },
+  ) {
     return new Promise<LocalToolResult>((resolve) => {
       const id = randomUUID()
       const timer = setTimeout(() => {
@@ -901,7 +944,7 @@ export function createBrowserBroker({
       }
       activePair.pending = {
         id,
-        operation: parsed.data,
+        operation,
         resolve,
         timer,
         delivered: false,

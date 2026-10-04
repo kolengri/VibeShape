@@ -134,6 +134,28 @@ diagnostics. Each bounded page includes native solver status and DOF. Usable pro
 provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
 after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.
 
+## Project management
+
+Both local stdio and paired remote HTTPS expose `list_projects`, `create_project` and `open_project`.
+The browser owner first enables **AI connection and approval mode → Allow project management**.
+The separate live grant allows catalog access and create/open; it is never enabled through MCP or
+restored after recovery. Stop AI and manual project navigation revoke it.
+
+`list_projects` returns `activeProjectId`, a bounded page and `nextCursor` (null at the end).
+`limit` defaults to 50 and is capped at 100; use the returned cursor for the next page. Create/open
+require `expectedProjectId` and `expectedRevision` from a fresh `model_info`. Create takes a normalized
+`name` and opens the empty project; open takes the exact destination `projectId`. Both return
+`{ projectId, name, revision }`. The editor must be saved and idle with no editor draft or pending review.
+
+Authorized transitions preserve the transport and replace document authority without reloading.
+Different-project transitions dispose private drafts/uploads/exports and reset CAD auto-apply.
+Same-project open is a no-op. CAD tools accept an optional `projectId` guard and reject a different
+active project before dispatching. Read `model_info` and start a new draft after switching. If an
+outcome is uncertain, inspect the active project and catalog before retrying a creation.
+
+See [ADR-0097](adr/0097-mcp-project-management.md) and the
+[operator project workflow](../.agents/skills/vibeshape-organization/SKILL.md#browser-local-projects).
+
 ## Native source import
 
 Both paired transports expose `begin_import_upload`, `append_import_chunk`, `inspect_import_upload`,

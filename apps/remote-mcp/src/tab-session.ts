@@ -11,6 +11,7 @@ import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/im
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
   isLocalDraftInspection,
+  isProjectOperation,
   localFailure,
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
@@ -18,6 +19,7 @@ import {
   isLocalPlanarImport,
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
+import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_REQUEST_TIMEOUT_MS,
@@ -362,15 +364,25 @@ export class TabSession extends DurableObject<RemoteEnv> {
     )
       return this.revoke()
     const result = localToolOutputs[message.tool].parse(message.result)
-    if (!authoredResultContextMatches(this.pending.operation, result)) return this.revoke()
-    if (!this.transferResultMatches(result)) return this.revoke()
-    if (!draftInspectionResultMatches(this.pending.operation, result)) return this.revoke()
+    if (!this.operationResultMatches(this.pending.operation, result)) return this.revoke()
     const pending = this.pending
     this.pending = null
     this.metadata.active = null
     this.metadata.activeKey = null
     clearTimeout(pending.timer)
     return this.confirmResult(pending, result)
+  }
+  private operationResultMatches(
+    operation: LocalOperation,
+    result: { ok: boolean; value?: unknown },
+  ) {
+    const { projectId: _projectId, ...command } = operation
+    return (
+      (!isProjectOperation(command) || projectResultContextMatches(command, result)) &&
+      authoredResultContextMatches(command, result) &&
+      this.transferResultMatches(result) &&
+      draftInspectionResultMatches(command, result)
+    )
   }
   private transferResultMatches(result: { ok: boolean; value?: unknown }) {
     const operation = this.pending?.operation

@@ -102,6 +102,7 @@
 
 | [0095](0095-local-mcp-continuous-recovery.md) | Accepted | Continuous recovery of approved local MCP sessions |
 | [0096](0096-development-http-mcp.md) | Accepted | Development HTTP MCP sharing the Vite editor origin |
+| [0097](0097-mcp-project-management.md) | Accepted | Browser-owned MCP project management |
 
 Statuses:
 

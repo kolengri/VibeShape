@@ -54,12 +54,14 @@ export function RemoteAutomationStatus({
         disable: connection.disable,
         enableAutoApply: connection.enableAutoApply,
         disableAutoApply: connection.disableAutoApply,
+        setProjectManagement: connection.setProjectManagement,
       }}
       current={{
         available: true,
         connected: true,
         recovering: false,
         autoApply: current.autoApply,
+        projectManagement: current.projectManagement,
         busy: current.busy,
         client: { name: current.client?.name ?? "", version: "OAuth" },
         error: current.error,
