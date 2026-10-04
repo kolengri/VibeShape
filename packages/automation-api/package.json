@@ -12,6 +12,7 @@
     "./draft-inspection": "./src/draft-inspection.ts",
     "./queries": "./src/queries.ts",
     "./local-tools": "./src/local-tools.ts",
+    "./local-sketch-text-tools": "./src/local-sketch-text-tools.ts",
     "./local-session": "./src/local-session.ts",
     "./remote-session": "./src/remote-session.ts",
     "./tool-metadata": "./src/tool-metadata.ts",

@@ -21,6 +21,7 @@ const mimeTypes: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
   ".txt": "text/plain; charset=utf-8",
   ".tar": "application/x-tar",
   ".gz": "application/gzip",

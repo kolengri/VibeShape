@@ -53,7 +53,7 @@ Preserve existing slot IDs on update. Missing roles fail closed. Manual review r
 an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
 and schema upgrades still require manual review. Tools cannot enable the grant.
 
-Geometry/planar import, text generation and surface
+Geometry/planar import and surface
 texture authoring use the editor. They are not named MCP construction tools. The shared local
 and paired remote feature tools follow the same draft/review/commit workflow; remote omits
 file exports. Read the modeling operator skill for the relevant feature family.
@@ -70,6 +70,22 @@ Library source closure remains controller-owned. save_library_definition and upd
 require manual review and metadata CAS; insert/relink select immutable versions inside an assembly
 draft with explicit copy/reference semantics. Read the modeling skill's assembly/library reference.
 Callers cannot provide frozen pins, raw bytes, document authority or an approval flag.
+
+## Placement and editable sketch text
+
+\`create_placement\`/\`update_placement\` use typed translation/rotation parameters, an exact
+\`targetBody\`, exactly its producer dependency and empty references. Preview exact bounds
+and volume, then use ordinary manual review. Placement remains numeric rather than associative.
+
+\`create_sketch_text\`/\`update_sketch_text\` use a stable UUIDv7 groupId, sketchId, origin
+and supported text intent (text, heightMm, trackingMm, alignment, kerning). The browser uses the
+pinned bundled font and generates outline entities and digest internally. No caller font metadata
+is accepted. Scalar limits do not override the existing contour/pole complexity budgets. Update
+requires explicit removeAttachedConstraints; replacement may require downstream selector repair.
+\`detach_sketch_text\` removes text intent while preserving geometry and constraints. Preparation
+reads only the owned exact-revision sketch and applies the ordinary sketch.update after async
+outline generation. Cancellation, stale authority or expiry must not publish an update. Existing
+sketch auto-apply policy remains unchanged; tools cannot expand the browser grant.
 
 ## Authored parts and History folders
 
@@ -534,7 +550,7 @@ Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/upd
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft and custom Thread create/update;
 variables; bounded inspection; draft lifecycle and export.
-Box update/placement, Cylinder, feature/sketch removal, dedicated suppression,
+Box update, Cylinder, feature/sketch removal, dedicated suppression,
 model rename and history navigation are not currently exposed through MCP. There is no
 generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.

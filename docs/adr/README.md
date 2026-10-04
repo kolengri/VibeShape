@@ -87,6 +87,8 @@
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 | [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
 
+| [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
+
 Statuses:
 
 - `Proposed` — under discussion
