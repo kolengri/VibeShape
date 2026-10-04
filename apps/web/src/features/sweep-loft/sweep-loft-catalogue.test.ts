@@ -5,7 +5,8 @@ import { id, paths, snapshot } from "./sweep-loft-test-fixtures"
 
 const copy = {
   profile: (sketch: string, number: number) => `${sketch} · Profile ${number}`,
-  curve: (kind: "line" | "arc", number: number) => `${kind} ${number}`,
+  curve: (kind: "line" | "arc" | "cubic-bezier" | "elliptical-arc", number: number) =>
+    `${kind} ${number}`,
   point: (number: number) => `Point ${number}`,
 }
 const loop = (entityId: string) => ({
@@ -53,12 +54,15 @@ const display = documentSketchDisplaySchema.parse({
 })
 
 describe("Sweep and Loft authoritative selection catalogue", () => {
-  it("retains holed Sweep profiles and excludes them from Loft without renumbering solved regions", () => {
+  it("retains holed Sweep and Loft profiles without renumbering solved regions", () => {
     const sweep = sweepLoftCatalogue(snapshot, [display], [], "sweep", copy)
     expect(sweep.profiles).toHaveLength(2)
     expect(sweep.profiles[0]?.selector.holeBoundaryEntityIds).toEqual([[id(12)]])
     const loft = sweepLoftCatalogue(snapshot, [display], [], "loft", copy)
-    expect(loft.profiles.map(({ label }) => label)).toEqual(["Sketch 1 · Profile 2"])
+    expect(loft.profiles.map(({ label }) => label)).toEqual([
+      "Sketch 1 · Profile 1",
+      "Sketch 1 · Profile 2",
+    ])
   })
 
   it("excludes sketches that would create forward dependencies", () => {

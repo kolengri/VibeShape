@@ -4,8 +4,10 @@ import { featureIdSchema } from "./identifiers"
 import {
   expectedLoftDependencyIds,
   loftFeatureParametersSchema,
+  loftFeatureParametersV2Schema,
   loftFeatureType,
   loftFeatureTypeHandler,
+  loftFeatureTypeV2,
   readLoftFeatureParameters,
 } from "./part-design-loft"
 
@@ -19,6 +21,34 @@ const section = (value: number) => ({
 const parameters = { sections: [section(2), section(1)], ruled: false }
 
 describe("ordered new-body Loft contract", () => {
+  it("requires durable complete hole correspondence while preserving v1 replay", () => {
+    const sections = [1, 2].map((value) => ({
+      ...section(value),
+      holeBoundaryEntityIds: [[id(51 + value)], [id(61 + value)]],
+    }))
+    const holeCorrespondence = [
+      { sectionBoundaryEntityIds: [[id(52)], [id(53)]] },
+      { sectionBoundaryEntityIds: [[id(62)], [id(63)]] },
+    ]
+    const params = loftFeatureParametersV2Schema.parse({
+      sections,
+      ruled: false,
+      holeCorrespondence,
+    })
+    expect(readLoftFeatureParameters({ type: loftFeatureTypeV2.type, parameters: params })).toEqual(
+      params,
+    )
+    for (const tracks of [
+      [],
+      holeCorrespondence.slice(0, 1),
+      [holeCorrespondence[0], holeCorrespondence[0]],
+      [{ sectionBoundaryEntityIds: [[id(52)], [id(99)]] }, holeCorrespondence[1]],
+    ])
+      expect(
+        loftFeatureParametersV2Schema.safeParse({ ...params, holeCorrespondence: tracks }).success,
+      ).toBe(false)
+    expect(loftFeatureParametersSchema.safeParse({ sections, ruled: false }).success).toBe(false)
+  })
   it.each([19, 24])("accepts %i ordered sections with bounded producer dependencies", (count) => {
     const sections = Array.from({ length: count }, (_, index) => section(index + 1))
     expect(loftFeatureParametersSchema.parse({ sections, ruled: true }).sections).toEqual(sections)

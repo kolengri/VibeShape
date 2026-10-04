@@ -110,6 +110,12 @@ elliptical arcs expose only their positive bounded sweep and persist one exact P
 Both perimeter relations are also available deliberately by selecting one point and the compatible curve and
 invoking Point on curve.
 
+Sketch fillet and Sketch chamfer treat two authored lines sharing one corner. They retain stable
+line IDs and virtual-corner dimensions through construction guides, then add tangent/radius or
+independent setback constraints. Disposable preview, cancel, one-step draft undo/redo and committed
+sketch persistence use the ordinary sketch workflow. Collinear, branched and oversized corners fail
+closed. See [ADR-0079](../adr/0079-exact-sweep-hollow-loft-and-sketch-corners.md).
+
 ## Parametric 3D features
 
 The Primitives toolbar and command palette provide Box, Cylinder, Sphere, Cone, Torus, and Pyramid.
@@ -153,6 +159,12 @@ chamfers, and constituent-body targeting remain open. See [ADR-0040](../adr/0040
 | Surface modeling |  |  | ✓ |
 
 Shell version 2 supports open or closed cavities with expression-aware thickness and inward/outward direction. Opening faces can be toggled in the viewport or selected from the task list. Unique durable face identities survive source edits within the same exact body; missing or ambiguous identities require explicit repair. Version 1 retains strict source binding until updated. See [ADR-0076](../adr/0076-closed-shells-and-durable-opening-identity.md).
+Sweep accepts exact open lines, circular arcs, cubic Bezier curves and bounded elliptical arcs with
+an explicit start point and G1-compatible joins. Loft v1 preserves hole-free replay; v2 adds explicit
+stable hole tracks across ordered sections. Every hole must be matched once, and crossing or
+escaping inner solids fail exact preview. Section ordering and correspondence remain authored
+intent. Guide curves and independent end continuity are outside v2. See
+[ADR-0079](../adr/0079-exact-sweep-hollow-loft-and-sketch-corners.md).
 
 Every feature requires:
 
@@ -315,3 +327,6 @@ See [Extension architecture](../architecture/extensions.md), [Automation and MCP
 - Direct G-code delivery to printers.
 - Generative or AI CAD before a deterministic command API, draft/preview boundary, local pairing gate, and sandbox exist.
 - Claims of complete compatibility with Onshape, FreeCAD, or SolidWorks.
+
+Authored endpoint identities determine traversal direction. The profile must pass through the path start
+and be normal to its analytical tangent; singular curves and non-G1 joins fail closed before OCCT.

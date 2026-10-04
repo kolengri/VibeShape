@@ -243,6 +243,7 @@ const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
       type: z.literal("tangent"),
       arcId: sketchEntityIdSchema,
       lineId: sketchEntityIdSchema,
+      at: z.enum(["start", "end"]).optional(),
     })
     .strict(),
   z.object({ ...constraintEnvelope, type: z.literal("concentric"), ...entityPair }).strict(),

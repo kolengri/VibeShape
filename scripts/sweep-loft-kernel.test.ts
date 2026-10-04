@@ -142,6 +142,28 @@ describe("Sweep and Loft with the pinned real OCCT kernel", () => {
       )
       expect(changed.result.cache.brepHit).toBe(false)
       expect(changed.result.shape.volume).toBeCloseTo(Math.PI * 80, 5)
+      const hollow = {
+        sections: loftParameters.sections.map((profile) => ({
+          ...profile,
+          holes: [
+            {
+              sourceEntityIds: [id(110)],
+              segments: [{ entityId: id(110), type: "circle", center: [0, 0], radius: 1 }],
+            },
+          ],
+        })),
+        ruled: false,
+        holeCorrespondence: [{ sectionBoundaryEntityIds: [[id(110)], [id(110)]] }],
+      }
+      const hollowType = { ...type("loft"), schemaVersion: 2 }
+      const hollowResult = requireSuccess(await evaluate(id(5), hollow, [], hollowType))
+      expect(hollowResult.result.shape).toMatchObject({ valid: true, solidCount: 1 })
+      expect(hollowResult.result.shape.volume).toBeCloseTo(Math.PI * 30, 5)
+      const replay = requireSuccess(await evaluate(id(5), hollow, [], hollowType))
+      expect(replay.result.cache.brepHit).toBe(true)
+      expect(
+        await evaluate(id(6), { ...hollow, holeCorrespondence: [] }, [], hollowType),
+      ).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-parameters" } })
       expect(
         await evaluate(id(3), {
           ...loftParameters,

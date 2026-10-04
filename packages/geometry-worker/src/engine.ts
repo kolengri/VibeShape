@@ -33,7 +33,9 @@ import {
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
   type LoftFeatureContentParameters,
+  type LoftFeatureContentParametersV2,
   loftFeatureContentParametersSchema,
+  loftFeatureContentParametersV2Schema,
   type MirrorFeatureContentParameters,
   type MirrorFeatureContentParametersV2,
   mirrorFeatureContentParametersSchema,
@@ -1206,7 +1208,7 @@ type ParsedFeature =
   | { kind: "imported"; parameters: ImportedFeatureContentParameters }
   | { kind: "split"; parameters: SplitFeatureContentParameters }
   | { kind: "pattern"; parameters: PatternFeatureContentParameters }
-  | { kind: "loft"; parameters: LoftFeatureContentParameters }
+  | { kind: "loft"; parameters: LoftFeatureContentParameters | LoftFeatureContentParametersV2 }
   | { kind: "sweep"; parameters: SweepFeatureContentParameters }
   | {
       kind: "mirror"
@@ -1908,9 +1910,10 @@ function parseMirrorFeature(input: FeatureEvaluationInput): FeatureParseResult {
 function analyticalSketchInputsAreValid(
   input: FeatureEvaluationInput,
   sketches: readonly { supportFeatureId?: string | undefined }[],
+  maximumDependencies = 8,
 ) {
   return (
-    input.dependencies.length <= 8 &&
+    input.dependencies.length <= maximumDependencies &&
     input.content.feature.inputs.length === input.dependencies.length &&
     sketches.every(
       ({ supportFeatureId }) =>
@@ -1921,10 +1924,14 @@ function analyticalSketchInputsAreValid(
 }
 
 function parseLoftFeature(input: FeatureEvaluationInput): FeatureParseResult {
-  const parameters = loftFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  const schema =
+    featureTypeKey(input.content.feature.type) === LOFT_FEATURE_TYPE_KEY
+      ? loftFeatureContentParametersSchema
+      : loftFeatureContentParametersV2Schema
+  const parameters = schema.safeParse(input.content.feature.parameters)
   if (!parameters.success)
     return featureFailure("invalid-feature-parameters", "Loft analytical sections are invalid.")
-  if (!analyticalSketchInputsAreValid(input, parameters.data.sections))
+  if (!analyticalSketchInputsAreValid(input, parameters.data.sections, 24))
     return invalidInputCardinality("Loft requires the exact scheduled sketch owner inputs.")
   return { ok: true, feature: { kind: "loft", parameters: parameters.data } }
 }
@@ -2013,6 +2020,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [SPLIT_FEATURE_TYPE_KEY, parseSplitFeature],
   [PATTERN_FEATURE_TYPE_KEY, parsePatternFeature],
   [LOFT_FEATURE_TYPE_KEY, parseLoftFeature],
+  [LOFT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseLoftFeature],
   [SWEEP_FEATURE_TYPE_KEY, parseSweepFeature],
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
   [FILLET_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "fillet")],
@@ -2201,6 +2209,9 @@ function createSketchGeneratedFeatureShape(
     case "loft":
       return createOcctLoft(opencascade, feature.parameters.sections, {
         ruled: feature.parameters.ruled,
+        ...("holeCorrespondence" in feature.parameters
+          ? { holeCorrespondence: feature.parameters.holeCorrespondence }
+          : {}),
       })
     case "sweep":
       return createOcctSweep(opencascade, feature.parameters)
