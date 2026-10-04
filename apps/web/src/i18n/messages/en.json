@@ -2623,6 +2623,17 @@
       "sketchLabel": "Imported {filename}",
       "diagnostic": "{message} Source: {source}.",
       "timeout": "Source inspection timed out. Choose a smaller source and retry."
+    },
+    "referenceFrame": {
+      "plane": "Reference plane",
+      "axis": "Reference axis",
+      "source": "Reference source",
+      "origin": "Origin reference",
+      "explicit": "Explicit reference",
+      "useSelectedFace": "Use selected planar face",
+      "originCoordinate": "Origin {axis} (mm)",
+      "directionCoordinate": "Direction {axis}",
+      "invalid": "Enter finite coordinates within 100,000 mm and a nonzero direction."
     }
   }
 }
