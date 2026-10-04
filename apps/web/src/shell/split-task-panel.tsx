@@ -35,8 +35,8 @@ export function SplitTaskPanel(props: BodyFeatureTaskPanelProps) {
   const t = useTranslations("app.split")
   const task = useTranslations("app.shell.taskPanel")
   const { report } = props
-  const count = report.snapshot.features.filter((feature) =>
-    readSplitFeatureParameters(feature),
+  const count = report.snapshot.features.filter(
+    (feature) => readSplitFeatureParameters(feature) || readSplitFeatureParametersV2(feature),
   ).length
   const mode = bodyFeatureTaskMode({
     tool: props.activeTool,

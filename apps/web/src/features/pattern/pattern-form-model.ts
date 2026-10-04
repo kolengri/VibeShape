@@ -1,5 +1,6 @@
 import {
   createAngleQuantity,
+  createLengthQuantity,
   createScalarQuantity,
   type DocumentDisplayUnits,
   evaluateExpression,
@@ -209,13 +210,23 @@ export function parsePatternForm(
   variables: readonly VariableDefinition[],
   units: DocumentDisplayUnits,
   copy: PatternValidationCopy,
+  referenceAxis?: ReferenceAxis,
 ): ParsedPatternForm {
   const count = parseCount(values, variables, units, copy)
   if (!count.ok) return { ok: false as const, issues: { count: count.message } }
   const common = { count: count.quantity, axis: values.axis }
   if (values.kind === "circular") {
     const angle = parseAngle(values, variables, units, copy)
-    const center = parseCenter(values, variables, units, copy)
+    const center = referenceAxis
+      ? {
+          ok: true as const,
+          center: {
+            x: createLengthQuantity(0, "mm"),
+            y: createLengthQuantity(0, "mm"),
+            z: createLengthQuantity(0, "mm"),
+          },
+        }
+      : parseCenter(values, variables, units, copy)
     if (!angle.ok || !center.ok)
       return {
         ok: false as const,
