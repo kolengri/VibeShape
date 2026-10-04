@@ -9,10 +9,12 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 ## Development HTTP
 
 When using a source checkout's running `bun run dev`, configure a Streamable HTTP client with the
-`Local MCP` endpoint printed in its terminal (normally `http://localhost:5173/mcp`). The bridge shares
+`Local MCP` endpoint printed in its terminal (normally `http://localhost:5173/mcp`), or copy the
+current URL and local setup prompt from the editor's **FAQ and MCP setup** page. That development
+prompt uses Streamable HTTP without authentication, not remote OAuth or pairing codes. The bridge shares
 the Vite editor's origin, hot reload, and browser-local projects; no production build is needed.
 Discover tools and read `vibeshape://session` and `vibeshape://authoring-guide`, then open the exact
-editor URL and have the person enable its AI session as for local stdio. Named tools and review
+editor URL and have the person choose **AI access** (accessible name **Enable AI session**) as for local stdio. Named tools and review
 rules are identical. GET `/mcp` returns 405; use POST, including its SSE progress responses.
 
 One initialized HTTP client owns this development bridge. HTTP 409 on a new initialization means

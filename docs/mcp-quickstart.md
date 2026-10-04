@@ -25,7 +25,10 @@ Position, target and vertical view span use millimeters; the projection is ortho
 Run `bun ci`, then `bun run dev`. Vite starts the editor and its local Streamable HTTP MCP endpoint
 together, without building `apps/web/dist`. The terminal prints `Local MCP: <editor-origin>/mcp`;
 the default is `http://localhost:5173/mcp`. Configure an HTTP MCP client with that URL. A custom Vite
-port or fallback port changes both the editor and MCP URLs, so use the printed URL.
+port or fallback port changes both the editor and MCP URLs. The editor's **FAQ and MCP setup**
+page also provides the current origin's MCP URL and a copyable AI setup prompt. The development
+prompt uses Streamable HTTP without authentication; it does not use remote OAuth pairing codes.
+Use the printed URL or this development FAQ rather than a remembered default port.
 
 Read `vibeshape://session`, open its exact `editorUrl`, open a project, and choose **Enable AI session**.
 The tools and browser review rules match local stdio. Project data stays on the Vite origin and

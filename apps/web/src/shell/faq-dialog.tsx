@@ -14,6 +14,20 @@ import { useDialogOpen } from "../components/use-dialog-open"
 
 const pages = ["mcp", "files", "reconnect"] as const
 type Page = (typeof pages)[number]
+const mcpHelpCopy = {
+  local: {
+    intro: "localIntro",
+    steps: ["localClientStep", "localEditorStep", "applyStep"],
+    prompt: "localPrompt",
+    safety: "localSafety",
+  },
+  remote: {
+    intro: "intro",
+    steps: ["clientStep", "editorStep", "consentStep", "applyStep"],
+    prompt: "prompt",
+    safety: "safety",
+  },
+} as const
 
 export function FaqDialog({
   endpoint,
@@ -83,26 +97,37 @@ export function FaqDialog({
 
 function McpHelp({ endpoint }: { endpoint?: string | undefined }) {
   const t = useTranslations("app.shell.faq")
+  // Built stdio editors share this marker but do not serve HTTP MCP.
+  const developmentEndpoint =
+    import.meta.env.DEV &&
+    document.querySelector('meta[name="vibeshape-local-automation"][content="1"]')
+      ? new URL("/mcp", window.location.origin).href
+      : undefined
+  const currentEndpoint = developmentEndpoint ?? endpoint
+  const copy = mcpHelpCopy[developmentEndpoint ? "local" : "remote"]
   return (
     <>
-      <p>{t("mcp.intro")}</p>
-      {endpoint ? (
+      <p>{t(`mcp.${copy.intro}`)}</p>
+      {currentEndpoint ? (
         <>
-          <CopyText label={t("mcp.urlLabel")} value={endpoint} />
+          <CopyText label={t("mcp.urlLabel")} value={currentEndpoint} />
+          <CopyText
+            label={t("mcp.promptLabel")}
+            value={t(`mcp.${copy.prompt}`, { endpoint: currentEndpoint })}
+            multiline
+          />
           <ol className="list-decimal space-y-2 pl-5">
-            <li>{t("mcp.clientStep")}</li>
-            <li>{t("mcp.editorStep")}</li>
-            <li>{t("mcp.consentStep")}</li>
-            <li>{t("mcp.applyStep")}</li>
+            {copy.steps.map((step) => (
+              <li key={step}>{t(`mcp.${step}`)}</li>
+            ))}
           </ol>
-          <CopyText label={t("mcp.promptLabel")} value={t("mcp.prompt", { endpoint })} multiline />
         </>
       ) : (
         <p role="status" className="text-muted-foreground">
           {t("mcp.unconfigured")}
         </p>
       )}
-      <p className="text-muted-foreground">{t("mcp.safety")}</p>
+      <p className="text-muted-foreground">{t(`mcp.${copy.safety}`)}</p>
     </>
   )
 }

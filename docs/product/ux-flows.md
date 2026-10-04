@@ -41,6 +41,12 @@ local or remote AI session shows **AI access on**, its approval mode, and a dire
 **Stop AI** action. Stop AI revokes session access; it does not stop the development MCP
 server. Auto-apply consent remains in the existing session dialog.
 
+The FAQ's MCP page offers a copyable server URL and agent setup prompt. In development it derives
+`/mcp` from the current editor origin only when the local bridge marker is present. Its instructions
+use Streamable HTTP without authentication and explicit **AI access** approval. Production and
+preview do not infer an HTTP endpoint from a stdio editor marker; a configured remote endpoint
+retains its OAuth and pairing-code instructions.
+
 The menu supports arrow-key navigation, typeahead, Enter, and Escape. Opening a dialog preserves
 its existing guards and pending behavior; dismissing it closes the menu and returns focus to the
 VibeShape trigger. Palette and shortcut help also return focus to that persistent trigger.

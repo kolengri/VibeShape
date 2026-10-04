@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// @vitest-environment-options {"url":"http://localhost:5291/projects/example?tab=cad"}
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -10,6 +11,8 @@ const endpoint = "https://relay.example/mcp"
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+  document.querySelector('meta[name="vibeshape-local-automation"]')?.remove()
 })
 function setup(url?: string) {
   return render(
@@ -19,6 +22,49 @@ function setup(url?: string) {
   )
 }
 describe("FAQ connection guide", () => {
+  it("copies the current development origin and local setup prompt instead of remote OAuth instructions", async () => {
+    vi.stubEnv("DEV", true)
+    const marker = document.createElement("meta")
+    marker.name = "vibeshape-local-automation"
+    marker.content = "1"
+    document.head.append(marker)
+    const user = userEvent.setup()
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined)
+    setup(endpoint)
+    await user.click(screen.getByRole("button", { name: "FAQ" }))
+    const localEndpoint = "http://localhost:5291/mcp"
+    expect(
+      (screen.getByRole("textbox", { name: "MCP server URL" }) as HTMLInputElement).value,
+    ).toBe(localEndpoint)
+    const prompt = (screen.getByRole("textbox", { name: "AI setup prompt" }) as HTMLTextAreaElement)
+      .value
+    expect(prompt).toContain(localEndpoint)
+    expect(prompt).not.toContain(endpoint)
+    expect(prompt).toContain("Streamable HTTP with no authentication")
+    expect(prompt).toContain("vibeshape://session")
+    expect(prompt).toContain("model_info")
+    expect(prompt).toContain("wait for my manual Apply")
+    expect(prompt).toContain("Never replay a write automatically")
+    expect(screen.queryByText(/create a pairing code/)).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Copy AI setup prompt" }))
+    await waitFor(() => expect(copy).toHaveBeenCalledWith(prompt))
+    await user.click(screen.getByRole("button", { name: "Copy MCP server URL" }))
+    await waitFor(() => expect(copy).toHaveBeenCalledWith(localEndpoint))
+  })
+
+  it("does not infer an HTTP endpoint from a production stdio editor marker", async () => {
+    vi.stubEnv("DEV", false)
+    const marker = document.createElement("meta")
+    marker.name = "vibeshape-local-automation"
+    marker.content = "1"
+    document.head.append(marker)
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole("button", { name: "FAQ" }))
+    expect(screen.queryByRole("textbox", { name: "MCP server URL" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Copy AI setup prompt" })).toBeNull()
+  })
+
   it("explains pairing and copies the configured endpoint and safety-preserving AI prompt", async () => {
     const user = userEvent.setup()
     const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined)
