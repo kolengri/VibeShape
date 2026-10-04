@@ -1566,6 +1566,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     controls.connect(this.#canvas)
     controls.update()
     controls.addEventListener("change", this.#onControlsChange)
+    controls.addEventListener("start", this.#onNavigationStart)
     return controls
   }
 
@@ -1576,6 +1577,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#removeSketchNavigationPointerGuard()
     const enabled = this.#controls.enabled
     this.#controls.removeEventListener("change", this.#onControlsChange)
+    this.#controls.removeEventListener("start", this.#onNavigationStart)
     this.#controls.dispose()
     this.#camera.up.set(...up)
     // OrbitControls caches its orbit-axis transform at construction.
@@ -2138,6 +2140,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#printDecoration.dispose()
     if (this.#disposed) return
     this.#disposed = true
+    this.#renderFrames.cancel()
     this.#disposeTextureSourceMeshes()
     this.#finishSurfaceTextureStroke(true)
     this.#canvas.removeEventListener("pointercancel", this.#cancelSurfaceTextureStroke)
@@ -2159,6 +2162,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#angularAnglePublisher.cancel()
     this.#clearSketchReferencePicking()
     this.#controls.removeEventListener("change", this.#onControlsChange)
+    this.#controls.removeEventListener("start", this.#onNavigationStart)
     this.#removeSketchNavigationPointerGuard()
     this.#controls.disconnect()
     this.#sketchNavigationElement = null
@@ -2497,6 +2501,12 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#onSketchReferenceCandidateStackChange([])
     }
     this.#setSketchPointPreselection(null)
+  }
+
+  #onNavigationStart = () => {
+    this.#setOriginPlanePreselection(null)
+    this.#setPreselection(null)
+    this.#setSketchProfilePreselection(null)
   }
 
   #onControlsChange = () => {
@@ -3063,6 +3073,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (!event.isPrimary) return
     if (this.#handleAngularGizmoPointerMove(event)) return
     if (this.#translationGizmoInteracting) return
+    if (event.buttons !== 0) return
     if (this.#interactionMode === "camera-only") return
     if (this.#interactionMode === "sketch-reference-select") {
       this.#updateSketchReferencePicking(event)
@@ -3219,7 +3230,13 @@ class ThreeGeometryViewport implements GeometryViewport {
       })
   }
 
+  readonly #renderFrames = createLatestFramePublisher<null>(() => this.#renderNow())
+
   #render = () => {
+    if (!this.#disposed) this.#renderFrames.push(null)
+  }
+
+  #renderNow = () => {
     if (this.#disposed) return
     this.#applySectionClipping()
     const width = this.#canvas.clientWidth

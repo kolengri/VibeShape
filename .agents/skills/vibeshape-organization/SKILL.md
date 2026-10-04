@@ -28,3 +28,7 @@ Wait for the person's manual browser Apply/Discard, even when CAD auto-apply is 
 Reuse the returned receipt and inspect the new committed state when needed. Undo/Redo always advance the publication revision by one. A new authored change clears Redo. Reopening preserves the saved model and restore events but resets these transient stacks; never promise Undo availability after reopening. Duplicate command IDs remain rejected after reload. If Apply's outcome is unconfirmed, inspect the saved revision before any new proposal; cancellation after publication entered cannot roll back a saved restore.
 
 These three named tools share the same review and correlation contract over local stdio and paired remote HTTPS. Document identity is request context, not write authority.
+
+## Editor source links
+
+In the visible History tree, hover or focus a feature source link to preview its sketch profile. Clicking it locates and opens the linked sketch through the ordinary History action, including its edit-point rollback and draft guards. Use Finish sketch or Cancel to leave that editor before unrelated work. This UI navigation does not add an MCP source-link tool.

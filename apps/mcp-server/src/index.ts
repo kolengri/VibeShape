@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { LOCAL_AUTOMATION_PORT } from "@vibeshape/automation-api/local-session"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
+import { createLocalRecoveryStore } from "./local-recovery-store"
 import { createLocalMcpAdapter } from "./mcp-adapter"
 import { createStaticEditor } from "./static-editor"
 
@@ -21,7 +22,13 @@ async function start() {
   const port = portArgument(editorOnly ? args.slice(1) : args)
   const origin = `http://127.0.0.1:${port}`
   const resources = createExportResources()
-  const broker = createBrowserBroker({ origin, onRevoke: resources.clear })
+  const broker = createBrowserBroker({
+    origin,
+    onRevoke: resources.clear,
+    ...(editorOnly || process.platform === "win32"
+      ? {}
+      : { recovery: createLocalRecoveryStore(origin) }),
+  })
   const fetch = await createStaticEditor({
     directory: fileURLToPath(new URL("../../web/dist", import.meta.url)),
     origin,

@@ -202,11 +202,12 @@ inspect the actual document revision before proposing a new change.
    need corrected inputs. A duplicate command ID is rejected, not an idempotent success response.
    After a timeout/disconnect or an unconfirmed commit, inspect the actual revision before retrying.
 
-Use \`discard_draft\` to abandon private intent. MCP request cancellation revokes the whole pairing
-and cancels disposable work; enable a new browser AI session before continuing. Cancellation after
+Use \`discard_draft\` to abandon private intent. MCP request cancellation interrupts disposable work. The local approved session can recover
+automatically without replaying that request; inspect the saved revision before continuing. Cancellation after
 persistence begins cannot roll back an accepted transaction. For committed Undo/Redo, use the
 document/revision-bound saved-change tools above and wait for manual browser review. A same-document
-reload can restore an unexpired pairing with auto-apply off; explicit Stop AI prevents restoration.
+reload, transient disconnect or bridge restart restores an unexpired approved pairing and its
+explicit auto-apply choice. An active tab renews its lease; Stop AI prevents restoration.
 
 ## Units and IDs
 

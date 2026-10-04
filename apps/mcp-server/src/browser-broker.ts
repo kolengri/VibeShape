@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import { assemblyResultContextMatches } from "@vibeshape/automation-api/assembly-result-context"
 import {
   authoredFoldersViewSchema,
@@ -25,6 +25,8 @@ import {
 import {
   createLocalAutomationActor,
   LOCAL_AUTOMATION_PATH,
+  type LocalConnection,
+  type LocalDocument,
   localConnectRequestSchema,
   localPollRequestSchema,
   localResultRequestSchema,
@@ -66,6 +68,7 @@ import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/su
 import { z } from "zod"
 import { BrowserRequestError, readBrowserJson } from "./browser-request"
 import { draftInspectionMatches } from "./draft-inspection-result"
+import type { LocalRecoveryStore } from "./local-recovery-store"
 
 type Stage = "queued" | "executing" | "review" | "applying"
 type Progress = (stage: Stage) => void
@@ -82,7 +85,18 @@ type Pending = {
 }
 type Pair = {
   token: Buffer
-  document: { id: string; name: string; revision: number }
+  actor: LocalConnection["actor"]
+  previousResume: { token: string; expiresAt: number } | null
+  lastPoll: {
+    body: string
+    response: {
+      protocolVersion: 1
+      work: { requestId: string; operation: LocalOperation } | null
+      cancelledRequestIds: string[]
+    }
+  } | null
+  lastResult: { requestId: string; digest: string; bodyLimit: number } | null
+  document: LocalDocument
   expiresAt: number
   lastPollAt: number
   sequence: number
@@ -97,7 +111,6 @@ const MAX_EXPORT_BODY = 8 * 1024 * 1024 + 64 * 1024
 const TTL = 60 * 60 * 1000
 const OPERATION_TTL = 6 * 60 * 1000
 const LIVENESS = 15 * 1000
-const RESUME_GRACE = 60 * 1000
 
 function response(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -122,6 +135,12 @@ function tokenMatches(expected: Buffer, supplied: string | null) {
 
 function bodyLimit(operation: LocalOperation | null) {
   return operation?.tool === "export_model" ? MAX_EXPORT_BODY : MAX_BODY
+}
+function resultReceiptMatches(pair: Pair, requestId: string, digest: string) {
+  return pair.lastResult?.requestId === requestId && pair.lastResult.digest === digest
+}
+function resultBodyLimit(pair: Pair) {
+  return Math.max(bodyLimit(pair.pending?.operation ?? null), pair.lastResult?.bodyLimit ?? 0)
 }
 
 type StateOperation = Extract<LocalOperation, { tool: "create_draft" }> | LocalDraftCommandOperation
@@ -419,19 +438,84 @@ export function createBrowserBroker({
   origin,
   now = Date.now,
   onRevoke,
+  recovery,
 }: {
   origin: string
   now?: () => number
   onRevoke?: () => void
+  recovery?: LocalRecoveryStore
 }) {
   const allowedOrigin = new URL(origin).origin
   let client: Client | null = null
-  let pair: Pair | null = null
+  const saved = recovery?.load()
+  let pair: Pair | null =
+    saved && saved.origin === allowedOrigin && saved.connection.expiresAt > now()
+      ? {
+          token: Buffer.from(saved.connection.token, "base64url"),
+          actor: saved.connection.actor,
+          document: saved.document,
+          expiresAt: saved.connection.expiresAt,
+          client: saved.connection.client,
+          previousResume: saved.previousResume,
+          lastPoll: null,
+          lastResult: null,
+          lastPollAt: 0,
+          sequence: 0,
+          suspendedUntil: saved.connection.expiresAt,
+          pending: null,
+        }
+      : null
+  if (saved && !pair) recovery?.clear()
   let disposed = false
   let sessionGeneration = 0
   const toolTimes: number[] = []
   const pollTimes: number[] = []
   let livenessTimer: ReturnType<typeof setInterval> | null = null
+
+  function connection(authorized: Pair): LocalConnection {
+    return {
+      protocolVersion: 1,
+      token: authorized.token.toString("base64url"),
+      actor: authorized.actor,
+      expiresAt: authorized.expiresAt,
+      client: authorized.client,
+    }
+  }
+  function checkpoint(candidate: Pair | null = pair) {
+    try {
+      if (candidate)
+        recovery?.save({
+          schemaVersion: 1,
+          origin: allowedOrigin,
+          connection: connection(candidate),
+          document: candidate.document,
+          previousResume: candidate.previousResume,
+        })
+      else recovery?.clear()
+    } catch {
+      const previous = pair
+      pair = null
+      sessionGeneration += 1
+      if (previous) interrupt(previous)
+      try {
+        recovery?.clear()
+      } catch {
+        /* Storage is unavailable; no in-memory authorization may survive. */
+      }
+      throw new BrowserRequestError(
+        503,
+        "recovery-storage-unavailable",
+        "Local recovery storage is unavailable. Enable AI again after restoring storage.",
+      )
+    }
+  }
+  function suspend(authorized: Pair) {
+    if (authorized.suspendedUntil !== null) return
+    const candidate = { ...authorized, suspendedUntil: authorized.expiresAt, pending: null }
+    checkpoint(candidate)
+    interrupt(authorized)
+    pair = candidate
+  }
 
   function clearPending(record: Pending, result: LocalToolResult) {
     clearTimeout(record.timer)
@@ -452,24 +536,54 @@ export function createBrowserBroker({
     pair = null
     pollTimes.length = 0
     if (hadPair) onRevoke?.()
+    checkpoint()
   }
 
   function expire() {
-    if (
-      pair &&
-      (pair.expiresAt <= now() || (pair.suspendedUntil ?? pair.lastPollAt + LIVENESS) <= now())
-    )
-      revoke()
+    if (!pair) return
+    if (pair.expiresAt <= now()) revoke()
+    else if (pair.suspendedUntil === null && pair.lastPollAt + LIVENESS <= now()) suspend(pair)
   }
 
-  livenessTimer = setInterval(expire, 1000)
+  livenessTimer = setInterval(() => {
+    try {
+      expire()
+    } catch {
+      /* Checkpoint failure already ended in-memory authorization. */
+    }
+  }, 1000)
   livenessTimer.unref()
 
   function auth(request: Request) {
     expire()
     return pair && tokenMatches(pair.token, request.headers.get("authorization")) ? pair : null
   }
+  function suspendBackground(authorized: Pair) {
+    try {
+      suspend(authorized)
+    } catch {
+      /* Checkpoint failure already interrupted pending work. */
+    }
+  }
 
+  function previousResumeMatches(route: string, request: Request, current: Pair) {
+    const receipt = current.previousResume
+    return (
+      (route === "/resume" || route === "/revoke") &&
+      receipt !== null &&
+      receipt.expiresAt > now() &&
+      tokenMatches(Buffer.from(receipt.token, "base64url"), request.headers.get("authorization"))
+    )
+  }
+  function revokeRoute(request: Request) {
+    if (!auth(request) && !(pair && previousResumeMatches("/revoke", request, pair)))
+      return response(401, failure("unauthorized", "The local automation token is invalid."))
+    revoke()
+    return new Response(null, {
+      status: 204,
+      headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
+    })
+  }
   async function routeRequest(request: Request): Promise<Response> {
     if (disposed)
       return response(410, failure("broker-disposed", "The local automation broker is closed."))
@@ -477,16 +591,10 @@ export function createBrowserBroker({
     const route = requestRoute(request, allowedOrigin)
     if (route === "/status") return statusRoute(request)
     if (route === "/connect") return connectRoute(request)
-    if (route === "/revoke") {
-      if (!auth(request))
-        return response(401, failure("unauthorized", "The local automation token is invalid."))
-      revoke()
-      return new Response(null, {
-        status: 204,
-        headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
-      })
-    }
+    if (route === "/revoke") return revokeRoute(request)
     const authorized = auth(request)
+    if (!authorized && pair && previousResumeMatches(route, request, pair))
+      return repeatResumeRoute(request, pair)
     if (!authorized)
       return response(401, failure("unauthorized", "The local automation token is invalid."))
     return authenticatedRoute(route, request, authorized)
@@ -494,8 +602,12 @@ export function createBrowserBroker({
   function authenticatedRoute(route: string, request: Request, authorized: Pair) {
     if (route === "/suspend") return suspendRoute(request, authorized)
     if (route === "/resume") return resumeRoute(request, authorized)
+    if (route === "/renew") return renewRoute(request, authorized)
     if (authorized.suspendedUntil !== null)
-      return response(409, failure("session-suspended", "The browser session is reloading.", true))
+      return response(
+        409,
+        failure("session-suspended", "The browser session needs to resume.", true),
+      )
     if (route === "/poll") return pollRoute(request, authorized)
     if (route === "/result") return resultRoute(request, authorized)
     return response(404, failure("not-found", "The automation route was not found."))
@@ -506,7 +618,11 @@ export function createBrowserBroker({
       return response(400, failure("invalid-status", "The status request is invalid."))
     return response(
       200,
-      localStatusSchema.parse({ protocolVersion: 1, client, paired: Boolean(pair) }),
+      localStatusSchema.parse({
+        protocolVersion: 1,
+        client,
+        paired: Boolean(pair && pair.suspendedUntil === null),
+      }),
     )
   }
   async function connectRoute(request: Request) {
@@ -530,9 +646,12 @@ export function createBrowserBroker({
         failure("already-paired", "A local automation session is already paired."),
       )
     const token = randomBytes(32)
-    sessionGeneration += 1
-    pair = {
+    const candidate: Pair = {
       token,
+      actor: createLocalAutomationActor(now(), randomBytes(10)),
+      previousResume: null,
+      lastPoll: null,
+      lastResult: null,
       document: parsed.data.document,
       expiresAt: now() + TTL,
       lastPollAt: now(),
@@ -541,21 +660,19 @@ export function createBrowserBroker({
       client,
       pending: null,
     }
-    return response(200, {
-      protocolVersion: 1,
-      token: token.toString("base64url"),
-      actor: createLocalAutomationActor(now(), randomBytes(10)),
-      expiresAt: pair.expiresAt,
-      client,
-    })
+    checkpoint(candidate)
+    sessionGeneration += 1
+    pair = candidate
+    return response(200, connection(candidate))
   }
+
   function interrupt(authorized: Pair) {
     if (authorized.pending) {
       clearPending(
         authorized.pending,
         failure(
           "outcome-unknown",
-          "The browser reloaded. Inspect the current revision before making another change.",
+          "The browser connection was interrupted. Inspect the current revision before making another change.",
         ),
       )
       authorized.pending = null
@@ -568,8 +685,7 @@ export function createBrowserBroker({
       return response(400, failure("invalid-suspend", "The suspend request is invalid."))
     if (pair !== authorized) return response(401, failure("session-revoked", "The session ended."))
     if (authorized.suspendedUntil === null) {
-      authorized.suspendedUntil = Math.min(authorized.expiresAt, now() + RESUME_GRACE)
-      interrupt(authorized)
+      suspend(authorized)
     }
     return response(200, { ok: true })
   }
@@ -578,29 +694,90 @@ export function createBrowserBroker({
     const parsed = localConnectRequestSchema.safeParse(body)
     if (!parsed.success || parsed.data.document.id !== authorized.document.id)
       return response(409, failure("document-changed", "The paired document changed."))
-    if (pair !== authorized || !client || authorized.expiresAt <= now())
+    if (
+      pair !== authorized ||
+      !client ||
+      client.name !== authorized.client.name ||
+      client.version !== authorized.client.version ||
+      authorized.expiresAt <= now()
+    )
       return response(401, failure("session-revoked", "The session ended."))
     // Replace the pair so late requests cannot mutate the resumed session.
-    interrupt(authorized)
     const token = randomBytes(32)
-    sessionGeneration += 1
-    pair = {
+    const candidate: Pair = {
       ...authorized,
       token,
+      actor: createLocalAutomationActor(now(), randomBytes(10)),
+      previousResume: {
+        token: authorized.token.toString("base64url"),
+        expiresAt: authorized.expiresAt,
+      },
+      lastPoll: null,
+      lastResult: null,
       document: parsed.data.document,
       sequence: 0,
       lastPollAt: now(),
       suspendedUntil: null,
       pending: null,
     }
+    checkpoint(candidate)
+    interrupt(authorized)
+    sessionGeneration += 1
+    pair = candidate
     pollTimes.length = 0
+    return response(200, connection(candidate))
+  }
+  async function repeatResumeRoute(request: Request, authorized: Pair) {
+    const body = await readBrowserJson(request, 64 * 1024)
+    const parsed = localConnectRequestSchema.safeParse(body)
+    if (
+      pair !== authorized ||
+      !client ||
+      client.name !== authorized.client.name ||
+      client.version !== authorized.client.version ||
+      !parsed.success ||
+      parsed.data.document.id !== authorized.document.id
+    )
+      return response(409, failure("document-changed", "The recovery context changed."))
+    const candidate = {
+      ...authorized,
+      document: parsed.data.document,
+      suspendedUntil: null,
+      lastPollAt: now(),
+    }
+    checkpoint(candidate)
+    Object.assign(authorized, candidate)
+    return response(200, connection(authorized))
+  }
+  async function renewRoute(request: Request, authorized: Pair) {
+    const body = await readBrowserJson(request, 8 * 1024)
+    if (
+      !z.object({}).strict().safeParse(body).success ||
+      pair !== authorized ||
+      authorized.suspendedUntil !== null
+    )
+      return response(409, failure("session-suspended", "Resume the session before renewing it."))
+    const candidate = { ...authorized, expiresAt: now() + TTL, previousResume: null }
+    checkpoint(candidate)
+    Object.assign(authorized, candidate)
+    return response(200, connection(authorized))
+  }
+  function repeatedPoll(authorized: Pair, data: z.infer<typeof localPollRequestSchema>) {
+    const cached = authorized.lastPoll
+    if (data.sequence !== authorized.sequence || cached?.body !== JSON.stringify(data)) return null
     return response(200, {
-      protocolVersion: 1,
-      token: token.toString("base64url"),
-      actor: createLocalAutomationActor(now(), randomBytes(10)),
-      expiresAt: pair.expiresAt,
-      client: pair.client,
+      ...cached.response,
+      work:
+        cached.response.work?.requestId === authorized.pending?.id ? cached.response.work : null,
     })
+  }
+  function takePendingWork(authorized: Pair) {
+    const work =
+      authorized.pending && !authorized.pending.delivered
+        ? { requestId: authorized.pending.id, operation: authorized.pending.operation }
+        : null
+    if (authorized.pending) authorized.pending.delivered = true
+    return work
   }
   async function pollRoute(request: Request, authorized: Pair) {
     if (!withinRateLimit(pollTimes, now(), 1000, 10))
@@ -611,32 +788,47 @@ export function createBrowserBroker({
       return response(400, failure("invalid-poll", "The poll request is invalid."))
     if (pair !== authorized)
       return response(401, failure("session-revoked", "The local automation session was revoked."))
+    const retry = repeatedPoll(authorized, parsed.data)
+    if (retry) return retry
     if (parsed.data.sequence !== authorized.sequence + 1)
       return response(409, failure("invalid-sequence", "Poll sequence must increase exactly once."))
     if (parsed.data.document.id !== authorized.document.id)
       return response(409, failure("document-changed", "The paired document changed."))
+    if (authorized.previousResume) {
+      checkpoint({ ...authorized, previousResume: null })
+      authorized.previousResume = null
+    }
     authorized.document = parsed.data.document
     authorized.sequence = parsed.data.sequence
     authorized.lastPollAt = now()
     reportProgress(authorized.pending, parsed.data.progress)
-    const work =
-      authorized.pending && !authorized.pending.delivered
-        ? { requestId: authorized.pending.id, operation: authorized.pending.operation }
-        : null
-    if (authorized.pending) authorized.pending.delivered = true
-    return response(200, { protocolVersion: 1, work, cancelledRequestIds: [] })
+    const work = takePendingWork(authorized)
+    const reply = { protocolVersion: 1 as const, work, cancelledRequestIds: [] }
+    authorized.lastPoll = { body: JSON.stringify(parsed.data), response: reply }
+    return response(200, reply)
   }
   async function resultRoute(request: Request, authorized: Pair) {
-    const body = await readBrowserJson(request, bodyLimit(authorized.pending?.operation ?? null))
+    const body = await readBrowserJson(request, resultBodyLimit(authorized))
     const parsed = localResultRequestSchema.safeParse(body)
     if (pair !== authorized)
       return response(401, failure("session-revoked", "The local automation session was revoked."))
     if (!parsed.success)
       return response(400, failure("invalid-result", "The result request is invalid."))
+    const digest = createHash("sha256").update(JSON.stringify(parsed.data)).digest("hex")
+    if (resultReceiptMatches(authorized, parsed.data.requestId, digest))
+      return response(200, { ok: true })
     const pending = authorized.pending
     if (!matchesPending(pending, parsed.data))
       return response(409, failure("unexpected-result", "No matching operation is pending."))
-    const output = localToolOutputs[parsed.data.tool].safeParse(parsed.data.result)
+    return completeResult(authorized, pending, parsed.data, digest)
+  }
+  function completeResult(
+    authorized: Pair,
+    pending: Pending,
+    data: z.infer<typeof localResultRequestSchema>,
+    digest: string,
+  ) {
+    const output = localToolOutputs[data.tool].safeParse(data.result)
     if (!output.success)
       return response(400, failure("invalid-result", "The tool result does not match its schema."))
     if (!resultContextMatches(pending.operation, output.data, authorized.document.id))
@@ -647,9 +839,14 @@ export function createBrowserBroker({
           "The tool result belongs to another document or request.",
         ),
       )
-    if (!resultBudgetFits(parsed.data.tool, output.data))
+    if (!resultBudgetFits(data.tool, output.data))
       return response(400, failure("result-too-large", "The metadata result exceeds 128 KiB."))
     authorized.pending = null
+    authorized.lastResult = {
+      requestId: data.requestId,
+      digest,
+      bodyLimit: bodyLimit(pending.operation),
+    }
     clearPending(pending, output.data)
     return response(200, { ok: true })
   }
@@ -681,7 +878,7 @@ export function createBrowserBroker({
     return new Promise<LocalToolResult>((resolve) => {
       const id = randomUUID()
       const timer = setTimeout(() => {
-        if (pair?.pending?.id === id) revoke()
+        if (pair?.pending?.id === id) suspendBackground(pair)
       }, OPERATION_TTL)
       if (options.signal?.aborted) {
         clearTimeout(timer)
@@ -689,7 +886,7 @@ export function createBrowserBroker({
         return
       }
       const abortListener = () => {
-        if (pair?.pending?.id === id) revoke()
+        if (pair?.pending?.id === id) suspendBackground(pair)
       }
       activePair.pending = {
         id,
@@ -730,7 +927,10 @@ export function createBrowserBroker({
   return {
     handle,
     setClient(value: Client | null) {
-      if (client && (!value || value.name !== client.name || value.version !== client.version))
+      if (
+        pair &&
+        (!value || value.name !== pair.client.name || value.version !== pair.client.version)
+      )
         revoke()
       client = value
     },
@@ -754,7 +954,9 @@ export function createBrowserBroker({
     dispose() {
       disposed = true
       if (livenessTimer) clearInterval(livenessTimer)
-      revoke()
+      if (pair) {
+        suspendBackground(pair)
+      }
     },
   }
 }

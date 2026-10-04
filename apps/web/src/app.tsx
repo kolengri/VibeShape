@@ -356,10 +356,12 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
 
   const editSketch = useCallback(
     (sketchId: SketchId) => {
+      const currentDraft = sessionStore.getState().sketch.draft
+      if (currentDraft) return currentDraft.id === sketchId
       const source = controller.report?.snapshot.sketches.find(({ id }) => id === sketchId)
       if (source) sessionActions.beginSketchEdit(source)
     },
-    [controller.report?.snapshot.sketches, sessionActions],
+    [controller.report?.snapshot.sketches, sessionStore, sessionActions],
   )
 
   const createExtrusion = useCallback(async () => {

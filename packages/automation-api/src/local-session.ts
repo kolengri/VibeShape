@@ -1,5 +1,10 @@
 import { commandActorSchema } from "@vibeshape/domain/commands"
-import { documentIdSchema, generateUuidV7, revisionSchema } from "@vibeshape/domain/identifiers"
+import {
+  documentIdSchema,
+  generateUuidV7,
+  revisionSchema,
+  sessionIdSchema,
+} from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 import { localOperationSchema, localToolNameSchema, localToolOutputs } from "./local-tools"
 
@@ -60,9 +65,9 @@ export type LocalConnection = z.infer<typeof localConnectResponseSchema>
 export type LocalWork = z.infer<typeof localWorkSchema>
 export type LocalProgress = z.infer<typeof localProgressSchema>
 export function createLocalAutomationActor(timestampMs: number, randomBytes: Uint8Array) {
-  return commandActorSchema.parse({
-    type: "mcp",
+  return {
+    type: "mcp" as const,
     clientId: "org.vibeshape.mcp.local-client",
-    sessionId: generateUuidV7({ timestampMs, randomBytes }),
-  })
+    sessionId: sessionIdSchema.parse(generateUuidV7({ timestampMs, randomBytes })),
+  }
 }

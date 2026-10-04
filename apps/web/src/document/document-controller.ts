@@ -714,6 +714,15 @@ export function createActiveDocumentAutomationSession() {
       return null
     return state.report
   }
+  // Heartbeats need identity, not a fresh validation of every derived mesh buffer.
+  const readIdentity = () =>
+    sourceSessionAvailable()
+      ? {
+          id: active.snapshot.id,
+          name: active.snapshot.name,
+          revision: active.snapshot.revision,
+        }
+      : null
   const readInfo = (): ActiveAutomationInfo | null => {
     const report = currentReport()
     if (!report) return null
@@ -1129,6 +1138,7 @@ export function createActiveDocumentAutomationSession() {
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     disableAutoApply: factory.disableAutoApply,
     readInfo,
+    readIdentity,
     readSketchSolution: factory.readSketchSolution,
     readCad,
     exportRevisionBound,

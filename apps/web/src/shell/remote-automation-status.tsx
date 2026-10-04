@@ -58,6 +58,7 @@ export function RemoteAutomationStatus({
       current={{
         available: true,
         connected: true,
+        recovering: false,
         autoApply: current.autoApply,
         busy: current.busy,
         client: { name: current.client?.name ?? "", version: "OAuth" },

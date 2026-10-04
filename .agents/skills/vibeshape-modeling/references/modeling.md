@@ -10,6 +10,11 @@ Compare outer and inner sections before choosing Shell for a reconstruction. Use
 
 Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
 
+
+Choose one model coordinate frame before authoring: identify the origin, principal axes, symmetry planes and feature offsets. Prefer centering a new standalone part about an appropriate origin or symmetry axis unless the user requires another frame. For a reconstruction, preserve the source frame only when alignment, mating or another acceptance requirement depends on it; matching an arbitrary mesh bounding-box minimum is not itself a reason to translate every body.
+
+Author sketches, primitive origins and feature axes in their intended locations when the advertised contracts support them. Add Placement only for a real downstream positioning or orientation requirement, and explain that purpose in the feature label. Check a sketch-line axis, supported datum or explicit primitive origin before creating geometry at zero and immediately moving it. Do not add repeated Placement features to make the model sit beside the origin or improve its viewport composition; use camera Fit instead. Do not remove an existing Placement until inspecting its consumers, references and exact before/after bounds proves that the design intent is preserved.
+
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete

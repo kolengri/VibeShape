@@ -100,6 +100,8 @@
 | [0091](0091-paired-native-source-imports.md) | Accepted | Paired native source uploads, inspection and manual atomic import |
 | [0092](0092-paired-planar-source-imports.md) | Accepted | Paired SVG/DXF source uploads, analytical review and editable Sketch publication |
 
+| [0095](0095-local-mcp-continuous-recovery.md) | Accepted | Continuous recovery of approved local MCP sessions |
+
 Statuses:
 
 - `Proposed` — under discussion

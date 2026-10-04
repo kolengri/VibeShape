@@ -13,6 +13,7 @@ type Props = ComponentProps<typeof LocalAutomationStatus>
 const manual: Props["current"] = {
   available: true,
   connected: true,
+  recovering: false,
   autoApply: false,
   busy: false,
   client: { name: "Test CAD client", version: "1" },
@@ -46,6 +47,13 @@ async function openSetup() {
 afterEach(cleanup)
 
 describe("local AI auto-apply controls", () => {
+  it("keeps Stop AI available while an approved session is reconnecting", async () => {
+    const { connection } = setup({ ...manual, connected: false, recovering: true })
+    expect(screen.getByRole("status").textContent).toBe("Reconnecting AI…")
+    expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+    expect(connection.disable).toHaveBeenCalledOnce()
+  })
   it("offers explicit setup only after pairing and preserves manual session actions", async () => {
     const { connection, rerender } = setup({ ...manual, connected: false })
     expect(screen.queryByRole("button", { name: "AI connection and approval mode" })).toBeNull()

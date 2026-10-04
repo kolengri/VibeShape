@@ -1,12 +1,7 @@
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 
 // Keep the timeout active through body consumption, not only response headers.
-export async function localAutomationRequest(
-  path: string,
-  body: unknown,
-  token?: string,
-  keepalive = false,
-) {
+async function requestOnce(path: string, body: unknown, token?: string, keepalive = false) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5000)
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
@@ -46,4 +41,40 @@ export async function localAutomationRequest(
     reader?.releaseLock()
     clearTimeout(timeout)
   }
+}
+
+export class LocalAutomationTransportError extends Error {}
+
+// Only delivery envelopes are retried; CAD commands are never re-executed here.
+export async function localAutomationRequest(
+  path: string,
+  body: unknown,
+  token?: string,
+  keepalive = false,
+) {
+  const delivery = ["/poll", "/result"].includes(path)
+  const attempts = delivery && !keepalive ? 3 : 1
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await requestOnce(path, body, token, keepalive)
+      if (attempt + 1 === attempts || !transientStatus(response.status)) return response
+    } catch (error) {
+      if (!transportFailure(error)) throw error
+      if (attempt + 1 === attempts)
+        throw new LocalAutomationTransportError(
+          "The local automation bridge is temporarily unavailable.",
+        )
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 250 * 2 ** attempt))
+  }
+  throw new LocalAutomationTransportError("The local automation bridge is temporarily unavailable.")
+}
+
+function transientStatus(status: number) {
+  return status >= 500 || status === 408 || status === 429
+}
+function transportFailure(error: unknown) {
+  return (
+    error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError")
+  )
 }

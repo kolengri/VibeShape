@@ -389,6 +389,7 @@ describe("ModelTree History presentation", () => {
     "distinguishes missing sources from unnamed existing sketches (%s)",
     async (exists) => {
       const onPreview = vi.fn()
+      const onOpen = vi.fn()
       render(
         <I18nProvider i18n={i18n} initialLocale="en">
           <TooltipProvider>
@@ -406,6 +407,7 @@ describe("ModelTree History presentation", () => {
               labelsByRef={new Map(exists ? [[`sketch:${sketchId}`, ""]] : [])}
               dependencyDescription="Depends on 1 item."
               onPreview={onPreview}
+              onOpen={onOpen}
             />
           </TooltipProvider>
         </I18nProvider>,
@@ -414,6 +416,10 @@ describe("ModelTree History presentation", () => {
         expect(
           screen.getByRole("button", { name: "Source region 1 from Unnamed sketch" }),
         ).toBeTruthy()
+        await userEvent.click(
+          screen.getByRole("button", { name: "Source region 1 from Unnamed sketch" }),
+        )
+        expect(onOpen).toHaveBeenCalledWith(sketchId)
       } else {
         const missing = screen.getByText("Missing sketch")
         await userEvent.setup().hover(missing)
@@ -424,7 +430,7 @@ describe("ModelTree History presentation", () => {
     },
   )
   it.each(["legacy", "multi"] as const)(
-    "shows compact %s profile sources and locates the sketch without editing it",
+    "shows compact %s profile sources and opens its source sketch through the ordinary History action",
     async (kind) => {
       const user = userEvent.setup()
       const onPreview = vi.fn()
@@ -490,7 +496,7 @@ describe("ModelTree History presentation", () => {
       await user.click(link)
       expect(scroll).toHaveBeenCalledWith({ block: "nearest" })
       expect(document.activeElement).toBe(sketchRow)
-      expect(onSketchActivate).not.toHaveBeenCalled()
+      expect(onSketchActivate).toHaveBeenCalledWith(sketchId)
       expect(onPreview).toHaveBeenLastCalledWith(null)
     },
   )

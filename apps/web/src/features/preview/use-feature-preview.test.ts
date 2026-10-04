@@ -133,6 +133,48 @@ function rebuiltResponse(
 }
 
 describe("feature preview worker lifetime", () => {
+  it("uses correlated committed geometry for untouched History edits and rebuilds actual changes", () => {
+    const response = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
+      { featureId: independentId, contentHash: hash("independent"), geometry: { mesh } },
+    ])
+    const session = {
+      rebuild: vi.fn(() => new Promise<DocumentWorkerResponse>(() => {})),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const original = snapshot.features[0]!
+    const { result, rerender } = renderHook(
+      ({ candidate }) => useFeaturePreview(snapshot, candidate, response.geometry, true, response),
+      { initialProps: { candidate: original } },
+    )
+    expect(result.current.status).toBe("ready")
+    expect(result.current.meshes).toHaveLength(2)
+    expect(result.current.candidateMesh?.positions).toBe(mesh.positions)
+    expect(createSession).not.toHaveBeenCalled()
+    rerender({ candidate: { ...original } })
+    expect(createSession).not.toHaveBeenCalled()
+    rerender({ candidate: { ...original, parameters: { width: 20 } } })
+    expect(session.rebuild).toHaveBeenCalledOnce()
+    expect(result.current.status).toBe("loading")
+  })
+  it("does not reuse stale committed evidence for an untouched edit", () => {
+    const response = {
+      ...rebuiltResponse([{ featureId: baseId, contentHash: hash("base"), geometry: { mesh } }]),
+      revision: snapshot.revision - 1,
+    }
+    const session = {
+      rebuild: vi.fn(() => new Promise<DocumentWorkerResponse>(() => {})),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const { result } = renderHook(() =>
+      useFeaturePreview(snapshot, snapshot.features[0]!, response.geometry, true, response),
+    )
+    expect(result.current.status).toBe("loading")
+    expect(session.rebuild).toHaveBeenCalledOnce()
+  })
+
   it("keeps the worker through debounce invalidation and terminates it when the tool closes", async () => {
     const rejectFirst = vi.fn<(error: Error) => void>()
     const firstWork = new Promise<never>((_, reject) => rejectFirst.mockImplementation(reject))

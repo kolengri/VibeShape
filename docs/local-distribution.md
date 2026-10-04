@@ -47,7 +47,7 @@ must stay with its owning client; these commands never stop it or discover and k
 
 Manual draft approval is the default. The bottom status bar's **AI connection and approval mode → Apply automatically → Set up auto-apply** explicitly enables valid allowlisted CAD
 edits for this project and paired session only; **Auto-apply on** and **Stop AI** remain visible.
-Stop ends the pairing, and reconnect/reload/project change requires a fresh opt-in. See the
+Approved local pairing and the chosen approval mode recover after reload or a temporary interruption on the same origin, project and client. Stop AI, project/client replacement and lease expiry require new consent. Durable bridge-restart recovery currently requires macOS or Linux; see [ADR-0095](adr/0095-local-mcp-continuous-recovery.md). See the
 [MCP quickstart](mcp-quickstart.md) for review, Undo, and cancellation behavior.
 
 Host and port select browser storage. Preserve the same `http://127.0.0.1:PORT` origin to reopen

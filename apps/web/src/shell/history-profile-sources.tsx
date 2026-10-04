@@ -3,19 +3,23 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Link2, PenLine } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { useState } from "react"
 
 export function HistoryProfileSources({
   profiles,
   labelsByRef,
   onPreview,
+  onOpen,
   dependencyDescription,
 }: {
   profiles: readonly SketchProfileSelector[]
   labelsByRef: ReadonlyMap<string, string>
   onPreview?: ((profile: SketchProfileSelector | null) => void) | undefined
+  onOpen: (sketchId: SketchProfileSelector["sketchId"]) => void | boolean
   dependencyDescription: string
 }) {
   const t = useTranslations("app.shell.modelTree")
+  const [openingBlocked, setOpeningBlocked] = useState(false)
   return (
     <div className="ml-8 flex min-w-0 flex-wrap items-center gap-0.5 border-l border-border pl-1">
       <Link2 aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
@@ -69,6 +73,7 @@ export function HistoryProfileSources({
                     )
                   source?.scrollIntoView({ block: "nearest" })
                   source?.focus()
+                  setOpeningBlocked(onOpen(profile.sketchId) === false)
                 }}
               >
                 <PenLine aria-hidden="true" className="size-3 shrink-0" />
@@ -85,6 +90,11 @@ export function HistoryProfileSources({
         )
       })}
       <span className="sr-only">{dependencyDescription}</span>
+      {openingBlocked && (
+        <span role="alert" className="px-2 text-xs text-muted-foreground">
+          {t("sourceProfileEditBlocked")}
+        </span>
+      )}
     </div>
   )
 }

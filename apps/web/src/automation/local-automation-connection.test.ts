@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createLocalAutomationConnection } from "./local-automation-connection"
+import { LocalAutomationTransportError } from "./local-automation-http"
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
@@ -11,7 +12,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./automation-review-controller", () => ({
   automationReviews: { getSnapshot: mocks.review },
 }))
-vi.mock("./local-automation-http", () => ({ localAutomationRequest: mocks.request }))
+vi.mock("./local-automation-http", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./local-automation-http")>()),
+  localAutomationRequest: mocks.request,
+}))
 vi.mock("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
 }))
@@ -65,7 +69,8 @@ beforeEach(() => {
     dispose,
     enableAutoApply,
     disableAutoApply: optOut,
-    readInfo: () => ({ summary: { documentId: id, revision: 4, data: { name: "Bracket" } } }),
+    readIdentity: () => ({ id, revision: 4, name: "Bracket" }),
+    readInfo: vi.fn(),
   })
   mocks.execute.mockResolvedValue(failedResult)
   mocks.request.mockImplementation(async (path: string) => {
@@ -246,7 +251,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     expect(connection.enableAutoApply()).toBe(true)
     const created = mocks.createHandle.mock.results[0]
     if (!created) throw new Error("The browser handle was not created.")
-    created.value.readInfo = () => null
+    created.value.readIdentity = () => null
     await vi.advanceTimersByTimeAsync(500)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
     expect(dispose).toHaveBeenCalledOnce()
@@ -345,27 +350,101 @@ describe("browser-owned local AI connection lifecycle", () => {
 })
 
 describe("local AI reload recovery", () => {
-  it("restores the same document after cancelled navigation with auto-apply off", async () => {
+  it("does not let a disposed owner's late resume revoke the replacement owner's grant", async () => {
+    await ready()
+    await connection.enable()
+    window.dispatchEvent(new Event("pagehide"))
+    const late = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    let resumes = 0
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/resume" && ++resumes === 1 ? late.promise : original?.(path, ...args),
+    )
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(1000)
+    const previous = connection
+    previous.dispose()
+    connection = createLocalAutomationConnection()
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().connected).toBe(true)
+    late.resolve(ok({ ...credential, token: "B".repeat(43) }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().connected).toBe(true)
+    expect(mocks.request).not.toHaveBeenCalledWith("/revoke", {}, "B".repeat(43), true)
+  })
+  it.each([204, 503])(
+    "handles late grant revocation status %i after explicit Stop AI",
+    async (status) => {
+      await ready()
+      await connection.enable()
+      window.dispatchEvent(new Event("pagehide"))
+      const late = deferred<ReturnType<typeof ok>>()
+      const original = mocks.request.getMockImplementation()
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+        if (path === "/resume") return late.promise
+        if (path === "/revoke" && args[1] === "B".repeat(43))
+          return { ok: status === 204, status, data: null }
+        return original?.(path, ...args)
+      })
+      await connection.status()
+      await vi.advanceTimersByTimeAsync(1000)
+      await connection.disable()
+      late.resolve(ok({ ...credential, token: "B".repeat(43) }))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(connection.getSnapshot().connected).toBe(false)
+      expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, "B".repeat(43), true)
+      expect(connection.getSnapshot().error).toBe(status !== 204)
+    },
+  )
+  it("clears an older automatic grant if persisting a manual opt-out fails", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    const write = vi
+      .spyOn(Object.getPrototypeOf(sessionStorage), "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("Storage quota exceeded.", "QuotaExceededError")
+      })
+    try {
+      expect(connection.disableAutoApply()).toBe(true)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+      expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+      expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+    } finally {
+      write.mockRestore()
+    }
+    connection.dispose()
+    connection = createLocalAutomationConnection()
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+  })
+  it("restores the same document after cancelled navigation with the reviewed auto-apply grant", async () => {
     await ready()
     await connection.enable()
     connection.enableAutoApply()
     window.dispatchEvent(new Event("beforeunload"))
     expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
-    await vi.advanceTimersByTimeAsync(250)
-    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
     expect(mocks.request).toHaveBeenCalledWith(
       "/resume",
       { protocolVersion: 1, document: { id, name: "Bracket", revision: 4 } },
       credential.token,
     )
-    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "null")).toMatchObject(
+      { token: "B".repeat(43), autoApply: true },
+    )
+    expect(enableAutoApply).toHaveBeenCalledWith(credential.actor)
   })
   it("does not restore cancelled navigation after explicit Stop AI", async () => {
     await ready()
     await connection.enable()
     window.dispatchEvent(new Event("beforeunload"))
     await connection.disable()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(false)
     expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
     expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
@@ -393,7 +472,7 @@ describe("local AI reload recovery", () => {
       true,
     )
   })
-  it("revokes a failed poll when the document remains open", async () => {
+  it("recovers a transport failure without revoking the reviewed session", async () => {
     await ready()
     const polling = deferred<ReturnType<typeof ok>>()
     const original = mocks.request.getMockImplementation()
@@ -401,13 +480,16 @@ describe("local AI reload recovery", () => {
       path === "/poll" ? polling.promise : original?.(path, ...args),
     )
     await connection.enable()
-    polling.reject(new TypeError("The network failed."))
+    polling.reject(new LocalAutomationTransportError("The network failed."))
     await vi.advanceTimersByTimeAsync(1)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
-    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
-    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    expect(mocks.request).not.toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+    mocks.request.mockImplementation((...args) => original?.(...args))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, error: false })
+    expect(mocks.request).not.toHaveBeenCalledWith("/connect", expect.anything(), expect.anything())
   })
-  it("restores the same project in a fresh connection with auto-apply off", async () => {
+  it("restores the same project in a fresh connection with the reviewed auto-apply grant", async () => {
     await ready()
     await connection.enable()
     connection.enableAutoApply()
@@ -417,8 +499,8 @@ describe("local AI reload recovery", () => {
     const previous = connection
     connection = createLocalAutomationConnection()
     await ready()
-    await vi.advanceTimersByTimeAsync(250)
-    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
     expect(mocks.request).toHaveBeenCalledWith(
       "/resume",
       {
@@ -427,7 +509,9 @@ describe("local AI reload recovery", () => {
       },
       credential.token,
     )
-    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "null")).toMatchObject(
+      { autoApply: true, token: "B".repeat(43) },
+    )
     previous.dispose()
   })
   it("waits for the document to open before resuming", async () => {
@@ -438,10 +522,10 @@ describe("local AI reload recovery", () => {
     if (!create) throw new Error("The document handle mock is unavailable.")
     mocks.createHandle.mockReturnValue({ ok: false })
     await connection.status()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
     mocks.createHandle.mockImplementation(create)
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(true)
   })
   it("does not grant access to a different project", async () => {
@@ -451,16 +535,14 @@ describe("local AI reload recovery", () => {
     mocks.createHandle.mockReturnValue({
       ok: true,
       dispose,
-      readInfo: () => ({
-        summary: {
-          documentId: "0195b5ac-b250-7a2c-8c33-000000000002",
-          revision: 0,
-          data: { name: "Other" },
-        },
+      readIdentity: () => ({
+        id: "0195b5ac-b250-7a2c-8c33-000000000002",
+        revision: 0,
+        name: "Other",
       }),
     })
     await connection.status()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(false)
     expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
     expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
@@ -471,7 +553,7 @@ describe("local AI reload recovery", () => {
     window.dispatchEvent(new Event("pagehide"))
     await connection.disable()
     await connection.status()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(false)
     expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
     await connection.enable()
@@ -483,7 +565,7 @@ describe("local AI reload recovery", () => {
         : original?.(path, ...args),
     )
     await connection.status()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
     expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
   })
@@ -491,14 +573,14 @@ describe("local AI reload recovery", () => {
     await ready()
     await connection.enable()
     window.dispatchEvent(new Event("pagehide"))
-    await vi.advanceTimersByTimeAsync(60_001)
+    await vi.advanceTimersByTimeAsync(3_600_001)
     await connection.status()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(false)
     expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
     sessionStorage.setItem("vibeshape-local-ai-resume", "{invalid")
     await connection.status()
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(false)
   })
 })
@@ -514,6 +596,44 @@ it("transfers reload recovery across the loading-to-ready owner remount", async 
   connection.dispose()
   connection = createLocalAutomationConnection()
   await ready()
-  await vi.advanceTimersByTimeAsync(250)
+  await vi.advanceTimersByTimeAsync(1000)
   expect(connection.getSnapshot().connected).toBe(true)
+})
+
+it("uses lightweight identity for heartbeat without projecting model measurements", async () => {
+  await ready()
+  await connection.enable()
+  await vi.advanceTimersByTimeAsync(5000)
+  const handle = mocks.createHandle.mock.results[0]?.value
+  expect(handle.readInfo).not.toHaveBeenCalled()
+  expect(mocks.request.mock.calls.filter(([path]) => path === "/poll").length).toBeGreaterThan(5)
+})
+it("retains recovery through a temporary bridge outage and clears it on changed client", async () => {
+  await ready()
+  await connection.enable()
+  connection.enableAutoApply()
+  window.dispatchEvent(new Event("pagehide"))
+  const original = mocks.request.getMockImplementation()
+  let offline = true
+  mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+    if (path === "/status" && offline) throw new LocalAutomationTransportError("Offline")
+    return original?.(path, ...args)
+  })
+  window.dispatchEvent(new Event("pageshow"))
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(connection.getSnapshot().connected).toBe(false)
+  expect(sessionStorage.getItem("vibeshape-local-ai-resume")).not.toBeNull()
+  offline = false
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+  window.dispatchEvent(new Event("pagehide"))
+  mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+    path === "/status"
+      ? ok({ protocolVersion: 1, client: { name: "Other client", version: "1" }, paired: false })
+      : original?.(path, ...args),
+  )
+  window.dispatchEvent(new Event("pageshow"))
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(connection.getSnapshot().connected).toBe(false)
+  expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
 })

@@ -206,7 +206,12 @@ test.describe("selector-backed revolve", () => {
       await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await form.getByRole("button", { name: "Create revolve" }).click()
 
-      await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
+      const revolveRow = page.getByRole("treeitem", { name: "Revolve 1", exact: true })
+      await expect(revolveRow).toBeVisible()
+      const revolveId = await revolveRow.evaluate((row) =>
+        row.closest("[data-history-id]")?.getAttribute("data-history-id"),
+      )
+      expect(revolveId).toBeTruthy()
       await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
         timeout: 120_000,
       })
@@ -230,13 +235,15 @@ test.describe("selector-backed revolve", () => {
       await downstreamForm
         .getByRole("button", { name: "Select a profile in the 3D viewport" })
         .click()
-      await page.getByRole("button", { name: "Hide Box 1" }).click()
+      await page.getByRole("button", { name: "Hide Revolve 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
-      await page.getByRole("button", { name: "Show Box 1" }).click()
+      await page.getByRole("button", { name: "Show Revolve 1" }).click()
       await selectResultOperation(page, downstreamForm, operation)
-      await expect(
-        downstreamForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
-      ).toHaveText("Revolve 1")
+      const downstreamTarget = downstreamForm
+        .getByRole("combobox", { name: "Target body" })
+        .locator("option:checked")
+      await expect(downstreamTarget).toHaveText("Box 1")
+      await expect(downstreamTarget).toHaveAttribute("value", JSON.stringify([revolveId, "result"]))
       await downstreamForm.getByRole("button", { name: "Cancel" }).click()
     })
   }

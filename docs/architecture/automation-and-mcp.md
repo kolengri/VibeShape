@@ -253,7 +253,7 @@ approving a later review. Only one session can own the confirmation surface at a
 An idle paired user may explicitly opt in to the session CAD allowlist in ADR-0052. The browser
 then approves qualifying valid drafts through the same review port, with a persistent Auto-apply on
 indicator and Stop AI control. An existing review cannot acquire this grant retroactively. All
-other drafts keep the review surface above; disconnect or project change resets the grant. The
+other drafts keep the review surface above; explicit Stop AI, project/client replacement or lease expiry resets the local grant. Temporary local interruption and reload preserve the latest explicitly chosen approval mode. Remote disconnect recovery retains its separate consent rules. The
 bottom status bar exposes neutral connection and Stop AI controls plus an approval-mode menu.
 Returning an idle session to manual review clears its browser-owned grant without revoking pairing;
 active operations or reviews block that change. No MCP tool can change either approval mode.
@@ -302,8 +302,7 @@ The loopback origin has these requirements:
 - authenticate every browser request with a session-bound, same-origin credential that is never placed in a URL;
 - bind one bridge session to an explicit set of shared documents and capabilities;
 - enforce sequence, size, frequency, lifetime, and concurrent-request limits;
-- revoke immediately from the VibeShape UI and on MCP-client disconnect; local tab reloads may
-  suspend access for authenticated, same-document recovery under [ADR-0075](../adr/0075-local-mcp-tab-reload-recovery.md);
+- revoke immediately on explicit Stop AI and project/client replacement; temporary local interruption suspends access for authenticated same-origin, same-document and same-client recovery under [ADR-0095](../adr/0095-local-mcp-continuous-recovery.md);
 - fail startup rather than selecting a different storage origin silently when the configured local origin is unavailable;
 - never assume that loopback or same-origin delivery implies user consent.
 

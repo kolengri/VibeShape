@@ -11,6 +11,7 @@ import {
   defaultAngleExpression,
   defaultLengthExpression,
 } from "../../document/document-display-units"
+import { featureEditPreview } from "../part-design/feature-edit-preview"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -79,7 +80,12 @@ function PlacementPreview({
   const parsed = parsePlacementForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: previewEnabled && parsed.ok ? placementFeatureRecord(mode, featureId, parsed) : null,
+    preview: featureEditPreview(
+      mode,
+      values,
+      placementFormValues(mode, units),
+      previewEnabled && parsed.ok ? placementFeatureRecord(mode, featureId, parsed) : null,
+    ),
   })
   return null
 }

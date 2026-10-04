@@ -12,6 +12,7 @@ import {
   multiProfileRevolveFeatureParametersSchema,
   multiProfileRevolveFeatureType,
   readRevolveFeatureParameters,
+  readRevolveProfileSet,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV6Schema,
   revolveFeatureParametersV7Schema,
@@ -39,6 +40,7 @@ import {
   positiveDirectManipulationAngleExpression,
 } from "../../document/document-display-units"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
+import { featureEditPreview } from "../part-design/feature-edit-preview"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import {
   profileSelectorsEqual,
@@ -355,9 +357,26 @@ function RevolvePreviewSync({
   const parsed = parseValues(values, variables, displayUnit, copy, options)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: parsed.ok
-      ? record(mode, featureId, parsed.parameters, parsed.targetFeatureId, parsed.supportReference)
-      : null,
+    preview: featureEditPreview(
+      mode,
+      values,
+      mode.kind === "edit"
+        ? valuesFromFeature(
+            mode.feature,
+            readRevolveProfileSet(mode.feature)?.profiles ?? [],
+            mode.supportReference,
+          )
+        : null,
+      parsed.ok
+        ? record(
+            mode,
+            featureId,
+            parsed.parameters,
+            parsed.targetFeatureId,
+            parsed.supportReference,
+          )
+        : null,
+    ),
   })
   return null
 }
