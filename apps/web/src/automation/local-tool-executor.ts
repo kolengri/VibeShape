@@ -329,9 +329,21 @@ export function createLocalToolExecutor(
           "The paired document has no assembly authority.",
         )
   }
+  function isSourceImport(
+    operation: LocalOperation,
+  ): operation is LocalImportOperation | LocalPlanarImportOperation {
+    return isLocalImport(operation) || isLocalPlanarImport(operation)
+  }
+  function sourceImportFile(
+    operation: LocalImportOperation | LocalPlanarImportOperation,
+    signal?: AbortSignal,
+  ) {
+    return isLocalPlanarImport(operation)
+      ? planarImportFile(operation, signal)
+      : importFile(operation, signal)
+  }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
-    if (isLocalPlanarImport(operation)) return planarImportFile(operation, signal)
-    if (isLocalImport(operation)) return importFile(operation, signal)
+    if (isSourceImport(operation)) return sourceImportFile(operation, signal)
     if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)

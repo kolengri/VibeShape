@@ -2,6 +2,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
+import { agentSkillTool } from "@vibeshape/automation-api/agent-skills"
+import { localToolNameSchema } from "@vibeshape/automation-api/local-tools"
 import { expect, it } from "vitest"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
@@ -16,6 +18,10 @@ it("discovers client-valid planar import schemas without acquiring unpaired auth
     const [a, b] = InMemoryTransport.createLinkedPair()
     await Promise.all([adapter.connect(b), client.connect(a)])
     const tools = (await client.listTools()).tools
+    expect(tools.map((tool) => tool.name).sort()).toEqual(
+      [...localToolNameSchema.options, agentSkillTool.name].sort(),
+    )
+    expect(tools).toHaveLength(137)
     const inputs = {
       begin_planar_import_upload: {
         revision: 4,
