@@ -17,6 +17,13 @@ import {
   metadataChangeArgumentsSchema,
   metadataCommitViewSchema,
 } from "./authored-metadata"
+import {
+  binaryExportChunkSchema,
+  binaryExportDescriptorSchema,
+  binaryExportDiscardSchema,
+  localBinaryExportInputs,
+  localBinaryExportOperations,
+} from "./binary-exports"
 import { automationDraftInspectionViewSchema } from "./draft-inspection"
 import {
   automationDraftCommitViewSchema,
@@ -100,6 +107,7 @@ const chamfer = z
   .strict()
 export const localToolInputs = {
   model_sketch_solution: sketchSolutionArgumentsSchema,
+  ...localBinaryExportInputs,
   model_measurements: modelMeasurementQuerySchema.omit({
     kind: true,
     schemaVersion: true,
@@ -167,7 +175,7 @@ export const localModelInfoSchema = z
         value.summary.revision === value.measurements.revision),
     "Model views must describe the same revision.",
   )
-export const LOCAL_EXPORT_MAX_BYTES = 6 * 1024 * 1024
+export { BINARY_EXPORT_MAX_BYTES as LOCAL_EXPORT_MAX_BYTES } from "./binary-exports"
 export const localExportSchema = z
   .object({
     documentId: documentSummaryViewSchema.shape.documentId,
@@ -185,6 +193,10 @@ export const localExportSchema = z
 export const localToolOutputs = {
   model_sketch_solution: resultOf(sketchSolutionViewSchema),
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
+  prepare_model_export: resultOf(binaryExportDescriptorSchema),
+  prepare_project_backup: resultOf(binaryExportDescriptorSchema),
+  read_export_chunk: resultOf(binaryExportChunkSchema),
+  discard_export: resultOf(binaryExportDiscardSchema),
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
   model_history: resultOf(authoredHistoryViewSchema),
@@ -260,6 +272,10 @@ export const localToolOutputs = {
 export const localToolNameSchema = z.enum([
   "model_sketch_solution",
   "draft_sketch_solution",
+  "prepare_model_export",
+  "prepare_project_backup",
+  "read_export_chunk",
+  "discard_export",
   "model_measurements",
   "draft_measurements",
   "model_history",
@@ -334,6 +350,7 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  ...localBinaryExportOperations,
   z
     .object({
       tool: z.literal("model_sketch_solution"),

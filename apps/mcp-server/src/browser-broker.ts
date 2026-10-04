@@ -6,6 +6,10 @@ import {
   metadataCommitViewSchema,
 } from "@vibeshape/automation-api/authored-metadata"
 import {
+  binaryExportResultMatches,
+  isLocalBinaryExport,
+} from "@vibeshape/automation-api/binary-exports"
+import {
   automationDraftCommitViewSchema,
   automationDraftDiscardViewSchema,
   automationDraftPreviewSchema,
@@ -326,6 +330,8 @@ function resultMatches(
   documentId: string,
 ) {
   if (!result.ok) return true
+  if (isLocalBinaryExport(operation))
+    return binaryExportResultMatches(operation, result.value, documentId)
   if (isLocalDraftCommand(operation)) return stateMatches(operation, result.value, documentId)
   if (isLocalDraftInspection(operation))
     return draftInspectionMatches(operation, result.value, documentId)
