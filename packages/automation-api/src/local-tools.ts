@@ -29,6 +29,16 @@ import {
   localDraftInspectionInputs,
   localDraftInspectionOperations,
 } from "./local-draft-inspection"
+import {
+  lifecycleToolNames,
+  localLifecycleInputs,
+  localLifecycleOperations,
+} from "./local-lifecycle-tools"
+import {
+  localPrimitiveInputs,
+  localPrimitiveOperations,
+  primitiveToolNames,
+} from "./local-primitive-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
   cadInspectionDetailQuerySchema,
@@ -112,6 +122,8 @@ export const localToolInputs = {
   model_body_measurements: modelBodyMeasurementArgumentsSchema,
   model_body_topology: modelBodyTopologyArgumentsSchema,
   ...localCadInputs,
+  ...localPrimitiveInputs,
+  ...localLifecycleInputs,
   ...localVariableInputs,
   model_variables: variableListQuerySchema.omit({
     kind: true,
@@ -181,6 +193,21 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  update_box: resultOf(automationDraftStateSchema),
+  create_cylinder: resultOf(automationDraftStateSchema),
+  update_cylinder: resultOf(automationDraftStateSchema),
+  create_cone: resultOf(automationDraftStateSchema),
+  update_cone: resultOf(automationDraftStateSchema),
+  create_sphere: resultOf(automationDraftStateSchema),
+  update_sphere: resultOf(automationDraftStateSchema),
+  create_torus: resultOf(automationDraftStateSchema),
+  update_torus: resultOf(automationDraftStateSchema),
+  create_pyramid: resultOf(automationDraftStateSchema),
+  update_pyramid: resultOf(automationDraftStateSchema),
+  remove_feature: resultOf(automationDraftStateSchema),
+  remove_sketch: resultOf(automationDraftStateSchema),
+  set_feature_suppressed: resultOf(automationDraftStateSchema),
+  rename_project: resultOf(automationDraftStateSchema),
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
   model_history: resultOf(authoredHistoryViewSchema),
@@ -254,6 +281,8 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  ...primitiveToolNames,
+  ...lifecycleToolNames,
   "model_measurements",
   "draft_measurements",
   "model_history",
@@ -355,6 +384,8 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
     })
     .strict(),
   ...localCadOperations,
+  ...localPrimitiveOperations,
+  ...localLifecycleOperations,
   ...localVariableOperations,
   z
     .object({ tool: z.literal("model_variables"), arguments: localToolInputs.model_variables })
@@ -385,6 +416,24 @@ export type LocalDraftCommandOperation = Extract<
   LocalOperation,
   { arguments: { commandId: string; draftId: string } }
 >
+export type LocalPrimitiveCommandOperation = Extract<
+  LocalOperation,
+  { tool: (typeof primitiveToolNames)[number] }
+>
+export type LocalLifecycleCommandOperation = Extract<
+  LocalOperation,
+  { tool: (typeof lifecycleToolNames)[number] }
+>
+export function isLocalPrimitiveCommand(
+  operation: LocalOperation,
+): operation is LocalPrimitiveCommandOperation {
+  return operation.tool in localPrimitiveInputs
+}
+export function isLocalLifecycleCommand(
+  operation: LocalOperation,
+): operation is LocalLifecycleCommandOperation {
+  return operation.tool in localLifecycleInputs
+}
 
 export function isLocalDraftCommand(
   operation: LocalOperation,

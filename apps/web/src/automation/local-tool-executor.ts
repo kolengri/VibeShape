@@ -6,7 +6,9 @@ import {
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
+  isLocalLifecycleCommand,
   isLocalMetadataRead,
+  isLocalPrimitiveCommand,
   LOCAL_EXPORT_MAX_BYTES,
   type LocalMetadataReadOperation,
   type LocalOperation,
@@ -29,6 +31,8 @@ import type { ActiveAutomationInfo } from "../document/document-controller"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
+import { createLocalLifecycleCommand } from "./local-lifecycle-command"
+import { createLocalPrimitiveCommand } from "./local-primitive-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
 
@@ -174,6 +178,10 @@ function draftCommandRequest(
   documentId: string,
 ) {
   if (isVariableCommand(operation)) return createLocalVariableCommand(operation, actor, documentId)
+  if (isLocalPrimitiveCommand(operation))
+    return createLocalPrimitiveCommand(operation, actor, documentId)
+  if (isLocalLifecycleCommand(operation))
+    return createLocalLifecycleCommand(operation, actor, documentId)
   switch (operation.tool) {
     case "create_box":
     case "create_fillet":

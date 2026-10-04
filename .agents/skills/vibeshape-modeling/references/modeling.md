@@ -10,6 +10,40 @@ Compare outer and inner sections before choosing Shell for a reconstruction. Use
 
 Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
 
+## Registered primitives
+
+Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
+typed `parameters` record. Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid each
+have named create/update tools using their registered domain schemas. Supply quantity dimensions,
+quantity `{ x, y, z }` origin, applicable `centered`, explicit `suppressed`, the label to retain,
+stable feature ID, fresh command ID and current owned draft revision. These independent primitives
+accept no dependencies or topology references. Read the full existing feature before updating;
+preserve its identity and raw expressions. The live schemas define bounds and required fields.
+Torus requires major radius greater than minor radius; Pyramid takes 3–64 integer sides and a
+circumradius. Wedge and truncated Cone are not registered primitive contracts.
+
+Inspect exact preview volume, bounds and body count before commit. Existing CAD auto-apply
+eligibility is unchanged: a valid matching grant can cover Box/Cylinder v1 ordinary edits;
+the other primitive families require manual browser review.
+
+## Feature and sketch lifecycle
+
+`remove_feature` and `remove_sketch` stage ordinary destructive removal by stable ID.
+Dependencies block removal with `feature-in-use` or `sketch-in-use`; the rejected command does
+not advance the draft revision. Inspect the owning records and explicitly remove or retarget
+their consumers first. These tools never cascade or discard model-reference intent.
+
+`set_feature_suppressed` takes an explicit boolean, preserving the remaining authored record.
+Suppression can block downstream geometry; exact preview exposes that failure and must be repaired
+before Apply. `rename_project` stages the registered document rename with a normalized nonempty
+name of at most 120 characters. It preserves feature/sketch IDs and geometry.
+
+All four lifecycle tools use fresh command IDs and the current owned draft revision. They always
+require ordinary manual browser review, including with CAD auto-apply enabled. Stage a coherent
+edit, run exact preview, then `commit_draft`; the accepted transaction persists once and creates
+one normal Undo entry. Reuse the returned revision and inspect affected intent after Apply.
+History navigation and generic command execution are not new MCP authorities.
+
 ## Sketches and profiles
 
 Use the advertised entity/constraint schema. Coordinate values are mm and solver seeds, not persistent dimensional constraints. Preserve unaffected entity and constraint IDs when replacing a sketch. Fully constrain geometry when the requested parametric intent requires it; report remaining freedom or conflicts when relevant.

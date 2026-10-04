@@ -320,6 +320,14 @@ Extension rules:
 
 See [Extension architecture](../architecture/extensions.md), [Automation and MCP architecture](../architecture/automation-and-mcp.md), [ADR-0012](../adr/0012-capability-based-extension-platform.md), and [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
 
+Registered Box, Cylinder, Cone, Sphere, Torus and Pyramid primitives have named MCP create/update
+tools with authored quantities and placement; legacy Box creation keeps its millimeter shorthand.
+Feature/sketch removal, explicit feature suppression and project rename use their existing
+registered domain commands in owned drafts. Dependencies block removal without cascading;
+all lifecycle changes require manual browser review even with CAD auto-apply enabled.
+They retain normal replay, Undo/Redo and persistence. See
+[ADR-0088](../adr/0088-named-primitive-and-lifecycle-mcp-commands.md).
+
 ## Explicitly deferred
 
 - Executable third-party extensions and a public marketplace until the SPK-006 production follow-ups and stable command/feature contracts pass.
