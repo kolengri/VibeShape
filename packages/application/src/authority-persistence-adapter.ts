@@ -1,4 +1,5 @@
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
+import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import {
   type DocumentAuthoritySnapshot,
   documentAuthoritySnapshotSchema,
@@ -202,6 +203,20 @@ export function createAuthorityPersistenceAdapter(
         return authority
           ? history.availability
           : (legacy.history?.availability ?? { canUndo: false, canRedo: false })
+      },
+      preview(direction) {
+        if (!authority) return legacy.history?.preview?.(direction) ?? null
+        const target = history.target(direction)
+        if (!target) return null
+        const ownedTarget = documentAuthoritySnapshotSchema.parse(JSON.parse(canonicalJson(target)))
+        const projected = runtimeProjection(ownedTarget)
+        return projected.ok
+          ? {
+              targetRevision: target.revision,
+              snapshot: projected.snapshot,
+              authority: ownedTarget,
+            }
+          : null
       },
       async navigate(input) {
         if (!authority)

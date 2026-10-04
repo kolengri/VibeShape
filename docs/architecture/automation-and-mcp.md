@@ -505,3 +505,10 @@ staged bytes, versions and metadata. Immutable version selection, copy/reference
 metadata CAS remain explicit. Read views omit meshes and bytes and use bounded frozen-topology pages.
 See [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-drafts.md) and the
 [assembly/library operator workflow](../../.agents/skills/vibeshape-modeling/references/assembly-and-library.md).
+
+
+## Reviewed saved-change navigation
+
+`model_history_state` reads the paired document's current Undo/Redo availability; `model_history` continues to describe authored item ordering. `undo_model` and `redo_model` create five-minute, actor-owned, browser-only target reviews. All three require the current document ID and revision context from `model_info`; navigation additionally requires a fresh command identifier. Manual Apply/Discard remains required with auto-apply enabled.
+
+The ordinary adapter's cloned read-only checkpoint feeds disposable exact model and assembly preview with repository-owned source assets. The historical snapshot never becomes an MCP result or caller input. After exact review and target revalidation, the existing session history queue, write lease and revision CAS publish one actor-preserving restore event. The target revision is historical; the publication revision advances by one. Cancellation after authorized publication starts settles the actual save outcome. Reopening preserves saved state/events but resets transient checkpoint stacks. See [ADR-0093](../adr/0093-reviewed-mcp-history-navigation.md) and the [organization operator workflow](../../.agents/skills/vibeshape-organization/SKILL.md).

@@ -1,5 +1,6 @@
 import type { AutomationDraftPreview } from "@vibeshape/automation-api/drafts"
 import type { AssemblyReviewInput } from "@vibeshape/automation-host/assembly-session-contract"
+import type { HistoryReviewInput } from "@vibeshape/automation-host/history-session"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
@@ -22,6 +23,7 @@ import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
 import { isImportReview, isPlanarImportReview } from "./automation-review-state"
+import { HistoryAutomationReviewPanel } from "./history-review-panel"
 import { ImportReviewPanel } from "./import-review-panel"
 import { PlanarImportReviewPanel } from "./planar-import-review-panel"
 import { SurfaceTextureReviewPanel } from "./surface-texture-review-panel"
@@ -416,10 +418,21 @@ function SurfaceTextureProposalReview({
 function CadReviewPanel({
   review,
 }: {
-  review: Omit<AutomationReviewState, "input"> & { input: DraftReviewInput | AssemblyReviewInput }
+  review: Omit<AutomationReviewState, "input"> & {
+    input: DraftReviewInput | AssemblyReviewInput | HistoryReviewInput
+  }
 }) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { input } = review
+  if ("kind" in input && input.kind === "history")
+    return (
+      <HistoryAutomationReviewPanel
+        input={input}
+        client={actorLabel(input.actor, t)}
+        diagnostic={<ReviewDiagnostic review={review} />}
+        actions={<ReviewActions commands={[]} review={review} t={t} destructive={false} />}
+      />
+    )
   if ("kind" in input)
     return (
       <AssemblyAutomationReviewPanel

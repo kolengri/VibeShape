@@ -297,6 +297,62 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
 )
 
 describe("remote MCP in workerd", () => {
+  it.each(["document", "base", "direction", "command"] as const)(
+    "revokes a well-shaped forged history %s result",
+    async (forged) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const documentId = "0195b5ac-b280-7a2c-8c33-000000000004"
+      const commandId = "0195b5ac-b280-7a2c-8c33-000000000777"
+      const exact = {
+        documentId,
+        baseRevision: 4,
+        revision: 5,
+        commandId,
+        direction: "undo",
+        targetRevision: 3,
+      }
+      const send = async (id: number, value: typeof exact) => {
+        const work = nextMessage(tab.socket)
+        const pending = mcp(authenticated.token, id, "tools/call", {
+          name: "undo_model",
+          arguments: { documentId, baseRevision: 4, commandId },
+        })
+        const operation = await work
+        if (operation.type !== "work") throw new Error("Expected history browser work")
+        tab.socket.send(
+          JSON.stringify({
+            type: "result",
+            protocolVersion: 1,
+            requestId: operation.requestId,
+            tool: "undo_model",
+            result: { ok: true, value },
+          }),
+        )
+        return (await pending).json()
+      }
+      expect(await send(1, exact)).toMatchObject({
+        result: { structuredContent: { result: { ok: true } } },
+      })
+      const altered = {
+        document: { ...exact, documentId: commandId },
+        base: { ...exact, baseRevision: 3, revision: 4 },
+        direction: { ...exact, direction: "redo" },
+        command: { ...exact, commandId: documentId },
+      }
+      expect(await send(2, altered[forged])).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+      expect(
+        await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(false)
+    },
+  )
   it.each(["revision", "featureId"] as const)(
     "revokes a surface texture read receipt with the wrong %s",
     async (field) => {

@@ -53,9 +53,15 @@ export const documentHistoryRequestSchema = z
 
 export type DocumentHistoryRequest = Readonly<z.infer<typeof documentHistoryRequestSchema>>
 export type DocumentHistoryAvailability = Readonly<{ canUndo: boolean; canRedo: boolean }>
+export type DocumentHistoryPreview = Readonly<{
+  targetRevision: number
+  snapshot: DocumentSnapshot
+  authority: DocumentAuthoritySnapshot
+}>
 
 export type DocumentHistoryPort = Readonly<{
   readonly availability: DocumentHistoryAvailability
+  preview?: (direction: DocumentHistoryRequest["direction"]) => DocumentHistoryPreview | null
   navigate: (
     input: Readonly<{
       request: DocumentHistoryRequest
@@ -541,6 +547,11 @@ export class PersistentDocumentSession {
 
   get historyItems() {
     return this.#dependencies.repository.semanticHistory?.items ?? null
+  }
+
+  previewHistory(direction: DocumentHistoryRequest["direction"]): DocumentHistoryPreview | null {
+    if (this.#closed || !this.#lease) return null
+    return this.#dependencies.repository.history?.preview?.(direction) ?? null
   }
 
   navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {

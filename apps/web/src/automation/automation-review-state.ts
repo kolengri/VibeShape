@@ -2,6 +2,7 @@ import type {
   AssemblyResult,
   AssemblyReviewInput,
 } from "@vibeshape/automation-host/assembly-session-contract"
+import type { HistoryReviewInput } from "@vibeshape/automation-host/history-session"
 import type {
   AutomationHostDiagnosticCode,
   AutomationHostResult,
@@ -14,6 +15,7 @@ import type { PlanarImportReviewInput } from "./planar-import-upload-session"
 export type AutomationReviewInput =
   | DraftReviewInput
   | AssemblyReviewInput
+  | HistoryReviewInput
   | ImportReviewInput
   | SurfaceTextureReviewInput
   | PlanarImportReviewInput

@@ -37,6 +37,57 @@ const edgeReference = (featureId: ReturnType<typeof featureIdSchema.parse>, role
 })
 
 describe("local automation tool executor", () => {
+  it.each(["model_history_state", "undo_model", "redo_model"] as const)(
+    "routes %s through its optional typed history port before CAD dispatch",
+    async (tool) => {
+      const actor = commandActorSchema.parse({
+        type: "mcp",
+        clientId: "org.example.history",
+        sessionId: id(1),
+      })
+      const host = {
+        createDraft: vi.fn(),
+        inspectDraft: vi.fn(),
+        applyCommand: vi.fn(),
+        previewDraft: vi.fn(),
+        commitDraft: vi.fn(),
+        discardDraft: vi.fn(),
+      }
+      const readCad = vi.fn()
+      const history = {
+        execute: vi.fn().mockResolvedValue({
+          ok: false,
+          diagnostic: { code: "history-unavailable", message: "Empty history", retryable: false },
+        }),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }
+      const base = {
+        documentId: id(2),
+        revision: 4,
+        host,
+        readCad,
+        readInfo: () => null,
+        exportRevisionBound: vi.fn(),
+      }
+      const operation = localOperationSchema.parse({
+        tool,
+        arguments:
+          tool === "model_history_state"
+            ? { documentId: id(2), revision: 4 }
+            : { documentId: id(2), baseRevision: 4, commandId: id(3) },
+      })
+      const signal = new AbortController().signal
+      await createLocalToolExecutor({ ...base, history }, actor).execute(operation, signal)
+      expect(history.execute).toHaveBeenCalledExactlyOnceWith(actor, operation, signal)
+      expect(readCad).not.toHaveBeenCalled()
+      expect(host.applyCommand).not.toHaveBeenCalled()
+      expect(await createLocalToolExecutor(base, actor).execute(operation)).toMatchObject({
+        ok: false,
+        diagnostic: { code: "history-unavailable" },
+      })
+    },
+  )
   it("forwards named body measurement reads through the committed CAD port", async () => {
     const host = {
       createDraft: vi.fn(),

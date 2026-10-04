@@ -120,6 +120,16 @@ require manual review and metadata CAS; insert/relink select immutable versions 
 draft with explicit copy/reference semantics. Read the modeling skill's assembly/library reference.
 Callers cannot provide frozen pins, raw bytes, document authority or an approval flag.
 
+## Saved-change history
+
+Read model_history_state with documentId and revision from model_info. This availability is distinct
+from model_history authored item ordering. undo_model/redo_model accept documentId, current
+baseRevision and a fresh UUIDv7 commandId. They always require manual browser Apply/Discard,
+including auto-apply sessions, and preview the exact saved target without navigating. Apply publishes
+one new revision rather than moving the revision backward. A new authored change clears Redo;
+reopening preserves the saved state/events but resets transient Undo/Redo stacks. Never supply
+raw checkpoints, scripts or approval flags. For stale or unconfirmed results inspect the saved
+project before proposing again. The organization operator skill owns the detailed recovery workflow.
 ## Placement and editable sketch text
 
 \`create_placement\`/\`update_placement\` use typed translation/rotation parameters, an exact

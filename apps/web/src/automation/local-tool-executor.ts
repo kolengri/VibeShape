@@ -4,6 +4,7 @@ import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
+import { historyOperationSchema } from "@vibeshape/automation-api/history-tools"
 import { isLocalImport, type LocalImportOperation } from "@vibeshape/automation-api/imports"
 import {
   isLocalSketchTextOperation,
@@ -43,6 +44,7 @@ import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
+import type { createBrowserHistoryAutomationSession } from "./history-automation-session"
 import type { createImportAutomationSession } from "./import-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
@@ -65,6 +67,7 @@ type LocalSessionPort = Readonly<{
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
+  history?: ReturnType<typeof createBrowserHistoryAutomationSession>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
@@ -354,6 +357,11 @@ export function createLocalToolExecutor(
       : importFile(operation, signal)
   }
   function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
+    const history = historyOperationSchema.safeParse(operation)
+    if (history.success)
+      return session.history
+        ? session.history.execute(actor, history.data, signal)
+        : localFailure("history-unavailable", "The paired session cannot navigate saved changes.")
     if (isSourceImport(operation)) return sourceImportFile(operation, signal)
     if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
     if (isSurfaceTextureToolName(operation.tool)) return surfaceTexture(operation, signal)

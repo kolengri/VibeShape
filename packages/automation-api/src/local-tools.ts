@@ -45,6 +45,12 @@ import {
   automationDraftStateSchema,
 } from "./drafts"
 import {
+  historyCommitViewSchema,
+  historyOperations,
+  historyStateViewSchema,
+  historyToolInputs,
+} from "./history-tools"
+import {
   importUploadCommitSchema,
   importUploadDescriptorSchema,
   importUploadDiscardSchema,
@@ -159,6 +165,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  ...historyToolInputs,
   ...localPlanarImportInputs,
   ...localImportInputs,
   model_sketch_solution: sketchSolutionArgumentsSchema,
@@ -252,6 +259,9 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  model_history_state: resultOf(historyStateViewSchema),
+  undo_model: resultOf(historyCommitViewSchema),
+  redo_model: resultOf(historyCommitViewSchema),
   model_surface_textures: resultOf(surfaceTexturesViewSchema),
   create_surface_texture: resultOf(surfaceTextureCommitViewSchema),
   update_surface_texture: resultOf(surfaceTextureCommitViewSchema),
@@ -396,6 +406,9 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "model_history_state",
+  "undo_model",
+  "redo_model",
   "begin_planar_import_upload",
   "append_planar_import_chunk",
   "inspect_planar_import_upload",
@@ -523,6 +536,7 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
       arguments: localToolInputs.model_measurements,
     })
     .strict(),
+  ...historyOperations,
   ...assemblyOperations,
   ...libraryOperations,
   ...surfaceTextureOperations,

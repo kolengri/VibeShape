@@ -90,6 +90,7 @@
 | [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
 | [0090](0090-owned-surface-texture-mcp-proposals.md) | Accepted | Owned SurfaceTexture MCP proposals with lossless packed maps, native relief preflight and manual review |
 
+| [0093](0093-reviewed-mcp-history-navigation.md) | Accepted | Reviewed MCP history navigation |
 | [0088](0088-named-primitive-and-lifecycle-mcp-commands.md) | Accepted | Registered primitive and review-bound lifecycle MCP commands |
 
 | [0079](0079-exact-sweep-hollow-loft-and-sketch-corners.md) | Accepted | Exact Sweep curves, hollow Loft, and Sketch corners |

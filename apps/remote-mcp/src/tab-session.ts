@@ -6,6 +6,7 @@ import {
 } from "@vibeshape/automation-api/binary-exports"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
+import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/imports"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
@@ -65,6 +66,17 @@ type Consent = {
 }
 const attachmentSchema = z.object({ authenticated: z.boolean() }).strict()
 type BrowserMessage = z.infer<typeof remoteBrowserMessageSchema>
+
+function authoredResultContextMatches(
+  operation: LocalOperation,
+  result: { ok: boolean; value?: unknown },
+) {
+  return (
+    historyResultContextMatches(operation, result) !== false &&
+    assemblyResultContextMatches(operation, result) !== false &&
+    surfaceTextureResultContextMatches(operation, result) !== false
+  )
+}
 
 function draftInspectionResultMatches(
   operation: LocalOperation,
@@ -348,9 +360,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     )
       return this.revoke()
     const result = localToolOutputs[message.tool].parse(message.result)
-    if (assemblyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
-    if (surfaceTextureResultContextMatches(this.pending.operation, result) === false)
-      return this.revoke()
+    if (!authoredResultContextMatches(this.pending.operation, result)) return this.revoke()
     if (!this.transferResultMatches(result)) return this.revoke()
     if (!draftInspectionResultMatches(this.pending.operation, result)) return this.revoke()
     const pending = this.pending

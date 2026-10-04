@@ -3,6 +3,7 @@
 The remote adapter connects a standard HTTPS MCP client to the exact browser tab its owner approves.
 It reuses existing CAD, sketch, variable, topology and metadata tools. The editor owns geometry,
 documents, review, persistence and Undo. The local Bun/stdio workflow remains available separately.
+The shared `model_history_state`, `undo_model` and `redo_model` tools use explicit current document/revision context and always require manual browser history review, including auto-apply sessions. Historical snapshots stay private; Apply uses the ordinary restore CAS and publishes one new revision. Read the [organization workflow](../.agents/skills/vibeshape-organization/SKILL.md#saved-change-undo-and-redo) for availability, expiry and recovery.
 See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
 The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,

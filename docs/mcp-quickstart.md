@@ -57,6 +57,8 @@ Stop AI prevents recovery. Interrupted commands and drafts are never replayed; c
 and inspect the saved revision before continuing. Opt in to auto-apply again if desired.
 See [ADR-0075](adr/0075-local-mcp-tab-reload-recovery.md) for recovery boundaries. An edit already saving may finish after Stop; inspect the result and use Undo if needed.
 
+`model_history_state` reads saved-change Undo/Redo availability using `documentId` and `revision` from `model_info`. `undo_model` and `redo_model` take that document ID, current `baseRevision` and a fresh UUIDv7 `commandId`. They preview a private saved target and always require manual browser Apply/Discard, including when auto-apply is enabled. Apply publishes one new revision. A new authored change clears Redo; reopening preserves saved state/events but resets transient stacks. See the [organization workflow](../.agents/skills/vibeshape-organization/SKILL.md#saved-change-undo-and-redo).
+
 `model_parts`, `model_folders`, and `model_history` provide bounded, exact-revision views of authored metadata and canonical History order. `change_metadata` proposes one typed part/folder change through exact preview and browser Apply/Discard. Metadata proposals always require manual review, including when CAD auto-apply is on. The accepted command keeps the paired agent actor and supplied command identity in the native history. Reuse neither a stale revision nor an already committed command ID.
 
 For an agent editing a person's existing model, reread the current full feature/sketch/variable
@@ -74,8 +76,8 @@ Compound select ordered exact bodies through schema v2. Read the
 before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1/v2/v3 creation
 and same-version edits; Compound and version-upgrade edits still require review.
 
-The current MCP surface is a supported subset of the editor, not full CAD parity. Placement and
-History mutation tools are not exposed. Registered primitives and lifecycle commands follow the
+The current MCP surface is a supported subset of the editor, not full CAD parity. Arbitrary snapshot restoration and
+History item reordering are not exposed. Registered primitives and lifecycle commands follow the
 typed draft contracts above.
 The AI can inspect their saved records and must preserve them during supported upstream edits.
 There is no arbitrary script or direct storage tool. Production printability analysis remains open.
