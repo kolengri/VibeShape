@@ -1,15 +1,21 @@
 import {
+  type BodyTopoRef,
+  createAngleQuantity,
   createSketchProfileSet,
+  evaluateExpression,
+  evaluateVariableDefinitions,
+  expectedExtrusionV6DependencyIds,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
+  extrusionFeatureParametersV6Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV6,
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
-  featureIdSchema,
   featureRecordSchema,
   type LengthQuantity,
   multiProfileExtrusionFeatureParametersSchema,
@@ -20,6 +26,7 @@ import {
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
+import { useTranslations } from "@vibeshape/i18n"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -27,6 +34,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
+  normalizeExpressionWithDisplayUnit,
   positiveDirectManipulationLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
@@ -45,6 +53,7 @@ import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
+import { VariableExpressionField } from "../variables/variable-expression-field"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import {
   ExtrusionParameterPanel,
@@ -80,6 +89,13 @@ type ExtrusionFormCopy = ExtrusionParameterPanelCopy &
   }>
 
 type ExtrusionFormValues = Readonly<{
+  startOffset: string
+  draftAngle: string
+  advanced: boolean
+  endKind: "distance" | "through-all" | "up-to-body" | "up-to-face"
+  endTarget: string
+  endSourceHash: string
+  endFace: string
   distance: string
   extended: boolean
   reversed: boolean
@@ -95,7 +111,14 @@ type ExtrusionFormValues = Readonly<{
 export type ExtrusionTargetOption = Readonly<{
   id: FeatureId
   label: string
+  outputRole?: string
+  contentHash?: string
+  faces?: readonly { label: string; reference: BodyTopoRef }[]
 }>
+
+function extrusionBodyOptionKey(option: Pick<ExtrusionTargetOption, "id" | "outputRole">) {
+  return option.outputRole ? `${option.id}:${option.outputRole}` : option.id
+}
 
 function defaultValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
@@ -104,6 +127,13 @@ function defaultValues(
   supportReference: TopoRef | undefined,
 ): ExtrusionFormValues {
   return {
+    startOffset: "0 mm",
+    draftAngle: "0 deg",
+    advanced: false,
+    endKind: "distance",
+    endTarget: options[0] ? extrusionBodyOptionKey(options[0]) : "",
+    endSourceHash: options[0]?.contentHash ?? "",
+    endFace: "",
     distance: defaultLengthExpression(10, unit),
     extended: false,
     reversed: false,
@@ -113,7 +143,7 @@ function defaultValues(
     profiles: createSketchProfileSet(profiles),
     supportReference: supportReference ?? null,
     symmetric: false,
-    targetFeatureId: options[0]?.id ?? "",
+    targetFeatureId: options[0] ? extrusionBodyOptionKey(options[0]) : "",
   }
 }
 
@@ -132,6 +162,32 @@ export type ExtrusionFormMode =
       supportReference?: TopoRef
     }>
 
+function advancedValuesFromParameters(
+  parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
+) {
+  const end = parameters.endCondition
+  const condition =
+    !end || end.kind === "distance"
+      ? { endKind: "distance" as const, endTarget: "", endSourceHash: "", endFace: "" }
+      : {
+          endKind: end.kind,
+          endTarget: extrusionBodyOptionKey({
+            id: end.targetBody.featureId,
+            outputRole: end.targetBody.outputRole,
+          }),
+          endSourceHash: end.sourceContentHash,
+          endFace: end.kind === "up-to-face" ? JSON.stringify(end.face) : "",
+        }
+  return {
+    ...condition,
+    startOffset: parameters.startOffset ? quantityExpression(parameters.startOffset) : "0 mm",
+    draftAngle: parameters.draftAngle
+      ? (parameters.draftAngle.source.expression ??
+        `${parameters.draftAngle.source.value} ${parameters.draftAngle.source.unit}`)
+      : "0 deg",
+  }
+}
+
 function valuesFromFeature(
   feature: FeatureRecord,
   profiles: readonly SketchProfileSelector[],
@@ -140,8 +196,10 @@ function valuesFromFeature(
   const parameters = readExtrusionFeatureParameters(feature)
   if (!parameters) throw new Error("Extrusion parameters are unavailable.")
   return {
+    ...advancedValuesFromParameters(parameters),
+    advanced: feature.type.schemaVersion === 6,
     distance: quantityExpression(parameters.distance),
-    extended: feature.type.schemaVersion === 5,
+    extended: feature.type.schemaVersion >= 5,
     reversed: parameters.reversed,
     secondDirection: parameters.secondDistance !== null,
     secondDistance: parameters.secondDistance
@@ -151,7 +209,12 @@ function valuesFromFeature(
     profiles: createSketchProfileSet(profiles),
     supportReference: supportReference ?? null,
     symmetric: parameters.symmetric,
-    targetFeatureId: feature.dependencies[0] ?? "",
+    targetFeatureId: parameters.targetBody
+      ? extrusionBodyOptionKey({
+          id: parameters.targetBody.featureId,
+          outputRole: parameters.targetBody.outputRole,
+        })
+      : (feature.dependencies[0] ?? ""),
   }
 }
 
@@ -162,19 +225,29 @@ function extrusionRecord(
     | ReturnType<typeof extrusionFeatureParametersSchema.parse>
     | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>
     | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>
-    | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>,
+    | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>
+    | ReturnType<typeof extrusionFeatureParametersV6Schema.parse>,
   targetFeatureId: FeatureId | null,
   supportReference: TopoRef | null,
 ) {
   const references = supportReference ? [supportReference] : []
-  const dependencies = [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
-    (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
-  )
+  const dependencies =
+    "endCondition" in parameters
+      ? expectedExtrusionV6DependencyIds(
+          targetFeatureId,
+          supportReference?.featureId ?? null,
+          parameters.endCondition.kind === "distance"
+            ? null
+            : parameters.endCondition.targetBody.featureId,
+        )
+      : [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
+          (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
+        )
   if (mode.kind === "edit") {
+    const preserved = preserveLegacyExtrusionSchema(mode.feature, parameters)
     return featureRecordSchema.parse({
       ...mode.feature,
-      type: extrusionType(parameters),
-      parameters,
+      ...preserved,
       dependencies,
       references,
     })
@@ -191,13 +264,35 @@ function extrusionRecord(
   })
 }
 
+function preserveLegacyExtrusionSchema(
+  feature: FeatureRecord,
+  parameters: Parameters<typeof extrusionType>[0],
+) {
+  const type = extrusionType(parameters)
+  if (type.schemaVersion !== 2) return { type, parameters }
+  if (feature.type.schemaVersion === 1 && parameters.operation === "new")
+    return { type: feature.type, parameters }
+  if (feature.type.schemaVersion === 3 || feature.type.schemaVersion === 4) {
+    const { profile, ...common } = extrusionFeatureParametersSchema.parse(parameters)
+    const schema =
+      parameters.operation === "new"
+        ? multiProfileExtrusionFeatureParametersSchema
+        : extrusionFeatureParametersV4Schema
+    const preserved = schema.parse({ ...common, profiles: createSketchProfileSet([profile]) })
+    return { type: extrusionType(preserved), parameters: preserved }
+  }
+  return { type, parameters }
+}
+
 function extrusionType(
   parameters:
     | ReturnType<typeof extrusionFeatureParametersSchema.parse>
     | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>
     | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>
-    | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>,
+    | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>
+    | ReturnType<typeof extrusionFeatureParametersV6Schema.parse>,
 ) {
+  if ("endCondition" in parameters) return extrusionFeatureTypeV6.type
   if ("reversed" in parameters) return extrusionFeatureTypeV5.type
   if (!("profiles" in parameters)) return extrusionFeatureType.type
   return parameters.operation === "new"
@@ -208,6 +303,7 @@ function extrusionType(
 function ExtrusionPreviewSync({
   copy,
   displayUnit,
+  angleUnit,
   featureId,
   mode,
   onPreviewChange,
@@ -217,6 +313,7 @@ function ExtrusionPreviewSync({
 }: {
   copy: ExtrusionFormCopy
   displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  angleUnit: ReturnType<typeof useDocumentDisplayUnits>["angle"]
   featureId: FeatureId
   mode: ExtrusionFormMode
   onPreviewChange: (feature: FeatureRecord | null) => void
@@ -224,7 +321,7 @@ function ExtrusionPreviewSync({
   values: ExtrusionFormValues
   variables: readonly VariableDefinition[]
 }) {
-  const parsed = parseValues(values, variables, options, copy, displayUnit)
+  const parsed = parseValues(values, variables, options, copy, displayUnit, angleUnit)
   useDebouncedFeaturePreview({
     onPreviewChange,
     preview: parsed.ok
@@ -280,6 +377,128 @@ function parseIndependentExtents(
     : { ok: false as const, issues: { distance: copy.extentInvalidRange } }
 }
 
+function parseAdvancedQuantities(
+  values: ExtrusionFormValues,
+  variables: readonly VariableDefinition[],
+  copy: ExtrusionFormCopy,
+  unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+  angleUnit: ReturnType<typeof useDocumentDisplayUnits>["angle"],
+) {
+  const offset = parsePrimitiveLengthExpression(
+    values.startOffset,
+    variables,
+    copy,
+    () => true,
+    unit,
+  )
+  if (!offset.ok) return { ok: false as const, issues: { startOffset: offset.message } }
+  const evaluatedVariables = evaluateVariableDefinitions(variables)
+  const expression = normalizeExpressionWithDisplayUnit(values.draftAngle, angleUnit)
+  const angle = evaluatedVariables.ok
+    ? evaluateExpression(expression, evaluatedVariables.valuesByName)
+    : null
+  if (!angle?.ok || angle.value.dimension !== "angle")
+    return { ok: false as const, issues: { draftAngle: copy.invalidExpression } }
+  return {
+    ok: true as const,
+    value: {
+      startOffset: offset.quantity,
+      draftAngle: createAngleQuantity(angle.value.value, "rad", expression),
+    },
+  }
+}
+function parseExtrusionEnd(
+  values: ExtrusionFormValues,
+  options: readonly ExtrusionTargetOption[],
+  copy: ExtrusionFormCopy,
+) {
+  if (values.endKind === "distance")
+    return { ok: true as const, value: { kind: "distance" as const } }
+  const target = options.find((item) => extrusionBodyOptionKey(item) === values.endTarget)
+  if (!target?.outputRole || target.contentHash !== values.endSourceHash || !target.contentHash)
+    return { ok: false as const, issues: { endTarget: copy.missingTarget } }
+  const base = {
+    kind: values.endKind,
+    targetBody: { schemaVersion: 0, featureId: target.id, outputRole: target.outputRole },
+    sourceContentHash: target.contentHash,
+  }
+  if (values.endKind !== "up-to-face") return { ok: true as const, value: base }
+  const face = target.faces?.find((item) => JSON.stringify(item.reference) === values.endFace)
+  return face
+    ? { ok: true as const, value: { ...base, kind: "up-to-face" as const, face: face.reference } }
+    : { ok: false as const, issues: { endTarget: copy.missingTarget } }
+}
+function needsAdvancedExtents(
+  values: ExtrusionFormValues,
+  target: ExtrusionTargetOption | undefined,
+) {
+  return (
+    values.advanced ||
+    values.endKind !== "distance" ||
+    values.startOffset !== "0 mm" ||
+    values.draftAngle !== "0 deg" ||
+    (values.operation !== "new" && target?.outputRole !== undefined)
+  )
+}
+function parseBasicExtents(
+  values: ExtrusionFormValues,
+  distance: LengthQuantity,
+  variables: readonly VariableDefinition[],
+  copy: ExtrusionFormCopy,
+  unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+) {
+  return values.extended || values.reversed || values.secondDirection
+    ? parseIndependentExtents(values, distance, variables, copy, unit)
+    : { ok: true as const, parameters: legacyExtrusionParameters(values, distance) }
+}
+
+function parseAdvancedExtents(
+  values: ExtrusionFormValues,
+  distance: LengthQuantity,
+  variables: readonly VariableDefinition[],
+  copy: ExtrusionFormCopy,
+  unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+  options: readonly ExtrusionTargetOption[],
+  target: ExtrusionTargetOption | undefined,
+  angleUnit: ReturnType<typeof useDocumentDisplayUnits>["angle"],
+) {
+  const targetBody = advancedTargetBody(values.operation, target, copy)
+  if (!targetBody.ok) return targetBody
+  const basic = parseIndependentExtents(values, distance, variables, copy, unit)
+  if (!basic.ok) return basic
+  const quantities = parseAdvancedQuantities(values, variables, copy, unit, angleUnit)
+  if (!quantities.ok) return quantities
+  const end = parseExtrusionEnd(values, options, copy)
+  if (!end.ok) return end
+  const parsed = extrusionFeatureParametersV6Schema.safeParse({
+    ...basic.parameters,
+    targetBody: targetBody.value,
+    ...quantities.value,
+    endCondition: end.value,
+  })
+  return parsed.success
+    ? { ok: true as const, parameters: parsed.data }
+    : { ok: false as const, issues: { distance: copy.extentInvalidRange } }
+}
+
+function advancedTargetBody(
+  operation: string,
+  target: ExtrusionTargetOption | undefined,
+  copy: ExtrusionFormCopy,
+) {
+  if (operation === "new") return { ok: true as const, value: null }
+  if (!target?.outputRole)
+    return { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
+  return {
+    ok: true as const,
+    value: {
+      schemaVersion: 0,
+      featureId: target.id,
+      outputRole: target.outputRole,
+    },
+  }
+}
+
 function legacyExtrusionParameters(values: ExtrusionFormValues, distance: LengthQuantity) {
   const common = { distance, symmetric: values.symmetric, operation: values.operation }
   if (values.profiles.profiles.length === 1)
@@ -300,6 +519,7 @@ function parseValues(
   options: readonly ExtrusionTargetOption[],
   copy: ExtrusionFormCopy,
   displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+  angleUnit: ReturnType<typeof useDocumentDisplayUnits>["angle"],
 ) {
   if (!values.profiles.profiles[0])
     return { ok: false as const, issues: { profiles: copy.missingProfile } }
@@ -308,10 +528,18 @@ function parseValues(
   const operation = extrusionOperationSchema.parse(values.operation)
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
-  const parsed =
-    values.extended || values.reversed || values.secondDirection
-      ? parseIndependentExtents(values, distance.quantity, variables, copy, displayUnit)
-      : { ok: true as const, parameters: legacyExtrusionParameters(values, distance.quantity) }
+  const parsed = needsAdvancedExtents(values, target.option)
+    ? parseAdvancedExtents(
+        values,
+        distance.quantity,
+        variables,
+        copy,
+        displayUnit,
+        options,
+        target.option,
+        angleUnit,
+      )
+    : parseBasicExtents(values, distance.quantity, variables, copy, displayUnit)
   if (!parsed.ok) return parsed
   return {
     ok: true as const,
@@ -327,11 +555,10 @@ function parseTarget(
   options: readonly ExtrusionTargetOption[],
   copy: ExtrusionFormCopy,
 ) {
-  if (operation === "new") return { ok: true as const, featureId: null }
-  const availableTargetIds = new Set(options.map(({ id }) => id))
-  const target = featureIdSchema.safeParse(rawTargetFeatureId)
-  return target.success && availableTargetIds.has(target.data)
-    ? { ok: true as const, featureId: target.data }
+  if (operation === "new") return { ok: true as const, featureId: null, option: undefined }
+  const option = options.find((item) => extrusionBodyOptionKey(item) === rawTargetFeatureId)
+  return option
+    ? { ok: true as const, featureId: option.id, option }
     : { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
 }
 
@@ -401,6 +628,7 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
         props.options,
         props.copy,
         displayUnits.length,
+        displayUnits.angle,
       )
       if (!parsed.ok) {
         setIssues(parsed.issues)
@@ -505,6 +733,7 @@ function ExtrusionPreviewField({ controller }: { controller: ExtrusionFormContro
         <ExtrusionPreviewSync
           copy={controller.copy}
           displayUnit={controller.displayUnits.length}
+          angleUnit={controller.displayUnits.angle}
           featureId={controller.featureId}
           mode={controller.mode}
           onPreviewChange={onPreviewChange}
@@ -569,7 +798,10 @@ function ExtrusionTargetField({ controller }: { controller: ExtrusionFormControl
                   <option value="">{controller.copy.missingTarget}</option>
                 ) : null}
                 {controller.options.map((option) => (
-                  <option key={option.id} value={option.id}>
+                  <option
+                    key={extrusionBodyOptionKey(option)}
+                    value={extrusionBodyOptionKey(option)}
+                  >
                     {option.label}
                   </option>
                 ))}
@@ -682,6 +914,129 @@ function ExtrusionExtentFields({ controller }: { controller: ExtrusionFormContro
   )
 }
 
+function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormController }) {
+  const t = useTranslations("app.extrusionExtent")
+  const { form } = controller
+  return (
+    <form.Subscribe selector={(state) => state.values}>
+      {(values) => {
+        const target = controller.options.find(
+          (option) => extrusionBodyOptionKey(option) === values.endTarget,
+        )
+        return (
+          <div className="grid gap-3 pt-3">
+            <NativeSelectField
+              id="extrusion-end-condition"
+              name="endKind"
+              label={t("condition")}
+              value={values.endKind}
+              disabled={controller.disabled}
+              onChange={(event) => {
+                controller.clearSubmissionErrors()
+                form.setFieldValue("advanced", true)
+                form.setFieldValue(
+                  "endKind",
+                  event.currentTarget.value as ExtrusionFormValues["endKind"],
+                )
+                form.setFieldValue("symmetric", false)
+                form.setFieldValue("secondDirection", false)
+              }}
+            >
+              <option value="distance">{t("distance")}</option>
+              <option value="through-all">{t("throughAll")}</option>
+              <option value="up-to-body">{t("upToBody")}</option>
+              <option value="up-to-face">{t("upToFace")}</option>
+            </NativeSelectField>
+            {values.endKind !== "distance" ? (
+              <>
+                <NativeSelectField
+                  id="extrusion-end-body"
+                  name="endTarget"
+                  label={t("endBody")}
+                  value={values.endTarget}
+                  error={controller.issues.endTarget}
+                  disabled={controller.disabled}
+                  onChange={(event) => {
+                    controller.clearSubmissionErrors()
+                    const option = controller.options.find(
+                      (item) => extrusionBodyOptionKey(item) === event.currentTarget.value,
+                    )
+                    form.setFieldValue("endTarget", event.currentTarget.value)
+                    form.setFieldValue("endSourceHash", option?.contentHash ?? "")
+                    form.setFieldValue("endFace", "")
+                  }}
+                >
+                  <option value="">{t("chooseBody")}</option>
+                  {controller.options
+                    .filter((option) => option.outputRole && option.contentHash)
+                    .map((option) => (
+                      <option
+                        key={extrusionBodyOptionKey(option)}
+                        value={extrusionBodyOptionKey(option)}
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                </NativeSelectField>
+                {values.endKind === "up-to-face" ? (
+                  <NativeSelectField
+                    id="extrusion-end-face"
+                    name="endFace"
+                    label={t("endFace")}
+                    value={values.endFace}
+                    description={t("planarOnly")}
+                    disabled={controller.disabled}
+                    onChange={(event) => {
+                      controller.clearSubmissionErrors()
+                      form.setFieldValue("endFace", event.currentTarget.value)
+                    }}
+                  >
+                    <option value="">{t("chooseFace")}</option>
+                    {target?.faces?.map((face) => (
+                      <option
+                        key={JSON.stringify(face.reference)}
+                        value={JSON.stringify(face.reference)}
+                      >
+                        {face.label}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                ) : null}
+              </>
+            ) : null}
+            <LengthExpressionField
+              id="extrusion-start-offset"
+              name="startOffset"
+              label={t("startOffset")}
+              value={values.startOffset}
+              suggestions={controller.suggestions}
+              description={controller.copy.expressionDescription}
+              error={controller.issues.startOffset}
+              onValueChange={(value) => {
+                controller.clearSubmissionErrors()
+                form.setFieldValue("startOffset", value)
+              }}
+            />
+            <VariableExpressionField
+              id="extrusion-draft-angle"
+              name="draftAngle"
+              label={t("draftAngle")}
+              value={values.draftAngle}
+              suggestions={controller.suggestions}
+              description={t("draftDescription")}
+              error={controller.issues.draftAngle}
+              onValueChange={(value) => {
+                controller.clearSubmissionErrors()
+                form.setFieldValue("draftAngle", value)
+              }}
+            />
+          </div>
+        )
+      }}
+    </form.Subscribe>
+  )
+}
+
 function ExtrusionFormView({ controller }: { controller: ExtrusionFormController }) {
   const { form } = controller
   return (
@@ -718,7 +1073,12 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
         targetField={<ExtrusionTargetField controller={controller} />}
         distanceField={<ExtrusionDistanceField controller={controller} />}
         symmetricField={<ExtrusionSymmetricField controller={controller} />}
-        extentFields={<ExtrusionExtentFields controller={controller} />}
+        extentFields={
+          <>
+            <ExtrusionExtentFields controller={controller} />
+            <ExtrusionAdvancedFields controller={controller} />
+          </>
+        }
       />
     </Form>
   )

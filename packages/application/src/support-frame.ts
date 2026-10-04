@@ -248,6 +248,18 @@ function cylinderSupportFrame(feature: FeatureRecord, role: string) {
   return null
 }
 
+function extrusionSupportBounds(
+  parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
+) {
+  if (parameters.endCondition && parameters.endCondition.kind !== "distance") return null
+  return extrusionExtentBounds({
+    ...parameters,
+    distance: parameters.distance.value,
+    secondDistance: parameters.secondDistance?.value ?? null,
+    startOffset: parameters.startOffset?.value ?? 0,
+  })
+}
+
 function extrusionSupportFrame(
   feature: FeatureRecord,
   role: string,
@@ -262,11 +274,9 @@ function extrusionSupportFrame(
   if (!sourceSketch) return null
   const frame = sketchFrame(sourceSketch, document, features, visitedFeatureIds, geometry)
   if (!frame) return null
-  const { start, end } = extrusionExtentBounds({
-    ...parameters,
-    distance: parameters.distance.value,
-    secondDistance: parameters.secondDistance?.value ?? null,
-  })
+  const bounds = extrusionSupportBounds(parameters)
+  if (!bounds) return null
+  const { start, end } = bounds
   if (role === "extrusion.cap.start") return translatedFrame(frame, start, true)
   return role === "extrusion.cap.end" ? translatedFrame(frame, end) : null
 }

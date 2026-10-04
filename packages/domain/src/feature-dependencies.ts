@@ -46,6 +46,7 @@ const edgeModifierTypes = new Set(
   ),
 )
 const exactTargetReaders = [
+  (feature: FeatureRecord) => readExtrusionFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readRevolveFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readThreadFeatureParameters(feature)?.targetBody,
   readHoleBodyTarget,
@@ -86,7 +87,11 @@ export function featureBodyDependencyIds(feature: FeatureRecord): readonly Featu
     return booleanFeatureParametersSchema.safeParse(feature.parameters).data?.keepTools
       ? feature.dependencies.slice(0, 1)
       : feature.dependencies
-  if (readHoleFeatureParameters(feature) || edgeModifierTypes.has(featureTypeKey(feature.type)))
+  if (
+    readHoleFeatureParameters(feature) ||
+    readThreadFeatureParameters(feature) ||
+    edgeModifierTypes.has(featureTypeKey(feature.type))
+  )
     return feature.dependencies.slice(0, 1)
   if (supportAwareTargetReaders.some((read) => read(feature) !== null))
     return feature.dependencies.slice(0, 1)
@@ -107,6 +112,17 @@ export function featureBodyDependencies(
   const target = exactBodyTarget(feature)
   if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
+}
+
+/** Exact geometry inputs include retained end supports without consuming their bodies. */
+export function featureGeometryDependencies(feature: FeatureRecord) {
+  const bodies = featureBodyDependencies(feature)
+  const end = readExtrusionFeatureParameters(feature)?.endCondition
+  return end &&
+    end.kind !== "distance" &&
+    !bodies.some(({ featureId }) => featureId === end.targetBody.featureId)
+    ? [...bodies, end.targetBody]
+    : bodies
 }
 
 /** Feature outputs that remain after downstream body-consuming operations. */

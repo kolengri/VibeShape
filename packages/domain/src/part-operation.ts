@@ -223,6 +223,7 @@ function classifyNewProfile(
 function legacyModifierTarget(feature: FeatureRecordV1, targetId: FeatureRecord["id"]) {
   const legacy: FeatureRecord = { ...feature, schemaVersion: 0 }
   return (
+    readExtrusionFeatureParameters(legacy)?.targetBody ??
     readHoleBodyTarget(legacy) ??
     readRevolveFeatureParameters(legacy)?.targetBody ??
     featureResultBody({ id: targetId })

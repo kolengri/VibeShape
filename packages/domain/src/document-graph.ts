@@ -23,6 +23,7 @@ import {
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV6,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -52,6 +53,7 @@ import {
   expectedHoleDependencyIds,
   holeFeatureType,
   holeFeatureTypeV2,
+  holeFeatureTypeV3,
   readHoleFeatureParameters,
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -88,7 +90,11 @@ import {
   readBooleanFeatureParametersV2,
 } from "./part-design-subtract"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
-import { readThreadFeatureParameters, threadFeatureType } from "./part-design-thread"
+import {
+  readThreadFeatureParameters,
+  threadFeatureType,
+  threadFeatureTypeV2,
+} from "./part-design-thread"
 import { referenceFrameInvariant } from "./reference-frame"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
@@ -234,6 +240,7 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(mirrorFeatureTypeV2.type), readMirrorFeatureParameters],
   [featureTypeKey(mirrorFeatureTypeV3.type), readMirrorFeatureParametersV3],
   [featureTypeKey(threadFeatureType.type), readThreadFeatureParameters],
+  [featureTypeKey(threadFeatureTypeV2.type), readThreadFeatureParameters],
   [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
   [featureTypeKey(patternFeatureTypeV2.type), readPatternFeatureParametersV2],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
@@ -263,6 +270,7 @@ const extrusionTypeKeys = new Set(
     extrusionFeatureTypeV3,
     extrusionFeatureTypeV4,
     extrusionFeatureTypeV5,
+    extrusionFeatureTypeV6,
   ].map(({ type }) => featureTypeKey(type)),
 )
 const multiProfileResultTypeKeys = new Set([
@@ -284,6 +292,7 @@ function sketchSolidSemanticInputs(feature: VersionedFeatureRecord) {
 const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord) => object | null>([
   [featureTypeKey(holeFeatureType.type), readHoleFeatureParameters],
   [featureTypeKey(holeFeatureTypeV2.type), readHoleFeatureParameters],
+  [featureTypeKey(holeFeatureTypeV3.type), readHoleFeatureParameters],
   [featureTypeKey(loftFeatureType.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV2.type), readLoftFeatureParameters],
   [featureTypeKey(sweepFeatureType.type), readSweepFeatureParameters],
@@ -291,16 +300,23 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   ...[...revolveTypeKeys].map((typeKey) => [typeKey, readRevolveFeatureParameters] as const),
 ])
 
+function referenceBodySelectionParameters(feature: FeatureRecord) {
+  const thread = readThreadFeatureParameters(feature)
+  return (
+    readMirrorFeatureParametersV3(feature) ??
+    readSplitFeatureParametersV2(feature) ??
+    readPatternFeatureParametersV2(feature) ??
+    (thread && typeof thread.axis !== "string" ? thread : null)
+  )
+}
+
 function hasCompleteBodySelectionDependencies(
   feature: FeatureRecord,
   readParameters: BodySelectionParameterReader,
 ) {
   if (readBooleanFeatureParametersV2(feature)) return hasCompleteBooleanBodyDependencies(feature)
   const bodies = featureBodyDependencies(feature).map(({ featureId }) => featureId)
-  const referenceParameters =
-    readMirrorFeatureParametersV3(feature) ??
-    readSplitFeatureParametersV2(feature) ??
-    readPatternFeatureParametersV2(feature)
+  const referenceParameters = referenceBodySelectionParameters(feature)
   if (referenceParameters) {
     const support =
       "plane" in referenceParameters ? referenceParameters.plane : referenceParameters.axis

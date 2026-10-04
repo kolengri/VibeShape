@@ -1391,7 +1391,16 @@
           "invalidRange": "Enter a length greater than 0 and at most 1,000,000 mm.",
           "validationSummary": "Check the highlighted values.",
           "saveFailed": "The hole could not be saved. Try again.",
-          "staleRevision": "The document changed. Reopen this task before saving."
+          "staleRevision": "The document changed. Reopen this task before saving.",
+          "treatment": "Hole style",
+          "simple": "Simple",
+          "counterbore": "Counterbore",
+          "countersink": "Countersink",
+          "recessDiameter": "Recess diameter",
+          "recessDepth": "Recess depth",
+          "includedAngle": "Included angle",
+          "angleDescription": "Enter an angle or a variable expression.",
+          "invalidRecess": "Use a larger recess diameter and leave cylindrical depth. Countersink angles must be between 10 and 170 degrees."
         },
         "createSphere": "Create sphere",
         "sphere": {
@@ -2321,7 +2330,7 @@
       "runIn": "Run-in allowance",
       "runOut": "Run-out allowance",
       "dimensionDescription": "Positive project length or #variable, up to 1,000 mm. Depth must not exceed 0.75 times the pitch.",
-      "pitchDescription": "Axial pitch from 0.2 to 20 mm. The threaded band is limited to 16 total turns across all starts.",
+      "pitchDescription": "Axial pitch from 0.2 to 20 mm. Single-start v2 threads allow 20 total turns; multi-start and v1 threads retain the 16-turn limit.",
       "clearanceDescription": "Radial allowance, not diametral clearance: external geometry reduces radius, internal geometry increases it. Enter a nonnegative length or #variable.",
       "originDescription": "Explicit coordinate of the axis origin in project length units, within ±100,000 mm. The source part is never repositioned.",
       "startsDescription": "A scalar integer from 1 to 4. Enter a number or #variable; length and angle units are invalid here.",
@@ -2341,7 +2350,7 @@
       "invalidStartsRange": "Starts must resolve to an integer from 1 to 4.",
       "invalidPhaseRange": "Phase must remain within one signed revolution.",
       "invalidBand": "Reduce the axial allowances or increase length so the threaded band stays positive.",
-      "invalidTurns": "Reduce the threaded band length or increase pitch to stay within 16 total turns across all starts.",
+      "invalidTurns": "Reduce band length or increase pitch: at most 20 turns for single-start v2, or 16 for multiple starts and v1.",
       "invalidDepth": "Reduce groove depth to at most 0.75 times the pitch.",
       "invalidRootRadius": "Increase diameter or reduce depth/clearance so the external root radius stays positive.",
       "staleRevision": "The document changed. Reopen this thread using the current revision.",
@@ -2667,6 +2676,23 @@
         "remove": "Remove hole track {number}",
         "add": "Add hole track"
       }
+    },
+    "extrusionExtent": {
+      "condition": "End condition",
+      "distance": "Distance",
+      "throughAll": "Through all",
+      "upToBody": "Up to body",
+      "upToFace": "Up to face",
+      "endBody": "End support body",
+      "chooseBody": "Choose a body",
+      "endFace": "End face",
+      "chooseFace": "Choose a planar face",
+      "planarOnly": "Select a planar face that covers the complete extrusion profile.",
+      "startOffset": "Start offset",
+      "draftAngle": "Draft angle",
+      "draftDescription": "The shifted sketch plane is the neutral plane. Enter an angle within ±45 degrees.",
+      "bodyLabel": "{label} · {role}",
+      "legacyBodyLabel": "{label} · all bodies (legacy scope)"
     }
   }
 }

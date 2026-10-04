@@ -15,11 +15,13 @@ import {
   boxFeatureParametersSchema,
   boxFeatureType,
   extrusionFeatureType,
+  extrusionFeatureTypeV6,
   partDesignFeatureTypeHandlers,
   revolveFeatureType,
 } from "./part-design"
-import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { placementFeatureType } from "./part-design-placement"
+import { threadFeatureTypeV2 } from "./part-design-thread"
 import { createLengthQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
 
@@ -110,14 +112,19 @@ describe("feature type registry", () => {
         result.registry.descriptors
           .filter(({ type }) => type.typeId === holeFeatureType.type.typeId)
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2])
+      ).toEqual([1, 2, 3])
       expect(result.registry.getDescriptor(holeFeatureType.type)).toEqual(holeFeatureType)
       expect(result.registry.getDescriptor(holeFeatureTypeV2.type)).toEqual(holeFeatureTypeV2)
+      expect(result.registry.getDescriptor(holeFeatureTypeV3.type)).toEqual(holeFeatureTypeV3)
+      expect(result.registry.getDescriptor(threadFeatureTypeV2.type)).toEqual(threadFeatureTypeV2)
+      expect(result.registry.getDescriptor(extrusionFeatureTypeV6.type)).toEqual(
+        extrusionFeatureTypeV6,
+      )
       expect(
         result.registry.descriptors
           .filter(({ type }) => type.typeId === extrusionFeatureType.type.typeId)
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2, 3, 4, 5])
+      ).toEqual([1, 2, 3, 4, 5, 6])
       expect(
         result.registry.descriptors
           .filter(({ type }) => type.typeId === revolveFeatureType.type.typeId)

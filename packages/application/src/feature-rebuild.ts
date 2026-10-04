@@ -5,7 +5,7 @@ import {
   type FeatureContentHasher,
   sha256Schema,
 } from "@vibeshape/domain/feature-content-identity"
-import { featureBodyDependencies } from "@vibeshape/domain/feature-dependencies"
+import { featureGeometryDependencies } from "@vibeshape/domain/feature-dependencies"
 import {
   createFeatureGraph,
   evaluateFeatureGraph,
@@ -361,7 +361,7 @@ function successfulDependencies(
   records: readonly FeatureEvaluationRecord[],
 ) {
   const bodyRoles = new Map(
-    (usesSlottedBodyInputs(feature) ? [] : featureBodyDependencies(feature)).map(
+    (usesSlottedBodyInputs(feature) ? [] : featureGeometryDependencies(feature)).map(
       ({ featureId, outputRole }) => [featureId, outputRole],
     ),
   )
