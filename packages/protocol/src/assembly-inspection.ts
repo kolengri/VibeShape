@@ -1,5 +1,9 @@
 import { z } from "zod"
-import { featureEvaluationEngineResultSchema, featureMeshPolicySchema } from "./geometry-worker"
+import {
+  featureEvaluationEngineResultSchema,
+  featureMeshPolicySchema,
+  topologyCandidatesSchema,
+} from "./geometry-worker"
 import { sourceAssetMaterializationsSchema } from "./import-content"
 
 const uuid = z
@@ -57,13 +61,48 @@ const occurrence = z
     contentHash: z.string().regex(/^[0-9a-f]{64}$/),
     representation: z.enum(["exact-solid", "triangle-mesh"]),
     geometryFrame: assemblyRigidPoseWireSchema,
+    topologyCandidates: topologyCandidatesSchema.optional(),
     mesh: featureEvaluationEngineResultSchema.shape.mesh,
     bounds: featureEvaluationEngineResultSchema.shape.shape.shape.bounds,
+  })
+  .strict()
+export const assemblyKinematicsSummarySchema = z
+  .object({
+    status: z.enum(["fully-constrained", "under-constrained"]),
+    degreesOfFreedom: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(2048 * 256),
+    maximumResidual: z.number().finite().nonnegative().max(1e-7),
+    redundant: z.boolean(),
+    redundantJointIds: z.array(uuid).max(1024),
+  })
+  .strict()
+export const assemblyConstraintFailureSchema = z
+  .object({
+    code: z.enum([
+      "invalid-assembly",
+      "unanchored-component",
+      "topology-missing",
+      "topology-ambiguous",
+      "topology-stale",
+      "unsupported-topology",
+      "conflicting-mates",
+      "did-not-converge",
+      "solver-budget",
+      "drive-limit",
+      "world-bounds",
+      "invalid-solver-result",
+      "mate-solver-unavailable",
+    ]),
+    jointIds: z.array(uuid).max(1024),
   })
   .strict()
 export const assemblyInspectionSchema = z
   .object({
     occurrences: z.array(occurrence).max(4096),
+    kinematics: assemblyKinematicsSummarySchema.optional(),
     interference: z
       .array(
         pair.safeExtend({

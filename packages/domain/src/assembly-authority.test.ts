@@ -4,6 +4,7 @@ import {
   captureAssemblyDefinition,
   emptyAssemblyAuthority,
   projectAssemblyAuthority,
+  upgradeAssemblyAuthority,
 } from "./assembly-authority"
 import { solveAssemblyKinematics } from "./assembly-kinematics"
 import { applyDocumentV2Command } from "./document-v2-commands"
@@ -944,4 +945,90 @@ it("rejects textured frozen source capture without changing document authority",
   )
   expect(JSON.stringify(textured)).toBe(before)
   expect(() => captureAssemblyDefinition(f.snapshot, definition())).not.toThrow()
+})
+
+describe("versioned general assembly authority", () => {
+  it("upgrades explicitly with solved branch seeds and preserves strict legacy replay", () => {
+    const f = populated(),
+      legacy = f.added.snapshot
+    const before = JSON.stringify(legacy)
+    const legacyPoses = solveAssemblyKinematics(projectAssemblyAuthority(legacy.assembly))
+    if (!legacyPoses.ok) throw new Error("Legacy fixture must solve.")
+    const upgraded = value(mutate(legacy, [{ kind: "assembly.upgrade" }]))
+    expect(upgraded.snapshot.assembly.schemaVersion).toBe(2)
+    expect(upgraded.snapshot.assembly.definitions).toEqual(legacy.assembly.definitions)
+    for (const instance of upgraded.snapshot.assembly.instances) {
+      expect(instance.schemaVersion).toBe(2)
+      if (instance.schemaVersion === 2 && !instance.grounded)
+        expect(instance.initialFrame).toEqual(
+          legacyPoses.instances.find((p) => p.instanceId === instance.id)?.worldFrame,
+        )
+    }
+    expect(upgraded.snapshot.assembly.joints[0]).toMatchObject({ schemaVersion: 2, driven: true })
+    expect(value(reduceDocumentV4Event(legacy, upgraded.event)).snapshot).toEqual(upgraded.snapshot)
+    expect(upgradeAssemblyAuthority(legacy.assembly)).toEqual(upgraded.snapshot.assembly)
+    expect(JSON.stringify(legacy)).toBe(before)
+    expect(mutate(upgraded.snapshot, [{ kind: "assembly.upgrade" }]).ok).toBe(false)
+    expect(
+      mutate(legacy, [{ kind: "joint.create", joint: { ...joint("fixed", 71), schemaVersion: 2 } }])
+        .ok,
+    ).toBe(false)
+  })
+  it("persists multiple mates and loops without treating edges as subtree ownership", () => {
+    const f = populated()
+    const upgraded = value(mutate(f.added.snapshot, [{ kind: "assembly.upgrade" }]))
+    const loop = value(
+      mutate(upgraded.snapshot, [
+        { kind: "joint.create", joint: { ...joint("fixed", 71, 61, 60), schemaVersion: 2 } },
+        { kind: "joint.create", joint: { ...joint("fixed", 72), schemaVersion: 2 } },
+      ]),
+    )
+    expect(loop.snapshot.assembly.joints).toHaveLength(3)
+    expect(value(reduceDocumentV4Event(upgraded.snapshot, loop.event)).snapshot).toEqual(
+      loop.snapshot,
+    )
+    const removed = value(
+      mutate(loop.snapshot, [{ kind: "instance.remove", instanceId: id(60), cascade: true }]),
+    )
+    expect(removed.snapshot.assembly.instances.map((i) => i.id)).toEqual([id(61)])
+    expect(removed.snapshot.assembly.joints).toEqual([])
+    // Solvability is a worker concern; replay must retain even an unanchored authored graph.
+    expect(documentSnapshotV4Schema.parse(removed.snapshot)).toEqual(removed.snapshot)
+  })
+  it("restores the exact schema version and frozen pins through Undo, Redo and complete replay", () => {
+    const f = populated(),
+      legacy = f.added.snapshot
+    const upgraded = value(mutate(legacy, [{ kind: "assembly.upgrade" }]))
+    const undo = {
+      ...envelope(upgraded.snapshot.revision),
+      schemaVersion: 4,
+      type: "org.vibeshape.document.restored",
+      transactionId: null,
+      revision: upgraded.snapshot.revision + 1,
+      direction: "undo",
+      targetRevision: legacy.revision,
+    }
+    const undone = value(reduceDocumentV4Event(upgraded.snapshot, undo, legacy)).snapshot
+    expect(undone.assembly).toEqual(legacy.assembly)
+    const redo = {
+      ...envelope(undone.revision),
+      schemaVersion: 4,
+      type: "org.vibeshape.document.restored",
+      transactionId: null,
+      revision: undone.revision + 1,
+      direction: "redo",
+      targetRevision: upgraded.snapshot.revision,
+    }
+    const restored = value(reduceDocumentV4Event(undone, redo, upgraded.snapshot)).snapshot
+    expect(restored.assembly).toEqual(upgraded.snapshot.assembly)
+    const replayed = replayDocumentAuthorityEvents(null, [
+      ...f.events,
+      f.added.event,
+      upgraded.event,
+      undo,
+      redo,
+    ])
+    expect(replayed.ok).toBe(true)
+    if (replayed.ok) expect(replayed.snapshot).toEqual(restored)
+  })
 })

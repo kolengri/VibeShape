@@ -23,7 +23,7 @@ not proof that no write occurred.
 
 The browser handle cancels private calculations when the committed revision changes and disposes
 them on close, project change, or page exit. It is an internal composition boundary, not an exposed
-MCP endpoint by itself. The local adapter now pairs it explicitly and exposes thirty-four named tools, including the CAD authoring and inspection expansion in
+MCP endpoint by itself. The local adapter now pairs it explicitly and exposes named tools, including the CAD authoring and inspection expansion in
 [ADR-0044](../adr/0044-local-mcp-cad-authoring-and-inspection.md) and variable/Chamfer tools in
 [ADR-0045](../adr/0045-local-mcp-variables-and-chamfer.md), followed by selected-edge inspection and authoring in
 [ADR-0046](../adr/0046-local-mcp-selected-edge-inspection.md), and draft inspection in
@@ -478,3 +478,17 @@ existing one-target geometry catalog. Ownership, expiry, active document and rev
 validated around asynchronous evaluation. No read saves coordinates or advances a revision.
 See [ADR-0085](../adr/0085-disposable-solved-sketch-inspection.md) for evidence validation,
 cancellation and cursor recovery.
+
+## Owned assembly and library authoring
+
+Local and paired remote MCP expose the same named assembly/library vocabulary. Assembly drafts retain
+an original committed base, actor/session ownership, five-minute expiry and private draft version.
+The controller captures immutable sources and exact worker evidence; callers cannot submit pins,
+closure bytes, arbitrary commands or approval flags. Explicit upgrade enables general mate graphs
+while preserving old v1 forests. Manual browser Apply always precedes a second exact preflight and
+the ordinary authored revision CAS/Undo transaction. Library writes additionally recheck the captured
+authority inside their atomic transaction after asynchronous hashing/reads; cancellation rolls back
+staged bytes, versions and metadata. Immutable version selection, copy/reference insertion and
+metadata CAS remain explicit. Read views omit meshes and bytes and use bounded frozen-topology pages.
+See [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-drafts.md) and the
+[assembly/library operator workflow](../../.agents/skills/vibeshape-modeling/references/assembly-and-library.md).

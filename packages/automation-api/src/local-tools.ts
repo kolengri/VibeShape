@@ -1,3 +1,4 @@
+import { assemblyLibraryItemSchema } from "@vibeshape/domain/assembly-library"
 import {
   commandIdSchema,
   draftIdSchema,
@@ -8,6 +9,18 @@ import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnost
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
+import {
+  assemblyCommitViewSchema,
+  assemblyConstraintDiagnosticSchema,
+  assemblyDiscardViewSchema,
+  assemblyDraftPreviewSchema,
+  assemblyDraftStateSchema,
+  assemblyInspectionViewSchema,
+  assemblyModelViewSchema,
+  assemblyOperations,
+  assemblyToolInputs,
+  assemblyToolNames,
+} from "./assembly-tools"
 import {
   authoredFoldersViewSchema,
   authoredHistoryListArgumentsSchema,
@@ -39,11 +52,27 @@ import {
   localImportInputs,
   localImportOperations,
 } from "./imports"
+import {
+  libraryItemsViewSchema,
+  libraryOperations,
+  libraryToolInputs,
+  libraryVersionViewSchema,
+} from "./library-tools"
 import { localCadInputs, localCadOperations } from "./local-cad-tools"
 import {
   localDraftInspectionInputs,
   localDraftInspectionOperations,
 } from "./local-draft-inspection"
+import {
+  lifecycleToolNames,
+  localLifecycleInputs,
+  localLifecycleOperations,
+} from "./local-lifecycle-tools"
+import {
+  localPrimitiveInputs,
+  localPrimitiveOperations,
+  primitiveToolNames,
+} from "./local-primitive-tools"
 import { localSketchTextInputs, localSketchTextOperations } from "./local-sketch-text-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
@@ -73,6 +102,7 @@ export const localFailureSchema = z
         code: z.string().regex(/^[a-z][a-z0-9-]{0,95}$/),
         message: z.string().min(1).max(512),
         retryable: z.boolean(),
+        assembly: assemblyConstraintDiagnosticSchema.optional(),
       })
       .strict(),
   })
@@ -123,6 +153,8 @@ export const localToolInputs = {
     schemaVersion: true,
     documentId: true,
   }),
+  ...assemblyToolInputs,
+  ...libraryToolInputs,
   model_history: authoredHistoryListArgumentsSchema,
   model_parts: authoredListArgumentsSchema,
   model_folders: authoredListArgumentsSchema,
@@ -132,6 +164,8 @@ export const localToolInputs = {
   model_body_measurements: modelBodyMeasurementArgumentsSchema,
   model_body_topology: modelBodyTopologyArgumentsSchema,
   ...localCadInputs,
+  ...localPrimitiveInputs,
+  ...localLifecycleInputs,
   ...localSketchTextInputs,
   ...localVariableInputs,
   model_variables: variableListQuerySchema.omit({
@@ -202,6 +236,21 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  update_box: resultOf(automationDraftStateSchema),
+  create_cylinder: resultOf(automationDraftStateSchema),
+  update_cylinder: resultOf(automationDraftStateSchema),
+  create_cone: resultOf(automationDraftStateSchema),
+  update_cone: resultOf(automationDraftStateSchema),
+  create_sphere: resultOf(automationDraftStateSchema),
+  update_sphere: resultOf(automationDraftStateSchema),
+  create_torus: resultOf(automationDraftStateSchema),
+  update_torus: resultOf(automationDraftStateSchema),
+  create_pyramid: resultOf(automationDraftStateSchema),
+  update_pyramid: resultOf(automationDraftStateSchema),
+  remove_feature: resultOf(automationDraftStateSchema),
+  remove_sketch: resultOf(automationDraftStateSchema),
+  set_feature_suppressed: resultOf(automationDraftStateSchema),
+  rename_project: resultOf(automationDraftStateSchema),
   create_placement: resultOf(automationDraftStateSchema),
   update_placement: resultOf(automationDraftStateSchema),
   create_sketch_text: resultOf(automationDraftStateSchema),
@@ -220,6 +269,31 @@ export const localToolOutputs = {
   discard_export: resultOf(binaryExportDiscardSchema),
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
+  model_assembly: resultOf(assemblyModelViewSchema),
+  inspect_assembly: resultOf(assemblyInspectionViewSchema),
+  create_assembly_draft: resultOf(assemblyDraftStateSchema),
+  upgrade_assembly: resultOf(assemblyDraftStateSchema),
+  create_assembly_definition: resultOf(assemblyDraftStateSchema),
+  update_assembly_definition: resultOf(assemblyDraftStateSchema),
+  relink_assembly_definition: resultOf(assemblyDraftStateSchema),
+  remove_assembly_definition: resultOf(assemblyDraftStateSchema),
+  create_assembly_instance: resultOf(assemblyDraftStateSchema),
+  update_assembly_instance: resultOf(assemblyDraftStateSchema),
+  remove_assembly_instance: resultOf(assemblyDraftStateSchema),
+  create_assembly_joint: resultOf(assemblyDraftStateSchema),
+  update_assembly_joint: resultOf(assemblyDraftStateSchema),
+  remove_assembly_joint: resultOf(assemblyDraftStateSchema),
+  preview_assembly_draft: resultOf(assemblyDraftPreviewSchema),
+  commit_assembly_draft: resultOf(assemblyCommitViewSchema),
+  discard_assembly_draft: resultOf(assemblyDiscardViewSchema),
+  library_items: resultOf(libraryItemsViewSchema),
+  library_version: resultOf(libraryVersionViewSchema),
+  save_library_definition: resultOf(libraryVersionViewSchema),
+  update_library_metadata: resultOf(assemblyLibraryItemSchema),
+  insert_library_version: resultOf(assemblyDraftStateSchema),
+  relink_library_definition: resultOf(assemblyDraftStateSchema),
+  detach_library_definition: resultOf(assemblyDraftStateSchema),
+
   model_history: resultOf(authoredHistoryViewSchema),
   model_parts: resultOf(authoredPartsViewSchema),
   model_folders: resultOf(authoredFoldersViewSchema),
@@ -248,6 +322,10 @@ export const localToolOutputs = {
   update_sketch: resultOf(automationDraftStateSchema),
   create_extrude: resultOf(automationDraftStateSchema),
   update_extrude: resultOf(automationDraftStateSchema),
+  create_body_revolve: resultOf(automationDraftStateSchema),
+  update_body_revolve: resultOf(automationDraftStateSchema),
+  create_body_subtract: resultOf(automationDraftStateSchema),
+  update_body_subtract: resultOf(automationDraftStateSchema),
   create_revolve: resultOf(automationDraftStateSchema),
   update_revolve: resultOf(automationDraftStateSchema),
   create_hole: resultOf(automationDraftStateSchema),
@@ -291,6 +369,8 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  ...primitiveToolNames,
+  ...lifecycleToolNames,
   "create_placement",
   "update_placement",
   "create_sketch_text",
@@ -309,6 +389,14 @@ export const localToolNameSchema = z.enum([
   "discard_export",
   "model_measurements",
   "draft_measurements",
+  ...assemblyToolNames,
+  "library_items",
+  "library_version",
+  "save_library_definition",
+  "update_library_metadata",
+  "insert_library_version",
+  "relink_library_definition",
+  "detach_library_definition",
   "model_history",
   "model_parts",
   "model_folders",
@@ -337,6 +425,10 @@ export const localToolNameSchema = z.enum([
   "update_sketch",
   "create_extrude",
   "update_extrude",
+  "create_body_revolve",
+  "update_body_revolve",
+  "create_body_subtract",
+  "update_body_subtract",
   "create_revolve",
   "update_revolve",
   "create_hole",
@@ -395,6 +487,8 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
       arguments: localToolInputs.model_measurements,
     })
     .strict(),
+  ...assemblyOperations,
+  ...libraryOperations,
   z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),
   z.object({ tool: z.literal("model_parts"), arguments: localToolInputs.model_parts }).strict(),
   z.object({ tool: z.literal("model_folders"), arguments: localToolInputs.model_folders }).strict(),
@@ -416,6 +510,8 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
     })
     .strict(),
   ...localCadOperations,
+  ...localPrimitiveOperations,
+  ...localLifecycleOperations,
   ...localSketchTextOperations,
   ...localVariableOperations,
   z
@@ -447,6 +543,24 @@ export type LocalDraftCommandOperation = Extract<
   LocalOperation,
   { arguments: { commandId: string; draftId: string } }
 >
+export type LocalPrimitiveCommandOperation = Extract<
+  LocalOperation,
+  { tool: (typeof primitiveToolNames)[number] }
+>
+export type LocalLifecycleCommandOperation = Extract<
+  LocalOperation,
+  { tool: (typeof lifecycleToolNames)[number] }
+>
+export function isLocalPrimitiveCommand(
+  operation: LocalOperation,
+): operation is LocalPrimitiveCommandOperation {
+  return operation.tool in localPrimitiveInputs
+}
+export function isLocalLifecycleCommand(
+  operation: LocalOperation,
+): operation is LocalLifecycleCommandOperation {
+  return operation.tool in localLifecycleInputs
+}
 
 export function isLocalDraftCommand(
   operation: LocalOperation,

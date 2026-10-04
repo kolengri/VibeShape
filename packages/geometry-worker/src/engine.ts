@@ -326,6 +326,8 @@ const PYRAMID_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.pyramid#1"
 const TORUS_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.torus#1"
+const BOOLEAN_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#2"
 const BOOLEAN_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#1"
 const FILLET_FEATURE_TYPE_KEY =
@@ -358,6 +360,8 @@ const REVOLVE_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#4"
 const REVOLVE_FEATURE_TYPE_V5_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#5"
+const REVOLVE_FEATURE_TYPE_V7_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#7"
 const REVOLVE_FEATURE_TYPE_V6_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#6"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
@@ -1378,6 +1382,31 @@ function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult 
     : featureFailure("invalid-feature-parameters", "Boolean content parameters are invalid.")
 }
 
+function exactSubtractInputsAreValid(input: FeatureEvaluationInput) {
+  if (input.content.schemaVersion !== 2 || !hasSlottedCombinationInputs(input)) return false
+  const slots = input.content.feature.inputSlots
+  if (slots.length !== 2) return false
+  const target = slots[0],
+    tool = slots[1]
+  if (!target || !tool) return false
+  const ordered = target.inputIndex === 0 && tool.inputIndex === input.dependencies.length - 1
+  const distinct = target.inputIndex !== tool.inputIndex || target.outputRole !== tool.outputRole
+  return ordered && distinct
+}
+
+function parseExactBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!exactSubtractInputsAreValid(input))
+    return invalidInputCardinality(
+      "Exact Subtract requires two distinct ordered body slots from one or two producers.",
+    )
+  const parameters = booleanFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  return parameters.success
+    ? { ok: true, feature: { kind: "boolean", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Boolean content parameters are invalid.")
+}
+
 function parseEdgeTreatmentFeature(
   input: FeatureEvaluationInput,
   kind: "fillet" | "chamfer",
@@ -1769,6 +1798,14 @@ function parseMultiRevolveModifyingFeature(input: FeatureEvaluationInput): Featu
     ok: true,
     feature: { kind: "multi-revolve-modifying", parameters: parameters.data },
   }
+}
+
+function parseExactMultiRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (input.content.schemaVersion !== 1 || input.content.feature.inputRoles[0] == null)
+    return invalidInputCardinality(
+      "Exact modifying Revolve requires a named target body in input 0.",
+    )
+  return parseMultiRevolveModifyingFeature(input)
 }
 
 function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -2242,6 +2279,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [LOFT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseLoftFeature],
   [SWEEP_FEATURE_TYPE_KEY, parseSweepFeature],
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
+  [BOOLEAN_FEATURE_TYPE_V2_KEY, parseExactBooleanFeature],
   [FILLET_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "chamfer")],
   [FILLET_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "fillet")],
@@ -2264,6 +2302,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_V4_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V5_KEY, parseMultiRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V6_KEY, parseMultiRevolveModifyingFeature],
+  [REVOLVE_FEATURE_TYPE_V7_KEY, parseExactMultiRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
   [HOLE_FEATURE_TYPE_KEY, parseHoleFeature],
   [HOLE_FEATURE_TYPE_V2_KEY, parseHoleFeatureV2],

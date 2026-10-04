@@ -2,6 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react"
 import {
+  booleanFeatureTypeV2,
   boxFeatureType,
   coneFeatureType,
   createLengthQuantity,
@@ -175,6 +176,20 @@ describe("feature preview worker lifetime", () => {
 })
 
 describe("feature preview composition", () => {
+  it("classifies exact-body Subtract as a feature preview", () => {
+    const candidate = featureRecordSchema.parse({
+      ...feature(candidateId, [baseId]),
+      type: booleanFeatureTypeV2.type,
+      parameters: {
+        operation: "subtract",
+        targetBody: { featureId: baseId, outputRole: "pattern.instance.0" },
+        toolBody: { featureId: baseId, outputRole: "pattern.instance.1" },
+      },
+    })
+
+    expect(featurePreviewKind(candidate)).toBe("subtract")
+  })
+
   it("classifies structurally parsed primitive feature types as primitive previews", () => {
     const candidate = featureRecordSchema.parse({
       schemaVersion: 0,

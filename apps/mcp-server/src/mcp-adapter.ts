@@ -16,6 +16,7 @@ import {
   callAgentSkillTool,
   readAgentSkillResource,
 } from "@vibeshape/automation-api/agent-skills"
+import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
 import { localStatusSchema } from "@vibeshape/automation-api/local-session"
 import {
   type LocalToolName,
@@ -70,12 +71,15 @@ export function createLocalMcpAdapter(
       ...localToolNameSchema.options.map((name) => ({
         name,
         description: localToolDescriptions[name],
-        inputSchema: z.toJSONSchema(localToolInputs[name], { reused: "ref" }),
+        inputSchema: z.toJSONSchema(localToolInputs[name], {
+          reused: "ref",
+          io: isAssemblyLibraryToolName(name) ? "input" : "output",
+        }),
         outputSchema: z.toJSONSchema(
           z.object({
             result: name === "export_model" ? exportResultSchema : localToolOutputs[name],
           }),
-          { reused: "ref" },
+          { reused: "ref", io: isAssemblyLibraryToolName(name) ? "input" : "output" },
         ),
         annotations: localToolAnnotations(name),
       })),

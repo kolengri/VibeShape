@@ -17,6 +17,7 @@ import {
   callAgentSkillTool,
   readAgentSkillResource,
 } from "@vibeshape/automation-api/agent-skills"
+import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
 import {
   localFailure,
   localOperationSchema,
@@ -39,8 +40,8 @@ import type { RemoteEnv } from "./environment"
 import { digest, failure } from "./request-security"
 import type { TabSession } from "./tab-session"
 
-const tools = localToolNameSchema.options.filter((name) => name !== "export_model")
 const STATIC_TOOL_CATALOG_MAX_BYTES = 2 * 1024 * 1024
+const tools = localToolNameSchema.options.filter((name) => name !== "export_model")
 
 function toolResult(result: unknown) {
   return {
@@ -130,9 +131,13 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
         ...tools.map((name) => ({
           name,
           description: localToolDescriptions[name],
-          inputSchema: z.toJSONSchema(localToolInputs[name], { reused: "ref" }),
+          inputSchema: z.toJSONSchema(localToolInputs[name], {
+            reused: "ref",
+            io: isAssemblyLibraryToolName(name) ? "input" : "output",
+          }),
           outputSchema: z.toJSONSchema(z.object({ result: localToolOutputs[name] }), {
             reused: "ref",
+            io: isAssemblyLibraryToolName(name) ? "input" : "output",
           }),
           annotations: localToolAnnotations(name),
         })),

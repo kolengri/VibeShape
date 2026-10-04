@@ -2,7 +2,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createLocalAutomationConnection } from "./local-automation-connection"
 
-const mocks = vi.hoisted(() => ({ request: vi.fn(), createHandle: vi.fn(), execute: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  request: vi.fn(),
+  createHandle: vi.fn(),
+  execute: vi.fn(),
+  review: vi.fn(),
+}))
+vi.mock("./automation-review-controller", () => ({
+  automationReviews: { getSnapshot: mocks.review },
+}))
 vi.mock("./local-automation-http", () => ({ localAutomationRequest: mocks.request }))
 vi.mock("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
@@ -45,6 +53,7 @@ beforeEach(() => {
   sessionStorage.clear()
   vi.useFakeTimers()
   vi.clearAllMocks()
+  mocks.review.mockReturnValue({ status: "idle" })
   enableAutoApply.mockReturnValue(true)
   document.head.innerHTML = '<meta name="vibeshape-local-automation" content="1">'
   mocks.createHandle.mockReturnValue({
@@ -76,6 +85,40 @@ async function ready() {
   await connection.status()
 }
 describe("browser-owned local AI connection lifecycle", () => {
+  it.each([
+    ["ready", "review"],
+    ["applying", "applying"],
+    ["idle", "executing"],
+  ])("reports native import progress while review is %s", async (status, stage) => {
+    await ready()
+    const pending = deferred<typeof failedResult>()
+    mocks.execute.mockReturnValue(pending.promise)
+    mocks.review.mockReturnValue({ status })
+    const importing = {
+      ...work,
+      operation: { tool: "commit_import_upload", arguments: { uploadId: id, uploadVersion: 1 } },
+    }
+    const original = mocks.request.getMockImplementation()
+    let delivered = false
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/poll") {
+        const next = delivered ? null : importing
+        delivered = true
+        return ok({ protocolVersion: 1, work: next, cancelledRequestIds: [] })
+      }
+      return original?.(path, ...args)
+    })
+    await connection.enable()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/poll",
+      expect.objectContaining({ progress: { requestId: work.requestId, stage } }),
+      credential.token,
+    )
+    pending.resolve(failedResult)
+    await vi.advanceTimersByTimeAsync(0)
+  })
   it("serializes a next operation delivered before the previous result acknowledgement", async () => {
     await ready()
     await connection.enable()
@@ -290,6 +333,68 @@ describe("browser-owned local AI connection lifecycle", () => {
 })
 
 describe("local AI reload recovery", () => {
+  it("restores the same document after cancelled navigation with auto-apply off", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    window.dispatchEvent(new Event("beforeunload"))
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/resume",
+      { protocolVersion: 1, document: { id, name: "Bracket", revision: 4 } },
+      credential.token,
+    )
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+  })
+  it("does not restore cancelled navigation after explicit Stop AI", async () => {
+    await ready()
+    await connection.enable()
+    window.dispatchEvent(new Event("beforeunload"))
+    await connection.disable()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+  })
+  it("suspends before navigation rejects a poll and pagehide follows", async () => {
+    await ready()
+    const polling = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll" ? polling.promise : original?.(path, ...args),
+    )
+    await connection.enable()
+    window.dispatchEvent(new Event("beforeunload"))
+    polling.reject(new TypeError("The navigation aborted fetching."))
+    await Promise.resolve()
+    await Promise.resolve()
+    window.dispatchEvent(new Event("pagehide"))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).not.toBeNull()
+    expect(mocks.request).toHaveBeenCalledWith("/suspend", {}, credential.token, true)
+    expect(mocks.request).not.toHaveBeenCalledWith(
+      "/revoke",
+      expect.anything(),
+      credential.token,
+      true,
+    )
+  })
+  it("revokes a failed poll when the document remains open", async () => {
+    await ready()
+    const polling = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll" ? polling.promise : original?.(path, ...args),
+    )
+    await connection.enable()
+    polling.reject(new TypeError("The network failed."))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+  })
   it("restores the same project in a fresh connection with auto-apply off", async () => {
     await ready()
     await connection.enable()

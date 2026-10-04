@@ -8,6 +8,7 @@ import {
 import { env } from "cloudflare:workers"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { agentSkillResources } from "@vibeshape/automation-api/agent-skills"
 import { BINARY_EXPORT_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/binary-exports"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import {
@@ -15,6 +16,7 @@ import {
   remoteServerMessageSchema,
 } from "@vibeshape/automation-api/remote-session"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import type { RemoteEnv } from "./environment"
 import worker from "./index"
 
@@ -295,6 +297,154 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
 )
 
 describe("remote MCP in workerd", () => {
+  it("revokes a forged exact-solid result for a mesh import", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const value = nativeImportInspection("stl")
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 1, "tools/call", {
+      name: "inspect_import_upload",
+      arguments: { uploadId: value.upload.uploadId },
+    })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected import inspection work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "inspect_import_upload",
+        result: {
+          ok: true,
+          value: {
+            ...value,
+            representation: "exact-solid",
+            outputs: value.outputs.map((output) => ({ ...output, volumeMm3: 1 })),
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({
+      result: {
+        structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+      },
+    })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
+
+  it.each(["duplicate", "reversed-duplicate", "foreign", "missing", "extra"] as const)(
+    "requires exact unique interference coverage and revokes a %s response",
+    async (invalid) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const a = "0195b5ac-b280-7a2c-8c33-000000000001"
+      const b = "0195b5ac-b280-7a2c-8c33-000000000002"
+      const c = "0195b5ac-b280-7a2c-8c33-000000000003"
+      const interference = (leftInstanceId: string, rightInstanceId: string) => ({
+        leftInstanceId,
+        rightInstanceId,
+        status: "clear",
+        volume: 0,
+        solidCount: 0,
+      })
+      const send = async (id: number, pairs: ReturnType<typeof interference>[]) => {
+        const work = nextMessage(tab.socket)
+        const pending = mcp(authenticated.token, id, "tools/call", {
+          name: "inspect_assembly",
+          arguments: {
+            revision: 4,
+            interferencePairs: [
+              { leftInstanceId: a, rightInstanceId: b },
+              { leftInstanceId: a, rightInstanceId: c },
+            ],
+          },
+        })
+        const operation = await work
+        if (operation.type !== "work") throw new Error("Expected browser inspection work.")
+        tab.socket.send(
+          JSON.stringify({
+            type: "result",
+            protocolVersion: 1,
+            requestId: operation.requestId,
+            tool: "inspect_assembly",
+            result: {
+              ok: true,
+              value: {
+                schemaVersion: 1,
+                documentId: "0195b5ac-b280-7a2c-8c33-000000000004",
+                revision: 4,
+                occurrences: [],
+                interference: pairs,
+              },
+            },
+          }),
+        )
+        return (await pending).json()
+      }
+      expect(await send(1, [interference(c, a), interference(b, a)])).toMatchObject({
+        result: { structuredContent: { result: { ok: true } } },
+      })
+      const invalidPairs = {
+        duplicate: [interference(a, b), interference(a, b)],
+        "reversed-duplicate": [interference(a, b), interference(b, a)],
+        foreign: [interference(a, b), interference(b, c)],
+        missing: [interference(a, b)],
+        extra: [interference(a, b), interference(a, c), interference(b, c)],
+      }
+      expect(await send(2, invalidPairs[invalid])).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+      expect(
+        await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(false)
+    },
+  )
+  it("rejects oversized browser results after serving the larger static schema catalog", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const catalog = await mcp(authenticated.token, 1, "tools/list")
+    expect(catalog.status).toBe(200)
+    expect(new TextEncoder().encode(await catalog.text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 2, "tools/call", { name: "model_info", arguments: {} })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected owned browser work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "model_info",
+        result: {
+          ok: false,
+          diagnostic: {
+            code: "oversized-fixture",
+            message: "x".repeat(193 * 1024),
+            retryable: false,
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({ result: { isError: true } })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
   it("rejects a successful draft result when the session expires during result persistence", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -442,6 +592,10 @@ describe("remote MCP in workerd", () => {
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "model_info",
+          "create_body_revolve",
+          "update_body_revolve",
+          "create_body_subtract",
+          "update_body_subtract",
           "draft_body_measurements",
           "draft_body_topology",
           "create_reference_mirror",
@@ -450,6 +604,21 @@ describe("remote MCP in workerd", () => {
           "update_reference_split",
           "create_reference_body_pattern",
           "update_reference_body_pattern",
+          "update_box",
+          "create_cylinder",
+          "update_cylinder",
+          "create_cone",
+          "update_cone",
+          "create_sphere",
+          "update_sphere",
+          "create_torus",
+          "update_torus",
+          "create_pyramid",
+          "update_pyramid",
+          "remove_feature",
+          "remove_sketch",
+          "set_feature_suppressed",
+          "rename_project",
           "prepare_model_export",
           "prepare_project_backup",
           "read_export_chunk",
@@ -490,7 +659,7 @@ describe("remote MCP in workerd", () => {
     })
     const listed = await mcp(authenticated.token, 3, "resources/list")
     const resources = (await listed.json()) as { result: { resources: { uri: string }[] } }
-    expect(resources.result.resources).toHaveLength(11)
+    expect(resources.result.resources).toHaveLength(agentSkillResources.length)
     expect(resources.result.resources).toContainEqual(
       expect.objectContaining({
         uri: "vibeshape://agent-skills/vibeshape-modeling/references/native-import.md",
@@ -852,6 +1021,9 @@ describe("remote MCP in workerd", () => {
     expect(await eventStream.json()).toEqual({ error: "sse_not_supported" })
     const listed = await mcp(authenticated.token, 1, "tools/list")
     expect(listed.status).toBe(200)
+    expect(new TextEncoder().encode(await listed.clone().text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
     const catalog = (await listed.json()) as { result: { tools: { name: string }[] } }
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("create_hole")
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("change_metadata")

@@ -1,5 +1,8 @@
-import { type AssemblyInstance, assemblyInstanceSchema } from "@vibeshape/domain/assembly"
 import type { AssemblyAuthority } from "@vibeshape/domain/assembly-authority"
+import {
+  type AssemblyInstanceRecord as AssemblyInstance,
+  assemblyInstanceRecordSchema as assemblyInstanceSchema,
+} from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useState } from "react"
@@ -9,7 +12,15 @@ import { newAssemblyInstance } from "./assembly-model"
 
 function updatedInstance(data: FormData, instance: AssemblyInstance) {
   const fields = { ...instance, name: String(data.get("name")) }
-  if (!instance.grounded) return assemblyInstanceSchema.parse(fields)
+  if (!instance.grounded)
+    return assemblyInstanceSchema.parse(
+      instance.schemaVersion === 2
+        ? {
+            ...fields,
+            initialFrame: formPose(data, "initial", instance.initialFrame),
+          }
+        : fields,
+    )
   return assemblyInstanceSchema.parse({
     ...fields,
     worldFrame: formPose(data, "world", instance.worldFrame),
@@ -19,6 +30,11 @@ function InstancePoseFields({ instance }: { instance: AssemblyInstance }) {
   const t = useTranslations("app.assembly")
   return instance.grounded ? (
     <AssemblyPoseFields prefix="world" label={t("worldFrame")} pose={instance.worldFrame} />
+  ) : instance.schemaVersion === 2 ? (
+    <>
+      <p className="text-xs text-muted-foreground">{t("generalFreePoseExplanation")}</p>
+      <AssemblyPoseFields prefix="initial" label={t("initialFrame")} pose={instance.initialFrame} />
+    </>
   ) : (
     <p className="text-xs text-muted-foreground">{t("attachedPoseExplanation")}</p>
   )
@@ -66,6 +82,8 @@ function NewInstanceForm({
               definition,
               String(data.get("name")),
               formPose(data, "world"),
+              undefined,
+              assembly.schemaVersion,
             ),
           },
         ]

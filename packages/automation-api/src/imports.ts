@@ -87,6 +87,10 @@ export const importUploadInspectionSchema = z
   .refine(
     (value) =>
       value.upload.status === "ready" &&
+      value.representation ===
+        (value.upload.format === "step" || value.upload.format === "brep"
+          ? "exact-solid"
+          : "triangle-mesh") &&
       new Set(value.outputs.map(({ outputRole }) => outputRole)).size === value.outputs.length &&
       value.outputs.every(({ volumeMm3 }) =>
         value.representation === "exact-solid" ? volumeMm3 !== null : volumeMm3 === null,

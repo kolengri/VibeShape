@@ -1,34 +1,29 @@
 import { assemblyDefinitionIdSchema } from "@vibeshape/domain/assembly"
-import {
-  captureAssemblyDefinition,
-  pinnedAssemblyDefinitionSchema,
-} from "@vibeshape/domain/assembly-authority"
+import { pinnedAssemblyDefinitionSchema } from "@vibeshape/domain/assembly-authority"
 import {
   assemblyLibraryTagsSchema,
   assemblyLibraryVersionNumberSchema,
 } from "@vibeshape/domain/assembly-library"
 import { authoredItemNameSchema } from "@vibeshape/domain/parts"
-import {
-  AssemblyLibraryDatabase,
-  LocalAssemblyLibraryRepository,
-} from "@vibeshape/persistence/assembly-library-store"
 import { z } from "zod"
 import {
   activeAssembly,
   assemblyDocumentContext,
-  assemblyPartSources,
   createAssemblyTransaction,
   identityAssemblyPose,
   newAssemblyInstance,
 } from "../features/assembly/assembly-model"
 import { browserAuthoredUuid } from "./authored-document-session"
+import { localLibrary } from "./browser-library-repository"
 import {
   commitAuthoredTransaction,
   type DocumentMutationResult,
   getDocumentControllerState,
   getProjectActionBlock,
+  previewAssemblyChanges,
   verifyActiveFrozenDefinition,
 } from "./document-controller"
+import { captureLibrarySource } from "./library-source"
 
 const uuid = z
   .string()
@@ -55,11 +50,6 @@ const relinkSchema = z.object({ ...librarySelection, definitionId: uuid }).stric
 const metadataSchema = z
   .object({ itemId: uuid, expectedMetadataRevision: z.number().int().positive(), ...metadata })
   .strict()
-let repository: LocalAssemblyLibraryRepository | undefined
-function localLibrary() {
-  repository ??= new LocalAssemblyLibraryRepository(new AssemblyLibraryDatabase())
-  return repository
-}
 function failure(error: unknown): Extract<DocumentMutationResult, { ok: false }> {
   return {
     ok: false as const,
@@ -102,39 +92,6 @@ export function updateLocalLibraryMetadata(input: z.input<typeof metadataSchema>
     }),
   )
 }
-function captureLibrarySource(
-  controller: ReturnType<typeof getDocumentControllerState>,
-  request: z.output<typeof saveSchema>,
-) {
-  if (request.source.kind === "definition") {
-    const saved = activeAssembly(controller).definitions.find(({ id }) => id === request.source.id)
-    if (!saved) throw new Error("The selected frozen definition is unavailable.")
-    return saved
-  }
-  const authority = controller.authoredSnapshot
-  if (!authority || authority.schemaVersion === 1)
-    throw new Error("Authored source authority is unavailable.")
-  const part = assemblyPartSources(controller).find(
-    ({ source }) => source.partId === request.source.id,
-  )
-  if (!part) throw new Error("The selected Part has no available body.")
-  return captureAssemblyDefinition(
-    {
-      ...authority,
-      schemaVersion: 4,
-      surfaceTextures: authority.schemaVersion === 2 ? [] : authority.surfaceTextures,
-      assets: authority.schemaVersion === 4 ? authority.assets : [],
-    },
-    {
-      schemaVersion: 1,
-      id: browserAuthoredUuid(),
-      name: request.name,
-      sources: [part.source],
-      sourceFrame: identityAssemblyPose,
-    },
-  )
-}
-
 export function saveActiveLibraryDefinition(input: z.input<typeof saveSchema>) {
   return safely(async () => {
     const request = saveSchema.parse(input)
@@ -165,7 +122,7 @@ export async function insertLocalLibraryVersion(
 ): Promise<DocumentMutationResult> {
   return safely(async () => {
     const request = insertSchema.parse(input)
-    const { context } = writableDocument()
+    const { controller, context } = writableDocument()
     const read = await localLibrary().readVersion({
       itemId: request.itemId,
       version: request.version,
@@ -181,13 +138,24 @@ export async function insertLocalLibraryVersion(
         ? { libraryBinding: { itemId: request.itemId, version: request.version } }
         : {}),
     })
-    const transaction = createAssemblyTransaction(context, [
+    const changes = [
       { kind: "definition.insert-pinned", definition },
       {
         kind: "instance.create",
-        instance: newAssemblyInstance(definition, request.instanceName, identityAssemblyPose),
+        instance: newAssemblyInstance(
+          definition,
+          request.instanceName,
+          identityAssemblyPose,
+          undefined,
+          activeAssembly(controller).schemaVersion,
+        ),
       },
-    ])
+    ] as const
+    if (activeAssembly(controller).schemaVersion === 2) {
+      const preview = await previewAssemblyChanges(changes, context.revision, read.value.blobs)
+      if (!preview.ok) return preview
+    }
+    const transaction = createAssemblyTransaction(context, changes)
     return commitAuthoredTransaction(context.revision, {
       ...transaction,
       assetBlobs: read.value.blobs,
@@ -217,9 +185,12 @@ export async function relinkActiveLibraryDefinition(
       name: current.name,
       libraryBinding: { itemId: request.itemId, version: request.version },
     })
-    const transaction = createAssemblyTransaction(context, [
-      { kind: "definition.relink-pinned", definition },
-    ])
+    const changes = [{ kind: "definition.relink-pinned", definition }] as const
+    if (activeAssembly(controller).schemaVersion === 2) {
+      const preview = await previewAssemblyChanges(changes, context.revision, read.value.blobs)
+      if (!preview.ok) return preview
+    }
+    const transaction = createAssemblyTransaction(context, changes)
     return commitAuthoredTransaction(context.revision, {
       ...transaction,
       assetBlobs: read.value.blobs,

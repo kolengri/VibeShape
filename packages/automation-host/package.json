@@ -8,7 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./host": "./src/host.ts",
-    "./metadata-proposal": "./src/metadata-proposal.ts"
+    "./metadata-proposal": "./src/metadata-proposal.ts",
+    "./assembly-session": "./src/assembly-session.ts",
+    "./assembly-session-contract": "./src/assembly-session-contract.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

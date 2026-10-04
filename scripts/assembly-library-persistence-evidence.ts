@@ -27,6 +27,74 @@ async function identity(database: AssemblyLibraryDatabase) {
     })),
   })
 }
+export async function runAssemblyLibraryAuthorityEvidence(name: string) {
+  const fixture = assemblyLibraryFixture()
+  const database = new AssemblyLibraryDatabase(name)
+  const repository = new LocalAssemblyLibraryRepository(database)
+  const input = {
+    itemId: libraryFixtureId(91),
+    expectedMetadataRevision: null,
+    name: "Guarded source",
+    tags: [],
+    definition: fixture.definition,
+    blobs: [fixture.blob],
+    createdAt: libraryFixtureTimestamp,
+  }
+  let active = true
+  const assertWritable = () => {
+    if (!active) throw new Error("The reviewed actor/session/revision expired.")
+  }
+  const revokeAfterVersionWrite = () => {
+    active = false
+  }
+  const revokeAfterAsyncRead = (record: unknown) => {
+    active = false
+    return record
+  }
+  try {
+    // A version hook runs after the earlier blob write inside the same transaction.
+    database.versions.hook("creating", revokeAfterVersionWrite)
+    const interrupted = await repository.publishVersion(input, assertWritable)
+    database.versions.hook("creating").unsubscribe(revokeAfterVersionWrite)
+    requireEvidence(
+      !interrupted.ok,
+      "Revoked authority must reject publication after asynchronous preparation.",
+    )
+    requireEvidence(
+      (await database.items.count()) === 0 &&
+        (await database.versions.count()) === 0 &&
+        (await database.blobs.count()) === 0,
+      "Revocation after a staged blob/version must roll back the complete transaction.",
+    )
+    active = true
+    value(await repository.publishVersion(input))
+    const before = await identity(database)
+    database.versions.hook("reading", revokeAfterAsyncRead)
+    const metadata = await repository.updateMetadata(
+      {
+        itemId: input.itemId,
+        expectedMetadataRevision: 1,
+        name: "Unapproved metadata",
+        tags: [],
+        updatedAt: libraryFixtureTimestamp,
+      },
+      assertWritable,
+    )
+    database.versions.hook("reading").unsubscribe(revokeAfterAsyncRead)
+    requireEvidence(
+      !metadata.ok,
+      "Revocation during an awaited version read must reject metadata writes.",
+    )
+    requireEvidence(
+      (await identity(database)) === before,
+      "Rejected metadata publication must preserve all authority.",
+    )
+    return { publicationRollback: true, asyncMetadataReadRejected: true }
+  } finally {
+    database.close()
+    await database.delete()
+  }
+}
 export async function runAssemblyLibraryPersistenceEvidence(
   name: string,
   createFutureDatabase: (name: string) => Promise<void>,
