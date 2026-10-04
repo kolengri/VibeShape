@@ -18,6 +18,14 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Stage body Pattern v2 using exact targetBody and axis: origin-axis X/Y/Z, datum-axis featureId with x/y/normal, linear-edge stable BodyTopoRef with authored unit direction, or explicit-axis origin in mm and unit direction. Supply typed scalar count 2–256 including seed and signed linear spacing or circular angle up to one revolution; circular center comes from the axis. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable LINE refs from body topology inspection, never native edge indices or caller hashes. Preview before ordinary commit review; legacy create_body_pattern retains XYZ/center v1 behavior.",
   update_reference_body_pattern:
     "Update body Pattern as v2 preserving feature identity and instance roles. Resubmit exact targetBody, reference axis, typed count and signed spacing or circular angle, ordered target/distinct-support dependencies and empty references. Explicit edits may upgrade legacy Pattern; reference axes replace its circular center. Preview before ordinary commit review.",
+  prepare_model_export:
+    "Prepare an immutable STEP/STL/3MF file for the exact committed revision, up to 6 MiB. Returns an owner-bound export ID, SHA-256 and five-minute expiry. Read bounded chunks and verify the complete byte length/hash. A new preparation evicts the previous file; no filesystem paths or model edits.",
+  prepare_project_backup:
+    "Prepare an editable .vshape backup of the exact committed revision including portable history, assembly authority and source-asset closure, up to 6 MiB. Read bounded chunks before the five-minute expiry and verify complete length/SHA-256. This does not save or edit the project.",
+  read_export_chunk:
+    "Read one bounded base64 chunk of an owned prepared export or project backup. Pass its opaque export ID and byte offset; use nextOffset unchanged until null. Chunks are at most 90 KiB decoded and reads do not renew expiry. Reconstruct bytes outside the model context and verify the descriptor SHA-256.",
+  discard_export:
+    "Release an owned prepared file from the active paired browser session. This does not delete a project, local file or saved document.",
   model_measurements:
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:
@@ -151,6 +159,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "prepare_model_export",
+      "prepare_project_backup",
+      "read_export_chunk",
+      "discard_export",
       "model_measurements",
       "draft_measurements",
       "model_sketch_solution",
@@ -181,6 +193,8 @@ export function localToolAnnotations(name: LocalToolName) {
       "update_library_metadata",
     ].includes(name),
     idempotentHint: [
+      "read_export_chunk",
+      "discard_export",
       "model_measurements",
       "draft_measurements",
       "model_sketch_solution",

@@ -1,4 +1,5 @@
 import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
+import { isLocalBinaryExport } from "@vibeshape/automation-api/binary-exports"
 import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
@@ -29,6 +30,7 @@ import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
+import type { createBinaryExportSession } from "./binary-export-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -46,6 +48,7 @@ type LocalSessionPort = Readonly<{
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
+  exports?: ReturnType<typeof createBinaryExportSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -252,6 +255,27 @@ export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
 ): LocalToolExecutor {
+  function transfer(
+    operation: Extract<
+      LocalOperation,
+      {
+        tool:
+          | "prepare_model_export"
+          | "prepare_project_backup"
+          | "read_export_chunk"
+          | "discard_export"
+      }
+    >,
+    signal?: AbortSignal,
+  ) {
+    return session.exports
+      ? session.exports.execute(actor, operation, signal)
+      : localFailure(
+          "export-unavailable",
+          "The paired session cannot prepare file transfers.",
+          true,
+        )
+  }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
     if (isAssemblyLibraryToolName(operation.tool))
       return session.assembly
@@ -260,6 +284,7 @@ export function createLocalToolExecutor(
             "assembly-authority-unavailable",
             "The paired document has no assembly authority.",
           )
+    if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)

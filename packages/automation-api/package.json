@@ -20,7 +20,8 @@
     "./query-byte-budget": "./src/query-byte-budget.ts",
     "./assembly-tools": "./src/assembly-tools.ts",
     "./library-tools": "./src/library-tools.ts",
-    "./assembly-result-context": "./src/assembly-result-context.ts"
+    "./assembly-result-context": "./src/assembly-result-context.ts",
+    "./binary-exports": "./src/binary-exports.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

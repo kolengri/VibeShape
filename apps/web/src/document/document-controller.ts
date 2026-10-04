@@ -133,6 +133,7 @@ import {
 } from "../automation/assembly-automation-session"
 import { assemblyInspectionView } from "../automation/assembly-inspection-view"
 import { automationReviews } from "../automation/automation-review-controller"
+import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
@@ -890,6 +891,48 @@ export function createActiveDocumentAutomationSession() {
     },
     commit: (input) => commitReviewedAssembly(active, input),
   })
+  const exports = createBinaryExportSession({
+    documentId: capturedDocumentId,
+    currentRevision: () => active.snapshot.revision,
+    isActive: () => currentReport() !== null,
+    async prepare(format, revision) {
+      if (format !== "vshape") {
+        const result = await exportRevisionBound(format, revision)
+        return result.ok
+          ? {
+              ok: true as const,
+              documentId: capturedDocumentId,
+              revision,
+              format,
+              file: result.file,
+            }
+          : { ok: false as const }
+      }
+      if (!currentReport() || active.snapshot.revision !== revision) return { ok: false as const }
+      const result = await exportCapturedProjectBackup({
+        active,
+        repository,
+        id: capturedDocumentId,
+        revision,
+        current: () =>
+          currentReport() !== null &&
+          session === active &&
+          activeRepository === repository &&
+          active.snapshot.revision === revision &&
+          state.saveStatus !== "saving" &&
+          state.saveStatus !== "save-error",
+      })
+      if (!currentReport() || active.snapshot.revision !== revision || !result.ok)
+        return { ok: false as const }
+      return {
+        ok: true as const,
+        documentId: result.documentId,
+        revision: result.revision,
+        format,
+        file: result.file,
+      }
+    },
+  })
   const closeAutomation = factory.dispose
   let revision = active.snapshot.revision
   const unsubscribe = subscribeDocumentController(() => {
@@ -911,6 +954,7 @@ export function createActiveDocumentAutomationSession() {
     closeAutomation()
     metadata.dispose()
     assembly.dispose()
+    exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
   return {
@@ -922,6 +966,7 @@ export function createActiveDocumentAutomationSession() {
     host: factory.host,
     metadata,
     assembly,
+    exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
     readSketchSolution: factory.readSketchSolution,
@@ -931,6 +976,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel(reason)
       metadata.cancel(reason)
       assembly.cancel(reason)
+      exports.cancel()
     },
     dispose,
   }
@@ -1894,18 +1940,18 @@ function unavailableProjectFileResult() {
 export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupResult> {
   const action = captureProjectAction()
   if (!action) return projectActionUnavailable()
+  return exportCapturedProjectBackup(action)
+}
+
+async function exportCapturedProjectBackup(
+  action: NonNullable<ReturnType<typeof captureProjectAction>>,
+): Promise<ActiveProjectBackupResult> {
+  if (!action.current()) return projectActionUnavailable()
   const portable = await action.repository.exportPortableProject(action.id)
   if (!portable.ok) return portable
   if (!action.current() || portable.value.project.snapshot.revision !== action.revision)
     return projectActionUnavailable()
-  const write =
-    portable.value.version === 5
-      ? writeVShapeV5
-      : portable.value.version === 4
-        ? writeVShapeV4
-        : portable.value.version === 3
-          ? writeVShapeV3
-          : writeVShapeV2
+  const write = projectBackupWriter(portable.value.version)
   const archived = await write({
     ...portable.value.project,
     exportedAt: new Date().toISOString(),
@@ -1922,6 +1968,19 @@ export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupRe
         revision: action.revision,
       }
     : archived
+}
+
+function projectBackupWriter(version: 2 | 3 | 4 | 5) {
+  switch (version) {
+    case 5:
+      return writeVShapeV5
+    case 4:
+      return writeVShapeV4
+    case 3:
+      return writeVShapeV3
+    default:
+      return writeVShapeV2
+  }
 }
 
 export async function importProjectBackup(
