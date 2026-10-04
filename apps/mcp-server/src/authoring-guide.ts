@@ -53,8 +53,10 @@ Preserve existing slot IDs on update. Missing roles fail closed. Manual review r
 an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
 and schema upgrades still require manual review. Tools cannot enable the grant.
 
-Geometry/planar import, text generation and surface
-texture authoring use the editor. They are not named MCP construction tools. The shared local
+Surface texture create/update/remove use named owned proposals with native relief preview and
+mandatory manual Apply. Read the modeling skill's surface-textures reference for packed custom
+maps, exact face scope and bounded mask append. Geometry/planar import and text generation use
+their advertised contracts or the editor. The shared local
 and paired remote feature tools follow the same draft/review/commit workflow; remote omits
 file exports. Read the modeling operator skill for the relevant feature family.
 

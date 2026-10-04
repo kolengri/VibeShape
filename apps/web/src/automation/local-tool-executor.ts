@@ -26,6 +26,7 @@ import type {
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
+import { isSurfaceTextureToolName } from "@vibeshape/automation-api/surface-texture-tools"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
@@ -36,6 +37,7 @@ import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
+import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
 
 type LocalExportResult =
   | { ok: true; format: "step" | "stl" | "3mf"; file: Uint8Array; documentName: string }
@@ -48,6 +50,7 @@ type LocalSessionPort = Readonly<{
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
+  surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
@@ -276,7 +279,14 @@ export function createLocalToolExecutor(
           true,
         )
   }
-  async function execute(operation: LocalOperation, signal?: AbortSignal) {
+  function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
+    if (isSurfaceTextureToolName(operation.tool))
+      return session.surfaceTextures
+        ? session.surfaceTextures.execute(actor, operation, signal)
+        : localFailure(
+            "surface-texture-authority-unavailable",
+            "The paired document has no surface texture authority.",
+          )
     if (isAssemblyLibraryToolName(operation.tool))
       return session.assembly
         ? session.assembly.execute(actor, operation, signal)
@@ -288,6 +298,11 @@ export function createLocalToolExecutor(
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
+    return null
+  }
+  async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    const owned = ownedOperation(operation, signal)
+    if (owned !== null) return owned
     if (isLocalDraftCommand(operation)) return dispatchDraftCommand(session, actor, operation)
     if (isLocalDraftInspection(operation)) {
       const result = await session.host.inspectDraft(actor, {

@@ -7,12 +7,13 @@ import type {
   AutomationHostResult,
   DraftReviewInput,
 } from "@vibeshape/automation-host/host"
+import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 
 type Decision = "approved" | "rejected" | "cancelled"
 
 export type AutomationReviewState = Readonly<{
   id: string
-  input: DraftReviewInput | AssemblyReviewInput
+  input: DraftReviewInput | AssemblyReviewInput | SurfaceTextureReviewInput
   status: "ready" | "applying" | "error"
   diagnostic: string | null
 }>
@@ -59,7 +60,7 @@ export function createAutomationReviewController() {
 
   function request(
     owner: symbol,
-    input: DraftReviewInput | AssemblyReviewInput,
+    input: DraftReviewInput | AssemblyReviewInput | SurfaceTextureReviewInput,
   ): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
     const expiresIn =

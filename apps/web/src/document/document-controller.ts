@@ -16,6 +16,7 @@ import {
   type PersistentSketchSolveOptions,
   type PersistentSketchSolveResult,
 } from "@vibeshape/application/persistent-document-session"
+import { localFailure } from "@vibeshape/automation-api/local-tools"
 import type {
   CadInspectionDetailQuery,
   CadInspectionListQuery,
@@ -35,6 +36,7 @@ import {
 } from "@vibeshape/automation-api/queries"
 import type { AssemblySessionConfiguration } from "@vibeshape/automation-host/assembly-session-contract"
 import type { AutomationDocumentPort, AutomationHostResult } from "@vibeshape/automation-host/host"
+import type { SurfaceTextureReviewedInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { DocumentWorkerRequestError } from "@vibeshape/document-worker/client"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
@@ -136,6 +138,11 @@ import { automationReviews } from "../automation/automation-review-controller"
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import {
+  previewOwnedSurfaceTextures,
+  surfaceTextureReviewedInputMatches,
+} from "../automation/surface-texture-automation-preview"
+import { createBrowserSurfaceTextureAutomationSession } from "../automation/surface-texture-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
@@ -891,6 +898,53 @@ export function createActiveDocumentAutomationSession() {
     },
     commit: (input) => commitReviewedAssembly(active, input),
   })
+  function texturePreviewAvailable(input: SurfaceTextureReviewedInput) {
+    if (
+      !sourceSessionAvailable() ||
+      capturedSession.snapshot.revision !== input.draft.baseRevision ||
+      assemblyEditorDraftBlock()
+    )
+      return false
+    const review = automationReviews.getSnapshot()
+    return !review || review.status === "error" || surfaceTextureReviewedInputMatches(review, input)
+  }
+  const surfaceTextures = createBrowserSurfaceTextureAutomationSession({
+    documentId: capturedDocumentId,
+    createId: browserUuidV7,
+    isActive: sourceSessionAvailable,
+    readSnapshot: () => (sourceSessionAvailable() ? active.authoredSnapshot : null),
+    async preview(input, signal) {
+      if (!texturePreviewAvailable(input))
+        return localFailure(
+          "stale-revision",
+          "The texture source is no longer available for preview.",
+          true,
+        )
+      try {
+        const evidence = await previewOwnedSurfaceTextures(
+          getDocumentControllerState(),
+          input.command.payload.layers,
+          signal,
+        )
+        if (!texturePreviewAvailable(input) || signal.aborted)
+          return localFailure("stale-revision", "The texture source changed during preview.", true)
+        return { ok: true, value: evidence }
+      } catch (error) {
+        return localFailure(
+          "surface-texture-preview-failed",
+          error instanceof Error
+            ? error.message.slice(0, 512)
+            : "The native surface relief preview failed.",
+        )
+      }
+    },
+    commit: (input) =>
+      sourceSessionAvailable()
+        ? commitReviewedSurfaceTexture(active, input)
+        : Promise.resolve(
+            localFailure("session-revoked", "The texture source session is unavailable."),
+          ),
+  })
   const exports = createBinaryExportSession({
     documentId: capturedDocumentId,
     currentRevision: () => active.snapshot.revision,
@@ -945,6 +999,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel("stale-revision")
       metadata.cancel("stale-revision")
       assembly.cancel("stale-revision")
+      surfaceTextures.cancel("stale-revision")
     }
   })
   function dispose() {
@@ -954,6 +1009,7 @@ export function createActiveDocumentAutomationSession() {
     closeAutomation()
     metadata.dispose()
     assembly.dispose()
+    surfaceTextures.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -966,6 +1022,7 @@ export function createActiveDocumentAutomationSession() {
     host: factory.host,
     metadata,
     assembly,
+    surfaceTextures,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
@@ -976,6 +1033,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel(reason)
       metadata.cancel(reason)
       assembly.cancel(reason)
+      surfaceTextures.cancel(reason)
       exports.cancel()
     },
     dispose,
@@ -1463,6 +1521,48 @@ async function commitReviewedAssembly(
   return result.ok
     ? { ok: true as const, value: { revision: active.snapshot.revision } }
     : assemblyPortFailure(result.diagnostic)
+}
+
+function reviewedSurfaceTextureBase(
+  active: PersistentDocumentSession,
+  input: SurfaceTextureReviewedInput,
+) {
+  const base = reviewedMetadataBase(active, input.draft.baseRevision)
+  if (!base || input.command.documentId !== base.id) return null
+  const review = automationReviews.getSnapshot()
+  return review?.status === "applying" &&
+    !assemblyEditorDraftBlock() &&
+    surfaceTextureReviewedInputMatches(review, input)
+    ? base
+    : null
+}
+async function commitReviewedSurfaceTexture(
+  active: PersistentDocumentSession,
+  input: SurfaceTextureReviewedInput,
+) {
+  const base = reviewedSurfaceTextureBase(active, input)
+  if (!base)
+    return localFailure("stale-revision", "The reviewed texture base is no longer writable.", true)
+  const checked =
+    base.schemaVersion === 4
+      ? applyDocumentV4AuthoredCommand(base, input.command)
+      : applyDocumentV3Command(base, input.command)
+  if (!checked.ok)
+    return localFailure(
+      "surface-texture-command-rejected",
+      checked.diagnostic.message.slice(0, 512),
+    )
+  const result = await commitActiveAuthoredCommand(active, input.command)
+  return result.ok
+    ? {
+        ok: true as const,
+        value: { documentId: input.command.documentId, revision: result.snapshot.revision },
+      }
+    : localFailure(
+        result.diagnostic.sourceCode ?? result.diagnostic.code,
+        result.diagnostic.message.slice(0, 512),
+        result.diagnostic.retryable,
+      )
 }
 
 export async function commitAuthoredTransaction(

@@ -86,6 +86,7 @@
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 | [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
+| [0090](0090-owned-surface-texture-mcp-proposals.md) | Accepted | Owned SurfaceTexture MCP proposals with lossless packed maps, native relief preflight and manual review |
 
 Statuses:
 

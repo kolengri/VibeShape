@@ -168,6 +168,13 @@ model-measurement queries. Solved sketch inspection is exposed through a bounded
 
 ## MCP primitives
 
+Surface texture automation uses four named tools and a narrow owned proposal coordinator, as
+specified in [ADR-0090](../adr/0090-owned-surface-texture-mcp-proposals.md). The current authored
+collection is controller-owned; caller input is a recipe, patch, appended dabs or exact layer
+removal. Packed byte maps retain full UI-sized custom images within the ordinary wire budget.
+Native relief evidence and the manual viewport review precede the private, exact-intent authored
+commit port. Texture mutations remain outside CAD auto-apply and do not expose generic commands.
+
 MCP distinguishes model-controlled tools, application-provided resources, and user-selected prompts. The current adapter implements tools and resources. The broader resource catalog, generated-tool design, and prompts below remain targets beyond ADR-0043.
 
 ### Resources

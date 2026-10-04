@@ -10,7 +10,9 @@
     "./host": "./src/host.ts",
     "./metadata-proposal": "./src/metadata-proposal.ts",
     "./assembly-session": "./src/assembly-session.ts",
-    "./assembly-session-contract": "./src/assembly-session-contract.ts"
+    "./assembly-session-contract": "./src/assembly-session-contract.ts",
+    "./surface-texture-proposal": "./src/surface-texture-proposal.ts",
+    "./surface-texture-proposal-contract": "./src/surface-texture-proposal-contract.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

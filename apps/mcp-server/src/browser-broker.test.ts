@@ -44,6 +44,50 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("binds surface texture read receipts to the paired document, revision and feature", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const featureId = "0195b5ac-b220-7a2c-8c33-000000000001"
+    const pending = broker.invoke(
+      localOperationSchema.parse({
+        tool: "model_surface_textures",
+        arguments: { revision: document.revision, featureId },
+      }),
+    )
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = (await poll.json()) as { work: { requestId: string } }
+    const value = {
+      schemaVersion: 1,
+      documentId: document.id,
+      revision: document.revision,
+      featureId,
+      layers: [],
+    }
+    const respond = (patch: Record<string, unknown> = {}) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: "model_surface_textures",
+            result: { ok: true, value: { ...value, ...patch } },
+          },
+          token,
+        ),
+      )
+    for (const patch of [{ documentId: featureId }, { revision: 5 }, { featureId: document.id }]) {
+      const rejected = await respond(patch)
+      expect(rejected.status).toBe(400)
+      expect(await rejected.json()).toMatchObject({
+        diagnostic: { code: "result-context-mismatch" },
+      })
+    }
+    expect((await respond()).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value })
+  })
   it("requires the exact unique unordered interference pair set before forwarding inspection", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)

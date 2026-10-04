@@ -1,5 +1,4 @@
-import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
-import { createBodyTopologyReferenceProjector } from "@vibeshape/domain/model-body-topology"
+import { projectSurfaceTextureFaceReference } from "@vibeshape/application/surface-textures"
 import {
   type SurfaceTextureLayer,
   surfaceTextureFaceRefSchema,
@@ -13,18 +12,11 @@ export function textureFaceReference(
 ) {
   const report = controller.report
   if (!report) return null
-  const result = createModelBodyTopologyEvidence(report.snapshot, report.rebuild, {
+  const reference = projectSurfaceTextureFaceReference(report, {
     featureId: selection.featureId as SurfaceTextureLayer["featureId"],
     outputRole: selection.outputRole ?? "result",
-    kind: "face",
+    meshFaceId: selection.faceId,
   })
-  if (!result.ok) return null
-  const candidate = result.evidence.candidates.find(
-    ({ candidateId }) => candidateId === `face:${selection.faceId}`,
-  )
-  if (!candidate) return null
-  const parsed = surfaceTextureFaceRefSchema.safeParse(
-    createBodyTopologyReferenceProjector(result.evidence)(candidate),
-  )
+  const parsed = surfaceTextureFaceRefSchema.safeParse(reference)
   return parsed.success ? parsed.data : null
 }

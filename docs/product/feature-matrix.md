@@ -202,6 +202,13 @@ minimum wall thickness, physical fit, and print success are separate verificatio
 native, worker, and Chromium/Firefox/WebKit Apply/reopen/export checks pass.
 See [ADR-0059](../adr/0059-editable-surface-texture-layers.md) and [UX flows](ux-flows.md).
 
+Local and paired remote MCP expose bounded layer summaries and named create/update/remove proposals.
+Custom maps use lossless packed 8-bit grayscale up to 256 by 256. Updates preserve omitted maps,
+targets and masks and can append ordered brush dabs within the existing total limit. Native relief
+preflight runs before and after manual browser review; CAD auto-apply does not cover these changes.
+The same viewport preview and ordinary V3/V4 command, Undo and portable replay path are used.
+See [ADR-0090](../adr/0090-owned-surface-texture-mcp-proposals.md).
+
 ## Variables and expressions
 
 P1 includes:
