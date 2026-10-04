@@ -3,6 +3,7 @@ import { bodyReferenceSchema } from "./body-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { FeatureParameterResolution, TrustedFeatureTypeHandler } from "./feature-type-registry"
+import { referenceAxisSchema, referenceFrameDependencyIds } from "./reference-frame"
 import {
   angleQuantitySchema,
   lengthQuantitySchema,
@@ -12,6 +13,7 @@ import {
 import { resolveQuantityExpression } from "./variables"
 
 export const THREAD_MAX_AUTHORED_TURNS = 16
+export const THREAD_V2_MAX_AUTHORED_TURNS = 20
 const positiveLength = lengthQuantitySchema.refine(
   ({ value }) => value > 0 && value <= 1000,
   "Thread dimensions must be positive and no greater than 1,000 mm.",
@@ -89,6 +91,53 @@ export const threadFeatureParametersSchema = z
         message: "External thread root radius must remain positive after radial clearance.",
       })
   })
+export const threadFeatureParametersV2Schema = z
+  .object({
+    targetBody: bodyReferenceSchema,
+    kind: z.enum(["external", "internal"]),
+    axis: referenceAxisSchema,
+    handedness: z.enum(["right", "left"]),
+    ...fields,
+  })
+  .strict()
+  .superRefine((parameters, context) => {
+    const band = parameters.length.value - parameters.runIn.value - parameters.runOut.value
+    if (band <= 0)
+      context.addIssue({
+        code: "custom",
+        path: ["length"],
+        message: "The threaded band must have positive length.",
+      })
+    if (band / parameters.pitch.value > THREAD_V2_MAX_AUTHORED_TURNS)
+      context.addIssue({
+        code: "custom",
+        path: ["pitch"],
+        message: "Modeled threads allow at most 20 total turns.",
+      })
+    if (parameters.starts.value > 1 && band / parameters.pitch.value > 16)
+      context.addIssue({
+        code: "custom",
+        path: ["starts"],
+        message: "Multi-start threads retain the 16-turn aggregate budget.",
+      })
+    if (parameters.depth.value > 0.75 * parameters.pitch.value)
+      context.addIssue({
+        code: "custom",
+        path: ["depth"],
+        message: "Thread depth must not exceed 0.75 times the pitch.",
+      })
+    if (
+      parameters.kind === "external" &&
+      parameters.nominalDiameter.value / 2 - parameters.clearance.value - parameters.depth.value <=
+        0
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["depth"],
+        message: "External thread root radius must remain positive after radial clearance.",
+      })
+  })
+export type ThreadFeatureParametersV2 = Readonly<z.infer<typeof threadFeatureParametersV2Schema>>
 export type ThreadFeatureParameters = Readonly<z.infer<typeof threadFeatureParametersSchema>>
 export const threadFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -102,11 +151,23 @@ export const threadFeatureType = featureTypeDescriptorSchema.parse({
   dependencies: { min: 1, max: 1 },
   references: { min: 0, max: 0 },
 })
+export const threadFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  ...threadFeatureType,
+  type: { ...threadFeatureType.type, schemaVersion: 2 },
+  dependencies: { min: 1, max: 2 },
+})
 export function readThreadFeatureParameters(
   feature: Pick<FeatureRecord, "type" | "parameters">,
-): ThreadFeatureParameters | null {
-  if (featureTypeKey(feature.type) !== featureTypeKey(threadFeatureType.type)) return null
-  const parsed = threadFeatureParametersSchema.safeParse(feature.parameters)
+): ThreadFeatureParameters | ThreadFeatureParametersV2 | null {
+  const key = featureTypeKey(feature.type)
+  const schema =
+    key === featureTypeKey(threadFeatureType.type)
+      ? threadFeatureParametersSchema
+      : key === featureTypeKey(threadFeatureTypeV2.type)
+        ? threadFeatureParametersV2Schema
+        : null
+  if (!schema) return null
+  const parsed = schema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
 }
 type Variables = Parameters<NonNullable<TrustedFeatureTypeHandler["resolveParameters"]>>[1]
@@ -194,6 +255,60 @@ export const threadFeatureTypeHandler: TrustedFeatureTypeHandler = {
       kind: value.kind,
       axis: value.axis,
       origin: [value.origin.x.value, value.origin.y.value, value.origin.z.value],
+      handedness: value.handedness,
+      ...Object.fromEntries(
+        Object.keys(fields).map((field) => [field, value[field as keyof typeof fields].value]),
+      ),
+    }
+  },
+}
+
+export const threadFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
+  type: threadFeatureTypeV2.type,
+  parametersSchema: threadFeatureParametersV2Schema,
+  resolveParameters(parameters, variables) {
+    const parsed = threadFeatureParametersV2Schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true, parameters }
+    const resolved = { ...parsed.data }
+    for (const field of Object.keys(fields) as (keyof typeof fields)[]) {
+      const value = resolveThreadQuantity(parsed.data[field], fields[field], field, variables)
+      if (!value.ok) return value
+      Object.assign(resolved, { [field]: value.quantity })
+    }
+    const valid = threadFeatureParametersV2Schema.safeParse(resolved)
+    return valid.success
+      ? { ok: true, parameters: valid.data }
+      : {
+          ok: false,
+          diagnostic: {
+            code: "invalid-thread-geometry",
+            message: "The resolved thread violates its geometry or resource bounds.",
+            issues: valid.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message,
+            })),
+          },
+        }
+  },
+  validateFeature(feature) {
+    const value = threadFeatureParametersV2Schema.parse(feature.parameters)
+    return JSON.stringify(feature.dependencies) ===
+      JSON.stringify(referenceFrameDependencyIds(value.targetBody.featureId, value.axis)) &&
+      feature.references.length === 0
+      ? []
+      : [
+          {
+            path: "dependencies",
+            message:
+              "Thread requires its exact target first and any distinct axis support, with no generic topology references.",
+          },
+        ]
+  },
+  contentParameters(parameters) {
+    const value = threadFeatureParametersV2Schema.parse(parameters)
+    return {
+      kind: value.kind,
+      axis: value.axis,
       handedness: value.handedness,
       ...Object.fromEntries(
         Object.keys(fields).map((field) => [field, value[field as keyof typeof fields].value]),

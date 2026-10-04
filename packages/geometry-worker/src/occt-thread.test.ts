@@ -647,6 +647,37 @@ const externalCases = [
   { axis: "Y", handedness: "right", starts: 4, phase: -Math.PI / 4 },
 ] as const
 describe("modeled threads with pinned real OCCT", () => {
+  it.each(["X", "Y", "Z"] as const)(
+    "preserves legacy phase when the %s axis uses v2 intent",
+    (axis) => {
+      const value: ThreadContentParameters = {
+        ...parameters,
+        axis,
+        phase: Math.PI / 3,
+        origin: [11, -7, 4],
+      }
+      const direction: Point = axis === "X" ? [1, 0, 0] : axis === "Y" ? [0, 1, 0] : [0, 0, 1]
+      const source = createOcctCylinder(occt, 5, 8, value.origin, direction)
+      const before = measure(source)
+      let result: Shape3D | null = null
+      try {
+        result = threadOcctShape(occt, source, { ...value, axis: "custom", direction })
+        expect(measure(result)).toMatchObject({ valid: true, solids: 1 })
+        const angle = value.phase + (2 * Math.PI * 0.5) / value.pitch
+        expect(materialAt(result, worldPoint(radialPoint(4.5, angle, 1.5), value))).toBeLessThan(
+          1e-5,
+        )
+        expect(
+          materialAt(result, worldPoint(radialPoint(4.5, angle + Math.PI, 1.5), value)),
+        ).toBeGreaterThan(0.999)
+        expect(measure(source)).toEqual(before)
+      } finally {
+        result?.delete()
+        source.delete()
+      }
+    },
+    60_000,
+  )
   it.each(externalCases)(
     "cuts real external $handedness thread on $axis with $starts starts and phase $phase",
     (changes) => {
@@ -782,4 +813,136 @@ describe("modeled threads with pinned real OCCT", () => {
       source.delete()
     }
   }, 60_000)
+})
+
+function threadStressSource(
+  kind: "external" | "internal",
+  origin: readonly [number, number, number],
+  direction: readonly [number, number, number],
+) {
+  const cylinder = createOcctCylinder(occt, kind === "external" ? 5 : 7, 35, origin, direction)
+  if (kind === "external") return cylinder
+  let core: Shape3D | undefined
+  try {
+    core = createOcctCylinder(occt, 4.9, 35, origin, direction)
+    return cutOcctShapes(occt, cylinder, core)
+  } finally {
+    core?.delete()
+    cylinder.delete()
+  }
+}
+
+describe("bounded arbitrary-axis thread stress", () => {
+  it.each(["external", "internal"] as const)(
+    "models twenty %s turns on an oblique axis and releases every owned result",
+    async (kind) => {
+      const direction = [0.6, 0, 0.8] as const
+      const origin = [12, -7, 3] as const
+      const source = threadStressSource(kind, origin, direction)
+      const before = measure(source)
+      const sourceDelete = vi.spyOn(source, "delete")
+      try {
+        for (let iteration = 0; iteration < 2; iteration += 1) {
+          const result = threadOcctShape(occt, source, {
+            ...parameters,
+            kind,
+            axis: "custom",
+            direction: [...direction],
+            origin: [...origin],
+            pitch: 1,
+            length: 21,
+            runIn: 0.5,
+            runOut: 0.5,
+            depth: 0.4,
+            clearance: 0.05,
+            starts: 1,
+          })
+          try {
+            const metrics = measure(result)
+            expect(metrics.valid).toBe(true)
+            expect(metrics.solids).toBe(1)
+            expect(metrics.volume).toBeGreaterThan(0.7 * before.volume)
+            expect(metrics.volume).toBeLessThan(before.volume)
+            expect(result.wrapped.IsPartner(source.wrapped)).toBe(false)
+            const faces = result.faces
+            try {
+              for (const face of faces) {
+                if (face.geomType !== "PLANE") continue
+                const center = face.center,
+                  normal = face.normalAt()
+                try {
+                  const axial = center
+                    .toTuple()
+                    .reduce((sum, v, i) => sum + (v - (origin[i] ?? 0)) * (direction[i] ?? 0), 0)
+                  const alignment = normal
+                    .toTuple()
+                    .reduce((sum, v, i) => sum + v * (direction[i] ?? 0), 0)
+                  // A phase discontinuity would leave an exposed planar step at the band interface.
+                  if (Math.abs(alignment) > 1 - 1e-6 && Math.abs(axial - 16.5) < 1e-5) {
+                    const properties = new occt.GProp_GProps_1()
+                    try {
+                      occt.BRepGProp.SurfaceProperties_1(face.wrapped, properties, false, false)
+                      throw new Error(
+                        `Thread interface face area=${properties.Mass()} orientation=${JSON.stringify(face.wrapped.Orientation_1())} center=${JSON.stringify(center.toTuple())}`,
+                      )
+                    } finally {
+                      properties.delete()
+                    }
+                  }
+                } finally {
+                  center.delete()
+                  normal.delete()
+                }
+              }
+            } finally {
+              for (const face of faces) face.delete()
+            }
+
+            expect(measure(source)).toEqual(before)
+            expect(sourceDelete).not.toHaveBeenCalled()
+          } finally {
+            result.delete()
+          }
+        }
+      } finally {
+        source.delete()
+      }
+    },
+    120_000,
+  )
+
+  it("rejects twenty turns with multiple starts before acquiring a native source", () => {
+    const f = harness()
+    expect(() =>
+      invoke(f, {
+        ...parameters,
+        axis: "custom",
+        direction: [0, 0, 1],
+        pitch: 1,
+        length: 21,
+        runIn: 0.5,
+        runOut: 0.5,
+        depth: 0.4,
+        starts: 4,
+      } as never),
+    ).toThrow("Multi-start threads retain the 16-turn")
+    expect(f.copy).not.toHaveBeenCalled()
+    expect(f.source.delete).not.toHaveBeenCalled()
+  })
+  it("rejects twenty-one turns before taking ownership of the cached source", () => {
+    const f = harness()
+    expect(() =>
+      invoke(f, {
+        ...parameters,
+        axis: "custom",
+        direction: [0, 0, 1],
+        pitch: 1,
+        length: 22,
+        runIn: 0.5,
+        runOut: 0.5,
+        depth: 0.4,
+      } as never),
+    ).toThrow("20 total turns")
+    expect(f.source.delete).not.toHaveBeenCalled()
+  })
 })

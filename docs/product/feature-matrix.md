@@ -132,7 +132,8 @@ variable-aware diameter/depth, forward/reverse direction, blind or directional t
 exact preview, and explicit missing-point repair. Apply uses ordinary committed undo/redo.
 Named `create_hole` / `update_hole` MCP tools share the same intent and draft/review path.
 Native backup/reopen and STEP/STL/3MF export are covered by the Hole delivery evidence.
-Countersink, counterbore, threads, drill-tip geometry, and constituent-body targeting remain open.
+Hole v3 adds counterbore and countersink geometry on an exact constituent body; modeled Thread
+uses its separate custom-groove contract. Drill-tip geometry remains open.
 
 Fillet and Chamfer schema version 1 treat all edges of one explicit solid target. The task panel
 accepts a variable-aware radius or equal chamfer distance, requires the latest exact preview before
@@ -325,6 +326,15 @@ Extension rules:
 - MCP uses the same command path, exposes no generic execution tool, and never grants an extension additional authority.
 
 See [Extension architecture](../architecture/extensions.md), [Automation and MCP architecture](../architecture/automation-and-mcp.md), [ADR-0012](../adr/0012-capability-based-extension-platform.md), and [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
+
+Extrusion v6 adds through-all, up-to-body, and planar up-to-face termination, signed start offset,
+and signed draft from the shifted sketch neutral plane. Add/Remove/Intersect select one exact
+body output. End supports retain their captured content hash; changed, missing, ambiguous,
+unreachable, or partially covering endpoints block the preview. Up-to-face validates the selected
+finite planar face; curved faces are unavailable. Hole v3 adds exact counterbores and countersinks
+with expression-aware recess dimensions and included angle. Thread v2 adds shared selected/authored
+axes and a tested 20-turn single-start budget while preserving the 16-turn multi-start and v1
+bounds. See [ADR-0078](../adr/0078-extrusion-end-conditions-and-fastener-recesses.md).
 
 ## Explicitly deferred
 

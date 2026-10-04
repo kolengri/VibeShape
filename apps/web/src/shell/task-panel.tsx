@@ -40,6 +40,7 @@ import {
   type EdgeTreatmentPickingContext,
   type EdgeTreatmentPickRequest,
 } from "../features/edge-treatment/edge-treatment-form"
+import { extrusionBodyOptions } from "../features/extrusion/extrusion-body-options"
 import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
 import {
   ExtrusionForm,
@@ -1177,21 +1178,6 @@ function booleanOptions(
   )
 }
 
-function extrusionOptions(
-  report: NonNullable<DocumentControllerState["report"]>,
-  editingFeatureId: Extract<ExtrusionFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
-  unnamedFeature: string,
-) {
-  return modifyingSolidTargetFeatures(
-    report.snapshot.features,
-    editingFeatureId,
-    report.rebuild,
-  ).map((feature) => ({
-    id: feature.id,
-    label: feature.label ?? unnamedFeature,
-  }))
-}
-
 function revolveOptions(
   report: NonNullable<DocumentControllerState["report"]>,
   editingFeatureId: Extract<RevolveFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
@@ -1596,6 +1582,7 @@ function ActiveExtrusionTaskPanel({
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
+  const extentCopy = useTranslations("app.extrusionExtent")
   const modelTreeT = useTranslations("app.shell.modelTree")
   const extrusionCount = report.snapshot.features.filter(isExtrusionFeature).length
   const mode = extrusionFormMode(
@@ -1613,10 +1600,12 @@ function ActiveExtrusionTaskPanel({
         onCreateSketch={onCreateSketch}
       />
     )
-  const options = extrusionOptions(
-    report,
+  const options = extrusionBodyOptions(
+    report.snapshot,
+    report.rebuild,
     mode.kind === "edit" ? mode.feature.id : undefined,
-    modelTreeT("unnamedFeature"),
+    (name, role) => extentCopy("bodyLabel", { label: name ?? modelTreeT("unnamedFeature"), role }),
+    (name) => extentCopy("legacyBodyLabel", { label: name ?? modelTreeT("unnamedFeature") }),
   )
   return (
     <ExtrusionTaskPanel
@@ -2109,6 +2098,15 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
     extent: t("extent"),
     blind: t("blind"),
     throughAll: t("throughAll"),
+    treatment: t("treatment"),
+    simple: t("simple"),
+    counterbore: t("counterbore"),
+    countersink: t("countersink"),
+    recessDiameter: t("recessDiameter"),
+    recessDepth: t("recessDepth"),
+    includedAngle: t("includedAngle"),
+    angleDescription: t("angleDescription"),
+    invalidRecess: t("invalidRecess"),
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),

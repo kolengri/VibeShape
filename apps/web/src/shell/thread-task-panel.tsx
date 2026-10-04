@@ -8,6 +8,7 @@ import {
 } from "../document/document-controller"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
 import { ThreadForm, type ThreadFormCopy } from "../features/thread/thread-form"
 import { type ThreadFormMode, threadTargetBody } from "../features/thread/thread-form-model"
 import { exactTaskSource, featureTaskFormProps } from "./feature-task-form-props"
@@ -121,6 +122,11 @@ export function ThreadTaskPanel(props: Props) {
         copy={copy}
         mode={mode}
         sourceAvailable={available}
+        axisOptions={referenceFrameOptions(
+          report.snapshot,
+          report.rebuild,
+          mode.kind === "edit" ? mode.feature.id : undefined,
+        )}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />

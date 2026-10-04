@@ -1,4 +1,6 @@
 import { z } from "zod"
+import { type BodyReference, bodyReferenceSchema } from "./body-reference"
+import { bodyFaceRefSchema } from "./body-topology-reference"
 import { canonicalJson } from "./canonical-json"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
@@ -10,7 +12,11 @@ import {
   unionFeatureTypeHandler,
   unionFeatureTypeV2Handler,
 } from "./part-design-body-combination"
-import { holeFeatureTypeHandler, holeFeatureTypeHandlerV2 } from "./part-design-hole"
+import {
+  holeFeatureTypeHandler,
+  holeFeatureTypeHandlerV2,
+  holeFeatureTypeHandlerV3,
+} from "./part-design-hole"
 import { importedFeatureTypeHandler } from "./part-design-import"
 import { loftFeatureTypeHandler, loftFeatureTypeHandlerV2 } from "./part-design-loft"
 import { loftFeatureTypeHandlerV3 } from "./part-design-loft-v3"
@@ -25,7 +31,7 @@ import { placementFeatureTypeHandler } from "./part-design-placement"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
 import { splitFeatureTypeHandler, splitFeatureTypeHandlerV2 } from "./part-design-split"
 import { sweepFeatureTypeHandler } from "./part-design-sweep"
-import { threadFeatureTypeHandler } from "./part-design-thread"
+import { threadFeatureTypeHandler, threadFeatureTypeHandlerV2 } from "./part-design-thread"
 import {
   createSketchProfileSet,
   sketchProfileSelectorSchema,
@@ -465,6 +471,162 @@ export const extrusionFeatureAuthoredContentParametersV5Schema = z
     message: "The total extrusion span must be at most 100,000 mm.",
   })
 
+const extrusionSourceHashSchema = z.string().regex(/^[0-9a-f]{64}$/)
+export const extrusionEndConditionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("distance") }).strict(),
+  z
+    .object({
+      kind: z.literal("through-all"),
+      targetBody: bodyReferenceSchema,
+      sourceContentHash: extrusionSourceHashSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("up-to-body"),
+      targetBody: bodyReferenceSchema,
+      sourceContentHash: extrusionSourceHashSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("up-to-face"),
+      targetBody: bodyReferenceSchema,
+      sourceContentHash: extrusionSourceHashSchema,
+      face: bodyFaceRefSchema.refine(
+        ({ signature }) => signature.geometryClass === "PLANE",
+        "Extrusion currently requires a planar end face.",
+      ),
+    })
+    .strict(),
+])
+function validateExtrusionEndOwnership(
+  target: BodyReference | null,
+  end: Exclude<z.infer<typeof extrusionEndConditionSchema>, { kind: "distance" }>,
+  context: z.RefinementCtx,
+) {
+  if (
+    target?.featureId === end.targetBody.featureId &&
+    target.outputRole !== end.targetBody.outputRole
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["endCondition"],
+      message: "A shared target and end-support producer must use the same body output.",
+    })
+  if (
+    end.kind === "up-to-face" &&
+    (end.face.featureId !== end.targetBody.featureId ||
+      end.face.outputRole !== end.targetBody.outputRole)
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["endCondition", "face"],
+      message: "The end face must belong to the selected exact body.",
+    })
+}
+export const extrusionFeatureParametersV6Schema = extrusionFeatureParametersV5Schema
+  .safeExtend({
+    targetBody: bodyReferenceSchema.nullable(),
+    startOffset: lengthQuantitySchema.refine(
+      ({ value }) => Math.abs(value) <= 100_000,
+      "Extrusion start offset must remain within 100,000 mm.",
+    ),
+    draftAngle: angleQuantitySchema.refine(
+      ({ value }) => Math.abs(value) <= Math.PI / 4,
+      "Extrusion draft must remain within 45 degrees.",
+    ),
+    endCondition: extrusionEndConditionSchema,
+  })
+  .superRefine((parameters, context) => {
+    if ((parameters.operation === "new") !== (parameters.targetBody === null))
+      context.addIssue({
+        code: "custom",
+        path: ["targetBody"],
+        message: "Modifying extrusion requires an exact body target; New must not consume one.",
+      })
+    const end = parameters.endCondition
+    if (end.kind === "distance") return
+    if (parameters.symmetric || parameters.secondDistance !== null)
+      context.addIssue({
+        code: "custom",
+        path: ["endCondition"],
+        message: "Dynamic end conditions require one directional extent.",
+      })
+    validateExtrusionEndOwnership(parameters.targetBody, end, context)
+  })
+export type ExtrusionFeatureParametersV6 = Readonly<
+  z.infer<typeof extrusionFeatureParametersV6Schema>
+>
+export function expectedExtrusionV6DependencyIds(
+  target: FeatureId | null,
+  support: FeatureId | null,
+  end: FeatureId | null,
+) {
+  return [target, support, end].filter(
+    (id, index, ids): id is FeatureId => id !== null && ids.indexOf(id) === index,
+  )
+}
+function extrusionSupportUsesNamedBody(
+  support: FeatureId | null,
+  parameters: ExtrusionFeatureParametersV6,
+) {
+  const end =
+    parameters.endCondition.kind === "distance" ? null : parameters.endCondition.targetBody
+  return [parameters.targetBody, end].some(
+    (body) => body?.featureId === support && body?.outputRole !== "result",
+  )
+}
+function extrusionV6Invariant(feature: FeatureRecord) {
+  const parameters = extrusionFeatureParametersV6Schema.parse(feature.parameters)
+  const support = feature.references[0]?.featureId ?? null
+  const end =
+    parameters.endCondition.kind === "distance"
+      ? null
+      : parameters.endCondition.targetBody.featureId
+  const expected = expectedExtrusionV6DependencyIds(
+    parameters.targetBody?.featureId ?? null,
+    support,
+    end,
+  )
+  const issues =
+    JSON.stringify(feature.dependencies) === JSON.stringify(expected)
+      ? []
+      : [
+          {
+            path: "dependencies",
+            message:
+              "Extrusion requires its exact target first, optional sketch support, and distinct end support.",
+          },
+        ]
+  if (extrusionSupportUsesNamedBody(support, parameters))
+    issues.push({
+      path: "references",
+      message: "A sketch support must retain its whole result slot.",
+    })
+  return issues
+}
+function resolveExtrusionV6Parameters(parameters: unknown, variables: VariableValues) {
+  const parsed = extrusionFeatureParametersV6Schema.safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const resolved = { ...parsed.data }
+  for (const key of ["distance", "secondDistance", "startOffset", "draftAngle"] as const) {
+    const quantity = parsed.data[key]
+    if (quantity === null) continue
+    const value = resolveQuantityExpression(quantity, variables)
+    if (!value.ok) return expressionFailure(key, value.diagnostic.message, value.diagnostic.code)
+    Object.assign(resolved, { [key]: value.quantity })
+  }
+  const valid = extrusionFeatureParametersV6Schema.safeParse(resolved)
+  return valid.success
+    ? { ok: true as const, parameters: valid.data }
+    : expressionFailure(
+        valid.error.issues[0]?.path.join(".") ?? "distance",
+        valid.error.issues[0]?.message ?? "Invalid extrusion extent.",
+        "invalid-range",
+      )
+}
+
 const revolveAngleSchema = angleQuantitySchema.refine(
   ({ value }) => value > 0 && value <= Math.PI * 2,
   "Revolve angles must be greater than zero and at most 360 degrees.",
@@ -540,6 +702,10 @@ type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSc
   profiles?: z.infer<typeof sketchProfileSetSchema>
   reversed: boolean
   secondDistance: z.infer<typeof lengthQuantitySchema> | null
+  targetBody?: BodyReference | null
+  startOffset?: z.infer<typeof lengthQuantitySchema>
+  draftAngle?: z.infer<typeof angleQuantitySchema>
+  endCondition?: z.infer<typeof extrusionEndConditionSchema>
 }
 type NormalizedRevolveParameters = z.infer<typeof revolveFeatureParametersSchema> & {
   profiles?: z.infer<typeof sketchProfileSetSchema>
@@ -970,6 +1136,11 @@ export const extrusionFeatureTypeV5 = featureTypeDescriptorSchema.parse({
   dependencies: { min: 0, max: 2 },
   references: { min: 0, max: 1 },
 })
+export const extrusionFeatureTypeV6 = featureTypeDescriptorSchema.parse({
+  ...extrusionFeatureTypeV5,
+  type: { ...extrusionFeatureTypeV5.type, schemaVersion: 6 },
+  dependencies: { min: 0, max: 3 },
+})
 
 export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -1059,6 +1230,7 @@ export function isExtrusionType(feature: Pick<FeatureRecord, "type">) {
     extrusionFeatureTypeV3.type,
     extrusionFeatureTypeV4.type,
     extrusionFeatureTypeV5.type,
+    extrusionFeatureTypeV6.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1073,6 +1245,7 @@ type ExtrusionParameters =
   | z.infer<typeof extrusionFeatureParametersV3Schema>
   | z.infer<typeof extrusionFeatureParametersV4Schema>
   | z.infer<typeof extrusionFeatureParametersV5Schema>
+  | z.infer<typeof extrusionFeatureParametersV6Schema>
 
 const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>>([
   [1, legacyExtrusionFeatureParametersSchema],
@@ -1080,6 +1253,7 @@ const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>
   [3, extrusionFeatureParametersV3Schema],
   [4, extrusionFeatureParametersV4Schema],
   [5, extrusionFeatureParametersV5Schema],
+  [6, extrusionFeatureParametersV6Schema],
 ])
 
 export function readExtrusionFeatureParameters(
@@ -1653,8 +1827,25 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       }
     },
   },
+  {
+    type: extrusionFeatureTypeV6.type,
+    parametersSchema: extrusionFeatureParametersV6Schema,
+    validateFeature: extrusionV6Invariant,
+    resolveParameters: resolveExtrusionV6Parameters,
+    contentParameters(parameters) {
+      const value = extrusionFeatureParametersV6Schema.parse(parameters)
+      return {
+        ...value,
+        distance: value.distance.value,
+        secondDistance: value.secondDistance?.value ?? null,
+        startOffset: value.startOffset.value,
+        draftAngle: value.draftAngle.value,
+      }
+    },
+  },
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
+  holeFeatureTypeHandlerV3,
   placementFeatureTypeHandler,
   mirrorFeatureTypeHandler,
   mirrorFeatureTypeHandlerV2,
@@ -1672,6 +1863,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   importedFeatureTypeHandler,
   meshImportFeatureTypeHandler,
   threadFeatureTypeHandler,
+  threadFeatureTypeHandlerV2,
   compoundFeatureTypeHandler,
   compoundFeatureTypeV2Handler,
   unionFeatureTypeHandler,

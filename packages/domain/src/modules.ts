@@ -17,6 +17,7 @@ import {
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV6,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -36,7 +37,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
-import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
 import { loftFeatureTypeV3 } from "./part-design-loft-v3"
@@ -47,7 +48,7 @@ import { placementFeatureType } from "./part-design-placement"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
-import { threadFeatureType } from "./part-design-thread"
+import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 export const commandDescriptorSchema = z
@@ -460,12 +461,14 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     importedFeatureType,
     meshImportFeatureType,
     threadFeatureType,
+    threadFeatureTypeV2,
     compoundFeatureType,
     compoundFeatureTypeV2,
     unionFeatureType,
     unionFeatureTypeV2,
     holeFeatureType,
     holeFeatureTypeV2,
+    holeFeatureTypeV3,
     booleanFeatureType,
     chamferFeatureType,
     chamferFeatureTypeV2,
@@ -480,6 +483,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     extrusionFeatureTypeV3,
     extrusionFeatureTypeV4,
     extrusionFeatureTypeV5,
+    extrusionFeatureTypeV6,
     filletFeatureType,
     filletFeatureTypeV2,
     legacyRevolveFeatureType,

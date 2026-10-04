@@ -12,10 +12,13 @@ import {
 } from "@vibeshape/domain/identifiers"
 import {
   booleanFeatureParametersSchema,
+  type ExtrusionFeatureParametersV6,
+  expectedExtrusionV6DependencyIds,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV3Schema,
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
+  extrusionFeatureParametersV6Schema,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
@@ -24,6 +27,10 @@ import {
   compoundFeatureParametersV2Schema,
   unionFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-body-combination"
+import {
+  holeFeatureParametersV3Schema,
+  holeTreatmentSchema,
+} from "@vibeshape/domain/part-design-hole"
 import {
   loftFeatureParametersSchema,
   loftFeatureParametersV2Schema,
@@ -48,7 +55,10 @@ import {
   splitFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
-import { threadFeatureParametersSchema } from "@vibeshape/domain/part-design-thread"
+import {
+  threadFeatureParametersSchema,
+  threadFeatureParametersV2Schema,
+} from "@vibeshape/domain/part-design-thread"
 import {
   type ReferenceAxis,
   type ReferencePlane,
@@ -72,6 +82,19 @@ const feature = {
   suppressed: z.boolean(),
 }
 const sketch = z.object({ ...command, sketch: sketchRecordSchema }).strict()
+function extrusionEndpointBody(parameters: ExtrusionFeatureParametersV6) {
+  return parameters.endCondition.kind === "distance" ? null : parameters.endCondition.targetBody
+}
+function extrusionBodyDependencies(
+  parameters: ExtrusionFeatureParametersV6,
+  support: z.infer<typeof featureIdSchema> | null,
+) {
+  return expectedExtrusionV6DependencyIds(
+    parameters.targetBody?.featureId ?? null,
+    support,
+    extrusionEndpointBody(parameters)?.featureId ?? null,
+  )
+}
 const extrude = z
   .object({
     ...feature,
@@ -80,9 +103,37 @@ const extrude = z
       extrusionFeatureParametersV3Schema,
       extrusionFeatureParametersV4Schema,
       extrusionFeatureParametersV5Schema,
+      extrusionFeatureParametersV6Schema,
     ]),
   })
   .strict()
+  .superRefine((input, context) => {
+    const parameters = input.parameters
+    if (!("endCondition" in parameters)) return
+    const support = input.references[0]?.featureId ?? null
+    const end = extrusionEndpointBody(parameters)
+    const expected = extrusionBodyDependencies(parameters, support)
+    if (
+      canonicalJson(expected) !== canonicalJson(input.dependencies) ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Extrusion requires its exact target first, optional sketch support, and distinct end support, without self-dependencies.",
+      })
+    if (
+      [parameters.targetBody, end].some(
+        (body) => body?.featureId === support && body?.outputRole !== "result",
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["references"],
+        message: "A sketch support must retain its whole result slot.",
+      })
+  })
 const revolve = z
   .object({
     ...feature,
@@ -134,14 +185,47 @@ const holeBodyParameters = z.discriminatedUnion("extent", [
   holeParameters.options[0].safeExtend({ targetBody: bodyReferenceSchema }),
   holeParameters.options[1].safeExtend({ targetBody: bodyReferenceSchema }),
 ])
+const holeTreatmentParameters = z
+  .discriminatedUnion("extent", [
+    holeBodyParameters.options[0].safeExtend({ treatment: holeTreatmentSchema }),
+    holeBodyParameters.options[1].safeExtend({ treatment: holeTreatmentSchema }),
+  ])
+  .superRefine((parameters, context) => {
+    const parsed = holeFeatureParametersV3Schema.safeParse(parameters)
+    if (!parsed.success)
+      for (const issue of parsed.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+  })
 const hole = z
   .object({
     ...feature,
     dependencies: featureRecordSchema.shape.dependencies.min(1).max(2),
     references: featureRecordSchema.shape.references.max(1),
-    parameters: z.union([holeParameters, holeBodyParameters]),
+    parameters: z.union([holeParameters, holeBodyParameters, holeTreatmentParameters]),
   })
   .strict()
+  .superRefine((input, context) => {
+    if (!("treatment" in input.parameters)) return
+    const target = input.parameters.targetBody
+    const support = input.references[0]?.featureId ?? null
+    const expected = [...new Set([target.featureId, ...(support ? [support] : [])])]
+    if (
+      canonicalJson(expected) !== canonicalJson(input.dependencies) ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Hole requires its exact target first and any distinct sketch support, without self-dependencies.",
+      })
+    if (support === target.featureId && target.outputRole !== "result")
+      context.addIssue({
+        code: "custom",
+        path: ["parameters", "targetBody"],
+        message: "A constituent target cannot share a dependency slot with whole sketch support.",
+      })
+  })
 
 const exactBodyFeature = {
   ...feature,
@@ -241,9 +325,36 @@ const referenceBodyPattern = z
   )
 
 const thread = z
-  .object({ ...exactBodyFeature, parameters: threadFeatureParametersSchema })
+  .object({
+    ...exactBodyFeature,
+    dependencies: featureRecordSchema.shape.dependencies.min(1).max(2),
+    parameters: z.union([threadFeatureParametersSchema, threadFeatureParametersV2Schema]),
+  })
   .strict()
-  .superRefine(matchingBodyDependency("Thread"))
+  .superRefine((input, context) => {
+    const parameters = input.parameters
+    if ("origin" in parameters) {
+      matchingBodyDependency("Thread")(input, context)
+      if (input.dependencies.length !== 1)
+        context.addIssue({
+          code: "custom",
+          path: ["dependencies"],
+          message: "Legacy Thread requires its sole target dependency.",
+        })
+      return
+    }
+    const expected = referenceFrameDependencyIds(parameters.targetBody.featureId, parameters.axis)
+    if (
+      canonicalJson(expected) !== canonicalJson(input.dependencies) ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Thread requires its exact target first and any distinct axis support, without self-dependencies.",
+      })
+  })
 
 const multiSketchFeature = {
   ...feature,

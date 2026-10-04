@@ -11,6 +11,7 @@ import {
   extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
+  extrusionFeatureContentParametersV6Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   type FeatureContentEnvironment,
@@ -25,6 +26,7 @@ import {
   type GeometryWorkerRequest,
   type HoleFeatureContentParameters,
   holeFeatureContentParametersSchema,
+  holeFeatureContentParametersV3Schema,
   type ImportedFeatureContentParameters,
   type InspectSourceImportInput,
   importedFeatureContentParametersSchema,
@@ -72,11 +74,12 @@ import {
   splitFeatureContentParametersSchema,
   splitFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
-  type ThreadContentParameters,
+  type ThreadGeometryParameters,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
   threadContentParametersSchema,
+  threadContentParametersV2Schema,
   torusFeatureContentParametersSchema,
   unionFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
@@ -135,12 +138,18 @@ import {
   disposeBodyCombination,
   type OwnedBodyCombination,
 } from "./occt-body-combination"
-import { takeResolvedBodyFace } from "./occt-body-face"
+import { type BodyFaceResolver, takeResolvedBodyFace } from "./occt-body-face"
 import { createOcctCompound } from "./occt-compound"
 import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
+import {
+  draftExtrusionTool,
+  terminateExtrusionAtBody,
+  terminateExtrusionAtPlane,
+} from "./occt-extrusion-end"
+import { createOcctCountersink } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
@@ -339,6 +348,8 @@ const EXTRUSION_FEATURE_TYPE_V3_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#3"
 const EXTRUSION_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#4"
+const EXTRUSION_FEATURE_TYPE_V6_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#6"
 const EXTRUSION_FEATURE_TYPE_V5_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#5"
 const REVOLVE_FEATURE_TYPE_KEY =
@@ -976,9 +987,9 @@ type ExtrusionContentParameters = ReturnType<
   reversed?: boolean
   secondDistance?: number | null
 }
-type ExtrusionExtentContentParameters = ReturnType<
-  typeof extrusionFeatureContentParametersV5Schema.parse
->
+type ExtrusionExtentContentParameters =
+  | ReturnType<typeof extrusionFeatureContentParametersV5Schema.parse>
+  | ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>
 type ExtrusionMultiProfileContentParameters = ReturnType<
   typeof extrusionMultiProfileFeatureContentParametersSchema.parse
 >
@@ -995,7 +1006,9 @@ type RevolveMultiProfileModifyingContentParameters = ReturnType<
   typeof revolveMultiProfileModifyingFeatureContentParametersSchema.parse
 >
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
-type HoleContentParameters = HoleFeatureContentParameters
+type HoleContentParameters =
+  | HoleFeatureContentParameters
+  | ReturnType<typeof holeFeatureContentParametersV3Schema.parse>
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
   const { centroid } = context.signature
@@ -1216,7 +1229,7 @@ type ParsedFeature =
       parameters: ShellFeatureContentParameters
       openingResolution: "exact" | "durable"
     }
-  | { kind: "thread"; parameters: ThreadContentParameters }
+  | { kind: "thread"; parameters: ThreadGeometryParameters }
   | { kind: "imported"; parameters: ImportedFeatureContentParameters }
   | { kind: "split"; parameters: SplitFeatureContentParameters | SplitFeatureContentParametersV2 }
   | {
@@ -1567,10 +1580,84 @@ function parseMultiExtrusionModifyingFeature(input: FeatureEvaluationInput): Fea
   }
 }
 
-function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
-  const parameters = extrusionFeatureContentParametersV5Schema.safeParse(
-    input.content.feature.parameters,
+function extrusionV6InputsAreValid(
+  input: FeatureEvaluationInput,
+  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+) {
+  const content = input.content.feature
+  const roles =
+    input.content.schemaVersion === 1
+      ? input.content.feature.inputRoles
+      : input.dependencies.map(() => null)
+  if (content.inputs.length !== input.dependencies.length) return false
+  const expected = extrusionTargetAndSupportSlots(input, parameters, roles)
+  if (!expected) return false
+  const end = parameters.endCondition
+  if (end.kind !== "distance") {
+    if (!extrusionEndBindingIsValid(input, end, roles)) return false
+    expected.add(end.inputIndex)
+  }
+  return expected.size === input.dependencies.length
+}
+
+function extrusionTargetAndSupportSlots(
+  input: FeatureEvaluationInput,
+  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+  roles: readonly (string | null)[],
+) {
+  const expected = new Set<number>()
+  if (parameters.operation !== "new") {
+    if (!input.dependencies[0]?.outputRole || roles[0] !== input.dependencies[0].outputRole)
+      return null
+    expected.add(0)
+  }
+  if (parameters.supportFeatureId) {
+    const slot = input.dependencies.findIndex(
+      ({ featureId }) => featureId === parameters.supportFeatureId,
+    )
+    if (slot < 0 || !extrusionSupportRoleIsValid(parameters, roles[slot], slot)) return null
+    expected.add(slot)
+  }
+  return expected
+}
+
+function extrusionSupportRoleIsValid(
+  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+  role: string | null | undefined,
+  slot: number,
+) {
+  if (role === null) return true
+  if (role !== "result") return false
+  const end = parameters.endCondition
+  return (
+    (parameters.operation !== "new" && slot === 0) ||
+    (end.kind !== "distance" && end.inputIndex === slot && end.outputRole === "result")
   )
+}
+
+function extrusionEndBindingIsValid(
+  input: FeatureEvaluationInput,
+  end: Exclude<
+    ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>["endCondition"],
+    { kind: "distance" }
+  >,
+  roles: readonly (string | null)[],
+) {
+  const dependency = input.dependencies[end.inputIndex]
+  return Boolean(
+    dependency &&
+      dependency.contentHash === end.sourceContentHash &&
+      dependency.outputRole === end.outputRole &&
+      roles[end.inputIndex] === end.outputRole,
+  )
+}
+
+function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = (
+    input.content.feature.type.schemaVersion === 6
+      ? extrusionFeatureContentParametersV6Schema
+      : extrusionFeatureContentParametersV5Schema
+  ).safeParse(input.content.feature.parameters)
   if (!parameters.success) {
     return featureFailure(
       "invalid-feature-parameters",
@@ -1578,7 +1665,12 @@ function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeaturePars
     )
   }
   if (
-    !extrusionInputCardinalityIsValid(input, parameters.data) ||
+    !("endCondition" in parameters.data
+      ? extrusionV6InputsAreValid(
+          input,
+          extrusionFeatureContentParametersV6Schema.parse(parameters.data),
+        )
+      : extrusionInputCardinalityIsValid(input, parameters.data)) ||
     !supportReferencesAreValid(input, parameters.data.supportFeatureId)
   ) {
     return invalidInputCardinality(
@@ -1742,7 +1834,11 @@ function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResu
 
 function parseHoleFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  const parameters = holeFeatureContentParametersSchema.safeParse(feature.parameters)
+  const parameters = (
+    feature.type.schemaVersion === 3
+      ? holeFeatureContentParametersV3Schema
+      : holeFeatureContentParametersSchema
+  ).safeParse(feature.parameters)
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
   }
@@ -1768,23 +1864,33 @@ function parseHoleFeatureV2(input: FeatureEvaluationInput): FeatureParseResult {
       "A version-2 hole requires a named canonical target body role.",
     )
   }
-  const parameters = holeFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  const parameters = (
+    input.content.feature.type.schemaVersion === 3
+      ? holeFeatureContentParametersV3Schema
+      : holeFeatureContentParametersSchema
+  ).safeParse(input.content.feature.parameters)
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
   }
-  if (parameters.data.supportInputIndex === 0 && targetRole !== "result") {
-    return featureFailure(
-      "invalid-feature-parameters",
-      "A hole target selected from input 0 must use the whole result body.",
-    )
-  }
-  if (parameters.data.supportInputIndex === 1 && input.content.feature.inputRoles[1] !== null) {
-    return featureFailure(
-      "invalid-feature-parameters",
-      "A distinct hole support input must remain the whole result body.",
-    )
-  }
+  const supportRoleError = holeSupportRoleError(
+    parameters.data.supportInputIndex,
+    targetRole,
+    input.content.feature.inputRoles,
+  )
+  if (supportRoleError) return featureFailure("invalid-feature-parameters", supportRoleError)
   return parseHoleFeature(input)
+}
+
+function holeSupportRoleError(
+  index: HoleContentParameters["supportInputIndex"],
+  targetRole: string,
+  roles: readonly (string | null)[],
+) {
+  if (index === 0 && targetRole !== "result")
+    return "A hole target selected from input 0 must use the whole result body."
+  if (index === 1 && roles[1] !== null)
+    return "A distinct hole support input must remain the whole result body."
+  return null
 }
 
 function holeInputCardinalityIsValid(
@@ -1961,14 +2067,44 @@ function parseImportedFeature(input: FeatureEvaluationInput): FeatureParseResult
 }
 
 function parseThreadFeature(input: FeatureEvaluationInput): FeatureParseResult {
-  if (!hasExactSingleBodyInput(input))
+  const advanced = input.content.feature.type.schemaVersion === 2
+  if (!advanced && !hasExactSingleBodyInput(input))
     return invalidInputCardinality(
       "Thread requires one exact named body dependency and no topology references.",
     )
-  const parameters = threadContentParametersSchema.safeParse(input.content.feature.parameters)
-  return parameters.success
-    ? { ok: true, feature: { kind: "thread", parameters: parameters.data } }
-    : featureFailure("invalid-feature-parameters", "Thread content parameters are invalid.")
+  const parameters = (
+    advanced ? threadContentParametersV2Schema : threadContentParametersSchema
+  ).safeParse(input.content.feature.parameters)
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Thread content parameters are invalid.")
+  if (advanced) {
+    const support =
+      "supportFeatureId" in parameters.data ? parameters.data.supportFeatureId : undefined
+    if (!threadV2InputCardinalityIsValid(input, support))
+      return invalidInputCardinality("Thread axis support does not match its canonical dependency.")
+  }
+  return { ok: true, feature: { kind: "thread", parameters: parameters.data } }
+}
+
+function threadV2InputCardinalityIsValid(input: FeatureEvaluationInput, support?: string) {
+  if (input.content.schemaVersion !== 1) return false
+  const feature = input.content.feature
+  const targetRole = feature.inputRoles[0]
+  if (typeof targetRole !== "string" || feature.references.length !== 0) return false
+  if (feature.inputs.length !== input.dependencies.length) return false
+  return threadAxisSupportMatches(input.dependencies, feature.inputRoles, support)
+}
+
+function threadAxisSupportMatches(
+  dependencies: FeatureEvaluationInput["dependencies"],
+  roles: readonly (string | null)[],
+  support?: string,
+) {
+  const expected = support && support !== dependencies[0]?.featureId ? 2 : 1
+  return (
+    dependencies.length === expected &&
+    (expected === 1 || (dependencies[1]?.featureId === support && roles[1] === null))
+  )
 }
 
 function parseMirrorFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -2125,6 +2261,10 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [SHELL_FEATURE_TYPE_KEY, parseShellFeature],
   [SHELL_FEATURE_TYPE_V2_KEY, (input) => parseShellFeature(input, 2)],
   [THREAD_FEATURE_TYPE_KEY, parseThreadFeature],
+  [
+    "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.thread#2",
+    parseThreadFeature,
+  ],
   [IMPORTED_FEATURE_TYPE_KEY, parseImportedFeature],
   [SPLIT_FEATURE_TYPE_KEY, parseSplitFeature],
   [SPLIT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseSplitFeatureV2],
@@ -2150,6 +2290,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [EXTRUSION_FEATURE_TYPE_V3_KEY, parseMultiExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V4_KEY, parseMultiExtrusionModifyingFeature],
   [EXTRUSION_FEATURE_TYPE_V5_KEY, parseExtrusionExtentFeature],
+  [EXTRUSION_FEATURE_TYPE_V6_KEY, parseExtrusionExtentFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
@@ -2159,6 +2300,10 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
   [HOLE_FEATURE_TYPE_KEY, parseHoleFeature],
   [HOLE_FEATURE_TYPE_V2_KEY, parseHoleFeatureV2],
+  [
+    "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#3",
+    parseHoleFeatureV2,
+  ],
 ])
 
 function parseFeatureRequest(
@@ -2283,7 +2428,7 @@ function createProfileFeatureShape(
       return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
     case "extent-extrusion":
       return feature.parameters.operation === "new"
-        ? createMultiExtrusionFeatureShape(opencascade, feature.parameters)
+        ? createMultiExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
         : createMultiExtrusionModifyingFeatureShape(
             opencascade,
             feature.parameters,
@@ -2455,9 +2600,8 @@ function createHoleFeatureShape(
   const target = dependencyShapes[0]
   if (!target) throw new Error("Hole target dependency shape is unavailable.")
   const initialMetrics = measureShape(opencascade, target)
-  if (!initialMetrics.valid || initialMetrics.solidCount !== 1 || initialMetrics.volume <= 0) {
+  if (!featureResultMetricsAreValid(initialMetrics, 1))
     throw new Error("Hole requires a valid single-solid target dependency.")
-  }
 
   const direction = holeCutterDirection(parameters)
   const radius = parameters.diameter / 2
@@ -2485,12 +2629,52 @@ function createHoleFeatureShape(
       } finally {
         tool.delete()
       }
+      const recess = createHoleRecess(opencascade, parameters, center, direction)
+      if (recess) {
+        try {
+          const result = cutHoleOnce(opencascade, current, recess, currentVolume)
+          current.delete()
+          current = result.shape
+          currentVolume = result.metrics.volume
+        } finally {
+          recess.delete()
+        }
+      }
     }
     return current
   } catch (error) {
     if (current !== target) current.delete()
     throw error
   }
+}
+
+function createHoleRecess(
+  occt: OpenCascadeInstance,
+  parameters: HoleContentParameters,
+  center: readonly [number, number, number],
+  direction: readonly [number, number, number],
+) {
+  if (!("treatment" in parameters) || parameters.treatment.kind === "simple") return null
+  const treatment = parameters.treatment
+  if (treatment.kind === "counterbore")
+    return createOcctCylinder(occt, treatment.diameter / 2, treatment.depth, center, direction)
+  return createOcctCountersink(
+    occt,
+    center,
+    direction,
+    treatment.diameter / 2,
+    parameters.diameter / 2,
+    (treatment.diameter - parameters.diameter) / (2 * Math.tan(treatment.angle / 2)),
+  )
+}
+
+function createThreadFeatureShape(
+  occt: OpenCascadeInstance,
+  parameters: Parameters<typeof threadOcctShape>[2],
+  target: Shape3D | undefined,
+) {
+  if (!target) throw new Error("Thread target body is unavailable.")
+  return threadOcctShape(occt, target, parameters)
 }
 
 function createPlacementFeatureShape(
@@ -3011,6 +3195,8 @@ function createExtrusionShape(
     Readonly<{
       reversed?: boolean
       secondDistance?: number | null
+      startOffset?: number
+      draftAngle?: number
       outer: ExtrusionContentParameters["outer"]
       holes: ExtrusionContentParameters["holes"]
     }>,
@@ -3042,6 +3228,75 @@ function createExtrusionShape(
     face?.delete()
     for (const hole of holes) hole.delete()
     outer.delete()
+  }
+}
+
+function applyExtrusionDraft(
+  occt: OpenCascadeInstance,
+  tool: Shape3D,
+  parameters: Parameters<typeof createExtrusionShape>[1],
+) {
+  const frame = extrusionPlane(parameters)
+  const origin = frame.normal.map(
+    (v, i) => (parameters.frame?.origin[i] ?? 0) + v * (parameters.startOffset ?? 0),
+  ) as [number, number, number]
+  const direction = frame.normal.map((v) => v * (parameters.reversed ? -1 : 1)) as [
+    number,
+    number,
+    number,
+  ]
+  try {
+    return draftExtrusionTool(occt, tool, origin, direction, parameters.draftAngle ?? 0)
+  } finally {
+    tool.delete()
+  }
+}
+
+function createExtrusionExtentTool(
+  occt: OpenCascadeInstance,
+  parameters: Parameters<typeof createExtrusionShape>[1] & {
+    endCondition?: ReturnType<
+      typeof extrusionFeatureContentParametersV6Schema.parse
+    >["endCondition"]
+  },
+  dependencies: readonly Shape3D[],
+  endFace?: ReturnType<typeof takeResolvedFace>,
+) {
+  let tool = createExtrusionShape(occt, parameters)
+  if (parameters.draftAngle) tool = applyExtrusionDraft(occt, tool, parameters)
+  const condition = parameters.endCondition
+  if (!condition || condition.kind === "distance" || condition.kind === "through-all") return tool
+  const frame = extrusionPlane(parameters)
+  const { start, end } = extrusionExtentBounds(parameters)
+  const a = frame.normal.map((v, i) => (parameters.frame?.origin[i] ?? 0) + v * start) as [
+    number,
+    number,
+    number,
+  ]
+  const b = frame.normal.map((v, i) => (parameters.frame?.origin[i] ?? 0) + v * end) as [
+    number,
+    number,
+    number,
+  ]
+  const from = parameters.reversed ? b : a
+  const to = parameters.reversed ? a : b
+  try {
+    if (condition.kind === "up-to-face")
+      return terminateExtrusionAtPlane(
+        occt,
+        tool,
+        condition.planeOrigin,
+        condition.planeNormal,
+        from,
+        to,
+        frame.normal,
+        endFace,
+      )
+    const target = dependencies[condition.inputIndex]
+    if (!target) throw new Error("Extrusion endpoint body is unavailable.")
+    return terminateExtrusionAtBody(occt, tool, target, from, to, frame.normal)
+  } finally {
+    tool.delete()
   }
 }
 
@@ -3180,9 +3435,16 @@ function combineMultiProfileTools<Profile>(
 function createMultiExtrusionFeatureShape(
   opencascade: OpenCascadeInstance,
   parameters: ExtrusionMultiProfileContentParameters | ExtrusionExtentContentParameters,
+  dependencyShapes: readonly Shape3D[] = [],
+  endFace?: ReturnType<typeof takeResolvedFace>,
 ) {
   return combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
-    createExtrusionShape(opencascade, { ...parameters, ...profile }),
+    createExtrusionExtentTool(
+      opencascade,
+      { ...parameters, ...profile },
+      dependencyShapes,
+      endFace,
+    ),
   )
 }
 
@@ -3190,11 +3452,17 @@ function createMultiExtrusionModifyingFeatureShape(
   opencascade: OpenCascadeInstance,
   parameters: ExtrusionMultiProfileModifyingContentParameters | ExtrusionExtentContentParameters,
   dependencyShapes: readonly Shape3D[],
+  endFace?: ReturnType<typeof takeResolvedFace>,
 ) {
   const target = dependencyShapes[0]
   if (!target) throw new Error("Multi-profile extrusion target dependency shape is unavailable.")
   const tool = combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
-    createExtrusionShape(opencascade, { ...parameters, ...profile }),
+    createExtrusionExtentTool(
+      opencascade,
+      { ...parameters, ...profile },
+      dependencyShapes,
+      endFace,
+    ),
   )
   try {
     return applyExtrusionOperation(opencascade, parameters, target, tool)
@@ -3828,14 +4096,12 @@ export interface GeometryKernelEngine {
 }
 
 export type GeometryShellOpeningResolver = (
-  references: ShellFeatureContentParameters["openings"],
-  candidates: readonly TopologyCaptureSnapshot["candidates"][number][],
-  scope: { featureId: string; outputRole: string },
-  mode?: "exact" | "durable",
-  options?: { allowSemanticRebinding?: boolean },
-) =>
-  | { ok: true; candidateIds: readonly string[] }
-  | { ok: false; reason: "missing" | "ambiguous" | "changed" | "duplicate" }
+  ...input: [
+    ...Parameters<BodyFaceResolver>,
+    mode?: "exact" | "durable",
+    options?: { allowSemanticRebinding?: boolean },
+  ]
+) => ReturnType<BodyFaceResolver>
 class ShellOpeningRepairError extends Error {
   constructor(reason: string) {
     super(`Shell opening faces are ${reason}. Reselect the opening faces on the current body.`)
@@ -4134,27 +4400,82 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
   ) {
-    if (feature.kind === "union") {
-      validateCombinationSources(opencascade, dependencies)
-      return createOcctBodyUnion(opencascade, dependencies)
+    switch (feature.kind) {
+      case "extent-extrusion":
+        return this.#createExtentExtrusion(opencascade, feature, dependencies, input)
+      case "union":
+        validateCombinationSources(opencascade, dependencies)
+        return createOcctBodyUnion(opencascade, dependencies)
+      case "placement":
+        return createPlacementFeatureShape(opencascade, feature.parameters, dependencies[0])
+      case "mirror":
+        return createMirrorFeatureShape(opencascade, feature.parameters, dependencies[0])
+      case "thread":
+        return createThreadFeatureShape(opencascade, feature.parameters, dependencies[0])
+      case "shell":
+        return this.#createShellFeature(opencascade, feature, dependencies[0], input)
+      case "selected-fillet":
+      case "selected-chamfer":
+        return this.#createSelectedEdgeFeature(opencascade, feature, dependencies, input)
+      default:
+        return createFeatureShape(opencascade, feature, dependencies)
     }
-    if (feature.kind === "placement") {
-      return createPlacementFeatureShape(opencascade, feature.parameters, dependencies[0])
-    }
-    if (feature.kind === "mirror")
-      return createMirrorFeatureShape(opencascade, feature.parameters, dependencies[0])
-    if (feature.kind === "thread") {
-      const target = dependencies[0]
-      if (!target) throw new Error("Thread target body is unavailable.")
-      return threadOcctShape(opencascade, target, feature.parameters)
-    }
-    if (feature.kind === "shell")
-      return this.#createShellFeature(opencascade, feature, dependencies[0], input)
+  }
 
-    if (feature.kind !== "selected-fillet" && feature.kind !== "selected-chamfer") {
-      return createFeatureShape(opencascade, feature, dependencies)
+  #createExtentExtrusion(
+    opencascade: OpenCascadeInstance,
+    feature: Extract<ParsedFeature, { kind: "extent-extrusion" }>,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    if (
+      "endCondition" in feature.parameters &&
+      feature.parameters.endCondition.kind === "up-to-face"
+    )
+      return this.#createFaceTerminatedExtrusion(
+        opencascade,
+        feature.parameters,
+        feature.parameters.endCondition,
+        dependencies,
+        input,
+      )
+    return createFeatureShape(opencascade, feature, dependencies)
+  }
+
+  #createFaceTerminatedExtrusion(
+    opencascade: OpenCascadeInstance,
+    parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+    end: Extract<
+      ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>["endCondition"],
+      { kind: "up-to-face" }
+    >,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    const target = dependencies[end.inputIndex]
+    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
+    const dependency = input.dependencies[end.inputIndex]
+    const resolve = this.resolveShellOpenings
+    if (!target || !snapshot || !dependency?.outputRole || !resolve)
+      throw new Error("Exact extrusion end-face topology is unavailable.")
+    const face = takeResolvedBodyFace(
+      target,
+      snapshot,
+      end.face,
+      {
+        featureId: dependency.featureId,
+        outputRole: dependency.outputRole,
+      },
+      (references, candidates, scope) =>
+        resolve(references, candidates, scope, "exact", { allowSemanticRebinding: false }),
+    )
+    try {
+      return parameters.operation === "new"
+        ? createMultiExtrusionFeatureShape(opencascade, parameters, dependencies, face)
+        : createMultiExtrusionModifyingFeatureShape(opencascade, parameters, dependencies, face)
+    } finally {
+      face.delete()
     }
-    return this.#createSelectedEdgeFeature(opencascade, feature, dependencies, input)
   }
 
   #takeLoftEndSupport(

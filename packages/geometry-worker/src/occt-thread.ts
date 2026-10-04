@@ -1,4 +1,4 @@
-import { type ThreadContentParameters, threadContentParametersSchema } from "@vibeshape/protocol"
+import { type ThreadGeometryParameters, threadGeometryParametersSchema } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
 import type { gp_Trsf, OpenCascadeInstance, TopoDS_Wire } from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
@@ -120,13 +120,13 @@ function createTriangle(
     return own(builder.Wire())
   })
 }
-function grooveOverrun(parameters: ThreadContentParameters) {
+function grooveOverrun(parameters: ThreadGeometryParameters) {
   const pad = Math.max(0.001, parameters.pitch * 0.001)
   return (parameters.depth + pad) / Math.sqrt(3) + pad
 }
 function createGroove(
   occt: OpenCascadeInstance,
-  parameters: ThreadContentParameters,
+  parameters: ThreadGeometryParameters,
   index: number,
 ): Shape3D {
   return nativeResult((own) => {
@@ -234,12 +234,50 @@ function transformedShape(
 function orientTool(
   occt: OpenCascadeInstance,
   shape: Shape3D,
-  parameters: ThreadContentParameters,
+  parameters: ThreadGeometryParameters,
   inverse = false,
 ): Shape3D {
   return transformedShape(occt, shape, (transform) => {
     const [x, y, z] = parameters.origin
-    if (inverse) {
+    if (parameters.axis === "custom") {
+      const normal = parameters.direction
+      const a = threadPhaseDirection(normal)
+      const b: Point = [
+        normal[1] * a[2] - normal[2] * a[1],
+        normal[2] * a[0] - normal[0] * a[2],
+        normal[0] * a[1] - normal[1] * a[0],
+      ]
+      if (inverse)
+        transform.SetValues(
+          a[0],
+          a[1],
+          a[2],
+          -(a[0] * x + a[1] * y + a[2] * z),
+          b[0],
+          b[1],
+          b[2],
+          -(b[0] * x + b[1] * y + b[2] * z),
+          normal[0],
+          normal[1],
+          normal[2],
+          -(normal[0] * x + normal[1] * y + normal[2] * z),
+        )
+      else
+        transform.SetValues(
+          a[0],
+          b[0],
+          normal[0],
+          x,
+          a[1],
+          b[1],
+          normal[1],
+          y,
+          a[2],
+          b[2],
+          normal[2],
+          z,
+        )
+    } else if (inverse) {
       if (parameters.axis === "X") transform.SetValues(0, 1, 0, -y, 0, 0, 1, -z, 1, 0, 0, -x)
       else if (parameters.axis === "Y") transform.SetValues(0, 0, 1, -z, 1, 0, 0, -x, 0, 1, 0, -y)
       else transform.SetValues(1, 0, 0, -x, 0, 1, 0, -y, 0, 0, 1, -z)
@@ -247,6 +285,15 @@ function orientTool(
     else if (parameters.axis === "Y") transform.SetValues(0, 1, 0, x, 0, 0, 1, y, 1, 0, 0, z)
     else transform.SetValues(1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z)
   })
+}
+function threadPhaseDirection(normal: readonly [number, number, number]): Point {
+  // The cyclic projected seed preserves the legacy X:+Y, Y:+Z, Z:+X phase convention.
+  const seed: Point =
+    Math.abs(normal[0]) >= 0.8 ? [0, 1, 0] : Math.abs(normal[1]) >= 0.8 ? [0, 0, 1] : [1, 0, 0]
+  const projection = seed.reduce((sum, value, index) => sum + value * (normal[index] ?? 0), 0)
+  const radial = seed.map((value, index) => value - projection * (normal[index] ?? 0)) as Point
+  const norm = Math.hypot(...radial)
+  return radial.map((value) => value / norm) as Point
 }
 function bounds(occt: OpenCascadeInstance, shape: Shape3D): Bounds {
   const box = new occt.Bnd_Box_1()
@@ -327,7 +374,7 @@ function validateBounds(value: Bounds) {
   )
     throw new Error("Modeled thread exceeds the 100,000 mm workspace.")
 }
-function validateThreadEnvelope(parameters: ThreadContentParameters) {
+function validateThreadEnvelope(parameters: ThreadGeometryParameters) {
   const radius =
     parameters.nominalDiameter / 2 +
     (parameters.kind === "external"
@@ -335,9 +382,18 @@ function validateThreadEnvelope(parameters: ThreadContentParameters) {
       : parameters.clearance + parameters.depth)
   const min = parameters.origin.map((coordinate) => coordinate - radius) as Point
   const max = parameters.origin.map((coordinate) => coordinate + radius) as Point
-  const axis = parameters.axis === "X" ? 0 : parameters.axis === "Y" ? 1 : 2
-  min[axis] = parameters.origin[axis] + parameters.runIn
-  max[axis] = parameters.origin[axis] + parameters.length - parameters.runOut
+  if (parameters.axis === "custom") {
+    for (const component of [0, 1, 2] as const) {
+      const first = parameters.direction[component] * parameters.runIn
+      const last = parameters.direction[component] * (parameters.length - parameters.runOut)
+      min[component] += Math.min(first, last)
+      max[component] += Math.max(first, last)
+    }
+  } else {
+    const axis = parameters.axis === "X" ? 0 : parameters.axis === "Y" ? 1 : 2
+    min[axis] = parameters.origin[axis] + parameters.runIn
+    max[axis] = parameters.origin[axis] + parameters.length - parameters.runOut
+  }
   validateBounds({ min, max })
 }
 function createBandSlab(
@@ -355,7 +411,7 @@ function createBandSlab(
 }
 function externalAllowanceTool(
   occt: OpenCascadeInstance,
-  parameters: ThreadContentParameters,
+  parameters: ThreadGeometryParameters,
   sourceBounds: Bounds,
 ): Shape3D {
   return nativeResult((own) => {
@@ -376,7 +432,11 @@ function externalAllowanceTool(
   })
 }
 type ThreadOperations = {
-  copy: (occt: OpenCascadeInstance, source: Shape3D, parameters: ThreadContentParameters) => Shape3D
+  copy: (
+    occt: OpenCascadeInstance,
+    source: Shape3D,
+    parameters: ThreadGeometryParameters,
+  ) => Shape3D
   groove: typeof createGroove
   boolean: typeof booleanShape
   cut: (occt: OpenCascadeInstance, source: Shape3D, tools: readonly Shape3D[]) => Shape3D
@@ -392,7 +452,7 @@ type ThreadOperations = {
 function independentThreadCopy(
   occt: OpenCascadeInstance,
   source: Shape3D,
-  parameters: ThreadContentParameters,
+  parameters: ThreadGeometryParameters,
   operations: ThreadOperations,
   own: Own,
 ): Shape3D {
@@ -408,10 +468,12 @@ type ThreadBandContext = {
   allowance: Shape3D
   baselineVolume: number
   tolerance: number
+  grooves?: readonly Shape3D[] | undefined
+  verifyResidual?: boolean
 }
 function cutThreadBand(
   occt: OpenCascadeInstance,
-  parameters: ThreadContentParameters,
+  parameters: ThreadGeometryParameters,
   band: ThreadBandContext,
   operations: ThreadOperations,
   own: Own,
@@ -419,7 +481,7 @@ function cutThreadBand(
   const cutters: Shape3D[] = []
   let individual: Shape3D | undefined
   for (let index = 0; index < parameters.starts; index += 1) {
-    const groove = own(operations.groove(occt, parameters, index))
+    const groove = band.grooves?.[index] ?? own(operations.groove(occt, parameters, index))
     validateSolid(operations.inspect(occt, groove))
     validateBounds(operations.bounds(occt, groove))
     // Reuse original band topology: a previously cleared cylindrical face can misclassify a start.
@@ -440,12 +502,112 @@ function cutThreadBand(
   validateBand(metrics)
   if (metrics.volume >= band.baselineVolume - band.tolerance)
     throw new Error("Thread does not intersect the target body or remove effective material.")
-  for (const groove of cutters) {
+  for (const groove of band.verifyResidual === false ? [] : cutters) {
     const residual = own(operations.boolean(occt, threaded, groove, "common"))
     validateGrooveRemoval(operations.inspect(occt, residual), band.baselineVolume)
   }
   return threaded
 }
+type ThreadSourceBandContext = {
+  working: ThreadGeometryParameters
+  workingBounds: Bounds
+  sourceBand: Shape3D
+  cleared: Shape3D
+  allowance: Shape3D
+  tolerance: number
+}
+function threadSegmentParameters(working: ThreadGeometryParameters, start: number, stop: number) {
+  return {
+    ...working,
+    runIn: start,
+    runOut: working.length - stop,
+    // Keep a continuous helix at the shared cap plane.
+    phase:
+      working.phase +
+      ((working.handedness === "right" ? 1 : -1) * 2 * Math.PI * (start - working.runIn)) /
+        (working.pitch * working.starts),
+  }
+}
+function threadSourceSegment(
+  occt: OpenCascadeInstance,
+  interval: { start: number; stop: number; single: boolean },
+  context: ThreadSourceBandContext,
+  operations: ThreadOperations,
+  own: Own,
+) {
+  const source = interval.single
+    ? context.sourceBand
+    : own(
+        operations.boolean(
+          occt,
+          context.sourceBand,
+          own(operations.band(occt, context.workingBounds, interval.start, interval.stop)),
+          "common",
+        ),
+      )
+  validateBand(operations.inspect(occt, source))
+  const cleared = interval.single
+    ? context.cleared
+    : own(operations.boolean(occt, source, context.allowance, "cut"))
+  const metrics = operations.inspect(occt, cleared)
+  validateBand(metrics)
+  return {
+    source,
+    baselineVolume: metrics.volume,
+    tolerance: interval.single ? context.tolerance : operations.tolerance(occt, source),
+  }
+}
+function threadSourceBands(
+  occt: OpenCascadeInstance,
+  parameters: ThreadGeometryParameters,
+  context: ThreadSourceBandContext,
+  operations: ThreadOperations,
+  own: Own,
+) {
+  const { working } = context
+  const segmentCount =
+    parameters.axis === "custom"
+      ? Math.ceil(
+          (parameters.length - parameters.runIn - parameters.runOut) / (16 * parameters.pitch),
+        )
+      : 1
+  // Share one exact bounded swept surface: separate pipe approximations can leave a step at the interface.
+  const grooves =
+    segmentCount > 1 && parameters.starts === 1
+      ? [own(operations.groove(occt, working, 0))]
+      : undefined
+  const threadedBands: Shape3D[] = []
+  for (let segment = 0; segment < segmentCount; segment += 1) {
+    const start = parameters.runIn + segment * 16 * parameters.pitch
+    const stop = Math.min(parameters.length - parameters.runOut, start + 16 * parameters.pitch)
+    const segmentParameters =
+      segmentCount === 1 ? working : threadSegmentParameters(working, start, stop)
+    const band = threadSourceSegment(
+      occt,
+      { start, stop, single: segmentCount === 1 },
+      context,
+      operations,
+      own,
+    )
+    threadedBands.push(
+      cutThreadBand(
+        occt,
+        segmentParameters,
+        {
+          ...band,
+          allowance: context.allowance,
+          grooves,
+          // Single-start v2 retains its same exact owned CUT; coincidence Common adds no independent proof.
+          verifyResidual: parameters.axis !== "custom" || parameters.starts !== 1,
+        },
+        operations,
+        own,
+      ),
+    )
+  }
+  return threadedBands.length === 1 ? threadedBands[0] : own(operations.fuse(occt, threadedBands))
+}
+
 export function createOcctThreadOperations(overrides: Partial<ThreadOperations> = {}) {
   const operations: ThreadOperations = {
     copy: (occt, source, parameters) => orientTool(occt, source, parameters, true),
@@ -466,9 +628,9 @@ export function createOcctThreadOperations(overrides: Partial<ThreadOperations> 
     threadShape(
       occt: OpenCascadeInstance,
       source: Shape3D,
-      input: ThreadContentParameters,
+      input: ThreadGeometryParameters,
     ): Shape3D {
-      const parameters = threadContentParametersSchema.parse(input)
+      const parameters = threadGeometryParametersSchema.parse(input)
       validateThreadEnvelope(parameters)
       const sourceBounds = operations.bounds(occt, source)
       validateBounds(sourceBounds)
@@ -482,7 +644,7 @@ export function createOcctThreadOperations(overrides: Partial<ThreadOperations> 
         }
         const body = independentThreadCopy(occt, source, parameters, operations, own)
         // Boolean operations use one canonical local frame; only the final owned copy returns to world.
-        const working: ThreadContentParameters = { ...parameters, axis: "Z", origin: [0, 0, 0] }
+        const working: ThreadGeometryParameters = { ...parameters, axis: "Z", origin: [0, 0, 0] }
         const workingBounds = operations.bounds(occt, body)
         const toolStart = parameters.runIn - parameters.pitch
         const toolLength = parameters.length - parameters.runOut + parameters.pitch - toolStart
@@ -520,13 +682,22 @@ export function createOcctThreadOperations(overrides: Partial<ThreadOperations> 
         if (bandMetrics.volume > sourceBandMetrics.volume + tolerance)
           throw new Error("Thread clearance increased target material volume.")
         // Clip the source, not the tools: coincident cutter caps can lose a start in native Booleans.
-        const threaded = cutThreadBand(
+        const threaded = threadSourceBands(
           occt,
-          working,
-          { source: sourceBand, allowance, baselineVolume: bandMetrics.volume, tolerance },
+          parameters,
+          {
+            working,
+            workingBounds,
+            sourceBand,
+            cleared,
+            allowance,
+            tolerance,
+          },
           operations,
           own,
         )
+        if (!threaded) throw new Error("Thread restoration requires a threaded band.")
+        validateSolid(operations.inspect(occt, threaded))
         // Outside may contain several solids; restore every part without selecting or discarding any.
         const result =
           outsideMetrics.solidCount === 0
