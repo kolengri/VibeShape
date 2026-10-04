@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import license, { type Dependency } from "rollup-plugin-license"
-import { defineConfig, type Plugin } from "vite"
+import { type ConfigEnv, defineConfig, type Plugin } from "vite"
 
 function retainedNotice(file: string) {
   return readFileSync(resolve(import.meta.dirname, "../../deployment/licenses", file), "utf8")
@@ -69,11 +69,19 @@ function sketchTextNotices(): Plugin {
   }
 }
 
-export default defineConfig(({ mode }) => {
+async function developmentPlugins({ command, isPreview }: ConfigEnv): Promise<Plugin[]> {
+  if (command !== "serve" || isPreview) return []
+  const { developmentMcpPlugin } = await import("@vibeshape/mcp-server/development-plugin")
+  return [developmentMcpPlugin()]
+}
+
+export default defineConfig(async (environment) => {
+  const { mode } = environment
   const controlledOcct = mode === "controlled-occt"
 
   return {
     plugins: [
+      ...(await developmentPlugins(environment)),
       react(),
       tailwindcss(),
       sketchTextNotices(),

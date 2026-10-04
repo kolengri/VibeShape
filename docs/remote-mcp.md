@@ -52,7 +52,7 @@ Same-project open is a no-op. CAD tools accept an optional `projectId` guard and
 active project before dispatching. Read `model_info` and start a new draft after switching. If an
 outcome is uncertain, inspect the active project and catalog before retrying a creation.
 
-See [ADR-0096](adr/0096-mcp-project-management.md) and the
+See [ADR-0097](adr/0097-mcp-project-management.md) and the
 [operator project workflow](../.agents/skills/vibeshape-organization/SKILL.md#browser-local-projects).
 
 ## User workflow

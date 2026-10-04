@@ -1,4 +1,4 @@
-# ADR-0096: Browser-owned MCP project management
+# ADR-0097: Browser-owned MCP project management
 
 - Status: **Accepted**
 - Date: 2026-10-04

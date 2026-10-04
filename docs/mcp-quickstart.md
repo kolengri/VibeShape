@@ -1,8 +1,8 @@
 # Local MCP quickstart
 
-VibeShape is a browser CAD editor with an opt-in local stdio MCP bridge. External agents use
+VibeShape is a browser CAD editor with opt-in local stdio and development HTTP MCP bridges. External agents use
 named tools; the browser remains the document owner and manual approval is the default.
-There is no embedded chat. The bridge serves the production editor at a stable loopback origin;
+There is no embedded chat. The stdio bridge serves the production editor at a stable loopback origin;
 use the same origin to retain browser-local projects.
 
 Named tools cover all registered Box, Cylinder, Cone, Sphere, Torus and Pyramid authoring, plus
@@ -19,6 +19,27 @@ forward image content to a vision-capable model. See [visual inspection](../.age
 for focused views, exact body targets, representation limits and numerical checks.
 For a custom close-up, replace `views` with `camera: { position: [40, -40, 30], target: [0, 0, 5], viewHeightMm: 20 }`.
 Position, target and vertical view span use millimeters; the projection is orthographic.
+
+## Development server
+
+Run `bun ci`, then `bun run dev`. Vite starts the editor and its local Streamable HTTP MCP endpoint
+together, without building `apps/web/dist`. The terminal prints `Local MCP: <editor-origin>/mcp`;
+the default is `http://localhost:5173/mcp`. Configure an HTTP MCP client with that URL. A custom Vite
+port or fallback port changes both the editor and MCP URLs, so use the printed URL.
+
+Read `vibeshape://session`, open its exact `editorUrl`, open a project, and choose **Enable AI session**.
+The tools and browser review rules match local stdio. Project data stays on the Vite origin and
+hot reload remains available. This development endpoint accepts only its exact loopback Host and
+optional matching Origin, has no CORS permission, and is absent from builds and `bun run preview`.
+Non-loopback `--host` and HTTPS development configurations are rejected.
+
+One HTTP MCP session owns the bridge. A second initialization receives HTTP 409 until the owning
+client terminates its session with HTTP DELETE or `dev` restarts. GET `/mcp` returns HTTP 405;
+clients use POST, whose SSE responses carry tool progress. HTTP session termination revokes browser
+access. Restarting `dev` requires a new MCP initialization and browser approval; this development
+bridge does not persist stdio recovery credentials.
+
+## Built editor with stdio
 
 From the repository, install the pinned Bun workspace dependencies and build the editor using
 `bun ci` and `bun run prepare:local`. Configure a stdio MCP client to launch Bun with the absolute path
@@ -132,7 +153,7 @@ Same-project open is a no-op. CAD tools accept an optional `projectId` guard and
 active project before dispatching. Read `model_info` and start a new draft after switching. If an
 outcome is uncertain, inspect the active project and catalog before retrying a creation.
 
-See [ADR-0096](adr/0096-mcp-project-management.md) and the
+See [ADR-0097](adr/0097-mcp-project-management.md) and the
 [operator project workflow](../.agents/skills/vibeshape-organization/SKILL.md#browser-local-projects).
 
 ## Native source import

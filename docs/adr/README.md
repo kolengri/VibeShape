@@ -101,6 +101,8 @@
 | [0092](0092-paired-planar-source-imports.md) | Accepted | Paired SVG/DXF source uploads, analytical review and editable Sketch publication |
 
 | [0095](0095-local-mcp-continuous-recovery.md) | Accepted | Continuous recovery of approved local MCP sessions |
+| [0096](0096-development-http-mcp.md) | Accepted | Development HTTP MCP sharing the Vite editor origin |
+| [0097](0097-mcp-project-management.md) | Accepted | Browser-owned MCP project management |
 
 Statuses:
 
@@ -114,5 +116,3 @@ Statuses:
 When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
 
 - [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)
-
-- [ADR-0096: Browser-owned MCP project management](0096-mcp-project-management.md)
