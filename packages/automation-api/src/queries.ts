@@ -1,4 +1,5 @@
 import { type ModelBodyTopologyView, queryModelBodyTopology } from "./body-topology-queries"
+import { querySketchSolution, type SketchSolutionView } from "./sketch-solution-queries"
 
 export type { ModelBodyTopologyQuery, ModelBodyTopologyView } from "./body-topology-queries"
 export {
@@ -155,6 +156,7 @@ export type VariableListQuery = Readonly<z.infer<typeof variableListQuerySchema>
 export type VariableListView = Readonly<z.infer<typeof variableListViewSchema>>
 const VARIABLE_LIST_MAX_SERIALIZED_BYTES = 128 * 1024
 export type AutomationQueryView =
+  | SketchSolutionView
   | ModelBodyTopologyView
   | ModelEdgeView
   | DocumentSummaryView
@@ -203,6 +205,7 @@ export type QueryResult =
   | { ok: false; diagnostic: QueryDiagnostic }
 
 export type DerivedQueryContext = Readonly<{
+  sketchSolution?: unknown
   measurements?: unknown
   bodyMeasurements?: unknown
   bodyTopology?: unknown
@@ -582,6 +585,12 @@ export function createQueryDispatcher(
 
 export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
   {
+    kind: "org.vibeshape.sketch.solution",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: querySketchSolution,
+  },
+  {
     kind: "org.vibeshape.model.body-topology",
     schemaVersion: 1,
     ownerModuleId: documentCoreModule.id,
@@ -630,3 +639,11 @@ export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
     execute: queryCadInspectionDetail,
   },
 ]
+
+export type { SketchSolutionQuery, SketchSolutionView } from "./sketch-solution-queries"
+export {
+  sketchSolutionArgumentsSchema,
+  sketchSolutionPageMatches,
+  sketchSolutionQuerySchema,
+  sketchSolutionViewSchema,
+} from "./sketch-solution-queries"

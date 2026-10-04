@@ -14,6 +14,7 @@ import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain
 import { modelBodyMeasurementEvidenceSchema } from "@vibeshape/domain/model-body-measurements"
 import { modelBodyTopologyEvidenceResultSchema } from "@vibeshape/domain/model-body-topology"
 import { modelEdgeEvidenceResultSchema } from "@vibeshape/domain/model-edges"
+import { sketchSolutionEvidenceSchema } from "@vibeshape/domain/sketch-solution-evidence"
 import { z } from "zod"
 import type { DraftGeometryPort } from "./exact-draft-preview"
 
@@ -185,6 +186,11 @@ export async function inspectDraftQuery(
     if (!read.ok) return read
     nextCache = read.cache
   }
+  if (query.kind === "org.vibeshape.sketch.solution") {
+    const read = await readSketchCache(query, snapshot, draftId, geometry, cache)
+    if (!read.ok) return read
+    nextCache = read.cache
+  }
   const result = queries.dispatch(snapshot, query, nextCache?.context)
   return result.ok ? { ok: true, view: result.view, cache: nextCache } : result
 }
@@ -230,4 +236,79 @@ async function readMeasurementCache(
 function parseMeasurementEvidence(raw: unknown) {
   const evidence = raw && typeof raw === "object" && "measurements" in raw ? raw.measurements : raw
   return automationDraftMeasurementEvidenceSchema.safeParse(evidence)
+}
+
+const sketchInspectionResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), evidence: sketchSolutionEvidenceSchema }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      code: z.enum([
+        "sketch-not-found",
+        "stale-geometry",
+        "invalid-geometry-evidence",
+        "geometry-unavailable",
+      ]),
+    })
+    .strict(),
+])
+async function readSketchCache(
+  query: Extract<
+    AutomationDraftInspectionRequest["query"],
+    { kind: "org.vibeshape.sketch.solution" }
+  >,
+  snapshot: DocumentSnapshot,
+  draftId: string,
+  geometry: DraftGeometryPort,
+  cache: DraftInspectionCache | null,
+): Promise<{ ok: true; cache: DraftInspectionCache } | InspectionFailure> {
+  const target = JSON.stringify([query.kind, query.sketchId])
+  if (cache?.draftId === draftId && cache.revision === snapshot.revision && cache.target === target)
+    return { ok: true, cache }
+  if (query.cursor !== null)
+    return failure(
+      "stale-geometry",
+      "The draft sketch cursor is no longer available; restart paging.",
+      true,
+    )
+  const checked = await readSketchEvidence(query, snapshot, geometry)
+  if (!checked.ok) return checked
+  const evidence = checked.evidence
+  return {
+    ok: true,
+    cache: { draftId, revision: snapshot.revision, target, context: { sketchSolution: evidence } },
+  }
+}
+
+async function readSketchEvidence(
+  query: Extract<
+    AutomationDraftInspectionRequest["query"],
+    { kind: "org.vibeshape.sketch.solution" }
+  >,
+  snapshot: DocumentSnapshot,
+  geometry: DraftGeometryPort,
+) {
+  if (!geometry.inspectSketchSolution)
+    return failure("geometry-unavailable", "Draft sketch solving is unavailable.", true)
+  const read = sketchInspectionResultSchema.safeParse(
+    await geometry.inspectSketchSolution(documentSnapshotSchema.parse(snapshot), query.sketchId),
+  )
+  if (!read.success)
+    return failure("invalid-geometry-evidence", "The sketch solver returned invalid evidence.")
+  if (!read.data.ok)
+    return failure(read.data.code, "The sketch solution could not be prepared.", true)
+  const evidence = read.data.evidence
+  if (
+    evidence.documentId !== snapshot.id ||
+    evidence.revision !== snapshot.revision ||
+    evidence.sketchId !== query.sketchId
+  )
+    return failure(
+      "stale-geometry",
+      "The solved evidence belongs to another sketch or draft revision.",
+      true,
+    )
+  if (serializedQueryBytes(evidence, 4 * 1024 * 1024) > 4 * 1024 * 1024)
+    return failure("query-result-too-large", "The solved sketch catalog exceeds the 4 MiB limit.")
+  return { ok: true as const, evidence }
 }

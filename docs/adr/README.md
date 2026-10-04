@@ -83,6 +83,8 @@
 | [0078](0078-extrusion-end-conditions-and-fastener-recesses.md) | Accepted | Exact extrusion endpoints and body scope, fastener recesses, and bounded reference-axis threads |
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 
+| [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
+
 Statuses:
 
 - `Proposed` — under discussion

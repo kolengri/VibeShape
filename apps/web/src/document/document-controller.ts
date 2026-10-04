@@ -838,6 +838,7 @@ export function createActiveDocumentAutomationSession() {
     metadata,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
+    readSketchSolution: factory.readSketchSolution,
     readCad,
     exportRevisionBound,
     cancel: (reason?: Parameters<typeof factory.cancel>[0]) => {

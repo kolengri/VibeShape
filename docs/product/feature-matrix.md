@@ -340,3 +340,8 @@ bounds. See [ADR-0078](../adr/0078-extrusion-end-conditions-and-fastener-recesse
 
 Authored endpoint identities determine traversal direction. The profile must pass through the path start
 and be normal to its analytical tangent; singular curves and non-G1 joins fail closed before OCCT.
+
+Named local and paired remote MCP sketch inspection now returns exact-revision native SolveSpace
+status, DOF, conflicts, solved authored coordinates/radii and stable profile selectors through
+`model_sketch_solution` and `draft_sketch_solution`. These disposable reads preserve authored
+intent and use bounded section paging; see [ADR-0085](../adr/0085-disposable-solved-sketch-inspection.md).

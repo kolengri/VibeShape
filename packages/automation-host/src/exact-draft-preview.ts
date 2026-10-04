@@ -7,6 +7,10 @@ import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurem
 import { z } from "zod"
 
 export type DraftGeometryPort = Readonly<{
+  inspectSketchSolution?: (
+    snapshot: DocumentSnapshot,
+    sketchId: import("@vibeshape/domain/identifiers").SketchId,
+  ) => PromiseLike<unknown> | unknown
   evaluate: (snapshot: DocumentSnapshot) => PromiseLike<unknown> | unknown
   inspectBodyMeasurements?: (snapshot: DocumentSnapshot) => PromiseLike<unknown> | unknown
   inspectBodyTopology?: (
