@@ -37,6 +37,16 @@ Pictures complement exact measurements and diagnostics. They establish visible a
 than exact dimensions, clearance, topology, printability or physical fit. Operator usage is owned by
 [the inspection skill](../../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection).
 
+## Browser-local project management
+
+[ADR-0096](../adr/0096-mcp-project-management.md) extends the paired document workflow with a
+separate browser-owned project-management grant. Shared local/remote tools list bounded catalog
+pages and create/open projects through the ordinary controller and persistence paths. Expected
+source identity/revision guards reject stale navigation; optional CAD `projectId` guards reject
+wrong active targets. Authorized transitions replace the document handle without reloading or
+reconnecting, dispose private work and reset auto-apply on a different project. Manual navigation,
+Stop and recovery do not carry this additional catalog/create/open grant.
+
 ## Recommendation
 
 VibeShape exposes AI automation through local stdio and explicitly paired remote HTTPS MCP adapters

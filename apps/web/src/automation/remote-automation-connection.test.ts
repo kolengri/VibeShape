@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { createProjectToolPort } from "./project-tool-port"
 import { createRemoteAutomationConnection } from "./remote-automation-connection"
 
 const mocks = vi.hoisted(() => ({
@@ -7,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   activeWork: vi.fn(),
   review: vi.fn(),
+  createExecutor: vi.fn(),
+  projectPort: vi.fn(),
 }))
 vi.mock("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
@@ -16,7 +19,10 @@ vi.mock("./automation-review-controller", () => ({
   automationReviews: { getSnapshot: mocks.review },
 }))
 vi.mock("./local-tool-executor", () => ({
-  createLocalToolExecutor: () => ({ execute: mocks.execute }),
+  createLocalToolExecutor: mocks.createExecutor,
+}))
+vi.mock("./project-tool-port", () => ({
+  createProjectToolPort: mocks.projectPort,
 }))
 
 const id = "0195b5ac-b250-7a2c-8c33-000000000001"
@@ -70,6 +76,8 @@ beforeEach(() => {
   sockets.length = 0
   vi.stubGlobal("WebSocket", FakeSocket)
   vi.stubGlobal("fetch", fetchMock)
+  mocks.createExecutor.mockReturnValue({ execute: mocks.execute })
+  mocks.projectPort.mockReturnValue({ execute: vi.fn() })
   mocks.createHandle.mockReturnValue({
     ok: true,
     documentId: id,
@@ -77,6 +85,7 @@ beforeEach(() => {
     enableAutoApply: optIn,
     disableAutoApply: optOut,
     readInfo: () => ({ summary: { documentId: id, revision: 4, data: { name: "Bracket" } } }),
+    readIdentity: () => ({ id, name: "Bracket", revision: 4 }),
   })
   optIn.mockReturnValue(true)
   optOut.mockReturnValue(true)
@@ -114,6 +123,175 @@ async function authorized() {
   socket.receive({ type: "ready", actor, expiresAt: credential.expiresAt })
   return socket
 }
+function projectOptions() {
+  return mocks.projectPort.mock.calls.at(-1)?.[0] as Parameters<typeof createProjectToolPort>[0]
+}
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((finish) => {
+    resolve = finish
+  })
+  return { promise, resolve }
+}
+const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+const projectWork = {
+  ...work,
+  operation: {
+    tool: "open_project",
+    arguments: { projectId: nextId, expectedProjectId: id, expectedRevision: 4 },
+  },
+}
+
+describe("remote AI project management consent", () => {
+  it("requires explicit idle opt-in, and clears the grant on Stop and the next pairing", async () => {
+    expect(connection.setProjectManagement(true)).toBe(false)
+    await authorized()
+    expect(connection.getSnapshot().projectManagement).toBe(false)
+    expect(projectOptions().isAllowed()).toBe(false)
+    expect(connection.setProjectManagement(true)).toBe(true)
+    expect(projectOptions().isAllowed()).toBe(true)
+    mocks.review.mockReturnValue({ status: "ready" })
+    expect(connection.setProjectManagement(false)).toBe(false)
+    mocks.review.mockReturnValue(null)
+    await connection.disable()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+    await authorized()
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, projectManagement: false })
+  })
+
+  it("replaces the handle and executor without changing the socket or token during a project switch", async () => {
+    const socket = await authorized()
+    connection.setProjectManagement(true)
+    connection.enableAutoApply()
+    const old = mocks.createHandle.mock.results[0]?.value
+    const next = {
+      ...old,
+      documentId: nextId,
+      dispose: vi.fn(),
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+      readInfo: () => ({
+        summary: { documentId: nextId, revision: 1, data: { name: "Assembly" } },
+      }),
+    }
+    mocks.createHandle.mockReturnValue(next)
+    const options = projectOptions()
+    const pending = deferred()
+    mocks.execute.mockImplementation(async () => {
+      old.readIdentity = () => null
+      connection.validateDocumentScope()
+      expect(connection.getSnapshot().connected).toBe(true)
+      await pending.promise
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    socket.receive(projectWork)
+    expect(connection.getSnapshot().busy).toBe(true)
+    expect(connection.isProjectActionPending()).toBe(true)
+    expect(connection.setProjectManagement(false)).toBe(false)
+    pending.resolve()
+    await vi.waitFor(() => expect(connection.getSnapshot().busy).toBe(false))
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: false,
+      projectManagement: true,
+    })
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(next, actor, expect.anything())
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(socket.close).not.toHaveBeenCalled()
+    expect(sockets).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(socket.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: work.requestId,
+        tool: "open_project",
+        result: { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } },
+      }),
+    )
+    expect(next.dispose).not.toHaveBeenCalled()
+  })
+
+  it("preserves the existing handle and auto-apply for a same-project no-op", async () => {
+    const socket = await authorized()
+    connection.setProjectManagement(true)
+    connection.enableAutoApply()
+    mocks.execute.mockResolvedValue({
+      ok: true,
+      value: { projectId: id, name: "Bracket", revision: 4 },
+    })
+    socket.receive({
+      ...projectWork,
+      operation: {
+        ...projectWork.operation,
+        arguments: { ...projectWork.operation.arguments, projectId: id },
+      },
+    })
+    await vi.waitFor(() => expect(connection.getSnapshot().busy).toBe(false))
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(dispose).not.toHaveBeenCalled()
+  })
+
+  it("refreshes a reopened source after rollback without retaining its auto-apply grant", async () => {
+    const socket = await authorized()
+    connection.setProjectManagement(true)
+    connection.enableAutoApply()
+    const old = mocks.createHandle.mock.results[0]?.value
+    const replacement = { ...old, dispose: vi.fn() }
+    const options = projectOptions()
+    mocks.createHandle.mockReturnValue(replacement)
+    mocks.execute.mockImplementation(async () => {
+      old.readIdentity = () => null
+      expect(options.replaceSession()).toBe(true)
+      return result
+    })
+    socket.receive(projectWork)
+    await vi.waitFor(() => expect(connection.getSnapshot().busy).toBe(false))
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: false,
+      projectManagement: true,
+    })
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(replacement, actor, expect.anything())
+    expect(socket.close).not.toHaveBeenCalled()
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(replacement.dispose).not.toHaveBeenCalled()
+  })
+
+  it("does not reacquire a handle or send a result when Stop races the asynchronous switch", async () => {
+    const socket = await authorized()
+    connection.setProjectManagement(true)
+    const pending = deferred()
+    const options = projectOptions()
+    mocks.execute.mockImplementation(async () => {
+      await pending.promise
+      expect(options.isAllowed()).toBe(false)
+      expect(options.replaceSession()).toBe(false)
+      return result
+    })
+    socket.receive(projectWork)
+    await connection.disable()
+    const sends = socket.send.mock.calls.length
+    pending.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(socket.send.mock.calls).toHaveLength(sends)
+  })
+
+  it("revokes project management when manual navigation invalidates the handle", async () => {
+    const socket = await authorized()
+    connection.setProjectManagement(true)
+    const handle = mocks.createHandle.mock.results[0]?.value
+    if (!handle) throw new Error("Missing paired document handle.")
+    handle.readIdentity = () => null
+    connection.validateDocumentScope()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+    expect(socket.close).toHaveBeenCalledOnce()
+  })
+})
 
 describe("browser-owned remote automation lifecycle", () => {
   it("requires pairing, exact client consent and a separate idle auto-apply opt-in", async () => {

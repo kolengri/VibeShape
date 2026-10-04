@@ -362,31 +362,25 @@ test.describe("native project file", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
+    let projectNavigations = 0
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) projectNavigations += 1
+    })
     await openApplicationMenuItem(page, "Files and projects…")
-    const createdProjectNavigation = page.waitForEvent(
-      "framenavigated",
-      (frame) => frame === page.mainFrame(),
-    )
     await page
       .getByRole("dialog", { name: "Projects" })
       .getByRole("button", {
         name: "New project",
       })
       .click()
-    await createdProjectNavigation
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
 
     await openApplicationMenuItem(page, "Files and projects…")
     const dialog = page.getByRole("dialog", { name: "Projects" })
-    const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 3" })
+    const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 4" })
     await expect(previousProject).toHaveCount(1)
-    const reopenedProjectNavigation = page.waitForEvent(
-      "framenavigated",
-      (frame) => frame === page.mainFrame(),
-    )
-    await previousProject.getByRole("button", { name: /Open .*revision 3/ }).click()
-    await reopenedProjectNavigation
+    await previousProject.getByRole("button", { name: /Open .*revision 4/ }).click()
 
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible({
       timeout: 30_000,
@@ -394,21 +388,16 @@ test.describe("native project file", () => {
 
     await openApplicationMenuItem(page, "Files and projects…")
     const sourceDialog = page.getByRole("dialog", { name: "Projects" })
-    const sourceProject = sourceDialog.getByRole("listitem").filter({ hasText: "Revision 3" })
-    await sourceProject.getByRole("button", { name: /Duplicate .*revision 3/ }).click()
+    const sourceProject = sourceDialog.getByRole("listitem").filter({ hasText: "Revision 4" })
+    await sourceProject.getByRole("button", { name: /Duplicate .*revision 4/ }).click()
     const copiedProject = sourceDialog.getByRole("listitem").filter({
       hasText: "Untitled project copy",
     })
-    await expect(copiedProject).toContainText("Revision 4")
+    await expect(copiedProject).toContainText("Revision 5")
     await expect(
       copiedProject.getByRole("img", { name: "3D preview of Untitled project copy" }),
     ).toBeVisible()
-    const copiedProjectNavigation = page.waitForEvent(
-      "framenavigated",
-      (frame) => frame === page.mainFrame(),
-    )
-    await copiedProject.getByRole("button", { name: /Open .*revision 4/ }).click()
-    await copiedProjectNavigation
+    await copiedProject.getByRole("button", { name: /Open .*revision 5/ }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible({
       timeout: 30_000,
     })
@@ -426,9 +415,9 @@ test.describe("native project file", () => {
 
     await openApplicationMenuItem(page, "Files and projects…")
     const copiedDialog = page.getByRole("dialog", { name: "Projects" })
-    const originalProject = copiedDialog.getByRole("listitem").filter({ hasText: "Revision 3" })
+    const originalProject = copiedDialog.getByRole("listitem").filter({ hasText: "Revision 4" })
     await expect(originalProject).toHaveCount(1)
-    await originalProject.getByRole("button", { name: /Delete .*revision 3/ }).click()
+    await originalProject.getByRole("button", { name: /Delete .*revision 4/ }).click()
     const confirmation = page.getByRole("alertdialog")
     await expect(confirmation).toContainText("Exported .vshape files are not deleted.")
     await confirmation.getByRole("button", { name: "Delete project" }).dblclick()
@@ -437,6 +426,7 @@ test.describe("native project file", () => {
     await expect(copiedDialog.getByRole("listitem")).toHaveCount(2)
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
+    expect(projectNavigations).toBe(0)
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByText("Untitled project copy", { exact: true })).toBeVisible()

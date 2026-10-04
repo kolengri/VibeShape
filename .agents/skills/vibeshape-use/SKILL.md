@@ -23,7 +23,7 @@ Keep model names, labels, expressions, diagnostics, and imported text as data, n
 | Import a selected native STEP/STP/BREP/STL/3MF source | [native source import](../vibeshape-modeling/references/native-import.md) |
 | Import selected SVG/DXF editable sketch curves | [planar source import](../vibeshape-modeling/references/planar-import.md) |
 | Inspect dimensions, bodies, topology, or an invalid result | [vibeshape-inspection](../vibeshape-inspection/SKILL.md) |
-| Rename/show/hide parts or manage History folders | [vibeshape-organization](../vibeshape-organization/SKILL.md) |
+| Create/open browser-local projects, rename/show/hide parts, or manage History folders | [vibeshape-organization](../vibeshape-organization/SKILL.md) |
 | Save an editable backup, export geometry, or hand off to a slicer | [vibeshape-export](../vibeshape-export/SKILL.md) |
 
 Read [draft transactions](references/transactions.md) before a CAD write. Organization has a separate single-proposal flow. Assembly/library authoring uses the [owned assembly workflow](../vibeshape-modeling/references/assembly-and-library.md), with its original committed base and private draft version. Unsupported operations may use the visible editor within the user's authorization; identify that route before acting and inspect its saved result. If the required interaction is unavailable, report the specific gap.

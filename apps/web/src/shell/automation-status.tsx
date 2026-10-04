@@ -23,6 +23,8 @@ import { RemoteAutomationConsentDialog, RemoteAutomationStatus } from "./remote-
 
 export function AutomationStatus({ controller }: { controller: DocumentControllerState }) {
   const connections = useAutomationConnections()
+  const editorStore = useEditorSessionStoreApi()
+  useSyncExternalStore(editorStore.subscribe, editorStore.getState, editorStore.getState)
   return (
     <>
       <RemoteAutomationConsentDialog
@@ -39,8 +41,6 @@ export function AutomationStatus({ controller }: { controller: DocumentControlle
 }
 
 function useCreateAutomationConnections(controller: DocumentControllerState) {
-  const editorStore = useEditorSessionStoreApi()
-  useSyncExternalStore(editorStore.subscribe, editorStore.getState, editorStore.getState)
   const [connection] = useState(createLocalAutomationConnection)
   const [remoteConnection] = useState(() =>
     createRemoteAutomationConnection(import.meta.env.VITE_REMOTE_MCP_URL),
@@ -69,27 +69,10 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     remoteConnection.start()
     return remoteConnection.dispose
   }, [remoteConnection])
-  useEffect(
-    () => () => {
-      void remoteConnection.disable()
-    },
-    [remoteConnection, controller.report?.snapshot.id],
-  )
   useEffect(() => {
-    if (controller.status !== "ready") void remoteConnection.disable()
-  }, [remoteConnection, controller.status])
-  useEffect(
-    () =>
-      registerProjectActionGuard(() => {
-        const state = editorStore.getState()
-        const draftBlock = editorDraftBlock(state)
-        if (draftBlock) return draftBlock
-        if (connection.getSnapshot().busy || remoteConnection.getSnapshot().busy)
-          return "automation-busy"
-        return null
-      }),
-    [connection, remoteConnection, editorStore],
-  )
+    connection.validateDocumentScope()
+    remoteConnection.validateDocumentScope()
+  }, [connection, remoteConnection, controller.status, controller.report?.snapshot.id])
   const stopAll = useCallback(async () => {
     await Promise.all([connection.disable(), remoteConnection.disable()])
   }, [connection, remoteConnection])
@@ -125,6 +108,28 @@ export function useAutomationConnections() {
   const connections = useContext(AutomationConnectionsContext)
   if (!connections) throw new Error("Automation controls require AutomationConnectionsProvider.")
   return connections
+}
+export function AutomationEditorScope() {
+  const { connection, remoteConnection } = useAutomationConnections()
+  const editorStore = useEditorSessionStoreApi()
+  useEffect(
+    () =>
+      registerProjectActionGuard(() => {
+        const draftBlock = editorDraftBlock(editorStore.getState())
+        if (draftBlock) return draftBlock
+        const localBusy = connection.getSnapshot().busy
+        const remoteBusy = remoteConnection.getSnapshot().busy
+        if (
+          (localBusy && remoteBusy) ||
+          (localBusy && !connection.isProjectActionPending()) ||
+          (remoteBusy && !remoteConnection.isProjectActionPending())
+        )
+          return "automation-busy"
+        return null
+      }),
+    [connection, remoteConnection, editorStore],
+  )
+  return null
 }
 function editorDraftBlock(state: EditorSessionState) {
   const sketchDraft = state.sketch.activeSketchTool || state.sketch.draft

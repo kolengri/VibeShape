@@ -1,3 +1,4 @@
+import { CheckIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import type * as React from "react"
 import { cn } from "#lib/cn"
@@ -84,12 +85,51 @@ function DropdownMenuRadioItem({
   )
 }
 
+function DropdownMenuCheckboxItem({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      className={cn(
+        "relative flex cursor-default select-none items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none",
+        "focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <DropdownMenuPrimitive.ItemIndicator className="absolute right-2 grid size-4 place-items-center">
+        <CheckIcon aria-hidden="true" />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </DropdownMenuPrimitive.CheckboxItem>
+  )
+}
+
+function DropdownMenuSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
+  return (
+    <DropdownMenuPrimitive.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn("-mx-1 my-1 h-px bg-border", className)}
+      {...props}
+    />
+  )
+}
+
 export {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 }

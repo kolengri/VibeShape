@@ -739,7 +739,12 @@ describe("remote MCP in workerd", () => {
     const client = new Client({ name: "Standard SDK test client", version: "1" })
     try {
       await client.connect(transport)
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
+      const tools = (await client.listTools()).tools
+      const projectList = tools.find((tool) => tool.name === "list_projects")
+      expect(projectList).toBeDefined()
+      expect(projectList?.inputSchema.required ?? []).not.toContain("limit")
+      expect(projectList?.inputSchema.properties?.limit).toMatchObject({ default: 50 })
+      expect(tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "model_info",
           "create_body_revolve",

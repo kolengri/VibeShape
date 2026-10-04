@@ -9,23 +9,28 @@ import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
 import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { ApplicationBar } from "./application-bar"
-import { AutomationConnectionsProvider } from "./automation-status"
+import { AutomationConnectionsProvider, AutomationEditorScope } from "./automation-status"
 import { StatusBar } from "./status-bar"
 import { ViewerPreferencesProvider } from "./viewer-preferences"
 import { WorkspaceLayoutPreferencesProvider } from "./workspace-layout-preferences"
 
 const work = vi.hoisted(() => ({
   active: vi.fn(),
-  register: vi.fn(() => () => {}),
+  register: vi.fn((_guard: () => unknown) => () => {}),
   disable: vi.fn(),
   remoteDisable: vi.fn(),
   remoteConsent: vi.fn(),
+  localValidate: vi.fn(),
+  remoteValidate: vi.fn(),
+  localProjectPending: vi.fn(() => false),
+  remoteProjectPending: vi.fn(() => false),
   remote: {
     available: false,
     connected: false,
     connecting: false,
     busy: false,
     autoApply: false,
+    projectManagement: false,
     client: null,
     pairingCode: null,
     consent: null,
@@ -37,6 +42,7 @@ const work = vi.hoisted(() => ({
     connected: false,
     recovering: false,
     autoApply: false,
+    projectManagement: false,
     client: null,
   },
 }))
@@ -58,6 +64,8 @@ vi.mock("../automation/local-automation-connection", () => ({
       status: vi.fn(),
       dispose: vi.fn(),
       disable: work.disable,
+      validateDocumentScope: work.localValidate,
+      isProjectActionPending: work.localProjectPending,
     }
   },
 }))
@@ -69,6 +77,8 @@ vi.mock("../automation/remote-automation-connection", () => ({
     dispose: vi.fn(),
     disable: work.remoteDisable,
     consent: work.remoteConsent,
+    validateDocumentScope: work.remoteValidate,
+    isProjectActionPending: work.remoteProjectPending,
   }),
 }))
 vi.mock("../editor-session/editor-session-provider", () => {
@@ -84,17 +94,24 @@ beforeEach(() => {
     connected: false,
     recovering: false,
     autoApply: false,
+    projectManagement: false,
     client: null,
   }
   work.disable.mockReset()
   work.remoteDisable.mockReset()
   work.remoteConsent.mockReset()
+  work.localValidate.mockClear()
+  work.remoteValidate.mockClear()
+  work.localProjectPending.mockReturnValue(false)
+  work.remoteProjectPending.mockReturnValue(false)
+  work.register.mockClear()
   work.remote = {
     available: false,
     connected: false,
     connecting: false,
     busy: false,
     autoApply: false,
+    projectManagement: false,
     client: null,
     pairingCode: null,
     consent: null,
@@ -142,6 +159,7 @@ it("keeps File blocked after save failure while allowing unit retry only without
           <WorkspaceLayoutPreferencesProvider>
             <TooltipProvider>
               <AutomationConnectionsProvider controller={controller}>
+                <AutomationEditorScope />
                 <ApplicationBar
                   controller={controller}
                   onOpenCommandPalette={vi.fn()}
@@ -200,6 +218,7 @@ function renderHeader(
         <WorkspaceLayoutPreferencesProvider>
           <TooltipProvider>
             <AutomationConnectionsProvider controller={controller}>
+              <AutomationEditorScope />
               <ApplicationBar
                 controller={controller}
                 hideModelExport={hideModelExport}
@@ -256,6 +275,7 @@ it("keeps AI status and neutral Stop AI in the footer instead of the application
     connected: true,
     recovering: false,
     autoApply: true,
+    projectManagement: false,
     client: null,
   }
   renderHeader()
@@ -280,6 +300,25 @@ it("keeps Stop AI available when the local bridge is offline during approved rec
   expect(work.remoteDisable).toHaveBeenCalledOnce()
 })
 
+it("lets the initiating project action pass its guard while another busy transport remains blocking", () => {
+  renderHeader()
+  const guard = work.register.mock.calls.at(-1)?.[0]
+  if (!guard) throw new Error("Missing project action guard.")
+  expect(work.localValidate).toHaveBeenCalledOnce()
+  expect(work.remoteValidate).toHaveBeenCalledOnce()
+  work.local.busy = true
+  expect(guard()).toBe("automation-busy")
+  work.localProjectPending.mockReturnValue(true)
+  expect(guard()).toBeNull()
+  work.remote = { ...work.remote, busy: true }
+  expect(guard()).toBe("automation-busy")
+  work.remoteProjectPending.mockReturnValue(true)
+  expect(guard()).toBe("automation-busy")
+  work.local.busy = false
+  expect(guard()).toBeNull()
+  expect(work.remoteDisable).not.toHaveBeenCalled()
+})
+
 it("stops both connections when a remote pairing hides an already connected local client", async () => {
   work.local = {
     available: true,
@@ -287,6 +326,7 @@ it("stops both connections when a remote pairing hides an already connected loca
     connected: true,
     recovering: false,
     autoApply: true,
+    projectManagement: false,
     client: null,
   }
   work.remote = {
@@ -309,6 +349,7 @@ it("keeps local AI status and Stop visible while remote pairing is still awaitin
     connected: true,
     recovering: false,
     autoApply: true,
+    projectManagement: false,
     client: null,
   }
   work.remote = {

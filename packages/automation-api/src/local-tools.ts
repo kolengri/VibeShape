@@ -1,6 +1,7 @@
 import { assemblyLibraryItemSchema } from "@vibeshape/domain/assembly-library"
 import {
   commandIdSchema,
+  documentIdSchema,
   draftIdSchema,
   featureIdSchema,
   revisionSchema,
@@ -89,6 +90,13 @@ import {
   planarUploadInspectionSchema,
 } from "./planar-imports"
 import {
+  projectListSchema,
+  projectOperations,
+  projectToolInputs,
+  projectToolNames,
+  projectViewSchema,
+} from "./project-tools"
+import {
   cadInspectionDetailQuerySchema,
   cadInspectionDetailViewSchema,
   cadInspectionListQuerySchema,
@@ -166,6 +174,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  ...projectToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...localPlanarImportInputs,
@@ -261,6 +270,9 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  list_projects: resultOf(projectListSchema),
+  create_project: resultOf(projectViewSchema),
+  open_project: resultOf(projectViewSchema),
   render_preview: resultOf(renderPreviewResultSchema),
   model_history_state: resultOf(historyStateViewSchema),
   undo_model: resultOf(historyCommitViewSchema),
@@ -409,6 +421,7 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  ...projectToolNames,
   "render_preview",
   "model_history_state",
   "undo_model",
@@ -524,7 +537,8 @@ export const localToolNameSchema = z.enum([
   "export_model",
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
-export const localOperationSchema = z.discriminatedUnion("tool", [
+const untargetedOperationSchema = z.discriminatedUnion("tool", [
+  ...projectOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,
@@ -592,7 +606,52 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("discard_draft"), arguments: localToolInputs.discard_draft }).strict(),
   z.object({ tool: z.literal("export_model"), arguments: localToolInputs.export_model }).strict(),
 ])
-export type LocalOperation = z.infer<typeof localOperationSchema>
+// Target identity travels beside the command so strict authored payloads remain unchanged.
+export const localOperationSchema = z
+  .object({ projectId: documentIdSchema.optional() })
+  .passthrough()
+  .transform(({ projectId, ...operation }, context) => {
+    const parsed = untargetedOperationSchema.safeParse(operation)
+    if (!parsed.success) {
+      context.addIssue({ code: "custom", message: "Invalid tool operation." })
+      return z.NEVER
+    }
+    const targeted: z.infer<typeof untargetedOperationSchema> & {
+      projectId?: z.infer<typeof documentIdSchema>
+    } = projectId === undefined ? parsed.data : { ...parsed.data, projectId }
+    return targeted
+  })
+export type LocalOperation = z.infer<typeof localOperationSchema> & {
+  projectId?: z.infer<typeof documentIdSchema>
+}
+export type ProjectOperation = Extract<LocalOperation, { tool: (typeof projectToolNames)[number] }>
+export function isProjectOperation(operation: LocalOperation): operation is ProjectOperation {
+  return projectToolNames.some((name) => name === operation.tool)
+}
+export function mcpToolInputSchema(name: LocalToolName) {
+  if (name === "render_preview")
+    return z.discriminatedUnion("source", [
+      localToolInputs.render_preview.options[0].extend({ projectId: documentIdSchema.optional() }),
+      localToolInputs.render_preview.options[1].extend({ projectId: documentIdSchema.optional() }),
+    ])
+  return projectToolNames.some((projectTool) => projectTool === name)
+    ? localToolInputs[name]
+    : localToolInputs[name].extend({ projectId: documentIdSchema.optional() })
+}
+export function parseMcpToolCall(name: string, input: unknown) {
+  const tool = localToolNameSchema.safeParse(name)
+  if (!tool.success) return localOperationSchema.safeParse({ tool: name, arguments: input })
+  if (projectToolNames.some((projectTool) => projectTool === tool.data))
+    return localOperationSchema.safeParse({ tool: name, arguments: input })
+  const args = mcpToolInputSchema(tool.data).safeParse(input)
+  if (!args.success) return localOperationSchema.safeParse(null)
+  const { projectId, ...argumentsValue } = args.data
+  return localOperationSchema.safeParse({
+    tool: name,
+    arguments: argumentsValue,
+    ...(projectId ? { projectId } : {}),
+  })
+}
 export type LocalToolResult = z.infer<(typeof localToolOutputs)[LocalToolName]>
 
 export type LocalDraftCommandOperation = Extract<

@@ -17,6 +17,7 @@ import {
   isLocalLifecycleCommand,
   isLocalMetadataRead,
   isLocalPrimitiveCommand,
+  isProjectOperation,
   LOCAL_EXPORT_MAX_BYTES,
   type LocalMetadataReadOperation,
   type LocalOperation,
@@ -60,6 +61,7 @@ import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
+import type { ProjectToolPort } from "./project-tool-port"
 import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
 
 type LocalExportResult =
@@ -298,6 +300,7 @@ async function dispatchBasicOperation(
 export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
+  projects?: ProjectToolPort,
 ): LocalToolExecutor {
   function transfer(
     operation: Extract<
@@ -367,7 +370,8 @@ export function createLocalToolExecutor(
       : importFile(operation, signal)
   }
   function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
-    const history = historyOperationSchema.safeParse(operation)
+    const { projectId: _projectId, ...untargeted } = operation
+    const history = historyOperationSchema.safeParse(untargeted)
     if (history.success)
       return session.history
         ? session.history.execute(actor, history.data, signal)
@@ -424,12 +428,25 @@ export function createLocalToolExecutor(
     return dispatchBasicOperation(session, actor, operation)
   }
   return {
-    execute: (operation, signal) =>
-      signal?.aborted
-        ? Promise.resolve(
-            localFailure("request-cancelled", "The automation request was cancelled.", true),
-          )
-        : execute(operation, signal),
+    async execute(operation, signal) {
+      if (signal?.aborted)
+        return localFailure("request-cancelled", "The automation request was cancelled.", true)
+      if (operation.projectId && operation.projectId !== session.documentId)
+        return localFailure(
+          "project-target-mismatch",
+          "The requested project is not active. Use open_project and read model_info before editing.",
+        )
+      const { projectId: _projectId, ...command } = operation
+      operation = command
+      if (isProjectOperation(operation))
+        return projects
+          ? projects.execute(operation, signal)
+          : localFailure(
+              "project-management-unavailable",
+              "This connection cannot manage projects.",
+            )
+      return execute(operation, signal)
+    },
   }
 }
 

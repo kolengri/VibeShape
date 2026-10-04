@@ -2,12 +2,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createLocalAutomationConnection } from "./local-automation-connection"
 import { LocalAutomationTransportError } from "./local-automation-http"
+import type { createProjectToolPort } from "./project-tool-port"
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   createHandle: vi.fn(),
   execute: vi.fn(),
   review: vi.fn(),
+  createExecutor: vi.fn(),
+  projectPort: vi.fn(),
 }))
 vi.mock("./automation-review-controller", () => ({
   automationReviews: { getSnapshot: mocks.review },
@@ -20,7 +23,10 @@ vi.mock("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
 }))
 vi.mock("./local-tool-executor", () => ({
-  createLocalToolExecutor: () => ({ execute: mocks.execute }),
+  createLocalToolExecutor: mocks.createExecutor,
+}))
+vi.mock("./project-tool-port", () => ({
+  createProjectToolPort: mocks.projectPort,
 }))
 const id = "0195b5ac-b250-7a2c-8c33-000000000001"
 const client = { name: "Test CAD client", version: "1" }
@@ -59,6 +65,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   mocks.review.mockReturnValue(null)
+  mocks.createExecutor.mockReturnValue({ execute: mocks.execute })
+  mocks.projectPort.mockReturnValue({ execute: vi.fn() })
   enableAutoApply.mockReturnValue(true)
   optOut.mockReturnValue(true)
   document.head.innerHTML = '<meta name="vibeshape-local-automation" content="1">'
@@ -92,6 +100,399 @@ async function ready() {
   connection.start()
   await connection.status()
 }
+function projectOptions() {
+  return mocks.projectPort.mock.calls.at(-1)?.[0] as Parameters<typeof createProjectToolPort>[0]
+}
+function deliverProjectChange(projectId: string = "0195b5ac-b250-7a2c-8c33-000000000002") {
+  const original = mocks.request.getMockImplementation()
+  let delivered = false
+  mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+    if (path === "/poll") {
+      const next = delivered
+        ? null
+        : {
+            ...work,
+            operation: {
+              tool: "open_project",
+              arguments: { projectId, expectedProjectId: id, expectedRevision: 4 },
+            },
+          }
+      delivered = true
+      return ok({ protocolVersion: 1, work: next, cancelledRequestIds: [] })
+    }
+    return original?.(path, ...args)
+  })
+}
+describe("local AI project management consent", () => {
+  it("requires an idle explicit grant and clears it across recovery and Stop", async () => {
+    await ready()
+    expect(connection.setProjectManagement(true)).toBe(false)
+    await connection.enable()
+    expect(connection.getSnapshot().projectManagement).toBe(false)
+    expect(projectOptions().isAllowed()).toBe(false)
+    expect(connection.setProjectManagement(true)).toBe(true)
+    expect(projectOptions().isAllowed()).toBe(true)
+    mocks.review.mockReturnValue({ status: "ready" })
+    expect(connection.setProjectManagement(false)).toBe(false)
+    mocks.review.mockReturnValue(null)
+    window.dispatchEvent(new Event("pagehide"))
+    expect(connection.getSnapshot().projectManagement).toBe(false)
+    expect(
+      JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}"),
+    ).not.toHaveProperty("projectManagement")
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, projectManagement: false })
+    expect(connection.setProjectManagement(true)).toBe(true)
+    await connection.disable()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+  })
+
+  it("replaces the document handle and pauses heartbeat only while the switch result is acknowledging", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    connection.enableAutoApply()
+    const old = mocks.createHandle.mock.results[0]?.value
+    const oldIdentity = vi.fn(old.readIdentity)
+    old.readIdentity = oldIdentity
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const next = {
+      ...old,
+      documentId: nextId,
+      dispose: vi.fn(),
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+    }
+    mocks.createHandle.mockReturnValue(next)
+    const options = projectOptions()
+    mocks.execute.mockImplementation(async () => {
+      oldIdentity.mockReturnValue(null)
+      connection.validateDocumentScope()
+      expect(connection.getSnapshot().connected).toBe(true)
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    const accepted = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/result" ? accepted.promise : original?.(path, ...args),
+    )
+    deliverProjectChange(nextId)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      busy: true,
+      autoApply: false,
+      projectManagement: true,
+    })
+    expect(connection.setProjectManagement(false)).toBe(false)
+    expect(connection.isProjectActionPending()).toBe(true)
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(next, credential.actor, expect.anything())
+    const pollCount = mocks.request.mock.calls.filter(([path]) => path === "/poll").length
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/poll")).toHaveLength(pollCount)
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}").documentId).toBe(
+      id,
+    )
+    accepted.resolve(ok({ ok: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false })
+    expect(connection.isProjectActionPending()).toBe(false)
+    expect(mocks.request).toHaveBeenLastCalledWith(
+      "/poll",
+      expect.objectContaining({ document: { id: nextId, name: "Assembly", revision: 1 } }),
+      credential.token,
+    )
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}").documentId).toBe(
+      nextId,
+    )
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+    expect(next.dispose).not.toHaveBeenCalled()
+  })
+
+  it("keeps source progress heartbeats alive through a project transition longer than the broker liveness window", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    const old = mocks.createHandle.mock.results[0]?.value
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const next = {
+      ...old,
+      documentId: nextId,
+      dispose: vi.fn(),
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+    }
+    mocks.createHandle.mockReturnValue(next)
+    const options = projectOptions()
+    const opening = deferred<void>()
+    mocks.execute.mockImplementation(async () => {
+      old.readIdentity = () => null
+      await opening.promise
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    deliverProjectChange(nextId)
+    await vi.advanceTimersByTimeAsync(500)
+    const heartbeatCount = mocks.request.mock.calls.filter(([path]) => path === "/poll").length
+    await vi.advanceTimersByTimeAsync(20_000)
+    const heartbeats = mocks.request.mock.calls
+      .filter(([path]) => path === "/poll")
+      .slice(heartbeatCount)
+    expect(heartbeats).toHaveLength(40)
+    for (const [, input] of heartbeats) {
+      expect(input).toMatchObject({
+        document: { id, name: "Bracket", revision: 4 },
+        progress: { requestId: work.requestId, stage: "executing" },
+      })
+    }
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: true })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/result")).toHaveLength(0)
+    opening.resolve()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false })
+    expect(mocks.request).toHaveBeenLastCalledWith(
+      "/poll",
+      expect.objectContaining({ document: { id: nextId, name: "Assembly", revision: 1 } }),
+      credential.token,
+    )
+  })
+
+  it("drains an in-flight source heartbeat before posting the project result and target identity", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    const old = mocks.createHandle.mock.results[0]?.value
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const next = {
+      ...old,
+      documentId: nextId,
+      dispose: vi.fn(),
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+    }
+    mocks.createHandle.mockReturnValue(next)
+    const options = projectOptions()
+    const opening = deferred<void>()
+    mocks.execute.mockImplementation(async () => {
+      old.readIdentity = () => null
+      await opening.promise
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    deliverProjectChange(nextId)
+    await vi.advanceTimersByTimeAsync(500)
+    const heartbeat = deferred<ReturnType<typeof ok>>()
+    const accepted = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    const ordering: string[] = []
+    mocks.request.mockImplementation(async (path: string, ...args: unknown[]) => {
+      if (path === "/poll") {
+        const input = args[0] as { document: { id: string } }
+        if (input.document.id === id) {
+          ordering.push("source-heartbeat-start")
+          const response = await heartbeat.promise
+          ordering.push("source-heartbeat-end")
+          return response
+        }
+        ordering.push("target-heartbeat")
+      }
+      if (path === "/result") {
+        ordering.push("project-result")
+        return accepted.promise
+      }
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    opening.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ordering).toEqual(["source-heartbeat-start"])
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: true })
+    heartbeat.resolve(emptyPoll)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ordering).toEqual(["source-heartbeat-start", "source-heartbeat-end", "project-result"])
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(ordering).toHaveLength(3)
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}").documentId).toBe(
+      id,
+    )
+    accepted.resolve(ok({ ok: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(ordering).toEqual([
+      "source-heartbeat-start",
+      "source-heartbeat-end",
+      "project-result",
+      "target-heartbeat",
+    ])
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}").documentId).toBe(
+      nextId,
+    )
+  })
+
+  it("does not post a late project result when Stop interrupts the source-heartbeat drain", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    const opening = deferred<void>()
+    mocks.execute.mockImplementation(async () => {
+      await opening.promise
+      return { ok: true, value: { projectId: id, name: "Bracket", revision: 4 } }
+    })
+    deliverProjectChange(id)
+    await vi.advanceTimersByTimeAsync(500)
+    const heartbeat = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll" ? heartbeat.promise : original?.(path, ...args),
+    )
+    await vi.advanceTimersByTimeAsync(500)
+    opening.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    await connection.disable()
+    heartbeat.resolve(emptyPoll)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/result")).toHaveLength(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+  })
+
+  it("retains source recovery identity when renewal completes after the project handle changes", async () => {
+    await ready()
+    const expiring = { ...credential, expiresAt: Date.now() + 60_000 }
+    const initial = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect" || path === "/renew" ? ok(expiring) : initial?.(path, ...args),
+    )
+    await connection.enable()
+    connection.setProjectManagement(true)
+    const old = mocks.createHandle.mock.results[0]?.value
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    mocks.createHandle.mockReturnValue({
+      ...old,
+      documentId: nextId,
+      dispose: vi.fn(),
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+    })
+    const options = projectOptions()
+    const opening = deferred<void>()
+    mocks.execute.mockImplementation(async () => {
+      old.readIdentity = () => null
+      await opening.promise
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    deliverProjectChange(nextId)
+    await vi.advanceTimersByTimeAsync(500)
+    const renewal = deferred<ReturnType<typeof ok>>()
+    const accepted = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/renew") return renewal.promise
+      if (path === "/result") return accepted.promise
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    opening.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/result")).toHaveLength(0)
+    renewal.resolve(ok(credential))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}")).toMatchObject({
+      documentId: id,
+      expiresAt: credential.expiresAt,
+    })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/result")).toHaveLength(1)
+    accepted.resolve(ok({ ok: true }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "{}").documentId).toBe(
+      nextId,
+    )
+  })
+
+  it("preserves auto-apply for a same-project open without replacing the handle", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    connection.enableAutoApply()
+    mocks.execute.mockResolvedValue({
+      ok: true,
+      value: { projectId: id, name: "Bracket", revision: 4 },
+    })
+    deliverProjectChange(id)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      busy: false,
+      autoApply: true,
+    })
+    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(dispose).not.toHaveBeenCalled()
+  })
+
+  it("refreshes a reopened source handle after rollback and resets its auto-apply grant", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    connection.enableAutoApply()
+    const old = mocks.createHandle.mock.results[0]?.value
+    const replacement = { ...old, dispose: vi.fn() }
+    const options = projectOptions()
+    mocks.createHandle.mockReturnValue(replacement)
+    mocks.execute.mockImplementation(async () => {
+      old.readIdentity = () => null
+      expect(options.replaceSession()).toBe(true)
+      return failedResult
+    })
+    deliverProjectChange()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      busy: false,
+      autoApply: false,
+      projectManagement: true,
+    })
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(
+      replacement,
+      credential.actor,
+      expect.anything(),
+    )
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(replacement.dispose).not.toHaveBeenCalled()
+  })
+
+  it("does not reacquire a handle or submit a result after Stop interrupts a project switch", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    const pending = deferred<void>()
+    const options = projectOptions()
+    mocks.execute.mockImplementation(async () => {
+      await pending.promise
+      expect(options.isAllowed()).toBe(false)
+      expect(options.replaceSession()).toBe(false)
+      return failedResult
+    })
+    deliverProjectChange()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.isProjectActionPending()).toBe(true)
+    await connection.disable()
+    pending.resolve()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/result")).toHaveLength(0)
+  })
+
+  it("clears the project grant and revokes pairing after manual project navigation", async () => {
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    const handle = mocks.createHandle.mock.results[0]?.value
+    if (!handle) throw new Error("Missing paired document handle.")
+    handle.readIdentity = () => null
+    connection.validateDocumentScope()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+  })
+})
 describe("browser-owned local AI connection lifecycle", () => {
   it.each([
     ["commit_import_upload", "ready", "review"],

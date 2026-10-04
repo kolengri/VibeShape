@@ -17,6 +17,9 @@ it("shows the exact consent client and return address, approves explicitly and d
     disable: vi.fn(),
     enableAutoApply: vi.fn(),
     disableAutoApply: vi.fn(),
+    setProjectManagement: vi.fn(),
+    validateDocumentScope: vi.fn(),
+    isProjectActionPending: vi.fn(),
     configuration: vi.fn(),
     subscribe: vi.fn(),
     getSnapshot: vi.fn(),
@@ -29,6 +32,7 @@ it("shows the exact consent client and return address, approves explicitly and d
     connected: false,
     connecting: false,
     autoApply: false,
+    projectManagement: false,
     busy: false,
     client: null,
     error: false,
@@ -67,5 +71,10 @@ it("shows the exact consent client and return address, approves explicitly and d
   expect(consent).toHaveBeenLastCalledWith(false)
   rendered.rerender(view({ ...current, consent: null }))
   await waitFor(() => expect(document.activeElement).toBe(editorAction))
+  expect(connection.enableAutoApply).not.toHaveBeenCalled()
+  rendered.rerender(view({ ...current, consent: null, connected: true }))
+  await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+  await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Allow project management" }))
+  expect(connection.setProjectManagement).toHaveBeenCalledWith(true)
   expect(connection.enableAutoApply).not.toHaveBeenCalled()
 })

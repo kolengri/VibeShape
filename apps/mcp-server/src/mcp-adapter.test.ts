@@ -456,3 +456,28 @@ it("does not recreate an old export resource after concurrent session recovery",
     broker.dispose()
   }
 })
+
+it("advertises optional project-list pagination accepted by schema-validating clients", async () => {
+  const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
+  const adapter = createLocalMcpAdapter(broker, createExportResources())
+  const client = new Client({ name: "project-schema-client", version: "1" })
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  try {
+    await Promise.all([adapter.connect(serverTransport), client.connect(clientTransport)])
+    const tool = (await client.listTools()).tools.find(({ name }) => name === "list_projects")
+    if (!tool) throw new Error("The list_projects tool was not advertised.")
+    const validate = new AjvJsonSchemaValidator().getValidator({
+      ...tool.inputSchema,
+      properties: tool.inputSchema.properties ?? {},
+      required: tool.inputSchema.required ?? [],
+    })
+    expect(validate({}).valid).toBe(true)
+    expect(validate({ limit: 100 }).valid).toBe(true)
+    expect(validate({ limit: 101 }).valid).toBe(false)
+    expect(validate({ cursor: "invalid" }).valid).toBe(false)
+  } finally {
+    await client.close()
+    await adapter.close()
+    broker.dispose()
+  }
+})
