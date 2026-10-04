@@ -3,7 +3,10 @@ import { z } from "zod"
 import {
   cadInspectionDetailQuerySchema,
   cadInspectionListQuerySchema,
+  modelBodyMeasurementArgumentsSchema,
+  modelBodyTopologyArgumentsSchema,
   modelEdgeQuerySchema,
+  modelMeasurementQuerySchema,
   variableListQuerySchema,
 } from "./queries"
 
@@ -14,9 +17,30 @@ export const localDraftInspectionInputs = {
   draft_entity: cadInspectionDetailQuerySchema.omit(omit).extend(draft),
   draft_variables: variableListQuerySchema.omit(omit).extend(draft),
   draft_edges: modelEdgeQuerySchema.omit(omit).extend(draft),
+  draft_measurements: modelMeasurementQuerySchema.omit(omit).extend(draft),
+  draft_body_measurements: modelBodyMeasurementArgumentsSchema.safeExtend(draft),
+  draft_body_topology: modelBodyTopologyArgumentsSchema.extend(draft),
 } as const
 
 export const localDraftInspectionOperations = [
+  z
+    .object({
+      tool: z.literal("draft_body_measurements"),
+      arguments: localDraftInspectionInputs.draft_body_measurements,
+    })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("draft_body_topology"),
+      arguments: localDraftInspectionInputs.draft_body_topology,
+    })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("draft_measurements"),
+      arguments: localDraftInspectionInputs.draft_measurements,
+    })
+    .strict(),
   z
     .object({ tool: z.literal("draft_tree"), arguments: localDraftInspectionInputs.draft_tree })
     .strict(),

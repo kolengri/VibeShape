@@ -1,6 +1,14 @@
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  draft_body_measurements:
+    "Inspect exact output-body measurements in an owned draft at its current revision. Supports bounded paging and feature/output-role filters; no persistence.",
+  draft_body_topology:
+    "Inspect stable face or edge references for one exact output body in an owned draft. Use the current draft revision and retain cursor provenance; no persistence.",
+  model_measurements:
+    "Read revision-bound exact feature measurements and rebuild diagnostics. Use scope=all to inspect upstream failures hidden by terminal outputs, or featureId to inspect a known cause. Follow nextCursor; do not treat blocked downstream outputs as the original failure.",
+  draft_measurements:
+    "Read exact measurements and rebuild diagnostics from an owned unsaved draft at its current revision. Use scope=all and follow nextCursor to locate failed upstream features after an invalid preview. This disposable rebuild does not persist geometry or renew the draft expiration.",
   create_datum_plane:
     "Stage an offset Datum Plane in an owned draft using origin support xy/xz/yz or an existing planar face v0 TopoRef. Offset is a signed typed length quantity with optional variable expression. Origin support has empty dependencies/references; face support requires its sole owner dependency and exactly the same support reference. Supply UUIDv7 featureId/commandId, current draft revision and suppressed=false; preview before ordinary commit.",
   update_datum_plane:
@@ -125,6 +133,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "model_measurements",
+      "draft_measurements",
+      "draft_body_measurements",
+      "draft_body_topology",
       "model_info",
       "model_history",
       "model_parts",
@@ -143,6 +155,10 @@ export function localToolAnnotations(name: LocalToolName) {
     ].includes(name),
     destructiveHint: name === "commit_draft",
     idempotentHint: [
+      "model_measurements",
+      "draft_measurements",
+      "draft_body_measurements",
+      "draft_body_topology",
       "model_info",
       "model_history",
       "model_parts",

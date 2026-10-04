@@ -9,6 +9,11 @@ export type DraftGeometryPort = Readonly<{
     snapshot: DocumentSnapshot,
     featureId: FeatureId,
   ) => PromiseLike<unknown> | unknown
+  inspectBodyMeasurements?: (snapshot: DocumentSnapshot) => PromiseLike<unknown> | unknown
+  inspectBodyTopology?: (
+    snapshot: DocumentSnapshot,
+    target: { featureId: FeatureId; outputRole: string; topologyKind: "edge" | "face" },
+  ) => PromiseLike<unknown> | unknown
 }>
 
 export async function evaluateDraftGeometry(

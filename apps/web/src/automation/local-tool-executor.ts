@@ -18,6 +18,7 @@ import type {
   ModelBodyMeasurementQuery,
   ModelBodyTopologyQuery,
   ModelEdgeQuery,
+  ModelMeasurementQuery,
   QueryResult,
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
@@ -46,6 +47,7 @@ type LocalSessionPort = Readonly<{
       | CadInspectionDetailQuery
       | VariableListQuery
       | ModelEdgeQuery
+      | ModelMeasurementQuery
       | ModelBodyMeasurementQuery
       | ModelBodyTopologyQuery,
   ) => QueryResult

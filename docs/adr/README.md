@@ -78,6 +78,7 @@
 | [0072](0072-derived-assembly-geometry-and-exact-interference.md) | Accepted | Derived assembly geometry and exact interference |
 | [0073](0073-immutable-local-assembly-library.md) | Accepted | Immutable local assembly library revisions |
 | [0074](0074-ordered-body-slots-in-compound-and-union.md) | Accepted | Ordered exact body slots in Compound and Union |
+| [0082](0082-owned-draft-body-inspection-and-diagnostics.md) | Accepted | Owned draft body inspection and complete evaluation diagnostics |
 
 Statuses:
 

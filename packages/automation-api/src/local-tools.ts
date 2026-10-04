@@ -41,6 +41,7 @@ import {
   modelBodyTopologyViewSchema,
   modelEdgeQuerySchema,
   modelEdgeViewSchema,
+  modelMeasurementQuerySchema,
   modelMeasurementViewSchema,
   variableListQuerySchema,
   variableListViewSchema,
@@ -96,6 +97,11 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  model_measurements: modelMeasurementQuerySchema.omit({
+    kind: true,
+    schemaVersion: true,
+    documentId: true,
+  }),
   model_history: authoredHistoryListArgumentsSchema,
   model_parts: authoredListArgumentsSchema,
   model_folders: authoredListArgumentsSchema,
@@ -165,6 +171,10 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  model_measurements: resultOf(modelMeasurementViewSchema),
+  draft_measurements: resultOf(automationDraftInspectionViewSchema),
+  draft_body_measurements: resultOf(automationDraftInspectionViewSchema),
+  draft_body_topology: resultOf(automationDraftInspectionViewSchema),
   model_history: resultOf(authoredHistoryViewSchema),
   model_parts: resultOf(authoredPartsViewSchema),
   model_folders: resultOf(authoredFoldersViewSchema),
@@ -228,6 +238,10 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "model_measurements",
+  "draft_measurements",
+  "draft_body_measurements",
+  "draft_body_topology",
   "model_history",
   "model_parts",
   "model_folders",
@@ -292,6 +306,12 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  z
+    .object({
+      tool: z.literal("model_measurements"),
+      arguments: localToolInputs.model_measurements,
+    })
+    .strict(),
   z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),
   z.object({ tool: z.literal("model_parts"), arguments: localToolInputs.model_parts }).strict(),
   z.object({ tool: z.literal("model_folders"), arguments: localToolInputs.model_folders }).strict(),
@@ -360,12 +380,22 @@ export type LocalInspectionOperation = Extract<
       | "model_edges"
       | "model_body_measurements"
       | "model_body_topology"
+      | "model_measurements"
   }
 >
 
 export type LocalDraftInspectionOperation = Extract<
   LocalOperation,
-  { tool: "draft_tree" | "draft_entity" | "draft_variables" | "draft_edges" }
+  {
+    tool:
+      | "draft_tree"
+      | "draft_entity"
+      | "draft_variables"
+      | "draft_edges"
+      | "draft_measurements"
+      | "draft_body_measurements"
+      | "draft_body_topology"
+  }
 >
 
 export function isLocalDraftInspection(
@@ -375,7 +405,10 @@ export function isLocalDraftInspection(
     operation.tool === "draft_tree" ||
     operation.tool === "draft_entity" ||
     operation.tool === "draft_variables" ||
-    operation.tool === "draft_edges"
+    operation.tool === "draft_edges" ||
+    operation.tool === "draft_measurements" ||
+    operation.tool === "draft_body_measurements" ||
+    operation.tool === "draft_body_topology"
   )
 }
 
@@ -388,7 +421,8 @@ export function isLocalInspection(
     operation.tool === "model_variables" ||
     operation.tool === "model_edges" ||
     operation.tool === "model_body_measurements" ||
-    operation.tool === "model_body_topology"
+    operation.tool === "model_body_topology" ||
+    operation.tool === "model_measurements"
   )
 }
 

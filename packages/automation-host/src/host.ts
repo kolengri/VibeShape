@@ -41,7 +41,7 @@ import {
 } from "@vibeshape/domain/drafts"
 import { type DocumentId, type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
-import { type DraftEdgeCache, inspectDraftQuery } from "./draft-inspection"
+import { type DraftInspectionCache, inspectDraftQuery } from "./draft-inspection"
 import type { DraftReviewInput, DraftReviewPort } from "./draft-review"
 import { type DraftGeometryPort, evaluateDraftGeometry } from "./exact-draft-preview"
 
@@ -337,7 +337,7 @@ export function createAutomationHost(
     .nonnegative()
     .max(8_640_000_000_000_000 - options.draftTtlMs)
   let operationQueue: Promise<void> = Promise.resolve()
-  let edgeCache: DraftEdgeCache | null = null
+  let edgeCache: DraftInspectionCache | null = null
 
   function enqueue<Value>(
     operation: () => Promise<AutomationHostResult<Value>>,

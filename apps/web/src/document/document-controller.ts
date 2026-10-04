@@ -21,6 +21,7 @@ import type {
   ModelBodyMeasurementQuery,
   ModelBodyTopologyQuery,
   ModelEdgeQuery,
+  ModelMeasurementQuery,
   QueryResult,
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
@@ -738,12 +739,19 @@ export function createActiveDocumentAutomationSession() {
       | CadInspectionDetailQuery
       | VariableListQuery
       | ModelEdgeQuery
+      | ModelMeasurementQuery
       | ModelBodyMeasurementQuery
       | ModelBodyTopologyQuery,
   ): QueryResult => {
     const report = currentReport()
     if (!report) return queryDispatcher.dispatcher.dispatch(null, query)
     const snapshot = active.snapshot
+    if (query.kind === "org.vibeshape.model.measurements") {
+      const measurements = createModelMeasurementEvidence(snapshot, report.rebuild)
+      return queryDispatcher.dispatcher.dispatch(snapshot, query, {
+        measurements: measurements.ok ? measurements.evidence : undefined,
+      })
+    }
     if (query.kind === "org.vibeshape.model.body-topology") {
       const bodyTopology = createModelBodyTopologyEvidence(snapshot, report.rebuild, {
         featureId: query.featureId,

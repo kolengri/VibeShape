@@ -81,6 +81,18 @@ export function createDocumentAutomationSession(
       },
     },
     geometry: {
+      async inspectBodyMeasurements(snapshot) {
+        if (closed) throw new Error("The browser automation session is closed.")
+        const result = await preview.preview(snapshot, undefined, { kind: "measurements" })
+        if (!result.ok) throw new Error(result.code)
+        return result.bodyMeasurements
+      },
+      async inspectBodyTopology(snapshot, target) {
+        if (closed) throw new Error("The browser automation session is closed.")
+        const result = await preview.preview(snapshot, undefined, { kind: "topology", ...target })
+        if (!result.ok) throw new Error(result.code)
+        return result.bodyTopology
+      },
       async inspectEdges(snapshot, featureId) {
         if (closed) throw new Error("The browser automation session is closed.")
         const result = await preview.preview(snapshot, featureId)

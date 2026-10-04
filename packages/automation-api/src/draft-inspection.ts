@@ -1,5 +1,8 @@
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
+import { modelBodyMeasurementEvidenceSchema } from "@vibeshape/domain/model-body-measurements"
+import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
 import { modelEdgeEvidenceSchema } from "@vibeshape/domain/model-edges"
+import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurements"
 import { z } from "zod"
 import { automationDraftStateSchema } from "./drafts"
 import {
@@ -7,8 +10,14 @@ import {
   cadInspectionDetailViewSchema,
   cadInspectionListQuerySchema,
   cadInspectionListViewSchema,
+  modelBodyMeasurementQuerySchema,
+  modelBodyMeasurementViewSchema,
+  modelBodyTopologyQuerySchema,
+  modelBodyTopologyViewSchema,
   modelEdgeQuerySchema,
   modelEdgeViewSchema,
+  modelMeasurementQuerySchema,
+  modelMeasurementViewSchema,
   variableListQuerySchema,
   variableListViewSchema,
 } from "./queries"
@@ -19,6 +28,9 @@ export const automationDraftInspectionQuerySchema = z.discriminatedUnion("kind",
   cadInspectionDetailQuerySchema,
   variableListQuerySchema,
   modelEdgeQuerySchema,
+  modelMeasurementQuerySchema,
+  modelBodyMeasurementQuerySchema,
+  modelBodyTopologyQuerySchema,
 ])
 
 export const automationDraftInspectionRequestSchema = z
@@ -38,6 +50,9 @@ export const automationDraftInspectionViewSchema = z
       cadInspectionDetailViewSchema,
       variableListViewSchema,
       modelEdgeViewSchema,
+      modelMeasurementViewSchema,
+      modelBodyMeasurementViewSchema,
+      modelBodyTopologyViewSchema,
     ]),
   })
   .strict()
@@ -50,6 +65,20 @@ export const automationDraftInspectionViewSchema = z
 export const automationDraftEdgeEvidenceSchema = modelEdgeEvidenceSchema.refine(
   (evidence) => serializedQueryBytes(evidence, 4 * 1024 * 1024) <= 4 * 1024 * 1024,
   "Draft edge evidence exceeds the 4 MiB catalog limit.",
+)
+
+export const automationDraftMeasurementEvidenceSchema = modelMeasurementEvidenceSchema.refine(
+  (evidence) => serializedQueryBytes(evidence, 4 * 1024 * 1024) <= 4 * 1024 * 1024,
+  "Draft measurement evidence exceeds the 4 MiB catalog limit.",
+)
+export const automationDraftBodyMeasurementEvidenceSchema =
+  modelBodyMeasurementEvidenceSchema.refine(
+    (evidence) => serializedQueryBytes(evidence, 4 * 1024 * 1024) <= 4 * 1024 * 1024,
+    "Draft body measurement evidence exceeds the 4 MiB catalog limit.",
+  )
+export const automationDraftBodyTopologyEvidenceSchema = modelBodyTopologyEvidenceSchema.refine(
+  (evidence) => serializedQueryBytes(evidence, 4 * 1024 * 1024) <= 4 * 1024 * 1024,
+  "Draft body topology evidence exceeds the 4 MiB catalog limit.",
 )
 
 export type AutomationDraftInspectionQuery = z.infer<typeof automationDraftInspectionQuerySchema>

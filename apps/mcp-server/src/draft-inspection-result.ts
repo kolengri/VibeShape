@@ -1,4 +1,7 @@
-import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
+import {
+  type AutomationDraftInspectionView,
+  automationDraftInspectionViewSchema,
+} from "@vibeshape/automation-api/draft-inspection"
 import type { LocalDraftInspectionOperation } from "@vibeshape/automation-api/local-tools"
 
 export function draftInspectionMatches(
@@ -40,5 +43,73 @@ export function draftInspectionMatches(
           (view.rebuildId === operation.arguments.cursor.rebuildId &&
             view.featureId === operation.arguments.cursor.featureId))
       )
+    case "draft_measurements":
+      return measurementMatches(operation, view)
+    case "draft_body_measurements":
+      return bodyMeasurementMatches(operation, view)
+    case "draft_body_topology":
+      return bodyTopologyMatches(operation, view)
   }
+}
+
+type DraftView = AutomationDraftInspectionView["view"]
+function measurementMatches(
+  operation: Extract<LocalDraftInspectionOperation, { tool: "draft_measurements" }>,
+  view: DraftView,
+) {
+  return (
+    view.kind === "org.vibeshape.model.measurements" &&
+    view.data.features.length <= operation.arguments.limit &&
+    view.data.features.every(
+      (feature) =>
+        operation.arguments.featureId === undefined ||
+        feature.featureId === operation.arguments.featureId,
+    )
+  )
+}
+function bodyMeasurementMatches(
+  operation: Extract<LocalDraftInspectionOperation, { tool: "draft_body_measurements" }>,
+  view: DraftView,
+) {
+  return (
+    view.kind === "org.vibeshape.model.body-measurements" &&
+    view.data.bodies.length <= operation.arguments.limit &&
+    view.data.bodies.every(
+      (body) =>
+        (operation.arguments.featureId === undefined ||
+          body.featureId === operation.arguments.featureId) &&
+        (operation.arguments.outputRole === undefined ||
+          body.outputRole === operation.arguments.outputRole),
+    )
+  )
+}
+function bodyTopologyMatches(
+  operation: Extract<LocalDraftInspectionOperation, { tool: "draft_body_topology" }>,
+  view: DraftView,
+) {
+  const args = operation.arguments
+  if (
+    view.kind !== "org.vibeshape.model.body-topology" ||
+    view.featureId !== args.featureId ||
+    view.outputRole !== args.outputRole ||
+    view.topologyKind !== args.topologyKind ||
+    view.data.topology.length > args.limit
+  )
+    return false
+  const cursor = args.cursor
+  return (
+    cursor === null ||
+    (
+      [
+        "documentId",
+        "revision",
+        "generation",
+        "rebuildId",
+        "contentHash",
+        "featureId",
+        "outputRole",
+        "topologyKind",
+      ] as const
+    ).every((key) => view[key] === cursor[key])
+  )
 }

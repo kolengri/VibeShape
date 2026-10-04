@@ -1,10 +1,16 @@
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import { type DocumentId, type FeatureId, featureIdSchema } from "@vibeshape/domain/identifiers"
+import type { ModelBodyTopologyEvidenceResult } from "@vibeshape/domain/model-body-topology"
 import type { ModelEdgeEvidenceResult } from "@vibeshape/domain/model-edges"
 import type { ModelMeasurementEvidence } from "@vibeshape/domain/model-measurements"
 import { type FeatureMeshPolicy, featureMeshPolicySchema } from "@vibeshape/protocol"
+import { createModelBodyTopologyEvidence } from "./model-body-topology"
 import { createModelEdgeEvidence } from "./model-edges"
-import { createModelMeasurementEvidence } from "./model-measurements"
+import {
+  createModelBodyMeasurementEvidence,
+  createModelMeasurementEvidence,
+  type ModelBodyMeasurementResult,
+} from "./model-measurements"
 import type { DocumentRebuildPort } from "./persistent-document-session"
 
 export type DisposableDocumentPreviewFailureCode =
@@ -21,6 +27,8 @@ export type DisposableDocumentPreviewResult =
       evidence: ModelMeasurementEvidence
       valid: boolean
       edges?: ModelEdgeEvidenceResult
+      bodyMeasurements?: ModelBodyMeasurementResult
+      bodyTopology?: ModelBodyTopologyEvidenceResult
     }
   | { ok: false; code: DisposableDocumentPreviewFailureCode }
 
@@ -28,10 +36,15 @@ export type DisposableDocumentPreview = Readonly<{
   preview: (
     snapshot: DocumentSnapshot,
     edgeFeatureId?: FeatureId,
+    bodyInspection?: DisposableBodyInspection,
   ) => Promise<DisposableDocumentPreviewResult>
   cancel: () => void
   dispose: () => void
 }>
+
+export type DisposableBodyInspection =
+  | { kind: "measurements" }
+  | { kind: "topology"; featureId: FeatureId; outputRole: string; topologyKind: "edge" | "face" }
 
 export type DisposableDocumentPreviewOptions = Readonly<{
   createRebuildPort: (documentId: DocumentId) => DocumentRebuildPort
@@ -93,6 +106,7 @@ export function createDisposableDocumentPreview(
     operation: PendingPreview,
     snapshot: DocumentSnapshot,
     edgeFeatureId?: FeatureId,
+    bodyInspection?: DisposableBodyInspection,
   ): Promise<void> {
     try {
       const response = await operation.port.rebuild({ document: snapshot, mesh })
@@ -112,6 +126,7 @@ export function createDisposableDocumentPreview(
         ...(edgeFeatureId === undefined
           ? {}
           : { edges: createModelEdgeEvidence(snapshot, { ok: true, response }, edgeFeatureId) }),
+        ...projectBodyInspection(snapshot, response, bodyInspection),
       })
     } catch {
       if (!operation.settled) settle(operation, failure("preview-failed"))
@@ -121,6 +136,7 @@ export function createDisposableDocumentPreview(
   function preview(
     input: DocumentSnapshot,
     edgeFeatureId?: FeatureId,
+    bodyInspection?: DisposableBodyInspection,
   ): Promise<DisposableDocumentPreviewResult> {
     if (disposed) return Promise.resolve(failure("preview-disposed"))
     cancel()
@@ -145,9 +161,32 @@ export function createDisposableDocumentPreview(
         terminated: false,
       }
       pending = operation
-      void run(operation, parsed.data, edgeFeatureId)
+      void run(operation, parsed.data, edgeFeatureId, bodyInspection)
     })
   }
 
   return { preview, cancel, dispose }
+}
+
+function projectBodyInspection(
+  snapshot: DocumentSnapshot,
+  response: Awaited<ReturnType<DocumentRebuildPort["rebuild"]>>,
+  bodyInspection: DisposableBodyInspection | undefined,
+) {
+  if (!bodyInspection) return {}
+  if (bodyInspection.kind === "measurements")
+    return {
+      bodyMeasurements: createModelBodyMeasurementEvidence(snapshot, { ok: true, response }),
+    }
+  return {
+    bodyTopology: createModelBodyTopologyEvidence(
+      snapshot,
+      { ok: true, response },
+      {
+        featureId: bodyInspection.featureId,
+        outputRole: bodyInspection.outputRole,
+        kind: bodyInspection.topologyKind,
+      },
+    ),
+  }
 }

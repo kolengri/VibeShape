@@ -93,6 +93,26 @@ function portFor(
 }
 
 describe("createDisposableDocumentPreview", () => {
+  it("detaches requested draft body measurements before terminating its isolated port", async () => {
+    let terminated = 0
+    const preview = createDisposableDocumentPreview({
+      mesh,
+      createRebuildPort: () =>
+        portFor(
+          async () => response() as never,
+          () => {
+            terminated += 1
+          },
+        ),
+    })
+    await expect(
+      preview.preview(snapshot(), undefined, { kind: "measurements" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      bodyMeasurements: { ok: true, evidence: { documentId, revision: 4, bodies: [] } },
+    })
+    expect(terminated).toBe(1)
+  })
   it("resolves cancellation immediately and consumes a late rebuild", async () => {
     const pending = deferred()
     let terminated = 0

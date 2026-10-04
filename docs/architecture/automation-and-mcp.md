@@ -341,7 +341,8 @@ MCP never expands an extension's capability grant. An MCP client also receives n
 
 ## Owned draft inspection
 
-`draft_tree`, `draft_entity`, `draft_variables` and `draft_edges` require the owned draft ID and its
+`draft_tree`, `draft_entity`, `draft_variables`, `draft_edges`, `draft_measurements`,
+`draft_body_measurements` and `draft_body_topology` require the owned draft ID and its
 exact current revision. They dispatch the existing registered queries over the draft snapshot and
 return `{ schemaVersion, draft, view }`. The browser injects the paired document; the broker binds
 successful responses to the draft, revision, view kind, target and edge cursor. Inspection is
@@ -354,6 +355,13 @@ with no meshes or native handles. Pages reuse its rebuild identity. Commands inv
 catalogs; stale cursors require restarting at `cursor: null`. Ownership, expiration and the committed
 base revision are checked before and after asynchronous work. Creating source geometry, inspecting
 edges and repairing selected treatments can therefore precede one final browser Apply.
+
+`model_measurements` and `draft_measurements` expose paged feature measurements and evaluation
+diagnostics. Their default scope remains terminal outputs; `scope: "all"` includes upstream
+failures and blocked dependencies. Draft body measurements and body topology use the same exact
+projectors as committed reads, before terminating the isolated worker. The single detached cache
+is shared across geometry inspection kinds; switching kinds or targets can evict a cursor.
+No worker, mesh, native handle, or persistent rebuild is retained. See [ADR-0082](../adr/0082-owned-draft-body-inspection-and-diagnostics.md).
 
 ## Security and privacy
 

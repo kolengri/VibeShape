@@ -121,7 +121,13 @@ function edgeEvidence(snapshot: DocumentSnapshot, rebuildId = "draft-rebuild") {
 }
 
 function hostFixture(
-  options: { now?: () => number; inspectEdges?: (snapshot: DocumentSnapshot) => unknown } = {},
+  options: {
+    now?: () => number
+    inspectEdges?: (snapshot: DocumentSnapshot) => unknown
+    evaluate?: (snapshot: DocumentSnapshot) => unknown
+    inspectBodyMeasurements?: (snapshot: DocumentSnapshot) => unknown
+    inspectBodyTopology?: (snapshot: DocumentSnapshot) => unknown
+  } = {},
 ) {
   const snapshot = snapshotWithBox()
   let current: DocumentSnapshot | null = snapshot
@@ -138,8 +144,14 @@ function hostFixture(
     }),
   }
   const geometry = {
-    evaluate: vi.fn(),
+    evaluate: vi.fn(options.evaluate),
     ...(options.inspectEdges ? { inspectEdges: vi.fn(options.inspectEdges) } : {}),
+    ...(options.inspectBodyMeasurements
+      ? { inspectBodyMeasurements: vi.fn(options.inspectBodyMeasurements) }
+      : {}),
+    ...(options.inspectBodyTopology
+      ? { inspectBodyTopology: vi.fn(options.inspectBodyTopology) }
+      : {}),
   }
   const created = createAutomationHost({
     ...dispatchers(),
@@ -174,6 +186,164 @@ function request(fixture: ReturnType<typeof hostFixture>, query: Record<string, 
 }
 
 describe("automation draft inspection", () => {
+  it("pages draft bodies without retaining a worker and fails closed on unavailable topology", async () => {
+    const shape = {
+      valid: true,
+      volume: 24000,
+      surfaceArea: 5200,
+      bounds: { min: [-10, -15, -20], max: [10, 15, 20] },
+      solidCount: 1,
+      faceCount: 6,
+      edgeCount: 12,
+    }
+    const fixture = hostFixture({
+      inspectBodyMeasurements: (snapshot) => ({
+        ok: true,
+        evidence: {
+          schemaVersion: 1,
+          documentId: snapshot.id,
+          revision: snapshot.revision,
+          generation: 1,
+          features: [{ featureId, status: "succeeded", contentHash: "a".repeat(64), shape }],
+          bodies: [{ featureId, outputRole: "result", contentHash: "a".repeat(64), shape }],
+        },
+      }),
+    })
+    const first = await request(fixture, {
+      kind: "org.vibeshape.model.body-measurements",
+      schemaVersion: 1,
+      featureId,
+      outputRole: "result",
+      limit: 1,
+    })
+    expect(first).toMatchObject({
+      ok: true,
+      value: { view: { data: { total: 1, bodies: [{ featureId, outputRole: "result", shape }] } } },
+    })
+    if (!first.ok) throw new Error(first.diagnostic.message)
+    await expect(
+      fixture.host.inspectDraft(actor, {
+        schemaVersion: 1,
+        draftId,
+        query: {
+          kind: "org.vibeshape.model.body-measurements",
+          schemaVersion: 1,
+          documentId,
+          revision: first.value.draft.revision,
+          cursor: "1",
+          limit: 1,
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { view: { data: { bodies: [] } } } })
+    expect(fixture.geometry.inspectBodyMeasurements).toHaveBeenCalledOnce()
+    await expect(
+      fixture.host.inspectDraft(actor, {
+        schemaVersion: 1,
+        draftId,
+        query: {
+          kind: "org.vibeshape.model.body-topology",
+          schemaVersion: 1,
+          documentId,
+          revision: first.value.draft.revision,
+          featureId,
+          outputRole: "result",
+          topologyKind: "face",
+        },
+      }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "geometry-unavailable" } })
+  })
+
+  it("rejects a topology catalog for another output body", async () => {
+    const fixture = hostFixture({
+      inspectBodyTopology: (snapshot) => ({
+        ok: true,
+        evidence: {
+          schemaVersion: 1,
+          documentId: snapshot.id,
+          revision: snapshot.revision,
+          generation: 1,
+          rebuildId: "draft-body-rebuild",
+          featureId,
+          outputRole: "wrong-body",
+          contentHash: "a".repeat(64),
+          kind: "face",
+          candidates: [],
+        },
+      }),
+    })
+    await expect(
+      request(fixture, {
+        kind: "org.vibeshape.model.body-topology",
+        schemaVersion: 1,
+        featureId,
+        outputRole: "result",
+        topologyKind: "face",
+      }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
+  })
+  it("reads failed draft measurements once, retains detached evidence and rejects cold paging", async () => {
+    const fixture = hostFixture({
+      evaluate: (snapshot) => ({
+        schemaVersion: 1,
+        documentId: snapshot.id,
+        revision: snapshot.revision,
+        generation: 1,
+        features: [
+          { featureId, status: "failed", diagnosticCodes: ["org.vibeshape.geometry.invalid"] },
+        ],
+      }),
+    })
+    const query = {
+      kind: "org.vibeshape.model.measurements",
+      schemaVersion: 1,
+      scope: "all",
+      limit: 1,
+    }
+    const first = await request(fixture, query)
+    expect(first).toMatchObject({
+      ok: true,
+      value: { view: { data: { features: [{ featureId, status: "failed" }] } } },
+    })
+    if (!first.ok) throw new Error(first.diagnostic.message)
+    await expect(
+      fixture.host.inspectDraft(actor, {
+        schemaVersion: 1,
+        draftId,
+        query: { ...query, documentId, revision: first.value.draft.revision, cursor: "1" },
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { view: { data: { features: [] } } } })
+    expect(fixture.geometry.evaluate).toHaveBeenCalledOnce()
+    const cold = hostFixture({
+      evaluate: () => {
+        throw new Error("Cold paging must not rebuild.")
+      },
+    })
+    await expect(request(cold, { ...query, cursor: "1" })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-geometry" },
+    })
+    expect(cold.geometry.evaluate).not.toHaveBeenCalled()
+  })
+
+  it("rejects measurements from another revision without caching them", async () => {
+    const fixture = hostFixture({
+      evaluate: (snapshot) => ({
+        schemaVersion: 1,
+        documentId: snapshot.id,
+        revision: snapshot.revision + 1,
+        generation: 1,
+        features: [
+          { featureId, status: "failed", diagnosticCodes: ["org.vibeshape.geometry.invalid"] },
+        ],
+      }),
+    })
+    await expect(
+      request(fixture, { kind: "org.vibeshape.model.measurements", schemaVersion: 1 }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-geometry" },
+    })
+  })
   it("serves semantic inspection without geometry and binds ownership and revision", async () => {
     const fixture = hostFixture()
     const result = await request(fixture, {
