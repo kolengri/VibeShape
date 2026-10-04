@@ -1,5 +1,7 @@
 import type { AutomationDraftPreview } from "@vibeshape/automation-api/drafts"
+import type { AssemblyReviewInput } from "@vibeshape/automation-host/assembly-session-contract"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
+import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
 import { documentCoreModule, featureCoreModule } from "@vibeshape/domain/modules"
 import { quantitySchema } from "@vibeshape/domain/units"
@@ -19,6 +21,8 @@ import { useSurfaceTexturePreviewContext } from "../features/surface-texture/sur
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
+import { isImportReview } from "./automation-review-state"
+import { ImportReviewPanel } from "./import-review-panel"
 import { SurfaceTextureReviewPanel } from "./surface-texture-review-panel"
 
 const commandLabels: Readonly<Record<DocumentCommand["kind"], string>> = {
@@ -363,36 +367,56 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
 }
 
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
+  if (isImportReview(review.input))
+    return <ImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
+  if ("kind" in review.input && review.input.kind === "surface-texture")
+    return <SurfaceTextureProposalReview review={{ ...review, input: review.input }} />
+  return <CadReviewPanel review={{ ...review, input: review.input }} />
+}
+
+function SurfaceTextureProposalReview({
+  review,
+}: {
+  review: Omit<AutomationReviewState, "input"> & { input: SurfaceTextureReviewInput }
+}) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const texture = useSurfaceTexturePreviewContext()
   const { input } = review
-  if ("kind" in input && input.kind === "surface-texture")
-    return (
-      <SurfaceTextureReviewPanel
-        input={input}
-        client={actorLabel(input.actor, t)}
-        diagnostic={<ReviewDiagnostic review={review} />}
-        previewStatus={texture?.status ?? "loading"}
-        actions={
-          <ReviewActions
-            commands={[]}
-            review={review}
-            t={t}
-            destructive={input.operation === "remove"}
-            ready={
-              !input.command.payload.layers.some((layer) => layer.enabled) ||
-              Boolean(
-                texture?.draft &&
-                  texture.draft.documentId === input.command.documentId &&
-                  texture.draft.revision === input.draft.baseRevision &&
-                  texture.readyDraft === texture.draft &&
-                  texture.status === "ready",
-              )
-            }
-          />
-        }
-      />
-    )
+  return (
+    <SurfaceTextureReviewPanel
+      input={input}
+      client={actorLabel(input.actor, t)}
+      diagnostic={<ReviewDiagnostic review={review} />}
+      previewStatus={texture?.status ?? "loading"}
+      actions={
+        <ReviewActions
+          commands={[]}
+          review={review}
+          t={t}
+          destructive={input.operation === "remove"}
+          ready={
+            !input.command.payload.layers.some((layer) => layer.enabled) ||
+            Boolean(
+              texture?.draft &&
+                texture.draft.documentId === input.command.documentId &&
+                texture.draft.revision === input.draft.baseRevision &&
+                texture.readyDraft === texture.draft &&
+                texture.status === "ready",
+            )
+          }
+        />
+      }
+    />
+  )
+}
+
+function CadReviewPanel({
+  review,
+}: {
+  review: Omit<AutomationReviewState, "input"> & { input: DraftReviewInput | AssemblyReviewInput }
+}) {
+  const t = useTranslations("app.shell.taskPanel.automationReview")
+  const { input } = review
   if ("kind" in input)
     return (
       <AssemblyAutomationReviewPanel

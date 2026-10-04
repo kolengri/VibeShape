@@ -17,6 +17,11 @@ import {
   automationDraftStateSchema,
 } from "@vibeshape/automation-api/drafts"
 import {
+  importResultMatches,
+  isLocalImport,
+  type LocalImportOperation,
+} from "@vibeshape/automation-api/imports"
+import {
   createLocalAutomationActor,
   LOCAL_AUTOMATION_PATH,
   localConnectRequestSchema,
@@ -321,12 +326,15 @@ function resultContextMatches(
     return metadataListMatches(operation, result.value, documentId)
   if (operation.tool === "change_metadata")
     return metadataCommitMatches(operation, result.value, documentId)
+  if (isLocalImport(operation)) return importResultMatches(operation, result.value, documentId)
   return resultMatches(operation, result, documentId)
 }
 function resultMatches(
   operation: Exclude<
     LocalOperation,
-    LocalMetadataReadOperation | Extract<LocalOperation, { tool: "change_metadata" }>
+    | LocalMetadataReadOperation
+    | Extract<LocalOperation, { tool: "change_metadata" }>
+    | LocalImportOperation
   >,
   result: LocalToolResult,
   documentId: string,

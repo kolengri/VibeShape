@@ -2307,6 +2307,7 @@ function EditorTaskPanel({
   holePicking,
   shellPicking,
   featurePreviewStatus,
+  featurePreviewDiagnostic,
   featureProfileSelections,
   onFeatureProfileRemove,
   onFeatureProfilesClear,
@@ -2322,6 +2323,7 @@ function EditorTaskPanel({
   edgeTreatmentPicking: ReturnType<typeof useEdgeTreatmentPicking>
   holePicking: ReturnType<typeof useHolePointPicking>
   shellPicking: ReturnType<typeof useShellFacePicking>
+  featurePreviewDiagnostic?: string | undefined
   featurePreviewStatus: ReturnType<typeof useFeaturePreview>["status"]
   featureProfileSelections: readonly SketchProfileSelector[]
   onFeatureProfileRemove: (profile: SketchProfileSelector) => void
@@ -2337,11 +2339,7 @@ function EditorTaskPanel({
 }) {
   const { actions } = props
   if (review) return <AutomationReviewPanel review={review} />
-  const selectedMeasurementBody = selectedMeasurementBodyForTaskPanel(props)
-  const selectedAxisLabel = revolveAxisSelection
-    ? revolveAxisCandidates.find(({ axis }) => revolveAxisIntentsMatch(axis, revolveAxisSelection))
-        ?.label
-    : undefined
+  const selectedAxisLabel = taskPanelRevolveAxisLabel(revolveAxisSelection, revolveAxisCandidates)
   return (
     <TaskPanel
       holePickingRequest={holePicking.request}
@@ -2354,12 +2352,9 @@ function EditorTaskPanel({
       activeSketchTool={props.activeSketchTool}
       activeTool={props.activeTool}
       controller={props.controller}
-      selectedFeatureId={selectedMeasurementBody.featureId}
-      selectedFace={props.selection}
-      {...(selectedMeasurementBody.outputRole === undefined
-        ? {}
-        : { selectedOutputRole: selectedMeasurementBody.outputRole })}
+      {...taskPanelMeasurementSelection(props)}
       featurePreviewStatus={featurePreviewStatus}
+      featurePreviewDiagnostic={featurePreviewDiagnostic}
       featureProfileSelections={featureProfileSelections}
       onFeatureProfileRemove={onFeatureProfileRemove}
       onFeatureProfilesClear={onFeatureProfilesClear}
@@ -2596,6 +2591,7 @@ function EditorWorkspaceContent(props: EditorWorkspaceProps) {
               edgeTreatmentPicking={edgeTreatmentPicking}
               shellPicking={shellPicking}
               featurePreviewStatus={featurePreview.status}
+              featurePreviewDiagnostic={featurePreview.diagnostic}
               featureProfileSelections={featureProfileSelection.value}
               onFeatureProfileRemove={removeFeatureProfile}
               onFeatureProfilesClear={clearFeatureProfiles}
@@ -2645,4 +2641,21 @@ function taskPanelActivityKey(
     return `feature:${props.activeTool.kind}:${activeFeatureId(props.activeTool) ?? "create"}`
   }
   return props.workspace === "variables" ? "variables" : null
+}
+
+function taskPanelMeasurementSelection(props: EditorWorkspaceProps) {
+  const selected = selectedMeasurementBodyForTaskPanel(props)
+  return {
+    selectedFeatureId: selected.featureId,
+    selectedFace: props.selection,
+    ...(selected.outputRole === undefined ? {} : { selectedOutputRole: selected.outputRole }),
+  }
+}
+function taskPanelRevolveAxisLabel(
+  selection: RevolveAxis | null,
+  candidates: readonly RevolveAxisCandidate[],
+) {
+  return selection
+    ? candidates.find(({ axis }) => revolveAxisIntentsMatch(axis, selection))?.label
+    : undefined
 }

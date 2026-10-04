@@ -192,7 +192,7 @@ function analyticalEllipseEdge(
   )
 }
 
-function analyticalEdge(
+export function createAnalyticalEdge(
   opencascade: OpenCascadeInstance,
   frame: AnalyticalFrame,
   segment: AnalyticalSegment,
@@ -275,7 +275,7 @@ export function createAnalyticalWire(
   const edges: Edge[] = []
   try {
     for (const segment of reverse ? [...segments].reverse() : segments)
-      edges.push(analyticalEdge(opencascade, frame, segment, reverse))
+      edges.push(createAnalyticalEdge(opencascade, frame, segment, reverse))
     const builder = new opencascade.BRepBuilderAPI_MakeWire_1()
     try {
       for (const edge of edges) builder.Add_1(edge.wrapped)

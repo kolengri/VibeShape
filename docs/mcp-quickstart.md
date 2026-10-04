@@ -71,7 +71,7 @@ Both local and paired remote MCP expose `create_datum_plane`/`update_datum_plane
 offset intent. Boolean subtraction retains legacy whole-result target/tool semantics; Union and
 Compound select ordered exact bodies through schema v2. Read the
 [modeling contract](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
-before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1 creation
+before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1/v2/v3 creation
 and same-version edits; Compound and version-upgrade edits still require review.
 
 The current MCP surface is a supported subset of the editor, not full CAD parity. Placement and
@@ -100,10 +100,34 @@ diagnostics. Each bounded page includes native solver status and DOF. Usable pro
 provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
 after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.
 
+## Native source import
+
+Both paired transports expose `begin_import_upload`, `append_import_chunk`, `inspect_import_upload`,
+`commit_import_upload` and `discard_import_upload`. Native STEP/STP/BREP/STL/3MF files use one
+actor-owned upload, a computed SHA-256 and captured output roles, followed by explicit native
+inspection and manual browser review. Apply publishes source bytes, feature and Parts through
+one ordinary atomic CAS transaction; upload/inspection/discard never save geometry. Meshes retain
+triangle representation and have no exact volume.
+
+MCP sources are limited to 6 MiB and 90 KiB decoded chunks. The maximum transfer needs 69 appends
+and 73 total operations including begin/inspect/commit/discard, within the existing remote
+128-operation lifetime. Pace calls for 30 operations/minute and the five-minute idle expiry.
+The 192 KiB remote work budget is unchanged. Known units are required for STEP/BREP/STL; 3MF uses
+its declared units. Paths, URLs, caller hashes, pins and provenance are not accepted. See
+[ADR-0091](adr/0091-paired-native-source-imports.md) and the bundled modeling native-import workflow.
+SVG/DXF sketch and editable `.vshape` project import remain separate editor workflows.
+
 Assembly and local-library tools use the same paired authority on local and remote MCP. Read the
 [assembly/library workflow](../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)
 for private draft versions, topology frames, immutable component versions and mandatory manual Apply.
 Assembly previews are unsaved; callers cannot provide frozen pins or source bytes.
+
+`model_surface_textures` reads bounded exact-revision layer summaries. `create_surface_texture`,
+`update_surface_texture` and `remove_surface_texture` use owned proposals with mandatory native
+relief preview and manual Apply. Packed grayscale maps support the full 256 by 256 editor size;
+omitted map, face scope and mask stay unchanged on update. Removal requires destructive confirmation.
+Native backups preserve editability; STL/3MF bake enabled relief and STEP stays untextured. Read the
+[surface texture workflow](../.agents/skills/vibeshape-modeling/references/surface-textures.md).
 
 Exact-body modifying operations are additive: `create_body_revolve`/`update_body_revolve` author
 Revolve v7 Add/Remove/Intersect on a stable target role; `create_body_subtract`/`update_body_subtract`

@@ -8,12 +8,25 @@ import type {
   DraftReviewInput,
 } from "@vibeshape/automation-host/host"
 import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
+import type { ImportReviewInput } from "./import-upload-session"
+
+export type AutomationReviewInput =
+  | DraftReviewInput
+  | AssemblyReviewInput
+  | ImportReviewInput
+  | SurfaceTextureReviewInput
+export function isImportReview(input: AutomationReviewInput): input is ImportReviewInput {
+  return "kind" in input && input.kind === "import"
+}
+function expiresAt(input: AutomationReviewInput) {
+  return "kind" in input ? input.draft.expiresAt : input.preview.draft.expiresAt
+}
 
 type Decision = "approved" | "rejected" | "cancelled"
 
 export type AutomationReviewState = Readonly<{
   id: string
-  input: DraftReviewInput | AssemblyReviewInput | SurfaceTextureReviewInput
+  input: AutomationReviewInput
   status: "ready" | "applying" | "error"
   diagnostic: string | null
 }>
@@ -58,14 +71,9 @@ export function createAutomationReviewController() {
     pending = null
   }
 
-  function request(
-    owner: symbol,
-    input: DraftReviewInput | AssemblyReviewInput | SurfaceTextureReviewInput,
-  ): Promise<Decision> {
+  function request(owner: symbol, input: AutomationReviewInput): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
-    const expiresIn =
-      Date.parse("kind" in input ? input.draft.expiresAt : input.preview.draft.expiresAt) -
-      Date.now()
+    const expiresIn = Date.parse(expiresAt(input)) - Date.now()
     if (!Number.isFinite(expiresIn) || expiresIn <= 0) return Promise.resolve("cancelled")
     let finish = () => {}
     const completed = new Promise<void>((resolve) => {
@@ -90,12 +98,7 @@ export function createAutomationReviewController() {
   function decide(id: string, decision: "approved" | "rejected"): Promise<void> {
     const record = pending
     if (!record || record.id !== id || !state || state.status !== "ready") return Promise.resolve()
-    if (
-      Date.now() >=
-      Date.parse(
-        "kind" in state.input ? state.input.draft.expiresAt : state.input.preview.draft.expiresAt,
-      )
-    ) {
+    if (Date.now() >= Date.parse(expiresAt(state.input))) {
       cancel(record.owner, "draft-expired")
       return Promise.resolve()
     }

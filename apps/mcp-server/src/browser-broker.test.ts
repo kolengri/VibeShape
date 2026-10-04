@@ -1,7 +1,9 @@
 // @vitest-environment node
 
+import { IMPORT_UPLOAD_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/imports"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import { createBrowserBroker } from "./browser-broker"
 
 const origin = "http://127.0.0.1:43114"
@@ -88,6 +90,96 @@ describe("browser automation broker", () => {
     expect((await respond()).status).toBe(200)
     await expect(pending).resolves.toEqual({ ok: true, value })
   })
+  it("rejects forged solid STL inspection before forwarding a valid mesh result", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const value = nativeImportInspection("stl")
+    value.upload.documentId = document.id
+    const operation = localOperationSchema.parse({
+      tool: "inspect_import_upload",
+      arguments: { uploadId: value.upload.uploadId },
+    })
+    const pending = broker.invoke(operation)
+    const polled = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = (await polled.json()) as { work: { requestId: string } }
+    const respond = (inspection: unknown) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: operation.tool,
+            result: { ok: true, value: inspection },
+          },
+          token,
+        ),
+      )
+    const forged = {
+      ...value,
+      representation: "exact-solid",
+      outputs: value.outputs.map((output) => ({ ...output, volumeMm3: 1 })),
+    }
+    const rejected = await respond(forged)
+    expect(rejected.status).toBe(400)
+    expect(await rejected.json()).toMatchObject({ diagnostic: { code: "invalid-result" } })
+    expect((await respond(value)).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value })
+  })
+
+  it("correlates an import's captured document, base and source intent before accepting its browser result", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const operation = localOperationSchema.parse({
+      tool: "begin_import_upload",
+      arguments: { revision: 4, filename: "source.step", byteLength: 3, sourceUnit: "millimeter" },
+    })
+    const pending = broker.invoke(operation)
+    const polled = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const body = (await polled.json()) as { work: { requestId: string } }
+    const value = {
+      uploadId: "0195b5ac-b250-7a2c-8c33-000000000001",
+      documentId: document.id,
+      baseRevision: 4,
+      uploadVersion: 0,
+      filename: "source.step",
+      byteLength: 3,
+      sourceUnit: "millimeter",
+      format: "step",
+      receivedBytes: 0,
+      sha256: null,
+      status: "uploading",
+      expiresAt: "2099-10-04T00:00:00Z",
+      chunkMaxBytes: IMPORT_UPLOAD_CHUNK_MAX_BYTES,
+    }
+    const respond = (value: unknown) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: body.work.requestId,
+            tool: operation.tool,
+            result: { ok: true, value },
+          },
+          token,
+        ),
+      )
+    for (const wrong of [
+      { ...value, documentId: "0195b5ac-b250-7a2c-8c33-000000000002" },
+      { ...value, baseRevision: 5 },
+      { ...value, byteLength: 4 },
+      { ...value, uploadVersion: 1 },
+    ])
+      expect((await respond(wrong)).status).toBe(400)
+    expect((await respond(value)).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value })
+  })
+
   it("requires the exact unique unordered interference pair set before forwarding inspection", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)

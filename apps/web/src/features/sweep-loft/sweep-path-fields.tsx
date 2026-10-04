@@ -29,8 +29,6 @@ export function SweepPathFields({
   copy: SweepPathCopy
   onChange: (values: Partial<SweepLoftFormValues>) => void
 }) {
-  const path = paths.find(({ sketch }) => sketch.id === values.pathSketchId)
-  const points = selectedPathPointIds(path, values.entityIds)
   return (
     <>
       <label htmlFor="sweep-profile" className="grid gap-2 text-sm">
@@ -49,10 +47,42 @@ export function SweepPathFields({
           ))}
         </NativeSelect>
       </label>
-      <label htmlFor="sweep-path-sketch" className="grid gap-2 text-sm">
+      <SketchPathFields
+        values={values}
+        paths={paths}
+        copy={copy}
+        onChange={onChange}
+        idPrefix="sweep"
+      />
+    </>
+  )
+}
+
+export type SketchPathValues = Pick<
+  SweepLoftFormValues,
+  "pathSketchId" | "entityIds" | "startPointId"
+>
+export function SketchPathFields({
+  values,
+  paths,
+  copy,
+  onChange,
+  idPrefix,
+}: {
+  values: SketchPathValues
+  paths: readonly PathSketchOption[]
+  copy: SweepPathCopy
+  onChange: (values: Partial<SketchPathValues>) => void
+  idPrefix: string
+}) {
+  const path = paths.find(({ sketch }) => sketch.id === values.pathSketchId)
+  const points = selectedPathPointIds(path, values.entityIds)
+  return (
+    <>
+      <label htmlFor={`${idPrefix}-path-sketch`} className="grid gap-2 text-sm">
         <span>{copy.pathSketch}</span>
         <NativeSelect
-          id="sweep-path-sketch"
+          id={`${idPrefix}-path-sketch`}
           aria-label={copy.pathSketch}
           value={values.pathSketchId}
           onChange={(event) =>
@@ -94,10 +124,10 @@ export function SweepPathFields({
         )}
         <p className="text-xs text-muted-foreground">{copy.pathDescription}</p>
       </fieldset>
-      <label htmlFor="sweep-start-point" className="grid gap-2 text-sm">
+      <label htmlFor={`${idPrefix}-start-point`} className="grid gap-2 text-sm">
         <span>{copy.startPoint}</span>
         <NativeSelect
-          id="sweep-start-point"
+          id={`${idPrefix}-start-point`}
           aria-label={copy.startPoint}
           value={values.startPointId}
           onChange={(event) => onChange({ startPointId: event.currentTarget.value })}

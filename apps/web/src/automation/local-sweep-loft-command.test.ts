@@ -1,8 +1,10 @@
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain"
-import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { describe, expect, it } from "vitest"
+import { createLoftV3Project } from "../../../../tests/support/loft-v3-fixture"
 import { createLocalCadCommand } from "./local-cad-command"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -33,6 +35,60 @@ const actor = commandActorSchema.parse({
   sessionId: id(50),
 })
 describe("ordinary Sweep and Loft draft tools", () => {
+  it.each(["create_loft", "update_loft"] as const)(
+    "preserves v2 hole tracks and v3 exact curve constraints through %s",
+    (tool) => {
+      const fixture = createLoftV3Project()
+      const hollowSections = fixture.sections.map((section, index) => ({
+        ...section,
+        holeBoundaryEntityIds: [[id(index + 500)]],
+      }))
+      const variants = [
+        {
+          type: loftFeatureTypeV2.type,
+          parameters: {
+            sections: hollowSections,
+            ruled: false,
+            holeCorrespondence: [
+              {
+                sectionBoundaryEntityIds: hollowSections.map(
+                  ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds[0],
+                ),
+              },
+            ],
+          },
+        },
+        {
+          type: loftFeatureTypeV3.type,
+          parameters: {
+            sections: fixture.sections,
+            ruled: false,
+            outerCorrespondence: fixture.outerCorrespondence,
+            rails: [{ vertexTrack: 0, path: fixture.railPath }],
+            guides: [
+              { name: "Wall guide", segmentTrack: 0, continuity: "C0", path: fixture.guidePath },
+            ],
+            start: [],
+            end: [],
+          },
+        },
+      ]
+      for (const { type, parameters } of variants) {
+        const operation = localOperationSchema.parse({ tool, arguments: { ...base, parameters } })
+        if (operation.tool !== "create_loft" && operation.tool !== "update_loft")
+          throw new Error("Expected Loft adapter")
+        expect(createLocalCadCommand(operation, actor, id(60))).toMatchObject({
+          command: { payload: { feature: { type, parameters } } },
+        })
+        expect(
+          localOperationSchema.safeParse({
+            tool,
+            arguments: { ...base, parameters: { ...parameters, guideSmoothing: "ignored" } },
+          }).success,
+        ).toBe(false)
+      }
+    },
+  )
   it.each([19, 24])(
     "preserves %i Loft sections and producer dependencies through draft dispatch",
     (count) => {

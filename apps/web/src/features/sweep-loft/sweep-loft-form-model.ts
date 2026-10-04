@@ -21,11 +21,26 @@ import {
   readLoftFeatureParameters,
 } from "@vibeshape/domain/part-design-loft"
 import {
+  type LoftFeatureParametersV3,
+  loftFeatureParametersV3Schema,
+  loftFeatureTypeV3,
+  loftV3SketchIds,
+  loftV3SupportBodies,
+  MAX_LOFT_V3_DEPENDENCIES,
+  readLoftFeatureParametersV3,
+} from "@vibeshape/domain/part-design-loft-v3"
+import {
   readSweepFeatureParameters,
   sweepFeatureParametersSchema,
   sweepFeatureType,
 } from "@vibeshape/domain/part-design-sweep"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
+import {
+  type LoftConstraintValues,
+  type LoftSupportOption,
+  loftConstraintValues,
+  loftSupportKey,
+} from "./loft-constraint-model"
 
 export type ProfileOption = Readonly<{
   selector: SketchProfileSelector
@@ -53,7 +68,7 @@ export type SweepLoftFormMode =
       featureLabel: string
     }>
   | Readonly<{ kind: "edit"; operation: SweepLoftOperation; feature: FeatureRecord }>
-export type SweepLoftFormValues = {
+export type SweepLoftFormValues = LoftConstraintValues & {
   sections: SketchProfileSelector[]
   holeCorrespondence: { sectionBoundaryEntityIds: SketchEntityId[][] }[]
   ruled: boolean
@@ -63,9 +78,13 @@ export type SweepLoftFormValues = {
   startPointId: string
 }
 export function sweepLoftFormValues(mode: SweepLoftFormMode): SweepLoftFormValues {
-  const loft = mode.kind === "edit" ? readLoftFeatureParameters(mode.feature) : null
+  const loft =
+    mode.kind === "edit"
+      ? (readLoftFeatureParametersV3(mode.feature) ?? readLoftFeatureParameters(mode.feature))
+      : null
   const sweep = mode.kind === "edit" ? readSweepFeatureParameters(mode.feature) : null
   return {
+    ...loftConstraintValues(mode),
     sections: [...(loft?.sections ?? [])],
     holeCorrespondence:
       loft && "holeCorrespondence" in loft
@@ -131,13 +150,39 @@ function loftParameters(
   values: SweepLoftFormValues,
   profiles: readonly ProfileOption[],
   preserveV2: boolean,
-) {
+  supports: readonly LoftSupportOption[],
+): NonNullable<ReturnType<typeof readLoftFeatureParameters>> | LoftFeatureParametersV3 | null {
   if (
     values.sections.some(
       (selector) => !profiles.some(({ key }) => key === sketchProfileSelectorKey(selector)),
     )
   )
     return null
+  if (values.constrained) {
+    if (values.ruled) return null
+    if (
+      [...values.start, ...values.end].some(
+        ({ support }) => !support || !supports.some(({ key }) => key === loftSupportKey(support)),
+      )
+    )
+      return null
+    const parsed = loftFeatureParametersV3Schema.safeParse({
+      sections: values.sections,
+      ruled: false,
+      outerCorrespondence: values.outerCorrespondence,
+      rails: values.rails.map(({ path, ...rail }) => ({
+        ...rail,
+        path: { schemaVersion: 0, ...path },
+      })),
+      guides: values.guides.map(({ path, ...guide }) => ({
+        ...guide,
+        path: { schemaVersion: 0, ...path },
+      })),
+      start: values.start,
+      end: values.end,
+    })
+    return parsed.success ? parsed.data : null
+  }
   const withHoles = values.sections.some(
     ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length > 0,
   )
@@ -158,6 +203,7 @@ export function sweepLoftFeatureRecord(
   profiles: readonly ProfileOption[],
   paths: readonly PathSketchOption[],
   snapshot: DocumentSnapshot,
+  supports: readonly LoftSupportOption[] = [],
 ): FeatureRecord | null {
   const parameters =
     mode.operation === "loft"
@@ -165,26 +211,24 @@ export function sweepLoftFeatureRecord(
           values,
           profiles,
           mode.kind === "edit" && mode.feature.type.schemaVersion === 2,
+          supports,
         )
       : sweepParameters(values, profiles, paths)
   if (!parameters) return null
-  const sketchIds =
-    "sections" in parameters
-      ? parameters.sections.map(({ sketchId }) => sketchId)
-      : [parameters.profile.sketchId, parameters.path.sketchId]
-  const references = expectedSketchFeatureReferences(snapshot, sketchIds)
-  const dependencies = expectedSketchFeatureDependencyIds(
-    snapshot,
-    sketchIds,
-    references.map(({ featureId }) => featureId),
+  const constrained = loftFeatureParametersV3Schema.safeParse(parameters)
+  const constrainedParameters = constrained.success ? constrained.data : null
+  const { sketchIds, type, maximumDependencies } = sweepLoftParameterIdentity(
+    parameters,
+    constrainedParameters,
   )
-  if (dependencies.length > (mode.operation === "loft" ? MAX_LOFT_SECTIONS : 8)) return null
-  const type =
-    mode.operation === "loft"
-      ? "holeCorrespondence" in parameters
-        ? loftFeatureTypeV2.type
-        : loftFeatureType.type
-      : sweepFeatureType.type
+  const references = expectedSketchFeatureReferences(snapshot, sketchIds)
+  const dependencies = expectedSketchFeatureDependencyIds(snapshot, sketchIds, [
+    ...references.map(({ featureId }) => featureId),
+    ...(constrainedParameters
+      ? loftV3SupportBodies(constrainedParameters).map(({ featureId }) => featureId)
+      : []),
+  ])
+  if (dependencies.length > maximumDependencies) return null
   const parsed = featureRecordSchema.safeParse(
     mode.kind === "edit"
       ? { ...mode.feature, type, parameters, dependencies, references }
@@ -200,4 +244,30 @@ export function sweepLoftFeatureRecord(
         },
   )
   return parsed.success ? parsed.data : null
+}
+
+type SweepLoftParameters =
+  | NonNullable<ReturnType<typeof loftParameters>>
+  | NonNullable<ReturnType<typeof sweepParameters>>
+function sweepLoftParameterIdentity(
+  parameters: SweepLoftParameters,
+  constrained: LoftFeatureParametersV3 | null,
+) {
+  if (constrained)
+    return {
+      sketchIds: loftV3SketchIds(constrained),
+      type: loftFeatureTypeV3.type,
+      maximumDependencies: MAX_LOFT_V3_DEPENDENCIES,
+    }
+  if ("sections" in parameters)
+    return {
+      sketchIds: parameters.sections.map(({ sketchId }) => sketchId),
+      type: "holeCorrespondence" in parameters ? loftFeatureTypeV2.type : loftFeatureType.type,
+      maximumDependencies: MAX_LOFT_SECTIONS,
+    }
+  return {
+    sketchIds: [parameters.profile.sketchId, parameters.path.sketchId],
+    type: sweepFeatureType.type,
+    maximumDependencies: 8,
+  }
 }

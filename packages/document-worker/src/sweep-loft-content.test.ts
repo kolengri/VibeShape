@@ -1060,3 +1060,86 @@ describe("document preparation for exact Sweep and Loft", () => {
     })
   })
 })
+
+it("materializes Loft v3 guide sketches and named end supports into canonical dependency slots", async () => {
+  const { loftFeatureTypeV3 } = await import("@vibeshape/domain/part-design-loft-v3")
+  const { loftFeatureContentParametersV3Schema } = await import("@vibeshape/protocol")
+  const source = loftFixture(),
+    pathSource = sweepFixture()
+  const sections = [selector(source.second), selector(source.first)]
+  const sketches = [source.second, source.first]
+  const support = featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: id(802),
+    type: boxFeatureType.type,
+    parameters: {
+      width: createLengthQuantity(4),
+      depth: createLengthQuantity(4),
+      height: createLengthQuantity(10),
+      centered: false,
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  })
+  const parameters = {
+    sections,
+    ruled: false,
+    outerCorrespondence: sections[0]?.outerBoundaryEntityIds.map((_, index) => ({
+      sectionEntityIds: sections.map((section) => section.outerBoundaryEntityIds[index]),
+      sectionStartPointIds: sketches.map((sketch, column) => {
+        const entity = sketch.entities.find(
+          ({ id }) => id === sections[column]?.outerBoundaryEntityIds[index],
+        )
+        if (entity?.type !== "line") throw new Error("Matched fixture lines are required.")
+        return entity.startPointId
+      }),
+    })),
+    rails: [],
+    guides: [
+      { name: "Wall guide", segmentTrack: 0, continuity: "C0", path: pathSource.selectedPath },
+    ],
+    start: [
+      {
+        segmentTrack: 0,
+        continuity: "G1",
+        support: {
+          schemaVersion: 1,
+          kind: "face",
+          featureId: support.id,
+          outputRole: "result",
+          signature: {
+            kind: "face",
+            geometryClass: "plane",
+            measure: 40,
+            centroid: [0, -2, 5],
+            bounds: { min: [-2, -2, 0], max: [2, -2, 10] },
+            boundaryCount: 4,
+            adjacentGeometryClasses: ["plane"],
+          },
+        },
+      },
+    ],
+    end: [],
+  }
+  const feature = featureRecordSchema.parse({
+    ...source.feature,
+    type: loftFeatureTypeV3.type,
+    parameters,
+    dependencies: [...source.feature.dependencies, support.id],
+  })
+  const doc = document(
+    [source.first, source.second, pathSource.path],
+    [...source.document.features.filter((f) => f.id !== feature.id), support, feature],
+  )
+  const before = JSON.stringify(doc)
+  const result = await createDocumentFeatureContentPreparer(solve)({ document: doc, feature })
+  if (!result) throw new Error("Constrained Loft preparation is required.")
+  if (!result.ok) throw new Error(JSON.stringify(result.diagnostic))
+  const prepared = loftFeatureContentParametersV3Schema.parse(result.parameters)
+  expect(prepared.guides[0]?.path.sourceEntityIds).toEqual(pathSource.selectedPath.entityIds)
+  expect(prepared.start[0]?.supportInputIndex).toBe(2)
+  expect(prepared.start[0]?.support.outputRole).toBe("result")
+  expect(prepared.start[0]?.support).not.toHaveProperty("featureId")
+  expect(JSON.stringify(doc)).toBe(before)
+})

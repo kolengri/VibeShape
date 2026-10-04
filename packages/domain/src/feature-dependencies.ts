@@ -18,6 +18,7 @@ import {
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { readImportedFeatureParameters } from "./part-design-import"
 import { readLoftFeatureParameters } from "./part-design-loft"
+import { loftV3SupportBodies, readLoftFeatureParametersV3 } from "./part-design-loft-v3"
 import { readMeshImportFeatureParameters } from "./part-design-mesh-import"
 import {
   mirrorPreservesSource,
@@ -38,6 +39,7 @@ const independentBodyReaders = [
   readImportedFeatureParameters,
   readMeshImportFeatureParameters,
   readLoftFeatureParameters,
+  readLoftFeatureParametersV3,
   readSweepFeatureParameters,
 ]
 const edgeModifierTypes = new Set(
@@ -103,6 +105,8 @@ export function featureBodyDependencyIds(feature: FeatureRecord): readonly Featu
 export function featureBodyDependencies(
   feature: FeatureRecord,
 ): readonly { featureId: FeatureId; outputRole?: string }[] {
+  const loft = readLoftFeatureParametersV3(feature)
+  if (loft) return loftV3SupportBodies(loft)
   const compound = readCompoundFeatureParameters(feature)
   if (compound) return compound.slots.map(({ targetBody }) => targetBody)
   const union = readUnionFeatureParameters(feature)

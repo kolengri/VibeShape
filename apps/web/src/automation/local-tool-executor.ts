@@ -4,6 +4,7 @@ import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
+import { isLocalImport, type LocalImportOperation } from "@vibeshape/automation-api/imports"
 import {
   isLocalSketchTextOperation,
   type LocalSketchTextOperation,
@@ -38,6 +39,7 @@ import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
+import type { createImportAutomationSession } from "./import-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -61,6 +63,7 @@ type LocalSessionPort = Readonly<{
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
+  imports?: ReturnType<typeof createImportAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -298,21 +301,31 @@ export function createLocalToolExecutor(
           true,
         )
   }
+  function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
+    return session.imports
+      ? session.imports.execute(actor, operation, signal)
+      : localFailure("import-unavailable", "The paired session cannot import source files.")
+  }
+  function assemblyLibrary(operation: LocalOperation, signal?: AbortSignal) {
+    return session.assembly
+      ? session.assembly.execute(actor, operation, signal)
+      : localFailure(
+          "assembly-authority-unavailable",
+          "The paired document has no assembly authority.",
+        )
+  }
+  function surfaceTexture(operation: LocalOperation, signal?: AbortSignal) {
+    return session.surfaceTextures
+      ? session.surfaceTextures.execute(actor, operation, signal)
+      : localFailure(
+          "surface-texture-authority-unavailable",
+          "The paired document has no surface texture authority.",
+        )
+  }
   function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
-    if (isSurfaceTextureToolName(operation.tool))
-      return session.surfaceTextures
-        ? session.surfaceTextures.execute(actor, operation, signal)
-        : localFailure(
-            "surface-texture-authority-unavailable",
-            "The paired document has no surface texture authority.",
-          )
-    if (isAssemblyLibraryToolName(operation.tool))
-      return session.assembly
-        ? session.assembly.execute(actor, operation, signal)
-        : localFailure(
-            "assembly-authority-unavailable",
-            "The paired document has no assembly authority.",
-          )
+    if (isLocalImport(operation)) return importFile(operation, signal)
+    if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
+    if (isSurfaceTextureToolName(operation.tool)) return surfaceTexture(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")

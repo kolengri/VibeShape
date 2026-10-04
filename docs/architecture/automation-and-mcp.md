@@ -447,9 +447,12 @@ explicit support inputs. Boolean retains v1 ordered target/tool whole-result sco
 use v2 ordered exact-body slots, including several roles from one producer, with deduplicated
 first-occurrence producer dependencies and no topology references. Compound retains authored
 slot UUIDs on update. Missing roles and disjoint Union results fail exact preview.
-Loft supports two to twenty-four sections and up to twenty-four ordered producer dependencies;
-its 2,000-curve aggregate budget remains unchanged. Other feature evaluation requests retain the
-eight-producer limit.
+Loft v1/v2 support two to twenty-four sections and up to twenty-four ordered producer dependencies.
+Version 2 adds explicit hole tracks. Version 3 adds directed outer correspondence, boundary rails,
+named C0 guides and independent G1/G2 end support faces, within a 128-producer budget; its matching
+sections must be hole-free open-segment boundaries. All versions retain the 2,000-curve budget.
+Unresolved exact support faces or failed native residuals require repair. Other evaluation requests
+retain the eight-producer limit.
 Exact named-body
 selection, stable dependencies, variable quantities, draft preview and ordinary review/commit
 remain authoritative. Shell create/update authors version 2: empty openings create a closed cavity,
@@ -458,11 +461,15 @@ face identities may survive source edits; missing or ambiguous identities requir
 Existing version 1 records keep strict source binding until updated. Sweep retains its
 explicit path start frame; Loft retains ordered bounded sections; Thread is bounded custom
 60-degree geometry without ISO/DIN fit certification. The modeling operator skill and local
-authoring guide describe these limits. Imports, text generation, assembly/library authoring and
-texture authoring remain editor workflows. Remote MCP still excludes binary file exports.
+authoring guide describe these limits. Native source imports now use the bounded paired upload/inspection/manual review path in
+[ADR-0091](../adr/0091-paired-native-source-imports.md). Assembly/library authoring uses owned drafts
+and manual Apply under [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-drafts.md); surface texture
+authoring uses the native relief proposal path under [ADR-0090](../adr/0090-owned-surface-texture-mcp-proposals.md).
+Planar drawing import retains its editor workflow.
+Prepared binary exports are shared by both transports; the legacy monolithic export remains local.
 
 Manual review remains the default. The browser-owned explicit session grant additionally permits
-Union schema v2 and Loft schema v1 creation and same-version updates. Actor/document matching,
+Union schema v2 and Loft schema v1/v2/v3 creation and same-version updates. Actor/document matching,
 valid exact preview, unsuppressed matching prior versions, expiry and persistence remain mandatory.
 Compound, version upgrades and future feature versions require manual review.
 
