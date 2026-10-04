@@ -8,6 +8,7 @@ import {
   modelBodyMeasurementQuerySchema,
   modelBodyTopologyQuerySchema,
   modelEdgeQuerySchema,
+  modelMeasurementQuerySchema,
   variableListQuerySchema,
 } from "@vibeshape/automation-api/queries"
 
@@ -45,6 +46,13 @@ export function createLocalInspectionQuery(
         ...common,
         ...argumentsInput,
         kind: "org.vibeshape.model.edges",
+      })
+    case "model_measurements":
+    case "draft_measurements":
+      return modelMeasurementQuerySchema.parse({
+        ...common,
+        ...argumentsInput,
+        kind: "org.vibeshape.model.measurements",
       })
     case "model_body_topology":
     case "draft_body_topology":

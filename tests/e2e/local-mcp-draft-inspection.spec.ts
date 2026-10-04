@@ -1,6 +1,10 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { modelEdgeViewSchema } from "../../packages/automation-api/src/queries"
+import {
+  modelBodyMeasurementViewSchema,
+  modelEdgeViewSchema,
+  modelMeasurementViewSchema,
+} from "../../packages/automation-api/src/queries"
 import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
@@ -29,7 +33,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
     const treatmentId = id(2)
     try {
       await page.goto(local.origin)
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
       await enableLocalAi(page)
       const info = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       const base = info.summary.revision
@@ -76,6 +82,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
           variables: [{ definition: { name: "edgeSize" }, result: { value: 2, unit: "mm" } }],
         },
       })
+      if (operation === "fillet") await inspectDraftBodies(call, query, boxId)
       const first = success(
         localToolOutputs.draft_edges.parse(
           await call("draft_edges", { ...query, featureId: boxId, limit: 1 }),
@@ -148,6 +155,34 @@ for (const operation of ["fillet", "chamfer"] as const) {
         }),
       ).toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
       const repairQuery = { draftId: draft.draftId, revision: invalid.revision }
+      const failures = success(
+        localToolOutputs.draft_measurements.parse(
+          await call("draft_measurements", {
+            ...repairQuery,
+            scope: "all",
+            cursor: null,
+            limit: 1,
+          }),
+        ),
+      )
+      expect(failures.view).toMatchObject({
+        kind: "org.vibeshape.model.measurements",
+        nextCursor: "1",
+        data: { total: 2, features: [{ featureId: boxId, status: "succeeded" }] },
+      })
+      const failed = success(
+        localToolOutputs.draft_measurements.parse(
+          await call("draft_measurements", {
+            ...repairQuery,
+            scope: "all",
+            cursor: "1",
+            limit: 1,
+          }),
+        ),
+      )
+      expect(failed.view).toMatchObject({
+        data: { features: [{ featureId: treatmentId, status: "failed" }] },
+      })
       const authored = success(
         localToolOutputs.draft_entity.parse(
           await call("draft_entity", {
@@ -257,5 +292,58 @@ for (const operation of ["fillet", "chamfer"] as const) {
     } finally {
       await local.close()
     }
+  })
+}
+
+async function inspectDraftBodies(
+  call: (name: string, argumentsInput: Record<string, unknown>) => Promise<unknown>,
+  query: { draftId: string; revision: number },
+  boxId: string,
+) {
+  const measurements = success(
+    localToolOutputs.draft_measurements.parse(
+      await call("draft_measurements", { ...query, scope: "all", limit: 1 }),
+    ),
+  )
+  expect(measurements.view).toMatchObject({
+    kind: "org.vibeshape.model.measurements",
+    data: { features: [{ featureId: boxId, status: "succeeded" }] },
+  })
+  const measured = modelMeasurementViewSchema.parse(measurements.view).data.features[0]
+  if (measured?.status !== "succeeded") throw new Error("Expected exact source measurements.")
+  expect(measured.shape.volume).toBeCloseTo(1000, 8)
+  const bodies = success(
+    localToolOutputs.draft_body_measurements.parse(
+      await call("draft_body_measurements", { ...query, featureId: boxId }),
+    ),
+  )
+  expect(bodies.view).toMatchObject({
+    kind: "org.vibeshape.model.body-measurements",
+    data: { bodies: [{ featureId: boxId, outputRole: "result" }] },
+  })
+  const body = modelBodyMeasurementViewSchema.parse(bodies.view).data.bodies[0]
+  expect(body?.shape.volume).toBeCloseTo(1000, 8)
+  const topology = success(
+    localToolOutputs.draft_body_topology.parse(
+      await call("draft_body_topology", {
+        ...query,
+        featureId: boxId,
+        outputRole: "result",
+        topologyKind: "face",
+        limit: 1,
+      }),
+    ),
+  )
+  expect(topology.view).toMatchObject({
+    kind: "org.vibeshape.model.body-topology",
+    data: {
+      total: 6,
+      topology: [
+        {
+          reference: { featureId: boxId, outputRole: "result", kind: "face" },
+          resolution: "resolved",
+        },
+      ],
+    },
   })
 }

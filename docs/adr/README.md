@@ -91,3 +91,5 @@ Statuses:
 - `Rejected` — considered and not adopted
 
 When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
+
+- [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)

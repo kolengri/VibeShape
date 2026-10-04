@@ -40,6 +40,7 @@ import {
   modelBodyMeasurementViewSchema,
   modelBodyTopologyViewSchema,
   modelEdgeViewSchema,
+  modelMeasurementViewSchema,
   variableListViewSchema,
 } from "@vibeshape/automation-api/queries"
 import { z } from "zod"
@@ -207,12 +208,27 @@ function inspectionMatches(
     return bodyTopologyInspectionMatches(operation, value, documentId)
   if (operation.tool === "model_body_measurements")
     return bodyMeasurementInspectionMatches(operation, value, documentId)
+  if (operation.tool === "model_measurements") {
+    const view = modelMeasurementViewSchema.parse(value)
+    return (
+      view.documentId === documentId &&
+      view.revision === operation.arguments.revision &&
+      view.data.features.length <= operation.arguments.limit &&
+      view.data.features.every(
+        (feature) =>
+          operation.arguments.featureId === undefined ||
+          feature.featureId === operation.arguments.featureId,
+      )
+    )
+  }
   return semanticInspectionMatches(operation, value, documentId)
 }
 function semanticInspectionMatches(
   operation: Exclude<
     LocalInspectionOperation,
-    { tool: "model_edges" | "model_body_topology" | "model_body_measurements" }
+    {
+      tool: "model_edges" | "model_body_topology" | "model_body_measurements" | "model_measurements"
+    }
   >,
   value: unknown,
   documentId: string,
