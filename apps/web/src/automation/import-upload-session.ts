@@ -32,6 +32,7 @@ import {
   type PreparedImportSource,
   readImportSource,
 } from "../features/import/import-model"
+import { appendOwnedSourceChunk } from "./source-upload-chunks"
 
 type Inspection = SourceImportInspection | MeshImportInspection
 type Transaction = ReturnType<typeof createImportTransaction>
@@ -183,31 +184,18 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
     input: Extract<LocalImportOperation, { tool: "append_import_chunk" }>,
   ) {
     const { offset, base64 } = localImportInputs.append_import_chunk.parse(input.arguments)
-    const binary = atob(base64)
-    if (
-      btoa(binary) !== base64 ||
-      binary.length !== Math.min(IMPORT_UPLOAD_CHUNK_MAX_BYTES, record.bytes.length - offset)
+    const result = appendOwnedSourceChunk(
+      record.bytes,
+      record.descriptor.receivedBytes,
+      record.captured !== null,
+      { offset, base64 },
     )
-      return failure(
-        "invalid-import-chunk",
-        "Import chunks must use canonical base64 and the declared chunk size.",
-      )
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
-    if (offset < record.descriptor.receivedBytes) {
-      return offset + bytes.length <= record.descriptor.receivedBytes &&
-        bytes.every((byte, index) => record.bytes[offset + index] === byte)
-        ? { ok: true as const, value: structuredClone(record.descriptor) }
-        : failure("import-chunk-conflict", "The repeated import chunk differs from owned bytes.")
-    }
-    if (record.captured || offset !== record.descriptor.receivedBytes)
-      return failure(
-        "import-chunk-order",
-        "Append at the current receivedBytes offset before inspection.",
-      )
-    record.bytes.set(bytes, offset)
+    if (!result.ok) return result
+    if (result.receivedBytes === record.descriptor.receivedBytes)
+      return { ok: true as const, value: structuredClone(record.descriptor) }
     record.descriptor = importUploadDescriptorSchema.parse({
       ...record.descriptor,
-      receivedBytes: offset + bytes.length,
+      receivedBytes: result.receivedBytes,
       uploadVersion: record.descriptor.uploadVersion + 1,
       expiresAt: new Date(now() + IMPORT_UPLOAD_TTL_MS).toISOString(),
     })

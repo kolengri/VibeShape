@@ -20,7 +20,8 @@
     "./agent-skills": "./src/agent-skills.ts",
     "./query-byte-budget": "./src/query-byte-budget.ts",
     "./binary-exports": "./src/binary-exports.ts",
-    "./imports": "./src/imports.ts"
+    "./imports": "./src/imports.ts",
+    "./planar-imports": "./src/planar-imports.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

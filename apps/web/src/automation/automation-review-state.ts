@@ -4,13 +4,21 @@ import type {
   DraftReviewInput,
 } from "@vibeshape/automation-host/host"
 import type { ImportReviewInput } from "./import-upload-session"
+import type { PlanarImportReviewInput } from "./planar-import-upload-session"
 
-export type AutomationReviewInput = DraftReviewInput | ImportReviewInput
+export type AutomationReviewInput = DraftReviewInput | ImportReviewInput | PlanarImportReviewInput
 export function isImportReview(input: AutomationReviewInput): input is ImportReviewInput {
   return "kind" in input && input.kind === "import"
 }
+export function isPlanarImportReview(
+  input: AutomationReviewInput,
+): input is PlanarImportReviewInput {
+  return "kind" in input && input.kind === "planar-import"
+}
 function expiresAt(input: AutomationReviewInput) {
-  return isImportReview(input) ? input.draft.expiresAt : input.preview.draft.expiresAt
+  return isImportReview(input) || isPlanarImportReview(input)
+    ? input.draft.expiresAt
+    : input.preview.draft.expiresAt
 }
 
 type Decision = "approved" | "rejected" | "cancelled"

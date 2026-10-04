@@ -53,6 +53,12 @@ Preserve existing slot IDs on update. Missing roles fail closed. Manual review r
 an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
 and schema upgrades still require manual review. Tools cannot enable the grant.
 
+SVG/DXF editable Sketch import uses \`begin_planar_import_upload\`, \`append_planar_import_chunk\`,
+\`inspect_planar_import_upload\`, \`commit_planar_import_upload\` and \`discard_planar_import_upload\`.
+Select source units and XY/XZ/YZ plane, retain captured uploadVersion, inspect analytical curves,
+and wait for manual Apply. Import creates no Part; rediscover solved profiles before downstream
+features. Unsupported source elements fail without partial or flattened import.
+
 Native STEP/STP/BREP/STL/3MF import uses \`begin_import_upload\`, \`append_import_chunk\`,
 \`inspect_import_upload\`, \`commit_import_upload\` and \`discard_import_upload\` on both
 paired transports. Supply owned bytes in canonical 90 KiB decoded chunks, up to 6 MiB,
@@ -62,7 +68,7 @@ the source and requests manual browser preview/Apply before one atomic source/fe
 Caller hashes, pins, provenance, paths and generic command payloads are unavailable. Read the
 modeling native-import reference for ownership, five-minute idle expiry and remote pacing/budgets.
 
-Planar import, assemblies, the local component library and surface
+Assemblies, the local component library and surface
 texture authoring use the editor. They are not named MCP construction tools. The shared local
 and paired remote feature tools follow the same draft/review/commit workflow. Prepared binary
 export chunks are shared; legacy monolithic file export stays local. Read the modeling operator

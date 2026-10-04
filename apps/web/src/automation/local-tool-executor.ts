@@ -18,6 +18,10 @@ import {
   type LocalOperation,
   localFailure,
 } from "@vibeshape/automation-api/local-tools"
+import {
+  isLocalPlanarImport,
+  type LocalPlanarImportOperation,
+} from "@vibeshape/automation-api/planar-imports"
 import type {
   CadInspectionDetailQuery,
   CadInspectionListQuery,
@@ -41,6 +45,7 @@ import { createLocalInspectionQuery } from "./local-inspection-query"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
+import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
 
 type LocalExportResult =
   | { ok: true; format: "step" | "stl" | "3mf"; file: Uint8Array; documentName: string }
@@ -54,6 +59,7 @@ type LocalSessionPort = Readonly<{
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
+  planarImports?: ReturnType<typeof createPlanarImportAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -265,10 +271,22 @@ export function createLocalToolExecutor(
           true,
         )
   }
-  function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
-    return session.imports
-      ? session.imports.execute(actor, operation, signal)
-      : localFailure("import-unavailable", "The paired session cannot import source files.")
+  async function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
+    if (!session.imports)
+      return localFailure("import-unavailable", "The paired session cannot import source files.")
+    const result = await session.imports.execute(actor, operation, signal)
+    if (operation.tool === "begin_import_upload" && result.ok) session.planarImports?.cancel()
+    return result
+  }
+  async function planarImportFile(operation: LocalPlanarImportOperation, signal?: AbortSignal) {
+    if (!session.planarImports)
+      return localFailure(
+        "planar-import-unavailable",
+        "The paired session cannot import planar sources.",
+      )
+    const result = await session.planarImports.execute(actor, operation, signal)
+    if (operation.tool === "begin_planar_import_upload" && result.ok) session.imports?.cancel()
+    return result
   }
   async function documentOperation(
     operation: Extract<
@@ -296,6 +314,7 @@ export function createLocalToolExecutor(
     }
   }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (isLocalPlanarImport(operation)) return planarImportFile(operation, signal)
     if (isLocalImport(operation)) return importFile(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)

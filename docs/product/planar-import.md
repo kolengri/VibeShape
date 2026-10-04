@@ -41,3 +41,14 @@ Chromium acceptance covers SVG and DXF Apply, cancellation, Undo/Redo, reload, n
 ordinary point editing with stable provenance, exact extrusion and STEP export. Worker and component tests separately
 cover declared/selected units, bounded failure diagnostics, stale revisions, canceled late results,
 duplicate activation, parser termination and publication retry.
+
+
+## Paired MCP parity
+
+Local and paired remote MCP expose five distinct planar upload/inspection/commit/discard tools.
+They use the same parser, unit/transform preparation, curve preview and ordinary editable Sketch
+transaction as this editor workflow. MCP transfer limits are 6 MiB per source and 90 KiB decoded
+chunks; the editor retains its 32 MiB source cap. Units and XY/XZ/YZ plane are captured at begin,
+SHA-256 is computed from owned bytes, and commit repeats inspection before manual browser review.
+Apply stores source and Sketch atomically; no Part is created by import. Unsupported source
+geometry remains a diagnostic with no partial authoring. See [ADR-0092](../adr/0092-paired-planar-source-imports.md).

@@ -121,12 +121,17 @@ import { assemblyExportSettingsSchema } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
 import { automationReviews } from "../automation/automation-review-controller"
-import { isImportReview } from "../automation/automation-review-state"
+import { isImportReview, isPlanarImportReview } from "../automation/automation-review-state"
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createImportAutomationSession } from "../automation/import-automation-session"
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { createPlanarImportAutomationSession } from "../automation/planar-import-automation-session"
+import type {
+  PlanarImportReviewedCommit,
+  PlanarImportReviewInput,
+} from "../automation/planar-import-upload-session"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
@@ -812,21 +817,22 @@ export function createActiveDocumentAutomationSession() {
     isActive: () => currentReport() !== null,
     commit: (command, expected) => commitReviewedMetadata(active, command, expected),
   })
+  function readSourceContext() {
+    const snapshot = currentReport() ? active?.authoredSnapshot : null
+    return snapshot && snapshot.schemaVersion !== 1
+      ? {
+          documentId: capturedDocumentId,
+          revision: snapshot.revision,
+          authorityVersion: snapshot.schemaVersion,
+          historyAfter: state.report?.historyItems?.at(-1) ?? null,
+        }
+      : null
+  }
   const imports = createImportAutomationSession({
     documentId: capturedDocumentId,
     isActive: sourceSessionAvailable,
     createId: browserUuidV7,
-    readContext() {
-      const snapshot = currentReport() ? active.authoredSnapshot : null
-      return snapshot && snapshot.schemaVersion !== 1
-        ? {
-            documentId: capturedDocumentId,
-            revision: snapshot.revision,
-            authorityVersion: snapshot.schemaVersion,
-            historyAfter: state.report?.historyItems?.at(-1) ?? null,
-          }
-        : null
-    },
+    readContext: readSourceContext,
     async commit(input) {
       if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
         return localFailure(
@@ -834,6 +840,20 @@ export function createActiveDocumentAutomationSession() {
           "The captured import review no longer matches.",
         )
       return commitReviewedImport(active, input)
+    },
+  })
+  const planarImports = createPlanarImportAutomationSession({
+    documentId: capturedDocumentId,
+    isActive: sourceSessionAvailable,
+    createId: browserUuidV7,
+    readContext: readSourceContext,
+    async commit(input) {
+      if (!sourceSessionAvailable() || !planarImportReviewedInputMatches(input))
+        return localFailure(
+          "planar-import-review-mismatch",
+          "The captured planar import review no longer matches.",
+        )
+      return commitReviewedPlanarImport(active, input)
     },
   })
   const exports = createBinaryExportSession({
@@ -890,6 +910,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel("stale-revision")
       metadata.cancel("stale-revision")
       imports.cancel("stale-revision")
+      planarImports.cancel("stale-revision")
     }
   })
   function dispose() {
@@ -899,6 +920,7 @@ export function createActiveDocumentAutomationSession() {
     closeAutomation()
     metadata.dispose()
     imports.dispose()
+    planarImports.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -911,6 +933,7 @@ export function createActiveDocumentAutomationSession() {
     host: factory.host,
     metadata,
     imports,
+    planarImports,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
@@ -921,6 +944,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel(reason)
       metadata.cancel(reason)
       imports.cancel(reason)
+      planarImports.cancel(reason)
       exports.cancel()
     },
     dispose,
@@ -1061,6 +1085,49 @@ function reviewedMetadataBase(active: PersistentDocumentSession, baseRevision: n
     return null
   const base = active.authoredSnapshot
   return base && base.schemaVersion !== 1 && base.revision === baseRevision ? base : null
+}
+
+function planarImportReviewedInputMatches(input: PlanarImportReviewedCommit) {
+  const review = automationReviews.getSnapshot()
+  if (review?.status !== "applying" || !isPlanarImportReview(review.input)) return false
+  return (
+    commandActorsEqual(review.input.actor, input.actor) &&
+    planarImportReviewIdentity(review.input) === planarImportReviewIdentity(input)
+  )
+}
+function planarImportReviewIdentity(input: PlanarImportReviewInput) {
+  return canonicalJson({
+    draft: input.draft,
+    source: input.source,
+    label: input.label,
+    inspection: input.inspection,
+    transaction: input.transaction,
+  })
+}
+async function commitReviewedPlanarImport(
+  active: PersistentDocumentSession,
+  input: PlanarImportReviewedCommit,
+) {
+  if (
+    !reviewedMetadataBase(active, input.draft.baseRevision) ||
+    active.snapshot.id !== input.draft.documentId ||
+    projectActionGuard.read((block) => block !== "automation-busy") ||
+    !planarImportReviewedInputMatches(input)
+  )
+    return localFailure(
+      "stale-revision",
+      "The reviewed planar import base has an active edit or changed.",
+      true,
+    )
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.commitAuthoredTransaction({
+    ...input.transaction,
+    assetBlobs: input.assetBlobs,
+  })
+  publishAuthoredResult(active, result)
+  return result.ok
+    ? { ok: true as const, value: { revision: result.snapshot.revision } }
+    : localFailure(result.diagnostic.code, result.diagnostic.message, result.diagnostic.retryable)
 }
 
 function importReviewedInputMatches(input: ImportReviewedCommit) {
