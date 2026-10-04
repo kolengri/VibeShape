@@ -61,6 +61,7 @@ import {
   sketchSolutionViewSchema,
   variableListViewSchema,
 } from "@vibeshape/automation-api/queries"
+import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/surface-texture-result-context"
 import { z } from "zod"
 import { BrowserRequestError, readBrowserJson } from "./browser-request"
 import { draftInspectionMatches } from "./draft-inspection-result"
@@ -323,6 +324,8 @@ function resultContextMatches(
 ) {
   const assembly = assemblyResultContextMatches(operation, result, documentId)
   if (assembly !== null) return assembly
+  const texture = surfaceTextureResultContextMatches(operation, result, documentId)
+  if (texture !== null) return texture
   if (!result.ok) return true
   if (isLocalMetadataRead(operation))
     return metadataListMatches(operation, result.value, documentId)

@@ -99,11 +99,13 @@ the source and requests manual browser preview/Apply before one atomic source/fe
 Caller hashes, pins, provenance, paths and generic command payloads are unavailable. Read the
 modeling native-import reference for ownership, five-minute idle expiry and remote pacing/budgets.
 
-Surface
-texture authoring uses the editor. They are not named MCP construction tools. The shared local
+Surface texture create/update/remove use named owned proposals with native relief preview and
+mandatory manual Apply. Read the modeling skill's surface-textures reference for packed custom
+maps, exact face scope and bounded mask append. STEP retains untextured exact geometry;
+STL/3MF exports bake enabled relief. The shared local
 and paired remote feature tools follow the same draft/review/commit workflow. Prepared binary
 export chunks are shared; legacy monolithic file export stays local. Read the modeling operator
-skill for the relevant feature family.
+skill for the relevant feature family and the export skill for file delivery.
 
 ## Assembly and local component library
 

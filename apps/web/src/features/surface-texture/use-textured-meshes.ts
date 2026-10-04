@@ -1,13 +1,9 @@
-import { resolveSurfaceTextureExportLayers } from "@vibeshape/application/surface-textures"
-import {
-  createGeometryRequestEnvelope,
-  GeometryWorkerClient,
-} from "@vibeshape/geometry-worker/client"
-import { DEFAULT_SURFACE_TEXTURE_QUALITY } from "@vibeshape/protocol"
+import { previewSurfaceTextureRelief } from "@vibeshape/application/surface-textures"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useState } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useSurfaceTexturePreviewContext } from "./surface-texture-preview-context"
+import { createSurfaceTexturePreviewWorker } from "./surface-texture-preview-worker"
 
 export function useTexturedMeshes(
   controller: DocumentControllerState,
@@ -42,63 +38,26 @@ export function useTexturedMeshes(
       return
     }
     let current = true
-    let client: GeometryWorkerClient | null = null
+    const cancellation = new AbortController()
     setStatus?.("loading")
     setFailed(false)
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          if (
-            draft?.layers.some(
-              (layer) =>
-                layer.enabled &&
-                !sources.some(
-                  (source) =>
-                    source.featureId === layer.featureId &&
-                    (source.outputRole ?? "result") === layer.target.outputRole,
-                ),
-            )
-          )
-            throw new Error(
-              "Show the textured body or choose a current body before previewing its relief.",
-            )
-          const groups = resolveSurfaceTextureExportLayers(report, layers, sources)
-          client = new GeometryWorkerClient()
-          const textured = await Promise.all(
-            groups.map(async (group) => {
-              const source = sources.find(
-                (mesh) =>
-                  mesh.featureId === group.featureId &&
-                  (mesh.outputRole ?? "result") === group.outputRole,
-              )
-              if (!source) throw new Error("Surface texture source is unavailable.")
-              const response = await client?.previewSurfaceTextureMesh(
-                createGeometryRequestEnvelope(
-                  `${report.snapshot.id}:texture:${group.featureId}:${group.outputRole}`,
-                  report.snapshot.revision,
-                  report.snapshot.revision,
-                ),
-                {
-                  positions: new Float32Array(source.positions),
-                  normals: new Float32Array(source.normals),
-                  indices: new Uint32Array(source.indices),
-                  triangleFaceIds: new Uint32Array(source.triangleFaceIds),
-                },
-                group.layers,
-                DEFAULT_SURFACE_TEXTURE_QUALITY,
-              )
-              if (response?.type !== "surfaceTexturePreviewed")
-                throw new Error("Surface texture preview failed.")
-              return { ...source, ...response.mesh, textureSource: source }
-            }),
-          )
+          const textured = await previewSurfaceTextureRelief({
+            report,
+            layers,
+            sources,
+            requiredLayers: draft?.layers,
+            createWorker: createSurfaceTexturePreviewWorker,
+            signal: cancellation.signal,
+          })
           if (!current) return
-          const meshes = sources.map(
-            (source) =>
-              textured.find(
-                (mesh) =>
-                  mesh.featureId === source.featureId && mesh.outputRole === source.outputRole,
-              ) ?? source,
+          const meshes = sources.map((source) =>
+            (() => {
+              const previewed = textured.find((item) => item.source === source)
+              return previewed ? { ...source, ...previewed.mesh, textureSource: source } : source
+            })(),
           )
           setResult({ source: sources, layers, meshes })
           setReadyDraft?.(draft ?? null)
@@ -108,15 +67,13 @@ export function useTexturedMeshes(
             setFailed(true)
             setStatus?.("error")
           }
-        } finally {
-          client?.terminate()
         }
       })()
     }, 150)
     return () => {
       current = false
       clearTimeout(timer)
-      client?.terminate()
+      cancellation.abort()
     }
   }, [layers, report, sources, setStatus, setReadyDraft, draft])
   // Keep the last preview while a replacement is being computed, but never across source revisions.

@@ -5,9 +5,13 @@ import {
   type SurfaceTextureLayer,
   surfaceTextureLayerSchema,
 } from "@vibeshape/domain/surface-textures"
-import { type TopologyCandidate, topologyCandidateSchema } from "@vibeshape/domain/topology"
-import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
+import {
+  DOCUMENT_PROTOCOL_VERSION,
+  documentWorkerResponseSchema,
+  type TopologyCandidate,
+  topologyCandidateSchema,
+} from "@vibeshape/protocol"
+import { describe, expect, it, vi } from "vitest"
 import {
   surfaceTextureProjectFixture,
   textureFixtureId,
@@ -15,8 +19,11 @@ import {
 } from "../../../tests/fixtures/surface-texture-project"
 import { createModelBodyTopologyEvidence } from "./model-body-topology"
 import {
+  previewSurfaceTextureRelief,
+  projectSurfaceTextureFaceReference,
   resolveSurfaceTextureExportLayers,
   resolveSurfaceTextureMeshLayer,
+  type SurfaceTextureReliefWorker,
 } from "./surface-textures"
 
 const fixture = surfaceTextureProjectFixture()
@@ -32,10 +39,10 @@ const signature = {
   boundaryCount: 4,
   adjacentGeometryClasses: ["PLANE"],
 }
-function candidate(id: number, semanticRole?: string): TopologyCandidate {
+function candidate(id: number, semanticRole?: string, meshFaceId = id): TopologyCandidate {
   return topologyCandidateSchema.parse({
     candidateId: `face:${id}`,
-    meshFaceId: id,
+    meshFaceId,
     kind: "face",
     semanticRole,
     lineageTokens: [],
@@ -137,6 +144,33 @@ function faceLayer(source = report()): SurfaceTextureLayer {
 }
 
 describe("surface texture semantic target projection", () => {
+  it("joins semantic candidates to actual mesh face IDs without persisting either transient ID", () => {
+    const source = report([candidate(7, "cap", 700)])
+    const reference = projectSurfaceTextureFaceReference(source, {
+      featureId: fixture.layer.featureId,
+      outputRole: "result",
+      meshFaceId: 700,
+    })
+    expect(reference).not.toBeNull()
+    expect(JSON.stringify(reference)).not.toContain("700")
+    expect(
+      projectSurfaceTextureFaceReference(source, {
+        featureId: fixture.layer.featureId,
+        outputRole: "result",
+        meshFaceId: 7,
+      }),
+    ).toBeNull()
+    const layer = surfaceTextureLayerSchema.parse({
+      ...fixture.layer,
+      target: { kind: "faces", outputRole: "result", refs: [reference] },
+    })
+    expect(
+      resolveSurfaceTextureMeshLayer(report([candidate(21, "cap", 211)]), layer).targetFaceIds,
+    ).toEqual([211])
+    const unmapped = candidate(21, "cap", 211)
+    delete unmapped.meshFaceId
+    expect(() => resolveSurfaceTextureMeshLayer(report([unmapped]), layer)).toThrow("current mesh")
+  })
   it("derives fresh face IDs while persisting only body-scoped semantic intent", () => {
     const layer = faceLayer()
     const persisted = JSON.parse(JSON.stringify(layer))
@@ -201,5 +235,131 @@ describe("surface texture semantic target projection", () => {
     ).toMatchObject([
       { featureId: layer.featureId, outputRole: "result", layers: [{ targetFaceIds: [7] }] },
     ])
+  })
+})
+
+describe("shared native surface relief preview lifecycle", () => {
+  function sourceFixture() {
+    const current = report()
+    const mesh = current.rebuild.response.geometry?.[0]?.geometry.mesh
+    if (!mesh) throw new Error("The source fixture mesh is missing")
+    return {
+      current,
+      source: { featureId: fixture.layer.featureId, outputRole: "result", ...mesh },
+    }
+  }
+
+  it("resolves current face IDs and copies every mesh buffer before worker ownership", async () => {
+    const { current, source } = sourceFixture()
+    const terminate = vi.fn()
+    const preview = vi.fn<SurfaceTextureReliefWorker["preview"]>(async (context, mesh, layers) => {
+      expect(context).toMatchObject({
+        documentId: snapshot.id,
+        revision: snapshot.revision,
+        outputRole: "result",
+      })
+      expect(layers[0]?.targetFaceIds).toEqual([7])
+      for (const field of ["positions", "normals", "indices", "triangleFaceIds"] as const) {
+        expect(mesh[field]).not.toBe(source[field])
+        expect(mesh[field].buffer).not.toBe(source[field].buffer)
+      }
+      mesh.positions[0] = 99
+      return mesh
+    })
+    const results = await previewSurfaceTextureRelief({
+      report: current,
+      layers: [faceLayer(current)],
+      sources: [source],
+      createWorker: () => ({ preview, terminate }),
+    })
+    expect(results[0]?.source).toBe(source)
+    expect(results[0]?.mesh.positions[0]).toBe(99)
+    expect(source.positions[0]).toBe(0)
+    expect(terminate).toHaveBeenCalledOnce()
+  })
+
+  it("rejects hidden, duplicate or stale topology sources before creating a worker", async () => {
+    const { current, source } = sourceFixture()
+    const createWorker = vi.fn<() => SurfaceTextureReliefWorker>()
+    await expect(
+      previewSurfaceTextureRelief({
+        report: current,
+        layers: [fixture.layer],
+        requiredLayers: [fixture.layer],
+        sources: [],
+        createWorker,
+      }),
+    ).rejects.toThrow("Show the textured body")
+    await expect(
+      previewSurfaceTextureRelief({
+        report: current,
+        layers: [fixture.layer],
+        sources: [source, source],
+        createWorker,
+      }),
+    ).rejects.toThrow("ambiguous")
+    await expect(
+      previewSurfaceTextureRelief({
+        report: report([candidate(7)], "result", snapshot.revision + 1),
+        layers: [faceLayer(current)],
+        sources: [source],
+        createWorker,
+      }),
+    ).rejects.toThrow("unavailable")
+    expect(createWorker).not.toHaveBeenCalled()
+    expect(
+      await previewSurfaceTextureRelief({
+        report: current,
+        layers: [{ ...fixture.layer, enabled: false }],
+        sources: [source],
+        createWorker,
+      }),
+    ).toEqual([])
+  })
+
+  it("terminates once on native rejection and abort, including a worker that does not settle on termination", async () => {
+    const { current, source } = sourceFixture()
+    const failed = {
+      preview: vi.fn<SurfaceTextureReliefWorker["preview"]>(async () => {
+        throw new Error("Invalid displacement")
+      }),
+      terminate: vi.fn(),
+    }
+    await expect(
+      previewSurfaceTextureRelief({
+        report: current,
+        layers: [fixture.layer],
+        sources: [source],
+        createWorker: () => failed,
+      }),
+    ).rejects.toThrow("Invalid displacement")
+    expect(failed.terminate).toHaveBeenCalledOnce()
+    let aborted = false
+    let listener: () => void = () => undefined
+    const signal = {
+      get aborted() {
+        return aborted
+      },
+      addEventListener: (_type: "abort", callback: () => void) => {
+        listener = callback
+      },
+      removeEventListener: vi.fn(),
+    }
+    const blocked = {
+      preview: vi.fn<SurfaceTextureReliefWorker["preview"]>(() => new Promise(() => undefined)),
+      terminate: vi.fn(),
+    }
+    const pending = previewSurfaceTextureRelief({
+      report: current,
+      layers: [fixture.layer],
+      sources: [source],
+      createWorker: () => blocked,
+      signal,
+    })
+    aborted = true
+    listener()
+    await expect(pending).rejects.toThrow("cancelled")
+    expect(blocked.terminate).toHaveBeenCalledOnce()
+    expect(signal.removeEventListener).toHaveBeenCalledOnce()
   })
 })

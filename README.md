@@ -19,7 +19,16 @@ See [ADR-0040](docs/adr/0040-selected-edge-treatments.md) for the selected-edge 
 The Measure task now reads exact per-output volume, surface area, bounding dimensions, and solid count
 through a bounded query shared with the automation API. Measurements follow the current document
 revision and project units. [ADR-0041](docs/adr/0041-revision-bound-model-measurements.md) defines the
-read contract. Exact automation drafts now connect to ordinary browser persistence and session Undo/Redo through a trusted application adapter; commits require a host-owned browser review. A local stdio MCP adapter now pairs an explicitly enabled browser document and exposes thirty tools, including sketch/Extrude/Revolve authoring, variables, selected-edge Fillet/Chamfer, and bounded committed/draft inspection. Source geometry and selected treatments can be created and repaired in one draft before one browser approval.
+read contract. Exact automation drafts connect to ordinary browser persistence and session Undo/Redo through a trusted application adapter; commits require a host-owned browser review. Local stdio and paired remote MCP expose named CAD, assembly/library and bounded inspection tools. Source geometry and selected treatments can be created and repaired in one draft before one browser approval.
+
+Native STEP/STP/BREP/STL/3MF sources use bounded owned uploads, native inspection and manual browser Apply;
+see [the native import workflow](.agents/skills/vibeshape-modeling/references/native-import.md).
+SVG/DXF sources use separate [planar import tools](.agents/skills/vibeshape-modeling/references/planar-import.md)
+with analytical review and an ordinary editable Sketch transaction.
+Editable relief uses four named [SurfaceTexture tools](.agents/skills/vibeshape-modeling/references/surface-textures.md),
+lossless packed grayscale maps up to 256 by 256, exact face targets and ordered brush masks.
+Texture mutations require manual native relief preview and Apply even when CAD auto-apply is enabled.
+Native backups preserve editable layers; STL/3MF bake relief while STEP retains untextured exact geometry.
 
 Committed document Undo/Redo now saves revisioned changes through the ordinary history and rebuild path. Navigation stacks last for the current project session; see [ADR-0039](docs/adr/0039-committed-document-undo.md). Full CAD/MCP command coverage remains unfinished.
 

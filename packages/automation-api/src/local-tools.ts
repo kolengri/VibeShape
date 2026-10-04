@@ -100,6 +100,13 @@ import {
   variableListViewSchema,
 } from "./queries"
 import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
+import {
+  surfaceTextureCommitViewSchema,
+  surfaceTextureOperations,
+  surfaceTexturesViewSchema,
+  surfaceTextureToolInputs,
+  surfaceTextureToolNames,
+} from "./surface-texture-tools"
 
 export const localFailureSchema = z
   .object({
@@ -163,6 +170,7 @@ export const localToolInputs = {
   }),
   ...assemblyToolInputs,
   ...libraryToolInputs,
+  ...surfaceTextureToolInputs,
   model_history: authoredHistoryListArgumentsSchema,
   model_parts: authoredListArgumentsSchema,
   model_folders: authoredListArgumentsSchema,
@@ -244,6 +252,10 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  model_surface_textures: resultOf(surfaceTexturesViewSchema),
+  create_surface_texture: resultOf(surfaceTextureCommitViewSchema),
+  update_surface_texture: resultOf(surfaceTextureCommitViewSchema),
+  remove_surface_texture: resultOf(surfaceTextureCommitViewSchema),
   begin_planar_import_upload: resultOf(planarUploadDescriptorSchema),
   append_planar_import_chunk: resultOf(planarUploadDescriptorSchema),
   inspect_planar_import_upload: resultOf(planarUploadInspectionSchema),
@@ -410,6 +422,7 @@ export const localToolNameSchema = z.enum([
   "model_measurements",
   "draft_measurements",
   ...assemblyToolNames,
+  ...surfaceTextureToolNames,
   "library_items",
   "library_version",
   "save_library_definition",
@@ -512,6 +525,7 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
     .strict(),
   ...assemblyOperations,
   ...libraryOperations,
+  ...surfaceTextureOperations,
   z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),
   z.object({ tool: z.literal("model_parts"), arguments: localToolInputs.model_parts }).strict(),
   z.object({ tool: z.literal("model_folders"), arguments: localToolInputs.model_folders }).strict(),

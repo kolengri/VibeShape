@@ -228,6 +228,13 @@ Assembly and local-library tools use the same paired authority on local and remo
 for private draft versions, topology frames, immutable component versions and mandatory manual Apply.
 Assembly previews are unsaved; callers cannot provide frozen pins or source bytes.
 
+`model_surface_textures` reads bounded exact-revision layer summaries. `create_surface_texture`,
+`update_surface_texture` and `remove_surface_texture` use owned proposals with mandatory native
+relief preview and manual Apply. Packed grayscale maps support the full 256 by 256 editor size;
+omitted map, face scope and mask stay unchanged on update. Removal requires destructive confirmation.
+Native backups preserve editability; STL/3MF bake enabled relief and STEP stays untextured. Read the
+[surface texture workflow](../.agents/skills/vibeshape-modeling/references/surface-textures.md).
+
 Exact-body modifying operations are additive: `create_body_revolve`/`update_body_revolve` author
 Revolve v7 Add/Remove/Intersect on a stable target role; `create_body_subtract`/`update_body_subtract`
 author Subtract v2 with ordered exact target/tool roles, including distinct bodies of one producer.
