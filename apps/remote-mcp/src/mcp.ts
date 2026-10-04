@@ -39,8 +39,8 @@ import type { RemoteEnv } from "./environment"
 import { digest, failure } from "./request-security"
 import type { TabSession } from "./tab-session"
 
-const STATIC_TOOL_CATALOG_MAX_BYTES = 2 * 1024 * 1024
 const tools = localToolNameSchema.options.filter((name) => name !== "export_model")
+const STATIC_TOOL_CATALOG_MAX_BYTES = 2 * 1024 * 1024
 
 function toolResult(result: unknown) {
   return {

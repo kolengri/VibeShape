@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { bodyOutputRoleSchema } from "./body-reference"
 import { canonicalJson } from "./canonical-json"
-import { featureBodyDependencies } from "./feature-dependencies"
+import { featureGeometryDependencies } from "./feature-dependencies"
 import { type FeatureRecord, featureParametersSchema, featureTypeSchema } from "./feature-graph"
 import type { FeatureTypeRegistry } from "./feature-type-registry"
 import { featureIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
@@ -288,7 +288,7 @@ function canonicalBodyInputContent(
 ):
   | { ok: true; schemaVersion: 0 | 1 | 2; fields: Readonly<Record<string, unknown>> }
   | { ok: false; diagnostic: FeatureContentIdentityDiagnostic } {
-  const bodies = featureBodyDependencies(feature)
+  const bodies = featureGeometryDependencies(feature)
   if (isBodyCombinationV2(feature)) {
     if ([...dependencies.values()].some(({ outputRole }) => outputRole !== undefined)) {
       return diagnostic(

@@ -60,3 +60,71 @@ export const threadContentParametersSchema = z
       })
   })
 export type ThreadContentParameters = Readonly<z.infer<typeof threadContentParametersSchema>>
+
+export const THREAD_CONTENT_V2_MAX_AUTHORED_TURNS = 20
+export const threadContentParametersV2Schema = z
+  .object({
+    ...threadContentParametersSchema.shape,
+    axis: z.literal("custom"),
+    direction: z
+      .tuple([z.number().finite(), z.number().finite(), z.number().finite()])
+      .refine((v) => Math.abs(Math.hypot(...v) - 1) <= 1e-8, "Thread axis must be normalized."),
+    supportFeatureId: z.string().uuid().optional(),
+  })
+  .strict()
+  .superRefine((parameters, context) => {
+    const band = parameters.length - parameters.runIn - parameters.runOut
+    if (band <= 0)
+      context.addIssue({
+        code: "custom",
+        path: ["length"],
+        message: "The threaded band must have positive length.",
+      })
+    if (band / parameters.pitch > THREAD_CONTENT_V2_MAX_AUTHORED_TURNS)
+      context.addIssue({
+        code: "custom",
+        path: ["pitch"],
+        message: "Modeled threads allow at most 20 total turns.",
+      })
+    if (parameters.starts > 1 && band / parameters.pitch > 16)
+      context.addIssue({
+        code: "custom",
+        path: ["starts"],
+        message: "Multi-start threads retain the 16-turn aggregate budget.",
+      })
+    if (parameters.depth > 0.75 * parameters.pitch)
+      context.addIssue({
+        code: "custom",
+        path: ["depth"],
+        message: "Thread depth must not exceed 0.75 times the pitch.",
+      })
+    if (
+      parameters.kind === "external" &&
+      parameters.nominalDiameter / 2 - parameters.clearance - parameters.depth <= 0
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["depth"],
+        message: "External thread root radius must remain positive after radial clearance.",
+      })
+    const nativeTurns =
+      band / parameters.pitch +
+      (2 *
+        Math.ceil(band / (16 * parameters.pitch)) *
+        parameters.starts *
+        ((parameters.depth + Math.max(0.001, parameters.pitch * 0.001)) / Math.sqrt(3) +
+          Math.max(0.001, parameters.pitch * 0.001))) /
+        parameters.pitch
+    if (nativeTurns > 32)
+      context.addIssue({
+        code: "custom",
+        path: ["pitch"],
+        message: "Thread exceeds the 32-turn aggregate native helix budget.",
+      })
+  })
+export type ThreadContentParametersV2 = Readonly<z.infer<typeof threadContentParametersV2Schema>>
+export const threadGeometryParametersSchema = z.union([
+  threadContentParametersSchema,
+  threadContentParametersV2Schema,
+])
+export type ThreadGeometryParameters = Readonly<z.infer<typeof threadGeometryParametersSchema>>
