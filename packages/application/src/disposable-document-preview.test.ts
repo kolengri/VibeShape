@@ -1,7 +1,7 @@
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import type { FeatureMeshPolicy } from "@vibeshape/protocol"
-import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import type { DocumentRebuildPort } from "./persistent-document-session"
@@ -93,6 +93,107 @@ function portFor(
 }
 
 describe("createDisposableDocumentPreview", () => {
+  it("retains complete rebuild meshes only when requested and owns their buffers after termination", async () => {
+    const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f2102"
+    const current = snapshotWithFeatures([featureId])
+    const meshPayload = {
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices: new Uint32Array([0, 1, 2]),
+      triangleFaceIds: new Uint32Array([1]),
+    }
+    const shape = {
+      valid: true,
+      volume: 1,
+      surfaceArea: 1,
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      faceCount: 1,
+      edgeCount: 3,
+      solidCount: 1,
+    }
+    const environment = {
+      adapter: "replicad",
+      adapterVersion: "test",
+      replicadVersion: "0.23.1",
+      opencascadePackageVersion: "0.23.0",
+      opencascadeSourceRevision: null,
+    }
+    const rebuilt = documentWorkerResponseSchema.parse(
+      response({
+        evaluation: {
+          records: [{ featureId, status: "succeeded", contentHash: "a".repeat(64) }],
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [featureId],
+          reusedFeatureIds: [],
+        },
+        geometry: [
+          {
+            featureId,
+            contentHash: "a".repeat(64),
+            meshPolicy: mesh,
+            geometry: {
+              engine: {
+                ...environment,
+                wasmBytes: 1,
+                initializedInMs: 1,
+                featureContentEnvironment: {
+                  schemaVersion: 0,
+                  hostApiVersion: "0.1.0",
+                  geometry: {
+                    adapterId: "org.vibeshape.geometry.replicad",
+                    adapterVersion: "test",
+                    kernelId: "org.opencascade.occt",
+                    kernelVersion: "7.9.2",
+                    kernelSourceRevision: null,
+                  },
+                  modelingTolerancePolicyVersion: 1,
+                  provider: { kind: "built-in" },
+                },
+              },
+              shape,
+              mesh: meshPayload,
+              topologyCandidates: [],
+              cache: { brepHit: false },
+              timings: { evaluationMs: 1, tessellationMs: 1, totalMs: 2 },
+              bodies: [{ outputRole: "result", shape, mesh: meshPayload, topologyCandidates: [] }],
+            },
+          },
+        ],
+      }),
+    )
+    const retained = createDisposableDocumentPreview({
+      mesh,
+      retainRebuild: true,
+      createRebuildPort: () =>
+        portFor(
+          async () => rebuilt as never,
+          () => {
+            meshPayload.positions.fill(-1)
+            meshPayload.normals.fill(-1)
+            meshPayload.indices.fill(0)
+            meshPayload.triangleFaceIds.fill(0)
+          },
+        ),
+    })
+    const result = await retained.preview(current)
+    if (!result.ok || !result.rebuild) throw new Error("Missing retained rebuild")
+    const geometry = result.rebuild.geometry[0]?.geometry
+    expect(geometry?.mesh.positions).toEqual(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+    expect(geometry?.mesh.indices).toEqual(new Uint32Array([0, 1, 2]))
+    expect(geometry?.bodies?.[0]?.mesh.triangleFaceIds).toEqual(new Uint32Array([1]))
+    expect(geometry?.mesh.positions.buffer).not.toBe(meshPayload.positions.buffer)
+    const ordinary = createDisposableDocumentPreview({
+      mesh,
+      createRebuildPort: () =>
+        portFor(
+          async () => rebuilt as never,
+          () => undefined,
+        ),
+    })
+    const inspected = await ordinary.preview(current)
+    expect(inspected.ok).toBe(true)
+    expect(inspected).not.toHaveProperty("rebuild")
+  })
   it("resolves cancellation immediately and consumes a late rebuild", async () => {
     const pending = deferred()
     let terminated = 0

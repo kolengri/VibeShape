@@ -6,6 +6,7 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
+    "./render-preview": "./src/render-preview.ts",
     ".": "./src/index.ts",
     "./drafts": "./src/drafts.ts",
     "./draft-inspection-result": "./src/draft-inspection-result.ts",

@@ -20,6 +20,7 @@ import {
   type AutomationDocumentPort,
   type AutomationHost,
   createAutomationHost,
+  type DraftGeometryPort,
   type DraftReviewInput,
   type DraftReviewPort,
 } from "./host"
@@ -182,7 +183,7 @@ function documentStore(initial: DocumentSnapshot | null) {
 function automationHost(
   documents: AutomationDocumentPort,
   options: {
-    geometry?: { evaluate: (snapshot: DocumentSnapshot) => PromiseLike<unknown> | unknown }
+    geometry?: DraftGeometryPort
     review?: DraftReviewPort
     now?: () => number
     draftTtlMs?: number
@@ -214,6 +215,278 @@ function applyRequest(commandInput: unknown) {
 }
 
 describe("exact automation draft host boundary", () => {
+  const image = {
+    mimeType: "image/png" as const,
+    base64:
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+    width: 1,
+    height: 1,
+    views: ["front" as const],
+  }
+  function rendered(snapshot: DocumentSnapshot) {
+    return {
+      ok: true as const,
+      value: {
+        source: "model" as const,
+        documentId: snapshot.id,
+        revision: snapshot.revision,
+        generation: 3,
+        geometryStatus: "valid" as const,
+        bodyCount: 1,
+        image,
+      },
+    }
+  }
+  it("forwards and binds custom draft cameras while detaching port inputs from owned authority", async () => {
+    const initial = featureSnapshot(1),
+      store = documentStore(initial)
+    const camera = {
+      position: [10, 20, 30] as [number, number, number],
+      target: [0, 0, 0] as [number, number, number],
+      viewHeightMm: 3,
+    }
+    let tamper = false
+    let receivedCamera: unknown
+    const host = automationHost(store.port, {
+      geometry: {
+        evaluate: (snapshot) => evidence(snapshot),
+        renderPreview: (snapshot, options) => {
+          receivedCamera = options.camera
+          Reflect.set(snapshot, "name", "Port mutation")
+          if (tamper && options.camera) options.camera.position[0] += 1
+          return {
+            ok: true,
+            value: {
+              ...rendered(snapshot).value,
+              ...(options.camera ? { camera: options.camera } : {}),
+              image: { ...image, views: ["custom"] },
+            },
+          }
+        },
+      },
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    const request = { schemaVersion: 1, draftId, revision: initial.revision, camera }
+    await expect(host.renderDraft?.(actor, request)).resolves.toMatchObject({
+      ok: true,
+      value: { camera, image: { views: ["custom"] } },
+    })
+    expect(receivedCamera).toEqual(camera)
+    const preview = await host.previewDraft(actor, operationRequest())
+    expect(preview).toMatchObject({ ok: true, value: { draft: { revision: initial.revision } } })
+    expect(store.snapshot()?.name).toBe(initial.name)
+    tamper = true
+    await expect(host.renderDraft?.(actor, request)).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-geometry-evidence" },
+    })
+    expect(camera.position).toEqual([10, 20, 30])
+  })
+  it("renders only an owned exact draft revision through the serialized geometry port", async () => {
+    const initial = featureSnapshot(1),
+      store = documentStore(initial)
+    let renderCalls = 0
+    const host = automationHost(store.port, {
+      geometry: {
+        evaluate: (snapshot) => evidence(snapshot),
+        renderPreview: (snapshot) => {
+          renderCalls++
+          return rendered(snapshot)
+        },
+      },
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    const request = { schemaVersion: 1, draftId, revision: initial.revision, views: ["front"] }
+    await expect(
+      host.renderDraft?.({ ...actor, clientId: "org.example.other" }, request),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "draft-owner-mismatch" } })
+    await expect(
+      host.renderDraft?.(actor, { ...request, revision: initial.revision + 1 }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "stale-query-revision" } })
+    expect(renderCalls).toBe(0)
+    await expect(host.renderDraft?.(actor, request)).resolves.toMatchObject({
+      ok: true,
+      value: {
+        source: "draft",
+        draftId,
+        baseRevision: initial.revision,
+        revision: initial.revision,
+        generation: 3,
+        image,
+      },
+    })
+    expect(renderCalls).toBe(1)
+    expect(store.portCalls()).toBe(0)
+  })
+  it.each(["stale", "expired", "cancelled"] as const)(
+    "rejects a %s draft result after asynchronous image encoding",
+    async (change) => {
+      const initial = featureSnapshot(1),
+        store = documentStore(initial)
+      let now = startedAt,
+        release!: (value: ReturnType<typeof rendered>) => void
+      const pending = new Promise<ReturnType<typeof rendered>>((resolve) => {
+        release = resolve
+      })
+      let started!: () => void
+      const encoding = new Promise<void>((resolve) => {
+        started = resolve
+      })
+      const cancellation = { aborted: false }
+      const host = automationHost(store.port, {
+        now: () => now,
+        draftTtlMs: 1000,
+        geometry: {
+          evaluate: (snapshot) => evidence(snapshot),
+          renderPreview: () => {
+            started()
+            return pending
+          },
+        },
+      })
+      await host.createDraft(actor, createRequest(initial.revision))
+      const result = host.renderDraft?.(
+        actor,
+        { schemaVersion: 1, draftId, revision: initial.revision, views: ["front"] },
+        cancellation,
+      )
+      await encoding
+      if (change === "stale") store.replace({ ...initial, revision: initial.revision + 1 })
+      else if (change === "expired") now += 1001
+      else cancellation.aborted = true
+      release(rendered(initial))
+      await expect(result).resolves.toMatchObject({
+        ok: false,
+        diagnostic: {
+          code:
+            change === "stale"
+              ? "stale-revision"
+              : change === "expired"
+                ? "draft-expired"
+                : "request-cancelled",
+        },
+      })
+      expect(store.portCalls()).toBe(0)
+    },
+  )
+  it("rejects a renderer response for another body and retains optional-port compatibility", async () => {
+    const initial = featureSnapshot(1),
+      store = documentStore(initial)
+    const host = automationHost(store.port, {
+      geometry: {
+        evaluate: (snapshot) => evidence(snapshot),
+        renderPreview: (snapshot) => rendered(snapshot),
+      },
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    const targetFeature = initial.features[0]
+    if (!targetFeature) throw new Error("Missing target feature")
+    await expect(
+      host.renderDraft?.(actor, {
+        schemaVersion: 1,
+        draftId,
+        revision: initial.revision,
+        views: ["front"],
+        target: { featureId: targetFeature.id, outputRole: "result" },
+      }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "invalid-geometry-evidence" } })
+    const unsupported = automationHost(store.port)
+    await unsupported.createDraft(actor, createRequest(initial.revision))
+    await expect(
+      unsupported.renderDraft?.(actor, { schemaVersion: 1, draftId, revision: initial.revision }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "render-preview-unavailable" } })
+  })
+  it("rejects incomplete default views and aggregate metadata for an exact target", async () => {
+    const initial = featureSnapshot(1),
+      store = documentStore(initial)
+    const targetFeature = initial.features[0]
+    if (!targetFeature) throw new Error("Missing target feature")
+    const host = automationHost(store.port, {
+      geometry: {
+        evaluate: (snapshot) => evidence(snapshot),
+        renderPreview: (snapshot, options) => ({
+          ...rendered(snapshot),
+          value: {
+            ...rendered(snapshot).value,
+            bodyCount: options.target ? 2 : 1,
+            ...(options.target ? { target: options.target } : {}),
+          },
+        }),
+      },
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    await expect(
+      host.renderDraft?.(actor, { schemaVersion: 1, draftId, revision: initial.revision }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "invalid-geometry-evidence" } })
+    await expect(
+      host.renderDraft?.(actor, {
+        schemaVersion: 1,
+        draftId,
+        revision: initial.revision,
+        views: ["front"],
+        target: { featureId: targetFeature.id, outputRole: "result" },
+      }),
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "invalid-geometry-evidence" } })
+  })
+  it("serializes draft mutations behind rendering so the published image keeps its owned revision", async () => {
+    const initial = featureSnapshot(1),
+      store = documentStore(initial)
+    let release!: (value: ReturnType<typeof rendered>) => void
+    const pending = new Promise<ReturnType<typeof rendered>>((resolve) => {
+      release = resolve
+    })
+    let started!: () => void
+    const encoding = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const host = automationHost(store.port, {
+      geometry: {
+        evaluate: (snapshot) => evidence(snapshot),
+        renderPreview: () => {
+          started()
+          return pending
+        },
+      },
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    const imageResult = host.renderDraft?.(actor, {
+      schemaVersion: 1,
+      draftId,
+      revision: initial.revision,
+      views: ["front"],
+    })
+    await encoding
+    let changed = false
+    const applied = host
+      .applyCommand(
+        actor,
+        applyRequest(
+          command(
+            "org.vibeshape.document.rename",
+            initial.revision,
+            "Changed draft",
+            "0195b5ac-b221-7a2c-8c33-67a36a7f3999",
+          ),
+        ),
+      )
+      .then((result) => {
+        changed = true
+        return result
+      })
+    await Promise.resolve()
+    expect(changed).toBe(false)
+    release(rendered(initial))
+    await expect(imageResult).resolves.toMatchObject({
+      ok: true,
+      value: { revision: initial.revision },
+    })
+    await expect(applied).resolves.toMatchObject({
+      ok: true,
+      value: { revision: initial.revision + 1 },
+    })
+    expect(store.snapshot()).toBe(initial)
+    expect(store.portCalls()).toBe(0)
+  })
   it("returns schema-version 2 preview with a bounded valid measurement view", async () => {
     const store = documentStore(featureSnapshot(1))
     const host = automationHost(store.port)

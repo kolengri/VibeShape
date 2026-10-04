@@ -2,6 +2,8 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  render_preview:
+    "Render a PNG of complete CAD body meshes at one exact saved model or owned CAD draft revision. Supply source=model and revision from model_info, or source=draft, draftId and the current draft revision. Default views are isometric/front/right/top in a labeled collage; request one to four unique standard views. For an arbitrary angle or detail close-up, supply camera instead of views: world-mm position/target triples, optional up vector and viewHeightMm vertical span. Orthographic distance does not zoom; omit span to auto-fit, set span to crop. Camera is echoed in metadata and produces one custom view. Optional target selects one exact featureId/outputRole from body measurements, including historical outputs. Does not move the user's camera or change document/history. Returns revision/generation, geometryStatus, bodyCount and a native MCP image; invalid geometry may show only successful bodies and must still be repaired. Visual evidence complements numeric geometry checks. Does not render assembly placement or surface-relief layers. Clients must pass image tool content to a vision-capable model.",
   model_history_state:
     "Read canUndo/canRedo at the current committed revision. These are session-local saved-change checkpoints, distinct from model_history authored order. Reopening starts empty Undo/Redo stacks.",
   undo_model:
@@ -246,6 +248,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "render_preview",
       "begin_planar_import_upload",
       "append_planar_import_chunk",
       "inspect_planar_import_upload",
@@ -301,6 +304,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "render_preview",
       "append_planar_import_chunk",
       "inspect_planar_import_upload",
       "discard_planar_import_upload",

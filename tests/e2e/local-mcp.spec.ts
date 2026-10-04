@@ -154,6 +154,7 @@ test("creates, repairs, reviews, commits and exports a model through real local 
       "remove_variable",
       "rename_project",
       "rename_variable",
+      "render_preview",
       "replace_variable_table",
       "save_library_definition",
       "set_feature_suppressed",

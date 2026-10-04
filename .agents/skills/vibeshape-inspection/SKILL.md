@@ -23,12 +23,48 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |
 | Which immutable local component version is available? | `library_items`, `library_version` |
 | Does the entire draft rebuild correctly? | `preview_draft`, followed by relevant draft reads |
+| Does the visible CAD shape match the requested form and spatial relationships? | `render_preview` at the exact model or owned draft revision |
 
 Use the exact committed revision from `model_info` for model reads; draft reads use the draft's current revision and host-returned draft ID. Follow `nextCursor` until null for a complete requested collection, or stop when a targeted question is answered. Start with `cursor: null` where required. Reduce page size when a response exceeds budget. Do not mix pages across revisions.
 
 Tree dependency summaries include authored sketch inputs for Hole, Loft and Sweep, profile inputs and Revolve axis inputs as well as producer dependencies. Read complete entity records before changing those inputs; a summary does not include all parameters or establish current geometry availability.
 
-## Interpret evidence
+## Visual inspection
+
+Use `render_preview` after meaningful construction steps and before accepting a shape-dependent
+result. Both local and remote MCP return a native PNG image content block plus structured metadata;
+the host must pass image content to a vision-capable model. A text-only client cannot inspect the
+picture by reading its metadata or base64.
+
+For saved geometry, supply `source: "model"` and `revision` from `model_info`. For unsaved geometry,
+supply `source: "draft"`, the owned `draftId`, and its current `revision`. Default rendering is a
+labeled isometric/front/right/top collage; request one to four unique standard `views` for a focused
+question. Optional `target: { featureId, outputRole }` selects one exact body from body measurements,
+including a historical producer output. A missing body fails instead of falling back to another body.
+
+For an arbitrary angle or a close-up, supply `camera` instead of `views`. `camera.position` and
+`camera.target` are world-space XYZ triples in millimeters; `camera.up` is an optional nonzero,
+nonparallel orientation vector. Omit it for the default Z-up orientation with a pole-safe fallback.
+The projection is orthographic: set `camera.viewHeightMm` to the visible vertical span in millimeters
+to zoom into the target region; changing camera distance alone does not zoom. Without that span,
+the custom view automatically fits all requested bodies. A close-up intentionally crops the rest
+of the model, so retain an overview when evaluating the whole shape. Custom output is labeled
+`custom`, and metadata echoes the requested camera. Coordinates and view span are bounded by the
+live tool schema. Never estimate exact dimensions from apparent pixel sizes.
+
+The renderer fits full CAD body meshes on a separate canvas without changing the user's camera,
+selection, saved model or Undo history. It reports document/revision/generation, rendered body count
+and `geometryStatus`. An invalid rebuild may show surviving bodies: use numerical diagnostics to
+find missing/failed features, then repair the cause. Views cover CAD body geometry rather than
+assembly occurrence placement or surface-relief layers; unsupported representations fail explicitly.
+Hidden terminal bodies may be included because part visibility is display intent.
+
+Check silhouettes, opening orientation and body placement against the request. Render another
+relevant angle when occlusion hides the evidence. Pictures do not establish dimensions, minimum wall
+thickness, clearance, exact topology, printability or physical fit; retain the corresponding numerical
+checks. Re-render after edits rather than combining evidence from different revisions.
+
+## Interpret numerical evidence
 
 Stable feature/part IDs and semantic body output roles identify authored intent. Transient OCCT face/edge indices, kernel handles, display names, and mesh order do not. Use only resolved durable references from the edge-selection tools for modeling. Body-topology tools supply current exact references and content hashes, including unsaved draft producers. Shell openings, planar Extrude endpoints (v6/v7), finite curved-face Extrude endpoints (v7), and Loft v3 end constraints consume their supported face contracts; follow the [modeling reference](../vibeshape-modeling/references/modeling.md) for each version. These face references are not Hole/Fillet/Chamfer inputs; those operations retain their separate body/edge selection contracts.
 

@@ -38,6 +38,11 @@ import type {
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
+import {
+  type RenderPreviewArguments,
+  type RenderPreviewResult,
+  renderDraftPreviewRequestSchema,
+} from "@vibeshape/automation-api/render-preview"
 import { isSurfaceTextureToolName } from "@vibeshape/automation-api/surface-texture-tools"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
@@ -67,6 +72,11 @@ type LocalSessionPort = Readonly<{
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
+  readRenderPreview?: (
+    documentId: import("@vibeshape/domain/identifiers").DocumentId,
+    request: RenderPreviewArguments,
+    signal?: AbortSignal,
+  ) => Promise<AutomationHostResult<Extract<RenderPreviewResult, { source: "model" }>>>
   history?: ReturnType<typeof createBrowserHistoryAutomationSession>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
@@ -371,7 +381,33 @@ export function createLocalToolExecutor(
       return changeMetadata(session, actor, operation, signal)
     return null
   }
+  async function renderPreview(
+    operation: Extract<LocalOperation, { tool: "render_preview" }>,
+    signal?: AbortSignal,
+  ) {
+    const request = operation.arguments
+    const { source: _source, ...options } = request
+    const result =
+      request.source === "draft"
+        ? await session.host.renderDraft?.(
+            actor,
+            renderDraftPreviewRequestSchema.parse({ schemaVersion: 1, ...options }),
+            signal,
+          )
+        : await session.readRenderPreview?.(
+            session.documentId as import("@vibeshape/domain/identifiers").DocumentId,
+            request,
+            signal,
+          )
+    return result
+      ? hostResult(result)
+      : localFailure(
+          "render-preview-unavailable",
+          "The paired session cannot render model previews.",
+        )
+  }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (operation.tool === "render_preview") return renderPreview(operation, signal)
     const owned = ownedOperation(operation, signal)
     if (owned !== null) return owned
     if (isLocalDraftCommand(operation))

@@ -23,6 +23,10 @@ import type {
   QueryIssue,
 } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
+import {
+  type RenderPreviewResult,
+  renderDraftPreviewRequestSchema,
+} from "@vibeshape/automation-api/render-preview"
 import type {
   CommandDispatcher,
   CommandDispatcherDiagnosticCode,
@@ -46,7 +50,12 @@ import { type SketchRecord, sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { z } from "zod"
 import { type DraftInspectionCache, inspectDraftQuery } from "./draft-inspection"
 import type { DraftReviewInput, DraftReviewPort } from "./draft-review"
-import { type DraftGeometryPort, evaluateDraftGeometry } from "./exact-draft-preview"
+import {
+  type DraftGeometryPort,
+  evaluateDraftGeometry,
+  renderDraftGeometry,
+  validateRenderedDraftGeometry,
+} from "./exact-draft-preview"
 
 export type { DraftReviewDecision, DraftReviewInput, DraftReviewPort } from "./draft-review"
 export type { DraftGeometryPort } from "./exact-draft-preview"
@@ -117,6 +126,9 @@ export type AutomationHostDiagnosticCode =
   | "draft-command-limit-reached"
   | "duplicate-command-id"
   | "automation-operation-failed"
+  | "request-cancelled"
+  | "render-preview-unavailable"
+  | "preview-representation-unsupported"
 
 export type AutomationHostDiagnostic = Readonly<{
   code: AutomationHostDiagnosticCode
@@ -130,6 +142,11 @@ export type AutomationHostResult<Value> =
   | { ok: false; diagnostic: AutomationHostDiagnostic }
 
 export type AutomationHost = Readonly<{
+  renderDraft?: (
+    actor: unknown,
+    input: unknown,
+    signal?: Readonly<{ aborted: boolean }>,
+  ) => Promise<AutomationHostResult<Extract<RenderPreviewResult, { source: "draft" }>>>
   readOwnedSketch?: (actor: unknown, input: unknown) => Promise<AutomationHostResult<SketchRecord>>
   createDraft: (
     actor: unknown,
@@ -812,6 +829,70 @@ export function createAutomationHost(
     }
   }
 
+  function draftRenderingContext(
+    actorInput: unknown,
+    input: unknown,
+  ): AutomationHostResult<{
+    record: ManagedDraft
+    snapshot: DocumentSnapshot
+    request: ReturnType<typeof renderDraftPreviewRequestSchema.parse>
+  }> {
+    const operation = parseOperation(actorInput, input, renderDraftPreviewRequestSchema)
+    if (!operation.ok) return operation
+    const owned = ownedDraft(
+      operation.value.actor,
+      operation.value.request.draftId,
+      operation.value.at,
+    )
+    if (!owned.ok) return owned
+    const snapshot = owned.value.draft.snapshot
+    if (!snapshot)
+      return failure(hostDiagnostic("draft-empty", "The draft has no document to render."))
+    if (snapshot.revision !== operation.value.request.revision)
+      return failure(
+        hostDiagnostic(
+          "stale-query-revision",
+          "The render request does not match the draft revision.",
+          true,
+        ),
+      )
+    return {
+      ok: true as const,
+      value: { record: owned.value, snapshot, request: operation.value.request },
+    }
+  }
+
+  async function renderDraft(
+    actorInput: unknown,
+    input: unknown,
+    signal?: Readonly<{ aborted: boolean }>,
+  ): Promise<AutomationHostResult<Extract<RenderPreviewResult, { source: "draft" }>>> {
+    const context = draftRenderingContext(actorInput, input)
+    if (!context.ok) return context
+    const { record, snapshot, request } = context.value
+    const current = await revalidateRender(record, signal)
+    if (!current.ok) return current
+    const rendered = await renderDraftGeometry(snapshot, request, configuration.geometry, signal)
+    const refreshed = await revalidateRender(record, signal)
+    if (!refreshed.ok) return refreshed
+    if (!rendered.ok) return rendered
+    return validateRenderedDraftGeometry(snapshot, request, rendered, record.draft.baseRevision)
+  }
+
+  async function revalidateRender(
+    record: ManagedDraft,
+    signal?: Readonly<{ aborted: boolean }>,
+  ): Promise<AutomationHostResult<number>> {
+    if (signal?.aborted)
+      return failure(
+        hostDiagnostic("request-cancelled", "The preview request was cancelled.", true),
+      )
+    const refreshed = await revalidateAfterGeometry(record)
+    return signal?.aborted
+      ? failure(hostDiagnostic("request-cancelled", "The preview request was cancelled.", true))
+      : refreshed
+  }
+
   async function readOwnedSketch(
     actorInput: unknown,
     input: unknown,
@@ -1034,6 +1115,7 @@ export function createAutomationHost(
       commitDraft: (actor, input) => enqueue(() => commitDraft(actor, input)),
       discardDraft: (actor, input) => enqueue(() => discardDraft(actor, input)),
       inspectDraft: (actor, input) => enqueue(() => inspectDraft(actor, input)),
+      renderDraft: (actor, input, signal) => enqueue(() => renderDraft(actor, input, signal)),
       readOwnedSketch: (actor, input) => enqueue(() => readOwnedSketch(actor, input)),
     },
   }

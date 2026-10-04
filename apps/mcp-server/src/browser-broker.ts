@@ -64,6 +64,7 @@ import {
   sketchSolutionViewSchema,
   variableListViewSchema,
 } from "@vibeshape/automation-api/queries"
+import { renderPreviewResultContextMatches } from "@vibeshape/automation-api/render-preview"
 import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/surface-texture-result-context"
 import { z } from "zod"
 import { BrowserRequestError, readBrowserJson } from "./browser-request"
@@ -342,12 +343,13 @@ function resultContextMatches(
   result: LocalToolResult,
   documentId: string,
 ) {
-  const history = historyResultContextMatches(operation, result, documentId)
-  if (history !== null) return history
-  const assembly = assemblyResultContextMatches(operation, result, documentId)
-  if (assembly !== null) return assembly
-  const texture = surfaceTextureResultContextMatches(operation, result, documentId)
-  if (texture !== null) return texture
+  const context = [
+    renderPreviewResultContextMatches(operation, result, documentId),
+    historyResultContextMatches(operation, result, documentId),
+    assemblyResultContextMatches(operation, result, documentId),
+    surfaceTextureResultContextMatches(operation, result, documentId),
+  ].find((matched) => matched !== null)
+  if (context !== undefined) return context
   if (!result.ok) return true
   if (isLocalMetadataRead(operation))
     return metadataListMatches(operation, result.value, documentId)
@@ -376,7 +378,16 @@ function resultMatches(
   if (isLocalDraftInspection(operation))
     return draftInspectionMatches(operation, result.value, documentId)
   if (isLocalInspection(operation)) return inspectionMatches(operation, result.value, documentId)
+  return documentResultMatches(operation, result, documentId)
+}
+function documentResultMatches(
+  operation: Parameters<typeof resultMatches>[0],
+  result: Extract<LocalToolResult, { ok: true }>,
+  documentId: string,
+) {
   switch (operation.tool) {
+    case "render_preview":
+      return renderPreviewResultContextMatches(operation, result, documentId) === true
     case "model_info":
       return localModelInfoSchema.parse(result.value).summary.documentId === documentId
     case "export_model":

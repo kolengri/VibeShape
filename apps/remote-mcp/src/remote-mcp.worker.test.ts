@@ -515,6 +515,50 @@ describe("remote MCP in workerd", () => {
       ).toBe(false)
     },
   )
+  it("returns native PNG preview content through the paired remote transport", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+    const camera = { position: [30, -30, 20], target: [0, 0, 5], viewHeightMm: 12 }
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 1, "tools/call", {
+      name: "render_preview",
+      arguments: { source: "model", revision: 4, camera },
+    })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected owned browser work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "render_preview",
+        result: {
+          ok: true,
+          value: {
+            source: "model",
+            documentId: "0195b5ac-b250-7a2c-8c33-000000000001",
+            revision: 4,
+            generation: 1,
+            geometryStatus: "valid",
+            bodyCount: 1,
+            camera,
+            image: { mimeType: "image/png", base64: png, width: 1, height: 1, views: ["custom"] },
+          },
+        },
+      }),
+    )
+    const response = (await (await pending).json()) as {
+      result: { content: unknown[]; structuredContent: unknown }
+    }
+    expect(response.result.content).toContainEqual({
+      type: "image",
+      data: png,
+      mimeType: "image/png",
+    })
+    expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
+  })
   it("rejects oversized browser results after serving the larger static schema catalog", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)

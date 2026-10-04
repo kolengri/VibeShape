@@ -28,6 +28,10 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import {
+  renderPreviewMcpResult,
+  renderPreviewMetadataSchema,
+} from "@vibeshape/automation-api/render-preview"
+import {
   localToolAnnotations,
   localToolDescriptions,
 } from "@vibeshape/automation-api/tool-metadata"
@@ -42,6 +46,10 @@ const stages = { queued: 0, executing: 1, review: 2, applying: 3 } as const
 const exportResultSchema = z.discriminatedUnion("ok", [
   localFailureSchema,
   z.object({ ok: z.literal(true), value: exportResourceViewSchema }).strict(),
+])
+const renderedResultSchema = z.discriminatedUnion("ok", [
+  localFailureSchema,
+  z.object({ ok: z.literal(true), value: renderPreviewMetadataSchema }).strict(),
 ])
 
 export function createLocalMcpAdapter(
@@ -71,13 +79,21 @@ export function createLocalMcpAdapter(
       ...localToolNameSchema.options.map((name) => ({
         name,
         description: localToolDescriptions[name],
-        inputSchema: z.toJSONSchema(localToolInputs[name], {
-          reused: "ref",
-          io: isAssemblyLibraryToolName(name) ? "input" : "output",
-        }),
+        inputSchema: {
+          ...z.toJSONSchema(localToolInputs[name], {
+            reused: "ref",
+            io: isAssemblyLibraryToolName(name) ? "input" : "output",
+          }),
+          type: "object" as const,
+        },
         outputSchema: z.toJSONSchema(
           z.object({
-            result: name === "export_model" ? exportResultSchema : localToolOutputs[name],
+            result:
+              name === "export_model"
+                ? exportResultSchema
+                : name === "render_preview"
+                  ? renderedResultSchema
+                  : localToolOutputs[name],
           }),
           { reused: "ref", io: isAssemblyLibraryToolName(name) ? "input" : "output" },
         ),
@@ -115,26 +131,12 @@ export function createLocalMcpAdapter(
           .catch(() => undefined)
       },
     })
-    if (operation.data.tool === "export_model") {
-      const parsed = localToolOutputs.export_model.parse(result)
-      if (parsed.ok) {
-        if (!broker.isPaired(generation))
-          return toolResult(localFailure("session-revoked", "The AI session was revoked."))
-        const resource = exports.add(parsed.value)
-        return {
-          content: [
-            {
-              type: "resource_link" as const,
-              uri: resource.uri,
-              name: resource.filename,
-              mimeType: resource.mimeType,
-            },
-          ],
-          structuredContent: { result: { ok: true, value: resource } },
-        }
-      }
-    }
-    return toolResult(result)
+    return presentToolResult(operation.data.tool, result, {
+      broker,
+      exports,
+      generation,
+      signal: extra.signal,
+    })
   })
   server.setRequestHandler(ListResourcesRequestSchema, () => ({
     resources: [
@@ -210,5 +212,41 @@ function toolResult(result: z.infer<(typeof localToolOutputs)[LocalToolName]>) {
     isError: !result.ok,
     content: [{ type: "text" as const, text: JSON.stringify(result) }],
     structuredContent: { result },
+  }
+}
+
+function presentToolResult(
+  name: LocalToolName,
+  result: z.infer<(typeof localToolOutputs)[LocalToolName]>,
+  context: {
+    broker: Broker
+    exports: ReturnType<typeof createExportResources>
+    generation: number
+    signal: AbortSignal
+  },
+) {
+  if (name === "render_preview") {
+    const parsed = localToolOutputs.render_preview.parse(result)
+    if (!parsed.ok) return toolResult(parsed)
+    if (context.signal.aborted || !context.broker.isPaired(context.generation))
+      return toolResult(localFailure("session-revoked", "The AI session was revoked."))
+    return renderPreviewMcpResult(parsed.value)
+  }
+  if (name !== "export_model") return toolResult(result)
+  const parsed = localToolOutputs.export_model.parse(result)
+  if (!parsed.ok) return toolResult(parsed)
+  if (!context.broker.isPaired(context.generation))
+    return toolResult(localFailure("session-revoked", "The AI session was revoked."))
+  const resource = context.exports.add(parsed.value)
+  return {
+    content: [
+      {
+        type: "resource_link" as const,
+        uri: resource.uri,
+        name: resource.filename,
+        mimeType: resource.mimeType,
+      },
+    ],
+    structuredContent: { result: { ok: true, value: resource } },
   }
 }

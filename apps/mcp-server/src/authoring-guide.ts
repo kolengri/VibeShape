@@ -6,6 +6,21 @@ Open that URL, open/create the intended project, and have the person click **Ena
 The browser retains the document authority; there is no embedded chat and no headless modeling mode.
 Use MCP tools/list as the current input/output schema authority. Only listed tools are callable.
 
+## Visual checks
+
+Call render_preview with source=model and the saved revision, or source=draft, draftId and the
+current draft revision. It returns native PNG image content and revision/generation metadata.
+Default views are isometric/front/right/top; request one to four unique standard views or one
+exact featureId/outputRole target from body measurements. It does not move the person's camera
+or save anything. For a custom angle or close-up, provide camera instead of views: position and
+target are world XYZ triples in mm, optional up sets orientation, and viewHeightMm sets the visible
+vertical span in mm. Projection is orthographic, so distance alone does not zoom. Omit viewHeightMm
+to auto-fit; specify it to crop around the target. Metadata echoes camera and labels the view custom.
+Forward image content to a vision-capable model and compare shape/orientation
+after significant steps and before shape-dependent acceptance. Invalid geometry may still show
+surviving bodies; numerical preview diagnostics and dimension checks remain required. Assembly
+occurrence placement and surface-relief layers are outside the CAD body render contract.
+
 ## Additional exact feature tools
 
 Box retains \`create_box\` millimeter shorthand and adds typed \`update_box\`.
