@@ -506,7 +506,15 @@ schemas for per-page limits. Hole/selected-treatment selections allow at most 25
 Drafts expire five minutes after creation or the last successful command/preview; inspection does
 not renew expiry. The pairing expires after one hour or loss of browser polling.
 
-Export the successful committed revision using \`export_model\` with \`format: "step"\`, \`"stl"\`
+Both transports support \`prepare_model_export\` with exact committed \`revision\` and geometry
+\`format\`, or \`prepare_project_backup\` for an editable \`.vshape\`. Follow \`read_export_chunk\`
+byte offsets, reconstruct base64 chunks with ordinary client file tools, verify descriptor byte
+length and SHA-256, then \`discard_export\`. Keep binary output out of conversation. Transfers
+retain one actor-owned file up to 6 MiB for five minutes; reads do not renew expiry. Preparing
+another evicts it. Remote reads share ordinary operation/rate budgets. Larger files and part
+selection use the editor. A descriptor alone is not file delivery.
+
+Alternatively, local MCP exports the successful committed revision using \`export_model\` with \`format: "step"\`, \`"stl"\`
 or \`"3mf"\`. Read the returned \`resource_link.uri\` through MCP resources/read, decode its base64
 blob and save the bytes using your client's ordinary file handling. Exports are limited to 6 MiB,
 expire after five minutes, and become inaccessible when pairing is revoked. No path is accepted
