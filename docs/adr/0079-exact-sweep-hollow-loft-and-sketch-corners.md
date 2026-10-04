@@ -77,3 +77,5 @@ invalid input. Real pinned SolveSpace tests verify residuals, degrees of freedom
 area and radius/setback edits. Real pinned OCCT tests verify native curve type, validity, volume,
 source preservation, hole crossing rejection, cache replay, export and disposal. Browser tests
 exercise selection, preview, cancel, apply, draft undo/redo and sketch commit.
+
+Extended by [ADR-0081](0081-constrained-loft-native-patch-networks.md) for bounded native guide and independent end constraints.

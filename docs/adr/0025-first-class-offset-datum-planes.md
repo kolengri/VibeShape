@@ -43,6 +43,16 @@ Create and edit use the ordinary revisioned feature command path. The command us
 - Mid-plane, line-at-angle, three-point, tangent, axis, and point reference modes remain separate schema additions after edge and vertex selection is stable.
 - If future reference entities cannot be represented safely by bounded display shapes, the geometry registry may gain a typed reference-display channel through a later ADR.
 
+### Persisted face support health clarification (2026-10-04)
+
+Sketch support health distinguishes the two display caps using the authored oriented PLANE signature
+direction within the `datum.plane` role. Exactly one current direction match is required. Missing or
+duplicate oriented matches fail closed; legacy references without an oriented direction retain the
+generic ambiguity result and need explicit repair. Offset changes can retain the selected orientation,
+while a changed Datum normal may require explicit face reselection. This health check does not change
+the domain topology resolver or the exact logical Datum frame used for sketch geometry, and never
+selects a cap by native face order or plate thickness.
+
 ## Rejected alternatives
 
 - **Store a world transform only:** the datum would stop following its support feature.

@@ -27,6 +27,11 @@ import {
 } from "@vibeshape/domain/part-design"
 import { readHoleFeatureParameters } from "@vibeshape/domain/part-design-hole"
 import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
+import {
+  loftV3SketchIds,
+  loftV3SupportBodies,
+  readLoftFeatureParametersV3,
+} from "@vibeshape/domain/part-design-loft-v3"
 import { usesSlottedBodyInputs } from "@vibeshape/domain/part-design-subtract"
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
@@ -75,6 +80,7 @@ const geometryEvaluationPortResultSchema = z.discriminatedUnion("ok", [
     .object({
       ok: z.literal(false),
       diagnosticCode: z.union([geometryDiagnosticCodeSchema, coordinatorDiagnosticCodeSchema]),
+      diagnosticMessage: z.string().min(1).max(1024).optional(),
     })
     .strict(),
 ])
@@ -107,6 +113,7 @@ export type FeatureGeometryEvaluationPortResult =
   | {
       ok: false
       diagnosticCode: GeometryDiagnosticCode | z.infer<typeof coordinatorDiagnosticCodeSchema>
+      diagnosticMessage?: string
     }
 
 export type FeatureGeometryEvaluationPort = (
@@ -675,6 +682,7 @@ async function requestFeatureGeometry(
   if (!parsed.data.ok) {
     return failed("org.vibeshape.feature.geometry-evaluation-failed", {
       reason: parsed.data.diagnosticCode,
+      ...(parsed.data.diagnosticMessage ? { message: parsed.data.diagnosticMessage } : {}),
     })
   }
   if (
@@ -858,6 +866,12 @@ export function expectedSketchFeatureReferences(
 }
 
 function documentSketchSchedulingDependencies(document: DocumentSnapshot, feature: FeatureRecord) {
+  const constrainedLoft = readLoftFeatureParametersV3(feature)
+  if (constrainedLoft)
+    return expectedSketchFeatureDependencyIds(document, loftV3SketchIds(constrainedLoft), [
+      ...feature.references.map(({ featureId }) => featureId),
+      ...loftV3SupportBodies(constrainedLoft).map(({ featureId }) => featureId),
+    ])
   const loft = readLoftFeatureParameters(feature)
   if (loft)
     return expectedSketchFeatureDependencyIds(

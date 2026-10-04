@@ -33,7 +33,15 @@ import {
   holeFeatureParametersV3Schema,
   holeTreatmentSchema,
 } from "@vibeshape/domain/part-design-hole"
-import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
+import {
+  loftFeatureParametersSchema,
+  loftFeatureParametersV2Schema,
+  MAX_LOFT_SECTIONS,
+} from "@vibeshape/domain/part-design-loft"
+import {
+  loftFeatureParametersV3Schema,
+  MAX_LOFT_V3_DEPENDENCIES,
+} from "@vibeshape/domain/part-design-loft-v3"
 import {
   mirrorFeatureParametersSchema,
   mirrorFeatureParametersV2Schema,
@@ -389,10 +397,25 @@ const multiSketchFeature = {
 const loft = z
   .object({
     ...multiSketchFeature,
-    dependencies: featureRecordSchema.shape.dependencies.max(MAX_LOFT_SECTIONS),
-    parameters: loftFeatureParametersSchema,
+    dependencies: featureRecordSchema.shape.dependencies.max(MAX_LOFT_V3_DEPENDENCIES),
+    parameters: z.union([
+      loftFeatureParametersSchema,
+      loftFeatureParametersV2Schema,
+      loftFeatureParametersV3Schema,
+    ]),
   })
   .strict()
+  .superRefine((input, context) => {
+    if (
+      !("outerCorrespondence" in input.parameters) &&
+      input.dependencies.length > MAX_LOFT_SECTIONS
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message: "Loft v1/v2 permits at most twenty-four producers.",
+      })
+  })
 const sweep = z.object({ ...multiSketchFeature, parameters: sweepFeatureParametersSchema }).strict()
 
 const datumPlane = z
