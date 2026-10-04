@@ -680,6 +680,8 @@ export function createLocalAutomationConnection() {
     disable,
     status,
     start() {
+      // React StrictMode restarts the same connection after effect cleanup.
+      disposed = false
       window.addEventListener("beforeunload", onBeforeUnload)
       window.addEventListener("pagehide", onPageHide)
       window.addEventListener("pageshow", onPageShow)

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { act, cleanup, render } from "@testing-library/react"
+import { createElement, StrictMode, useEffect } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createLocalAutomationConnection } from "./local-automation-connection"
 import { LocalAutomationTransportError } from "./local-automation-http"
@@ -92,6 +94,7 @@ beforeEach(() => {
   connection = createLocalAutomationConnection()
 })
 afterEach(() => {
+  cleanup()
   connection.dispose()
   vi.useRealTimers()
 })
@@ -494,6 +497,37 @@ describe("local AI project management consent", () => {
   })
 })
 describe("browser-owned local AI connection lifecycle", () => {
+  it("discovers the bridge after React StrictMode replays the owner effect", async () => {
+    function Owner() {
+      useEffect(() => {
+        connection.start()
+        void connection.status()
+        return connection.dispose
+      }, [])
+      return null
+    }
+    await act(async () => {
+      render(createElement(StrictMode, null, createElement(Owner)))
+    })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/status")).toHaveLength(2)
+    expect(connection.getSnapshot()).toMatchObject({ available: true, connected: false, client })
+    expect(await connection.enable()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+  })
+
+  it("ignores a prior owner's late status after restarting the connection", async () => {
+    const pending = deferred<ReturnType<typeof ok>>()
+    mocks.request.mockReturnValueOnce(pending.promise)
+    connection.start()
+    const previousStatus = connection.status()
+    connection.dispose()
+    connection.start()
+    await connection.status()
+    pending.resolve(ok({ protocolVersion: 1, client: null, paired: false }))
+    await previousStatus
+    expect(connection.getSnapshot()).toMatchObject({ available: true, connected: false, client })
+  })
+
   it.each([
     ["commit_import_upload", "ready", "review"],
     ["commit_import_upload", "applying", "applying"],
