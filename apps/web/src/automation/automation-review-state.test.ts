@@ -148,7 +148,9 @@ describe("browser automation review ownership", () => {
     const input = reviewInput()
     const decision = controller.request(owner, input)
     input.preview.summary.data.name = "Changed by caller"
-    expect(controller.getSnapshot()?.input.preview.summary.data.name).toBe("Reviewed model")
+    const displayed = controller.getSnapshot()?.input
+    if (!displayed || "kind" in displayed) throw new Error("Expected the CAD review input.")
+    expect(displayed.preview.summary.data.name).toBe("Reviewed model")
     controller.cancel(owner)
     await expect(decision).resolves.toBe("cancelled")
   })

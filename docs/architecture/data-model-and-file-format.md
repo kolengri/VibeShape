@@ -82,7 +82,12 @@ IDs, assets or sketches are committed. See [ADR-0068](../adr/0068-exact-cubic-be
 
 Assembly definitions pin the selected exact body roles or mesh sources together with their frozen
 model dependency closure, source descriptors and content hashes. Instance UUIDs, rigid frames,
-fixed/revolute/prismatic joints, limits and drives are separate authority. Deleting or changing the
+versioned joints, limits and drives are separate authority. Assembly v1 keeps strict grounded-forest
+read/replay. Explicit `assembly.upgrade` creates v2 initial-pose seeds and supports general mate
+graphs, ball/cylindrical joints and optional topology-bound frames. Frames bind a pin revision,
+selected body, source index and durable TopoRef; only verified frozen geometry may resolve them.
+The pure domain replays authored intent; the worker owns numerical rank and constraint diagnostics.
+See [ADR-0080](../adr/0080-general-assembly-mates-and-topology-bound-frames.md). Deleting or changing the
 original Part cannot silently replace a pin. Explicit relinking creates a new pin revision while
 preserving instance and joint identity. Read-only materialization verifies the complete source
 closure in disposable worker scopes. Occurrence meshes and bounds already occupy world

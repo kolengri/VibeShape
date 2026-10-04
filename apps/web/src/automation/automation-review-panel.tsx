@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@vibeshape/ui/components/alert-dialog"
 import { Button } from "@vibeshape/ui/components/button"
+import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
 
@@ -226,12 +227,14 @@ function ReviewActions({
   commands,
   review,
   t,
+  destructive: explicitDestructive,
 }: {
   commands: readonly DocumentCommand[]
   review: AutomationReviewState
   t: ReturnType<typeof useTranslations>
+  destructive?: boolean
 }) {
-  const destructive = commands.some(isDestructiveCommand)
+  const destructive = explicitDestructive ?? commands.some(isDestructiveCommand)
   const apply = async () => {
     await automationReviews.decide(review.id, "approved")
   }
@@ -358,6 +361,27 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { input } = review
+  if ("kind" in input)
+    return (
+      <AssemblyAutomationReviewPanel
+        input={input}
+        client={actorLabel(input.actor, t)}
+        diagnostic={<ReviewDiagnostic review={review} />}
+        actions={
+          <ReviewActions
+            commands={[]}
+            review={review}
+            t={t}
+            destructive={input.changes.some(
+              (change) =>
+                change.kind === "definition.remove" ||
+                change.kind === "instance.remove" ||
+                change.kind === "joint.remove",
+            )}
+          />
+        }
+      />
+    )
   const commands = input.commands
   return (
     <section

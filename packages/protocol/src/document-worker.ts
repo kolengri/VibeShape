@@ -1,6 +1,10 @@
 import { z } from "zod"
 import { exportAssemblyInputSchema } from "./assembly-export"
-import { assemblyInspectionSchema, inspectAssemblyInputSchema } from "./assembly-inspection"
+import {
+  assemblyConstraintFailureSchema,
+  assemblyInspectionSchema,
+  inspectAssemblyInputSchema,
+} from "./assembly-inspection"
 import {
   extrusionFrameSchema,
   featureEvaluationEngineResultSchema,
@@ -30,7 +34,7 @@ import {
   surfaceTextureQualitySchema,
 } from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 24 as const
+export const DOCUMENT_PROTOCOL_VERSION = 25 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -734,6 +738,7 @@ export const documentWorkerDiagnosticCodeSchema = z.enum([
   "sketch-solver-unavailable",
   "sketch-solve-invalid",
   "sketch-solve-failed",
+  "assembly-solve-failed",
   "internal-error",
 ])
 
@@ -744,6 +749,7 @@ const failureResponseSchema = responseEnvelopeSchema.extend({
       code: documentWorkerDiagnosticCodeSchema,
       message: z.string().min(1).max(1_024),
       retryable: z.boolean(),
+      assembly: assemblyConstraintFailureSchema.optional(),
     })
     .strict(),
 })

@@ -5,7 +5,7 @@ import {
   emptyAssemblyAuthority,
   validateAssemblySourcePins,
 } from "./assembly-authority"
-import { documentSnapshotV2Schema } from "./document-v2-schema"
+import { type DocumentSnapshotV2, documentSnapshotV2Schema } from "./document-v2-schema"
 import { type DocumentSnapshotV3, documentSnapshotV3Schema } from "./document-v3-schema"
 import { validateImportedFeatureAssets } from "./part-design-import"
 import { validateSketchSourceImportAssets } from "./sketch-source-import"
@@ -42,6 +42,19 @@ export type DocumentSnapshotV4 = Readonly<
     assembly: AssemblyAuthority
   }
 >
+
+/** Disposable previews may promote older authority; persistence still requires ordinary upgrade events. */
+export function promoteDocumentSnapshotV4(
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
+): DocumentSnapshotV4 {
+  return documentSnapshotV4Schema.parse({
+    ...snapshot,
+    schemaVersion: 4,
+    surfaceTextures: snapshot.schemaVersion === 2 ? [] : snapshot.surfaceTextures,
+    assets: snapshot.schemaVersion === 4 ? snapshot.assets : [],
+    assembly: snapshot.schemaVersion === 4 ? snapshot.assembly : emptyAssemblyAuthority(),
+  })
+}
 
 /** Compatibility projection cannot replace V4 persisted authority. */
 export function projectDocumentSnapshotV4ToV3(snapshot: DocumentSnapshotV4): DocumentSnapshotV3 {

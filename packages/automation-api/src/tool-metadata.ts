@@ -1,3 +1,4 @@
+import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-metadata"
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
@@ -78,6 +79,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:
     "Read paged exact feature measurements in an owned draft. Choose scope all for upstream failures. Begin with cursor null and pass nextCursor unchanged; another geometry inspection or edit invalidates the catalog. This does not save or renew draft expiry.",
+  ...assemblyToolDescriptions,
   create_datum_plane:
     "Stage an offset Datum Plane in an owned draft using origin support xy/xz/yz or an existing planar face v0 TopoRef. Offset is a signed typed length quantity with optional variable expression. Origin support has empty dependencies/references; face support requires its sole owner dependency and exactly the same support reference. Supply UUIDv7 featureId/commandId, current draft revision and suppressed=false; preview before ordinary commit.",
   update_datum_plane:
@@ -214,6 +216,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "draft_measurements",
       "model_sketch_solution",
       "draft_sketch_solution",
+      ...assemblyReadTools,
       "model_info",
       "model_history",
       "model_parts",
@@ -234,10 +237,13 @@ export function localToolAnnotations(name: LocalToolName) {
     ].includes(name),
     destructiveHint: [
       "commit_draft",
-      "remove_feature",
-      "remove_sketch",
       "update_sketch_text",
       "detach_sketch_text",
+      "commit_assembly_draft",
+      "save_library_definition",
+      "update_library_metadata",
+      "remove_feature",
+      "remove_sketch",
     ].includes(name),
     idempotentHint: [
       "read_export_chunk",
@@ -246,6 +252,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "draft_measurements",
       "model_sketch_solution",
       "draft_sketch_solution",
+      ...assemblyReadTools,
       "model_info",
       "model_history",
       "model_parts",

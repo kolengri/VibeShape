@@ -1,8 +1,32 @@
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
-import type { runAssemblyLibraryPersistenceEvidence } from "../../scripts/assembly-library-persistence-evidence"
+import type {
+  runAssemblyLibraryAuthorityEvidence,
+  runAssemblyLibraryPersistenceEvidence,
+} from "../../scripts/assembly-library-persistence-evidence"
 
 const path = `/@fs${resolve(import.meta.dirname, "../../scripts/assembly-library-persistence-evidence.ts")}`
+test("revoked reviewed library authority aborts asynchronous writes atomically", async ({
+  page,
+}) => {
+  await page.route("**/assembly-library-authority.html", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Library authority</title>",
+    }),
+  )
+  await page.goto("/assembly-library-authority.html")
+  const report = await page.evaluate(
+    async ({ path, name }) => {
+      const evidence: {
+        runAssemblyLibraryAuthorityEvidence: typeof runAssemblyLibraryAuthorityEvidence
+      } = await import(path)
+      return evidence.runAssemblyLibraryAuthorityEvidence(name)
+    },
+    { path, name: `assembly-library-authority-${test.info().project.name}` },
+  )
+  expect(report).toEqual({ publicationRollback: true, asyncMetadataReadRejected: true })
+})
 test("immutable library revisions survive restart and reject stale, corrupt and partial publication", async ({
   page,
 }) => {

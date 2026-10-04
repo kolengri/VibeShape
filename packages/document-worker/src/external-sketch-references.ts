@@ -436,7 +436,10 @@ async function resolveExternalModelIntersection(
 
 type ExternalCurveInput = NonNullable<SketchCompilationInput["externalCurves"]>[number]
 type ReferenceGeometry = NonNullable<ProtocolTopologyCandidate["referenceGeometry"]>
-type ModelCurveGeometry = Exclude<ReferenceGeometry, { kind: "line-edge" | "vertex" }>
+type ModelCurveGeometry = Extract<
+  ReferenceGeometry,
+  { kind: "circle-edge" | "arc-edge" | "ellipse-edge" | "elliptical-arc-edge" }
+>
 
 const MODEL_CURVE_SOURCE_EXPECTATION = {
   circle: { geometryClass: "CIRCLE", geometryKind: "circle-edge" },
@@ -449,7 +452,12 @@ const MODEL_CURVE_SOURCE_EXPECTATION = {
 >
 
 function modelCurveGeometry(geometry: ReferenceGeometry): ModelCurveGeometry | null {
-  return geometry.kind === "vertex" || geometry.kind === "line-edge" ? null : geometry
+  return geometry.kind === "circle-edge" ||
+    geometry.kind === "arc-edge" ||
+    geometry.kind === "ellipse-edge" ||
+    geometry.kind === "elliptical-arc-edge"
+    ? geometry
+    : null
 }
 
 function projectWorldModelCurveToSupport(geometry: ModelCurveGeometry, targetFrame: SupportFrame) {
