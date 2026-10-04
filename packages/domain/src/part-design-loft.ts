@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
-import type { FeatureId } from "./identifiers"
+import { type FeatureId, sketchEntityIdSchema } from "./identifiers"
 import { sketchProfileSelectorKey, sketchProfileSelectorSchema } from "./sketch-profile-selector"
 
 export const MAX_LOFT_SECTIONS = 24
@@ -38,6 +38,68 @@ export const loftFeatureParametersSchema = z
       })
   })
 
+export const loftHoleCorrespondenceSchema = z
+  .array(
+    z
+      .object({
+        sectionBoundaryEntityIds: z
+          .array(z.array(sketchEntityIdSchema).min(1).max(2_000))
+          .min(2)
+          .max(MAX_LOFT_SECTIONS),
+      })
+      .strict(),
+  )
+  .max(128)
+export const loftFeatureParametersV2Schema = z
+  .object({
+    sections: z.array(sketchProfileSelectorSchema).min(2).max(MAX_LOFT_SECTIONS),
+    ruled: z.boolean(),
+    holeCorrespondence: loftHoleCorrespondenceSchema,
+  })
+  .strict()
+  .superRefine(({ sections, holeCorrespondence }, context) => {
+    if (new Set(sections.map(sketchProfileSelectorKey)).size !== sections.length)
+      context.addIssue({
+        code: "custom",
+        path: ["sections"],
+        message: "Loft sections must be unique.",
+      })
+    const count = sections.reduce(
+      (total, section) =>
+        total + section.outerBoundaryEntityIds.length + section.holeBoundaryEntityIds.flat().length,
+      0,
+    )
+    if (count > MAX_LOFT_BOUNDARY_ENTITIES)
+      context.addIssue({
+        code: "custom",
+        path: ["sections"],
+        message: "Loft sections exceed the aggregate boundary entity budget.",
+      })
+    for (const [sectionIndex, section] of sections.entries()) {
+      const expected = section.holeBoundaryEntityIds.map((ids) => JSON.stringify(ids)).sort()
+      const actual = holeCorrespondence
+        .map((track) => JSON.stringify(track.sectionBoundaryEntityIds[sectionIndex]))
+        .sort()
+      if (
+        JSON.stringify(expected) !== JSON.stringify(actual) ||
+        new Set(actual).size !== actual.length
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["holeCorrespondence"],
+          message: "Every Loft hole must have one explicit correspondence across all sections.",
+        })
+    }
+    if (
+      holeCorrespondence.some((track) => track.sectionBoundaryEntityIds.length !== sections.length)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["holeCorrespondence"],
+        message: "Hole correspondence must cover every ordered section.",
+      })
+  })
+
 type LoftFeatureParameters = Readonly<z.infer<typeof loftFeatureParametersSchema>>
 export const loftFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -52,9 +114,18 @@ export const loftFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 4_096 },
 })
 
+export const loftFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  ...loftFeatureType,
+  type: { ...loftFeatureType.type, schemaVersion: 2 },
+})
+
 export function readLoftFeatureParameters(
   feature: Pick<FeatureRecord, "type" | "parameters">,
-): LoftFeatureParameters | null {
+): LoftFeatureParameters | z.infer<typeof loftFeatureParametersV2Schema> | null {
+  if (featureTypeKey(feature.type) === featureTypeKey(loftFeatureTypeV2.type)) {
+    const parsed = loftFeatureParametersV2Schema.safeParse(feature.parameters)
+    return parsed.success ? parsed.data : null
+  }
   if (featureTypeKey(feature.type) !== featureTypeKey(loftFeatureType.type)) return null
   const parsed = loftFeatureParametersSchema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
@@ -76,5 +147,14 @@ export const loftFeatureTypeHandler: TrustedFeatureTypeHandler = {
   },
   contentParameters(parameters) {
     return loftFeatureParametersSchema.parse(parameters)
+  },
+}
+
+export const loftFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
+  ...loftFeatureTypeHandler,
+  type: loftFeatureTypeV2.type,
+  parametersSchema: loftFeatureParametersV2Schema,
+  contentParameters(parameters) {
+    return loftFeatureParametersV2Schema.parse(parameters)
   },
 }

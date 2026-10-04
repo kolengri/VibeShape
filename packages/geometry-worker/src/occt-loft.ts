@@ -15,6 +15,7 @@ import { ellipticalArcKernelParameters } from "./extrusion-curve-geometry"
 import { adoptOcctShape, castOcctShape, type OcctShapeCaster } from "./occt-cast"
 import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 
+import { createHoledLoft, type LoftHoleCorrespondence } from "./occt-loft-holes"
 export type AnalyticalProfile = Readonly<
   Pick<ExtrusionMultiProfileContentParameters, "frame"> &
     ExtrusionMultiProfileContentParameters["profiles"][number]
@@ -378,7 +379,27 @@ function sectionsAreCoplanar(previous: AnalyticalProfile, section: AnalyticalPro
   return parallel > 1 - 1e-8 && separation <= PROFILE_LINEAR_TOLERANCE
 }
 
-function validateLoftSections(sections: readonly AnalyticalProfile[], ruled: boolean) {
+function validateLoftCurveBudget(parsed: readonly AnalyticalProfile[], allowHoles: boolean) {
+  if (!allowHoles && parsed.some(({ holes }) => holes.length > 0))
+    throw new Error(
+      "Loft v1 requires hole-free sections until authored hole correspondence exists.",
+    )
+  if (
+    parsed.reduce(
+      (total, section) =>
+        total +
+        [section.outer, ...section.holes].reduce((count, loop) => count + loop.segments.length, 0),
+      0,
+    ) > 2_000
+  )
+    throw new Error("Loft sections exceed the aggregate analytical curve budget.")
+}
+
+function validateLoftSections(
+  sections: readonly AnalyticalProfile[],
+  ruled: boolean,
+  allowHoles = false,
+) {
   if (
     sections.length < 2 ||
     sections.length > MAX_ANALYTICAL_LOFT_SECTIONS ||
@@ -388,12 +409,7 @@ function validateLoftSections(sections: readonly AnalyticalProfile[], ruled: boo
       "Loft requires two to twenty-four ordered sections and an explicit ruled setting.",
     )
   const parsed = sections.map(parseAnalyticalProfile)
-  if (parsed.some(({ holes }) => holes.length > 0))
-    throw new Error(
-      "Loft v1 requires hole-free sections until authored hole correspondence exists.",
-    )
-  if (parsed.reduce((total, section) => total + section.outer.segments.length, 0) > 2_000)
-    throw new Error("Loft sections exceed the aggregate analytical curve budget.")
+  validateLoftCurveBudget(parsed, allowHoles)
   for (const [index, section] of parsed.entries()) {
     const previous = parsed[index - 1]
     if (!previous) continue
@@ -409,13 +425,28 @@ export function createOcctLoftOperations(
   validateSolid = validateOcctProfileSolid,
   makeFace = createAnalyticalFace,
 ) {
-  return {
+  const operations = {
     loftShape(
       opencascade: OpenCascadeInstance,
       sections: readonly AnalyticalProfile[],
-      parameters: Readonly<{ ruled: boolean }>,
+      parameters: Readonly<{ ruled: boolean; holeCorrespondence?: LoftHoleCorrespondence }>,
     ): Shape3D {
-      const parsed = validateLoftSections(sections, parameters.ruled)
+      const parsed = validateLoftSections(
+        sections,
+        parameters.ruled,
+        parameters.holeCorrespondence !== undefined,
+      )
+      if (parameters.holeCorrespondence) {
+        for (const section of parsed) makeFace(opencascade, section).delete()
+        return createHoledLoft(
+          opencascade,
+          parsed,
+          parameters.holeCorrespondence,
+          (boundaries) =>
+            operations.loftShape(opencascade, boundaries, { ruled: parameters.ruled }),
+          (shape) => validateSolid(opencascade, shape),
+        )
+      }
       const wires: Wire[] = []
       try {
         for (const section of parsed) {
@@ -457,6 +488,7 @@ export function createOcctLoftOperations(
       }
     },
   }
+  return operations
 }
 
 export const { loftShape: createOcctLoft } = createOcctLoftOperations(castOcctShape)

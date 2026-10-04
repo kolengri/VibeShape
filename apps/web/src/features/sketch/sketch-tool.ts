@@ -24,6 +24,8 @@ export type SketchConstraintEditorTool = `constraint-${SketchConstraintToolKind}
 
 export type SketchEditorTool =
   | "select"
+  | "fillet"
+  | "chamfer"
   | "dimension"
   | "use"
   | "intersection"
@@ -71,7 +73,13 @@ export type SketchModificationTool = Extract<
 export type SketchDraftChangeMode = "record" | "replace"
 
 export function isSketchSelectionTool(tool: SketchEditorTool) {
-  return tool === "select" || tool === "dimension" || sketchConstraintToolKind(tool) !== null
+  return (
+    tool === "select" ||
+    tool === "dimension" ||
+    tool === "fillet" ||
+    tool === "chamfer" ||
+    sketchConstraintToolKind(tool) !== null
+  )
 }
 
 export const sketchConstraintEditorTools = {

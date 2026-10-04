@@ -573,6 +573,7 @@ const tangentConstraintSchema = sketchConstraintEnvelopeSchema
     type: z.literal("tangent"),
     arcId: sketchEntityIdSchema,
     lineId: sketchEntityIdSchema,
+    at: z.enum(["start", "end"]).optional(),
   })
   .strict()
 const concentricConstraintSchema = entityPairSchema

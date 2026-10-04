@@ -13,7 +13,10 @@ import {
 } from "@vibeshape/domain"
 import {
   loftFeatureParametersSchema,
+  loftFeatureParametersV2Schema,
   loftFeatureType,
+  loftFeatureTypeV2,
+  loftHoleCorrespondenceSchema,
   MAX_LOFT_SECTIONS,
   readLoftFeatureParameters,
 } from "@vibeshape/domain/part-design-loft"
@@ -52,6 +55,7 @@ export type SweepLoftFormMode =
   | Readonly<{ kind: "edit"; operation: SweepLoftOperation; feature: FeatureRecord }>
 export type SweepLoftFormValues = {
   sections: SketchProfileSelector[]
+  holeCorrespondence: { sectionBoundaryEntityIds: SketchEntityId[][] }[]
   ruled: boolean
   profileKey: string
   pathSketchId: string
@@ -63,6 +67,10 @@ export function sweepLoftFormValues(mode: SweepLoftFormMode): SweepLoftFormValue
   const sweep = mode.kind === "edit" ? readSweepFeatureParameters(mode.feature) : null
   return {
     sections: [...(loft?.sections ?? [])],
+    holeCorrespondence:
+      loft && "holeCorrespondence" in loft
+        ? loftHoleCorrespondenceSchema.parse(loft.holeCorrespondence)
+        : [],
     ruled: loft?.ruled ?? false,
     profileKey: sweep ? sketchProfileSelectorKey(sweep.profile) : "",
     pathSketchId: sweep?.path.sketchId ?? "",
@@ -119,17 +127,28 @@ function sweepParameters(
   })
   return parsed.success ? parsed.data : null
 }
-function loftParameters(values: SweepLoftFormValues, profiles: readonly ProfileOption[]) {
+function loftParameters(
+  values: SweepLoftFormValues,
+  profiles: readonly ProfileOption[],
+  preserveV2: boolean,
+) {
   if (
     values.sections.some(
       (selector) => !profiles.some(({ key }) => key === sketchProfileSelectorKey(selector)),
     )
   )
     return null
-  const parsed = loftFeatureParametersSchema.safeParse({
-    sections: values.sections,
-    ruled: values.ruled,
-  })
+  const withHoles = values.sections.some(
+    ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length > 0,
+  )
+  const parsed =
+    withHoles || preserveV2
+      ? loftFeatureParametersV2Schema.safeParse({
+          sections: values.sections,
+          ruled: values.ruled,
+          holeCorrespondence: values.holeCorrespondence,
+        })
+      : loftFeatureParametersSchema.safeParse({ sections: values.sections, ruled: values.ruled })
   return parsed.success ? parsed.data : null
 }
 export function sweepLoftFeatureRecord(
@@ -142,7 +161,11 @@ export function sweepLoftFeatureRecord(
 ): FeatureRecord | null {
   const parameters =
     mode.operation === "loft"
-      ? loftParameters(values, profiles)
+      ? loftParameters(
+          values,
+          profiles,
+          mode.kind === "edit" && mode.feature.type.schemaVersion === 2,
+        )
       : sweepParameters(values, profiles, paths)
   if (!parameters) return null
   const sketchIds =
@@ -156,7 +179,12 @@ export function sweepLoftFeatureRecord(
     references.map(({ featureId }) => featureId),
   )
   if (dependencies.length > (mode.operation === "loft" ? MAX_LOFT_SECTIONS : 8)) return null
-  const type = mode.operation === "loft" ? loftFeatureType.type : sweepFeatureType.type
+  const type =
+    mode.operation === "loft"
+      ? "holeCorrespondence" in parameters
+        ? loftFeatureTypeV2.type
+        : loftFeatureType.type
+      : sweepFeatureType.type
   const parsed = featureRecordSchema.safeParse(
     mode.kind === "edit"
       ? { ...mode.feature, type, parameters, dependencies, references }

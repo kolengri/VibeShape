@@ -41,6 +41,7 @@
     "./rectangle-sketch": "./src/rectangle-sketch.ts",
     "./sketch": "./src/sketch.ts",
     "./sketch-edit": "./src/sketch-edit.ts",
+    "./sketch-corner-edit": "./src/sketch-corner-edit.ts",
     "./sketch-offset-edit": "./src/sketch-offset-edit.ts",
     "./sketch-pattern-edit": "./src/sketch-pattern-edit.ts",
     "./sketch-profile-selector": "./src/sketch-profile-selector.ts",

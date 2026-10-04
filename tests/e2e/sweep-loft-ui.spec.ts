@@ -7,7 +7,13 @@ import { expect, test } from "./fixtures"
 import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
 
 type ScreenMatrix = { a: number; b: number; c: number; d: number; e: number; f: number }
-async function clickSketchPoint(page: Page, drawing: Locator, x: number, y: number) {
+async function clickSketchPoint(
+  page: Page,
+  drawing: Locator,
+  x: number,
+  y: number,
+  snapOrigin = false,
+) {
   const position = await drawing.locator("[data-sketch-plane-projection]").evaluate(
     (element, point) => {
       const geometry = element as unknown as { getScreenCTM?: () => ScreenMatrix | null }
@@ -20,6 +26,10 @@ async function clickSketchPoint(page: Page, drawing: Locator, x: number, y: numb
     },
     { x, y },
   )
+  if (snapOrigin) {
+    await page.mouse.move(position.x, position.y)
+    await expect(drawing.locator('[data-sketch-inference="coincident"]')).toBeVisible()
+  }
   await page.mouse.click(position.x, position.y)
 }
 async function drawCenteredProfile(page: Page, alternate = false) {
@@ -187,11 +197,12 @@ test("authors a straight Sweep from an XY profile and an explicit XZ path, guard
   await commands.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xy")
   await drawCenteredProfile(page, true)
+  await page.getByRole("button", { name: "Hide Sketch 1", exact: true }).click()
   await commands.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xz")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
   await page.getByRole("button", { name: "Line", exact: true }).click()
-  await clickSketchPoint(page, drawing, 0, 0)
+  await clickSketchPoint(page, drawing, 0, 0, true)
   await clickSketchPoint(page, drawing, 0, 20)
   await page.keyboard.press("Escape")
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
