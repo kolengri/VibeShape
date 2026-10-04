@@ -86,17 +86,20 @@ async function ready() {
 }
 describe("browser-owned local AI connection lifecycle", () => {
   it.each([
-    ["ready", "review"],
-    ["applying", "applying"],
-    ["idle", "executing"],
-  ])("reports native import progress while review is %s", async (status, stage) => {
+    ["commit_import_upload", "ready", "review"],
+    ["commit_import_upload", "applying", "applying"],
+    ["commit_import_upload", "idle", "executing"],
+    ["commit_planar_import_upload", "ready", "review"],
+    ["commit_planar_import_upload", "applying", "applying"],
+    ["commit_planar_import_upload", "idle", "executing"],
+  ])("reports %s progress while review is %s", async (tool, status, stage) => {
     await ready()
     const pending = deferred<typeof failedResult>()
     mocks.execute.mockReturnValue(pending.promise)
     mocks.review.mockReturnValue({ status })
     const importing = {
       ...work,
-      operation: { tool: "commit_import_upload", arguments: { uploadId: id, uploadVersion: 1 } },
+      operation: { tool, arguments: { uploadId: id, uploadVersion: 1 } },
     }
     const original = mocks.request.getMockImplementation()
     let delivered = false

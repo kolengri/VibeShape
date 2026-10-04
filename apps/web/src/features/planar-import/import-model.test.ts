@@ -97,6 +97,11 @@ describe("planar import worker and authored transaction", () => {
         "Imported outline.svg",
         () => id(next++),
       )
+      expect(
+        result.commands.every(
+          (command) => command.actor.type === "user" && command.actor.userId === null,
+        ),
+      ).toBe(true)
       expect(result.commands.map(({ kind }) => kind)).toEqual([
         ...(authorityVersion === 2 ? ["org.vibeshape.document.upgrade-v3"] : []),
         ...(authorityVersion !== 4 ? ["org.vibeshape.document.upgrade-v4"] : []),

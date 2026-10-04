@@ -19,8 +19,9 @@ import { Button } from "@vibeshape/ui/components/button"
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
-import { isImportReview } from "./automation-review-state"
+import { isImportReview, isPlanarImportReview } from "./automation-review-state"
 import { ImportReviewPanel } from "./import-review-panel"
+import { PlanarImportReviewPanel } from "./planar-import-review-panel"
 
 const commandLabels: Readonly<Record<DocumentCommand["kind"], string>> = {
   "org.vibeshape.document.create": "createDocument",
@@ -362,6 +363,8 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
 }
 
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
+  if (isPlanarImportReview(review.input))
+    return <PlanarImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
   return isImportReview(review.input) ? (
     <ImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
   ) : (

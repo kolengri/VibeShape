@@ -96,6 +96,7 @@
 | [0094](0094-finite-curved-face-extrusion.md) | Accepted | Exact finite curved-face extrusion and additive v7 authoring |
 | [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
 | [0091](0091-paired-native-source-imports.md) | Accepted | Paired native source uploads, inspection and manual atomic import |
+| [0092](0092-paired-planar-source-imports.md) | Accepted | Paired SVG/DXF source uploads, analytical review and editable Sketch publication |
 
 Statuses:
 

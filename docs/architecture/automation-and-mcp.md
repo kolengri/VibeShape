@@ -455,8 +455,8 @@ Existing version 1 records keep strict source binding until updated. Sweep retai
 explicit path start frame; Loft retains ordered bounded sections; Thread is bounded custom
 60-degree geometry without ISO/DIN fit certification. The modeling operator skill and local
 authoring guide describe these limits. Native source imports now use the bounded paired upload/inspection/manual review path in
-[ADR-0091](../adr/0091-paired-native-source-imports.md). Planar drawing import,
-assembly/library authoring and texture authoring retain their separately documented editor workflows.
+[ADR-0091](../adr/0091-paired-native-source-imports.md). Planar drawing import uses its separate paired upload, analytical review and ordinary editable Sketch transaction in [ADR-0092](../adr/0092-paired-planar-source-imports.md).
+Assembly/library authoring uses the owned drafts and manual review in [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-drafts.md). Texture authoring retains its editor workflow.
 Prepared binary exports are shared by both transports; the legacy monolithic export remains local.
 
 Manual review remains the default. The browser-owned explicit session grant additionally permits

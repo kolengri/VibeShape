@@ -671,6 +671,9 @@ describe("remote MCP in workerd", () => {
       expect.objectContaining({ uri: "vibeshape://model" }),
     )
     const indexUri = "vibeshape://agent-skills"
+    expect(
+      resources.result.resources.some((resource) => resource.uri.endsWith("/planar-import.md")),
+    ).toBe(true)
     const read = await mcp(authenticated.token, 4, "resources/read", { uri: indexUri })
     const indexContent = ((await read.json()) as { result: { contents: { text: string }[] } })
       .result.contents[0]
