@@ -40,3 +40,5 @@ For an invalid preview, locate the first relevant failure in diagnostics, inspec
 ## Finish
 
 Report measured values with their declared units, revision, and relevant tolerance. Separate exact kernel validity, visible appearance, slicer interpretation, and physical fit/strength. None implies the others. A request only to inspect does not authorize a commit or an export.
+
+Use `model_measurements` and `draft_measurements` for paged feature measurements. Their `scope` defaults to `terminal`; set `scope: "all"` to inspect failed or blocked upstream features. Begin draft paging with a null cursor; another inspection target or draft edit invalidates the detached catalog.

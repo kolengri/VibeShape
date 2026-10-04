@@ -76,6 +76,67 @@ async function ready() {
   await connection.status()
 }
 describe("browser-owned local AI connection lifecycle", () => {
+  it("serializes a next operation delivered before the previous result acknowledgement", async () => {
+    await ready()
+    await connection.enable()
+    const acknowledgement = deferred<ReturnType<typeof ok>>()
+    const second = { ...work, requestId: "69a2b4b3-322c-4154-bae6-bfafb86b4256" }
+    let pollCount = 0
+    let resultCount = 0
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/poll") {
+        pollCount += 1
+        return ok({
+          protocolVersion: 1,
+          work: pollCount === 1 ? work : pollCount === 2 ? second : null,
+          cancelledRequestIds: [],
+        })
+      }
+      if (path === "/result") {
+        resultCount += 1
+        return resultCount === 1 ? acknowledgement.promise : ok({ ok: true })
+      }
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(mocks.execute).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: true })
+    expect(mocks.execute).toHaveBeenCalledOnce()
+    acknowledgement.resolve(ok({ ok: true }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.execute).toHaveBeenCalledTimes(2)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false })
+    expect(dispose).not.toHaveBeenCalled()
+  })
+  it("discards a queued operation when the prior result acknowledgement fails", async () => {
+    await ready()
+    await connection.enable()
+    const acknowledgement = deferred<ReturnType<typeof ok>>()
+    const second = { ...work, requestId: "69a2b4b3-322c-4154-bae6-bfafb86b4256" }
+    let pollCount = 0
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/poll") {
+        pollCount += 1
+        return ok({
+          protocolVersion: 1,
+          work: pollCount === 1 ? work : second,
+          cancelledRequestIds: [],
+        })
+      }
+      if (path === "/result") return acknowledgement.promise
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(mocks.execute).toHaveBeenCalledOnce()
+    acknowledgement.resolve({ ok: false, status: 401, data: {} })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, busy: false, error: true })
+    expect(dispose).toHaveBeenCalledOnce()
+  })
   it("requires explicit pairing and an idle browser opt-in, then resets on disconnect", async () => {
     await ready()
     expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })

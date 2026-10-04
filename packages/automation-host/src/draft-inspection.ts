@@ -1,4 +1,7 @@
-import type { AutomationDraftInspectionRequest } from "@vibeshape/automation-api/draft-inspection"
+import {
+  type AutomationDraftInspectionRequest,
+  automationDraftMeasurementEvidenceSchema,
+} from "@vibeshape/automation-api/draft-inspection"
 import type {
   AutomationQueryView,
   DerivedQueryContext,
@@ -43,7 +46,14 @@ const bodyMeasurementResultSchema = z.discriminatedUnion("ok", [
 function failure(code: QueryDiagnosticCode, message: string, retryable = false): InspectionFailure {
   return { ok: false, diagnostic: { code, message, retryable, issues: [] } }
 }
-function targetKey(query: GeometryQuery) {
+function targetKey(
+  query:
+    | GeometryQuery
+    | Extract<
+        AutomationDraftInspectionRequest["query"],
+        { kind: "org.vibeshape.model.measurements" }
+      >,
+) {
   return JSON.stringify([
     query.kind,
     query.featureId,
@@ -170,6 +180,54 @@ export async function inspectDraftQuery(
     if (!read.ok) return read
     nextCache = read.cache
   }
+  if (query.kind === "org.vibeshape.model.measurements") {
+    const read = await readMeasurementCache(query, snapshot, draftId, geometry, cache)
+    if (!read.ok) return read
+    nextCache = read.cache
+  }
   const result = queries.dispatch(snapshot, query, nextCache?.context)
   return result.ok ? { ok: true, view: result.view, cache: nextCache } : result
+}
+
+async function readMeasurementCache(
+  query: Extract<
+    AutomationDraftInspectionRequest["query"],
+    { kind: "org.vibeshape.model.measurements" }
+  >,
+  snapshot: DocumentSnapshot,
+  draftId: string,
+  geometry: DraftGeometryPort,
+  cache: DraftInspectionCache | null,
+): Promise<{ ok: true; cache: DraftInspectionCache } | InspectionFailure> {
+  const target = targetKey(query)
+  if (cache?.draftId === draftId && cache.revision === snapshot.revision && cache.target === target)
+    return { ok: true, cache }
+  if (query.cursor !== null)
+    return failure(
+      "stale-geometry",
+      "The draft measurement cursor is no longer available; restart paging.",
+      true,
+    )
+  const raw = await geometry.evaluate(documentSnapshotSchema.parse(snapshot))
+  const parsed = parseMeasurementEvidence(raw)
+  if (!parsed.success)
+    return failure(
+      "invalid-geometry-evidence",
+      "The draft geometry port returned invalid or oversized measurement evidence.",
+    )
+  if (parsed.data.documentId !== snapshot.id || parsed.data.revision !== snapshot.revision)
+    return failure(
+      "stale-geometry",
+      "The draft measurements do not match the requested draft.",
+      true,
+    )
+  return {
+    ok: true,
+    cache: { draftId, revision: snapshot.revision, target, context: { measurements: parsed.data } },
+  }
+}
+
+function parseMeasurementEvidence(raw: unknown) {
+  const evidence = raw && typeof raw === "object" && "measurements" in raw ? raw.measurements : raw
+  return automationDraftMeasurementEvidenceSchema.safeParse(evidence)
 }

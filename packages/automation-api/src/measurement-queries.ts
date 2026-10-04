@@ -20,6 +20,7 @@ export const modelMeasurementQuerySchema = z
     documentId: documentIdSchema,
     revision: revisionSchema,
     featureId: featureIdSchema.optional(),
+    scope: z.enum(["terminal", "all"]).default("terminal"),
     cursor: cursorSchema.default(null),
     limit: z.number().int().min(1).max(200).default(20),
   })
@@ -76,6 +77,7 @@ function requestedFeatures(snapshot: DocumentSnapshot, query: ModelMeasurementQu
       )
     return { ok: true as const, features: [feature] }
   }
+  if (query.scope === "all") return { ok: true as const, features: snapshot.features }
   const terminal = terminalFeatureIds(snapshot.features)
   return {
     ok: true as const,

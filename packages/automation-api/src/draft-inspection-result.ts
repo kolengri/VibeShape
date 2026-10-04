@@ -91,6 +91,8 @@ function entityMatches(
 }
 function viewMatches(operation: LocalDraftInspectionOperation, view: View) {
   switch (operation.tool) {
+    case "draft_measurements":
+      return measurementsMatch(operation, view)
     case "draft_tree":
       return treeMatches(operation, view)
     case "draft_variables":
@@ -118,4 +120,19 @@ export function draftInspectionMatches(
   )
     return false
   return viewMatches(operation, result.view)
+}
+
+function measurementsMatch(
+  operation: Extract<LocalDraftInspectionOperation, { tool: "draft_measurements" }>,
+  view: View,
+) {
+  return (
+    view.kind === "org.vibeshape.model.measurements" &&
+    view.data.features.length <= operation.arguments.limit &&
+    view.data.features.every(
+      (feature) =>
+        operation.arguments.featureId === undefined ||
+        feature.featureId === operation.arguments.featureId,
+    )
+  )
 }
