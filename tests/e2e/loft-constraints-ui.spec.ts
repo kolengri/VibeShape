@@ -187,6 +187,8 @@ test("applies a cylindrical Loft with nonzero G2 at both ends and healthy orient
   await nativePreviewReady(form, "Apply feature")
   await form.getByRole("button", { name: "Apply feature", exact: true }).click()
   await nativeSaved(page)
+  const retainedSupport = page.getByRole("treeitem", { name: "Part Seed cylinder", exact: true })
+  await expect(retainedSupport).toHaveAccessibleDescription("Available part")
   const saved = await saveProject(page),
     loft = saved.project.snapshot.features.find(({ label }) => label === "Loft 1")
   if (!loft) throw new Error("The curved Loft must remain authored.")
@@ -205,6 +207,7 @@ test("applies a cylindrical Loft with nonzero G2 at both ends and healthy orient
     saved.project.snapshot.features,
   )
   await expect(page.getByText(/Needs repair: the support face/)).toHaveCount(0)
+  await expect(retainedSupport).toHaveAccessibleDescription("Available part")
 })
 
 async function authorTracks(

@@ -366,9 +366,12 @@ export function createOcctLoftPatchNetwork(
       solid = own(new occt.BRepBuilderAPI_MakeSolid_3(nativeShell))
     if (!solid.IsDone()) throw new Error("A constrained Loft solid did not complete.")
     const raw = solid.Solid()
-    if (!occt.BRepLib.OrientClosedSolid(raw)) {
+    try {
+      if (!occt.BRepLib.OrientClosedSolid(raw))
+        throw new Error("A constrained Loft shell could not be oriented.")
+    } catch (error) {
       raw.delete()
-      throw new Error("A constrained Loft shell could not be oriented.")
+      throw error
     }
     const result = adoptOcctShape(raw, castOcctShape)
     try {

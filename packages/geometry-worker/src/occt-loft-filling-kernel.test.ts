@@ -8,8 +8,8 @@ import {
   type SimplePoint,
   setOC,
 } from "replicad"
-import initializeOC, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, expect, it, vi } from "vitest"
+import initializeOC, { type OpenCascadeInstance, type TopoDS_Solid } from "replicad-opencascadejs"
+import { beforeAll, expect, it, type MockInstance, vi } from "vitest"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
 import { type AnalyticalProfile, createAnalyticalFace, validateOcctProfileSolid } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftPatchNetwork } from "./occt-loft-filling"
@@ -404,3 +404,50 @@ it("releases owned curves and support copies after native filling failure withou
     support.delete()
   }
 }, 60000)
+
+it.each(["throw", "false"] as const)(
+  "releases the raw solid exactly once when native orientation returns %s and preserves borrowed support",
+  (failure) => {
+    const support = makePolygon([
+        [-3, -2, -1],
+        [3, -2, -1],
+        [3, -2, 11],
+        [-3, -2, 11],
+      ]),
+      area = measureArea(support),
+      supportDelete = vi.spyOn(support, "delete"),
+      owned: { shape: TopoDS_Solid; dispose: MockInstance<() => void> }[] = [],
+      orient = vi.spyOn(occt.BRepLib, "OrientClosedSolid").mockImplementation((shape) => {
+        owned.push({ shape, dispose: vi.spyOn(shape, "delete") })
+        if (failure === "throw") throw new Error("Injected orientation failure")
+        return false
+      })
+    try {
+      expect(() =>
+        createOcctLoftPatchNetwork(occt, {
+          ...fixture(),
+          start: [{ segmentTrack: 0, continuity: "G1", support }],
+        }),
+      ).toThrow(failure === "throw" ? "Injected orientation failure" : /could not be oriented/)
+      expect(owned).toHaveLength(1)
+      for (const { shape, dispose } of owned) {
+        expect(dispose).toHaveBeenCalledOnce()
+        expect(() => shape.ShapeType()).toThrow()
+      }
+      expect(supportDelete).not.toHaveBeenCalled()
+      expect(measureArea(support)).toBe(area)
+      orient.mockRestore()
+      const recovered = createOcctLoftPatchNetwork(occt, fixture())
+      try {
+        validateOcctProfileSolid(occt, recovered)
+      } finally {
+        recovered.delete()
+      }
+    } finally {
+      orient.mockRestore()
+      supportDelete.mockRestore()
+      support.delete()
+    }
+  },
+  60000,
+)

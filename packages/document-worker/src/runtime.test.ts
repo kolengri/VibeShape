@@ -1,3 +1,6 @@
+import { featureGeometryRecordSchema } from "@vibeshape/application/feature-rebuild"
+import { terminalBodyGeometry } from "@vibeshape/application/model-bodies"
+import { createModelBodyMeasurementEvidence } from "@vibeshape/application/model-measurements"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -7,8 +10,17 @@ import {
   extrusionFeatureType,
   type FeatureId,
   type FeatureRecord,
+  featureEvaluationRecordSchema,
   featureIdSchema,
+  featureRecordSchema,
 } from "@vibeshape/domain"
+import { documentSnapshotSchema } from "@vibeshape/domain/document"
+import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
+import { bodyMeasurementOutputs } from "@vibeshape/domain/model-body-measurements"
+import {
+  loftFeatureParametersV3Schema,
+  loftFeatureTypeV3,
+} from "@vibeshape/domain/part-design-loft-v3"
 import type {
   FeatureEvaluationInput,
   FeatureEvaluationResult,
@@ -31,6 +43,7 @@ import {
   solveSketchRecord,
 } from "@vibeshape/sketch-solver"
 import { describe, expect, it, vi } from "vitest"
+import { createLoftV3Project, loftFixtureId as id } from "../../../tests/support/loft-v3-fixture"
 import { type DocumentWorkerEndpoint, DocumentWorkerRuntime, type SketchSolvePort } from "./runtime"
 
 const documentIds = {
@@ -1401,6 +1414,126 @@ describe("DocumentWorkerRuntime", () => {
 })
 
 describe("document body catalogs", () => {
+  it.each(["step", "stl", "3mf"] as const)(
+    "retains borrowed Loft end supports in body geometry, measurements and %s export",
+    async (format) => {
+      const fixture = createLoftV3Project(),
+        loft = featureRecordSchema.parse({
+          schemaVersion: 0,
+          id: id(900),
+          type: loftFeatureTypeV3.type,
+          parameters: loftFeatureParametersV3Schema.parse({
+            sections: fixture.sections,
+            ruled: false,
+            outerCorrespondence: fixture.outerCorrespondence,
+            rails: [],
+            guides: [],
+            start: [
+              {
+                segmentTrack: 0,
+                continuity: "G1",
+                support: {
+                  schemaVersion: 1,
+                  kind: "face",
+                  featureId: id(850),
+                  outputRole: "result",
+                  semanticRole: "primitive.box.side.y-min",
+                  signature: {
+                    kind: "face",
+                    geometryClass: "PLANE",
+                    measure: 40,
+                    centroid: [0, -2, 5],
+                    bounds: { min: [-2, -2, 0], max: [2, -2, 10] },
+                    boundaryCount: 4,
+                    adjacentGeometryClasses: ["PLANE"],
+                    directionMode: "oriented",
+                    direction: [0, -1, 0],
+                  },
+                },
+              },
+            ],
+            end: [],
+          }),
+          dependencies: [id(850)],
+          references: [],
+          suppressed: false,
+        }),
+        snapshot = documentSnapshotSchema.parse({
+          ...fixture.snapshot,
+          revision: fixture.snapshot.revision + 1,
+          features: [...fixture.snapshot.features, loft],
+        }),
+        { engine, runtime, messages } = createHarness((input) =>
+          solveSketchRecord(sketchSolverModule(), input),
+        )
+      engine.bodyRoles = ["result"]
+      await runtime.handle({
+        ...request("loft-retained-support", {
+          documentId: snapshot.id,
+          revision: snapshot.revision,
+        }),
+        document: documentRebuildSnapshotSchema.parse(snapshot),
+      })
+      const response = rebuilt(messages, "loft-retained-support"),
+        expectedIds = [id(850), id(851), id(900)]
+      expect(response.evaluation.records.every((record) => record.status === "succeeded")).toBe(
+        true,
+      )
+      expect(engine.evaluatedInputs.find((input) => input.featureId === loft.id)).toMatchObject({
+        content: { schemaVersion: 1, feature: { inputRoles: ["result"] } },
+        dependencies: [
+          { featureId: id(850), contentHash: expect.any(String), outputRole: "result" },
+        ],
+      })
+      expect(
+        terminalBodyGeometry({
+          features: snapshot.features,
+          geometry: response.geometry.map((record) => featureGeometryRecordSchema.parse(record)),
+          evaluation: {
+            ...response.evaluation,
+            records: response.evaluation.records.map((record) =>
+              featureEvaluationRecordSchema.parse(record),
+            ),
+            dirtyFeatureIds: response.evaluation.dirtyFeatureIds.map((value) =>
+              featureIdSchema.parse(value),
+            ),
+            evaluatedFeatureIds: response.evaluation.evaluatedFeatureIds.map((value) =>
+              featureIdSchema.parse(value),
+            ),
+            reusedFeatureIds: response.evaluation.reusedFeatureIds.map((value) =>
+              featureIdSchema.parse(value),
+            ),
+          },
+        })?.map(({ featureId }) => featureId),
+      ).toEqual(expectedIds)
+      const measured = createModelBodyMeasurementEvidence(snapshot, { ok: true, response })
+      if (!measured.ok) throw new Error(measured.code)
+      const outputs = bodyMeasurementOutputs(snapshot.features, measured.evidence)
+      if (!outputs) throw new Error("Borrowed support metrics must remain current.")
+      expect(
+        terminalBodyOutputs(snapshot.features, outputs)?.map(({ featureId }) => featureId),
+      ).toEqual(expectedIds)
+      await runtime.handle({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: "export-loft-retained-support",
+        documentId: snapshot.id,
+        revision: snapshot.revision,
+        generation: 1,
+        type: "exportDocument",
+        format,
+      })
+      const exported = format === "3mf" ? engine.printMeshExportedFeatures : engine.exportedFeatures
+      expect(exported.at(-1)).toEqual(
+        expectedIds.map((featureId) => ({
+          featureId,
+          contentHash: expect.any(String),
+          outputRole: "result",
+        })),
+      )
+      expect(messages.at(-1)).toMatchObject({ type: "documentExported", bodyCount: 3 })
+    },
+  )
+
   it("transfers deduplicated body buffers without detaching retained rebuild state", async () => {
     const { engine, runtime, messages, transfers } = createHarness(null, true)
     engine.bodyRoles = ["result"]

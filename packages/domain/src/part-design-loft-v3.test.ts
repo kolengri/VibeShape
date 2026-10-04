@@ -2,6 +2,7 @@ import { expect, it } from "vitest"
 import { featureBodyDependencies, featureBodyDependencyIds } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
+import { terminalBodyOutputs } from "./model-bodies"
 import {
   loftFeatureParametersV3Schema,
   loftFeatureTypeV3,
@@ -63,6 +64,16 @@ it("schedules guide sketches and exact support body owners without consuming the
   expect(loftV3SupportBodies(parsed)).toEqual([{ featureId: id(500), outputRole: "result" }])
   expect(featureBodyDependencies(feature)).toEqual([{ featureId: id(500), outputRole: "result" }])
   expect(featureBodyDependencyIds(feature)).toEqual([])
+  const supportBody = { featureId: id(500), outputRole: "result" },
+    siblingBody = { featureId: id(500), outputRole: "other" },
+    loftBody = { featureId: feature.id, outputRole: "result" },
+    bodies = new Map([
+      [id(500), [supportBody, siblingBody]],
+      [feature.id, [loftBody]],
+    ])
+  expect(terminalBodyOutputs([feature], bodies)).toEqual([supportBody, siblingBody, loftBody])
+  bodies.set(id(500), [siblingBody])
+  expect(terminalBodyOutputs([feature], bodies)).toBeNull()
   expect(projectFirstPartyFeatureSemanticInputs(feature)).toEqual({
     recognized: true,
     ok: true,
