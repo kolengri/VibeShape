@@ -4,7 +4,10 @@ import type {
   FeatureRecord,
   VariableDefinition,
 } from "@vibeshape/domain"
+import { readMirrorFeatureParametersV3 } from "@vibeshape/domain/part-design-mirror"
+import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
@@ -16,6 +19,8 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
+import { ReferencePlaneSelection } from "../reference-geometry/reference-support-fields"
 import {
   type MirrorFormMode,
   type MirrorFormValues,
@@ -38,6 +43,9 @@ export type MirrorFormCopy = ParameterPanelCopy &
     saveFailed: string
   }
 type MirrorFormProps = FeatureParameterFormProps<MirrorFormMode, MirrorFormCopy> & {
+  referenceOptions?: ReferenceFrameOptions | undefined
+  selectedFace?: ViewerSelection | null | undefined
+} & {
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
 }
 function MirrorPreview({
@@ -47,6 +55,7 @@ function MirrorPreview({
   copy,
   mode,
   featureId,
+  referencePlane,
   onPreviewChange,
 }: {
   values: MirrorFormValues
@@ -55,12 +64,16 @@ function MirrorPreview({
   copy: MirrorFormCopy
   mode: MirrorFormMode
   featureId: FeatureId
+  referencePlane: ReferencePlane | null | undefined
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
   const parsed = parseMirrorForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: parsed.ok ? mirrorFeatureRecord(mode, featureId, parsed.plane, parsed) : null,
+    preview:
+      parsed.ok && referencePlane !== null
+        ? mirrorFeatureRecord(mode, featureId, parsed.plane, parsed, referencePlane)
+        : null,
   })
   return null
 }
@@ -75,14 +88,21 @@ export function MirrorForm({
   onSaved,
   previewStatus,
   variables,
+  referenceOptions,
+  selectedFace,
 }: MirrorFormProps) {
   const state = useParameterFormState(variables)
+  const [startingFace] = useState(selectedFace)
+  const [referencePlane, setReference] = useState<ReferencePlane | null | undefined>(() =>
+    mode.kind === "edit" ? readMirrorFeatureParametersV3(mode.feature)?.plane : undefined,
+  )
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const form = useAppForm({
     defaultValues: mirrorFormValues(mode, state.displayUnits),
     onSubmit: async ({ value }) => {
+      if (referencePlane === null) return
       const parsed = parseMirrorForm(value, variables, state.displayUnits, copy)
       if (!parsed.ok) {
         state.setIssues(parsed.issues)
@@ -94,7 +114,7 @@ export function MirrorForm({
         await submitFeatureMutation({
           baseRevision,
           copy,
-          feature: mirrorFeatureRecord(mode, featureId, parsed.plane, parsed),
+          feature: mirrorFeatureRecord(mode, featureId, parsed.plane, parsed, referencePlane),
           onSave,
           onSaved,
           setMessage: state.setMessage,
@@ -121,6 +141,7 @@ export function MirrorForm({
               copy={copy}
               mode={mode}
               featureId={featureId}
+              referencePlane={referencePlane}
               onPreviewChange={onPreviewChange}
             />
           )}
@@ -138,35 +159,45 @@ export function MirrorForm({
                 acceptLabel={copy.submit}
                 ariaLabel={copy.title}
                 cancelLabel={copy.cancel}
-                disabled={disabled}
+                disabled={disabled || referencePlane === null}
                 onCancel={onCancel}
                 previewStatus={previewStatus}
               />
             }
           >
-            <form.Field name="plane">
-              {(field) => (
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.plane}</legend>
-                  {(["XY", "XZ", "YZ"] as const).map((plane) => (
-                    <label key={plane} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="plane"
-                        value={plane}
-                        checked={field.state.value === plane}
-                        onBlur={field.handleBlur}
-                        onChange={() => {
-                          state.clearSubmissionErrors()
-                          field.handleChange(plane)
-                        }}
-                      />
-                      {plane}
-                    </label>
-                  ))}
-                </fieldset>
-              )}
-            </form.Field>
+            <ReferencePlaneSelection
+              options={referenceOptions}
+              value={referencePlane}
+              selectedFace={selectedFace ?? startingFace}
+              onChange={(value) => {
+                state.clearSubmissionErrors()
+                setReference(value)
+              }}
+            >
+              <form.Field name="plane">
+                {(field) => (
+                  <fieldset className="grid gap-2">
+                    <legend className="mb-2 text-xs font-medium">{copy.plane}</legend>
+                    {(["XY", "XZ", "YZ"] as const).map((plane) => (
+                      <label key={plane} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="plane"
+                          value={plane}
+                          checked={field.state.value === plane}
+                          onBlur={field.handleBlur}
+                          onChange={() => {
+                            state.clearSubmissionErrors()
+                            field.handleChange(plane)
+                          }}
+                        />
+                        {plane}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+              </form.Field>
+            </ReferencePlaneSelection>
             <form.Field name="offset">
               {(field) => (
                 <LengthExpressionField

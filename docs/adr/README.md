@@ -80,6 +80,7 @@
 | [0074](0074-ordered-body-slots-in-compound-and-union.md) | Accepted | Ordered exact body slots in Compound and Union |
 | [0076](0076-closed-shells-and-durable-opening-identity.md) | Accepted | Closed Shells and durable opening identity |
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
+| [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 
 Statuses:
 

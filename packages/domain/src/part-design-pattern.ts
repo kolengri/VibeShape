@@ -3,6 +3,7 @@ import { bodyReferenceSchema } from "./body-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { FeatureParameterResolution, TrustedFeatureTypeHandler } from "./feature-type-registry"
+import { referenceAxisSchema, referenceFrameInvariant } from "./reference-frame"
 import {
   angleQuantitySchema,
   lengthQuantitySchema,
@@ -185,5 +186,81 @@ export const patternFeatureTypeHandler: TrustedFeatureTypeHandler = {
           angle: parsed.angle.value,
           center: [parsed.center.x.value, parsed.center.y.value, parsed.center.z.value],
         }
+  },
+}
+
+const referencePatternCommon = {
+  targetBody: bodyReferenceSchema,
+  count: patternCountSchema,
+  axis: referenceAxisSchema,
+}
+export const patternFeatureParametersV2Schema = z.discriminatedUnion("kind", [
+  z
+    .object({ ...referencePatternCommon, kind: z.literal("linear"), spacing: patternSpacingSchema })
+    .strict()
+    .refine(({ count, spacing }) => Math.abs((count.value - 1) * spacing.value) <= 100_000, {
+      message: "Linear pattern total displacement must remain within 100,000 mm.",
+      path: ["spacing"],
+    }),
+  z
+    .object({ ...referencePatternCommon, kind: z.literal("circular"), angle: patternAngleSchema })
+    .strict(),
+])
+export type PatternFeatureParametersV2 = Readonly<z.infer<typeof patternFeatureParametersV2Schema>>
+export const patternFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  ...patternFeatureType,
+  type: { ...patternFeatureType.type, schemaVersion: 2 },
+  dependencies: { min: 1, max: 2 },
+  references: { min: 0, max: 0 },
+})
+export function readPatternFeatureParametersV2(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+): PatternFeatureParametersV2 | null {
+  if (featureTypeKey(feature.type) !== featureTypeKey(patternFeatureTypeV2.type)) return null
+  return patternFeatureParametersV2Schema.safeParse(feature.parameters).data ?? null
+}
+export const patternFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
+  type: patternFeatureTypeV2.type,
+  parametersSchema: patternFeatureParametersV2Schema,
+  resolveParameters(parameters, variables) {
+    const parsed = patternFeatureParametersV2Schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true, parameters }
+    const count = resolveField(parsed.data.count, patternCountSchema, "count", variables)
+    if (!count.ok) return count
+    const path = parsed.data.kind === "linear" ? "spacing" : "angle"
+    const field =
+      parsed.data.kind === "linear"
+        ? resolveField(parsed.data.spacing, patternSpacingSchema, path, variables)
+        : resolveField(parsed.data.angle, patternAngleSchema, path, variables)
+    if (!field.ok) return field
+    const result = patternFeatureParametersV2Schema.safeParse({
+      ...parsed.data,
+      count: count.quantity,
+      [path]: field.quantity,
+    })
+    return result.success
+      ? { ok: true, parameters: result.data }
+      : {
+          ok: false,
+          diagnostic: {
+            code: "invalid-pattern-extent",
+            message: "The resolved pattern exceeds its parameter bounds.",
+            issues: result.error.issues.map(({ path, message }) => ({
+              path: path.join("."),
+              message,
+            })),
+          },
+        }
+  },
+  validateFeature(feature) {
+    const { targetBody, axis } = patternFeatureParametersV2Schema.parse(feature.parameters)
+    return referenceFrameInvariant(feature, targetBody.featureId, axis)
+  },
+  contentParameters(parameters) {
+    const parsed = patternFeatureParametersV2Schema.parse(parameters)
+    const common = { kind: parsed.kind, count: parsed.count.value, axis: parsed.axis }
+    return parsed.kind === "linear"
+      ? { ...common, spacing: parsed.spacing.value }
+      : { ...common, angle: parsed.angle.value }
   },
 }

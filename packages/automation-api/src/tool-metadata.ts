@@ -1,6 +1,18 @@
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  create_reference_mirror:
+    "Stage Mirror v3 of an exact targetBody using plane: origin-plane XY/XZ/YZ, datum-plane featureId, planar-face BodyFaceRef, or explicit-plane origin in mm and unit normal. Supply typed signed offset and preserveSource; true creates an independent reflected part and retains the source. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable body-bound planar refs from body topology inspection; no caller content hash or native face index. Use fresh UUIDv7 IDs/current draft revision and preview before ordinary commit review. Legacy create_mirror retains v1/v2 behavior.",
+  update_reference_mirror:
+    "Update Mirror as v3 through the ordinary owned-draft command path. Preserve feature identity and resubmit exact targetBody, reference plane, typed offset, preserveSource, ordered target/distinct-support dependencies and empty references. An explicit edit may upgrade legacy Mirror while retaining its source-copy intent. Preview downstream geometry before ordinary commit review.",
+  create_reference_split:
+    "Stage Split v2 of an exact targetBody using plane: origin-plane XY/XZ/YZ, datum-plane featureId, planar-face BodyFaceRef, or explicit-plane origin in mm and unit normal, plus typed signed offset. Dependencies are target first, then a distinct support owner; references are empty. Stable planar refs come from body topology inspection, never native indices or caller content hashes. Preview must produce positive-volume split.negative and split.positive bodies before ordinary commit review. Legacy create_split retains world-plane v1 behavior.",
+  update_reference_split:
+    "Update Split as v2 preserving feature identity and stable output roles. Resubmit exact targetBody, reference plane, typed offset, ordered target/distinct-support dependencies and empty references. Stale, ambiguous or nonplanar support fails closed. Preview before ordinary commit review; explicit edits may upgrade legacy Split.",
+  create_reference_body_pattern:
+    "Stage body Pattern v2 using exact targetBody and axis: origin-axis X/Y/Z, datum-axis featureId with x/y/normal, linear-edge stable BodyTopoRef with authored unit direction, or explicit-axis origin in mm and unit direction. Supply typed scalar count 2–256 including seed and signed linear spacing or circular angle up to one revolution; circular center comes from the axis. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable LINE refs from body topology inspection, never native edge indices or caller hashes. Preview before ordinary commit review; legacy create_body_pattern retains XYZ/center v1 behavior.",
+  update_reference_body_pattern:
+    "Update body Pattern as v2 preserving feature identity and instance roles. Resubmit exact targetBody, reference axis, typed count and signed spacing or circular angle, ordered target/distinct-support dependencies and empty references. Explicit edits may upgrade legacy Pattern; reference axes replace its circular center. Preview before ordinary commit review.",
   model_measurements:
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:

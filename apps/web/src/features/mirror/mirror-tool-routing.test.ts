@@ -1,5 +1,9 @@
 import { boxFeatureType, createLengthQuantity, featureRecordSchema } from "@vibeshape/domain"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "@vibeshape/domain/part-design-mirror"
+import {
+  mirrorFeatureType,
+  mirrorFeatureTypeV2,
+  mirrorFeatureTypeV3,
+} from "@vibeshape/domain/part-design-mirror"
 import { describe, expect, it } from "vitest"
 import {
   activeFeatureId,
@@ -53,10 +57,26 @@ describe("Mirror history activation and downstream selection", () => {
       [mirrorId],
     )
   })
+  it("routes v3 arbitrary-plane intent while retaining a source-preserving copy downstream", () => {
+    const legacy = mirror(true, true)
+    const feature = featureRecordSchema.parse({
+      ...legacy,
+      type: mirrorFeatureTypeV3.type,
+      parameters: {
+        ...legacy.parameters,
+        plane: { kind: "explicit-plane", origin: [3, 4, 5], normal: [0.6, 0.8, 0] },
+      },
+    })
+    expect(editPartDesignTool(feature)).toEqual({ kind: "edit-mirror", featureId: mirrorId })
+    expect(modifyingSolidTargetFeatures([source, feature]).map(({ id }) => id)).toEqual([
+      sourceId,
+      mirrorId,
+    ])
+  })
   it("does not route unsupported future Mirror contracts to the current form", () => {
     const feature = mirror(true)
     expect(
-      editPartDesignTool({ ...feature, type: { ...feature.type, schemaVersion: 3 } }),
+      editPartDesignTool({ ...feature, type: { ...feature.type, schemaVersion: 4 } }),
     ).toBeNull()
   })
 })

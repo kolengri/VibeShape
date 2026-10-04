@@ -47,6 +47,20 @@ function fixture() {
   }
 }
 describe("owned exact OCCT reflection", () => {
+  it("uses an explicit translated plane without consuming its source", () => {
+    const f = fixture()
+    f.operations.mirrorShape(
+      f.constructors as unknown as OpenCascadeInstance,
+      f.source as unknown as Shape3D,
+      { planeOrigin: [3, 4, 5], planeNormal: [0.6, 0.8, 0], offset: 0, preserveSource: false },
+    )
+    expect(f.constructors.gp_Pnt_3).toHaveBeenCalledWith(3, 4, 5)
+    expect(f.constructors.gp_Dir_4).toHaveBeenCalledWith(0.6, 0.8, 0)
+    expect(f.source.delete).not.toHaveBeenCalled()
+    for (const binding of [f.origin, f.direction, f.axis, f.transform, f.builder])
+      expect(binding.delete).toHaveBeenCalledOnce()
+  })
+
   it.each([
     ["XY", [0, 0, 1]],
     ["XZ", [0, 1, 0]],

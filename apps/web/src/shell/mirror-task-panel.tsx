@@ -1,43 +1,13 @@
-import type { FeatureRecord } from "@vibeshape/domain"
-import { readMirrorFeatureParameters } from "@vibeshape/domain/part-design-mirror"
-import { useTranslations } from "@vibeshape/i18n"
-import type { ReactNode } from "react"
 import {
-  createBrowserFeatureId,
-  type DocumentControllerState,
-} from "../document/document-controller"
+  readMirrorFeatureParameters,
+  readMirrorFeatureParametersV3,
+} from "@vibeshape/domain/part-design-mirror"
+import { useTranslations } from "@vibeshape/i18n"
 import { MirrorForm, type MirrorFormCopy } from "../features/mirror/mirror-form"
-import type { MirrorFormMode } from "../features/mirror/mirror-form-model"
-import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
-import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
 import { featureTaskFormProps } from "./feature-task-form-props"
 
-type MirrorPanelProps = {
-  activeTool: ActivePartDesignTool
-  documentBusy: boolean
-  report: NonNullable<DocumentControllerState["report"]>
-  onCloseTool: () => void
-  onCompleteTool: () => void
-  onFeaturePreviewChange: (feature: FeatureRecord | null) => void
-  featurePreviewStatus: FeaturePreviewState["status"]
-  renderDelete: (feature: FeatureRecord) => ReactNode
-}
-function mirrorMode(
-  tool: ActivePartDesignTool,
-  features: readonly FeatureRecord[],
-  label: string,
-): MirrorFormMode | null {
-  if (tool.kind === "create-mirror")
-    return {
-      kind: "create",
-      targetBody: tool.targetBody,
-      createFeatureId: createBrowserFeatureId,
-      featureLabel: label,
-    }
-  if (tool.kind !== "edit-mirror") return null
-  const feature = features.find(({ id }) => id === tool.featureId)
-  return feature && readMirrorFeatureParameters(feature) ? { kind: "edit", feature } : null
-}
 function useMirrorCopy(editing: boolean): MirrorFormCopy {
   const t = useTranslations("app.mirror")
   return {
@@ -59,13 +29,23 @@ function useMirrorCopy(editing: boolean): MirrorFormCopy {
     saveFailed: t("saveFailed"),
   }
 }
-export function MirrorTaskPanel(props: MirrorPanelProps) {
+export function MirrorTaskPanel(props: BodyFeatureTaskPanelProps) {
   const t = useTranslations("app.mirror")
   const task = useTranslations("app.shell.taskPanel")
   const { report } = props
   const features = report.snapshot.features
-  const count = features.filter((feature) => readMirrorFeatureParameters(feature)).length
-  const mode = mirrorMode(props.activeTool, features, t("featureLabel", { number: count + 1 }))
+  const count = features.filter(
+    (feature) => readMirrorFeatureParameters(feature) || readMirrorFeatureParametersV3(feature),
+  ).length
+  const mode = bodyFeatureTaskMode({
+    tool: props.activeTool,
+    features: report.snapshot.features,
+    label: t("featureLabel", { number: count + 1 }),
+    createKind: "create-mirror",
+    editKind: "edit-mirror",
+    accepts: (feature) =>
+      Boolean(readMirrorFeatureParameters(feature) || readMirrorFeatureParametersV3(feature)),
+  })
   const copy = useMirrorCopy(mode?.kind === "edit")
   if (!mode) return null
   const key =
@@ -78,6 +58,12 @@ export function MirrorTaskPanel(props: MirrorPanelProps) {
         key={key}
         copy={copy}
         mode={mode}
+        referenceOptions={referenceFrameOptions(
+          report.snapshot,
+          report.rebuild,
+          mode.kind === "edit" ? mode.feature.id : undefined,
+        )}
+        selectedFace={props.selectedFace}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />

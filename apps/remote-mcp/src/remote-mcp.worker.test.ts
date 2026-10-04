@@ -384,7 +384,17 @@ describe("remote MCP in workerd", () => {
     try {
       await client.connect(transport)
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
-        expect.arrayContaining(["model_info", "draft_body_measurements", "draft_body_topology"]),
+        expect.arrayContaining([
+          "model_info",
+          "draft_body_measurements",
+          "draft_body_topology",
+          "create_reference_mirror",
+          "update_reference_mirror",
+          "create_reference_split",
+          "update_reference_split",
+          "create_reference_body_pattern",
+          "update_reference_body_pattern",
+        ]),
       )
       await vi.waitFor(() => expect(probes).toEqual([405]))
       expect((await client.listResources()).resources.length).toBeGreaterThan(0)

@@ -59,18 +59,31 @@ import { meshImportFeatureType } from "./part-design-mesh-import"
 import {
   mirrorFeatureType,
   mirrorFeatureTypeV2,
+  mirrorFeatureTypeV3,
   readMirrorFeatureParameters,
+  readMirrorFeatureParametersV3,
 } from "./part-design-mirror"
-import { patternFeatureType, readPatternFeatureParameters } from "./part-design-pattern"
+import {
+  patternFeatureType,
+  patternFeatureTypeV2,
+  readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
+} from "./part-design-pattern"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
 import {
   readShellFeatureParameters,
   shellFeatureType,
   shellFeatureTypeV2,
 } from "./part-design-shell"
-import { readSplitFeatureParameters, splitFeatureType } from "./part-design-split"
+import {
+  readSplitFeatureParameters,
+  readSplitFeatureParametersV2,
+  splitFeatureType,
+  splitFeatureTypeV2,
+} from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import { readThreadFeatureParameters, threadFeatureType } from "./part-design-thread"
+import { referenceFrameInvariant } from "./reference-frame"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
   isOrphanedModelReference,
@@ -212,11 +225,14 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(placementFeatureType.type), readPlacementFeatureParameters],
   [featureTypeKey(mirrorFeatureType.type), readMirrorFeatureParameters],
   [featureTypeKey(mirrorFeatureTypeV2.type), readMirrorFeatureParameters],
+  [featureTypeKey(mirrorFeatureTypeV3.type), readMirrorFeatureParametersV3],
   [featureTypeKey(threadFeatureType.type), readThreadFeatureParameters],
   [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
+  [featureTypeKey(patternFeatureTypeV2.type), readPatternFeatureParametersV2],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
   [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],
   [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],
+  [featureTypeKey(splitFeatureTypeV2.type), readSplitFeatureParametersV2],
   [featureTypeKey(compoundFeatureType.type), readCompoundFeatureParameters],
   [featureTypeKey(compoundFeatureTypeV2.type), readCompoundFeatureParameters],
   [featureTypeKey(unionFeatureType.type), readUnionFeatureParameters],
@@ -272,6 +288,18 @@ function hasCompleteBodySelectionDependencies(
   readParameters: BodySelectionParameterReader,
 ) {
   const bodies = featureBodyDependencies(feature).map(({ featureId }) => featureId)
+  const referenceParameters =
+    readMirrorFeatureParametersV3(feature) ??
+    readSplitFeatureParametersV2(feature) ??
+    readPatternFeatureParametersV2(feature)
+  if (referenceParameters) {
+    const support =
+      "plane" in referenceParameters ? referenceParameters.plane : referenceParameters.axis
+    return (
+      referenceFrameInvariant(feature, referenceParameters.targetBody.featureId, support).length ===
+      0
+    )
+  }
   return (
     readParameters(feature) !== null &&
     orderedIdsMatch(
