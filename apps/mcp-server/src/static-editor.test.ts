@@ -38,6 +38,7 @@ describe("local static editor boundary", () => {
     await writeFile(join(root, "index.html"), "<html><head></head><body></body></html>")
     await writeFile(join(root, "assets/worker-entry-Abc123_-.js"), "void 0")
     await writeFile(join(root, "assets/worker-entry-lookalike.js"), "void 0")
+    await writeFile(join(root, "assets/sketch-font.ttf"), new Uint8Array([0, 1, 0, 0]))
     await writeFile(join(root, "license.txt"), "Local license notice")
     await writeFile(join(root, "sources.tar.gz"), "source archive fixture")
     await writeFile(join(parent, "private.json"), "{}")
@@ -48,6 +49,10 @@ describe("local static editor boundary", () => {
       server(
         new Request(`${origin}${path}`, { method: "HEAD", headers: { Host: "127.0.0.1:43114" } }),
       )
+    const font = await get("/assets/sketch-font.ttf")
+    expect(font.status).toBe(200)
+    expect(font.headers.get("content-type")).toBe("font/ttf")
+    expect(font.headers.get("cross-origin-resource-policy")).toBe("same-origin")
     expect(
       (await get("/assets/worker-entry-Abc123_-.js")).headers.get("content-security-policy"),
     ).toContain("'unsafe-eval'")

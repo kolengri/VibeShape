@@ -36,6 +36,7 @@ import {
   localDraftInspectionInputs,
   localDraftInspectionOperations,
 } from "./local-draft-inspection"
+import { localSketchTextInputs, localSketchTextOperations } from "./local-sketch-text-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
   cadInspectionDetailQuerySchema,
@@ -122,6 +123,7 @@ export const localToolInputs = {
   model_body_measurements: modelBodyMeasurementArgumentsSchema,
   model_body_topology: modelBodyTopologyArgumentsSchema,
   ...localCadInputs,
+  ...localSketchTextInputs,
   ...localVariableInputs,
   model_variables: variableListQuerySchema.omit({
     kind: true,
@@ -191,6 +193,11 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  create_placement: resultOf(automationDraftStateSchema),
+  update_placement: resultOf(automationDraftStateSchema),
+  create_sketch_text: resultOf(automationDraftStateSchema),
+  update_sketch_text: resultOf(automationDraftStateSchema),
+  detach_sketch_text: resultOf(automationDraftStateSchema),
   model_sketch_solution: resultOf(sketchSolutionViewSchema),
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
   prepare_model_export: resultOf(binaryExportDescriptorSchema),
@@ -274,6 +281,11 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "create_placement",
+  "update_placement",
+  "create_sketch_text",
+  "update_sketch_text",
+  "detach_sketch_text",
   "model_sketch_solution",
   "draft_sketch_solution",
   "prepare_model_export",
@@ -392,6 +404,7 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
     })
     .strict(),
   ...localCadOperations,
+  ...localSketchTextOperations,
   ...localVariableOperations,
   z
     .object({ tool: z.literal("model_variables"), arguments: localToolInputs.model_variables })

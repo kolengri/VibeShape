@@ -32,6 +32,7 @@ import {
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
+import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
@@ -42,6 +43,8 @@ type CadOperation = Extract<
   LocalOperation,
   {
     tool:
+      | "create_placement"
+      | "update_placement"
       | "create_sketch"
       | "update_sketch"
       | "create_extrude"
@@ -90,6 +93,8 @@ const directCadFeatureTypes = {
   update_body_revolve: revolveFeatureTypeV7.type,
   create_body_subtract: booleanFeatureTypeV2.type,
   update_body_subtract: booleanFeatureTypeV2.type,
+  create_placement: placementFeatureType.type,
+  update_placement: placementFeatureType.type,
   create_reference_body_pattern: patternFeatureTypeV2.type,
   update_reference_body_pattern: patternFeatureTypeV2.type,
   create_reference_split: splitFeatureTypeV2.type,
