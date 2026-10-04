@@ -201,6 +201,45 @@ describe("exact curved extrusion endpoint proof", () => {
     }
   })
 
+  it("releases every prism face when the first native history lookup throws", () => {
+    const tool = makeBox([-1, -1, 0], [1, 1, 20])
+    const target = createOcctSphere(occt, 4, [0, 0, 8])
+    const volumes = [measureVolume(tool), measureVolume(target)]
+    const borrowedDeletes = [vi.spyOn(tool, "delete"), vi.spyOn(target, "delete")]
+    const faces = tool.faces
+    const faceDeletes = faces.map((face) => vi.spyOn(face, "delete"))
+    const facesSpy = vi.spyOn(tool, "faces", "get").mockReturnValue(faces)
+    const failure = new Error("Injected first prism history failure")
+    const historySpy = vi
+      .spyOn(occt.BRepAlgoAPI_Cut_1.prototype, "Modified")
+      .mockImplementation(() => {
+        throw failure
+      })
+    try {
+      withCurvedFace(target, (support) => {
+        const supportDelete = vi.spyOn(support, "delete")
+        expect(() =>
+          terminateExtrusionAtFace(occt, tool, target, support, [0, 0, 0], [0, 0, 20], [0, 0, 1]),
+        ).toThrow(failure)
+        expect(supportDelete).not.toHaveBeenCalled()
+      })
+      expect(faces).toHaveLength(6)
+      expect(facesSpy).toHaveBeenCalledOnce()
+      expect(historySpy).toHaveBeenCalledOnce()
+      for (const deleted of faceDeletes) expect(deleted).toHaveBeenCalledOnce()
+      for (const deleted of borrowedDeletes) expect(deleted).not.toHaveBeenCalled()
+      expect(measureVolume(tool)).toBeCloseTo(volumes[0] ?? 0, 8)
+      expect(measureVolume(target)).toBeCloseTo(volumes[1] ?? 0, 8)
+    } finally {
+      historySpy.mockRestore()
+      facesSpy.mockRestore()
+      for (const [index, face] of faces.entries())
+        if (faceDeletes[index]?.mock.calls.length === 0) face.delete()
+      target.delete()
+      tool.delete()
+    }
+  })
+
   it("releases every adopted result when native curved-face coverage throws", () => {
     const tool = makeBox([-1, -1, 0], [1, 1, 20])
     const target = createOcctSphere(occt, 4, [0, 0, 8])

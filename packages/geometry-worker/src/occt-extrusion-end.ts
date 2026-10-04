@@ -167,8 +167,8 @@ function prismBoundaryDescendants(
   own: <T extends { delete(): void }>(value: T) => T,
 ) {
   const originals: TopoDS_Shape[] = []
-  for (const face of tool.faces) {
-    own(face)
+  const faces = tool.faces.map(own)
+  for (const face of faces) {
     originals.push(face.wrapped)
     const modified = own(cutter.Modified(face.wrapped))
     while (modified.Size() > 0) {
