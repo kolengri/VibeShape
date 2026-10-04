@@ -2,6 +2,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import type { AutomationDraftInspectionView } from "../../packages/automation-api/src/draft-inspection"
 import type { AutomationDraftPreview } from "../../packages/automation-api/src/drafts"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
+import type { BodyTopoRef } from "../../packages/domain/src/body-topology-reference"
 import {
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -28,13 +29,22 @@ function draftTopology(value: AutomationDraftInspectionView) {
     throw new Error("Expected exact draft faces")
   return value.view
 }
-function shellVolume(geometry: AutomationDraftPreview["geometry"], featureId: string) {
+function draftBodies(value: AutomationDraftInspectionView) {
+  if (value.view.kind !== "org.vibeshape.model.body-measurements")
+    throw new Error("Expected exact draft bodies")
+  return value.view
+}
+function featureVolume(geometry: AutomationDraftPreview["geometry"], featureId: string) {
   const entry = geometry.measurements.data.features.find((entry) => entry.featureId === featureId)
-  if (entry?.status !== "succeeded") throw new Error("Expected exact Shell geometry")
+  if (entry?.status !== "succeeded") throw new Error("Expected exact feature geometry")
   return entry.shape.volume
 }
+function withoutDurableIdentity(reference: BodyTopoRef): BodyTopoRef {
+  const { semanticRole: _semanticRole, lineageToken: _lineageToken, ...signatureOnly } = reference
+  return signatureOnly
+}
 
-test("selects fresh unsaved Extrude faces for Shell and repairs changed producer intent before one commit", async ({
+test("selects unsaved Extrude faces for Shell, retains durable openings and repairs unresolved references before one commit", async ({
   page,
 }, testInfo) => {
   test.setTimeout(240_000)
@@ -103,22 +113,22 @@ test("selects fresh unsaved Extrude faces for Shell and repairs changed producer
         }),
       ),
     )
-    const measured = success(
-      localToolOutputs.draft_body_measurements.parse(
-        await call("draft_body_measurements", {
-          draftId: draft.draftId,
-          revision: extrude.revision,
-          featureId: sourceId,
-        }),
+    const measured = draftBodies(
+      success(
+        localToolOutputs.draft_body_measurements.parse(
+          await call("draft_body_measurements", {
+            draftId: draft.draftId,
+            revision: extrude.revision,
+            featureId: sourceId,
+          }),
+        ),
       ),
     )
-    expect(measured.view.kind).toBe("org.vibeshape.model.body-measurements")
-    if (measured.view.kind !== "org.vibeshape.model.body-measurements")
-      throw new Error("Expected draft bodies")
-    expect(measured.view.data.bodies).toMatchObject([
+    expect(measured.kind).toBe("org.vibeshape.model.body-measurements")
+    expect(measured.data.bodies).toMatchObject([
       { featureId: sourceId, outputRole: "result", shape: { valid: true } },
     ])
-    expect(measured.view.data.bodies[0]?.shape.volume).toBeCloseTo(2000, 6)
+    expect(measured.data.bodies[0]?.shape.volume).toBeCloseTo(2000, 6)
     const query = {
       draftId: draft.draftId,
       revision: extrude.revision,
@@ -191,7 +201,7 @@ test("selects fresh unsaved Extrude faces for Shell and repairs changed producer
       truncated: false,
       entries: [],
     })
-    expect(shellVolume(firstPreview.geometry, shellId)).toBeCloseTo(704, 4)
+    expect(featureVolume(firstPreview.geometry, shellId)).toBeCloseTo(704, 4)
     const changed = success(
       localToolOutputs.update_extrude.parse(
         await call("update_extrude", {
@@ -210,10 +220,63 @@ test("selects fresh unsaved Extrude faces for Shell and repairs changed producer
         limit: 1,
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
+    const retained = success(
+      localToolOutputs.preview_draft.parse(await call("preview_draft", { draftId: draft.draftId })),
+    )
+    expect(retained.geometry.status).toBe("valid")
+    expect(retained.geometry.diagnostics).toMatchObject({ status: "valid", entries: [] })
+    expect(featureVolume(retained.geometry, shellId)).toBeCloseTo(816, 4)
+    const current = await inspect(changed.revision)
+    expect(current.sourceContentHash).not.toBe(selected.sourceContentHash)
+    const signatureOnly = success(
+      localToolOutputs.update_shell.parse(
+        await call("update_shell", {
+          ...shell,
+          baseRevision: changed.revision,
+          commandId: id(14),
+          parameters: {
+            ...shellParameters,
+            ...current,
+            openings: current.openings.map(withoutDurableIdentity),
+          },
+        }),
+      ),
+    )
+    const exact = success(
+      localToolOutputs.preview_draft.parse(await call("preview_draft", { draftId: draft.draftId })),
+    )
+    expect(exact.geometry.status).toBe("valid")
+    expect(featureVolume(exact.geometry, shellId)).toBeCloseTo(816, 4)
+    const unresolved = success(
+      localToolOutputs.update_extrude.parse(
+        await call("update_extrude", {
+          ...producer,
+          baseRevision: signatureOnly.revision,
+          commandId: id(15),
+          parameters: { ...parameters, distance: createLengthQuantity(14) },
+        }),
+      ),
+    )
     const invalid = success(
       localToolOutputs.preview_draft.parse(await call("preview_draft", { draftId: draft.draftId })),
     )
     expect(invalid.geometry.status).toBe("invalid")
+    const validProducer = draftBodies(
+      success(
+        localToolOutputs.draft_body_measurements.parse(
+          await call("draft_body_measurements", {
+            draftId: draft.draftId,
+            revision: unresolved.revision,
+            featureId: sourceId,
+            outputRole: "result",
+          }),
+        ),
+      ),
+    )
+    expect(validProducer.data.bodies).toMatchObject([
+      { featureId: sourceId, outputRole: "result", shape: { valid: true } },
+    ])
+    expect(validProducer.data.bodies[0]?.shape.volume).toBeCloseTo(2800, 4)
     expect(invalid.geometry.diagnostics?.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -227,14 +290,14 @@ test("selects fresh unsaved Extrude faces for Shell and repairs changed producer
       ok: false,
       diagnostic: { code: "draft-geometry-invalid" },
     })
-    const repaired = await inspect(changed.revision)
-    expect(repaired.sourceContentHash).not.toBe(selected.sourceContentHash)
+    const repaired = await inspect(unresolved.revision)
+    expect(repaired.sourceContentHash).not.toBe(current.sourceContentHash)
     const updated = success(
       localToolOutputs.update_shell.parse(
         await call("update_shell", {
           ...shell,
-          baseRevision: changed.revision,
-          commandId: id(14),
+          baseRevision: unresolved.revision,
+          commandId: id(16),
           parameters: { ...shellParameters, ...repaired },
         }),
       ),
@@ -244,7 +307,7 @@ test("selects fresh unsaved Extrude faces for Shell and repairs changed producer
     )
     expect(preview.draft.revision).toBe(updated.revision)
     expect(preview.geometry.status).toBe("valid")
-    expect(shellVolume(preview.geometry, shellId)).toBeCloseTo(816, 4)
+    expect(featureVolume(preview.geometry, shellId)).toBeCloseTo(928, 4)
     expect(
       success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary.revision,
     ).toBe(initial.summary.revision)
@@ -258,7 +321,7 @@ test("selects fresh unsaved Extrude faces for Shell and repairs changed producer
     const committed = success(
       localToolOutputs.commit_draft.parse((await committing).structuredContent?.result),
     )
-    expect(committed.commandCount).toBe(5)
+    expect(committed.commandCount).toBe(7)
     await expect(
       page.getByRole("treeitem", { name: "Draft open shell", exact: true }),
     ).toBeVisible()

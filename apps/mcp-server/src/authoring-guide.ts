@@ -83,7 +83,7 @@ inspect the actual document revision before proposing a new change.
    For selected Fillet/Chamfer, omitting \`edges\` changes scope to all edges. For Hole,
    omitting \`targetBody\` changes exact-body scope to legacy whole-feature scope.
    Inspect unsaved body roles with \`draft_body_measurements\` and Shell opening faces with
-   \`draft_body_topology\`, at the current draft revision. Source edits invalidate old selections;
+   \`draft_body_topology\`, at the current draft revision. Source edits invalidate discovery cursors;
    restart stale discovery and reselect unresolved openings; Shell v2 retains unique durable face identities within the same body. Inspection does not renew draft expiry or save geometry.
 4. Call \`preview_draft\`. Check \`geometry.status\`, \`geometry.diagnostics\`, exact bounds and volume.
    \`model_info.diagnostics\` and preview diagnostics identify feature/sketch errors, blocked
