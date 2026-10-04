@@ -1,4 +1,5 @@
 import type { DocumentId } from "@vibeshape/domain"
+import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { commandIdSchema } from "@vibeshape/domain/identifiers"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
@@ -34,6 +35,14 @@ export class BrowserProjectRepository {
         return recovered.value.snapshot
       },
       features,
+    )
+  }
+
+  materializeCapturedSourceAssets(authority: DocumentAuthoritySnapshot) {
+    return materializeDocumentSourceAssets(
+      this.#database,
+      async () => authority,
+      authority.features,
     )
   }
 

@@ -906,7 +906,19 @@ export function createActiveDocumentAutomationSession() {
     readTarget: (direction) => (sourceSessionAvailable() ? active.previewHistory(direction) : null),
     hasCommandId: (commandId) => repository.hasCommandId(commandId),
     createId: browserUuidV7,
-    materializeSourceAssets: materializeAutomationSourceAssets,
+    async materializeSourceAssets(target, baseRevision) {
+      if (
+        !sourceSessionAvailable() ||
+        active.snapshot.revision !== baseRevision ||
+        target.authority.id !== capturedDocumentId
+      )
+        throw new Error("The paired history source document is unavailable.")
+      // A restored checkpoint owns its descriptors even when Undo removed them from current authority.
+      const assets = await repository.materializeCapturedSourceAssets(target.authority)
+      if (!sourceSessionAvailable() || active.snapshot.revision !== baseRevision)
+        throw new Error("The paired history base changed during materialization.")
+      return assets
+    },
     async previewAssembly(target, baseRevision) {
       if (!sourceSessionAvailable() || active.snapshot.revision !== baseRevision)
         throw new Error("The paired history base changed during preview.")
