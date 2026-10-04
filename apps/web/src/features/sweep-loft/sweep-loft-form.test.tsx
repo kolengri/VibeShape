@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { type FeatureRecord, sketchEntityIdSchema } from "@vibeshape/domain"
+import { type FeatureRecord, featureRecordSchema, sketchEntityIdSchema } from "@vibeshape/domain"
+import { loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import { SweepLoftForm } from "./sweep-loft-form"
-import type { ProfileOption } from "./sweep-loft-form-model"
+import type { ProfileOption, SweepLoftFormMode } from "./sweep-loft-form-model"
 import { copy, featureId, id, mode, paths, profiles, snapshot } from "./sweep-loft-test-fixtures"
 
 const save = () =>
@@ -19,6 +20,7 @@ function setup(
     status?: "ready" | "loading" | "error"
     onSave?: ReturnType<typeof save>
     profiles?: ProfileOption[]
+    mode?: SweepLoftFormMode
   } = {},
 ) {
   const onSave = options.onSave ?? save(),
@@ -31,7 +33,7 @@ function setup(
         <SweepLoftForm
           baseRevision={7}
           copy={copy}
-          mode={mode(operation)}
+          mode={options.mode ?? mode(operation)}
           snapshot={snapshot}
           profiles={options.profiles ?? profiles}
           paths={paths}
@@ -117,6 +119,57 @@ describe("Sweep and Loft task forms", () => {
         holeCorrespondence: [{ sectionBoundaryEntityIds: [[id(151)], [id(150)]] }],
       },
     })
+  })
+  it("edits a hollow Loft v2 to solid sections without retaining inaccessible hole tracks", async () => {
+    const hollowProfiles = profiles.slice(0, 2).map((profile, index) => {
+      const selector = {
+        ...profile.selector,
+        holeBoundaryEntityIds: [[sketchEntityIdSchema.parse(id(150 + index))]],
+      }
+      return {
+        ...profile,
+        label: `Hollow sketch ${index + 1}`,
+        selector,
+        key: sketchProfileSelectorKey(selector),
+      }
+    })
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: featureId,
+      type: loftFeatureTypeV2.type,
+      parameters: {
+        sections: hollowProfiles.map(({ selector }) => selector),
+        ruled: false,
+        holeCorrespondence: [{ sectionBoundaryEntityIds: [[id(150)], [id(151)]] }],
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+      label: "Hollow Loft",
+    })
+    const before = JSON.stringify(feature)
+    const f = setup("loft", {
+      mode: { kind: "edit", operation: "loft", feature },
+      profiles: [...hollowProfiles, ...profiles],
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Remove section Hollow sketch 1" }))
+    await userEvent.click(screen.getByRole("button", { name: "Remove section Hollow sketch 2" }))
+    await addSection("Sketch 1 · Profile 1")
+    await addSection("Sketch 2 · Profile 1")
+    expect(screen.queryByRole("button", { name: "Remove hole track 1" })).toBeNull()
+    const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
+    expect(apply.disabled).toBe(false)
+    await userEvent.click(apply)
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      id: featureId,
+      type: { schemaVersion: 2 },
+      parameters: {
+        sections: [profiles[0]?.selector, profiles[1]?.selector],
+        holeCorrespondence: [],
+      },
+    })
+    expect(JSON.stringify(feature)).toBe(before)
   })
   it("requires explicit Sweep curve selection and direction before one revision-bound Apply", async () => {
     const f = setup("sweep")

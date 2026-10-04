@@ -65,23 +65,21 @@ function endpoint(sketch: SketchRecord, line: Line, start: boolean) {
   return requireSketchPoint(sketch, start ? line.startPointId : line.endPointId)
 }
 function isCornerBranch(
+  sketch: SketchRecord,
   entity: SketchEntity,
   first: Line,
   second: Line,
-  cornerIds: ReadonlySet<SketchEntityId>,
+  corners: readonly SketchPoint2[],
 ) {
-  if (
-    entity.construction ||
-    entity.type === "point" ||
-    entity.id === first.id ||
-    entity.id === second.id
-  )
-    return false
-  const references = Object.entries(entity)
-    .filter(([key]) => key.endsWith("PointId"))
-    .map(([, value]) => value)
-  return references.some((id) => typeof id === "string" && cornerIds.has(id as SketchEntityId))
+  if (entity.construction || entity.id === first.id || entity.id === second.id) return false
+  if (!("startPointId" in entity) || !("endPointId" in entity)) return false
+  const endpoints = [
+    requireSketchPoint(sketch, entity.startPointId),
+    requireSketchPoint(sketch, entity.endPointId),
+  ]
+  return endpoints.some((point) => corners.some((corner) => distance(point, corner) <= TOLERANCE))
 }
+
 function cornerGeometry(sketch: SketchRecord, first: Line, second: Line) {
   const matches = [true, false].flatMap((a) =>
     [true, false].flatMap((b) => {
@@ -95,8 +93,8 @@ function cornerGeometry(sketch: SketchRecord, first: Line, second: Line) {
   const match = matches[0]
   if (matches.length !== 1 || !match)
     throw new RangeError("Sketch corner treatment requires exactly one shared endpoint.")
-  const cornerIds = new Set([match.corner.id, match.otherCorner.id])
-  if (sketch.entities.some((entity) => isCornerBranch(entity, first, second, cornerIds)))
+  const corners = [match.corner, match.otherCorner]
+  if (sketch.entities.some((entity) => isCornerBranch(sketch, entity, first, second, corners)))
     throw new RangeError("Sketch corner treatment cannot modify a branched corner.")
   const firstFar = endpoint(sketch, first, !match.firstStart),
     secondFar = endpoint(sketch, second, !match.secondStart)

@@ -6,6 +6,7 @@ import {
   sketchIdSchema,
 } from "../packages/domain/src/identifiers"
 import { createRectangleSketch } from "../packages/domain/src/rectangle-sketch"
+import { sketchRecordSchema } from "../packages/domain/src/sketch"
 import { treatSketchCorner } from "../packages/domain/src/sketch-corner-edit"
 import { createLengthQuantity } from "../packages/domain/src/units"
 import initializeSolver from "../packages/sketch-solver/runtime/vibeshape_slvs.mjs"
@@ -85,6 +86,83 @@ it.each(["fillet", "chamfer"] as const)(
       kind === "fillet" ? 80 - 9 * (1 - Math.PI / 4) : 74,
       5,
     )
+  },
+  60_000,
+)
+
+it.each(["fillet", "chamfer"] as const)(
+  "rejects a solved coincident branch with distinct endpoint IDs for %s",
+  async (kind) => {
+    const solver = await initializeSolver({
+      locateFile: () =>
+        new URL("../packages/sketch-solver/runtime/vibeshape_slvs.wasm", import.meta.url).pathname,
+    })
+    let entity = 1,
+      constraint = 100
+    const createEntityId = () => sketchEntityIdSchema.parse(id(entity++)),
+      createConstraintId = () => sketchConstraintIdSchema.parse(id(constraint++))
+    const rectangle = createRectangleSketch({
+      id: sketchIdSchema.parse(id(200)),
+      label: "Coincident branch",
+      plane: "xy",
+      width: createLengthQuantity(10),
+      height: createLengthQuantity(8),
+      createEntityId,
+      createConstraintId,
+    })
+    const sketch = sketchRecordSchema.parse({
+      ...rectangle,
+      entities: [
+        ...rectangle.entities,
+        { schemaVersion: 0, id: id(300), type: "point", x: 0, y: 0, construction: false },
+        { schemaVersion: 0, id: id(301), type: "point", x: 10, y: 5, construction: false },
+        {
+          schemaVersion: 0,
+          id: id(302),
+          type: "line",
+          startPointId: id(300),
+          endPointId: id(301),
+          construction: false,
+        },
+      ],
+      constraints: [
+        ...rectangle.constraints,
+        {
+          schemaVersion: 0,
+          id: id(303),
+          type: "coincident",
+          firstPointId: id(300),
+          secondPointId: id(2),
+        },
+      ],
+    })
+    const before = JSON.stringify(sketch)
+    const solved = solveSketchRecord(solver, { sketch, revision: 1, variables: [] })
+    if (!solved.ok) throw new Error(solved.diagnostic.message)
+    expect(solved.solution.maximumResidual).toBeLessThan(1e-7)
+    const solvedPoints = new Map(
+      solved.solution.points.map(({ entityId, x, y }) => [entityId, { x, y }]),
+    )
+    expect(solvedPoints.get(sketchEntityIdSchema.parse(id(300)))).toEqual(
+      solvedPoints.get(sketchEntityIdSchema.parse(id(2))),
+    )
+    const base = {
+      firstLineId: sketchEntityIdSchema.parse(id(5)),
+      secondLineId: sketchEntityIdSchema.parse(id(6)),
+    }
+    const treatment =
+      kind === "fillet"
+        ? { ...base, kind, radius: createLengthQuantity(2) }
+        : {
+            ...base,
+            kind,
+            firstDistance: createLengthQuantity(2),
+            secondDistance: createLengthQuantity(3),
+          }
+    expect(() =>
+      treatSketchCorner(sketch, { treatment, solvedPoints, createEntityId, createConstraintId }),
+    ).toThrow("branched")
+    expect(JSON.stringify(sketch)).toBe(before)
   },
   60_000,
 )

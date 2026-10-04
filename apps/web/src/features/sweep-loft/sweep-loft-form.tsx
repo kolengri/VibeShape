@@ -116,15 +116,20 @@ export function SweepLoftForm({
                       copy={copy}
                       onSectionsChange={(sections) => {
                         setMessage(null)
-                        const tracks = values.holeCorrespondence.map((track) => ({
-                          sectionBoundaryEntityIds: sections.map((section) => {
-                            const oldIndex = values.sections.findIndex(
-                              (old) =>
-                                sketchProfileSelectorKey(old) === sketchProfileSelectorKey(section),
-                            )
-                            return [...(track.sectionBoundaryEntityIds[oldIndex] ?? [])]
-                          }),
-                        }))
+                        const tracks = sections.some(
+                          ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length > 0,
+                        )
+                          ? values.holeCorrespondence.map((track) => ({
+                              sectionBoundaryEntityIds: sections.map((section) => {
+                                const oldIndex = values.sections.findIndex(
+                                  (old) =>
+                                    sketchProfileSelectorKey(old) ===
+                                    sketchProfileSelectorKey(section),
+                                )
+                                return [...(track.sectionBoundaryEntityIds[oldIndex] ?? [])]
+                              }),
+                            }))
+                          : []
                         form.setFieldValue("holeCorrespondence", tracks)
                         form.setFieldValue("sections", sections)
                       }}
