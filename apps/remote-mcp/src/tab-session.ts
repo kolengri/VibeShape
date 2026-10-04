@@ -60,6 +60,15 @@ type Consent = {
 const attachmentSchema = z.object({ authenticated: z.boolean() }).strict()
 type BrowserMessage = z.infer<typeof remoteBrowserMessageSchema>
 
+function draftInspectionResultMatches(
+  operation: LocalOperation,
+  result: { ok: boolean; value?: unknown },
+) {
+  if (!result.ok || !isLocalDraftInspection(operation)) return true
+  const inspection = automationDraftInspectionViewSchema.parse(result.value)
+  return draftInspectionMatches(operation, inspection, inspection.draft.documentId)
+}
+
 export class TabSession extends DurableObject<RemoteEnv> {
   private metadata: Metadata | null = null
   private pending: Pending | null = null
@@ -335,11 +344,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     const result = localToolOutputs[message.tool].parse(message.result)
     if (assemblyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
     if (!this.exportResultMatches(result)) return this.revoke()
-    if (result.ok && isLocalDraftInspection(this.pending.operation)) {
-      const inspection = automationDraftInspectionViewSchema.parse(result.value)
-      if (!draftInspectionMatches(this.pending.operation, inspection, inspection.draft.documentId))
-        return this.revoke()
-    }
+    if (!draftInspectionResultMatches(this.pending.operation, result)) return this.revoke()
     const pending = this.pending
     this.pending = null
     this.metadata.active = null

@@ -13,6 +13,7 @@ import {
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV6,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -34,7 +35,12 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
-import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
+import {
+  holeFeatureType,
+  holeFeatureTypeV2,
+  holeFeatureTypeV3,
+  readHoleFeatureParameters,
+} from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2, readLoftFeatureParameters } from "./part-design-loft"
 import { meshImportFeatureType } from "./part-design-mesh-import"
@@ -44,7 +50,7 @@ import { placementFeatureType } from "./part-design-placement"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
-import { threadFeatureType } from "./part-design-thread"
+import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
@@ -60,6 +66,7 @@ const emptySemanticInputTypeKeys = new Set(
     importedFeatureType,
     meshImportFeatureType,
     threadFeatureType,
+    threadFeatureTypeV2,
     placementFeatureType,
     mirrorFeatureType,
     mirrorFeatureTypeV2,
@@ -94,6 +101,7 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureTypeV3.type),
   featureTypeKey(extrusionFeatureTypeV4.type),
   featureTypeKey(extrusionFeatureTypeV5.type),
+  featureTypeKey(extrusionFeatureTypeV6.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),
@@ -148,7 +156,8 @@ export function projectFirstPartyFeatureSemanticInputs(
   }
   if (
     typeKey === featureTypeKey(holeFeatureType.type) ||
-    typeKey === featureTypeKey(holeFeatureTypeV2.type)
+    typeKey === featureTypeKey(holeFeatureTypeV2.type) ||
+    typeKey === featureTypeKey(holeFeatureTypeV3.type)
   ) {
     const parameters = readHoleFeatureParameters(feature)
     return parameters

@@ -206,7 +206,10 @@ export function classifyPartOperation(
   if (!profile && !hole && !isBoolean && !modifierTypes.has(typeKey)) return { kind: "unmanaged" }
   const targetId = feature.dependencies[0]
   if (!targetId) return { kind: "unmanaged" }
-  const target = readHoleBodyTarget(legacy) ?? featureResultBody({ id: targetId })
+  const target =
+    readExtrusionFeatureParameters(legacy)?.targetBody ??
+    readHoleBodyTarget(legacy) ??
+    featureResultBody({ id: targetId })
   return {
     kind: "modify",
     target,

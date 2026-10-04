@@ -5,9 +5,10 @@ import {
   featureCoreModule,
   partDesignModule,
 } from "./modules"
-import { booleanFeatureType, boxFeatureType } from "./part-design"
-import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { booleanFeatureType, boxFeatureType, extrusionFeatureTypeV6 } from "./part-design"
+import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
+import { threadFeatureTypeV2 } from "./part-design-thread"
 
 function moduleDescriptor(
   id: string,
@@ -130,6 +131,11 @@ describe("module registry", () => {
           .filter(({ type }) => type.typeId === "org.vibeshape.feature.part-design.mirror")
           .map(({ type }) => type.schemaVersion),
       ).toEqual([1, 2, 3])
+      expect(result.registry.getFeatureType(holeFeatureTypeV3.type)).toEqual(holeFeatureTypeV3)
+      expect(result.registry.getFeatureType(threadFeatureTypeV2.type)).toEqual(threadFeatureTypeV2)
+      expect(result.registry.getFeatureType(extrusionFeatureTypeV6.type)).toEqual(
+        extrusionFeatureTypeV6,
+      )
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
@@ -144,8 +150,10 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
+        "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.fillet",
+        "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.imported-mesh",
@@ -171,6 +179,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.split",
         "org.vibeshape.feature.part-design.split",
         "org.vibeshape.feature.part-design.sweep",
+        "org.vibeshape.feature.part-design.thread",
         "org.vibeshape.feature.part-design.thread",
         "org.vibeshape.feature.part-design.torus",
         "org.vibeshape.feature.part-design.union",
