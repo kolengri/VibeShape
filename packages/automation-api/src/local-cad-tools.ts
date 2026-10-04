@@ -19,6 +19,7 @@ import {
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
+  extrusionFeatureParametersV7Schema,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
@@ -129,6 +130,7 @@ const extrude = z
         message: "A sketch support must retain its whole result slot.",
       })
   })
+const faceExtentExtrude = extrude.safeExtend({ parameters: extrusionFeatureParametersV7Schema })
 const revolve = z
   .object({
     ...feature,
@@ -528,6 +530,8 @@ export const localCadInputs = {
   update_sketch: sketch,
   create_extrude: extrude,
   update_extrude: extrude,
+  create_face_extent_extrude: faceExtentExtrude,
+  update_face_extent_extrude: faceExtentExtrude,
   create_revolve: revolve,
   update_revolve: revolve,
   create_hole: hole,
@@ -581,6 +585,12 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_sketch"), arguments: sketch }).strict(),
   z.object({ tool: z.literal("create_extrude"), arguments: extrude }).strict(),
   z.object({ tool: z.literal("update_extrude"), arguments: extrude }).strict(),
+  z
+    .object({ tool: z.literal("create_face_extent_extrude"), arguments: faceExtentExtrude })
+    .strict(),
+  z
+    .object({ tool: z.literal("update_face_extent_extrude"), arguments: faceExtentExtrude })
+    .strict(),
   z.object({ tool: z.literal("create_revolve"), arguments: revolve }).strict(),
   z.object({ tool: z.literal("update_revolve"), arguments: revolve }).strict(),
   z.object({ tool: z.literal("create_hole"), arguments: hole }).strict(),

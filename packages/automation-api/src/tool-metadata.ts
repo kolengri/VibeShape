@@ -2,6 +2,10 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  create_face_extent_extrude:
+    "Stage Extrude v7 up-to-face using an exact body-bound finite face, captured current support hash, authored profile set, typed startOffset/draftAngle and explicit targetBody for Add/Remove/Intersect. New uses null targetBody. Obtain the stable face reference from body topology; dependencies are target first, optional sketch support, then a distinct endpoint owner. References retain only sketch support. Planar endpoints use exact plane clipping; curved endpoints require one complete reachable cap, with every new cap on the selected finite face. Partial or neighboring-face coverage fails closed. Preview before ordinary manual browser review; no transient indices or approximate surface extension.",
+  update_face_extent_extrude:
+    "Update an existing Extrude as v7 up-to-face through its owned draft, preserving feature identity and complete typed profiles, operation, startOffset, draftAngle, targetBody, exact finite face and captured support hash. Resubmit canonical target/support/endpoint dependencies and sketch support reference. Explicit upgrade from legacy is reviewed; v7 remains v7 when choosing a planar endpoint. Preview must pass exact cap coverage before ordinary manual review.",
   update_box:
     "Update an existing Box through its ordinary draft command. Read the complete feature first; resubmit typed width/depth/height, centered, quantity origin, label and explicit suppressed state. Preserve expressions and feature identity. No dependencies or caller actor/document are accepted. Preview before commit review. Legacy create_box retains its millimeter shorthand.",
   create_cylinder:

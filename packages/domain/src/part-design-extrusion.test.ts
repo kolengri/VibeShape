@@ -14,10 +14,12 @@ import {
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
+  extrusionFeatureParametersV7Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
@@ -493,6 +495,115 @@ describe("body-bound extrusion end conditions", () => {
     draftAngle: createAngleQuantity(5, "deg"),
     endCondition: { kind: "distance" },
   }
+  const sphericalEnd = (body = target) => ({
+    kind: "up-to-face",
+    targetBody: body,
+    sourceContentHash: "a".repeat(64),
+    face: {
+      ...body,
+      schemaVersion: 1,
+      kind: "face",
+      signature: {
+        kind: "face",
+        geometryClass: "SPHERE",
+        measure: 64 * Math.PI,
+        centroid: [0, 0, 8],
+        bounds: { min: [-4, -4, 4], max: [4, 4, 12] },
+        boundaryCount: 1,
+        adjacentGeometryClasses: [],
+      },
+    },
+  })
+  it("registers v7 finite curved face extents without broadening the strict v6 decoder", () => {
+    const parameters = { ...base, endCondition: sphericalEnd() }
+    expect(extrusionFeatureParametersV7Schema.safeParse(parameters).success).toBe(true)
+    expect(extrusionFeatureParametersV6Schema.safeParse(parameters).success).toBe(false)
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV7.type,
+      parameters,
+      dependencies: [target.featureId],
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readExtrusionFeatureParameters(feature)).toMatchObject({
+      endCondition: { kind: "up-to-face", face: { signature: { geometryClass: "SPHERE" } } },
+    })
+    expect(
+      readExtrusionFeatureParameters({ ...feature, type: extrusionFeatureTypeV6.type }),
+    ).toBeNull()
+    expect(featureBodyDependencies(feature)).toEqual([])
+  })
+  it("keeps the face-extent-only v7 contract directional and bound to one exact body", () => {
+    const parameters = { ...base, endCondition: sphericalEnd() }
+    for (const endCondition of [
+      { kind: "distance" },
+      { kind: "through-all", targetBody: target, sourceContentHash: "a".repeat(64) },
+      { kind: "up-to-body", targetBody: target, sourceContentHash: "a".repeat(64) },
+      { ...sphericalEnd(), face: { ...sphericalEnd().face, outputRole: "pattern.instance.2" } },
+    ])
+      expect(
+        extrusionFeatureParametersV7Schema.safeParse({ ...parameters, endCondition }).success,
+      ).toBe(false)
+    for (const invalid of [{ symmetric: true }, { secondDistance: createLengthQuantity(1) }])
+      expect(
+        extrusionFeatureParametersV7Schema.safeParse({ ...parameters, ...invalid }).success,
+      ).toBe(false)
+  })
+  it.each(["add", "remove", "intersect"] as const)(
+    "retains the separate v7 endpoint and consumes only the exact %s target",
+    (operation) => {
+      const endpoint = {
+        ...target,
+        featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3410",
+        outputRole: "result",
+      }
+      const feature = featureRecordSchema.parse({
+        ...extrusion(),
+        type: extrusionFeatureTypeV7.type,
+        parameters: {
+          ...base,
+          operation,
+          targetBody: target,
+          endCondition: sphericalEnd(endpoint),
+        },
+        dependencies: [target.featureId, endpoint.featureId],
+      })
+      expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+      expect(
+        registry().validateFeature({
+          ...feature,
+          dependencies: [...feature.dependencies].reverse(),
+        }),
+      ).toMatchObject({ ok: false })
+      const consumed = { featureId: target.featureId, outputRole: target.outputRole }
+      expect(featureBodyDependencies(feature)).toEqual([consumed])
+      expect(featureGeometryDependencies(feature)).toEqual([consumed, endpoint])
+    },
+  )
+  it("deduplicates a shared v7 target/end producer without silently changing its body role", () => {
+    const parameters = {
+      ...base,
+      operation: "remove",
+      targetBody: target,
+      endCondition: sphericalEnd(),
+    }
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV7.type,
+      parameters,
+      dependencies: [target.featureId],
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(featureGeometryDependencies(feature)).toEqual([
+      { featureId: target.featureId, outputRole: target.outputRole },
+    ])
+    expect(
+      extrusionFeatureParametersV7Schema.safeParse({
+        ...parameters,
+        targetBody: { ...target, outputRole: "pattern.instance.2" },
+      }).success,
+    ).toBe(false)
+  })
   it("retains all legacy versions and validates exact modifying body ownership", () => {
     expect(extrusionFeatureParametersV5Schema.safeParse(base).success).toBe(false)
     const feature = featureRecordSchema.parse({
