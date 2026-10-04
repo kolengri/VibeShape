@@ -317,6 +317,13 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
       automation: { exposure: "resource", pagination: "cursor" },
     },
     {
+      kind: "org.vibeshape.sketch.solution",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "derived",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
       kind: "org.vibeshape.model.measurements",
       schemaVersion: 1,
       ownerModuleId: "org.vibeshape.core.document",

@@ -1,6 +1,10 @@
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  model_sketch_solution:
+    "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
+  draft_sketch_solution:
+    "Read the solver state and stable profile selectors of a sketch in an owned draft. Choose section points, circles, failed-constraints, profiles or diagnostics. Exact isolated solving retains no worker or mesh. Begin cursor null; edits, another geometry target or cancellation invalidate paging without renewing expiry.",
   model_measurements:
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:
@@ -135,6 +139,8 @@ export function localToolAnnotations(name: LocalToolName) {
     readOnlyHint: [
       "model_measurements",
       "draft_measurements",
+      "model_sketch_solution",
+      "draft_sketch_solution",
       "model_info",
       "model_history",
       "model_parts",
@@ -157,6 +163,8 @@ export function localToolAnnotations(name: LocalToolName) {
     idempotentHint: [
       "model_measurements",
       "draft_measurements",
+      "model_sketch_solution",
+      "draft_sketch_solution",
       "model_info",
       "model_history",
       "model_parts",

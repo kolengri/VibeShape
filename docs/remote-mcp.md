@@ -177,3 +177,9 @@ Primary references: [Cloudflare OAuth provider](https://github.com/cloudflare/wo
 [WebSocket Hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/),
 [rate limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) and
 [Free resource quotas](https://developers.cloudflare.com/workers/platform/pricing/).
+
+Solved sketches can be inspected with `model_sketch_solution` and `draft_sketch_solution`.
+Use the exact revision and sketch ID; choose points, circles, failed constraints, profiles or
+diagnostics. Each bounded page includes native solver status and DOF. Usable profile pages
+provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
+after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.
