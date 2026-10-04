@@ -356,6 +356,46 @@ export const holeFeatureContentParametersSchema = z
     }
   })
 
+export const holeTreatmentContentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("simple") }).strict(),
+  z
+    .object({
+      kind: z.literal("counterbore"),
+      diameter: finiteNumberSchema.positive().max(1_000_000),
+      depth: finiteNumberSchema.positive().max(1_000_000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("countersink"),
+      diameter: finiteNumberSchema.positive().max(1_000_000),
+      angle: finiteNumberSchema.min(Math.PI / 18).max((17 * Math.PI) / 18),
+    })
+    .strict(),
+])
+export const holeFeatureContentParametersV3Schema = holeFeatureContentParametersSchema
+  .extend({ treatment: holeTreatmentContentSchema })
+  .superRefine((parameters, context) => {
+    const treatment = parameters.treatment
+    if (treatment.kind === "simple") return
+    if (treatment.diameter <= parameters.diameter)
+      context.addIssue({
+        code: "custom",
+        path: ["treatment", "diameter"],
+        message: "The recess diameter must be larger than the hole diameter.",
+      })
+    const recessDepth =
+      treatment.kind === "counterbore"
+        ? treatment.depth
+        : (treatment.diameter - parameters.diameter) / (2 * Math.tan(treatment.angle / 2))
+    if (parameters.extent === "blind" && recessDepth >= (parameters.depth ?? 0))
+      context.addIssue({
+        code: "custom",
+        path: ["treatment"],
+        message: "The recess must leave a positive cylindrical depth.",
+      })
+  })
+
 export const booleanFeatureContentParametersSchema = z
   .object({ operation: z.literal("subtract") })
   .strict()
@@ -658,15 +698,20 @@ export function extrusionExtentBounds(
     symmetric: boolean
     reversed?: boolean
     secondDistance?: number | null
+    startOffset?: number
   }>,
 ) {
   if (parameters.symmetric) {
-    return { start: -parameters.distance / 2, end: parameters.distance / 2 }
+    return {
+      start: -parameters.distance / 2 + (parameters.startOffset ?? 0),
+      end: parameters.distance / 2 + (parameters.startOffset ?? 0),
+    }
   }
   const second = parameters.secondDistance ?? 0
+  const offset = parameters.startOffset ?? 0
   return parameters.reversed
-    ? { start: -parameters.distance, end: second }
-    : { start: second === 0 ? 0 : -second, end: parameters.distance }
+    ? { start: -parameters.distance + offset, end: second + offset }
+    : { start: (second === 0 ? 0 : -second) + offset, end: parameters.distance + offset }
 }
 
 /** Independent one- or two-sided extrusion content; schema-version 5 only. */
@@ -691,6 +736,47 @@ export const extrusionFeatureContentParametersV5Schema = z
     path: ["distance"],
     message: "The total extrusion span must be at most 100,000 mm.",
   })
+
+const extrusionEndBodyContentFields = {
+  inputIndex: z.number().int().min(0).max(2),
+  sourceContentHash: z.string().regex(/^[0-9a-f]{64}$/),
+  outputRole: z.string().min(1).max(128),
+}
+export const extrusionEndConditionContentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("distance") }).strict(),
+  z.object({ kind: z.literal("through-all"), ...extrusionEndBodyContentFields }).strict(),
+  z.object({ kind: z.literal("up-to-body"), ...extrusionEndBodyContentFields }).strict(),
+  z
+    .object({
+      kind: z.literal("up-to-face"),
+      ...extrusionEndBodyContentFields,
+      face: z.lazy(() => shellOpeningContentSchema),
+      planeOrigin: vector3Schema,
+      planeNormal: vector3Schema.refine(
+        (v) => Math.abs(Math.hypot(...v) - 1) <= 1e-8,
+        "The end plane normal must be normalized.",
+      ),
+    })
+    .strict(),
+])
+export const extrusionFeatureContentParametersV6Schema = extrusionFeatureContentParametersV5Schema
+  .safeExtend({
+    startOffset: z.number().finite().min(-100_000).max(100_000),
+    draftAngle: z
+      .number()
+      .finite()
+      .min(-Math.PI / 4)
+      .max(Math.PI / 4),
+    endCondition: extrusionEndConditionContentSchema,
+  })
+  .refine(
+    ({ endCondition, symmetric, secondDistance }) =>
+      endCondition.kind === "distance" || (!symmetric && secondDistance === null),
+    "Dynamic end conditions require one directional extent.",
+  )
+export type ExtrusionFeatureContentParametersV6 = z.infer<
+  typeof extrusionFeatureContentParametersV6Schema
+>
 
 const revolveMultiProfileFeatureContentBaseSchema = z
   .object({

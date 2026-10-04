@@ -16,6 +16,7 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import { ExtrusionForm, type ExtrusionFormMode } from "./extrusion-form"
@@ -132,28 +133,31 @@ function renderForm(
   },
   onPreviewChange = vi.fn(),
   distanceRequest?: ExtrusionDistanceRequest,
+  angleUnit: "deg" | "rad" = "deg",
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update extrusion" } : copy
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <ExtrusionForm
-        baseRevision={4}
-        copy={formCopy}
-        distanceRequest={distanceRequest}
-        mode={mode}
-        options={[
-          {
-            id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3602"),
-            label: "Box 1",
-          },
-        ]}
-        profileLabel="Sketch 1"
-        variables={variables}
-        onCancel={vi.fn()}
-        onPreviewChange={onPreviewChange}
-        onSave={onSave}
-        onSaved={onSaved}
-      />
+      <DocumentDisplayUnitsProvider displayUnits={{ length: "mm", angle: angleUnit }}>
+        <ExtrusionForm
+          baseRevision={4}
+          copy={formCopy}
+          distanceRequest={distanceRequest}
+          mode={mode}
+          options={[
+            {
+              id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3602"),
+              label: "Box 1",
+            },
+          ]}
+          profileLabel="Sketch 1"
+          variables={variables}
+          onCancel={vi.fn()}
+          onPreviewChange={onPreviewChange}
+          onSave={onSave}
+          onSaved={onSaved}
+        />
+      </DocumentDisplayUnitsProvider>
     </I18nProvider>,
   )
   return { formCopy, onPreviewChange, onSave, onSaved }
@@ -179,6 +183,31 @@ async function selectOperation(user: ReturnType<typeof userEvent.setup>, operati
 }
 
 describe("ExtrusionForm", () => {
+  it("authors signed offset and draft using the project's angle display unit", async () => {
+    const { onSave } = renderForm(undefined, undefined, undefined, undefined, undefined, "rad")
+    fireEvent.change(screen.getByRole("combobox", { name: "Start offset" }), {
+      target: { value: "-2" },
+    })
+    fireEvent.change(screen.getByRole("combobox", { name: "Draft angle" }), {
+      target: { value: "-0.1" },
+    })
+    await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        4,
+        expect.objectContaining({
+          type: expect.objectContaining({ schemaVersion: 6 }),
+          parameters: expect.objectContaining({
+            startOffset: expect.objectContaining({ value: -2 }),
+            draftAngle: expect.objectContaining({
+              value: -0.1,
+              source: expect.objectContaining({ expression: "-0.1 rad" }),
+            }),
+          }),
+        }),
+      ),
+    )
+  })
   it("reopens independent extents and changes only the second depth from its handle", async () => {
     const feature = featureRecordSchema.parse({
       ...existingFeature,

@@ -320,6 +320,15 @@ Extension rules:
 
 See [Extension architecture](../architecture/extensions.md), [Automation and MCP architecture](../architecture/automation-and-mcp.md), [ADR-0012](../adr/0012-capability-based-extension-platform.md), and [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
 
+Extrusion v6 adds through-all, up-to-body, and planar up-to-face termination, signed start offset,
+and signed draft from the shifted sketch neutral plane. Add/Remove/Intersect select one exact
+body output. End supports retain their captured content hash; changed, missing, ambiguous,
+unreachable, or partially covering endpoints block the preview. Up-to-face validates the selected
+finite planar face; curved faces are unavailable. Hole v3 adds exact counterbores and countersinks
+with expression-aware recess dimensions and included angle. Thread v2 adds shared selected/authored
+axes and a tested 20-turn single-start budget while preserving the 16-turn multi-start and v1
+bounds. See [ADR-0078](../adr/0078-extrusion-end-conditions-and-fastener-recesses.md).
+
 ## Explicitly deferred
 
 - Executable third-party extensions and a public marketplace until the SPK-006 production follow-ups and stable command/feature contracts pass.

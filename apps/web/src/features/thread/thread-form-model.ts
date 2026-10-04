@@ -15,9 +15,13 @@ import type { BodyReference } from "@vibeshape/domain/body-reference"
 import {
   readThreadFeatureParameters,
   type ThreadFeatureParameters,
+  type ThreadFeatureParametersV2,
   threadFeatureParametersSchema,
+  threadFeatureParametersV2Schema,
   threadFeatureType,
+  threadFeatureTypeV2,
 } from "@vibeshape/domain/part-design-thread"
+import { type ReferenceAxis, referenceFrameDependencyIds } from "@vibeshape/domain/reference-frame"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
@@ -43,7 +47,8 @@ export const threadAdvancedFields = [
 type ThreadQuantityField = (typeof threadCoreFields)[number] | (typeof threadAdvancedFields)[number]
 export type ThreadFormValues = Record<ThreadQuantityField, string> & {
   kind: "external" | "internal"
-  axis: "X" | "Y" | "Z"
+  axis: "X" | "Y" | "Z" | "reference"
+  axisReference: ReferenceAxis | null
   handedness: "right" | "left"
 }
 export type ThreadFormMode =
@@ -101,7 +106,27 @@ function sourceExpression(quantity: Quantity) {
 export function threadTargetBody(mode: ThreadFormMode) {
   return mode.kind === "create"
     ? mode.targetBody
-    : threadFeatureParametersSchema.parse(mode.feature.parameters).targetBody
+    : (readThreadFeatureParameters(mode.feature)?.targetBody ??
+        (() => {
+          throw new Error("Invalid Thread target.")
+        })())
+}
+function threadOriginValues(
+  parameters: ThreadFeatureParameters | ThreadFeatureParametersV2,
+  units: DocumentDisplayUnits,
+) {
+  if ("origin" in parameters)
+    return {
+      originX: sourceExpression(parameters.origin.x),
+      originY: sourceExpression(parameters.origin.y),
+      originZ: sourceExpression(parameters.origin.z),
+    }
+  const origin = parameters.axis.kind === "explicit-axis" ? parameters.axis.origin : [0, 0, 0]
+  return {
+    originX: defaultLengthExpression(origin[0] ?? 0, units.length),
+    originY: defaultLengthExpression(origin[1] ?? 0, units.length),
+    originZ: defaultLengthExpression(origin[2] ?? 0, units.length),
+  }
 }
 export function threadFormValues(
   mode: ThreadFormMode,
@@ -113,6 +138,7 @@ export function threadFormValues(
     return {
       kind: "external",
       axis: "Z",
+      axisReference: null,
       handedness: "right",
       nominalDiameter: defaultLengthExpression(10, units.length),
       pitch: defaultLengthExpression(2, units.length),
@@ -129,16 +155,15 @@ export function threadFormValues(
     }
   return {
     kind: parameters.kind,
-    axis: parameters.axis,
+    axis: typeof parameters.axis === "string" ? parameters.axis : "reference",
+    axisReference: typeof parameters.axis === "string" ? null : parameters.axis,
     handedness: parameters.handedness,
     nominalDiameter: sourceExpression(parameters.nominalDiameter),
     pitch: sourceExpression(parameters.pitch),
     length: sourceExpression(parameters.length),
     depth: sourceExpression(parameters.depth),
     clearance: sourceExpression(parameters.clearance),
-    originX: sourceExpression(parameters.origin.x),
-    originY: sourceExpression(parameters.origin.y),
-    originZ: sourceExpression(parameters.origin.z),
+    ...threadOriginValues(parameters, units),
     starts: sourceExpression(parameters.starts),
     phase: sourceExpression(parameters.phase),
     runIn: sourceExpression(parameters.runIn),
@@ -199,8 +224,27 @@ function geometryMessage(
   }
 }
 type ParsedThreadForm =
-  | { ok: true; parameters: ThreadFeatureParameters }
+  | { ok: true; parameters: ThreadFeatureParameters | ThreadFeatureParametersV2 }
   | { ok: false; issues: Partial<Record<ThreadQuantityField, string>> }
+function threadFormAxis(values: ThreadFormValues, origin: readonly (number | undefined)[]) {
+  if (values.axis === "reference") return values.axisReference
+  const direction = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[values.axis]
+  return { kind: "explicit-axis", origin, direction }
+}
+function threadFormGeometryIssues(
+  error: { issues: readonly { path: PropertyKey[] }[] },
+  quantities: Partial<Record<ThreadQuantityField, Quantity>>,
+  copy: ThreadValidationCopy,
+) {
+  const issues: Partial<Record<ThreadQuantityField, string>> = {}
+  for (const issue of error.issues) {
+    const field = issue.path[0]
+    if (field === "axis") issues.originX = copy.validationSummary
+    if (field === "length" || field === "pitch" || field === "depth" || field === "starts")
+      issues[field] = geometryMessage(field, quantities, copy)
+  }
+  return issues
+}
 export function parseThreadForm(
   values: ThreadFormValues,
   mode: ThreadFormMode,
@@ -219,7 +263,7 @@ export function parseThreadForm(
   }
   if (Object.keys(issues).length) return { ok: false, issues }
   const { originX, originY, originZ, ...dimensions } = quantities
-  const parsed = threadFeatureParametersSchema.safeParse({
+  const legacy = threadFeatureParametersSchema.safeParse({
     ...dimensions,
     targetBody: threadTargetBody(mode),
     kind: values.kind,
@@ -227,13 +271,18 @@ export function parseThreadForm(
     handedness: values.handedness,
     origin: { x: originX, y: originY, z: originZ },
   })
+  if (legacy.success && (mode.kind !== "edit" || mode.feature.type.schemaVersion === 1))
+    return { ok: true, parameters: legacy.data }
+  const axis = threadFormAxis(values, [originX?.value, originY?.value, originZ?.value])
+  const parsed = threadFeatureParametersV2Schema.safeParse({
+    ...dimensions,
+    targetBody: threadTargetBody(mode),
+    kind: values.kind,
+    axis,
+    handedness: values.handedness,
+  })
   if (parsed.success) return { ok: true, parameters: parsed.data }
-  for (const issue of parsed.error.issues) {
-    const field = issue.path[0]
-    if (field === "length" || field === "pitch" || field === "depth")
-      issues[field] = geometryMessage(field, quantities, copy)
-  }
-  return { ok: false, issues }
+  return { ok: false, issues: threadFormGeometryIssues(parsed.error, quantities, copy) }
 }
 export function threadFeatureRecord(
   mode: ThreadFormMode,
@@ -243,13 +292,25 @@ export function threadFeatureRecord(
   const parameters = parsed.parameters
   return featureRecordSchema.parse(
     mode.kind === "edit"
-      ? { ...mode.feature, parameters }
+      ? {
+          ...mode.feature,
+          type: "origin" in parameters ? threadFeatureType.type : threadFeatureTypeV2.type,
+          parameters,
+          dependencies:
+            "origin" in parameters
+              ? [parameters.targetBody.featureId]
+              : referenceFrameDependencyIds(parameters.targetBody.featureId, parameters.axis),
+          references: [],
+        }
       : {
           schemaVersion: 0,
           id: featureId,
-          type: threadFeatureType.type,
+          type: "origin" in parameters ? threadFeatureType.type : threadFeatureTypeV2.type,
           parameters,
-          dependencies: [parameters.targetBody.featureId],
+          dependencies:
+            "origin" in parameters
+              ? [parameters.targetBody.featureId]
+              : referenceFrameDependencyIds(parameters.targetBody.featureId, parameters.axis),
           references: [],
           suppressed: false,
           label: mode.featureLabel,

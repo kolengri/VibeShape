@@ -55,7 +55,7 @@ describe("Modeled Thread authoring contract", () => {
     }
     const editing = { kind: "edit" as const, feature }
     expect(threadFormValues(editing, { length: "in", angle: "rad" })).toMatchObject(values)
-    expect(parsed.parameters.origin.x.value).toBe(-25.4)
+    expect("origin" in parsed.parameters && parsed.parameters.origin.x.value).toBe(-25.4)
     expect(parsed.parameters.phase.value).toBe(-2 * Math.PI)
     expect(threadFeatureRecord(editing, featureId, parsed)).toEqual(feature)
   })
@@ -106,13 +106,13 @@ describe("Modeled Thread authoring contract", () => {
     expect(parsed.parameters.phase.value).toBe(1)
     expect(parsed.parameters.starts.source.expression).toBe("2")
   })
-  it("accepts sixteen authored turns and rejects the next turn without silently changing pitch or band", () => {
-    const values = { ...threadFormValues(mode, units), length: "32 mm" }
+  it("accepts twenty authored turns and rejects the next turn without silently changing pitch or band", () => {
+    const values = { ...threadFormValues(mode, units), length: "40 mm" }
     const parsed = parseThreadForm(values, mode, [], units, copy)
     if (!parsed.ok) throw new Error(JSON.stringify(parsed))
-    expect(parsed.parameters.length.source.expression).toBe("32 mm")
+    expect(parsed.parameters.length.source.expression).toBe("40 mm")
     expect(parsed.parameters.pitch.value).toBe(2)
-    expect(parseThreadForm({ ...values, length: "34 mm" }, mode, [], units, copy)).toMatchObject({
+    expect(parseThreadForm({ ...values, length: "42 mm" }, mode, [], units, copy)).toMatchObject({
       ok: false,
       issues: { pitch: copy.invalidTurns },
     })

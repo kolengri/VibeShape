@@ -51,7 +51,11 @@ export function featureBodyDependencyIds(feature: FeatureRecord): readonly Featu
     return booleanFeatureParametersSchema.safeParse(feature.parameters).data?.keepTools
       ? feature.dependencies.slice(0, 1)
       : feature.dependencies
-  if (readHoleFeatureParameters(feature) || edgeModifierTypes.has(featureTypeKey(feature.type)))
+  if (
+    readHoleFeatureParameters(feature) ||
+    readThreadFeatureParameters(feature) ||
+    edgeModifierTypes.has(featureTypeKey(feature.type))
+  )
     return feature.dependencies.slice(0, 1)
   if (
     readMirrorFeatureParametersV3(feature) ||
@@ -73,7 +77,9 @@ export function featureBodyDependencies(
   if (compound) return compound.slots.map(({ targetBody }) => targetBody)
   const union = readUnionFeatureParameters(feature)
   if (union) return union.bodies
+  const extrusion = readExtrusionFeatureParameters(feature)
   const target =
+    extrusion?.targetBody ??
     readThreadFeatureParameters(feature)?.targetBody ??
     readHoleBodyTarget(feature) ??
     readPlacementFeatureParameters(feature)?.targetBody ??
@@ -84,6 +90,17 @@ export function featureBodyDependencies(
     (readSplitFeatureParameters(feature) ?? readSplitFeatureParametersV2(feature))?.targetBody
   if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
+}
+
+/** Exact geometry inputs include retained end supports without consuming their bodies. */
+export function featureGeometryDependencies(feature: FeatureRecord) {
+  const bodies = featureBodyDependencies(feature)
+  const end = readExtrusionFeatureParameters(feature)?.endCondition
+  return end &&
+    end.kind !== "distance" &&
+    !bodies.some(({ featureId }) => featureId === end.targetBody.featureId)
+    ? [...bodies, end.targetBody]
+    : bodies
 }
 
 /** Feature outputs that remain after downstream body-consuming operations. */

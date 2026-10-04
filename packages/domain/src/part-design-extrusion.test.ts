@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
+import { featureBodyDependencies, featureGeometryDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
+import { terminalBodyOutputs } from "./model-bodies"
 import {
   createModuleRegistry,
   documentCoreModule,
@@ -11,9 +13,11 @@ import {
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
+  extrusionFeatureParametersV6Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV6,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
@@ -21,7 +25,7 @@ import {
   readExtrusionFeatureParameters,
   readExtrusionProfileSet,
 } from "./part-design"
-import { createLengthQuantity } from "./units"
+import { createAngleQuantity, createLengthQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
 
 const profile = {
@@ -468,5 +472,145 @@ describe("selector-backed extrusion feature", () => {
         distance: createLengthQuantity(0),
       }).success,
     ).toBe(false)
+  })
+})
+
+describe("body-bound extrusion end conditions", () => {
+  const target = {
+    schemaVersion: 0,
+    featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3401",
+    outputRole: "pattern.instance.1",
+  }
+  const base = {
+    profiles: { schemaVersion: 0, profiles: [profile] },
+    distance: createLengthQuantity(12),
+    symmetric: false,
+    reversed: false,
+    secondDistance: null,
+    operation: "new",
+    targetBody: null,
+    startOffset: createLengthQuantity(-3),
+    draftAngle: createAngleQuantity(5, "deg"),
+    endCondition: { kind: "distance" },
+  }
+  it("retains all legacy versions and validates exact modifying body ownership", () => {
+    expect(extrusionFeatureParametersV5Schema.safeParse(base).success).toBe(false)
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV6.type,
+      parameters: { ...base, operation: "remove", targetBody: target },
+      dependencies: [target.featureId],
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readExtrusionFeatureParameters(feature)).toMatchObject({
+      targetBody: target,
+      startOffset: { value: -3 },
+      draftAngle: { value: (5 * Math.PI) / 180 },
+    })
+    expect(registry().validateFeature({ ...feature, dependencies: [] })).toMatchObject({
+      ok: false,
+    })
+  })
+  it("requires one directional dynamic extent and preserves target-first dependency order", () => {
+    const parameters = {
+      ...base,
+      endCondition: { kind: "up-to-body", targetBody: target, sourceContentHash: "a".repeat(64) },
+    }
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV6.type,
+      parameters,
+      dependencies: [target.featureId],
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(
+      extrusionFeatureParametersV6Schema.safeParse({ ...parameters, symmetric: true }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureParametersV6Schema.safeParse({
+        ...parameters,
+        secondDistance: createLengthQuantity(2),
+      }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureParametersV6Schema.safeParse({
+        ...parameters,
+        operation: "add",
+        targetBody: { ...target, outputRole: "pattern.instance.2" },
+      }).success,
+    ).toBe(false)
+  })
+  it("retains the endpoint body and consumes only one selected target output", () => {
+    const endpoint = {
+      ...target,
+      featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3410",
+      outputRole: "result",
+    }
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV6.type,
+      parameters: {
+        ...base,
+        operation: "remove",
+        targetBody: target,
+        endCondition: {
+          kind: "through-all",
+          targetBody: endpoint,
+          sourceContentHash: "a".repeat(64),
+        },
+      },
+      dependencies: [target.featureId, endpoint.featureId],
+    })
+    expect(featureBodyDependencies(feature)).toEqual([
+      { featureId: target.featureId, outputRole: target.outputRole },
+    ])
+    expect(featureGeometryDependencies(feature)).toEqual([
+      { featureId: target.featureId, outputRole: target.outputRole },
+      endpoint,
+    ])
+    const kept = { featureId: target.featureId, outputRole: "pattern.instance.0" },
+      consumed = { featureId: target.featureId, outputRole: target.outputRole },
+      support = { featureId: endpoint.featureId, outputRole: "result" },
+      result = { featureId: feature.id, outputRole: "result" }
+    expect(
+      terminalBodyOutputs(
+        [feature],
+        new Map([
+          [target.featureId, [kept, consumed]],
+          [endpoint.featureId, [support]],
+          [feature.id, [result]],
+        ]),
+      ),
+    ).toEqual([kept, support, result])
+  })
+  it("resolves signed offset and draft expressions before evaluating the versioned contract", () => {
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV6.type,
+      parameters: {
+        ...base,
+        startOffset: createLengthQuantity(-1, "mm", "-#offset"),
+        draftAngle: createAngleQuantity(1, "deg", "#angle"),
+      },
+    })
+    const values = evaluateVariableDefinitions([
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f3402",
+        name: "offset",
+        expression: "4 mm",
+      },
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f3403",
+        name: "angle",
+        expression: "10 deg",
+      },
+    ])
+    if (!values.ok) throw new Error("Expected valid variables.")
+    expect(registry().resolveFeatureParameters(feature, values.valuesByName)).toMatchObject({
+      ok: true,
+      feature: { parameters: { startOffset: { value: -4 }, draftAngle: { value: Math.PI / 18 } } },
+    })
   })
 })

@@ -22,7 +22,7 @@ submission lock for retry.
 Use a fresh command ID and the current draft revision. Preview must succeed before the ordinary
 commit operation can apply the draft.
 
-Choose an external or internal thread, the positive world X/Y/Z axis, and an explicit origin.
+Choose an external or internal thread and an origin, Datum Plane axis, stable linear model edge, or explicit axis. Existing v1 records retain their positive world X/Y/Z axis and authored origin.
 The origin is axial position zero. Enter nominal diameter, pitch, length, groove depth, radial
 clearance, handedness, starts, phase, and unthreaded run-in/run-out allowances. Length quantities
 use millimeters after conversion, phase uses radians after conversion, and starts is dimensionless.
@@ -41,14 +41,23 @@ not produce a smooth tapered lead-in or lead-out.
 Pitch is the axial spacing between adjacent starts. With N starts, each helix has lead N times
 pitch and phases are separated by one revolution divided by N. Right-handed threads increase
 angle along the positive axis; left-handed threads decrease it. Phase zero points toward world +Y
-for an X axis, +Z for a Y axis, and +X for a Z axis.
+for an X axis, +Z for a Y axis, and +X for a Z axis. V2 preserves those origin-axis conventions.
+For other unit directions, phase zero uses the projection of a canonical seed into the radial plane:
++Y near an X direction, +Z near a Y direction, and +X otherwise. Increasing phase follows the
+right-handed radial frame around the authored signed direction.
 
 Supported authoring bounds are 1-4 starts, positive diameter and length up to 1,000 mm, pitch from
-0.2 to 20 mm, depth at most 0.75 times pitch, phase within +/-one revolution, and at most 16 total
-authored turns. The band and external root radius must remain positive. Extremely small dimensions,
-invalid sweeps, disconnected results, missed material, and out-of-workspace geometry fail explicitly.
+0.2 to 20 mm, depth at most 0.75 times pitch, phase within +/-one revolution, and at most 20 total
+authored turns for a single-start v2 thread. Multi-start and v1 records retain the 16-turn limit.
+The band and external root radius must remain positive. Extremely small dimensions, invalid sweeps, disconnected results, missed material, and out-of-workspace geometry fail explicitly.
 
 Digital geometry validation does not prove standardized mating, printer accuracy, strength, or
 physical fit. See [ADR-0064](../adr/0064-modeled-custom-threads.md) for native ownership and integration
 gates. Native frame/parameter coverage, browser acceptance, and integrated review are separate
 verification evidence; the editor controls do not imply those gates have passed.
+
+Thread v2 divides longer single-start bands into bounded exact axial sections. The phase remains
+continuous at their interfaces; the final geometry remains one exact solid. Axis references resolve
+against the current named body output and do not persist transient edge IDs. See
+[ADR-0078](../adr/0078-extrusion-end-conditions-and-fastener-recesses.md) for resource limits and
+native ownership.

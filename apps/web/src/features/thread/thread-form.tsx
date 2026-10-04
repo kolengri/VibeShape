@@ -1,4 +1,5 @@
 import type { FeatureRecord } from "@vibeshape/domain"
+import { referenceAxisSchema } from "@vibeshape/domain/reference-frame"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -11,6 +12,8 @@ import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
+import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
+import { ReferenceAxisSelection } from "../reference-geometry/reference-support-fields"
 import {
   parseThreadForm,
   type ThreadFormMode,
@@ -59,6 +62,7 @@ export type ThreadFormCopy = ParameterPanelCopy &
   }
 type Props = FeatureParameterFormProps<ThreadFormMode, ThreadFormCopy> & {
   sourceAvailable: boolean
+  axisOptions?: ReferenceFrameOptions | undefined
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
 }
 function ThreadPreview({
@@ -110,6 +114,7 @@ export function ThreadForm({
   disabled = false,
   mode,
   sourceAvailable,
+  axisOptions,
   onCancel,
   onPreviewChange,
   onSave,
@@ -251,6 +256,20 @@ export function ThreadForm({
                         </fieldset>
                       )}
                     </form.Field>
+                    {axisOptions && (
+                      <ReferenceAxisSelection
+                        options={axisOptions}
+                        value={values.axis === "reference" ? values.axisReference : undefined}
+                        onChange={(support) => {
+                          state.clearSubmissionErrors()
+                          const parsed = referenceAxisSchema.safeParse(support)
+                          form.setFieldValue("axis", "reference")
+                          form.setFieldValue("axisReference", parsed.success ? parsed.data : null)
+                        }}
+                      >
+                        {null}
+                      </ReferenceAxisSelection>
+                    )}
                     <form.Field name="handedness">
                       {(field) => (
                         <fieldset className="grid gap-2">
@@ -274,7 +293,9 @@ export function ThreadForm({
                         </fieldset>
                       )}
                     </form.Field>
-                    {threadAdvancedFields.map(expressionField)}
+                    {threadAdvancedFields
+                      .filter((name) => values.axis !== "reference" || !name.startsWith("origin"))
+                      .map(expressionField)}
                   </div>
                 </details>
               </ParameterPanel>
