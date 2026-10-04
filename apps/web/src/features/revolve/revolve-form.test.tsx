@@ -16,11 +16,15 @@ import {
   topoRefSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
+import { revolveFeatureTypeV7 } from "@vibeshape/domain/part-design"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
-import { RevolveForm, type RevolveFormMode } from "./revolve-form"
+import { exactBodyOptionId } from "../part-design/exact-body-options"
+import { currentBodyOptions } from "../part-design/exact-body-options.test-fixtures"
+import { RevolveForm, type RevolveFormMode, type RevolveTargetOption } from "./revolve-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3701")
 const supportFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3703")
@@ -133,7 +137,7 @@ function renderForm(
     profiles: [profile],
   },
   onPreviewChange = vi.fn(),
-  options: readonly { id: FeatureId; label: string }[] = [],
+  options: readonly RevolveTargetOption[] = [],
   axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"],
   angleRequest?: Readonly<{ angle: number; featureId: FeatureId; sequence: number }>,
 ) {
@@ -181,6 +185,64 @@ async function selectOperation(user: ReturnType<typeof userEvent.setup>, operati
 }
 
 describe("RevolveForm", () => {
+  it.each([
+    { multi: false, roles: ["result"] },
+    { multi: false, roles: ["pattern.instance.0", "pattern.instance.1"] },
+    { multi: true, roles: ["result"] },
+    { multi: true, roles: ["pattern.instance.0", "pattern.instance.1"] },
+  ])("retains legacy scope and schema for multi=$multi with $roles", async ({ multi, roles }) => {
+    const user = userEvent.setup()
+    const profiles = multi ? [profile, secondProfile] : [profile]
+    const parameters = {
+      ...(multi ? { profiles: { schemaVersion: 0, profiles } } : { profile }),
+      axis: { kind: "origin-axis", axis: "y" },
+      angle: createAngleQuantity(180, "deg", "#sweep"),
+      operation: "remove",
+    }
+    const edited = featureRecordSchema.parse({
+      ...existingFeature,
+      type: multi ? revolveFeatureTypeV6.type : revolveFeatureType.type,
+      parameters,
+      dependencies: [targetFeatureId],
+    })
+    const producer = { ...existingFeature, id: targetFeatureId, label: "Target" }
+    const collected = currentBodyOptions([producer, edited], edited, roles)
+    const { onSave, formCopy } = renderForm(
+      undefined,
+      undefined,
+      { kind: "edit", feature: edited, profiles },
+      undefined,
+      collected,
+    )
+    expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
+      targetFeatureId,
+    )
+    await user.click(screen.getByRole("button", { name: formCopy.submit }))
+    expect(onSave).toHaveBeenLastCalledWith(
+      4,
+      expect.objectContaining({
+        ...edited,
+        parameters: {
+          ...parameters,
+          angle: expect.objectContaining({
+            value: Math.PI,
+            source: expect.objectContaining({ expression: "#sweep" }),
+          }),
+        },
+      }),
+    )
+    const exact = collected.find((option) => option.body)
+    if (!exact) throw new Error("Expected an explicit body choice.")
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), exact.id)
+    await user.click(screen.getByRole("button", { name: formCopy.submit }))
+    expect(onSave).toHaveBeenLastCalledWith(
+      4,
+      expect.objectContaining({
+        type: revolveFeatureTypeV7.type,
+        parameters: expect.objectContaining({ targetBody: exact.body }),
+      }),
+    )
+  })
   it("synchronizes graphical angle into the exact angle field and preview", async () => {
     const onPreviewChange = vi.fn()
     renderForm(undefined, undefined, undefined, onPreviewChange, [], undefined, {
@@ -470,3 +532,33 @@ describe("RevolveForm", () => {
     )
   })
 })
+
+it.each(["add", "remove", "intersect"] as const)(
+  "saves %s Revolve v7 with a selected exact body role",
+  async (operation) => {
+    const user = userEvent.setup()
+    const body = bodyReferenceSchema.parse({
+      schemaVersion: 0,
+      featureId: targetFeatureId,
+      outputRole: "split.positive",
+    })
+    const { onSave, onPreviewChange } = renderForm(undefined, undefined, undefined, undefined, [
+      { id: exactBodyOptionId(body), label: "Split positive", body },
+    ])
+    await selectOperation(user, operation)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: revolveFeatureTypeV7.type,
+        dependencies: [targetFeatureId],
+        parameters: expect.objectContaining({ operation, targetBody: body }),
+      }),
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenCalledWith(
+        expect.objectContaining({ type: revolveFeatureTypeV7.type }),
+      ),
+    )
+  },
+)

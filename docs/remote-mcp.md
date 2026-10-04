@@ -223,3 +223,14 @@ review. Apply creates an ordinary editable Sketch with source provenance, withou
 rediscover solved profiles before adding an ordinary downstream feature. Unsupported geometry
 fails without flattening or partial import. Beginning either import kind releases the other
 temporary source. See [ADR-0092](adr/0092-paired-planar-source-imports.md) and the bundled planar-import workflow.
+
+Assembly and local-library tools use the same paired authority on local and remote MCP. Read the
+[assembly/library workflow](../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)
+for private draft versions, topology frames, immutable component versions and mandatory manual Apply.
+Assembly previews are unsaved; callers cannot provide frozen pins or source bytes.
+
+Exact-body modifying operations are additive: `create_body_revolve`/`update_body_revolve` author
+Revolve v7 Add/Remove/Intersect on a stable target role; `create_body_subtract`/`update_body_subtract`
+author Subtract v2 with ordered exact target/tool roles, including distinct bodies of one producer.
+Legacy names preserve their contracts. See the [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md)
+for dependency ordering, tool retention, preview, and ordinary review/Apply.

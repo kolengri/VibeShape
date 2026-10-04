@@ -1,3 +1,4 @@
+import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
 import { isLocalBinaryExport } from "@vibeshape/automation-api/binary-exports"
 import {
   automationDraftOperationRequestSchema,
@@ -12,7 +13,9 @@ import {
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
+  isLocalLifecycleCommand,
   isLocalMetadataRead,
+  isLocalPrimitiveCommand,
   LOCAL_EXPORT_MAX_BYTES,
   type LocalMetadataReadOperation,
   type LocalOperation,
@@ -37,11 +40,14 @@ import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budge
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
+import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
 import type { createImportAutomationSession } from "./import-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
+import { createLocalLifecycleCommand } from "./local-lifecycle-command"
+import { createLocalPrimitiveCommand } from "./local-primitive-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
@@ -57,6 +63,7 @@ type LocalSessionPort = Readonly<{
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
+  assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
   planarImports?: ReturnType<typeof createPlanarImportAutomationSession>
@@ -196,6 +203,10 @@ function draftCommandRequest(
   documentId: string,
 ) {
   if (isVariableCommand(operation)) return createLocalVariableCommand(operation, actor, documentId)
+  if (isLocalPrimitiveCommand(operation))
+    return createLocalPrimitiveCommand(operation, actor, documentId)
+  if (isLocalLifecycleCommand(operation))
+    return createLocalLifecycleCommand(operation, actor, documentId)
   switch (operation.tool) {
     case "create_box":
     case "create_fillet":
@@ -246,6 +257,28 @@ function changeMetadata(
     : localFailure("authored-metadata-unavailable", "The paired document has no authored metadata.")
 }
 
+async function dispatchBasicOperation(
+  session: LocalSessionPort,
+  actor: CommandActor,
+  operation: LocalOperation,
+) {
+  switch (operation.tool) {
+    case "model_info":
+      return readModelInfo(session)
+    case "export_model":
+      return encodeExport(session, operation)
+    case "create_draft":
+    case "preview_draft":
+    case "commit_draft":
+    case "discard_draft": {
+      const result = await dispatchDraftLifecycle(session, actor, operation)
+      return hostResult(result)
+    }
+    default:
+      return localFailure("invalid-operation", "The named automation operation is unavailable.")
+  }
+}
+
 export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
@@ -288,34 +321,18 @@ export function createLocalToolExecutor(
     if (operation.tool === "begin_planar_import_upload" && result.ok) session.imports?.cancel()
     return result
   }
-  async function documentOperation(
-    operation: Extract<
-      LocalOperation,
-      {
-        tool:
-          | "model_info"
-          | "export_model"
-          | "create_draft"
-          | "preview_draft"
-          | "commit_draft"
-          | "discard_draft"
-      }
-    >,
-  ) {
-    switch (operation.tool) {
-      case "model_info":
-        return readModelInfo(session)
-      case "export_model":
-        return encodeExport(session, operation)
-      default: {
-        const result = await dispatchDraftLifecycle(session, actor, operation)
-        return hostResult(result)
-      }
-    }
+  function assemblyLibrary(operation: LocalOperation, signal?: AbortSignal) {
+    return session.assembly
+      ? session.assembly.execute(actor, operation, signal)
+      : localFailure(
+          "assembly-authority-unavailable",
+          "The paired document has no assembly authority.",
+        )
   }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
     if (isLocalPlanarImport(operation)) return planarImportFile(operation, signal)
     if (isLocalImport(operation)) return importFile(operation, signal)
+    if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
@@ -331,7 +348,7 @@ export function createLocalToolExecutor(
       return hostResult(result)
     }
     if (isLocalInspection(operation)) return readCommittedInspection(session, operation)
-    return documentOperation(operation)
+    return dispatchBasicOperation(session, actor, operation)
   }
   return {
     execute: (operation, signal) =>

@@ -17,6 +17,7 @@ import {
 import { PRODUCT_MESH_POLICY } from "../../document/document-worker-settings"
 import { type ModelBodyGeometry, terminalModelBodies } from "../part-design/model-bodies"
 import {
+  isBooleanFeature,
   isBoxFeature,
   isChamferFeature,
   isConeFeature,
@@ -42,6 +43,7 @@ export type FeaturePreviewKind =
   | "extrusion"
   | "primitive"
   | "revolve"
+  | "subtract"
 
 export type FeaturePreviewState = Readonly<{
   candidateMesh?: ViewerMesh
@@ -140,6 +142,7 @@ async function rebuildPreview(
 }
 
 export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
+  if (isBooleanFeature(candidate)) return "subtract"
   if (readHoleFeatureParameters(candidate)) return "hole"
   if (readDatumPlaneFeatureParameters(candidate)) return "datum-plane"
   if (readRevolveFeatureParameters(candidate)) return "revolve"

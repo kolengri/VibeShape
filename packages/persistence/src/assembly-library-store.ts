@@ -205,7 +205,11 @@ export class LocalAssemblyLibraryRepository {
       )
     return stored
   }
-  private async publishBlobs(assets: readonly SourceAsset[], prepared: readonly SourceAssetBlob[]) {
+  private async publishBlobs(
+    assets: readonly SourceAsset[],
+    prepared: readonly SourceAssetBlob[],
+    assertWritable: () => void,
+  ) {
     const sizes = closureSizes(assets)
     for (const blob of prepared) {
       if (sizes.get(blob.digest) !== blob.bytes.byteLength)
@@ -213,7 +217,10 @@ export class LocalAssemblyLibraryRepository {
           "invalid-input",
           "Library source bytes must belong to the frozen revision closure.",
         )
-      if (!(await this.database.blobs.get(blob.digest))) await this.database.blobs.add(blob)
+      if (!(await this.database.blobs.get(blob.digest))) {
+        assertWritable()
+        await this.database.blobs.add(blob)
+      }
     }
     for (const [digest, size] of sizes)
       await Dexie.waitFor(verifiedBlob(await this.database.blobs.get(digest), digest, size))
@@ -224,6 +231,7 @@ export class LocalAssemblyLibraryRepository {
     definition: AssemblyLibraryVersion["definition"],
     prepared: readonly SourceAssetBlob[],
     assets: readonly SourceAsset[],
+    assertWritable: () => void,
   ): Promise<AssemblyLibraryVersionRead> {
     const previous = await this.item(request.itemId)
     assertRevision(previous, request.expectedMetadataRevision)
@@ -248,17 +256,23 @@ export class LocalAssemblyLibraryRepository {
       contentDigest: await Dexie.waitFor(sha256Text(canonicalJson(content))),
     })
     const item = nextItem(request, previous, version.version)
-    await this.publishBlobs(assets, prepared)
+    await this.publishBlobs(assets, prepared, assertWritable)
+    assertWritable()
     await this.database.versions.add(version)
+    assertWritable()
     await this.database.items.put(item)
     const blobs: SourceAssetBlob[] = []
     for (const [digest, size] of closureSizes(assets))
       blobs.push(
         await Dexie.waitFor(verifiedBlob(await this.database.blobs.get(digest), digest, size)),
       )
+    assertWritable()
     return { item, version, blobs }
   }
-  async publishVersion(input: unknown): Promise<PersistenceResult<AssemblyLibraryVersionRead>> {
+  async publishVersion(
+    input: unknown,
+    assertWritable: () => void = () => {},
+  ): Promise<PersistenceResult<AssemblyLibraryVersionRead>> {
     try {
       const request = parsed(publishSchema, input)
       // Capture semantic data before any await; caller-owned parameter objects must not drift during hashing.
@@ -271,7 +285,7 @@ export class LocalAssemblyLibraryRepository {
         this.database.items,
         this.database.versions,
         this.database.blobs,
-        () => this.commitVersion(request, definition, prepared, assets),
+        () => this.commitVersion(request, definition, prepared, assets, assertWritable),
       )
       return { ok: true, value: result }
     } catch (error) {
@@ -279,7 +293,10 @@ export class LocalAssemblyLibraryRepository {
     }
   }
 
-  async updateMetadata(input: unknown): Promise<PersistenceResult<AssemblyLibraryItem>> {
+  async updateMetadata(
+    input: unknown,
+    assertWritable: () => void = () => {},
+  ): Promise<PersistenceResult<AssemblyLibraryItem>> {
     try {
       const request = parsed(metadataSchema, input)
       let result: AssemblyLibraryItem | undefined
@@ -310,7 +327,9 @@ export class LocalAssemblyLibraryRepository {
             tags: request.tags,
             updatedAt: request.updatedAt,
           })
+          assertWritable()
           await this.database.items.put(result)
+          assertWritable()
         },
       )
       if (!result)

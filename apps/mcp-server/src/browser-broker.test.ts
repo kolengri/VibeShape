@@ -1,3 +1,4 @@
+import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 // @vitest-environment node
 
 import { IMPORT_UPLOAD_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/imports"
@@ -45,6 +46,45 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("rejects forged solid STL inspection before forwarding a valid mesh result", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const value = nativeImportInspection("stl")
+    value.upload.documentId = document.id
+    const operation = localOperationSchema.parse({
+      tool: "inspect_import_upload",
+      arguments: { uploadId: value.upload.uploadId },
+    })
+    const pending = broker.invoke(operation)
+    const polled = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = (await polled.json()) as { work: { requestId: string } }
+    const respond = (inspection: unknown) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: operation.tool,
+            result: { ok: true, value: inspection },
+          },
+          token,
+        ),
+      )
+    const forged = {
+      ...value,
+      representation: "exact-solid",
+      outputs: value.outputs.map((output) => ({ ...output, volumeMm3: 1 })),
+    }
+    const rejected = await respond(forged)
+    expect(rejected.status).toBe(400)
+    expect(await rejected.json()).toMatchObject({ diagnostic: { code: "invalid-result" } })
+    expect((await respond(value)).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value })
+  })
+
   it("correlates an import's captured document, base and source intent before accepting its browser result", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)
@@ -94,6 +134,75 @@ describe("browser automation broker", () => {
       expect((await respond(wrong)).status).toBe(400)
     expect((await respond(value)).status).toBe(200)
     await expect(pending).resolves.toEqual({ ok: true, value })
+  })
+
+  it("requires the exact unique unordered interference pair set before forwarding inspection", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const a = "0195b5ac-b220-7a2c-8c33-000000000001"
+    const b = "0195b5ac-b220-7a2c-8c33-000000000002"
+    const c = "0195b5ac-b220-7a2c-8c33-000000000003"
+    const pair = (leftInstanceId: string, rightInstanceId: string) => ({
+      leftInstanceId,
+      rightInstanceId,
+      status: "clear",
+      volume: 0,
+      solidCount: 0,
+    })
+    const pending = broker.invoke(
+      localOperationSchema.parse({
+        tool: "inspect_assembly",
+        arguments: {
+          revision: document.revision,
+          interferencePairs: [pair(a, b), pair(a, c)].map(
+            ({ leftInstanceId, rightInstanceId }) => ({ leftInstanceId, rightInstanceId }),
+          ),
+        },
+      }),
+    )
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = (await poll.json()) as { work: { requestId: string } }
+    const result = (interference: ReturnType<typeof pair>[]) => ({
+      ok: true,
+      value: {
+        schemaVersion: 1,
+        documentId: document.id,
+        revision: document.revision,
+        occurrences: [],
+        interference,
+      },
+    })
+    const respond = (inspection: ReturnType<typeof result>) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: "inspect_assembly",
+            result: inspection,
+          },
+          token,
+        ),
+      )
+    for (const wrong of [
+      [pair(a, b), pair(a, b)],
+      [pair(a, b), pair(b, a)],
+      [pair(a, b), pair(b, c)],
+      [pair(a, b)],
+      [pair(a, b), pair(a, c), pair(b, c)],
+    ]) {
+      const rejected = await respond(result(wrong))
+      expect(rejected.status).toBe(400)
+      expect(await rejected.json()).toMatchObject({
+        diagnostic: { code: "result-context-mismatch" },
+      })
+    }
+    const exact = result([pair(c, a), pair(b, a)])
+    expect((await respond(exact)).status).toBe(200)
+    await expect(pending).resolves.toEqual(exact)
   })
   it("denies hostile or missing origins and requires the exact JSON method", async () => {
     const broker = makeBroker({ origin })

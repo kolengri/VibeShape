@@ -1,4 +1,8 @@
 import type {
+  AssemblyResult,
+  AssemblyReviewInput,
+} from "@vibeshape/automation-host/assembly-session-contract"
+import type {
   AutomationHostDiagnosticCode,
   AutomationHostResult,
   DraftReviewInput,
@@ -6,7 +10,11 @@ import type {
 import type { ImportReviewInput } from "./import-upload-session"
 import type { PlanarImportReviewInput } from "./planar-import-upload-session"
 
-export type AutomationReviewInput = DraftReviewInput | ImportReviewInput | PlanarImportReviewInput
+export type AutomationReviewInput =
+  | DraftReviewInput
+  | AssemblyReviewInput
+  | ImportReviewInput
+  | PlanarImportReviewInput
 export function isImportReview(input: AutomationReviewInput): input is ImportReviewInput {
   return "kind" in input && input.kind === "import"
 }
@@ -16,9 +24,7 @@ export function isPlanarImportReview(
   return "kind" in input && input.kind === "planar-import"
 }
 function expiresAt(input: AutomationReviewInput) {
-  return isImportReview(input) || isPlanarImportReview(input)
-    ? input.draft.expiresAt
-    : input.preview.draft.expiresAt
+  return "kind" in input ? input.draft.expiresAt : input.preview.draft.expiresAt
 }
 
 type Decision = "approved" | "rejected" | "cancelled"
@@ -27,7 +33,7 @@ export type AutomationReviewState = Readonly<{
   id: string
   input: AutomationReviewInput
   status: "ready" | "applying" | "error"
-  diagnostic: AutomationHostDiagnosticCode | null
+  diagnostic: string | null
 }>
 
 type PendingReview = {
@@ -112,7 +118,10 @@ export function createAutomationReviewController() {
     return record.completed
   }
 
-  function complete(owner: symbol, result: AutomationHostResult<unknown>) {
+  function complete(
+    owner: symbol,
+    result: AutomationHostResult<unknown> | AssemblyResult<unknown>,
+  ) {
     if (!pending || pending.owner !== owner) return
     settle(pending, "cancelled")
     pending.finish()

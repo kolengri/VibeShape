@@ -20,6 +20,11 @@ import {
   type AssemblyOccurrencePose,
   solveAssemblyKinematics,
 } from "@vibeshape/domain/assembly-kinematics"
+import type {
+  AssemblyConstraintDiagnosticCode,
+  AssemblyConstraintSolvePort,
+  AssemblyConstraintSolveResult,
+} from "@vibeshape/domain/assembly-mates"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "@vibeshape/domain/document"
@@ -52,6 +57,7 @@ import {
   topologyCandidatesSchema,
 } from "@vibeshape/protocol"
 import { z } from "zod"
+import { resolveAssemblyMateFrames } from "./assembly-mate-frames"
 import { type FeatureRebuildState, featureGeometryRecordSchema } from "./feature-rebuild"
 import type { ModelBodyGeometry } from "./model-bodies"
 
@@ -60,6 +66,8 @@ const MAX_ASSEMBLY_OCCURRENCE_BODIES = 4096
 const MAX_ASSEMBLY_MATERIALIZATION_BYTES = 64 * 1024 * 1024
 type PinnedModel = PinnedAssemblyDefinition["pinnedModels"][number]
 type MaterializationFailureCode =
+  | AssemblyConstraintDiagnosticCode
+  | "mate-solver-unavailable"
   | "invalid-assembly-document"
   | "assembly-budget-exceeded"
   | "source-bytes-unavailable"
@@ -91,8 +99,14 @@ export type AssemblyMaterializationResult =
       documentId: DocumentSnapshotV4["id"]
       revision: number
       occurrences: readonly AssemblyMaterializedOccurrence[]
+      kinematics?: Omit<Extract<AssemblyConstraintSolveResult, { ok: true }>, "ok" | "instances">
     }>
-  | Readonly<{ ok: false; code: MaterializationFailureCode; message: string }>
+  | Readonly<{
+      ok: false
+      code: MaterializationFailureCode
+      message: string
+      jointIds?: readonly string[]
+    }>
 export type AssemblyMaterializationOptions = Readonly<{
   document: unknown
   contentEnvironment: FeatureContentEnvironment
@@ -103,12 +117,14 @@ export type AssemblyMaterializationOptions = Readonly<{
     snapshot: DocumentSnapshotV1,
     assets: readonly SourceAssetMaterialization[],
   ) => Promise<FeatureRebuildState>
+  solveAssemblyConstraints?: AssemblyConstraintSolvePort
   cache?: AssemblyMaterializationCache
 }>
 class MaterializationFailure extends Error {
   constructor(
     readonly code: MaterializationFailureCode,
     message: string,
+    readonly jointIds?: readonly string[],
   ) {
     super(message)
   }
@@ -655,18 +671,61 @@ async function rebuildModels(
   }
   return states
 }
-function occurrences(
+async function occurrencePoses(
   document: DocumentSnapshotV4,
   states: Map<PinnedModel, FeatureRebuildState>,
-): AssemblyMaterializedOccurrence[] {
-  const poses = solveAssemblyKinematics(projectAssemblyAuthority(document.assembly))
-  if (!poses.ok) fail("invalid-assembly-document", poses.diagnostic.message)
+  options: AssemblyMaterializationOptions,
+) {
+  const authority = projectAssemblyAuthority(document.assembly)
+  const sourceDefinitions = document.assembly.definitions
+  let poses: readonly AssemblyOccurrencePose[]
+  let kinematics:
+    | Omit<Extract<AssemblyConstraintSolveResult, { ok: true }>, "ok" | "instances">
+    | undefined
+  if (authority.schemaVersion === 1) {
+    const legacy = solveAssemblyKinematics(authority)
+    if (!legacy.ok) fail("invalid-assembly-document", legacy.diagnostic.message)
+    poses = legacy.instances
+  } else {
+    if (!options.solveAssemblyConstraints)
+      fail("mate-solver-unavailable", "The general assembly mate solver is unavailable.")
+    const sources = sourceDefinitions.flatMap((definition) =>
+      definition.pinnedModels
+        .filter((pinned) => states.has(pinned))
+        .map((pinned) => {
+          const body = occurrenceBody(definition, pinned, states)
+          return {
+            definitionId: definition.id,
+            sourceIndex: pinned.sourceIndex,
+            selectedBody: pinned.selectedBody,
+            representation: body.representation ?? ("exact-solid" as const),
+            candidates: body.topologyCandidates,
+          }
+        }),
+    )
+    const resolved = resolveAssemblyMateFrames(authority, sourceDefinitions, sources)
+    if (!resolved.ok)
+      throw new MaterializationFailure(resolved.code, resolved.message, resolved.jointIds)
+    const solved = await options.solveAssemblyConstraints(resolved.assembly)
+    if (!solved.ok) throw new MaterializationFailure(solved.code, solved.message, solved.jointIds)
+    poses = solved.instances
+    const { ok: _ok, instances: _instances, ...summary } = solved
+    kinematics = summary
+  }
+  return { poses, kinematics }
+}
+async function occurrences(
+  document: DocumentSnapshotV4,
+  states: Map<PinnedModel, FeatureRebuildState>,
+  options: AssemblyMaterializationOptions,
+) {
+  const { poses, kinematics } = await occurrencePoses(document, states, options)
   const definitions = new Map(
     document.assembly.definitions.map((definition) => [definition.id, definition]),
   )
   const result: AssemblyMaterializedOccurrence[] = []
   let bytes = 0
-  for (const pose of poses.instances) {
+  for (const pose of poses) {
     const definition = definitions.get(pose.definitionId)
     if (!definition) fail("invalid-assembly-document", "An assembly definition is unavailable.")
     for (const pinned of definition.pinnedModels) {
@@ -680,7 +739,7 @@ function occurrences(
       result.push(occurrenceEvidence(pose, definition, pinned, body))
     }
   }
-  return result
+  return { occurrences: result, ...(kinematics ? { kinematics } : {}) }
 }
 function occurrenceBody(
   definition: PinnedAssemblyDefinition,
@@ -736,11 +795,16 @@ export async function materializeAssembly(
       ok: true,
       documentId: parsed.data.id,
       revision: parsed.data.revision,
-      occurrences: occurrences(parsed.data, states),
+      ...(await occurrences(parsed.data, states, input)),
     }
   } catch (error) {
     return error instanceof MaterializationFailure
-      ? { ok: false, code: error.code, message: error.message }
+      ? {
+          ok: false,
+          code: error.code,
+          message: error.message,
+          ...(error.jointIds ? { jointIds: error.jointIds } : {}),
+        }
       : {
           ok: false,
           code: "pinned-rebuild-failed",

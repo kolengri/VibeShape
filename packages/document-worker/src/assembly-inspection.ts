@@ -1,3 +1,4 @@
+import type { AssemblyMaterializationResult } from "@vibeshape/application/assembly-materialization"
 import {
   type AssemblyMaterializedOccurrence,
   materializeAssembly,
@@ -13,6 +14,7 @@ import {
   generateUuidV7,
   projectDocumentSnapshotV1ToV0,
 } from "@vibeshape/domain"
+import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
 import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { readMeshImportFeatureParameters } from "@vibeshape/domain/part-design-mesh-import"
 import type { AssemblyNativeBody, GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -109,9 +111,15 @@ export function assemblyNativeBodies(
     }
   })
 }
+export class AssemblyMaterializationError extends Error {
+  constructor(readonly diagnostic: Extract<AssemblyMaterializationResult, { ok: false }>) {
+    super(diagnostic.message)
+  }
+}
 export type AssemblyRuntimeAction<T> = (
   occurrences: readonly AssemblyMaterializedOccurrence[],
   nativeContexts: ReadonlyMap<string, string>,
+  kinematics?: Extract<AssemblyMaterializationResult, { ok: true }>["kinematics"],
 ) => T | Promise<T>
 
 /** Rebuilds frozen sources under disposable cache identities without changing their authored UUIDs. */
@@ -122,6 +130,7 @@ export async function withMaterializedAssemblyRuntime<T>(
   input: InspectAssemblyInput,
   identity: { documentId: string; revision: number; generation: number },
   action: AssemblyRuntimeAction<T>,
+  solveAssemblyConstraints?: AssemblyConstraintSolvePort,
 ): Promise<T> {
   const authority = documentSnapshotV4Schema.parse(JSON.parse(input.authorityJson))
   if (authority.id !== identity.documentId || authority.revision !== identity.revision)
@@ -136,6 +145,7 @@ export async function withMaterializedAssemblyRuntime<T>(
   try {
     const materialized = await materializeAssembly({
       document: authority,
+      ...(solveAssemblyConstraints ? { solveAssemblyConstraints } : {}),
       meshPolicy: input.mesh,
       contentEnvironment: metadata.featureContentEnvironment,
       sha256: digest,
@@ -198,8 +208,10 @@ export async function withMaterializedAssemblyRuntime<T>(
         return { ...rebuilt, documentId: snapshot.id }
       },
     })
-    if (!materialized.ok) throw new Error(materialized.message)
-    output = { value: await action(materialized.occurrences, nativeContexts) }
+    if (!materialized.ok) throw new AssemblyMaterializationError(materialized)
+    output = {
+      value: await action(materialized.occurrences, nativeContexts, materialized.kinematics),
+    }
   } catch (error) {
     failed = true
     failure = error
@@ -228,6 +240,7 @@ export async function inspectAssemblyRuntime(
   solveSketch: SketchSolvePort | null,
   input: InspectAssemblyInput,
   identity: { documentId: string; revision: number; generation: number },
+  solveAssemblyConstraints?: AssemblyConstraintSolvePort,
 ): Promise<AssemblyInspection> {
   return withMaterializedAssemblyRuntime(
     engine,
@@ -235,15 +248,18 @@ export async function inspectAssemblyRuntime(
     solveSketch,
     input,
     identity,
-    async (occurrences, nativeContexts) => {
+    async (occurrences, nativeContexts, kinematics) => {
       const interference = await inspectPairs(engine, input, occurrences, nativeContexts)
       return assemblyInspectionSchema.parse({
         occurrences: occurrences.map(({ geometry, ...occurrence }) => ({
           ...occurrence,
           contentHash: geometry.contentHash,
+          topologyCandidates: geometry.topologyCandidates,
         })),
         interference,
+        ...(kinematics ? { kinematics } : {}),
       })
     },
+    solveAssemblyConstraints,
   )
 }

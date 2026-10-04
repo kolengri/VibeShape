@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
+import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import {
   IMPORT_UPLOAD_CHUNK_MAX_BYTES,
   IMPORT_UPLOAD_MAX_BYTES,
   importResultMatches,
   importUploadCommitSchema,
   importUploadDescriptorSchema,
+  importUploadInspectionSchema,
   localImportInputs,
 } from "./imports"
 import { localOperationSchema, localToolInputs } from "./local-tools"
@@ -32,6 +34,30 @@ const descriptor = {
   chunkMaxBytes: IMPORT_UPLOAD_CHUNK_MAX_BYTES,
 } as const
 describe("bounded native import wire contract", () => {
+  it.each(["step", "brep", "stl", "3mf"] as const)(
+    "binds %s inspection representation to its captured file format",
+    (format) => {
+      const value = nativeImportInspection(format)
+      const operation = localOperationSchema.parse({
+        tool: "inspect_import_upload",
+        arguments: { uploadId: value.upload.uploadId },
+      })
+      if (operation.tool !== "inspect_import_upload") throw new Error("Expected import inspection.")
+      expect(importUploadInspectionSchema.safeParse(value).success).toBe(true)
+      expect(importResultMatches(operation, value)).toBe(true)
+      const forged = {
+        ...value,
+        representation: value.representation === "exact-solid" ? "triangle-mesh" : "exact-solid",
+        outputs: value.outputs.map((output) => ({
+          ...output,
+          volumeMm3: output.volumeMm3 === null ? 1 : null,
+        })),
+      }
+      expect(importUploadInspectionSchema.safeParse(forged).success).toBe(false)
+      expect(() => importResultMatches(operation, forged)).toThrow()
+    },
+  )
+
   it("exposes the same five strict tools locally and remotely", () => {
     for (const operation of [
       {

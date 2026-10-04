@@ -1,6 +1,37 @@
+import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-metadata"
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  update_box:
+    "Update an existing Box through its ordinary draft command. Read the complete feature first; resubmit typed width/depth/height, centered, quantity origin, label and explicit suppressed state. Preserve expressions and feature identity. No dependencies or caller actor/document are accepted. Preview before commit review. Legacy create_box retains its millimeter shorthand.",
+  create_cylinder:
+    "Create a Cylinder with typed radius/height, centered, quantity origin and explicit suppressed state. Retain expressions; dimensions and placement use the registered primitive bounds. Supply fresh UUIDv7 feature/command IDs and current draft revision; preview before commit.",
+  update_cylinder:
+    "Update a Cylinder preserving its feature ID and complete typed radius/height, centered, origin, label, suppression and expressions. Use a fresh commandId/current draft revision; preview downstream geometry before commit.",
+  create_cone:
+    "Create the registered pointed Cone with typed radius/height, centered, quantity origin and explicit suppressed state. Supply fresh UUIDv7 IDs/current draft revision. Preview before ordinary browser review; truncated cones are outside this primitive contract.",
+  update_cone:
+    "Update a pointed Cone preserving identity, typed radius/height, centered, quantity origin, suppression, label and expressions. Inspect the existing feature and preview downstream geometry before browser review.",
+  create_sphere:
+    "Create a Sphere with typed radius, quantity origin and explicit suppressed state through an owned draft. Preserve expressions and workspace bounds; use fresh UUIDv7 IDs/current draft revision. Preview before browser review.",
+  update_sphere:
+    "Update a Sphere preserving feature identity and complete typed radius, origin, suppression, label and expressions. Use a fresh commandId/current draft revision; preview before browser review.",
+  create_torus:
+    "Create a ring Torus with typed majorRadius/minorRadius, quantity origin and explicit suppressed state. Major radius must exceed minor radius and geometry must fit the workspace. Use fresh UUIDv7 IDs/current draft revision; preview before browser review.",
+  update_torus:
+    "Update a ring Torus preserving identity, complete typed radii, quantity origin, suppression, label and expressions. Major radius must exceed minor radius; preview before ordinary browser review.",
+  create_pyramid:
+    "Create a regular Pyramid with integer sides from 3 to 64, typed circumradius and height, centered, quantity origin and explicit suppressed state. Use fresh UUIDv7 IDs/current draft revision; preview before browser review.",
+  update_pyramid:
+    "Update a regular Pyramid preserving identity, sides, typed circumradius/height, centered, quantity origin, suppression, label and expressions. Preview downstream geometry before browser review.",
+  remove_feature:
+    "Stage removal of one feature by stable ID at the current owned draft revision. Existing feature, sketch, Datum Plane and assembly dependents block removal; remove or retarget them explicitly first. No cascade or preserve-intent override is accepted. This destructive command requires ordinary browser review even with CAD auto-apply enabled. Preview before commit; use a fresh commandId.",
+  remove_sketch:
+    "Stage removal of one sketch by stable ID at the current owned draft revision. Existing consumers block removal; repair them explicitly rather than cascading or discarding authored intent. This destructive command requires ordinary browser review even with CAD auto-apply enabled. Use a fresh commandId and preview before commit.",
+  set_feature_suppressed:
+    "Set one feature's explicit suppressed boolean in an owned draft, preserving its complete authored record and identity. This is a state assignment, not a toggle. Preview reports blocked downstream consumers. Ordinary browser review is required even with CAD auto-apply enabled; use a fresh commandId/current draft revision.",
+  rename_project:
+    "Stage a normalized nonempty project name of at most 120 characters through the registered document.rename command in an owned draft. Geometry and authored IDs stay intact. Ordinary browser review is required even with CAD auto-apply enabled; use a fresh commandId/current draft revision. Approval follows normal persistence and Undo/Redo.",
   create_placement:
     "Stage a Placement of one exact targetBody in an owned draft. Supply its sole dependency, empty references, typed XYZ translation in mm and XYZ rotation in radians; expressions retain authored variable intent. Preserve source body identity through ordinary exact preview and commit review.",
   update_placement:
@@ -35,6 +66,15 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
   draft_sketch_solution:
     "Read the solver state and stable profile selectors of a sketch in an owned draft. Choose section points, circles, failed-constraints, profiles or diagnostics. Exact isolated solving retains no worker or mesh. Begin cursor null; edits, another geometry target or cancellation invalidate paging without renewing expiry.",
+
+  create_body_revolve:
+    "Stage Revolve v7 Add/Remove/Intersect on one exact authored target body with unified sketch profiles, typed angle and existing axes. Dependencies are target first, followed by distinct sketch-support and axis owners. New bodies use create_revolve. Ordinary owned-draft review and Apply are required.",
+  update_body_revolve:
+    "Stage an update to exact-body Revolve v7, preserving its feature identity and target body role. Uses the ordinary revision-bound owned draft command path.",
+  create_body_subtract:
+    "Stage Subtract v2 on exact target/tool body roles, including different bodies from one Pattern/Split producer. Declare each producer once in target/tool order, no topology references. keepTools changes retention only. Requires owned draft review and Apply.",
+  update_body_subtract:
+    "Stage an update to exact-body Subtract v2 with ordered target/tool selectors and optional tool retention. Uses the ordinary revision-bound owned draft command path.",
   create_reference_mirror:
     "Stage Mirror v3 of an exact targetBody using plane: origin-plane XY/XZ/YZ, datum-plane featureId, planar-face BodyFaceRef, or explicit-plane origin in mm and unit normal. Supply typed signed offset and preserveSource; true creates an independent reflected part and retains the source. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable body-bound planar refs from body topology inspection; no caller content hash or native face index. Use fresh UUIDv7 IDs/current draft revision and preview before ordinary commit review. Legacy create_mirror retains v1/v2 behavior.",
   update_reference_mirror:
@@ -59,6 +99,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:
     "Read paged exact feature measurements in an owned draft. Choose scope all for upstream failures. Begin with cursor null and pass nextCursor unchanged; another geometry inspection or edit invalidates the catalog. This does not save or renew draft expiry.",
+  ...assemblyToolDescriptions,
   create_datum_plane:
     "Stage an offset Datum Plane in an owned draft using origin support xy/xz/yz or an existing planar face v0 TopoRef. Offset is a signed typed length quantity with optional variable expression. Origin support has empty dependencies/references; face support requires its sole owner dependency and exactly the same support reference. Supply UUIDv7 featureId/commandId, current draft revision and suppressed=false; preview before ordinary commit.",
   update_datum_plane:
@@ -203,6 +244,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "draft_measurements",
       "model_sketch_solution",
       "draft_sketch_solution",
+      ...assemblyReadTools,
       "model_info",
       "model_history",
       "model_parts",
@@ -227,6 +269,11 @@ export function localToolAnnotations(name: LocalToolName) {
       "commit_planar_import_upload",
       "update_sketch_text",
       "detach_sketch_text",
+      "commit_assembly_draft",
+      "save_library_definition",
+      "update_library_metadata",
+      "remove_feature",
+      "remove_sketch",
     ].includes(name),
     idempotentHint: [
       "append_planar_import_chunk",
@@ -241,6 +288,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "draft_measurements",
       "model_sketch_solution",
       "draft_sketch_solution",
+      ...assemblyReadTools,
       "model_info",
       "model_history",
       "model_parts",
