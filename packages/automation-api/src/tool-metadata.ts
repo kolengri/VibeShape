@@ -45,6 +45,15 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
   draft_sketch_solution:
     "Read the solver state and stable profile selectors of a sketch in an owned draft. Choose section points, circles, failed-constraints, profiles or diagnostics. Exact isolated solving retains no worker or mesh. Begin cursor null; edits, another geometry target or cancellation invalidate paging without renewing expiry.",
+
+  create_body_revolve:
+    "Stage Revolve v7 Add/Remove/Intersect on one exact authored target body with unified sketch profiles, typed angle and existing axes. Dependencies are target first, followed by distinct sketch-support and axis owners. New bodies use create_revolve. Ordinary owned-draft review and Apply are required.",
+  update_body_revolve:
+    "Stage an update to exact-body Revolve v7, preserving its feature identity and target body role. Uses the ordinary revision-bound owned draft command path.",
+  create_body_subtract:
+    "Stage Subtract v2 on exact target/tool body roles, including different bodies from one Pattern/Split producer. Declare each producer once in target/tool order, no topology references. keepTools changes retention only. Requires owned draft review and Apply.",
+  update_body_subtract:
+    "Stage an update to exact-body Subtract v2 with ordered target/tool selectors and optional tool retention. Uses the ordinary revision-bound owned draft command path.",
   create_reference_mirror:
     "Stage Mirror v3 of an exact targetBody using plane: origin-plane XY/XZ/YZ, datum-plane featureId, planar-face BodyFaceRef, or explicit-plane origin in mm and unit normal. Supply typed signed offset and preserveSource; true creates an independent reflected part and retains the source. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable body-bound planar refs from body topology inspection; no caller content hash or native face index. Use fresh UUIDv7 IDs/current draft revision and preview before ordinary commit review. Legacy create_mirror retains v1/v2 behavior.",
   update_reference_mirror:

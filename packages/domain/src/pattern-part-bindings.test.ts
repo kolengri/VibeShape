@@ -7,12 +7,16 @@ import { replayDocumentAuthorityEvents } from "./document-v2-replay"
 import { documentSnapshotV4Schema, projectDocumentSnapshotV4ToV2 } from "./document-v4"
 import { featureBodyDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
+import { sketchIdSchema } from "./identifiers"
 import { terminalBodyOutputs } from "./model-bodies"
 import { requiredPartAllocations } from "./part-bindings"
-import { boxFeatureType } from "./part-design"
+import { boxFeatureType, revolveFeatureTypeV7 } from "./part-design"
 import { mirrorFeatureType } from "./part-design-mirror"
 import { patternFeatureType, patternInstanceOutputRole } from "./part-design-pattern"
+import { booleanFeatureTypeV2 } from "./part-design-subtract"
 import { type PartAllocation, partAllocationSchema } from "./parts"
+import { createEmptySketch } from "./sketch-edit"
+import { createSketchProfileSet, sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import { createAngleQuantity, createLengthQuantity, createScalarQuantity } from "./units"
 import { applyVersionedDocumentCommand } from "./versioned-document-commands"
 
@@ -488,4 +492,104 @@ describe("variable-aware Pattern allocation capture", () => {
     expect(requiredPartAllocations(projectDocumentSnapshotV2ToV1(added), added.parts)).toEqual([])
     expect(success(setCount(added, 2)).snapshot.parts).toEqual(added.parts)
   })
+})
+
+describe("exact-body modifier Part bindings", () => {
+  it.each([false, true])(
+    "retains sibling Part identity and replays exact Subtract keepTools=%s",
+    (keepTools) => {
+      const before = success(insert(fixture().snapshot)).snapshot
+      const feature = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: id(8),
+        type: booleanFeatureTypeV2.type,
+        dependencies: [id(3)],
+        references: [],
+        suppressed: false,
+        parameters: {
+          operation: "subtract",
+          targetBody: instance(0),
+          toolBody: instance(1),
+          keepTools,
+        },
+      })
+      const added = success(
+        model(
+          before,
+          "org.vibeshape.history.insert-feature",
+          {
+            feature,
+            historyAfter: before.history.at(-1),
+          },
+          [],
+        ),
+      )
+      expect(added.snapshot.parts[0]?.bodyHistory.at(-1)).toEqual(body(8))
+      expect(added.snapshot.parts[1]?.consumedBy).toBe(keepTools ? null : id(8))
+      expect(added.snapshot.parts[2]).toEqual(before.parts[2])
+      expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
+      const suppressed = success(
+        model(added.snapshot, "org.vibeshape.feature.set-suppressed", {
+          featureId: feature.id,
+          suppressed: true,
+        }),
+      ).snapshot
+      expect(suppressed.parts).toEqual(before.parts)
+    },
+  )
+  it.each(["add", "remove", "intersect"] as const)(
+    "continues only the selected Revolve %s Part",
+    (operation) => {
+      const root = success(insert(fixture().snapshot)).snapshot
+      const sketch = createEmptySketch({
+        id: sketchIdSchema.parse(id(9)),
+        label: "Profile",
+        plane: "xy",
+      })
+      const before = success(
+        model(root, "org.vibeshape.history.insert-sketch", {
+          sketch,
+          historyAfter: root.history.at(-1),
+        }),
+      ).snapshot
+      const profiles = createSketchProfileSet([
+        sketchProfileSelectorSchema.parse({
+          schemaVersion: 0,
+          sketchId: id(9),
+          outerBoundaryEntityIds: [id(10)],
+          holeBoundaryEntityIds: [],
+        }),
+      ])
+      const feature = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: id(8),
+        type: revolveFeatureTypeV7.type,
+        dependencies: [id(3)],
+        references: [],
+        suppressed: false,
+        parameters: {
+          operation,
+          targetBody: instance(1),
+          profiles,
+          axis: { kind: "origin-axis", axis: "x" },
+          angle: createAngleQuantity(360, "deg"),
+        },
+      })
+      const added = success(
+        model(
+          before,
+          "org.vibeshape.history.insert-feature",
+          {
+            feature,
+            historyAfter: before.history.at(-1),
+          },
+          [],
+        ),
+      )
+      expect(added.snapshot.parts[1]?.bodyHistory.at(-1)).toEqual(body(8))
+      expect(added.snapshot.parts[0]).toEqual(before.parts[0])
+      expect(added.snapshot.parts[2]).toEqual(before.parts[2])
+      expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
+    },
+  )
 })

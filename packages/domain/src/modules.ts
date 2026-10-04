@@ -8,6 +8,7 @@ import {
 import { moduleIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
 import {
   booleanFeatureType,
+  booleanFeatureTypeV2,
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
@@ -28,6 +29,7 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV7,
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
@@ -468,6 +470,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     holeFeatureTypeV2,
     holeFeatureTypeV3,
     booleanFeatureType,
+    booleanFeatureTypeV2,
     chamferFeatureType,
     chamferFeatureTypeV2,
     boxFeatureType,
@@ -490,6 +493,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     revolveFeatureType,
     revolveFeatureTypeV5,
     revolveFeatureTypeV6,
+    revolveFeatureTypeV7,
   ],
 })
 

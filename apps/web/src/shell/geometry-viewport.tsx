@@ -58,7 +58,10 @@ import {
 import { useDocumentDisplayUnits } from "../document/document-display-units"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import type { PrimitivePlacement } from "../features/part-design/primitive-placement"
-import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import type {
+  FeaturePreviewKind,
+  FeaturePreviewState,
+} from "../features/preview/use-feature-preview"
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
 import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
 import { selectedSketchSupportFromController } from "../features/sketch/sketch-support"
@@ -1161,10 +1164,7 @@ type PreviewMessageKey =
   | "featurePreviewReady"
 
 const PREVIEW_MESSAGE_KEYS: Readonly<
-  Record<
-    "datum-plane" | "extrusion" | "primitive" | "revolve" | "edge-treatment" | "hole",
-    Record<ActivePreviewStatus, PreviewMessageKey>
-  >
+  Record<FeaturePreviewKind, Record<ActivePreviewStatus, PreviewMessageKey>>
 > = {
   hole: { error: "holePreviewFailed", loading: "holePreviewLoading", ready: "holePreviewReady" },
   "edge-treatment": {
@@ -1181,6 +1181,11 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
     error: "previewFailed",
     loading: "previewLoading",
     ready: "previewReady",
+  },
+  subtract: {
+    error: "featurePreviewFailed",
+    loading: "featurePreviewLoading",
+    ready: "featurePreviewReady",
   },
   primitive: {
     error: "featurePreviewFailed",

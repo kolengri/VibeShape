@@ -66,6 +66,18 @@ Independent Extrude extents use the `profiles` contract (even for one profile), 
 
 `create_boolean`/`update_boolean` perform legacy whole-result subtraction with `operation: "subtract"`, optional `keepTools`, exactly two distinct dependencies ordered target before tool, and empty references. They do not accept exact body selectors. Use a selected-body feature operation when the requested scope is one constituent output rather than a whole producer result.
 
+For a selected constituent body, use additive `create_body_subtract`/`update_body_subtract` (Subtract v2):
+select exact `targetBody` and `toolBody`, including distinct roles of one producer. Declare each
+producer once in target/tool order and keep `references: []`. `keepTools` retains the tool Part;
+siblings remain available. Use `create_body_revolve`/`update_body_revolve` (Revolve v7) for exact-body
+Add/Remove/Intersect with a canonical same-sketch `profiles` set, typed angle, and existing origin,
+sketch-line, or stable model-edge axis. Its dependencies are target first, then distinct sketch-support
+and model-edge owners, with existing sketch-support references. New Revolve remains on `create_revolve`.
+Get roles from current `model_body_measurements` or `draft_body_measurements`, preserve selectors on
+update, and repair missing roles explicitly. These tools accept no caller content hashes or native
+indices. Local and paired remote transports use ordinary owned draft preview, review and Apply.
+
+
 `create_union`/`update_union` and `create_compound`/`update_compound` use schema v2: two to eight distinct exact bodies selected by `{ schemaVersion: 0, featureId, outputRole }`. Multiple roles from the same producer are supported; dependencies list each producer once in first-occurrence order, and references are empty. Use inspected roles for saved bodies. Known newly authored single-solid Box/Extrude/Revolve/Union outputs use `result`; do not invent roles for arbitrary multi-body features.
 
 Union takes ordered `bodies`, requires one connected positive-volume solid and keeps the first selected PartId while consuming the other selected parts. Compound takes ordered `slots`, each with a unique UUIDv7 `slotId` and `targetBody`; it retains separate solids and exposes `body.<slotId>`. Preserve slot IDs on edit to retain output and part identities. Missing roles fail exact preview; they never fall back to another body. An explicit update can upgrade saved v1 Union/Compound intent to v2. Manual Apply is the default; a matching explicit browser session grant permits Union v2 and Loft v1 creation and same-version edits. Compound and schema-upgrade edits still require manual review.

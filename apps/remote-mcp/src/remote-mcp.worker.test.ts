@@ -478,6 +478,10 @@ describe("remote MCP in workerd", () => {
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "model_info",
+          "create_body_revolve",
+          "update_body_revolve",
+          "create_body_subtract",
+          "update_body_subtract",
           "draft_body_measurements",
           "draft_body_topology",
           "create_reference_mirror",

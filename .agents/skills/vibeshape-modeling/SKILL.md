@@ -11,6 +11,9 @@ Establish the session with [vibeshape-use](../vibeshape-use/SKILL.md) and follow
 
 Translate the request into dimensions, units, mating interfaces, target body, and acceptance measurements. Ask only for missing information that changes the design. For reversible choices, state a reasonable assumption and continue. Preserve protected interfaces and existing model intent.
 
+For modifying Revolve or Subtract on a Pattern/Split constituent, use the exact-body contracts in
+[modeling contracts and recipes](references/modeling.md); preserve output roles and sibling Parts.
+
 Before constructing a new model or reconstructing a mesh, choose a feature plan using the construction strategy in [modeling contracts and recipes](references/modeling.md). Identify the main profile, actual symmetries, wall-thickness intent and local details. Discover required tools before writing; reconsider the plan after a server update exposes previously unavailable operations.
 
 Read the relevant complete features, sketches, and variables before editing. Prefer changing an existing parameter or variable over reconstructing the model. Use named create/update tools inside a single draft for a coherent edit, followed by exact preview and the ordinary review/commit path. Do not make a new part beside an old one when the request is to revise the old part.
