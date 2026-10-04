@@ -3857,11 +3857,15 @@ function aggregateOwnedOutputs(
   const first = outputs[0]
   if (!first) throw new Error("Named output geometry is unavailable.")
   try {
+    // The aggregate and its named body own independent native wrappers.
     return {
-      shape: createOcctCompound(
-        opencascade,
-        outputs.map(({ shape }) => shape),
-      ),
+      shape:
+        outputs.length === 1
+          ? first.shape.clone()
+          : createOcctCompound(
+              opencascade,
+              outputs.map(({ shape }) => shape),
+            ),
       outputs,
     }
   } catch (error) {
