@@ -822,3 +822,69 @@ it("fails closed when complete UTF-8 draft diagnostics exceed the response budge
     diagnostic: { code: "query-result-too-large" },
   })
 })
+
+describe("draft feature measurement catalogs", () => {
+  it("reads failed draft measurements once, retains detached evidence and rejects cold paging", async () => {
+    const fixture = hostFixture({
+      evaluate: (snapshot) => ({
+        schemaVersion: 1,
+        documentId: snapshot.id,
+        revision: snapshot.revision,
+        generation: 1,
+        features: [
+          { featureId, status: "failed", diagnosticCodes: ["org.vibeshape.geometry.invalid"] },
+        ],
+      }),
+    })
+    const query = {
+      kind: "org.vibeshape.model.measurements",
+      schemaVersion: 1,
+      scope: "all",
+      limit: 1,
+    }
+    const first = await request(fixture, query)
+    expect(first).toMatchObject({
+      ok: true,
+      value: { view: { data: { features: [{ featureId, status: "failed" }] } } },
+    })
+    if (!first.ok) throw new Error(first.diagnostic.message)
+    await expect(
+      fixture.host.inspectDraft(actor, {
+        schemaVersion: 1,
+        draftId,
+        query: { ...query, documentId, revision: first.value.draft.revision, cursor: "1" },
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { view: { data: { features: [] } } } })
+    expect(fixture.geometry.evaluate).toHaveBeenCalledOnce()
+    const cold = hostFixture({
+      evaluate: () => {
+        throw new Error("Cold paging must not rebuild.")
+      },
+    })
+    await expect(request(cold, { ...query, cursor: "1" })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-geometry" },
+    })
+    expect(cold.geometry.evaluate).not.toHaveBeenCalled()
+  })
+
+  it("rejects measurements from another revision without caching them", async () => {
+    const fixture = hostFixture({
+      evaluate: (snapshot) => ({
+        schemaVersion: 1,
+        documentId: snapshot.id,
+        revision: snapshot.revision + 1,
+        generation: 1,
+        features: [
+          { featureId, status: "failed", diagnosticCodes: ["org.vibeshape.geometry.invalid"] },
+        ],
+      }),
+    })
+    await expect(
+      request(fixture, { kind: "org.vibeshape.model.measurements", schemaVersion: 1 }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-geometry" },
+    })
+  })
+})

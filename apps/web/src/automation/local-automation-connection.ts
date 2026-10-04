@@ -27,7 +27,8 @@ type Pair = {
   handle: Handle
   executor: ReturnType<typeof createLocalToolExecutor>
   sequence: number
-  active: { work: LocalWork; controller: AbortController } | null
+  active: { work: LocalWork; controller: AbortController; acknowledging: boolean } | null
+  queuedWork: LocalWork | null
   timer: ReturnType<typeof setTimeout> | null
 }
 const resumeKey = "vibeshape-local-ai-resume"
@@ -82,6 +83,7 @@ export function createLocalAutomationConnection() {
   function closeLocal(current: Pair) {
     if (current.timer) clearTimeout(current.timer)
     current.active?.controller.abort()
+    current.queuedWork = null
     current.handle.dispose()
     if (pair === current) pair = null
   }
@@ -125,7 +127,7 @@ export function createLocalAutomationConnection() {
       return
     }
     const controller = new AbortController()
-    current.active = { work, controller }
+    current.active = { work, controller, acknowledging: false }
     publish({ ...snapshot, busy: true })
     let result: unknown
     try {
@@ -138,6 +140,7 @@ export function createLocalAutomationConnection() {
     await sendOperationResult(current, work, result)
   }
   async function sendOperationResult(current: Pair, work: LocalWork, result: unknown) {
+    if (current.active) current.active.acknowledging = true
     try {
       const response = await localAutomationRequest(
         "/result",
@@ -155,8 +158,26 @@ export function createLocalAutomationConnection() {
       await fail(current)
     } finally {
       current.active = null
-      if (pair === current) publish({ ...snapshot, busy: false })
+      if (pair === current) {
+        const queued = current.queuedWork
+        current.queuedWork = null
+        if (queued) void dispatch(current, queued)
+        else publish({ ...snapshot, busy: false })
+      }
     }
+  }
+  function acceptWork(current: Pair, work: LocalWork) {
+    const active = current.active
+    if (!active?.acknowledging) {
+      void dispatch(current, work)
+      return
+    }
+    // The server may deliver the next request before the prior result ACK reaches this tab.
+    if (current.queuedWork || active.work.requestId === work.requestId) {
+      void fail(current)
+      return
+    }
+    current.queuedWork = work
   }
   function progress(current: Pair) {
     const active = current.active
@@ -201,7 +222,7 @@ export function createLocalAutomationConnection() {
       const value = localPollResponseSchema.parse(response.data)
       if (!response.ok || value.cancelledRequestIds.length)
         throw new Error("The session was revoked.")
-      if (value.work) void dispatch(current, value.work)
+      if (value.work) acceptWork(current, value.work)
     } catch {
       await fail(current)
     } finally {
@@ -240,6 +261,7 @@ export function createLocalAutomationConnection() {
       executor: createLocalToolExecutor(created, credential.actor),
       sequence: 0,
       active: null,
+      queuedWork: null,
       timer: null,
     }
     pair = current
