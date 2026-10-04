@@ -8,6 +8,19 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
 
 ## Additional exact feature tools
 
+Box retains \`create_box\` millimeter shorthand and adds typed \`update_box\`.
+Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid have named create/update tools.
+Use complete quantity parameters, quantity origin, applicable centered state and explicit suppression;
+preserve existing IDs, labels and raw expressions. These independent primitives accept no dependencies
+or topology references. Wedge and truncated Cone have no registered primitive tool.
+
+Owned drafts also expose \`remove_feature\`, \`remove_sketch\`, \`set_feature_suppressed\`
+and \`rename_project\` through ordinary registered commands. Referenced records block removal;
+repair consumers explicitly. Suppression is an explicit boolean, and exact preview diagnoses blocked
+downstream geometry. Project rename uses a normalized nonempty name of at most 120 characters.
+All lifecycle commands require manual browser review even with CAD auto-apply enabled; there is no
+cascade, preserve-intent override, History navigation or generic execution authority.
+
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
 linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
 feature/output-role targets from \`model_body_measurements\` or \`draft_body_measurements\`.
@@ -533,12 +546,13 @@ stable LINE references also select Thread axes. Edge treatments retain their sep
 contract. Use \`draft_body_measurements\` for unsaved output roles. A newly authored single-solid
 Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on scoped updates.
 
-Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/update;
+Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
+sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft and custom Thread create/update;
-variables; bounded inspection; draft lifecycle and export.
-Box update, Cylinder, feature/sketch removal, dedicated suppression,
-model rename and history navigation are not currently exposed through MCP. There is no
+variables; bounded inspection; draft lifecycle and export; review-bound feature/sketch removal,
+explicit feature suppression and project rename.
+History navigation are not currently exposed through MCP. There is no
 generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.
 

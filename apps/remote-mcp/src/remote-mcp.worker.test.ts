@@ -295,6 +295,42 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
 )
 
 describe("remote MCP in workerd", () => {
+  it("rejects oversized browser results after serving the larger static schema catalog", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const catalog = await mcp(authenticated.token, 1, "tools/list")
+    expect(catalog.status).toBe(200)
+    expect(new TextEncoder().encode(await catalog.text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 2, "tools/call", { name: "model_info", arguments: {} })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected owned browser work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "model_info",
+        result: {
+          ok: false,
+          diagnostic: {
+            code: "oversized-fixture",
+            message: "x".repeat(193 * 1024),
+            retryable: false,
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({ result: { isError: true } })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
   it("rejects a successful draft result when the session expires during result persistence", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -450,6 +486,21 @@ describe("remote MCP in workerd", () => {
           "update_reference_split",
           "create_reference_body_pattern",
           "update_reference_body_pattern",
+          "update_box",
+          "create_cylinder",
+          "update_cylinder",
+          "create_cone",
+          "update_cone",
+          "create_sphere",
+          "update_sphere",
+          "create_torus",
+          "update_torus",
+          "create_pyramid",
+          "update_pyramid",
+          "remove_feature",
+          "remove_sketch",
+          "set_feature_suppressed",
+          "rename_project",
           "prepare_model_export",
           "prepare_project_backup",
           "read_export_chunk",
