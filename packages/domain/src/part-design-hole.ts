@@ -4,7 +4,7 @@ import type { FeatureParameters, FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { type FeatureId, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
-import { lengthQuantitySchema } from "./units"
+import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 import {
   type EvaluatedVariable,
   type ExpressionValue,
@@ -97,6 +97,51 @@ export const holeFeatureParametersV2Schema = z.discriminatedUnion("extent", [
 
 export type HoleFeatureParametersV2 = Readonly<z.infer<typeof holeFeatureParametersV2Schema>>
 
+const countersinkAngleSchema = angleQuantitySchema.refine(
+  ({ value }) => value >= Math.PI / 18 && value <= (17 * Math.PI) / 18,
+  "Countersink included angles must be between 10 and 170 degrees.",
+)
+export const holeTreatmentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("simple") }).strict(),
+  z
+    .object({ kind: z.literal("counterbore"), diameter: holeLengthSchema, depth: holeLengthSchema })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("countersink"),
+      diameter: holeLengthSchema,
+      angle: countersinkAngleSchema,
+    })
+    .strict(),
+])
+export const holeFeatureParametersV3Schema = z
+  .discriminatedUnion("extent", [
+    blindHoleParametersV2Schema.extend({ treatment: holeTreatmentSchema }).strict(),
+    throughAllHoleParametersV2Schema.extend({ treatment: holeTreatmentSchema }).strict(),
+  ])
+  .superRefine((parameters, context) => {
+    const treatment = parameters.treatment
+    if (treatment.kind === "simple") return
+    if (treatment.diameter.value <= parameters.diameter.value)
+      context.addIssue({
+        code: "custom",
+        path: ["treatment", "diameter"],
+        message: "The recess diameter must be larger than the hole diameter.",
+      })
+    const recessDepth =
+      treatment.kind === "counterbore"
+        ? treatment.depth.value
+        : (treatment.diameter.value - parameters.diameter.value) /
+          (2 * Math.tan(treatment.angle.value / 2))
+    if (parameters.extent === "blind" && recessDepth >= parameters.depth.value)
+      context.addIssue({
+        code: "custom",
+        path: ["treatment"],
+        message: "The recess must leave a positive cylindrical depth in a blind hole.",
+      })
+  })
+export type HoleFeatureParametersV3 = Readonly<z.infer<typeof holeFeatureParametersV3Schema>>
+
 export const holeFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -123,6 +168,11 @@ export const holeFeatureTypeV2 = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 1 },
 })
 
+export const holeFeatureTypeV3 = featureTypeDescriptorSchema.parse({
+  ...holeFeatureTypeV2,
+  type: { ...holeFeatureTypeV2.type, schemaVersion: 3 },
+})
+
 function isHoleType(feature: Pick<FeatureRecord, "type">, expected = holeFeatureType.type) {
   const actual = feature.type
   return (
@@ -135,12 +185,14 @@ function isHoleType(feature: Pick<FeatureRecord, "type">, expected = holeFeature
 
 export function readHoleFeatureParameters(
   feature: Pick<FeatureRecord, "type" | "parameters">,
-): HoleFeatureParameters | HoleFeatureParametersV2 | null {
+): HoleFeatureParameters | HoleFeatureParametersV2 | HoleFeatureParametersV3 | null {
   const schema = isHoleType(feature)
     ? holeFeatureParametersSchema
     : isHoleType(feature, holeFeatureTypeV2.type)
       ? holeFeatureParametersV2Schema
-      : null
+      : isHoleType(feature, holeFeatureTypeV3.type)
+        ? holeFeatureParametersV3Schema
+        : null
   if (!schema) return null
   const parsed = schema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
@@ -149,9 +201,10 @@ export function readHoleFeatureParameters(
 export function readHoleBodyTarget(
   feature: Pick<FeatureRecord, "type" | "parameters">,
 ): BodyReference | null {
-  if (!isHoleType(feature, holeFeatureTypeV2.type)) return null
-  const parsed = holeFeatureParametersV2Schema.safeParse(feature.parameters)
-  return parsed.success ? parsed.data.targetBody : null
+  if (!isHoleType(feature, holeFeatureTypeV2.type) && !isHoleType(feature, holeFeatureTypeV3.type))
+    return null
+  const parsed = readHoleFeatureParameters(feature)
+  return parsed && "targetBody" in parsed ? parsed.targetBody : null
 }
 
 type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
@@ -303,5 +356,74 @@ export const holeFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
       extent: hole.extent,
       ...(hole.extent === "blind" ? { depth: hole.depth.value } : {}),
     })
+  },
+}
+
+function resolveHoleTreatment(
+  treatment: z.infer<typeof holeTreatmentSchema>,
+  variables: VariableValues,
+) {
+  const recess = { ...treatment }
+  if (treatment.kind !== "simple") {
+    const diameter = resolveQuantityExpression(treatment.diameter, variables)
+    if (!diameter.ok) return expressionFailure("treatment.diameter", diameter.diagnostic)
+    Object.assign(recess, { diameter: diameter.quantity })
+    const key = treatment.kind === "counterbore" ? "depth" : "angle"
+    const value = resolveQuantityExpression(
+      treatment.kind === "counterbore" ? treatment.depth : treatment.angle,
+      variables,
+    )
+    if (!value.ok) return expressionFailure(`treatment.${key}`, value.diagnostic)
+    Object.assign(recess, { [key]: value.quantity })
+  }
+  return { ok: true as const, treatment: recess }
+}
+export function holeTreatmentContent(treatment: z.infer<typeof holeTreatmentSchema>) {
+  if (treatment.kind === "simple") return treatment
+  if (treatment.kind === "counterbore")
+    return {
+      kind: treatment.kind,
+      diameter: treatment.diameter.value,
+      depth: treatment.depth.value,
+    }
+  return { kind: treatment.kind, diameter: treatment.diameter.value, angle: treatment.angle.value }
+}
+
+export const holeFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
+  type: holeFeatureTypeV3.type,
+  parametersSchema: holeFeatureParametersV3Schema,
+  resolveParameters(parameters, variables) {
+    const parsed = holeFeatureParametersV3Schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true, parameters }
+    const { treatment, ...base } = parsed.data
+    const resolved = resolveHoleParametersV2(base, variables)
+    if (!resolved.ok) return resolved
+    const recess = resolveHoleTreatment(treatment, variables)
+    if (!recess.ok) return recess
+    const valid = holeFeatureParametersV3Schema.safeParse({
+      ...holeFeatureParametersV2Schema.parse(resolved.parameters),
+      treatment: recess.treatment,
+    })
+    return valid.success
+      ? { ok: true, parameters: valid.data }
+      : expressionFailure("treatment", {
+          code: "invalid-hole-recess",
+          message: valid.error.issues[0]?.message ?? "Invalid hole recess.",
+        })
+  },
+  validateFeature(feature) {
+    const { treatment: _treatment, ...parameters } = holeFeatureParametersV3Schema.parse(
+      feature.parameters,
+    )
+    return holeFeatureInvariantV2({ ...feature, parameters })
+  },
+  contentParameters(parameters) {
+    const { treatment, ...base } = holeFeatureParametersV3Schema.parse(parameters)
+    return {
+      ...holeFeatureAuthoredContentParametersSchema.parse(
+        holeFeatureTypeHandlerV2.contentParameters?.(base),
+      ),
+      treatment: holeTreatmentContent(treatment),
+    }
   },
 }

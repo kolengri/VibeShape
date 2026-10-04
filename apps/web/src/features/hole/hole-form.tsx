@@ -1,12 +1,17 @@
 import {
+  createAngleQuantity,
+  evaluateExpression,
+  evaluateVariableDefinitions,
   expectedHoleDependencyIds,
   type FeatureId,
   type FeatureRecord,
   featureRecordSchema,
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
+  holeFeatureParametersV3Schema,
   holeFeatureType,
   holeFeatureTypeV2,
+  holeFeatureTypeV3,
   readHoleBodyTarget,
   readHoleFeatureParameters,
   type SketchEntityId,
@@ -18,7 +23,11 @@ import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
-import { defaultLengthExpression } from "../../document/document-display-units"
+import {
+  type defaultAngleExpression,
+  defaultLengthExpression,
+  normalizeExpressionWithDisplayUnit,
+} from "../../document/document-display-units"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -30,6 +39,7 @@ import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
+import { VariableExpressionField } from "../variables/variable-expression-field"
 import { type HoleTargetBodyOption, holeTargetBodyKey } from "./hole-target-body"
 
 export type HoleFormCopy = ParameterPanelCopy &
@@ -55,6 +65,15 @@ export type HoleFormCopy = ParameterPanelCopy &
     extent: string
     blind: string
     throughAll: string
+    treatment: string
+    simple: string
+    counterbore: string
+    countersink: string
+    recessDiameter: string
+    recessDepth: string
+    includedAngle: string
+    angleDescription: string
+    invalidRecess: string
     invalidExpression: string
     invalidDimension: string
     invalidRange: string
@@ -106,17 +125,43 @@ type Values = {
   depth: string
   direction: "forward" | "reverse"
   extent: "blind" | "through-all"
+  treatment: "simple" | "counterbore" | "countersink"
+  recessDiameter: string
+  recessDepth: string
+  includedAngle: string
 }
 
 type ParseContext = Pick<HoleFormProps, "mode" | "sketches" | "options" | "variables" | "copy"> & {
   featureId: FeatureId
   displayUnit: Parameters<typeof defaultLengthExpression>[1]
+  angleUnit: Parameters<typeof defaultAngleExpression>[1]
 }
 
 function initialValues(context: ParseContext): Values {
   return context.mode.kind === "edit" ? editInitialValues(context) : createInitialValues(context)
 }
 
+function holeRecessValues(
+  parsed: NonNullable<ReturnType<typeof readHoleFeatureParameters>>,
+  displayUnit: ParseContext["displayUnit"],
+) {
+  return {
+    treatment: "treatment" in parsed ? parsed.treatment.kind : "simple",
+    recessDiameter:
+      "treatment" in parsed && parsed.treatment.kind !== "simple"
+        ? quantityExpression(parsed.treatment.diameter)
+        : defaultLengthExpression(10, displayUnit),
+    recessDepth:
+      "treatment" in parsed && parsed.treatment.kind === "counterbore"
+        ? quantityExpression(parsed.treatment.depth)
+        : defaultLengthExpression(2, displayUnit),
+    includedAngle:
+      "treatment" in parsed && parsed.treatment.kind === "countersink"
+        ? (parsed.treatment.angle.source.expression ??
+          `${parsed.treatment.angle.source.value} ${parsed.treatment.angle.source.unit}`)
+        : "90 deg",
+  }
+}
 function editInitialValues({ mode, displayUnit }: ParseContext): Values {
   if (mode.kind !== "edit") throw new Error("Expected edit mode")
   const parsed = readHoleFeatureParameters(mode.feature)
@@ -136,6 +181,7 @@ function editInitialValues({ mode, displayUnit }: ParseContext): Values {
         : defaultLengthExpression(10, displayUnit),
     direction: parsed.direction,
     extent: parsed.extent,
+    ...holeRecessValues(parsed, displayUnit),
   }
 }
 
@@ -149,6 +195,10 @@ function createInitialValues({ sketches, options, displayUnit }: ParseContext): 
     depth: defaultLengthExpression(10, displayUnit),
     direction: "forward",
     extent: "blind",
+    treatment: "simple",
+    recessDiameter: defaultLengthExpression(10, displayUnit),
+    recessDepth: defaultLengthExpression(2, displayUnit),
+    includedAngle: "90 deg",
   }
 }
 
@@ -221,22 +271,106 @@ function holeDimensions(values: Values, context: ParseContext) {
     : { ok: false as const, issues }
 }
 
+function parseHoleTreatment(values: Values, context: ParseContext) {
+  if (values.treatment === "simple")
+    return { ok: true as const, treatment: { kind: "simple" as const } }
+  const diameter = parsePrimitiveLengthExpression(
+    values.recessDiameter,
+    context.variables,
+    context.copy,
+    (q) => q.value > 0 && q.value <= 1e6,
+    context.displayUnit,
+  )
+  if (!diameter.ok) return { ok: false as const, issues: { recessDiameter: diameter.message } }
+  if (values.treatment === "counterbore") {
+    const depth = parsePrimitiveLengthExpression(
+      values.recessDepth,
+      context.variables,
+      context.copy,
+      (q) => q.value > 0 && q.value <= 1e6,
+      context.displayUnit,
+    )
+    return depth.ok
+      ? {
+          ok: true as const,
+          treatment: {
+            kind: "counterbore" as const,
+            diameter: diameter.quantity,
+            depth: depth.quantity,
+          },
+        }
+      : { ok: false as const, issues: { recessDepth: depth.message } }
+  }
+  const expression = normalizeExpressionWithDisplayUnit(values.includedAngle, context.angleUnit)
+  const variables = evaluateVariableDefinitions(context.variables)
+  const angle = variables.ok ? evaluateExpression(expression, variables.valuesByName) : null
+  if (!angle?.ok || angle.value.dimension !== "angle")
+    return { ok: false as const, issues: { includedAngle: context.copy.invalidRecess } }
+  return {
+    ok: true as const,
+    treatment: {
+      kind: "countersink" as const,
+      diameter: diameter.quantity,
+      angle: createAngleQuantity(angle.value.value, "rad", expression),
+    },
+  }
+}
+
+function parseHoleVersion(
+  values: Values,
+  context: ParseContext,
+  dimensions: Extract<ReturnType<typeof holeDimensions>, { ok: true }>,
+  sketch: SketchRecord,
+  target: Extract<ReturnType<typeof holeSelection>, { ok: true }>["target"],
+  treatment: Extract<ReturnType<typeof parseHoleTreatment>, { ok: true }>["treatment"],
+) {
+  const advanced =
+    values.treatment !== "simple" ||
+    (context.mode.kind === "edit" && context.mode.feature.type.schemaVersion === 3)
+  const parameters = advanced
+    ? holeFeatureParametersV3Schema.safeParse({
+        sketchId: sketch.id,
+        pointIds: values.pointIds,
+        diameter: dimensions.diameter,
+        direction: values.direction,
+        extent: values.extent,
+        ...(values.extent === "blind" ? { depth: dimensions.depth } : {}),
+        targetBody: {
+          schemaVersion: 0,
+          featureId: target.featureId,
+          outputRole: target.outputRole ?? "result",
+        },
+        treatment: treatment,
+      })
+    : parseHoleParameters(values, dimensions, sketch.id, target)
+  const useNamedTarget = target.outputRole !== undefined
+  return {
+    parsed: parameters,
+    type: advanced
+      ? holeFeatureTypeV3.type
+      : useNamedTarget
+        ? holeFeatureTypeV2.type
+        : holeFeatureType.type,
+  }
+}
 function parseValues(values: Values, context: ParseContext) {
   const selection = holeSelection(values, context)
   const dimensions = holeDimensions(values, context)
+  const treatment = parseHoleTreatment(values, context)
+  if (!treatment.ok) return { ok: false as const, issues: treatment.issues }
   if (!selection.ok || !dimensions.ok)
     return { ok: false as const, issues: { ...selection.issues, ...dimensions.issues } }
   const { sketch, target } = selection
   const { mode, featureId, copy } = context
-  const parameters = parseHoleParameters(values, dimensions, sketch.id, target)
-  const useNamedTarget = target.outputRole !== undefined
-  if (!parameters.success) return { ok: false as const, issues: { pointIds: copy.missingPoint } }
+  const version = parseHoleVersion(values, context, dimensions, sketch, target, treatment.treatment)
+  if (!version.parsed.success)
+    return { ok: false as const, issues: { treatment: copy.invalidRecess } }
   const feature = featureRecordSchema.parse({
     ...(mode.kind === "edit"
       ? mode.feature
       : { schemaVersion: 0, id: featureId, suppressed: false, label: mode.featureLabel }),
-    type: useNamedTarget ? holeFeatureTypeV2.type : holeFeatureType.type,
-    parameters: parameters.data,
+    type: version.type,
+    parameters: version.parsed.data,
     dependencies: expectedHoleDependencyIds(
       target.featureId,
       sketch.support?.reference.featureId ?? null,
@@ -452,6 +586,7 @@ export function HoleForm(props: HoleFormProps) {
     variables,
     featureId,
     displayUnit: displayUnits.length,
+    angleUnit: displayUnits.angle,
   }
   const [initial] = useState(() => initialValues(context))
   const form = useAppForm({
@@ -600,6 +735,89 @@ export function HoleForm(props: HoleFormProps) {
                 />
               )}
             </form.Field>
+            <form.Field name="treatment">
+              {(field) => (
+                <NativeSelectField
+                  name={field.name}
+                  value={field.state.value}
+                  label={copy.treatment}
+                  error={issues.treatment}
+                  onChange={(event) => {
+                    clearSubmissionErrors()
+                    field.handleChange(event.currentTarget.value as Values["treatment"])
+                  }}
+                >
+                  <option value="simple">{copy.simple}</option>
+                  <option value="counterbore">{copy.counterbore}</option>
+                  <option value="countersink">{copy.countersink}</option>
+                </NativeSelectField>
+              )}
+            </form.Field>
+            <form.Subscribe selector={(formState) => formState.values.treatment}>
+              {(treatment) =>
+                treatment !== "simple" ? (
+                  <>
+                    <form.Field name="recessDiameter">
+                      {(field) => (
+                        <LengthExpressionField
+                          id="hole-recess-diameter"
+                          name={field.name}
+                          value={field.state.value}
+                          label={copy.recessDiameter}
+                          description={copy.expressionDescription}
+                          error={issues.recessDiameter}
+                          suggestions={suggestions}
+                          onBlur={field.handleBlur}
+                          onValueChange={(value) => {
+                            clearSubmissionErrors()
+                            field.handleChange(value)
+                          }}
+                        />
+                      )}
+                    </form.Field>
+                    {treatment === "counterbore" ? (
+                      <form.Field name="recessDepth">
+                        {(field) => (
+                          <LengthExpressionField
+                            id="hole-recess-depth"
+                            name={field.name}
+                            value={field.state.value}
+                            label={copy.recessDepth}
+                            description={copy.expressionDescription}
+                            error={issues.recessDepth}
+                            suggestions={suggestions}
+                            onBlur={field.handleBlur}
+                            onValueChange={(value) => {
+                              clearSubmissionErrors()
+                              field.handleChange(value)
+                            }}
+                          />
+                        )}
+                      </form.Field>
+                    ) : (
+                      <form.Field name="includedAngle">
+                        {(field) => (
+                          <VariableExpressionField
+                            id="hole-included-angle"
+                            name={field.name}
+                            value={field.state.value}
+                            label={copy.includedAngle}
+                            description={copy.angleDescription}
+                            error={issues.includedAngle}
+                            suggestions={suggestions}
+                            onBlur={field.handleBlur}
+                            onValueChange={(value) => {
+                              clearSubmissionErrors()
+                              field.handleChange(value)
+                            }}
+                          />
+                        )}
+                      </form.Field>
+                    )}
+                  </>
+                ) : null
+              }
+            </form.Subscribe>
             <form.Field name="extent">
               {(field) => (
                 <NativeSelectField

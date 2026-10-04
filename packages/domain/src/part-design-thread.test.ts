@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { featureBodyDependencies, featureBodyDependencyIds } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
 import {
@@ -244,5 +245,71 @@ describe("exact-body modeled thread intent", () => {
         ),
       ).toMatchObject({ ok: false, diagnostic: { code: "invalid-thread-geometry" } })
     }
+  })
+})
+
+describe("bounded arbitrary-axis modeled thread intent", () => {
+  it("supports 20 turns in v2 without widening v1 and retains canonical axis intent", async () => {
+    const { threadFeatureParametersV2Schema, threadFeatureTypeV2, threadFeatureTypeHandlerV2 } =
+      await import("./part-design-thread")
+    const { origin: _origin, axis: _axis, ...base } = parameters
+    const value = {
+      ...base,
+      axis: { kind: "explicit-axis", origin: [10, -2, 0], direction: [0.6, 0, 0.8] },
+      pitch: createLengthQuantity(1),
+      length: createLengthQuantity(21),
+      depth: createLengthQuantity(0.5),
+      runIn: createLengthQuantity(0.5),
+      runOut: createLengthQuantity(0.5),
+    }
+    expect(threadFeatureParametersV2Schema.safeParse(value).success).toBe(true)
+    expect(
+      threadFeatureParametersSchema.safeParse({
+        ...parameters,
+        ...value,
+        axis: "Z",
+        origin: parameters.origin,
+      }).success,
+    ).toBe(false)
+    expect(
+      threadFeatureParametersV2Schema.safeParse({ ...value, length: createLengthQuantity(21.001) })
+        .success,
+    ).toBe(false)
+    expect(
+      threadFeatureParametersV2Schema.safeParse({
+        ...value,
+        axis: { ...value.axis, direction: [1, 0, 1] },
+      }).success,
+    ).toBe(false)
+    const record = { ...feature(), type: threadFeatureTypeV2.type, parameters: value }
+    expect(readThreadFeatureParameters(record)).toMatchObject({ axis: value.axis })
+    expect(threadFeatureTypeHandlerV2.validateFeature?.(featureRecordSchema.parse(record))).toEqual(
+      [],
+    )
+    const axisId = "0195b5ac-b220-7a2c-8c33-67a36a7f7b03"
+    const datum = { ...value, axis: { kind: "datum-axis", featureId: axisId, axis: "normal" } }
+    const supported = featureRecordSchema.parse({
+      ...record,
+      parameters: datum,
+      dependencies: [sourceId, axisId],
+    })
+    expect(featureBodyDependencyIds(supported)).toEqual([sourceId])
+    expect(featureBodyDependencies(supported)).toEqual([
+      { featureId: sourceId, outputRole: "body.primary" },
+    ])
+    expect(
+      threadFeatureTypeHandlerV2.validateFeature?.(
+        featureRecordSchema.parse({
+          ...record,
+          parameters: datum,
+          dependencies: [sourceId, axisId],
+        }),
+      ),
+    ).toEqual([])
+    expect(
+      threadFeatureTypeHandlerV2.validateFeature?.(
+        featureRecordSchema.parse({ ...record, parameters: datum }),
+      ),
+    ).not.toEqual([])
   })
 })

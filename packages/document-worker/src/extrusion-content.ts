@@ -12,25 +12,29 @@ import {
 import {
   type DocumentSnapshot,
   type EdgeTopoRef,
+  extrusionFeatureParametersV6Schema,
   type FeatureRecord,
-  type HoleFeatureParameters,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
   readHoleFeatureParameters,
   readRevolveFeatureParameters,
+  readThreadFeatureParameters,
   resolveTopologyReference,
   type SketchProfileSelector,
   type SketchProfileSet,
   type SketchRecord,
 } from "@vibeshape/domain"
+import { holeTreatmentContent } from "@vibeshape/domain/part-design-hole"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
+  extrusionFeatureContentParametersV6Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   holeFeatureContentParametersSchema,
+  holeFeatureContentParametersV3Schema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
@@ -44,6 +48,7 @@ import {
   resolveExternalSketchGeometry,
   type SketchSolveCache,
 } from "./external-sketch-references"
+import { prepareExtrusionEndContent } from "./extrusion-end-content"
 import {
   prepareReferenceFrameFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
@@ -52,6 +57,7 @@ import {
   prepareSweepLoftFeatureContent,
   shouldPrepareSweepLoftFeatureContent,
 } from "./sweep-loft-content"
+import { prepareThreadContent } from "./thread-content"
 
 function failure(
   code: string,
@@ -140,12 +146,36 @@ function validateMultiExtrusionContent(
       })
 }
 
+function prepareAdvancedExtrusion(
+  content: unknown,
+  advanced: { feature: FeatureRecord; context: Parameters<typeof prepareExtrusionEndContent>[2] },
+  frame: SupportFrame,
+) {
+  const value = extrusionFeatureParametersV6Schema.parse(advanced.feature.parameters)
+  const end = prepareExtrusionEndContent(advanced.feature, value, advanced.context, frame)
+  if (!end.ok)
+    return failure(
+      "org.vibeshape.feature.sketch-support-missing",
+      "extrusion-end-support-stale-or-unreachable",
+    )
+  const resolved = extrusionFeatureContentParametersV6Schema.safeParse({
+    ...(content as Record<string, unknown>),
+    distance: end.distance,
+    startOffset: value.startOffset.value,
+    draftAngle: value.draftAngle.value,
+    endCondition: end.endCondition,
+  })
+  return resolved.success
+    ? { ok: true as const, parameters: resolved.data as never }
+    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-extrusion-end")
+}
 function prepareMultiExtrusion(
   sketch: SketchRecord,
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
   parameters: MultiProfileParameters,
   frame: SupportFrame,
   independentExtent: boolean,
+  advanced?: { feature: FeatureRecord; context: Parameters<typeof prepareExtrusionEndContent>[2] },
 ) {
   if (!parameters.distance || parameters.symmetric === undefined) {
     return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
@@ -163,6 +193,9 @@ function prepareMultiExtrusion(
     ...(independentExtent
       ? { reversed: parameters.reversed, secondDistance: parameters.secondDistance?.value ?? null }
       : {}),
+  }
+  if (advanced) {
+    return prepareAdvancedExtrusion(content, advanced, frame)
   }
   return validateMultiExtrusionContent(content, parameters.operation, independentExtent)
 }
@@ -455,7 +488,8 @@ function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null
       kind: "extrusion",
       parameters: extrusion,
       multiProfile: feature.type.schemaVersion >= 3,
-      independentExtent: feature.type.schemaVersion === 5,
+      independentExtent: feature.type.schemaVersion >= 5,
+      record: feature,
     }
   }
   const revolve = readRevolveFeatureParameters(feature)
@@ -480,6 +514,8 @@ async function prepareFeatureContent(
 ) {
   if (shouldPrepareReferenceFrameFeatureContent(feature))
     return prepareReferenceFrameFeatureContent({ document, feature, features, geometry })
+  const thread = prepareThreadContent(feature, { document, features, geometry })
+  if (thread) return thread
   if (shouldPrepareSweepLoftFeatureContent(feature)) {
     const sketchInput = {
       document,
@@ -550,6 +586,7 @@ type ProfileFeature =
       parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>
       multiProfile: boolean
       independentExtent: boolean
+      record: FeatureRecord
     }>
   | Readonly<{
       kind: "revolve"
@@ -591,7 +628,7 @@ async function solveFeatureSketch(input: SketchFeatureContentInput, sketch: Sket
 
 function materializeHoleCenters(
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
-  pointIds: HoleFeatureParameters["pointIds"],
+  pointIds: NonNullable<ReturnType<typeof readHoleFeatureParameters>>["pointIds"],
   frame: SupportFrame,
 ) {
   const solved = new Map(solution.points.map((point) => [point.entityId, point]))
@@ -610,7 +647,7 @@ function materializeHoleCenters(
 async function prepareHoleContent(
   input: SketchFeatureContentInput,
   feature: FeatureRecord,
-  parameters: HoleFeatureParameters,
+  parameters: NonNullable<ReturnType<typeof readHoleFeatureParameters>>,
 ) {
   const sketch = input.document.sketches.find(({ id }) => id === parameters.sketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
@@ -626,9 +663,24 @@ async function prepareHoleContent(
   if (!result.ok) return result
   const materialized = materializeHoleCenters(result.solution, parameters.pointIds, frame)
   if (!materialized.ok) return materialized
-  const prepared = holeFeatureContentParametersSchema.safeParse({
+  return materializedHoleContent(feature, parameters, sketch, frame, materialized.centers)
+}
+
+function materializedHoleContent(
+  feature: FeatureRecord,
+  parameters: NonNullable<ReturnType<typeof readHoleFeatureParameters>>,
+  sketch: SketchRecord,
+  frame: SupportFrame,
+  centers: readonly [number, number, number][],
+) {
+  const prepared = (
+    "treatment" in parameters
+      ? holeFeatureContentParametersV3Schema
+      : holeFeatureContentParametersSchema
+  ).safeParse({
     frame,
-    centers: materialized.centers,
+    centers,
+    ...("treatment" in parameters ? { treatment: holeTreatmentContent(parameters.treatment) } : {}),
     diameter: parameters.diameter.value,
     direction: parameters.direction,
     extent: parameters.extent,
@@ -657,7 +709,23 @@ function prepareSolvedProfileFeature(
   if (multiProfile) {
     const multiParameters = { ...feature.parameters, profiles: multiProfile }
     return feature.kind === "extrusion"
-      ? prepareMultiExtrusion(sketch, solution, multiParameters, frame, feature.independentExtent)
+      ? prepareMultiExtrusion(
+          sketch,
+          solution,
+          multiParameters,
+          frame,
+          feature.independentExtent,
+          feature.record.type.schemaVersion === 6
+            ? {
+                feature: feature.record,
+                context: {
+                  document: input.document,
+                  features: input.features,
+                  geometry: input.geometry,
+                },
+              }
+            : undefined,
+        )
       : prepareMultiRevolve(sketch, solution, multiParameters, frame, geometry)
   }
   return feature.kind === "extrusion"
@@ -692,6 +760,7 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
       readExtrusionFeatureParameters(feature) ||
       readRevolveFeatureParameters(feature) ||
       readHoleFeatureParameters(feature) ||
+      typeof readThreadFeatureParameters(feature)?.axis === "object" ||
       shouldPrepareSweepLoftFeatureContent(feature),
   )
 }

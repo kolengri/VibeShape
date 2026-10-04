@@ -7,7 +7,10 @@ import {
   deriveLegacyHistoryWithPreferredOrder,
 } from "./document-graph"
 import { featureRecordV1Schema } from "./feature-graph"
-import { createAngleQuantity, createLengthQuantity } from "./units"
+import { boxFeatureType } from "./part-design"
+import { threadFeatureTypeV2 } from "./part-design-thread"
+import { datumPlaneFeatureType } from "./reference-geometry"
+import { createAngleQuantity, createLengthQuantity, createScalarQuantity } from "./units"
 
 const id = (value: string) => `00000000-0000-7000-8000-00000000000${value}`
 const feature = (value: string, dependencies: string[] = []) => ({
@@ -527,6 +530,94 @@ describe("createDocumentDependencyGraph", () => {
       }),
     ).toMatchObject({ ok: true, graph: { dependencyModelIssues: [{ featureId: consumer.id }] } })
   })
+
+  it.each([false, true])(
+    "keeps Thread v2 reference-axis dependencies complete with shared owner=%s",
+    (shared) => {
+      const target = {
+        ...feature("1"),
+        type: boxFeatureType.type,
+        parameters: {},
+      }
+      const axis = {
+        ...feature("2"),
+        type: datumPlaneFeatureType.type,
+        parameters: {
+          mode: "offset",
+          support: { kind: "origin-plane", plane: "xy" },
+          offset: createLengthQuantity(0),
+        },
+      }
+      const thread = {
+        ...feature("3"),
+        type: threadFeatureTypeV2.type,
+        parameters: {
+          targetBody: { schemaVersion: 0, featureId: target.id, outputRole: "result" },
+          kind: "external",
+          axis: shared
+            ? {
+                kind: "linear-edge",
+                reference: {
+                  schemaVersion: 1,
+                  featureId: target.id,
+                  outputRole: "result",
+                  kind: "edge",
+                  signature: {
+                    kind: "edge",
+                    geometryClass: "LINE",
+                    measure: 10,
+                    centroid: [0, 0, 5],
+                    bounds: { min: [0, 0, 0], max: [0, 0, 10] },
+                    direction: [0, 0, 1],
+                    directionMode: "oriented",
+                    boundaryCount: 2,
+                    adjacentGeometryClasses: ["PLANE"],
+                  },
+                },
+              }
+            : { kind: "datum-axis", featureId: axis.id, axis: "normal" },
+          handedness: "right",
+          nominalDiameter: createLengthQuantity(10),
+          pitch: createLengthQuantity(2),
+          length: createLengthQuantity(10),
+          depth: createLengthQuantity(0.5),
+          clearance: createLengthQuantity(0),
+          starts: createScalarQuantity(1),
+          phase: createAngleQuantity(0),
+          runIn: createLengthQuantity(0),
+          runOut: createLengthQuantity(0),
+        },
+        dependencies: shared ? [target.id] : [target.id, axis.id],
+      }
+      const result = createDocumentDependencyGraphFromSnapshot({
+        sketches: [],
+        features: [target, ...(shared ? [] : [axis]), thread],
+      })
+      expect(result).toMatchObject({ ok: true, graph: { dependencyModelIssues: [] } })
+      if (!result.ok) throw new Error(result.diagnostic.message)
+      expect(
+        result.graph.edges
+          .filter(({ target: owner }) => owner.id === thread.id)
+          .map(({ source }) => source.id),
+      ).toEqual(thread.dependencies)
+      const malformed = createDocumentDependencyGraphFromSnapshot({
+        sketches: [],
+        features: [
+          target,
+          ...(shared ? [] : [axis]),
+          {
+            ...thread,
+            dependencies: shared ? [target.id, target.id] : [target.id],
+          },
+        ],
+      })
+      expect(malformed).toMatchObject(
+        shared
+          ? { ok: false }
+          : { ok: true, graph: { dependencyModelIssues: [{ featureId: thread.id }] } },
+      )
+    },
+  )
 
   it("cross-checks first-party semantic declarations against validated parameters", () => {
     const profile = sketch("1")
