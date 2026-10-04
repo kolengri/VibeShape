@@ -2,6 +2,7 @@ import type {
   AssemblyResult,
   AssemblyReviewInput,
 } from "@vibeshape/automation-host/assembly-session-contract"
+import type { HistoryReviewInput } from "@vibeshape/automation-host/history-session"
 import type {
   AutomationHostDiagnosticCode,
   AutomationHostResult,
@@ -12,7 +13,7 @@ type Decision = "approved" | "rejected" | "cancelled"
 
 export type AutomationReviewState = Readonly<{
   id: string
-  input: DraftReviewInput | AssemblyReviewInput
+  input: DraftReviewInput | AssemblyReviewInput | HistoryReviewInput
   status: "ready" | "applying" | "error"
   diagnostic: string | null
 }>
@@ -59,7 +60,7 @@ export function createAutomationReviewController() {
 
   function request(
     owner: symbol,
-    input: DraftReviewInput | AssemblyReviewInput,
+    input: DraftReviewInput | AssemblyReviewInput | HistoryReviewInput,
   ): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
     const expiresIn =

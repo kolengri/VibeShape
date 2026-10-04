@@ -44,6 +44,56 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("rejects forged history document, base, direction and command receipts before forwarding the exact save", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const commandId = "0195b5ac-b260-7a2c-8c33-000000000777"
+    const pending = broker.invoke(
+      localOperationSchema.parse({
+        tool: "undo_model",
+        arguments: { documentId: document.id, baseRevision: 4, commandId },
+      }),
+    )
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = (await poll.json()) as { work: { requestId: string } }
+    const exact = {
+      documentId: document.id,
+      baseRevision: 4,
+      revision: 5,
+      commandId,
+      direction: "undo",
+      targetRevision: 3,
+    }
+    const respond = (value: typeof exact) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: "undo_model",
+            result: { ok: true, value },
+          },
+          token,
+        ),
+      )
+    for (const forged of [
+      { ...exact, documentId: commandId },
+      { ...exact, baseRevision: 3, revision: 4 },
+      { ...exact, direction: "redo" },
+      { ...exact, commandId: document.id },
+    ]) {
+      const response = await respond(forged)
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        diagnostic: { code: "result-context-mismatch" },
+      })
+    }
+    expect((await respond(exact)).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value: exact })
+  })
   it("requires the exact unique unordered interference pair set before forwarding inspection", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)

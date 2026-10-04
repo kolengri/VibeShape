@@ -1,6 +1,6 @@
 ---
 name: vibeshape-organization
-description: Rename or show/hide authored VibeShape parts and create, rename, regroup, or remove History folders through MCP metadata proposals. Use for model organization in the application; feature deletion and History reordering are outside this tool contract.
+description: Rename or show/hide authored VibeShape parts, manage History folders, or inspect and navigate saved Undo/Redo checkpoints through reviewed MCP proposals. Use for model organization in the application; feature deletion and History reordering are outside this tool contract.
 ---
 
 # VibeShape organization
@@ -18,3 +18,13 @@ Folder members form a nonempty contiguous History range. Folders cannot overlap 
 Part visibility does not remove a body or necessarily exclude it from export. Project/feature/sketch rename and arbitrary History mutation are not exposed by `change_metadata`; use an available authorized editor route or report the specific gap.
 
 Proposals expire after five minutes and become invalid after a revision change or lost authority. After an interrupted or unconfirmed Apply, follow [session recovery](../vibeshape-use/references/session.md) and inspect the saved state before proposing again. Do not replay a stale organization change over a person's edits.
+
+## Saved-change Undo and Redo
+
+`model_history` lists authored item order; it does not report Undo availability. Read `model_info`, then call `model_history_state` with its `documentId` and exact `revision`. When the intended direction is available, call `undo_model` or `redo_model` with that `documentId`, current `baseRevision` and a fresh UUIDv7 `commandId`.
+
+Wait for the person's manual browser Apply/Discard, even when CAD auto-apply is on. The review previews the exact saved target and distinguishes its old revision from the new revision Apply publishes. It can show saved geometry failures: restoring a checkpoint preserves that authored state and diagnostics. Do not pass an approval flag, script, raw historical snapshot or fabricated target. Rejection, expiry, stale target or cancellation before publication does not navigate.
+
+Reuse the returned receipt and inspect the new committed state when needed. Undo/Redo always advance the publication revision by one. A new authored change clears Redo. Reopening preserves the saved model and restore events but resets these transient stacks; never promise Undo availability after reopening. Duplicate command IDs remain rejected after reload. If Apply's outcome is unconfirmed, inspect the saved revision before any new proposal; cancellation after publication entered cannot roll back a saved restore.
+
+These three named tools share the same review and correlation contract over local stdio and paired remote HTTPS. Document identity is request context, not write authority.

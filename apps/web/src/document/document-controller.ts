@@ -9,6 +9,7 @@ import {
 } from "@vibeshape/application/model-measurements"
 import {
   createPersistentDocumentSession,
+  type PersistentDocumentHistoryResult,
   type PersistentDocumentRepositoryPort,
   type PersistentDocumentSession,
   type PersistentDocumentSessionDiagnostic,
@@ -34,6 +35,11 @@ import {
   modelMeasurementViewSchema,
 } from "@vibeshape/automation-api/queries"
 import type { AssemblySessionConfiguration } from "@vibeshape/automation-host/assembly-session-contract"
+import {
+  type HistoryCommitInput,
+  type HistoryRequest,
+  historyRequestSchema,
+} from "@vibeshape/automation-host/history-session"
 import type { AutomationDocumentPort, AutomationHostResult } from "@vibeshape/automation-host/host"
 import { DocumentWorkerRequestError } from "@vibeshape/document-worker/client"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
@@ -135,6 +141,7 @@ import { assemblyInspectionView } from "../automation/assembly-inspection-view"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
+import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
@@ -891,6 +898,32 @@ export function createActiveDocumentAutomationSession() {
     },
     commit: (input) => commitReviewedAssembly(active, input),
   })
+  const history = createBrowserHistoryAutomationSession({
+    documentId: capturedDocumentId,
+    isActive: sourceSessionAvailable,
+    readSnapshot: () => (sourceSessionAvailable() ? active.snapshot : null),
+    availability: () => active.history,
+    readTarget: (direction) => (sourceSessionAvailable() ? active.previewHistory(direction) : null),
+    hasCommandId: (commandId) => repository.hasCommandId(commandId),
+    createId: browserUuidV7,
+    materializeSourceAssets: materializeAutomationSourceAssets,
+    async previewAssembly(target, baseRevision) {
+      if (!sourceSessionAvailable() || active.snapshot.revision !== baseRevision)
+        throw new Error("The paired history base changed during preview.")
+      if (target.authority.schemaVersion !== 4) return undefined
+      const result = await inspectCapturedAssembly(
+        { active, repository, authority: target.authority },
+        [],
+        [],
+        baseRevision,
+      )
+      return {
+        occurrenceCount: result.inspection.occurrences.length,
+        degreesOfFreedom: result.inspection.kinematics?.degreesOfFreedom ?? 0,
+      }
+    },
+    commit: (input) => commitReviewedHistory(active, input),
+  })
   const exports = createBinaryExportSession({
     documentId: capturedDocumentId,
     currentRevision: () => active.snapshot.revision,
@@ -945,6 +978,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel("stale-revision")
       metadata.cancel("stale-revision")
       assembly.cancel("stale-revision")
+      history.cancel("stale-revision")
     }
   })
   function dispose() {
@@ -954,6 +988,7 @@ export function createActiveDocumentAutomationSession() {
     closeAutomation()
     metadata.dispose()
     assembly.dispose()
+    history.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -966,6 +1001,7 @@ export function createActiveDocumentAutomationSession() {
     host: factory.host,
     metadata,
     assembly,
+    history,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
@@ -976,6 +1012,7 @@ export function createActiveDocumentAutomationSession() {
       factory.cancel(reason)
       metadata.cancel(reason)
       assembly.cancel(reason)
+      history.cancel(reason)
       exports.cancel()
     },
     dispose,
@@ -1046,33 +1083,45 @@ async function navigateDocumentHistory(
       },
     }
   }
-  const activeSession = session
-  publish({ ...state, saveStatus: "saving", diagnostic: null })
-  try {
-    const result = await activeSession.navigateHistory({
+  const result = await publishHistoryNavigation(
+    session,
+    historyRequestSchema.parse({
       direction,
       commandId: browserUuidV7(),
-      documentId: activeSession.snapshot.id,
+      documentId: session.snapshot.id,
       baseRevision,
       issuedAt: new Date().toISOString(),
       actor: { type: "user", userId: null },
-    })
+    }),
+  )
+  return result.ok ? { ok: true } : result
+}
+
+async function publishHistoryNavigation(
+  activeSession: PersistentDocumentSession,
+  request: HistoryRequest,
+): Promise<PersistentDocumentHistoryResult> {
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  try {
+    const result = await activeSession.navigateHistory(request)
     if (!result.ok) {
-      publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
+      if (session === activeSession)
+        publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
       return result
     }
-    publish({
-      ...state,
-      report: {
-        ...state.report,
-        snapshot: result.snapshot,
-        historyItems: activeSession.historyItems,
-        rebuild: result.rebuild,
-      },
-      saveStatus: "saved",
-      diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
-    })
-    return { ok: true }
+    if (session === activeSession && state.report)
+      publish({
+        ...state,
+        report: {
+          ...state.report,
+          snapshot: result.snapshot,
+          historyItems: activeSession.historyItems,
+          rebuild: result.rebuild,
+        },
+        saveStatus: "saved",
+        diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+      })
+    return result
   } catch {
     const diagnostic: PersistentDocumentSessionDiagnostic = {
       code: "persistence-failed",
@@ -1080,7 +1129,7 @@ async function navigateDocumentHistory(
       retryable: true,
       sourceCode: null,
     }
-    publish({ ...state, saveStatus: "save-error", diagnostic })
+    if (session === activeSession) publish({ ...state, saveStatus: "save-error", diagnostic })
     return { ok: false, diagnostic }
   }
 }
@@ -1264,12 +1313,13 @@ async function inspectCapturedAssembly(
   context: ReturnType<typeof captureAssemblyContext>,
   pairs: readonly { leftInstanceId: string; rightInstanceId: string }[],
   ownedBlobs: readonly SourceAssetBlob[] = [],
+  baseRevision = context.authority.revision,
 ) {
   const { active, repository, authority } = context
   const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
   try {
     const sourceAssets = await repository.materializeAssemblySourceAssets(authority, ownedBlobs)
-    assertAuthorityCurrent(active, authority.revision)
+    assertAuthorityCurrent(active, baseRevision)
     const result = await worker.inspectAssembly(
       {
         authorityJson: canonicalJson(authority),
@@ -1279,7 +1329,7 @@ async function inspectCapturedAssembly(
       },
       authority.revision,
     )
-    assertAuthorityCurrent(active, authority.revision)
+    assertAuthorityCurrent(active, baseRevision)
     return { ok: true as const, inspection: result.inspection }
   } finally {
     worker.terminate()
@@ -1405,6 +1455,62 @@ async function verifyCapturedFrozenDefinition(
     return sourceAssets
   } finally {
     worker.terminate()
+  }
+}
+
+function historyBaseWritable(active: PersistentDocumentSession, request: HistoryRequest) {
+  return (
+    session === active &&
+    canWriteAuthoredState(active) &&
+    !assemblyEditorDraftBlock() &&
+    active.snapshot.revision === request.baseRevision &&
+    request.documentId === active.snapshot.id
+  )
+}
+function historyReviewMatches(input: HistoryCommitInput) {
+  const visible = automationReviews.getSnapshot()
+  if (
+    visible?.status !== "applying" ||
+    !("kind" in visible.input) ||
+    visible.input.kind !== "history"
+  )
+    return false
+  if (canonicalJson(visible.input) !== canonicalJson(input.review)) return false
+  const target = session?.previewHistory(input.review.request.direction)
+  return !!target && canonicalJson(target) === canonicalJson(input.target)
+}
+
+async function commitReviewedHistory(active: PersistentDocumentSession, input: HistoryCommitInput) {
+  const request = input.review.request
+  if (!historyBaseWritable(active, request) || !historyReviewMatches(input))
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "stale-history-review",
+        message: "The exact history approval or saved target is no longer current.",
+        retryable: true,
+      },
+    }
+  const result = await publishHistoryNavigation(active, request)
+  if (!result.ok)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: result.diagnostic.sourceCode ?? result.diagnostic.code,
+        message: result.diagnostic.message,
+        retryable: result.diagnostic.retryable,
+      },
+    }
+  return {
+    ok: true as const,
+    value: {
+      documentId: request.documentId,
+      baseRevision: request.baseRevision,
+      revision: result.snapshot.revision,
+      commandId: request.commandId,
+      direction: request.direction,
+      targetRevision: input.target.targetRevision,
+    },
   }
 }
 

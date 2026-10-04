@@ -87,6 +87,8 @@
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 | [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
 
+- [ADR-0093: Reviewed MCP history navigation](0093-reviewed-mcp-history-navigation.md)
+
 Statuses:
 
 - `Proposed` — under discussion

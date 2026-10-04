@@ -4,6 +4,7 @@ import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
+import { historyOperationSchema } from "@vibeshape/automation-api/history-tools"
 import {
   isLocalDraftCommand,
   isLocalDraftInspection,
@@ -31,6 +32,7 @@ import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
+import type { createBrowserHistoryAutomationSession } from "./history-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -47,6 +49,7 @@ type LocalSessionPort = Readonly<{
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
+  history?: ReturnType<typeof createBrowserHistoryAutomationSession>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   readInfo: () => ActiveAutomationInfo | null
@@ -276,7 +279,12 @@ export function createLocalToolExecutor(
           true,
         )
   }
-  async function execute(operation: LocalOperation, signal?: AbortSignal) {
+  function dispatchSessionExtension(operation: LocalOperation, signal?: AbortSignal) {
+    const history = historyOperationSchema.safeParse(operation)
+    if (history.success)
+      return session.history
+        ? session.history.execute(actor, history.data, signal)
+        : localFailure("history-unavailable", "The paired session cannot navigate saved changes.")
     if (isAssemblyLibraryToolName(operation.tool))
       return session.assembly
         ? session.assembly.execute(actor, operation, signal)
@@ -284,6 +292,11 @@ export function createLocalToolExecutor(
             "assembly-authority-unavailable",
             "The paired document has no assembly authority.",
           )
+    return null
+  }
+  async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    const routed = dispatchSessionExtension(operation, signal)
+    if (routed) return routed
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")

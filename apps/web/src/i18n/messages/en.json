@@ -1016,7 +1016,17 @@
           "assemblyExactPreview": "Exact assembly preview",
           "assemblyOccurrenceCount": "{count, plural, one {# frozen body occurrence} other {# frozen body occurrences}}",
           "assemblyDof": "{count, plural, one {# local degree of freedom} other {# local degrees of freedom}}",
-          "assemblyRedundant": "The mate set contains consistent redundant constraints."
+          "assemblyRedundant": "The mate set contains consistent redundant constraints.",
+          "undoModel": "Undo saved change",
+          "redoModel": "Redo saved change",
+          "historyReviewDescription": "Review the saved target before navigating history. Apply restores its authored state and publishes one new revision. The current model remains unchanged until Apply.",
+          "historyTargetRevision": "Saved target revision",
+          "historyPublicationRevision": "New revision after Apply",
+          "historyExactPreview": "Exact saved-target preview",
+          "historyFeatureCount": "Features: {count}",
+          "historyPartCount": "Parts: {count}",
+          "historyGeometryCount": "Exact feature results: {succeeded} succeeded, {failed} failed or blocked.",
+          "historyGeometryInvalid": "The saved target contains geometry failures. Apply restores that state, including its diagnostics."
         },
         "collapsePanel": "Collapse task panel",
         "createBox": "Create box",

@@ -6,6 +6,7 @@ import {
 } from "@vibeshape/automation-api/binary-exports"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
+import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
   isLocalDraftInspection,
@@ -342,6 +343,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     )
       return this.revoke()
     const result = localToolOutputs[message.tool].parse(message.result)
+    if (historyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
     if (assemblyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
     if (!this.exportResultMatches(result)) return this.revoke()
     if (!draftInspectionResultMatches(this.pending.operation, result)) return this.revoke()

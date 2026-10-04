@@ -26,6 +26,7 @@ import {
   createAuthorityPersistenceAdapter,
 } from "./authority-persistence-adapter"
 import { runtimeProjection } from "./authority-persistence-operations"
+import type { DocumentHistoryPreview } from "./persistent-document-session"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 const actor = { type: "user", userId: null } as const
@@ -221,7 +222,87 @@ function part(snapshot: DocumentAuthoritySnapshot) {
   return snapshot.parts[0]
 }
 
+function mutatePreviewTarget(target: DocumentHistoryPreview) {
+  Reflect.set(target.snapshot.features[0]?.parameters ?? {}, "height", createLengthQuantity(999))
+  Reflect.set(target.authority, "name", "Caller mutation")
+  if (target.authority.schemaVersion === 4 && target.authority.assets[0])
+    Reflect.set(target.authority.assets[0], "filename", "Caller mutation.step")
+}
+
 describe("authored authority persistence adapter", () => {
+  it.each([
+    { version: 1, seed: () => initial().v1 },
+    { version: 2, seed: () => initial().v2 },
+    { version: 4, seed: assetAuthority },
+  ])(
+    "previews owned v$version targets without moving stacks or losing authority, then preserves MCP restore actor",
+    async ({ version, seed: createSeed }) => {
+      const seed = createSeed()
+      const f = fixture(seed)
+      const before = f.runtime()
+      const feature = before.features[0]
+      if (!feature) throw new Error("Missing model feature")
+      const change = success(
+        applyDocumentCommand(before, {
+          ...f.envelope(710),
+          schemaVersion: 1,
+          kind: "org.vibeshape.feature.update",
+          payload: {
+            feature: {
+              ...feature,
+              parameters: { ...feature.parameters, height: createLengthQuantity(12) },
+            },
+          },
+        }),
+      )
+      success(
+        await f.adapter.commit({
+          sessionId,
+          lease,
+          storedAt: issuedAt,
+          baseSnapshot: before,
+          event: change.event,
+          snapshot: change.snapshot,
+        }),
+      )
+      const availability = { ...f.adapter.history.availability }
+      const target = f.adapter.history.preview?.("undo")
+      if (!target) throw new Error("Missing read-only undo target")
+      expect(target.targetRevision).toBe(seed.revision)
+      expect(target.authority).toEqual(seed)
+      mutatePreviewTarget(target)
+      expect(f.adapter.history.preview?.("undo")?.authority).toEqual(seed)
+      expect(f.adapter.history.availability).toEqual(availability)
+      expect(f.runtime().features[0]?.parameters.height).toEqual(createLengthQuantity(12))
+      const mcpActor = { type: "mcp", clientId: "org.example.history", sessionId } as const
+      success(
+        await f.adapter.history.navigate({
+          sessionId,
+          lease,
+          baseSnapshot: f.runtime(),
+          request: {
+            commandId: commandIdSchema.parse(id(711)),
+            documentId: before.id,
+            baseRevision: f.current().revision,
+            issuedAt,
+            actor: mcpActor,
+            direction: "undo",
+          },
+        }),
+      )
+      expect(f.runtime().features[0]?.parameters.height).toEqual(createLengthQuantity(5))
+      if (version !== 1)
+        expect(f.writes.at(-1)?.event).toMatchObject({
+          type: "org.vibeshape.document.restored",
+          actor: mcpActor,
+          targetRevision: seed.revision,
+        })
+      expect(f.adapter.history.preview?.("redo")?.snapshot.features[0]?.parameters.height).toEqual(
+        createLengthQuantity(12),
+      )
+    },
+  )
+
   it("restores part names and visibility together through undo and redo", async () => {
     const f = fixture()
     const partId = part(f.current()).id

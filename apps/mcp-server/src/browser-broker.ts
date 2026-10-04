@@ -16,6 +16,7 @@ import {
   automationDraftPreviewSchema,
   automationDraftStateSchema,
 } from "@vibeshape/automation-api/drafts"
+import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import {
   createLocalAutomationActor,
   LOCAL_AUTOMATION_PATH,
@@ -311,6 +312,8 @@ function resultContextMatches(
   result: LocalToolResult,
   documentId: string,
 ) {
+  const history = historyResultContextMatches(operation, result, documentId)
+  if (history !== null) return history
   const assembly = assemblyResultContextMatches(operation, result, documentId)
   if (assembly !== null) return assembly
   if (!result.ok) return true

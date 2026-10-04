@@ -18,6 +18,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
+import { HistoryAutomationReviewPanel } from "./history-review-panel"
 
 const commandLabels: Readonly<Record<DocumentCommand["kind"], string>> = {
   "org.vibeshape.document.create": "createDocument",
@@ -361,6 +362,15 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { input } = review
+  if ("kind" in input && input.kind === "history")
+    return (
+      <HistoryAutomationReviewPanel
+        input={input}
+        client={actorLabel(input.actor, t)}
+        diagnostic={<ReviewDiagnostic review={review} />}
+        actions={<ReviewActions commands={[]} review={review} t={t} destructive={false} />}
+      />
+    )
   if ("kind" in input)
     return (
       <AssemblyAutomationReviewPanel

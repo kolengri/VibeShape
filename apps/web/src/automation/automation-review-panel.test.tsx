@@ -1,5 +1,10 @@
+import {
+  type HistoryReviewInput,
+  historyRequestSchema,
+} from "@vibeshape/automation-host/history-session"
 import { historyItemRefSchema } from "@vibeshape/domain/document-node"
 import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-command-schemas"
+import { draftIdSchema } from "@vibeshape/domain/identifiers"
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react"
@@ -99,7 +104,7 @@ const review = (
   }
 }
 
-function renderPanel(state: ReturnType<typeof review>) {
+function renderPanel(state: AutomationReviewState) {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <AutomationReviewPanel review={state} />
@@ -187,3 +192,57 @@ it("shows the exact folder range and feature-preserving removal in manual review
   ).toBeTruthy()
   expect(screen.getByRole("button", { name: /^Apply$/ })).toBeTruthy()
 })
+
+it.each(["undo", "redo"] as const)(
+  "shows saved and publication revisions and retains manual %s Apply/Discard",
+  async (direction) => {
+    const source = review()
+    const request = historyRequestSchema.parse({
+      direction,
+      commandId: "0195b5ac-b260-7a2c-8c33-000000000777",
+      documentId: source.input.preview.draft.documentId,
+      baseRevision: 7,
+      issuedAt: "2026-10-04T00:00:00Z",
+      actor: source.input.actor,
+    })
+    const input: HistoryReviewInput = {
+      kind: "history",
+      actor: request.actor,
+      documentName: "Saved model",
+      request,
+      draft: {
+        draftId: draftIdSchema.parse("0195b5ac-b260-7a2c-8c33-000000000778"),
+        documentId: request.documentId,
+        baseRevision: 7,
+        commandId: request.commandId,
+        direction,
+        targetRevision: 3,
+        expiresAt: "2099-01-01T00:00:00Z",
+      },
+      preview: {
+        valid: true,
+        measurements: {
+          schemaVersion: 1,
+          documentId: request.documentId,
+          revision: 3,
+          generation: 3,
+          features: [],
+        },
+      },
+      featureCount: 0,
+      partCount: 0,
+    }
+    const decide = vi.spyOn(automationReviews, "decide").mockResolvedValue()
+    renderPanel({ ...source, input })
+    expect(
+      screen.getByText(direction === "undo" ? "Undo saved change" : "Redo saved change"),
+    ).toBeTruthy()
+    expect(screen.getByText("Saved target revision").nextElementSibling?.textContent).toBe("3")
+    expect(screen.getByText("New revision after Apply").nextElementSibling?.textContent).toBe("8")
+    expect(screen.getByText("Exact saved-target preview")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }))
+    expect(decide).toHaveBeenCalledWith("review-1", "rejected")
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }))
+    expect(decide).toHaveBeenCalledWith("review-1", "approved")
+  },
+)

@@ -45,6 +45,12 @@ import {
   automationDraftStateSchema,
 } from "./drafts"
 import {
+  historyCommitViewSchema,
+  historyOperations,
+  historyStateViewSchema,
+  historyToolInputs,
+} from "./history-tools"
+import {
   libraryItemsViewSchema,
   libraryOperations,
   libraryToolInputs,
@@ -126,6 +132,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  ...historyToolInputs,
   model_sketch_solution: sketchSolutionArgumentsSchema,
   ...localBinaryExportInputs,
   model_measurements: modelMeasurementQuerySchema.omit({
@@ -213,6 +220,9 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  model_history_state: resultOf(historyStateViewSchema),
+  undo_model: resultOf(historyCommitViewSchema),
+  redo_model: resultOf(historyCommitViewSchema),
   model_sketch_solution: resultOf(sketchSolutionViewSchema),
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
   prepare_model_export: resultOf(binaryExportDescriptorSchema),
@@ -317,6 +327,9 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "model_history_state",
+  "undo_model",
+  "redo_model",
   "model_sketch_solution",
   "draft_sketch_solution",
   "prepare_model_export",
@@ -418,6 +431,7 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
       arguments: localToolInputs.model_measurements,
     })
     .strict(),
+  ...historyOperations,
   ...assemblyOperations,
   ...libraryOperations,
   z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),

@@ -210,6 +210,19 @@ export function createVersionedPersistenceAdapter(
       get availability() {
         return history.availability
       },
+      preview(direction) {
+        const target = history.target(direction)
+        if (!target) return null
+        const ownedTarget = documentSnapshotV1Schema.parse(JSON.parse(canonicalJson(target)))
+        const projected = projectDocumentSnapshotV1ToV0(ownedTarget)
+        return projected.ok
+          ? {
+              targetRevision: target.revision,
+              snapshot: projected.snapshot,
+              authority: ownedTarget,
+            }
+          : null
+      },
       async navigate(input) {
         const parsed = parseHistoryNavigation(input, authority, projectInput)
         if (!parsed.ok) return parsed
