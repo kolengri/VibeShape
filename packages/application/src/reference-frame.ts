@@ -131,7 +131,9 @@ function resolveLinearEdgeAxis(
   const length = Math.hypot(...delta)
   if (!Number.isFinite(length) || length <= 1e-8) return null
   const direction = orientedLineDirection(delta, length, support.reference.signature.direction)
-  return validatedReferenceAxis(line.start, direction)
+  // Native edge reversal must retain the authored sign and position-zero anchor.
+  const reversed = delta.reduce((sum, value, index) => sum + value * (direction[index] ?? 0), 0) < 0
+  return validatedReferenceAxis(reversed ? line.end : line.start, direction)
 }
 
 function validatedReferenceAxis(origin: unknown, direction: unknown): ResolvedReferenceAxis | null {

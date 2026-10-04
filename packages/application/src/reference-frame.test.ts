@@ -67,38 +67,50 @@ describe("current body-bound reference frames", () => {
       resolveReferencePlane(support, context([face, { ...face, candidateId: "face.b" }])),
     ).toBeNull()
   })
-  it("retains an authored line direction after a native orientation reversal", () => {
-    const edgeSignature = topologySignatureSchema.parse({
-      ...signature,
-      kind: "edge",
-      geometryClass: "LINE",
-      measure: 10,
-      centroid: [5, 0, 0],
-      bounds: { min: [0, 0, 0], max: [10, 0, 0] },
-      direction: [1, 0, 0],
-      directionMode: "axis",
-      boundaryCount: 2,
-    })
-    const edge = {
-      candidateId: "edge.a",
-      kind: "edge",
-      lineageTokens: [],
-      signature: edgeSignature,
-      referenceGeometry: { kind: "line-edge", start: [10, 0, 0], end: [0, 0, 0] },
-    }
-    const axis = referenceAxisSchema.parse({
-      kind: "linear-edge",
-      reference: {
-        schemaVersion: 1,
-        featureId,
-        outputRole: "pattern.instance.1",
+  it.each([
+    { sign: 1, reversed: false },
+    { sign: 1, reversed: true },
+    { sign: -1, reversed: false },
+    { sign: -1, reversed: true },
+  ])(
+    "retains the authored line anchor and direction for $sign with native reversal $reversed",
+    ({ sign, reversed }) => {
+      const edgeSignature = topologySignatureSchema.parse({
+        ...signature,
         kind: "edge",
+        geometryClass: "LINE",
+        measure: 10,
+        centroid: [5, 0, 0],
+        bounds: { min: [0, 0, 0], max: [10, 0, 0] },
+        direction: [1, 0, 0],
+        directionMode: "axis",
+        boundaryCount: 2,
+      })
+      const edge = {
+        candidateId: "edge.a",
+        kind: "edge",
+        lineageTokens: [],
         signature: edgeSignature,
-      },
-    })
-    expect(resolveReferenceAxis(axis, context([edge]))).toEqual({
-      origin: [10, 0, 0],
-      direction: [1, 0, 0],
-    })
-  })
+        referenceGeometry: {
+          kind: "line-edge",
+          start: reversed ? [10, 0, 0] : [0, 0, 0],
+          end: reversed ? [0, 0, 0] : [10, 0, 0],
+        },
+      }
+      const axis = referenceAxisSchema.parse({
+        kind: "linear-edge",
+        reference: {
+          schemaVersion: 1,
+          featureId,
+          outputRole: "pattern.instance.1",
+          kind: "edge",
+          signature: { ...edgeSignature, direction: [sign, 0, 0] },
+        },
+      })
+      expect(resolveReferenceAxis(axis, context([edge]))).toEqual({
+        origin: [sign === 1 ? 0 : 10, 0, 0],
+        direction: [sign, 0, 0],
+      })
+    },
+  )
 })

@@ -52,6 +52,6 @@ Apply creates one ordinary command and Undo entry.
 
 Domain tests cover version dispatch, exact dependency ordering and target-only consumption.
 Application tests cover current role selection, missing/ambiguous references, and stable line direction
-after native edge reversal. Native tests cover oblique plane/axis geometry, source preservation,
+and endpoint anchor after native edge reversal. Native tests cover oblique plane/axis geometry, source preservation,
 volume, independent ownership, and failure cleanup. Browser tests exercise exact preview, Apply,
 native Save and reopen independently of unit evidence.
