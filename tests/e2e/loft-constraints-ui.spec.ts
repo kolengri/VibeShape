@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test"
 import { readLoftFeatureParametersV3 } from "../../packages/domain/src/part-design-loft-v3"
 import { writeVShape } from "../../packages/formats/src/vshape"
+import { createCylindricalLoftProject } from "../support/loft-v3-cylinder-fixture"
 import { createLoftV3Project, loftFixtureId as id } from "../support/loft-v3-fixture"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saveProject } from "./authored-parts-ui-support"
@@ -132,8 +133,85 @@ test("authors exact Loft v3 tracks, rail, C0 guide and independent G1/G2 faces, 
   )
 })
 
-async function authorTracks(form: Locator, fixture: ReturnType<typeof createLoftV3Project>) {
-  for (let track = 0; track < 4; track++) {
+test("applies a cylindrical Loft with nonzero G2 at both ends and healthy oriented Datum support", async ({
+  page,
+}) => {
+  test.setTimeout(240_000)
+  const fixture = createCylindricalLoftProject()
+  const archive = await writeVShape({
+    snapshot: fixture.snapshot,
+    events: fixture.events,
+    exportedAt: "2026-10-04T00:00:00Z",
+    createdBy: { application: "VibeShape curved G2 fixture", version: "1", build: null },
+    engine: null,
+  })
+  if (!archive.ok) throw new Error(archive.diagnostic.message)
+  await page.goto("/")
+  await nativeSaved(page)
+  await openApplicationMenuItem(page, "Files and projects…")
+  await page
+    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByLabel("Choose VibeShape project file")
+    .setInputFiles({
+      name: "cylindrical-loft.vshape",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from(archive.value),
+    })
+  await expect(page.getByRole("treeitem", { name: "Part Seed cylinder", exact: true })).toBeVisible(
+    { timeout: 30_000 },
+  )
+  await nativeSaved(page)
+  await expect(page.getByText(/Needs repair: the support face/)).toHaveCount(0)
+  await page
+    .getByRole("toolbar", { name: "Model commands" })
+    .getByRole("button", { name: "Loft", exact: true })
+    .click()
+  const form = page.getByRole("form", { name: "Loft profiles", exact: true })
+  for (const label of ["Lower section · Profile 1", "Upper section · Profile 1"]) {
+    await form
+      .getByRole("combobox", { name: "Section profile", exact: true })
+      .selectOption({ label })
+    await form.getByRole("button", { name: "Add section", exact: true }).click()
+  }
+  await form.getByRole("checkbox", { name: "Curve constraints (Loft v3)", exact: true }).check()
+  await authorTracks(form, fixture)
+  for (const title of ["Start continuity", "End continuity"]) {
+    const group = form.getByRole("group", { name: title, exact: true })
+    await group.getByRole("button", { name: "Add end constraint", exact: true }).click()
+    await group.getByRole("combobox", { name: "Continuity", exact: true }).selectOption("G2")
+    const face = group.getByRole("combobox", { name: "Support face", exact: true }),
+      option = face.getByRole("option", { name: /Seed cylinder.*\(1\.273, 1\.273, 5\) mm$/ })
+    await expect(option).toBeAttached({ timeout: 15_000 })
+    await face.selectOption((await option.getAttribute("value")) ?? "")
+  }
+  await nativePreviewReady(form, "Apply feature")
+  await form.getByRole("button", { name: "Apply feature", exact: true }).click()
+  await nativeSaved(page)
+  const saved = await saveProject(page),
+    loft = saved.project.snapshot.features.find(({ label }) => label === "Loft 1")
+  if (!loft) throw new Error("The curved Loft must remain authored.")
+  const parameters = required(
+    readLoftFeatureParametersV3(loft),
+    "Curved Loft parameters must exist",
+  )
+  expect(parameters.outerCorrespondence).toEqual(fixture.outerCorrespondence)
+  for (const constraint of [...parameters.start, ...parameters.end])
+    expect(constraint).toMatchObject({
+      continuity: "G2",
+      support: { featureId: id(860), signature: { geometryClass: "CYLINDRE" } },
+    })
+  await openProject(page, saved, 120_000)
+  expect((await saveProject(page)).project.snapshot.features).toEqual(
+    saved.project.snapshot.features,
+  )
+  await expect(page.getByText(/Needs repair: the support face/)).toHaveCount(0)
+})
+
+async function authorTracks(
+  form: Locator,
+  fixture: Pick<ReturnType<typeof createLoftV3Project>, "outerCorrespondence">,
+) {
+  for (let track = 0; track < fixture.outerCorrespondence.length; track++) {
     await form.getByRole("button", { name: "Add segment track", exact: true }).click()
     for (let section = 0; section < 2; section++)
       await form

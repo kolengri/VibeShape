@@ -33,9 +33,10 @@ authored faces remain visible and require explicit reselection.
 
 Version 3 requires matching hole-free open-segment boundaries, three to sixty-four tracks and a smooth
 (non-ruled) surface. Complete circles/ellipses need a separate seam contract and remain available
-through version 1/2. Native convergence is bounded. Planar G2 supports pass the strict native derivative
-checks; the tested quarter-cylinder G2 case is rejected and remains a convergence gap. Larger guide
-excursions can also fail.
+through version 1/2. Native convergence is bounded. Planar and cylindrical G2 supports have positive
+native derivative checks, including nonzero cylinder curvature at both ends. Curved supports require
+matching complete native boundary pcurves; arbitrary curved-surface convergence is not guaranteed.
+Larger guide excursions can also fail.
 The task panel exposes the native support or residual failure and retains the input for repair;
 constraints are never silently removed to make a preview succeed.
 

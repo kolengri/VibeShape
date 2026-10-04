@@ -224,7 +224,7 @@ it.each(["C0", "G1", "G2"] as const)(
   60000,
 )
 
-it("rejects nonconverging cylindrical G2 ends with a measured curvature diagnostic and preserves recovery", () => {
+it("matches nonzero cylindrical G2 curvature at both independent section ends", () => {
   const sections = [0, 10].map(
     (z): AnalyticalProfile => ({
       frame: { origin: [0, 0, z], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
@@ -293,16 +293,41 @@ it("rejects nonconverging cylindrical G2 ends with a measured curvature diagnost
       start: [constraint],
       end: [constraint],
     }
-    let failure: unknown
+    const shape = createOcctLoftPatchNetwork(occt, network)
     try {
-      const unexpected = createOcctLoftPatchNetwork(occt, network)
-      unexpected.delete()
-    } catch (error) {
-      failure = error
+      validateOcctProfileSolid(occt, shape)
+      expect(measureVolume(shape)).toBeCloseTo(10 * Math.PI, 3)
+      const faces = shape.faces
+      try {
+        const wall = faces.reduce((nearest, face) =>
+          projectedPoint(face, [Math.SQRT2, Math.SQRT2, 5]).distance <
+          projectedPoint(nearest, [Math.SQRT2, Math.SQRT2, 5]).distance
+            ? face
+            : nearest,
+        )
+        for (const z of [0, 10])
+          for (const angle of [Math.PI / 8, Math.PI / 4, (3 * Math.PI) / 8]) {
+            const point: SimplePoint = [2 * Math.cos(angle), 2 * Math.sin(angle), z],
+              projection = projectedPoint(wall, point),
+              normal = wall.normalAt(point)
+            try {
+              expect(projection.distance).toBeLessThan(1e-7)
+              const [nx, ny, nz] = normal.toTuple(),
+                dot = Math.abs(nx * Math.cos(angle) + ny * Math.sin(angle)) / Math.hypot(nx, ny, nz)
+              expect(Math.acos(Math.min(1, dot))).toBeLessThan(1e-5)
+              expect(Math.abs(maximumPrincipalCurvature(wall, projection.uv) - 0.5)).toBeLessThan(
+                1e-4,
+              )
+            } finally {
+              normal.delete()
+            }
+          }
+      } finally {
+        for (const face of faces) face.delete()
+      }
+    } finally {
+      shape.delete()
     }
-    if (!(failure instanceof Error)) throw new Error("Nonconverging curved G2 must fail closed.")
-    expect(failure.message).toMatch(/^OCCT Loft filling exceeded continuity tolerances/)
-    expect(Number(/curvature=([\deE+.-]+)/.exec(failure.message)?.[1])).toBeGreaterThan(1e-4)
     expect(measureVolume(cylinder)).toBeCloseTo(10 * Math.PI, 5)
     const recovered = createOcctLoftPatchNetwork(occt, fixture())
     try {

@@ -44,8 +44,10 @@ ambiguous, changed, partial, or unavailable support topology fails construction.
 ## Native continuity and validation
 
 MakeFilling uses bounded resolution (50 points, five iterations), degree 3 for G1 or degree 4 for G2,
-and approximation limits of degree 12 and 128 segments. A planar support supplies an orthogonal native
-initial parameterization when available. Construction distance tolerances are 1e-9 mm; acceptance
+and approximation limits of degree 12 and 128 segments. A planar or cylindrical support supplies its
+exact native initial surface when available; those analytic surfaces have the orthogonal local UV
+derivatives required by LoadInitSurface. Other supports retain the bounded planar initialization.
+Construction distance tolerances are 1e-9 mm; acceptance
 remains 1e-7 mm C0, 1e-5 radians G1, and 1e-4 inverse millimeters G2.
 
 Native filling error reports are necessary but insufficient: an independent probe found guide
@@ -72,12 +74,13 @@ an actionable geometry diagnostic. Nonconverging constraints are rejected: the t
 excursion does not satisfy this pinned builder's strict residual policy, while smaller guide and mixed
 G1/G2 end constraints produce a measurable changed solid.
 
-Positive G2 evidence currently covers planar support faces with native D2 curvature checks. A
-radius-2 mm quarter-cylinder with matching complete native boundary pcurves and independent G2 at
-both ends is rejected: the pinned builder reports distance 2.86e-6, angle 4.96e-5 and curvature 0.25036.
-This is an actionable curved-support convergence gap, not proof that curved G2 is impossible. Keep
-the strict fail-closed regression and investigate initialization, parameterization and native error
-units before claiming positive nonzero-curvature G2 support.
+Positive G2 evidence covers planar faces and a radius-2 mm quarter-cylinder with matching complete
+native boundary pcurves and independent G2 at both ends. The cylinder's exact initial surface resolves
+the former planar-initialization failure without changing resolution or acceptance tolerances. Native
+nearest projection and independent D2 principal curvature checks verify 0.5 inverse millimeters at
+both ends, and the resulting closed solid has volume 10π cubic millimeters. OCCT's LocalAnalysis G2
+error also measures curvature in inverse-length units. This evidence does not guarantee convergence
+for arbitrary curved supports or certify continuous whole-edge curvature agreement.
 
 ## Evidence and integration boundary
 
@@ -100,3 +103,5 @@ share these contracts.
 - [OCCT BRepAdaptor_Surface derivatives](https://occt3d.com/dev/doc/refman/html/class_b_rep_adaptor___surface.html)
 - [OCCT V7_9_2 BRepFill_Filling AddConstraints](https://github.com/Open-Cascade-SAS/OCCT/blob/V7_9_2/src/BRepFill/BRepFill_Filling.cxx)
 - [OCCT V7_9_2 BRepFill_CurveConstraint derivative-order contract](https://github.com/Open-Cascade-SAS/OCCT/blob/V7_9_2/src/BRepFill/BRepFill_CurveConstraint.cxx)
+- [OCCT V7_9_2 MakeFilling initial-surface requirements](https://github.com/Open-Cascade-SAS/OCCT/blob/V7_9_2/src/BRepOffsetAPI/BRepOffsetAPI_MakeFilling.hxx)
+- [OCCT V7_9_2 LocalAnalysis G2 curvature metric](https://github.com/Open-Cascade-SAS/OCCT/blob/V7_9_2/src/LocalAnalysis/LocalAnalysis_SurfaceContinuity.cxx)

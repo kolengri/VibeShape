@@ -313,9 +313,12 @@ function patch(
       128,
     ),
   )
-  const planarSupport = [start, end].find((condition) => condition?.support.geomType === "PLANE")
-  const initial = planarSupport
-    ? copiedSupport(occt, planarSupport.support, own)
+  // MakeFilling requires orthogonal initial UV coordinates; native planes and cylinders satisfy it.
+  const orthogonalSupport = [start, end].find(
+    (condition) => condition && ["PLANE", "CYLINDRE"].includes(condition.support.geomType),
+  )
+  const initial = orthogonalSupport
+    ? copiedSupport(occt, orthogonalSupport.support, own)
     : own(
         makePolygon([
           point(first.section.frame, required(first.segments[index]).start),
