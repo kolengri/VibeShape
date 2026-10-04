@@ -49,6 +49,7 @@ import {
   patternFeatureParametersSchema,
   patternFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-pattern"
+import { placementFeatureParametersSchema } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import {
   splitFeatureParametersSchema,
@@ -232,6 +233,10 @@ const exactBodyFeature = {
   dependencies: featureRecordSchema.shape.dependencies.length(1),
   references: featureRecordSchema.shape.references.max(0),
 }
+const placement = z
+  .object({ ...exactBodyFeature, parameters: placementFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Placement"))
 function matchingBodyDependency(operation: string) {
   return (
     input: { dependencies: readonly string[]; parameters: { targetBody: { featureId: string } } },
@@ -480,6 +485,8 @@ const compound = z
   )
 
 export const localCadInputs = {
+  create_placement: placement,
+  update_placement: placement,
   create_reference_body_pattern: referenceBodyPattern,
   update_reference_body_pattern: referenceBodyPattern,
   create_reference_split: referenceSplit,
@@ -519,6 +526,12 @@ export const localCadInputs = {
 } as const
 
 export const localCadOperations = [
+  z
+    .object({ tool: z.literal("create_placement"), arguments: localCadInputs.create_placement })
+    .strict(),
+  z
+    .object({ tool: z.literal("update_placement"), arguments: localCadInputs.update_placement })
+    .strict(),
   z
     .object({ tool: z.literal("create_reference_body_pattern"), arguments: referenceBodyPattern })
     .strict(),

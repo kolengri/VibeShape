@@ -36,7 +36,10 @@ const otherActor = commandActorSchema.parse({
 })
 
 function command(
-  kind: "org.vibeshape.document.create" | "org.vibeshape.document.rename",
+  kind:
+    | "org.vibeshape.document.create"
+    | "org.vibeshape.document.rename"
+    | "org.vibeshape.sketch.add",
   baseRevision: number,
   name: string,
   commandId: string,
@@ -198,6 +201,101 @@ function applyRequest(commandInput: unknown, draftId = draftIdA) {
 }
 
 describe("automation draft host", () => {
+  it("reads a detached owned sketch for trusted preparation without renewing expiry or saving", async () => {
+    const store = documentStore(null)
+    let now = startedAt
+    const host = automationHost(store.port, { now: () => now, draftTtlMs: 100 })
+    if (!host.readOwnedSketch)
+      throw new Error("Expected the trusted owned-sketch preparation port.")
+    await host.createDraft(actor, createRequest(0))
+    await host.applyCommand(
+      actor,
+      applyRequest(
+        command("org.vibeshape.document.create", 0, "Text", "0195b5ac-b21a-7a2c-8c33-67a36a7f21ac"),
+      ),
+    )
+    const sketch = {
+      schemaVersion: 0,
+      id: "0195b5ac-b250-7a2c-8c33-000000000001",
+      label: "Text sketch",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    }
+    await host.applyCommand(
+      actor,
+      applyRequest(
+        command("org.vibeshape.sketch.add", 1, "unused", "0195b5ac-b21b-7a2c-8c33-67a36a7f21ac", {
+          payload: { sketch },
+        }),
+      ),
+    )
+    const request = { schemaVersion: 1, draftId: draftIdA, revision: 2, sketchId: sketch.id }
+    now += 99
+    const read = await host.readOwnedSketch(actor, request)
+    expect(read).toMatchObject({ ok: true, value: sketch })
+    if (!read.ok) throw new Error("Expected owned sketch data.")
+    expect(await host.readOwnedSketch(otherActor, request)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "draft-owner-mismatch" },
+    })
+    expect(await host.readOwnedSketch(actor, { ...request, revision: 1 })).toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-query-revision" },
+    })
+    expect(
+      await host.readOwnedSketch(actor, {
+        ...request,
+        sketchId: "0195b5ac-b250-7a2c-8c33-000000000002",
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-draft-request" } })
+    Object.assign(read.value, { label: "Altered detached copy" })
+    expect(await host.readOwnedSketch(actor, request)).toMatchObject({
+      ok: true,
+      value: { label: "Text sketch" },
+    })
+    expect(store.snapshot()).toBeNull()
+    now++
+    expect(await host.readOwnedSketch(actor, request)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "draft-expired" },
+    })
+  })
+
+  it("revalidates the committed base across asynchronous owned-sketch reads", async () => {
+    const initial = applyDocumentCommand(
+      null,
+      command("org.vibeshape.document.create", 0, "Text", "0195b5ac-b21a-7a2c-8c33-67a36a7f21ac"),
+    )
+    if (!initial.ok) throw new Error("Expected created document.")
+    const sketch = {
+      schemaVersion: 0,
+      id: "0195b5ac-b250-7a2c-8c33-000000000001",
+      label: "Saved text sketch",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    }
+    const added = applyDocumentCommand(
+      initial.snapshot,
+      command("org.vibeshape.sketch.add", 1, "unused", "0195b5ac-b21b-7a2c-8c33-67a36a7f21ac", {
+        payload: { sketch },
+      }),
+    )
+    if (!added.ok) throw new Error("Expected saved sketch.")
+    const store = documentStore(added.snapshot)
+    const host = automationHost(store.port)
+    await host.createDraft(actor, createRequest(2))
+    store.replace({ ...added.snapshot, revision: 3 })
+    expect(
+      await host.readOwnedSketch?.(actor, {
+        schemaVersion: 1,
+        draftId: draftIdA,
+        revision: 2,
+        sketchId: sketch.id,
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "stale-revision" } })
+  })
   it("creates, previews, and atomically commits an owner-bound multi-command draft", async () => {
     const store = documentStore(null)
     const host = automationHost(store.port)
