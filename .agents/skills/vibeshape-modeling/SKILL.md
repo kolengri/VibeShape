@@ -12,6 +12,8 @@ For editable printable relief, read [surface texture proposals](references/surfa
 
 Translate the request into dimensions, units, mating interfaces, target body, and acceptance measurements. Ask only for missing information that changes the design. For reversible choices, state a reasonable assumption and continue. Preserve protected interfaces and existing model intent.
 
+Make all editable design dimensions and numeric controls variable-driven by default: lengths, thicknesses, diameters/radii, clearances, offsets, angles, and supported counts. Create or reuse named document variables before their consumers, and retain `#name` references or derived expressions in sketch constraints and feature quantities instead of baking in evaluated numbers. Follow the [variable authoring contract](references/modeling.md#variables), including expression support limits and editability checks.
+
 For modifying Revolve or Subtract on a Pattern/Split constituent, use the exact-body contracts in
 [modeling contracts and recipes](references/modeling.md); preserve output roles and sibling Parts.
 
