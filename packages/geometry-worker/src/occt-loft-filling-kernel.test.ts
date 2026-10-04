@@ -351,11 +351,12 @@ it.each(["C0", "G1"] as const)(
       [-3, -2, 11],
     ])
     try {
+      // Smaller excursions still fail strict residual gates without the costly 1 mm fit.
       expect(() =>
         createOcctLoftPatchNetwork(occt, {
-          ...fixture(1),
+          ...fixture(order === "C0" ? 0.01 : 0.1),
           start: order === "C0" ? [] : [{ segmentTrack: 0, continuity: order, support }],
-        }),
+        }).delete(),
       ).toThrow(/exceeded.*tolerance/)
       const recovered = createOcctLoftPatchNetwork(occt, fixture())
       recovered.delete()
