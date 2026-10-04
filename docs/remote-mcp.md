@@ -10,7 +10,7 @@ The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,
 `create_compound`/`update_compound`. Plane support/offset, legacy whole-result subtraction and v2
 exact-body selections follow the same [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
 and owner-bound revisioned drafts as local stdio. An explicit browser session auto-apply grant
-covers Union v2 and Loft v1 creation and same-version edits; Compound and schema upgrades require
+covers Union v2 and Loft v1/v2/v3 creation and same-version edits; Compound and schema upgrades require
 manual review. Tools cannot enable the grant.
 
 The shared catalog also exposes `draft_body_measurements` and `draft_body_topology`. They evaluate
@@ -206,7 +206,6 @@ The 192 KiB remote work budget is unchanged. Known units are required for STEP/B
 its declared units. Paths, URLs, caller hashes, pins and provenance are not accepted. See
 [ADR-0091](adr/0091-paired-native-source-imports.md) and the bundled modeling native-import workflow.
 SVG/DXF sketch import uses the distinct planar source tools described below. Editable `.vshape` project import remains an editor workflow.
-
 
 ## Planar source import
 

@@ -37,6 +37,28 @@ function domainCandidate(
   return result
 }
 
+function supportCandidates(reference: PlanarFaceTopoRef, candidates: readonly TopologyCandidate[]) {
+  const direction = reference.signature.direction
+  if (
+    reference.semanticRole !== "datum.plane" ||
+    reference.signature.directionMode !== "oriented" ||
+    !direction
+  )
+    return candidates
+  // Datum display caps share one role; retain the authored oriented face rather than a native index.
+  return candidates.filter((candidate) => {
+    const signature = candidate.signature
+    return (
+      candidate.kind === "face" &&
+      candidate.semanticRole === "datum.plane" &&
+      signature.geometryClass === "PLANE" &&
+      signature.directionMode === "oriented" &&
+      signature.direction &&
+      Math.hypot(...signature.direction.map((value, i) => value - (direction[i] ?? 0))) <= 1e-9
+    )
+  })
+}
+
 export function inspectPlanarSupportHealth(
   reference: PlanarFaceTopoRef,
   rebuild: DocumentRebuiltResponse | undefined,
@@ -51,7 +73,7 @@ export function inspectPlanarSupportHealth(
   if (!geometry) return { status: "unknown" }
   const resolution = resolveTopologyReference(
     reference,
-    geometry.geometry.topologyCandidates.map(domainCandidate),
+    supportCandidates(reference, geometry.geometry.topologyCandidates.map(domainCandidate)),
   )
   if (resolution.status !== "resolved") return { status: resolution.status }
   const candidate = geometry.geometry.topologyCandidates.find(

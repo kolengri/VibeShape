@@ -1,6 +1,11 @@
 import {
+  applyDocumentCommand,
   createEmptySketch,
+  type DocumentEvent,
+  type DocumentSnapshot,
+  documentCommandSchema,
   featureIdSchema,
+  replayDocumentEvents,
   sketchIdSchema,
   sketchRecordSchema,
   topologyCandidateSchema,
@@ -10,6 +15,8 @@ import {
   topologyCandidateSchema as workerTopologyCandidateSchema,
 } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import { createCylindricalLoftProject } from "../../../../../tests/support/loft-v3-cylinder-fixture"
+import { loftFixtureId as id } from "../../../../../tests/support/loft-v3-fixture"
 import type { DocumentControllerState } from "../../document/document-controller"
 import {
   inspectSketchSupportHealth,
@@ -53,19 +60,20 @@ function supportedSketch() {
 function rebuiltResponse(
   topologyCandidates: readonly ReturnType<typeof candidate>[],
   status: "succeeded" | "failed" | "blocked" | "suppressed" = "succeeded",
+  owner = featureId,
 ) {
   const record =
     status === "succeeded"
-      ? { featureId, status, contentHash: "a".repeat(64) }
+      ? { featureId: owner, status, contentHash: "a".repeat(64) }
       : status === "failed"
         ? {
-            featureId,
+            featureId: owner,
             status,
             diagnostics: [{ code: "test.failure", values: {} }],
           }
         : status === "blocked"
-          ? { featureId, status, blockedBy: [featureId] }
-          : { featureId, status }
+          ? { featureId: owner, status, blockedBy: [featureId] }
+          : { featureId: owner, status }
   return {
     type: "documentRebuilt",
     requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f2611",
@@ -79,7 +87,7 @@ function rebuiltResponse(
     },
     geometry: [
       {
-        featureId,
+        featureId: owner,
         contentHash: "a".repeat(64),
         meshPolicy: "visible",
         geometry: { topologyCandidates },
@@ -169,6 +177,134 @@ describe("selectedPlanarFaceReference", () => {
 })
 
 describe("inspectSketchSupportHealth", () => {
+  it("resolves opposing Datum caps by the authored orientation and preserves duplicate or legacy ambiguity", () => {
+    const front = candidate({ semanticRole: "datum.plane" }),
+      back = candidate({
+        candidateId: "face:back",
+        meshFaceId: 43,
+        semanticRole: "datum.plane",
+        signature: { ...front.signature, direction: [0, 0, -1] },
+      })
+    const support = selectedSketchSupport(featureId, 42, [front, back])
+    if (!support) throw new Error("The oriented Datum support must exist.")
+    const sketch = createEmptySketch({ id: sketchId, label: "Datum sketch", ...support })
+    for (const caps of [
+      [front, back],
+      [back, front],
+    ])
+      expect(inspectSketchSupportHealth(sketch, rebuiltResponse(caps))).toEqual({
+        status: "resolved",
+      })
+    expect(
+      inspectSketchSupportHealth(
+        sketch,
+        rebuiltResponse([front, candidate({ ...front, candidateId: "duplicate", meshFaceId: 44 })]),
+      ),
+    ).toEqual({ status: "ambiguous" })
+    const movedFront = candidate({
+        ...front,
+        signature: {
+          ...front.signature,
+          centroid: [0, 0, 40],
+          bounds: { min: [-10, -10, 40], max: [10, 10, 40] },
+        },
+      }),
+      movedBack = candidate({
+        ...back,
+        signature: {
+          ...back.signature,
+          centroid: [0, 0, 39.99],
+          bounds: { min: [-10, -10, 39.99], max: [10, 10, 39.99] },
+        },
+      })
+    expect(inspectSketchSupportHealth(sketch, rebuiltResponse([movedBack, movedFront]))).toEqual({
+      status: "resolved",
+    })
+    for (const signature of [
+      { ...support.support.reference.signature, directionMode: "axis" },
+      { ...support.support.reference.signature, direction: undefined, directionMode: undefined },
+    ]) {
+      const legacy = sketchRecordSchema.parse({
+        ...sketch,
+        support: {
+          ...support.support,
+          reference: {
+            ...support.support.reference,
+            signature,
+          },
+        },
+      })
+      expect(inspectSketchSupportHealth(legacy, rebuiltResponse([front, back]))).toEqual({
+        status: "ambiguous",
+      })
+    }
+  })
+
+  it("keeps an edited Datum attachment unresolved through replay until its changed orientation is explicitly repaired", () => {
+    const fixture = createCylindricalLoftProject(),
+      upper = fixture.snapshot.sketches.find((sketch) => sketch.id === id(2000)),
+      datum = fixture.snapshot.features.find((feature) => feature.id === id(870))
+    if (!upper?.support || !datum) throw new Error("The authored Datum attachment must exist.")
+    const front = candidate({
+        semanticRole: "datum.plane",
+        signature: {
+          ...candidate().signature,
+          direction: [0, -1, 0],
+          centroid: [0, -10.005, 0],
+          bounds: { min: [-10, -10.005, -10], max: [10, -10.005, 10] },
+        },
+      }),
+      back = candidate({
+        ...front,
+        candidateId: "face:back",
+        meshFaceId: 43,
+        signature: {
+          ...front.signature,
+          direction: [0, 1, 0],
+          centroid: [0, -9.995, 0],
+          bounds: { min: [-10, -9.995, -10], max: [10, -9.995, 10] },
+        },
+      })
+    const edited = authoredCommand(
+      fixture.snapshot,
+      "org.vibeshape.feature.update",
+      {
+        feature: {
+          ...datum,
+          parameters: { ...datum.parameters, support: { kind: "origin-plane", plane: "xz" } },
+        },
+      },
+      id(9300),
+    )
+    const replayed = replayedSnapshot([...fixture.events, edited.event])
+    expect(replayed).toEqual(edited.snapshot)
+    expect(replayed.sketches.find(({ id: sketchId }) => sketchId === upper.id)).toEqual(upper)
+    expect(
+      inspectSketchSupportHealth(upper, rebuiltResponse([front, back], "succeeded", datum.id)),
+    ).toEqual({ status: "missing" })
+    const currentSupport = selectedSketchSupport(datum.id, 42, [back, front])
+    if (!currentSupport) throw new Error("The current oriented Datum face must be selectable.")
+    const repaired = authoredCommand(
+      replayed,
+      "org.vibeshape.sketch.update",
+      { sketch: { ...upper, ...currentSupport } },
+      id(9301),
+    )
+    const repairedReplay = replayedSnapshot([...fixture.events, edited.event, repaired.event])
+    expect(repairedReplay).toEqual(repaired.snapshot)
+    const repairedSketch = repaired.snapshot.sketches.find(
+      ({ id: sketchId }) => sketchId === upper.id,
+    )
+    if (!repairedSketch) throw new Error("Repair must preserve the sketch identity.")
+    expect(repairedSketch.entities).toEqual(upper.entities)
+    expect(repairedSketch.constraints).toEqual(upper.constraints)
+    expect(
+      inspectSketchSupportHealth(
+        repairedSketch,
+        rebuiltResponse([front, back], "succeeded", datum.id),
+      ),
+    ).toEqual({ status: "resolved" })
+  })
   it.each(["resolved", "missing", "ambiguous"] as const)(
     "preserves %s face support with worker edge display data present",
     (status) => {
@@ -267,6 +403,35 @@ describe("inspectSketchSupportHealth", () => {
     ).toBeNull()
   })
 })
+
+function authoredCommand(
+  snapshot: DocumentSnapshot,
+  kind: string,
+  payload: unknown,
+  commandId: string,
+) {
+  const result = applyDocumentCommand(
+    snapshot,
+    documentCommandSchema.parse({
+      schemaVersion: 1,
+      kind,
+      commandId,
+      documentId: snapshot.id,
+      baseRevision: snapshot.revision,
+      issuedAt: "2026-10-04T00:00:00Z",
+      actor: { type: "user", userId: null },
+      payload,
+    }),
+  )
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  return result
+}
+
+function replayedSnapshot(events: readonly DocumentEvent[]) {
+  const result = replayDocumentEvents(events)
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  return result.snapshot
+}
 
 it("never converts a constituent face selection into a whole-feature topology reference", () => {
   const response = rebuiltResponse([candidate()])

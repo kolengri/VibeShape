@@ -71,7 +71,7 @@ Both local and paired remote MCP expose `create_datum_plane`/`update_datum_plane
 offset intent. Boolean subtraction retains legacy whole-result target/tool semantics; Union and
 Compound select ordered exact bodies through schema v2. Read the
 [modeling contract](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
-before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1 creation
+before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1/v2/v3 creation
 and same-version edits; Compound and version-upgrade edits still require review.
 
 The current MCP surface is a supported subset of the editor, not full CAD parity. Placement and
@@ -116,7 +116,6 @@ The 192 KiB remote work budget is unchanged. Known units are required for STEP/B
 its declared units. Paths, URLs, caller hashes, pins and provenance are not accepted. See
 [ADR-0091](adr/0091-paired-native-source-imports.md) and the bundled modeling native-import workflow.
 SVG/DXF sketch import uses the distinct planar source tools described below. Editable `.vshape` project import remains an editor workflow.
-
 
 ## Planar source import
 
