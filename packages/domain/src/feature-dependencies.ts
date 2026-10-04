@@ -77,20 +77,26 @@ export function featureBodyDependencies(
   if (compound) return compound.slots.map(({ targetBody }) => targetBody)
   const union = readUnionFeatureParameters(feature)
   if (union) return union.bodies
-  const extrusion = readExtrusionFeatureParameters(feature)
-  const target =
-    extrusion?.targetBody ??
-    readThreadFeatureParameters(feature)?.targetBody ??
-    readHoleBodyTarget(feature) ??
-    readPlacementFeatureParameters(feature)?.targetBody ??
-    (readMirrorFeatureParameters(feature) ?? readMirrorFeatureParametersV3(feature))?.targetBody ??
-    (readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature))
-      ?.targetBody ??
-    readShellFeatureParameters(feature)?.targetBody ??
-    (readSplitFeatureParameters(feature) ?? readSplitFeatureParametersV2(feature))?.targetBody
-  if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
+  for (const readTarget of exactBodyTargetReaders) {
+    const target = readTarget(feature)
+    if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
+  }
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
 }
+
+const exactBodyTargetReaders = [
+  (feature: FeatureRecord) => readExtrusionFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) => readThreadFeatureParameters(feature)?.targetBody,
+  readHoleBodyTarget,
+  (feature: FeatureRecord) => readPlacementFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) =>
+    (readMirrorFeatureParameters(feature) ?? readMirrorFeatureParametersV3(feature))?.targetBody,
+  (feature: FeatureRecord) =>
+    (readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature))?.targetBody,
+  (feature: FeatureRecord) => readShellFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) =>
+    (readSplitFeatureParameters(feature) ?? readSplitFeatureParametersV2(feature))?.targetBody,
+]
 
 /** Exact geometry inputs include retained end supports without consuming their bodies. */
 export function featureGeometryDependencies(feature: FeatureRecord) {

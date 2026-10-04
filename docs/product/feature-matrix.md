@@ -132,7 +132,8 @@ variable-aware diameter/depth, forward/reverse direction, blind or directional t
 exact preview, and explicit missing-point repair. Apply uses ordinary committed undo/redo.
 Named `create_hole` / `update_hole` MCP tools share the same intent and draft/review path.
 Native backup/reopen and STEP/STL/3MF export are covered by the Hole delivery evidence.
-Countersink, counterbore, threads, drill-tip geometry, and constituent-body targeting remain open.
+Hole v3 adds counterbore and countersink geometry on an exact constituent body; modeled Thread
+uses its separate custom-groove contract. Drill-tip geometry remains open.
 
 Fillet and Chamfer schema version 1 treat all edges of one explicit solid target. The task panel
 accepts a variable-aware radius or equal chamfer distance, requires the latest exact preview before

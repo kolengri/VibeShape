@@ -18,7 +18,9 @@ use the ordinary document lifecycle. Saving failures preserve the task values an
 submission lock for retry.
 
 `create_thread` and `update_thread` use the ordinary paired owned draft route. Supply the exact
-`targetBody`, its sole matching dependency, empty topology references, and all authored quantities.
+`targetBody`, its matching first dependency and any distinct axis support producer, empty generic
+topology references, and all authored quantities. A shared axis object selects v2; legacy XYZ axis
+and origin quantities retain v1. Body-bound edge references stay inside `parameters.axis`.
 Use a fresh command ID and the current draft revision. Preview must succeed before the ordinary
 commit operation can apply the draft.
 

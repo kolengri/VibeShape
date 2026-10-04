@@ -15,7 +15,8 @@ Use \`draft_body_topology\` to select openings on a new draft body and create Sh
 one final Apply. Shell openings require current exact body topology references and their source content hash. Sweep
 requires an already aligned profile at the start of an open tangent-continuous line/arc path;
 Loft takes two to twenty-four ordered hole-free sections within a 2,000-curve aggregate budget. Thread models a custom 60-degree V groove
-with at most sixteen total turns, without ISO/DIN fit certification. Use the live schema for
+with at most twenty single-start turns in v2 and sixteen turns for multi-start or legacy v1,
+without ISO/DIN fit certification. Use the live schema for
 limits, quantities, dependencies and repair; exact preview remains mandatory.
 
 Before writing, read the modeling skill's construction strategy. Prefer dimensioned analytical
@@ -481,15 +482,40 @@ its stored Distance remains the total span split equally about the sketch plane,
 existing schema versions 1–4. There is no starting offset or arbitrary direction in this contract.
 All four result operations preserve their existing explicit target/support dependencies.
 
+## Exact extrusion endpoints and fastener recesses
+
+Extrude v6 is selected by supplying \`targetBody\`, \`startOffset\`, \`draftAngle\`, and
+\`endCondition\` alongside the v5 profile/depth fields. New requires null targetBody;
+Add/Remove/Intersect require one exact named body. Offset is a signed length and draft a signed
+angle within 45 degrees, measured from the shifted sketch neutral plane. Distance uses
+\`{kind:"distance"}\`. Through-all and up-to-body use \`{kind,targetBody,sourceContentHash}\`;
+up-to-face also includes a stable body-bound planar \`face\`. Inspect the current role, topology
+and content hash together. Dependencies are the modifying target first, optional sketch support,
+and a distinct end producer last, with duplicate producers retained once. Dynamic endpoints
+require one directional extent; stale, unreachable, ambiguous or partially covering supports fail
+closed. Up-to-face is limited to finite planar faces.
+
+Hole v3 adds required \`targetBody\` and \`treatment\`: simple, counterbore with typed diameter
+and depth, or countersink with typed diameter and included angle between 10 and 170 degrees.
+The recess diameter exceeds the hole diameter and a blind recess leaves positive cylindrical depth.
+Preserve the complete treatment, body scope, point IDs and expressions on update.
+
+Thread v2 uses a shared origin-axis, datum-axis, stable linear-edge or explicit-axis object in
+\`axis\`, without the legacy \`origin\` field. Explicit origins are mm tuples and directions
+are signed unit tuples. Keep the exact target first and any distinct axis producer second;
+generic references remain empty because exact edge topology stays inside the axis object.
+V2 allows twenty single-start turns; multi-start and legacy XYZ-axis v1 remain bounded to sixteen.
+Run-in/run-out are unthreaded allowances. Preserve complete quantity and axis intent when updating.
+
 ## Inspection, scope and limits
 
 \`model_edges\` and \`draft_edges\` return durable selectable edge references; use only resolved
 references for selected treatments. \`model_body_measurements\` returns named output roles.
-\`model_body_topology\` can inspect committed body edges/faces, but those body-scoped topology
-references and content hash select Shell opening faces; edge treatments retain their separate
-selection contract. Draft body/face/profile inspection
-is not exposed. A newly authored single-solid Extrude declares the body role \`result\`; use
-legacy Hole semantics in the example, or preserve a known exact \`targetBody\` on update.
+\`model_body_topology\` and \`draft_body_topology\` inspect current named body edges/faces.
+Their exact references and content hash select Shell openings and Extrude planar endpoints;
+stable LINE references also select Thread axes. Edge treatments retain their separate selection
+contract. Use \`draft_body_measurements\` for unsaved output roles. A newly authored single-solid
+Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on scoped updates.
 
 Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
