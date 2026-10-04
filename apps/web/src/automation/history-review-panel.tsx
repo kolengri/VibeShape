@@ -72,9 +72,11 @@ export function HistoryAutomationReviewPanel({
               <p className="mt-2 text-xs">
                 {t("assemblyOccurrenceCount", { count: input.preview.assembly.occurrenceCount })}
               </p>
-              <p className="mt-2 text-xs">
-                {t("assemblyDof", { count: input.preview.assembly.degreesOfFreedom })}
-              </p>
+              {input.preview.assembly.degreesOfFreedom === undefined ? null : (
+                <p className="mt-2 text-xs">
+                  {t("assemblyDof", { count: input.preview.assembly.degreesOfFreedom })}
+                </p>
+              )}
             </>
           ) : null}
         </section>

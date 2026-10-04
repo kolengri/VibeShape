@@ -919,7 +919,9 @@ export function createActiveDocumentAutomationSession() {
       )
       return {
         occurrenceCount: result.inspection.occurrences.length,
-        degreesOfFreedom: result.inspection.kinematics?.degreesOfFreedom ?? 0,
+        ...(result.inspection.kinematics
+          ? { degreesOfFreedom: result.inspection.kinematics.degreesOfFreedom }
+          : {}),
       }
     },
     commit: (input) => commitReviewedHistory(active, input),

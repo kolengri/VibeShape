@@ -57,7 +57,7 @@ const evidenceSchema = z
     assembly: z
       .object({
         occurrenceCount: z.number().int().nonnegative().safe(),
-        degreesOfFreedom: z.number().int().nonnegative().safe(),
+        degreesOfFreedom: z.number().int().nonnegative().safe().optional(),
       })
       .strict()
       .optional(),
