@@ -493,7 +493,15 @@ up-to-face also includes a stable body-bound planar \`face\`. Inspect the curren
 and content hash together. Dependencies are the modifying target first, optional sketch support,
 and a distinct end producer last, with duplicate producers retained once. Dynamic endpoints
 require one directional extent; stale, unreachable, ambiguous or partially covering supports fail
-closed. Up-to-face is limited to finite planar faces.
+closed. V6 up-to-face remains limited to finite planar faces.
+
+The additive \`create_face_extent_extrude\` and \`update_face_extent_extrude\` tools author v7
+up-to-face only. Use the same advanced fields with a current exact finite planar or curved
+\`BodyFaceRef\` and captured support hash from body topology inspection. Curved termination
+requires one complete reachable cap, with every new cap lying on the selected finite face.
+Partial patches, neighboring caps, inside starts, unreachable or stale supports fail closed;
+finite surfaces are never extended implicitly. Explicit legacy upgrades require manual browser
+review. A saved v7 stays v7 when its endpoint is changed to a planar face.
 
 Hole v3 adds required \`targetBody\` and \`treatment\`: simple, counterbore with typed diameter
 and depth, or countersink with typed diameter and included angle between 10 and 170 degrees.
@@ -512,7 +520,7 @@ Run-in/run-out are unthreaded allowances. Preserve complete quantity and axis in
 \`model_edges\` and \`draft_edges\` return durable selectable edge references; use only resolved
 references for selected treatments. \`model_body_measurements\` returns named output roles.
 \`model_body_topology\` and \`draft_body_topology\` inspect current named body edges/faces.
-Their exact references and content hash select Shell openings and Extrude planar endpoints;
+Their exact references and content hash select Shell openings and versioned Extrude face endpoints;
 stable LINE references also select Thread axes. Edge treatments retain their separate selection
 contract. Use \`draft_body_measurements\` for unsaved output roles. A newly authored single-solid
 Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on scoped updates.

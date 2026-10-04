@@ -24,6 +24,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -263,6 +264,7 @@ const extrusionTypeKeys = new Set(
     extrusionFeatureTypeV4,
     extrusionFeatureTypeV5,
     extrusionFeatureTypeV6,
+    extrusionFeatureTypeV7,
   ].map(({ type }) => featureTypeKey(type)),
 )
 const multiProfileResultTypeKeys = new Set([

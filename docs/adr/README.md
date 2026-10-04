@@ -86,6 +86,8 @@
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 
+| [0094](0094-finite-curved-face-extrusion.md) | Accepted | Exact finite curved-face extrusion and additive v7 authoring |
+
 Statuses:
 
 - `Proposed` — under discussion

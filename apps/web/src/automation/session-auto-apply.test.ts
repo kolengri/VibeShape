@@ -156,6 +156,7 @@ describe("session CAD auto-apply allowlist", () => {
   it.each([
     [5, true],
     [6, false],
+    [7, false],
   ] as const)("explicitly bounds independent extrusion schema version %i", (version, expected) => {
     const review = input()
     const command = review.commands[0]

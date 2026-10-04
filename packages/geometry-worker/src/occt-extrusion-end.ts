@@ -1,5 +1,10 @@
 import type { Face, Shape3D } from "replicad"
-import type { OpenCascadeInstance, TopAbs_ShapeEnum } from "replicad-opencascadejs"
+import type {
+  BRepBuilderAPI_MakeShape,
+  OpenCascadeInstance,
+  TopAbs_ShapeEnum,
+  TopoDS_Shape,
+} from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
 import { createOcctBox, cutOcctShapes, intersectOcctShapes } from "./occt-shapes"
@@ -71,9 +76,23 @@ export function terminateExtrusionAtBody(
   end: Point,
   normal: Point,
 ) {
+  const cut = cutOcctShapes(occt, tool, target)
+  try {
+    return takeBoundedExtrusionPart(occt, tool, cut, start, end, normal)
+  } finally {
+    cut.delete()
+  }
+}
+function takeBoundedExtrusionPart(
+  occt: OpenCascadeInstance,
+  tool: Shape3D,
+  cut: Shape3D,
+  start: Point,
+  end: Point,
+  normal: Point,
+) {
   const expected = capArea(occt, tool, start, normal)
   if (expected <= 0) throw new Error("Extrusion start cap is unavailable.")
-  const cut = cutOcctShapes(occt, tool, target)
   let parts: Shape3D[] = []
   try {
     parts = solids(occt, cut)
@@ -98,7 +117,88 @@ export function terminateExtrusionAtBody(
     return result
   } finally {
     for (const part of parts) part.delete()
-    cut.delete()
+  }
+}
+/** Exact Boolean history distinguishes the borrowed prism boundary from newly created end faces. */
+export function terminateExtrusionAtFace(
+  occt: OpenCascadeInstance,
+  tool: Shape3D,
+  target: Shape3D,
+  support: Face,
+  start: Point,
+  end: Point,
+  normal: Point,
+) {
+  const resources: { delete(): void }[] = []
+  const own = <T extends { delete(): void }>(value: T) => {
+    resources.push(value)
+    return value
+  }
+  try {
+    const argumentsList = own(new occt.TopTools_ListOfShape_1())
+    const tools = own(new occt.TopTools_ListOfShape_1())
+    own(argumentsList.Append_1(tool.wrapped))
+    own(tools.Append_1(target.wrapped))
+    const progress = own(new occt.Message_ProgressRange_1())
+    const cutter = own(new occt.BRepAlgoAPI_Cut_1())
+    cutter.SetArguments(argumentsList)
+    cutter.SetTools(tools)
+    cutter.SetNonDestructive(true)
+    cutter.SetToFillHistory(true)
+    cutter.Build(progress)
+    if (!cutter.IsDone()) throw new Error("OCCT could not build the extrusion face endpoint.")
+    const cut = own(adoptOcctShape(cutter.Shape(), castOcctShape))
+    const originalBoundary = prismBoundaryDescendants(cutter, tool, own)
+    const result = takeBoundedExtrusionPart(occt, tool, cut, start, end, normal)
+    try {
+      validateNewFaceCoverage(occt, result, support, originalBoundary, progress)
+      return result
+    } catch (error) {
+      result.delete()
+      throw error
+    }
+  } finally {
+    for (const resource of resources.reverse()) resource.delete()
+  }
+}
+function prismBoundaryDescendants(
+  cutter: Pick<BRepBuilderAPI_MakeShape, "Modified">,
+  tool: Shape3D,
+  own: <T extends { delete(): void }>(value: T) => T,
+) {
+  const originals: TopoDS_Shape[] = []
+  for (const face of tool.faces) {
+    own(face)
+    originals.push(face.wrapped)
+    const modified = own(cutter.Modified(face.wrapped))
+    while (modified.Size() > 0) {
+      originals.push(own(modified.First_2()))
+      modified.RemoveFirst()
+    }
+  }
+  return originals
+}
+function validateNewFaceCoverage(
+  occt: OpenCascadeInstance,
+  result: Shape3D,
+  support: Face,
+  originalBoundary: readonly TopoDS_Shape[],
+  progress: InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>,
+) {
+  const faces = result.faces
+  let total = 0,
+    covered = 0
+  try {
+    for (const face of faces) {
+      if (originalBoundary.some((original) => original.IsSame(face.wrapped))) continue
+      const areas = faceIntersectionAreas(occt, face, support, progress)
+      total += areas.original
+      covered += areas.intersection
+    }
+    if (total <= 0 || Math.abs(total - covered) > Math.max(1e-7, total * 1e-7))
+      throw new Error("The selected finite end face must cover every new extrusion cap.")
+  } finally {
+    for (const face of faces) face.delete()
   }
 }
 export function terminateExtrusionAtPlane(

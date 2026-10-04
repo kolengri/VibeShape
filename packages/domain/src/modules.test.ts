@@ -5,7 +5,12 @@ import {
   featureCoreModule,
   partDesignModule,
 } from "./modules"
-import { booleanFeatureType, boxFeatureType, extrusionFeatureTypeV6 } from "./part-design"
+import {
+  booleanFeatureType,
+  boxFeatureType,
+  extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
+} from "./part-design"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { threadFeatureTypeV2 } from "./part-design-thread"
@@ -136,6 +141,9 @@ describe("module registry", () => {
       expect(result.registry.getFeatureType(extrusionFeatureTypeV6.type)).toEqual(
         extrusionFeatureTypeV6,
       )
+      expect(result.registry.getFeatureType(extrusionFeatureTypeV7.type)).toEqual(
+        extrusionFeatureTypeV7,
+      )
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
@@ -145,6 +153,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.compound",
         "org.vibeshape.feature.part-design.cone",
         "org.vibeshape.feature.part-design.cylinder",
+        "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",

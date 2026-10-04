@@ -14,6 +14,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -102,6 +103,7 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureTypeV4.type),
   featureTypeKey(extrusionFeatureTypeV5.type),
   featureTypeKey(extrusionFeatureTypeV6.type),
+  featureTypeKey(extrusionFeatureTypeV7.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),

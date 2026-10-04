@@ -777,6 +777,37 @@ export const extrusionFeatureContentParametersV6Schema = extrusionFeatureContent
 export type ExtrusionFeatureContentParametersV6 = z.infer<
   typeof extrusionFeatureContentParametersV6Schema
 >
+export const extrusionEndConditionContentV7Schema = z.discriminatedUnion("kind", [
+  extrusionEndConditionContentSchema.options[3].refine(
+    ({ face }) => face.signature.geometryClass === "PLANE",
+    "A planar face extent requires a planar topology signature.",
+  ),
+  z
+    .object({
+      kind: z.literal("up-to-curved-face"),
+      ...extrusionEndBodyContentFields,
+      face: z
+        .lazy(() => shellOpeningContentSchema)
+        .refine(
+          ({ signature }) => signature.geometryClass !== "PLANE",
+          "A curved face extent requires a nonplanar topology signature.",
+        ),
+    })
+    .strict(),
+])
+export const extrusionFeatureContentParametersV7Schema = extrusionFeatureContentParametersV5Schema
+  .safeExtend({
+    startOffset: extrusionFeatureContentParametersV6Schema.shape.startOffset,
+    draftAngle: extrusionFeatureContentParametersV6Schema.shape.draftAngle,
+    endCondition: extrusionEndConditionContentV7Schema,
+  })
+  .refine(
+    ({ symmetric, secondDistance }) => !symmetric && secondDistance === null,
+    "Face extents require one directional extent.",
+  )
+export type ExtrusionFeatureContentParametersV7 = z.infer<
+  typeof extrusionFeatureContentParametersV7Schema
+>
 
 const revolveMultiProfileFeatureContentBaseSchema = z
   .object({

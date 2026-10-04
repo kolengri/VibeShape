@@ -4,7 +4,7 @@ import {
   resolveTopologyReference,
   type TopologyCandidate,
 } from "@vibeshape/domain"
-import type { BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
+import type { BodyFaceRef, BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
 import {
   type ReferenceAxis,
   type ReferencePlane,
@@ -50,6 +50,11 @@ function currentBodyCandidate(reference: BodyTopoRef, context: Context) {
     ? (candidates.find(({ candidateId }) => candidateId === resolution.candidateId) ?? null)
     : null
 }
+/** Resolves current finite face evidence inside exactly the authored body role. */
+export function resolveReferenceFace(reference: BodyFaceRef, context: Context) {
+  return currentBodyCandidate(reference, context)
+}
+
 function currentDatumFrame(featureId: string, context: Context) {
   const feature = context.features.find(({ id }) => id === featureId)
   const current = context.geometry.some((record) => record.featureId === featureId)

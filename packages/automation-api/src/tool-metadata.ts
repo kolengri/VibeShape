@@ -1,6 +1,10 @@
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  create_face_extent_extrude:
+    "Stage Extrude v7 up-to-face using an exact body-bound finite face, captured current support hash, authored profile set, typed startOffset/draftAngle and explicit targetBody for Add/Remove/Intersect. New uses null targetBody. Obtain the stable face reference from body topology; dependencies are target first, optional sketch support, then a distinct endpoint owner. References retain only sketch support. Planar endpoints use exact plane clipping; curved endpoints require one complete reachable cap, with every new cap on the selected finite face. Partial or neighboring-face coverage fails closed. Preview before ordinary manual browser review; no transient indices or approximate surface extension.",
+  update_face_extent_extrude:
+    "Update an existing Extrude as v7 up-to-face through its owned draft, preserving feature identity and complete typed profiles, operation, startOffset, draftAngle, targetBody, exact finite face and captured support hash. Resubmit canonical target/support/endpoint dependencies and sketch support reference. Explicit upgrade from legacy is reviewed; v7 remains v7 when choosing a planar endpoint. Preview must pass exact cap coverage before ordinary manual review.",
   model_sketch_solution:
     "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
   draft_sketch_solution:
