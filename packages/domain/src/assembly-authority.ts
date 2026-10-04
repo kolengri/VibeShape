@@ -1,18 +1,19 @@
 import { z } from "zod"
 import {
-  type Assembly,
   type AssemblySource,
   assemblyDefinitionIdSchema,
   assemblyDefinitionSchema,
   assemblyInstanceIdSchema,
-  assemblyInstanceSchema,
   assemblyJointIdSchema,
-  assemblyJointSchema,
   assemblyRigidPoseSchema,
-  assemblySchema,
 } from "./assembly"
 import { solveAssemblyKinematics } from "./assembly-kinematics"
 import { assemblyLibraryBindingSchema } from "./assembly-library-binding"
+import {
+  assemblyCollectionSchema,
+  assemblyInstanceRecordSchema,
+  assemblyJointRecordSchema,
+} from "./assembly-mates"
 import { type BodyReference, bodyReferenceSchema } from "./body-reference"
 import { canonicalJson } from "./canonical-json"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
@@ -242,8 +243,8 @@ function validatePinnedModel(
   if (pinned.assets.some((asset) => !used.has(asset.id)))
     throw new Error("Pinned source descriptors must belong to the captured body closure.")
 }
-export function projectAssemblyAuthority(assembly: AssemblyAuthority): Assembly {
-  return {
+export function projectAssemblyAuthority(assembly: AssemblyAuthority) {
+  return assemblyCollectionSchema.parse({
     ...assembly,
     definitions: assembly.definitions.map(
       ({
@@ -253,7 +254,7 @@ export function projectAssemblyAuthority(assembly: AssemblyAuthority): Assembly 
         ...definition
       }) => definition,
     ),
-  }
+  })
 }
 function validateDefinitions(definitions: readonly PinnedAssemblyDefinition[]) {
   let nodes = 0
@@ -274,14 +275,24 @@ function validateDefinitions(definitions: readonly PinnedAssemblyDefinition[]) {
 }
 export const assemblyAuthoritySchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     definitions: z.array(pinnedAssemblyDefinitionSchema).max(256),
-    instances: z.array(assemblyInstanceSchema).max(256),
-    joints: z.array(assemblyJointSchema).max(255),
+    instances: z.array(assemblyInstanceRecordSchema).max(256),
+    joints: z.array(assemblyJointRecordSchema).max(1024),
   })
   .strict()
   .superRefine((authority, context) => {
-    const pure = assemblySchema.safeParse(projectAssemblyAuthority(authority))
+    const pure = assemblyCollectionSchema.safeParse({
+      ...authority,
+      definitions: authority.definitions.map(
+        ({
+          pinRevision: _revision,
+          pinnedModels: _models,
+          libraryBinding: _binding,
+          ...definition
+        }) => definition,
+      ),
+    })
     if (!pure.success)
       for (const issue of pure.error.issues)
         context.addIssue({ code: "custom", path: issue.path, message: issue.message })
@@ -302,7 +313,7 @@ export const assemblyAuthoritySchema = z
         code: "custom",
         message: "Assembly records require distinct stable identities across collections.",
       })
-    if (pure.success && !solveAssemblyKinematics(pure.data).ok)
+    if (pure.success && pure.data.schemaVersion === 1 && !solveAssemblyKinematics(pure.data).ok)
       context.addIssue({
         code: "custom",
         message: "Assembly poses exceed their composed world bounds.",
@@ -489,6 +500,7 @@ const metadata = z
   .strict()
   .refine((change) => change.name !== undefined || change.sourceFrame !== undefined)
 const referenceMutations = [
+  z.object({ kind: z.literal("assembly.upgrade") }).strict(),
   z
     .object({
       kind: z.literal("definition.detach-library"),
@@ -502,8 +514,8 @@ const referenceMutations = [
       cascade: z.boolean().default(false),
     })
     .strict(),
-  z.object({ kind: z.literal("instance.create"), instance: assemblyInstanceSchema }).strict(),
-  z.object({ kind: z.literal("instance.update"), instance: assemblyInstanceSchema }).strict(),
+  z.object({ kind: z.literal("instance.create"), instance: assemblyInstanceRecordSchema }).strict(),
+  z.object({ kind: z.literal("instance.update"), instance: assemblyInstanceRecordSchema }).strict(),
   z
     .object({
       kind: z.literal("instance.remove"),
@@ -511,8 +523,8 @@ const referenceMutations = [
       cascade: z.boolean().default(false),
     })
     .strict(),
-  z.object({ kind: z.literal("joint.create"), joint: assemblyJointSchema }).strict(),
-  z.object({ kind: z.literal("joint.update"), joint: assemblyJointSchema }).strict(),
+  z.object({ kind: z.literal("joint.create"), joint: assemblyJointRecordSchema }).strict(),
+  z.object({ kind: z.literal("joint.update"), joint: assemblyJointRecordSchema }).strict(),
   z.object({ kind: z.literal("joint.remove"), jointId: assemblyJointIdSchema }).strict(),
 ] as const
 const pinnedMutations = [
@@ -568,7 +580,7 @@ function removeInstances(
   ids: Set<string>,
   cascade: boolean,
 ): AssemblyAuthority {
-  for (let changed = true; changed; ) {
+  for (let changed = assembly.schemaVersion === 1; changed; ) {
     changed = false
     for (const joint of assembly.joints)
       if (ids.has(joint.parentInstanceId) && !ids.has(joint.childInstanceId)) {
@@ -672,10 +684,31 @@ function changeJoint(
     throw new Error("The assembly joint is missing.")
   return { ...assembly, joints: assembly.joints.filter(({ id }) => id !== change.jointId) }
 }
+export function upgradeAssemblyAuthority(assembly: AssemblyAuthority): AssemblyAuthority {
+  if (assembly.schemaVersion === 2) throw new Error("The assembly already uses general mates.")
+  const solved = solveAssemblyKinematics(projectAssemblyAuthority(assembly))
+  if (!solved.ok) throw new Error(solved.diagnostic.message)
+  const frames = new Map(solved.instances.map((pose) => [pose.instanceId, pose.worldFrame]))
+  return assemblyAuthoritySchema.parse({
+    ...assembly,
+    schemaVersion: 2,
+    instances: assembly.instances.map((instance) =>
+      instance.grounded
+        ? { ...instance, schemaVersion: 2 }
+        : { ...instance, schemaVersion: 2, initialFrame: frames.get(instance.id) },
+    ),
+    joints: assembly.joints.map((joint) => ({
+      ...joint,
+      schemaVersion: 2,
+      ...(joint.kind === "revolute" || joint.kind === "prismatic" ? { driven: true } : {}),
+    })),
+  })
+}
 function changeAssembly(
   current: AssemblyAuthority,
   change: CapturedAssemblyMutation,
 ): AssemblyAuthority {
+  if (change.kind === "assembly.upgrade") return upgradeAssemblyAuthority(current)
   if (isDefinitionMutation(change)) return changeDefinition(current, change)
   if (
     change.kind === "instance.create" ||

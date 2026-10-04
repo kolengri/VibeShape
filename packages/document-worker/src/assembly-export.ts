@@ -1,5 +1,6 @@
 import type { AssemblyMaterializedOccurrence } from "@vibeshape/application/assembly-materialization"
 import type { FeatureTypeRegistry } from "@vibeshape/domain"
+import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { AssemblyNativeBody, GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -107,6 +108,7 @@ export async function exportAssemblyRuntime(
   input: InspectAssemblyInput,
   identity: { documentId: string; revision: number; generation: number },
   settings: AssemblyExportSettings,
+  solveAssemblyConstraints?: AssemblyConstraintSolvePort,
 ): Promise<AssemblyExportResult> {
   const request = exportAssemblyInputSchema.parse({ assembly: input, settings })
   return withMaterializedAssemblyRuntime(
@@ -123,5 +125,6 @@ export async function exportAssemblyRuntime(
         return { file: checkedFile(combinedStl(meshes)), bodyCount: selected.length }
       return exportThreeMf(meshes, selected.length, request.settings.printPreparation)
     },
+    solveAssemblyConstraints,
   )
 }

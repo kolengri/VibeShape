@@ -1191,6 +1191,30 @@ const ellipticalArcEdgeReferenceGeometrySchema = z
 export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
   z
     .object({
+      kind: z.literal("plane-face"),
+      origin: topologyVector3Schema,
+      normal: topologyVector3Schema,
+    })
+    .strict()
+    .refine((g) => normalizedVector(g.normal), "Plane normals must be normalized."),
+  z
+    .object({
+      kind: z.literal("cylinder-face"),
+      origin: topologyVector3Schema,
+      axis: topologyVector3Schema,
+      radius: finiteNumberSchema.positive(),
+    })
+    .strict()
+    .refine((g) => normalizedVector(g.axis), "Cylinder axes must be normalized."),
+  z
+    .object({
+      kind: z.literal("sphere-face"),
+      center: topologyVector3Schema,
+      radius: finiteNumberSchema.positive(),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("vertex"),
       position: topologyVector3Schema,
     })
@@ -1227,6 +1251,9 @@ const topologyCandidateBaseSchema = z
   .strict()
 
 const REFERENCE_GEOMETRY_CANDIDATE_KIND = {
+  "plane-face": { geometryClass: "PLANE", topologyKind: "face" },
+  "cylinder-face": { geometryClass: "CYLINDRE", topologyKind: "face" },
+  "sphere-face": { geometryClass: "SPHERE", topologyKind: "face" },
   vertex: { geometryClass: "POINT", topologyKind: "vertex" },
   "line-edge": { geometryClass: "LINE", topologyKind: "edge" },
   "circle-edge": { geometryClass: "CIRCLE", topologyKind: "edge" },

@@ -1,10 +1,11 @@
-import type { AssemblyInstance } from "@vibeshape/domain/assembly"
 import type { AssemblyAuthority, AssemblyMutation } from "@vibeshape/domain/assembly-authority"
+import type { AssemblyInstanceRecord as AssemblyInstance } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { useCallback, useRef, useState } from "react"
 import {
   commitAuthoredTransaction,
   type DocumentControllerState,
+  previewAssemblyChanges,
 } from "../../document/document-controller"
 import type { AssemblyFormActions } from "./assembly-forms"
 import {
@@ -41,8 +42,13 @@ function reviewedBase(
 async function commitIntent(
   context: AssemblyDocumentContext,
   changes: readonly AssemblyMutation[],
+  preflight = false,
 ) {
   try {
+    if (preflight) {
+      const preview = await previewAssemblyChanges(changes, context.revision)
+      if (!preview.ok) return { ok: false as const, reason: preview.diagnostic.message }
+    }
     const result = await commitAuthoredTransaction(
       context.revision,
       createAssemblyTransaction(context, changes),
@@ -54,7 +60,11 @@ async function commitIntent(
     return { ok: false as const, reason: null }
   }
 }
-function useAssemblyMutations(context: AssemblyDocumentContext | null, writable: boolean) {
+function useAssemblyMutations(
+  context: AssemblyDocumentContext | null,
+  writable: boolean,
+  general: boolean,
+) {
   const t = useTranslations("app.assembly")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +82,22 @@ function useAssemblyMutations(context: AssemblyDocumentContext | null, writable:
     setPending(true)
     setError(null)
     try {
-      const result = await commitIntent(base, changes)
+      const prepared = general
+        ? changes.map((change) => {
+            if (
+              (change.kind === "instance.create" || change.kind === "instance.update") &&
+              change.instance.schemaVersion === 1 &&
+              change.instance.grounded
+            )
+              return { ...change, instance: { ...change.instance, schemaVersion: 2 as const } }
+            return change
+          })
+        : changes
+      const result = await commitIntent(
+        base,
+        prepared,
+        general || changes.some((change) => change.kind === "assembly.upgrade"),
+      )
       if (!result.ok) setError(failureCopy(result.reason))
       return result.ok
     } finally {
@@ -106,7 +131,7 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
   const [removal, setRemoval] = useState<AssemblyRemoval | null>(null)
   const writable =
     controller.status === "ready" && controller.saveStatus !== "saving" && context !== null
-  const mutations = useAssemblyMutations(context, writable)
+  const mutations = useAssemblyMutations(context, writable, assembly.schemaVersion === 2)
   const inspection = useAssemblyInspection(inspectionContext(context))
   const selected = selectionRecords(assembly, instanceId, definitionId)
   const disabled = !writable || mutations.pending
@@ -126,7 +151,10 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
   }
   const ground = async (instance: AssemblyInstance) => {
     if (context)
-      await mutations.apply(groundAssemblyInstanceChanges(assembly, instance), context.revision)
+      await mutations.apply(
+        groundAssemblyInstanceChanges(assembly, instance, inspection.inspection ?? undefined),
+        context.revision,
+      )
   }
   return {
     assembly,
@@ -146,6 +174,8 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     openTask,
     onRemove,
     ground,
+    upgrade: async () =>
+      context ? mutations.apply([{ kind: "assembly.upgrade" }], context.revision) : false,
   }
 }
 export type AssemblyWorkspaceView = ReturnType<typeof useAssemblyWorkspace>

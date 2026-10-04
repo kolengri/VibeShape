@@ -165,7 +165,7 @@ export async function insertLocalLibraryVersion(
 ): Promise<DocumentMutationResult> {
   return safely(async () => {
     const request = insertSchema.parse(input)
-    const { context } = writableDocument()
+    const { controller, context } = writableDocument()
     const read = await localLibrary().readVersion({
       itemId: request.itemId,
       version: request.version,
@@ -185,7 +185,13 @@ export async function insertLocalLibraryVersion(
       { kind: "definition.insert-pinned", definition },
       {
         kind: "instance.create",
-        instance: newAssemblyInstance(definition, request.instanceName, identityAssemblyPose),
+        instance: newAssemblyInstance(
+          definition,
+          request.instanceName,
+          identityAssemblyPose,
+          undefined,
+          activeAssembly(controller).schemaVersion,
+        ),
       },
     ])
     return commitAuthoredTransaction(context.revision, {

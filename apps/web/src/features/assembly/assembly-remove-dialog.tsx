@@ -25,12 +25,14 @@ export function AssemblyRemoveDialog({
   error,
   onApply,
   onClose,
+  general = false,
 }: {
   removal: AssemblyRemoval
   pending: boolean
   error: string | null
   onApply: (changes: readonly AssemblyMutation[], revision: number) => Promise<boolean>
   onClose: () => void
+  general?: boolean
 }) {
   const t = useTranslations("app.assembly")
   const [cascade, setCascade] = useState(false)
@@ -45,7 +47,9 @@ export function AssemblyRemoveDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("removeTitle", { name: removal.name })}</AlertDialogTitle>
-          <AlertDialogDescription>{t("removeExplanation")}</AlertDialogDescription>
+          <AlertDialogDescription>
+            {t(general ? "removeGeneralExplanation" : "removeExplanation")}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <Field orientation="horizontal">
           <input
@@ -56,7 +60,9 @@ export function AssemblyRemoveDialog({
             className="size-4 accent-primary"
             onChange={(event) => setCascade(event.currentTarget.checked)}
           />
-          <FieldLabel htmlFor={id}>{t("cascadeRemoval")}</FieldLabel>
+          <FieldLabel htmlFor={id}>
+            {t(general ? "cascadeGeneralRemoval" : "cascadeRemoval")}
+          </FieldLabel>
         </Field>
         {error && (
           <p role="alert" className="text-sm text-destructive">

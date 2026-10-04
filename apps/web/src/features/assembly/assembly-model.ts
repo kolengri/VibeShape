@@ -1,12 +1,8 @@
 import { resolveAuthoredParts } from "@vibeshape/application/authored-parts"
 import {
   type AssemblyDefinition,
-  type AssemblyInstance,
-  type AssemblyJoint,
   type AssemblyRigidPose,
   assemblyDefinitionSchema,
-  assemblyInstanceSchema,
-  assemblyJointSchema,
   assemblyRigidPoseSchema,
 } from "@vibeshape/domain/assembly"
 import {
@@ -17,8 +13,16 @@ import {
   projectAssemblyAuthority,
 } from "@vibeshape/domain/assembly-authority"
 import { solveAssemblyKinematics } from "@vibeshape/domain/assembly-kinematics"
+import {
+  type AssemblyInstanceRecord as AssemblyInstance,
+  type AssemblyJointRecord as AssemblyJoint,
+  assemblyInstanceRecordSchema as assemblyInstanceSchema,
+  assemblyJointRecordSchema as assemblyJointSchema,
+} from "@vibeshape/domain/assembly-mates"
+import { composeAssemblyPoses } from "@vibeshape/domain/assembly-poses"
 import { documentV4CommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
+import type { AssemblyInspection } from "@vibeshape/protocol"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { sourceAuthorityUpgradeCommands } from "../import/source-authority-upgrade"
@@ -166,9 +170,10 @@ export function newAssemblyInstance(
   name: string,
   worldFrame: AssemblyRigidPose,
   uuid = browserAuthoredUuid,
+  schemaVersion: 1 | 2 = 1,
 ): AssemblyInstance {
   return assemblyInstanceSchema.parse({
-    schemaVersion: 1,
+    schemaVersion,
     id: uuid(),
     definitionId: definition.id,
     name,
@@ -181,6 +186,28 @@ export function attachAssemblyChildChanges(
   joint: AssemblyJoint,
   creating: boolean,
 ): readonly AssemblyMutation[] {
+  if (joint.schemaVersion === 2) {
+    const {
+      worldFrame: _world,
+      initialFrame: _initial,
+      ...fields
+    } = { ...child, worldFrame: undefined, initialFrame: undefined }
+    const initialFrame = child.grounded
+      ? child.worldFrame
+      : child.schemaVersion === 2
+        ? child.initialFrame
+        : identityAssemblyPose
+    const ungrounded = assemblyInstanceSchema.parse({
+      ...fields,
+      schemaVersion: 2,
+      grounded: false,
+      initialFrame,
+    })
+    return [
+      { kind: creating ? "instance.create" : "instance.update", instance: ungrounded },
+      { kind: "joint.create", joint: assemblyJointSchema.parse(joint) },
+    ]
+  }
   const { worldFrame: _frame, ...fields } = child.grounded
     ? child
     : { ...child, worldFrame: undefined }
@@ -196,7 +223,27 @@ export function attachAssemblyChildChanges(
 export function groundAssemblyInstanceChanges(
   assembly: AssemblyAuthority,
   instance: AssemblyInstance,
+  inspection?: AssemblyInspection,
 ): readonly AssemblyMutation[] {
+  if (assembly.schemaVersion === 2) {
+    const occurrence = inspection?.occurrences.find((pose) => pose.instanceId === instance.id)
+    const definition = assembly.definitions.find((d) => d.id === instance.definitionId)
+    if (!occurrence || !definition)
+      throw new Error("Grounding requires current solved assembly geometry.")
+    return [
+      {
+        kind: "instance.update",
+        instance: assemblyInstanceSchema.parse({
+          schemaVersion: 2,
+          id: instance.id,
+          definitionId: instance.definitionId,
+          name: instance.name,
+          grounded: true,
+          worldFrame: composeAssemblyPoses(occurrence.geometryFrame, definition.sourceFrame),
+        }),
+      },
+    ]
+  }
   const solved = solveAssemblyKinematics(projectAssemblyAuthority(assembly))
   if (!solved.ok) throw new Error(solved.diagnostic.message)
   const pose = solved.instances.find(({ instanceId }) => instanceId === instance.id)

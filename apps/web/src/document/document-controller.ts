@@ -68,6 +68,9 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import {
+  type AssemblyMutation,
+  applyCapturedAssemblyMutations,
+  captureAssemblyMutations,
   emptyAssemblyAuthority,
   pinnedAssemblyDefinitionSchema,
 } from "@vibeshape/domain/assembly-authority"
@@ -1077,6 +1080,28 @@ export async function inspectActiveAssembly(
     return await inspectCapturedAssembly(captureAssemblyContext(), pairs)
   } catch (error) {
     return assemblyFailure(error, "Assembly inspection")
+  }
+}
+
+/** Validates disposable mate geometry before a revision-safe authored transaction. */
+export async function previewAssemblyChanges(
+  changes: readonly AssemblyMutation[],
+  revision: number,
+) {
+  try {
+    const context = captureAssemblyContext()
+    if (context.authority.revision !== revision)
+      throw new Error("The assembly preview revision is stale.")
+    const captured = captureAssemblyMutations(
+      context.authority,
+      context.authority.assembly,
+      changes,
+    )
+    const assembly = applyCapturedAssemblyMutations(context.authority.assembly, captured)
+    const authority = documentSnapshotV4Schema.parse({ ...context.authority, assembly })
+    return await inspectCapturedAssembly({ ...context, authority }, [])
+  } catch (error) {
+    return assemblyFailure(error, "Assembly preview")
   }
 }
 
