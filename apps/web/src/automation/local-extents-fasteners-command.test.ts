@@ -1,6 +1,6 @@
 import { type LocalOperation, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain"
-import { extrusionFeatureTypeV6 } from "@vibeshape/domain/part-design"
+import { extrusionFeatureTypeV6, extrusionFeatureTypeV7 } from "@vibeshape/domain/part-design"
 import { holeFeatureTypeV3 } from "@vibeshape/domain/part-design-hole"
 import { threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 import {
@@ -49,6 +49,29 @@ const extrude = {
   draftAngle: createAngleQuantity(-2, "deg"),
   endCondition: { kind: "through-all", targetBody: body, sourceContentHash: "a".repeat(64) },
 }
+const faceExtrude = {
+  ...extrude,
+  endCondition: {
+    kind: "up-to-face",
+    targetBody: body,
+    sourceContentHash: "a".repeat(64),
+    face: {
+      schemaVersion: 1,
+      featureId: body.featureId,
+      outputRole: body.outputRole,
+      kind: "face",
+      signature: {
+        kind: "face",
+        geometryClass: "SPHERE",
+        measure: 64 * Math.PI,
+        centroid: [0, 0, 8],
+        bounds: { min: [-4, -4, 4], max: [4, 4, 12] },
+        boundaryCount: 1,
+        adjacentGeometryClasses: [],
+      },
+    },
+  },
+}
 const hole = {
   sketchId: id(2),
   pointIds: [id(4), id(3)],
@@ -81,6 +104,8 @@ const thread = {
 
 function advancedCommand(operation: LocalOperation) {
   switch (operation.tool) {
+    case "create_face_extent_extrude":
+    case "update_face_extent_extrude":
     case "create_extrude":
     case "update_extrude":
     case "create_hole":
@@ -99,6 +124,7 @@ describe("versioned extent and fastener MCP commands", () => {
     (action) => {
       for (const [suffix, parameters, dependencies, type] of [
         ["extrude", extrude, [id(1)], extrusionFeatureTypeV6.type],
+        ["face_extent_extrude", faceExtrude, [id(1)], extrusionFeatureTypeV7.type],
         ["hole", hole, [id(1)], holeFeatureTypeV3.type],
         ["thread", thread, [id(1), id(2)], threadFeatureTypeV2.type],
       ] as const) {
@@ -134,6 +160,7 @@ describe("versioned extent and fastener MCP commands", () => {
   it("rejects missing, reversed and self-bound dependencies without changing legacy scopes", () => {
     for (const [suffix, parameters, dependencies] of [
       ["extrude", extrude, [id(1)]],
+      ["face_extent_extrude", faceExtrude, [id(1)]],
       ["hole", hole, [id(1)]],
       ["thread", thread, [id(1), id(2)]],
     ] as const) {
@@ -150,6 +177,17 @@ describe("versioned extent and fastener MCP commands", () => {
               arguments: { ...base, dependencies: invalid, parameters },
             }).success,
           ).toBe(false)
+    }
+  })
+
+  it("rejects actor and document authority injected into the v7 named operation", () => {
+    for (const injected of [{ actor }, { documentId: id(60) }, { schemaVersion: 6 }]) {
+      expect(
+        localOperationSchema.safeParse({
+          tool: "create_face_extent_extrude",
+          arguments: { ...base, parameters: faceExtrude, ...injected },
+        }).success,
+      ).toBe(false)
     }
   })
 
@@ -172,6 +210,17 @@ describe("versioned extent and fastener MCP commands", () => {
       },
     })
     rejected("create_extrude", { ...extrude, symmetric: true })
+    rejected("create_extrude", faceExtrude)
+    rejected("update_extrude", faceExtrude)
+    rejected("create_face_extent_extrude", extrude)
+    rejected("update_face_extent_extrude", { ...faceExtrude, symmetric: true })
+    rejected("create_face_extent_extrude", {
+      ...faceExtrude,
+      endCondition: {
+        ...faceExtrude.endCondition,
+        face: { ...faceExtrude.endCondition.face, outputRole: "split.positive" },
+      },
+    })
     rejected("update_extrude", {
       ...extrude,
       endCondition: { ...extrude.endCondition, sourceContentHash: "stale" },
