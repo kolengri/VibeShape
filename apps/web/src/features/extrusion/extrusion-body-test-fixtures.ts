@@ -3,7 +3,11 @@ import { boxFeatureType, documentSnapshotSchema, type FeatureRecord } from "@vib
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { extrusionBodyOptions } from "./extrusion-body-options"
 
-export function collectedExtrusionOptions(edited: FeatureRecord | undefined, multiBody = false) {
+export function collectedExtrusionOptions(
+  edited: FeatureRecord | undefined,
+  multiBody = false,
+  surface?: "PLANE" | "SPHERE",
+) {
   const targetId = "0195b5ac-b220-7a2c-8c33-67a36a7f3602"
   const snapshot = documentSnapshotSchema.parse({
     schemaVersion: 0,
@@ -31,7 +35,7 @@ export function collectedExtrusionOptions(edited: FeatureRecord | undefined, mul
     volume: 1,
     surfaceArea: 6,
     bounds: { min: [0, 0, 0], max: [1, 1, 1] },
-    faceCount: 6,
+    faceCount: surface ? 1 : 6,
     edgeCount: 12,
     solidCount: 1,
   }
@@ -42,6 +46,26 @@ export function collectedExtrusionOptions(edited: FeatureRecord | undefined, mul
     triangleFaceIds: new Uint32Array([1]),
   }
   const hash = "a".repeat(64)
+  const topologyCandidates = surface
+    ? [
+        {
+          candidateId: "face:end",
+          kind: "face",
+          meshFaceId: 1,
+          signature: {
+            kind: "face",
+            geometryClass: surface,
+            measure: surface === "PLANE" ? 1 : Math.PI,
+            centroid: [0.5, 0.5, 1],
+            bounds: { min: [0, 0, surface === "PLANE" ? 1 : 0], max: [1, 1, 1] },
+            boundaryCount: surface === "PLANE" ? 4 : 1,
+            adjacentGeometryClasses: [],
+            ...(surface === "PLANE" ? { direction: [0, 0, 1], directionMode: "oriented" } : {}),
+          },
+          lineageTokens: [],
+        },
+      ]
+    : []
   const environment = {
     schemaVersion: 0,
     hostApiVersion: "0.1.0",
@@ -63,7 +87,10 @@ export function collectedExtrusionOptions(edited: FeatureRecord | undefined, mul
     generation: 0,
     type: "documentRebuilt",
     evaluation: {
-      records: [{ featureId: targetId, status: "succeeded", contentHash: hash }],
+      records: [
+        { featureId: targetId, status: "succeeded", contentHash: hash },
+        ...(edited ? [{ featureId: edited.id, status: "blocked", blockedBy: [targetId] }] : []),
+      ],
       dirtyFeatureIds: [],
       evaluatedFeatureIds: [],
       reusedFeatureIds: [],
@@ -86,9 +113,9 @@ export function collectedExtrusionOptions(edited: FeatureRecord | undefined, mul
           },
           shape: { ...shape, ...(multiBody ? { solidCount: 2, volume: 2 } : {}) },
           mesh,
-          topologyCandidates: [],
+          topologyCandidates,
           bodies: (multiBody ? ["compound.input.0", "compound.input.1"] : ["result"]).map(
-            (outputRole) => ({ outputRole, shape, mesh, topologyCandidates: [] }),
+            (outputRole) => ({ outputRole, shape, mesh, topologyCandidates }),
           ),
           cache: { brepHit: false },
           timings: { evaluationMs: 1, tessellationMs: 1, totalMs: 2 },

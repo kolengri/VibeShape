@@ -1,8 +1,13 @@
 import { documentSnapshotSchema, topologySignatureSchema } from "@vibeshape/domain"
+import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { referenceAxisSchema, referencePlaneSchema } from "@vibeshape/domain/reference-frame"
 import { describe, expect, it } from "vitest"
 import type { FeatureGeometryRecord } from "./feature-rebuild"
-import { resolveReferenceAxis, resolveReferencePlane } from "./reference-frame"
+import {
+  resolveReferenceAxis,
+  resolveReferenceFace,
+  resolveReferencePlane,
+} from "./reference-frame"
 
 const featureId = "0195b5ac-b220-7a2c-8c33-000000003301"
 const document = documentSnapshotSchema.parse({
@@ -55,6 +60,34 @@ function context(candidates: unknown[], role = "pattern.instance.1") {
   return { document, features: [], geometry }
 }
 describe("current body-bound reference frames", () => {
+  it("resolves a finite nonplanar face through the shared strict role-bound projection", () => {
+    const curvedSignature = topologySignatureSchema.parse({
+      kind: "face",
+      geometryClass: "SPHERE",
+      measure: 64 * Math.PI,
+      centroid: [0, 0, 8],
+      bounds: { min: [-4, -4, 4], max: [4, 4, 12] },
+      boundaryCount: 1,
+      adjacentGeometryClasses: [],
+    })
+    const curved = { ...face, signature: curvedSignature }
+    if (support.kind !== "planar-face") throw new Error("Expected a body face fixture.")
+    const reference = bodyFaceRefSchema.parse({ ...support.reference, signature: curvedSignature })
+    const edge = {
+      ...face,
+      kind: "edge",
+      referenceGeometry: { kind: "line-edge", start: [0, 0, 4], end: [0, 0, 12] },
+    }
+    expect(resolveReferenceFace(reference, context([curved, edge]))).toEqual(curved)
+    expect(resolveReferenceFace(reference, context([curved], "pattern.instance.0"))).toBeNull()
+    expect(
+      resolveReferenceFace(
+        reference,
+        context([curved, { ...curved, candidateId: "face.duplicate" }]),
+      ),
+    ).toBeNull()
+    expect(resolveReferenceFace(reference, context([]))).toBeNull()
+  })
   it("resolves the selected body's current planar geometry", () => {
     expect(resolveReferencePlane(support, context([face]))).toEqual({
       origin: [3, 4, 5],

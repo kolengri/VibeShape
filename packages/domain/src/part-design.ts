@@ -1,6 +1,14 @@
 import { z } from "zod"
 import { type BodyReference, bodyReferenceSchema } from "./body-reference"
 import { bodyFaceRefSchema } from "./body-topology-reference"
+import { booleanFeatureTypeHandlerV2 } from "./part-design-subtract"
+
+export {
+  booleanFeatureParametersV2Schema,
+  booleanFeatureTypeV2,
+  readBooleanFeatureParametersV2,
+} from "./part-design-subtract"
+
 import { canonicalJson } from "./canonical-json"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
@@ -557,6 +565,20 @@ export const extrusionFeatureParametersV6Schema = extrusionFeatureParametersV5Sc
 export type ExtrusionFeatureParametersV6 = Readonly<
   z.infer<typeof extrusionFeatureParametersV6Schema>
 >
+export const extrusionFaceEndConditionV7Schema = z
+  .object({
+    kind: z.literal("up-to-face"),
+    targetBody: bodyReferenceSchema,
+    sourceContentHash: extrusionSourceHashSchema,
+    face: bodyFaceRefSchema,
+  })
+  .strict()
+export const extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema.safeExtend({
+  endCondition: extrusionFaceEndConditionV7Schema,
+})
+export type ExtrusionFeatureParametersV7 = Readonly<
+  z.infer<typeof extrusionFeatureParametersV7Schema>
+>
 export function expectedExtrusionV6DependencyIds(
   target: FeatureId | null,
   support: FeatureId | null,
@@ -576,8 +598,13 @@ function extrusionSupportUsesNamedBody(
     (body) => body?.featureId === support && body?.outputRole !== "result",
   )
 }
-function extrusionV6Invariant(feature: FeatureRecord) {
-  const parameters = extrusionFeatureParametersV6Schema.parse(feature.parameters)
+function extrusionV6Invariant(
+  feature: FeatureRecord,
+  schema:
+    | typeof extrusionFeatureParametersV6Schema
+    | typeof extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema,
+) {
+  const parameters = schema.parse(feature.parameters)
   const support = feature.references[0]?.featureId ?? null
   const end =
     parameters.endCondition.kind === "distance"
@@ -605,8 +632,14 @@ function extrusionV6Invariant(feature: FeatureRecord) {
     })
   return issues
 }
-function resolveExtrusionV6Parameters(parameters: unknown, variables: VariableValues) {
-  const parsed = extrusionFeatureParametersV6Schema.safeParse(parameters)
+function resolveExtrusionV6Parameters(
+  parameters: unknown,
+  variables: VariableValues,
+  schema:
+    | typeof extrusionFeatureParametersV6Schema
+    | typeof extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema,
+) {
+  const parsed = schema.safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
   const resolved = { ...parsed.data }
   for (const key of ["distance", "secondDistance", "startOffset", "draftAngle"] as const) {
@@ -616,7 +649,7 @@ function resolveExtrusionV6Parameters(parameters: unknown, variables: VariableVa
     if (!value.ok) return expressionFailure(key, value.diagnostic.message, value.diagnostic.code)
     Object.assign(resolved, { [key]: value.quantity })
   }
-  const valid = extrusionFeatureParametersV6Schema.safeParse(resolved)
+  const valid = schema.safeParse(resolved)
   return valid.success
     ? { ok: true as const, parameters: valid.data }
     : expressionFailure(
@@ -697,6 +730,11 @@ export const revolveFeatureParametersV6Schema = z
   })
   .strict()
 
+export const revolveFeatureParametersV7Schema = revolveFeatureParametersV6Schema
+  .extend({ targetBody: bodyReferenceSchema })
+  .strict()
+export type RevolveFeatureParametersV7 = Readonly<z.infer<typeof revolveFeatureParametersV7Schema>>
+
 type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSchema> & {
   profiles?: z.infer<typeof sketchProfileSetSchema>
   reversed: boolean
@@ -707,6 +745,7 @@ type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSc
   endCondition?: z.infer<typeof extrusionEndConditionSchema>
 }
 type NormalizedRevolveParameters = z.infer<typeof revolveFeatureParametersSchema> & {
+  targetBody?: z.infer<typeof bodyReferenceSchema>
   profiles?: z.infer<typeof sketchProfileSetSchema>
 }
 
@@ -728,6 +767,7 @@ function normalizeMultiProfileRevolveParameters(
   parameters:
     | z.infer<typeof revolveFeatureParametersV5Schema>
     | z.infer<typeof revolveFeatureParametersV6Schema>
+    | z.infer<typeof revolveFeatureParametersV7Schema>
     | null,
 ): NormalizedRevolveParameters | null {
   if (!parameters) return null
@@ -1140,6 +1180,10 @@ export const extrusionFeatureTypeV6 = featureTypeDescriptorSchema.parse({
   type: { ...extrusionFeatureTypeV5.type, schemaVersion: 6 },
   dependencies: { min: 0, max: 3 },
 })
+export const extrusionFeatureTypeV7 = featureTypeDescriptorSchema.parse({
+  ...extrusionFeatureTypeV6,
+  type: { ...extrusionFeatureTypeV6.type, schemaVersion: 7 },
+})
 
 export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -1179,6 +1223,11 @@ export const revolveFeatureTypeV6 = featureTypeDescriptorSchema.parse({
   classification: "solid",
   dependencies: { min: 1, max: 3 },
   references: { min: 0, max: 1 },
+})
+
+export const revolveFeatureTypeV7 = featureTypeDescriptorSchema.parse({
+  ...revolveFeatureTypeV6,
+  type: { ...revolveFeatureTypeV6.type, schemaVersion: 7 },
 })
 
 export const legacyRevolveFeatureTypeV3 = featureTypeDescriptorSchema.parse({
@@ -1230,6 +1279,7 @@ export function isExtrusionType(feature: Pick<FeatureRecord, "type">) {
     extrusionFeatureTypeV4.type,
     extrusionFeatureTypeV5.type,
     extrusionFeatureTypeV6.type,
+    extrusionFeatureTypeV7.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1245,6 +1295,7 @@ type ExtrusionParameters =
   | z.infer<typeof extrusionFeatureParametersV4Schema>
   | z.infer<typeof extrusionFeatureParametersV5Schema>
   | z.infer<typeof extrusionFeatureParametersV6Schema>
+  | z.infer<typeof extrusionFeatureParametersV7Schema>
 
 const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>>([
   [1, legacyExtrusionFeatureParametersSchema],
@@ -1253,6 +1304,7 @@ const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>
   [4, extrusionFeatureParametersV4Schema],
   [5, extrusionFeatureParametersV5Schema],
   [6, extrusionFeatureParametersV6Schema],
+  [7, extrusionFeatureParametersV7Schema],
 ])
 
 export function readExtrusionFeatureParameters(
@@ -1285,6 +1337,7 @@ export function isRevolveType(feature: FeatureRecord) {
     revolveFeatureType.type,
     revolveFeatureTypeV5.type,
     revolveFeatureTypeV6.type,
+    revolveFeatureTypeV7.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1318,6 +1371,10 @@ export function readRevolveFeatureParameters(
     case 6:
       return normalizeMultiProfileRevolveParameters(
         parseRevolveParameters(revolveFeatureParametersV6Schema, feature.parameters),
+      )
+    case 7:
+      return normalizeMultiProfileRevolveParameters(
+        parseRevolveParameters(revolveFeatureParametersV7Schema, feature.parameters),
       )
     default:
       return null
@@ -1360,6 +1417,7 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
       revolveFeatureParametersSchema,
       revolveFeatureParametersV5Schema,
       revolveFeatureParametersV6Schema,
+      revolveFeatureParametersV7Schema,
     ])
     .safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
@@ -1398,13 +1456,20 @@ function revolveSketchAxisIssue(
   return null
 }
 
+function revolveTargetOwner(
+  feature: FeatureRecord,
+  parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
+) {
+  if (parameters.operation === "new") return null
+  return parameters.targetBody?.featureId ?? feature.dependencies[0] ?? null
+}
 function revolveDependencyIssue(
   feature: FeatureRecord,
   parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
 ) {
   const expectedDependencies = expectedRevolveDependencyIds(
     parameters,
-    parameters.operation === "new" ? null : (feature.dependencies[0] ?? null),
+    revolveTargetOwner(feature, parameters),
     feature.references.map(({ featureId }) => featureId),
   )
   const matches =
@@ -1827,12 +1892,45 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     },
   },
   {
+    type: revolveFeatureTypeV7.type,
+    parametersSchema: revolveFeatureParametersV7Schema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = revolveFeatureParametersV7Schema.parse(parameters)
+      return {
+        profiles: revolve.profiles,
+        axis: revolve.axis,
+        angle: revolve.angle.value,
+        operation: revolve.operation,
+      }
+    },
+  },
+  booleanFeatureTypeHandlerV2,
+  {
     type: extrusionFeatureTypeV6.type,
     parametersSchema: extrusionFeatureParametersV6Schema,
     validateFeature: extrusionV6Invariant,
     resolveParameters: resolveExtrusionV6Parameters,
     contentParameters(parameters) {
       const value = extrusionFeatureParametersV6Schema.parse(parameters)
+      return {
+        ...value,
+        distance: value.distance.value,
+        secondDistance: value.secondDistance?.value ?? null,
+        startOffset: value.startOffset.value,
+        draftAngle: value.draftAngle.value,
+      }
+    },
+  },
+  {
+    type: extrusionFeatureTypeV7.type,
+    parametersSchema: extrusionFeatureParametersV7Schema,
+    validateFeature: (feature) => extrusionV6Invariant(feature, extrusionFeatureParametersV7Schema),
+    resolveParameters: (parameters, variables) =>
+      resolveExtrusionV6Parameters(parameters, variables, extrusionFeatureParametersV7Schema),
+    contentParameters(parameters) {
+      const value = extrusionFeatureParametersV7Schema.parse(parameters)
       return {
         ...value,
         distance: value.distance.value,

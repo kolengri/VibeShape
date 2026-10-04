@@ -8,6 +8,19 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
 
 ## Additional exact feature tools
 
+Box retains \`create_box\` millimeter shorthand and adds typed \`update_box\`.
+Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid have named create/update tools.
+Use complete quantity parameters, quantity origin, applicable centered state and explicit suppression;
+preserve existing IDs, labels and raw expressions. These independent primitives accept no dependencies
+or topology references. Wedge and truncated Cone have no registered primitive tool.
+
+Owned drafts also expose \`remove_feature\`, \`remove_sketch\`, \`set_feature_suppressed\`
+and \`rename_project\` through ordinary registered commands. Referenced records block removal;
+repair consumers explicitly. Suppression is an explicit boolean, and exact preview diagnoses blocked
+downstream geometry. Project rename uses a normalized nonempty name of at most 120 characters.
+All lifecycle commands require manual browser review even with CAD auto-apply enabled; there is no
+cascade, preserve-intent override, History navigation or generic execution authority.
+
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
 linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
 feature/output-role targets from \`model_body_measurements\` or \`draft_body_measurements\`.
@@ -44,6 +57,15 @@ origin support xy/xz/yz (empty dependencies/references) or an existing planar fa
 cannot be substituted. Preview downstream sketches/features before commit.
 \`create_boolean\`/\`update_boolean\` perform legacy whole-result subtraction: operation=subtract,
 optional keepTools, exactly two distinct dependencies ordered target before tool, empty references.
+Additive \`create_body_subtract\`/\`update_body_subtract\` author Subtract v2 with exact targetBody/toolBody
+selectors, including distinct roles from one producer. Dependencies deduplicate producers in target/tool
+order; references are empty. keepTools retains the tool Part without changing geometry identity.
+\`create_body_revolve\`/\`update_body_revolve\` author Revolve v7 Add/Remove/Intersect with an exact
+targetBody, canonical same-sketch profiles, typed angle and existing origin/sketch-line/model-edge axis.
+Dependencies are target first, then distinct sketch-support and model-edge owners; preserve existing
+sketch-support references. New Revolve keeps its existing tools. Get roles from current body measurements;
+missing roles fail closed. No caller content hash or native index is accepted. Both use ordinary owned
+revision-bound drafts, preview, review and Apply on local and paired remote transports.
 \`create_union\`/\`update_union\` select two to eight distinct exact bodies in ordered \`bodies\`;
 \`create_compound\`/\`update_compound\` select them in ordered \`slots\` with stable UUIDv7 slotId.
 Both use feature schema v2. Dependencies list each producer once in first-occurrence order;
@@ -55,10 +77,10 @@ and schema upgrades still require manual review. Tools cannot enable the grant.
 
 Surface texture create/update/remove use named owned proposals with native relief preview and
 mandatory manual Apply. Read the modeling skill's surface-textures reference for packed custom
-maps, exact face scope and bounded mask append. Geometry/planar import and text generation use
-their advertised contracts or the editor. The shared local
-and paired remote feature tools follow the same draft/review/commit workflow; remote omits
-file exports. Read the modeling operator skill for the relevant feature family.
+maps, exact face scope and bounded mask append. Geometry/planar import uses its advertised
+contracts or the editor. The shared local and paired remote feature tools follow the same
+draft/review/commit workflow. Read the modeling operator skill for the relevant feature family
+and the export skill for file delivery.
 
 ## Assembly and local component library
 
@@ -72,6 +94,22 @@ Library source closure remains controller-owned. save_library_definition and upd
 require manual review and metadata CAS; insert/relink select immutable versions inside an assembly
 draft with explicit copy/reference semantics. Read the modeling skill's assembly/library reference.
 Callers cannot provide frozen pins, raw bytes, document authority or an approval flag.
+
+## Placement and editable sketch text
+
+\`create_placement\`/\`update_placement\` use typed translation/rotation parameters, an exact
+\`targetBody\`, exactly its producer dependency and empty references. Preview exact bounds
+and volume, then use ordinary manual review. Placement remains numeric rather than associative.
+
+\`create_sketch_text\`/\`update_sketch_text\` use a stable UUIDv7 groupId, sketchId, origin
+and supported text intent (text, heightMm, trackingMm, alignment, kerning). The browser uses the
+pinned bundled font and generates outline entities and digest internally. No caller font metadata
+is accepted. Scalar limits do not override the existing contour/pole complexity budgets. Update
+requires explicit removeAttachedConstraints; replacement may require downstream selector repair.
+\`detach_sketch_text\` removes text intent while preserving geometry and constraints. Preparation
+reads only the owned exact-revision sketch and applies the ordinary sketch.update after async
+outline generation. Cancellation, stale authority or expiry must not publish an update. Existing
+sketch auto-apply policy remains unchanged; tools cannot expand the browser grant.
 
 ## Authored parts and History folders
 
@@ -508,7 +546,15 @@ up-to-face also includes a stable body-bound planar \`face\`. Inspect the curren
 and content hash together. Dependencies are the modifying target first, optional sketch support,
 and a distinct end producer last, with duplicate producers retained once. Dynamic endpoints
 require one directional extent; stale, unreachable, ambiguous or partially covering supports fail
-closed. Up-to-face is limited to finite planar faces.
+closed. V6 up-to-face remains limited to finite planar faces.
+
+The additive \`create_face_extent_extrude\` and \`update_face_extent_extrude\` tools author v7
+up-to-face only. Use the same advanced fields with a current exact finite planar or curved
+\`BodyFaceRef\` and captured support hash from body topology inspection. Curved termination
+requires one complete reachable cap, with every new cap lying on the selected finite face.
+Partial patches, neighboring caps, inside starts, unreachable or stale supports fail closed;
+finite surfaces are never extended implicitly. Explicit legacy upgrades require manual browser
+review. A saved v7 stays v7 when its endpoint is changed to a planar face.
 
 Hole v3 adds required \`targetBody\` and \`treatment\`: simple, counterbore with typed diameter
 and depth, or countersink with typed diameter and included angle between 10 and 170 degrees.
@@ -527,17 +573,18 @@ Run-in/run-out are unthreaded allowances. Preserve complete quantity and axis in
 \`model_edges\` and \`draft_edges\` return durable selectable edge references; use only resolved
 references for selected treatments. \`model_body_measurements\` returns named output roles.
 \`model_body_topology\` and \`draft_body_topology\` inspect current named body edges/faces.
-Their exact references and content hash select Shell openings and Extrude planar endpoints;
+Their exact references and content hash select Shell openings and versioned Extrude face endpoints;
 stable LINE references also select Thread axes. Edge treatments retain their separate selection
 contract. Use \`draft_body_measurements\` for unsaved output roles. A newly authored single-solid
 Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on scoped updates.
 
-Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/update;
+Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
+sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft and custom Thread create/update;
-variables; bounded inspection; draft lifecycle and export.
-Box update/placement, Cylinder, feature/sketch removal, dedicated suppression,
-model rename and history navigation are not currently exposed through MCP. There is no
+variables; bounded inspection; draft lifecycle and export; review-bound feature/sketch removal,
+explicit feature suppression and project rename.
+History navigation are not currently exposed through MCP. There is no
 generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.
 

@@ -24,6 +24,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -36,6 +37,7 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV7,
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
@@ -83,6 +85,11 @@ import {
   splitFeatureType,
   splitFeatureTypeV2,
 } from "./part-design-split"
+import {
+  booleanFeatureTypeV2,
+  hasCompleteBooleanBodyDependencies,
+  readBooleanFeatureParametersV2,
+} from "./part-design-subtract"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import {
   readThreadFeatureParameters,
@@ -228,6 +235,7 @@ type BodySelectionParameterReader = (
   feature: Pick<FeatureRecord, "type" | "parameters">,
 ) => object | null
 const bodySelectionParameterReaders = new Map<string, BodySelectionParameterReader>([
+  [featureTypeKey(booleanFeatureTypeV2.type), readBooleanFeatureParametersV2],
   [featureTypeKey(placementFeatureType.type), readPlacementFeatureParameters],
   [featureTypeKey(mirrorFeatureType.type), readMirrorFeatureParameters],
   [featureTypeKey(mirrorFeatureTypeV2.type), readMirrorFeatureParameters],
@@ -250,6 +258,7 @@ const revolveTypeKeys = new Set(
     revolveFeatureType,
     revolveFeatureTypeV5,
     revolveFeatureTypeV6,
+    revolveFeatureTypeV7,
     legacyRevolveFeatureType,
     legacyRevolveFeatureTypeV2,
     legacyRevolveFeatureTypeV3,
@@ -263,6 +272,7 @@ const extrusionTypeKeys = new Set(
     extrusionFeatureTypeV4,
     extrusionFeatureTypeV5,
     extrusionFeatureTypeV6,
+    extrusionFeatureTypeV7,
   ].map(({ type }) => featureTypeKey(type)),
 )
 const multiProfileResultTypeKeys = new Set([
@@ -306,6 +316,7 @@ function hasCompleteBodySelectionDependencies(
   feature: FeatureRecord,
   readParameters: BodySelectionParameterReader,
 ) {
+  if (readBooleanFeatureParametersV2(feature)) return hasCompleteBooleanBodyDependencies(feature)
   const bodies = featureBodyDependencies(feature).map(({ featureId }) => featureId)
   const referenceParameters = referenceBodySelectionParameters(feature)
   if (referenceParameters) {
@@ -900,15 +911,18 @@ function validateFeatureSources(document: IndexedDocument): GraphFailure | undef
   }
 }
 
+function legacyProfileNeedsTarget(feature: FeatureRecord) {
+  const profile = readExtrusionFeatureParameters(feature) ?? readRevolveFeatureParameters(feature)
+  return profile !== null && profile.operation !== "new"
+}
 function modifyingInputIndexes(feature: VersionedFeatureRecord) {
-  if (readHoleFeatureParameters(feature)) return [0]
-  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type)) {
-    return feature.dependencies.map((_, index) => index)
-  }
-  const extrusion = readExtrusionFeatureParameters(feature as FeatureRecord)
-  if (extrusion?.operation !== undefined && extrusion.operation !== "new") return [0]
+  if (readBooleanFeatureParametersV2(feature)) return []
   const revolve = readRevolveFeatureParameters(feature as FeatureRecord)
-  return revolve?.operation !== undefined && revolve.operation !== "new" ? [0] : []
+  if (revolve?.targetBody) return []
+  if (readHoleFeatureParameters(feature)) return [0]
+  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type))
+    return feature.dependencies.map((_, index) => index)
+  return legacyProfileNeedsTarget(feature as FeatureRecord) ? [0] : []
 }
 
 function validateMultiProfileResultInputs(

@@ -1,8 +1,13 @@
+import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
 import type { DocumentSnapshot, FeatureId, FeatureRecord } from "@vibeshape/domain"
 import { readExtrusionFeatureParameters } from "@vibeshape/domain"
+import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
-import { referenceFrameOptions } from "../reference-geometry/reference-frame-options"
+import {
+  createBodyTopologyReferenceProjector,
+  createBodyTopologyReferenceResolver,
+} from "@vibeshape/domain/model-body-topology"
 import type { ExtrusionTargetOption } from "./extrusion-form"
 
 export function extrusionBodyOptions(
@@ -17,7 +22,6 @@ export function extrusionBodyOptions(
     ? snapshot.features.findIndex(({ id }) => id === excludedFeatureId)
     : -1
   const features = stop >= 0 ? snapshot.features.slice(0, stop) : snapshot.features
-  const planes = referenceFrameOptions(snapshot, rebuild, excludedFeatureId).planes
   const byFeature = new Map<string, (ExtrusionTargetOption & { featureId: FeatureId })[]>()
   for (const feature of features) {
     if (feature.suppressed) continue
@@ -31,19 +35,40 @@ export function extrusionBodyOptions(
         outputRole: body.outputRole,
         contentHash: record.contentHash,
         label: label(feature.label, body.outputRole),
-        faces: planes.flatMap((plane) =>
-          plane.support.kind === "planar-face" &&
-          plane.support.reference.featureId === feature.id &&
-          plane.support.reference.outputRole === body.outputRole
-            ? [{ label: plane.label, reference: plane.support.reference }]
-            : [],
-        ),
+        faces: finiteEndFaceOptions(snapshot, rebuild, feature, body.outputRole),
       }))
     byFeature.set(feature.id, options)
   }
   const options = terminalBodyOutputs(features, byFeature) ?? []
   const legacy = legacyBodyOption(snapshot.features[stop], features, rebuild, legacyLabel)
   return legacy ? [legacy, ...options] : options
+}
+function finiteEndFaceOptions(
+  snapshot: DocumentSnapshot,
+  rebuild: Extract<DocumentRebuildOutcome, { ok: true }>,
+  feature: FeatureRecord,
+  outputRole: string,
+) {
+  const topology = createModelBodyTopologyEvidence(snapshot, rebuild, {
+    featureId: feature.id,
+    outputRole,
+    kind: "face",
+  })
+  if (!topology.ok) return []
+  const project = createBodyTopologyReferenceProjector(topology.evidence)
+  const resolve = createBodyTopologyReferenceResolver(topology.evidence)
+  return topology.evidence.candidates.flatMap((candidate) => {
+    const reference = bodyFaceRefSchema.safeParse(project(candidate))
+    if (!reference.success) return []
+    const resolved = resolve(reference.data)
+    if (resolved.status !== "resolved" || resolved.candidateId !== candidate.candidateId) return []
+    return [
+      {
+        label: `${feature.label ?? feature.type.typeId} · ${outputRole} · ${candidate.semanticRole ?? candidate.candidateId}`,
+        reference: reference.data,
+      },
+    ]
+  })
 }
 
 function legacyBodyOption(

@@ -10,6 +10,40 @@ Compare outer and inner sections before choosing Shell for a reconstruction. Use
 
 Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
 
+## Registered primitives
+
+Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
+typed `parameters` record. Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid each
+have named create/update tools using their registered domain schemas. Supply quantity dimensions,
+quantity `{ x, y, z }` origin, applicable `centered`, explicit `suppressed`, the label to retain,
+stable feature ID, fresh command ID and current owned draft revision. These independent primitives
+accept no dependencies or topology references. Read the full existing feature before updating;
+preserve its identity and raw expressions. The live schemas define bounds and required fields.
+Torus requires major radius greater than minor radius; Pyramid takes 3–64 integer sides and a
+circumradius. Wedge and truncated Cone are not registered primitive contracts.
+
+Inspect exact preview volume, bounds and body count before commit. Existing CAD auto-apply
+eligibility is unchanged: a valid matching grant can cover Box/Cylinder v1 ordinary edits;
+the other primitive families require manual browser review.
+
+## Feature and sketch lifecycle
+
+`remove_feature` and `remove_sketch` stage ordinary destructive removal by stable ID.
+Dependencies block removal with `feature-in-use` or `sketch-in-use`; the rejected command does
+not advance the draft revision. Inspect the owning records and explicitly remove or retarget
+their consumers first. These tools never cascade or discard model-reference intent.
+
+`set_feature_suppressed` takes an explicit boolean, preserving the remaining authored record.
+Suppression can block downstream geometry; exact preview exposes that failure and must be repaired
+before Apply. `rename_project` stages the registered document rename with a normalized nonempty
+name of at most 120 characters. It preserves feature/sketch IDs and geometry.
+
+All four lifecycle tools use fresh command IDs and the current owned draft revision. They always
+require ordinary manual browser review, including with CAD auto-apply enabled. Stage a coherent
+edit, run exact preview, then `commit_draft`; the accepted transaction persists once and creates
+one normal Undo entry. Reuse the returned revision and inspect affected intent after Apply.
+History navigation and generic command execution are not new MCP authorities.
+
 ## Sketches and profiles
 
 Use the advertised entity/constraint schema. Coordinate values are mm and solver seeds, not persistent dimensional constraints. Preserve unaffected entity and constraint IDs when replacing a sketch. Fully constrain geometry when the requested parametric intent requires it; report remaining freedom or conflicts when relevant.
@@ -32,6 +66,18 @@ Independent Extrude extents use the `profiles` contract (even for one profile), 
 
 `create_boolean`/`update_boolean` perform legacy whole-result subtraction with `operation: "subtract"`, optional `keepTools`, exactly two distinct dependencies ordered target before tool, and empty references. They do not accept exact body selectors. Use a selected-body feature operation when the requested scope is one constituent output rather than a whole producer result.
 
+For a selected constituent body, use additive `create_body_subtract`/`update_body_subtract` (Subtract v2):
+select exact `targetBody` and `toolBody`, including distinct roles of one producer. Declare each
+producer once in target/tool order and keep `references: []`. `keepTools` retains the tool Part;
+siblings remain available. Use `create_body_revolve`/`update_body_revolve` (Revolve v7) for exact-body
+Add/Remove/Intersect with a canonical same-sketch `profiles` set, typed angle, and existing origin,
+sketch-line, or stable model-edge axis. Its dependencies are target first, then distinct sketch-support
+and model-edge owners, with existing sketch-support references. New Revolve remains on `create_revolve`.
+Get roles from current `model_body_measurements` or `draft_body_measurements`, preserve selectors on
+update, and repair missing roles explicitly. These tools accept no caller content hashes or native
+indices. Local and paired remote transports use ordinary owned draft preview, review and Apply.
+
+
 `create_union`/`update_union` and `create_compound`/`update_compound` use schema v2: two to eight distinct exact bodies selected by `{ schemaVersion: 0, featureId, outputRole }`. Multiple roles from the same producer are supported; dependencies list each producer once in first-occurrence order, and references are empty. Use inspected roles for saved bodies. Known newly authored single-solid Box/Extrude/Revolve/Union outputs use `result`; do not invent roles for arbitrary multi-body features.
 
 Union takes ordered `bodies`, requires one connected positive-volume solid and keeps the first selected PartId while consuming the other selected parts. Compound takes ordered `slots`, each with a unique UUIDv7 `slotId` and `targetBody`; it retains separate solids and exposes `body.<slotId>`. Preserve slot IDs on edit to retain output and part identities. Missing roles fail exact preview; they never fall back to another body. An explicit update can upgrade saved v1 Union/Compound intent to v2. Manual Apply is the default; a matching explicit browser session grant permits Union v2 and Loft v1 creation and same-version edits. Compound and schema-upgrade edits still require manual review.
@@ -48,7 +94,9 @@ Adding `treatment` selects Hole v3 and requires `targetBody`: `{kind:"simple"}`,
 
 `create_extrude` and `update_extrude` retain their legacy profile contracts. V6 adds required `targetBody` (null for New, exact role for Add/Remove/Intersect), signed `startOffset`, signed `draftAngle` within 45 degrees, and `endCondition`. `{kind:"distance"}` uses the authored depths. Through-all and up-to-body require `{kind,targetBody,sourceContentHash}`; planar up-to-face also requires a stable body-bound `face` from current topology inspection. Capture the support's current content hash and role together. Changed or unresolved support requires explicit repair; never invent a face index or silently refresh the hash.
 
-Dependencies retain the modifying target first, optional sketch support second, and a distinct end producer last, with duplicate producers listed once. A shared sketch support uses the whole `result` slot; it cannot share a producer slot with a constituent target or endpoint. Dynamic endpoints require `symmetric:false` and `secondDistance:null`. Through-all reaches beyond current support bounds, up-to-body stops at the first uniquely covering body boundary, and up-to-face requires the complete end cap to lie on the selected finite planar face. Unreachable, ambiguous, stale and partially covering endpoints fail closed; curved end faces remain unavailable.
+Dependencies retain the modifying target first, optional sketch support second, and a distinct end producer last, with duplicate producers listed once. A shared sketch support uses the whole `result` slot; it cannot share a producer slot with a constituent target or endpoint. Dynamic endpoints require `symmetric:false` and `secondDistance:null`. Through-all reaches beyond current support bounds, up-to-body stops at the first uniquely covering body boundary, and up-to-face requires the complete end cap to lie on the selected finite planar face. Unreachable, ambiguous, stale and partially covering endpoints fail closed. V6 remains limited to planar faces.
+
+`create_face_extent_extrude` and `update_face_extent_extrude` author v7 up-to-face only, with the same typed advanced fields and exact target/body dependency rules. Obtain a current finite planar or curved `BodyFaceRef` from `model_body_topology` or `draft_body_topology` and retain its captured support hash. Curved termination requires one complete reachable cap; every new cap face must lie on the selected finite face. Partial patches, neighboring boundaries, an inside start, unreachable extents and stale or ambiguous support fail closed. No implicit surface extension is performed. Explicitly upgrading a legacy feature uses this named update tool and manual browser review; editing a saved v7 feature through it remains v7 when the endpoint becomes planar. Preview downstream geometry before committing. These additive tools are shared by local stdio and paired remote MCP.
 
 ## Fillet and Chamfer
 
@@ -86,6 +134,16 @@ Sweep uses one solved profile and an open connected tangent-continuous line, cir
 
 Thread creates custom 60-degree V-groove geometry, without ISO/DIN fit certification. Specify external/internal, nominal diameter, pitch, length, depth, clearance, handedness, one to four starts, phase and unthreaded run-in/run-out allowances. Legacy XYZ `axis` with quantity `origin` retains v1 and sixteen total turns. V2 uses a shared `origin-axis`, `datum-axis` (x/y/normal), stable `linear-edge`, or `explicit-axis` object; explicit origin is a mm tuple and direction is a normalized signed tuple. The exact target is first, any distinct axis producer is second, and generic references remain empty because body-bound topology stays in `parameters.axis`. Single-start v2 permits twenty total turns; multi-start retains sixteen. Depth stays at most 0.75 times pitch. Preserve complete axis and quantity intent on update. Preview and measure the intended cylindrical band before commit; kernel failures must not silently fall back to an unthreaded body.
 
-Geometry/planar file import and text generation use their advertised contracts or the visible editor. Assembly and local-library authoring use [owned assembly drafts](assembly-and-library.md); printable relief uses [surface texture proposals](surface-textures.md). Discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named schemas and ordinary review/commit authority.
+Geometry/planar file import uses its advertised contracts or the visible editor. Assembly and local-library authoring use [owned assembly drafts](assembly-and-library.md); printable relief uses [surface texture proposals](surface-textures.md). Placement and editable text use the named tools described below. Discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named schemas and ordinary review/commit authority.
 
 Sketch fillet/chamfer are sketch edits, separate from solid Fillet/Chamfer features. In the editor, select two authored non-construction lines sharing a corner, enter the radius or two setbacks, review the disposable preview and Apply once. Construction guides preserve the original virtual-corner dimensions; the added radius/tangent or distance constraints remain editable. Branched, collinear and oversized corners fail closed. Use a named transport tool only when its live schema advertises this edit; do not emulate it with a 3D edge treatment.
+
+## Placement and editable text
+
+`create_placement`/`update_placement` take the registered typed translation/rotation parameters and an exact `targetBody`. Supply exactly that producer as the sole dependency and empty references. Placement is numeric and non-associative; preview bounds and volume before ordinary manual review. Read the existing feature before update and retain its identity.
+
+`create_sketch_text` takes `draftId`, the current draft `baseRevision` from its last returned state, a fresh `commandId`, `sketchId`, a new stable UUIDv7 `groupId`, bounded `origin: [x, y]` and `intent` (`text`, `heightMm`, `trackingMm`, `alignment`, `kerning`). Inspect the live schema for supported characters and bounds. The browser uses its pinned bundled font; do not supply font bytes, hashes, entity IDs or outline metadata. Existing outline complexity budgets still apply even below the 64-scalar text limit.
+
+For `update_sketch_text`, retain the group ID and explicitly set `removeAttachedConstraints`. False rejects replacement when existing constraints refer to the generated entities; true deliberately removes those attached constraints. Regenerated contour identities can invalidate downstream selectors: inspect the exact draft sketch solution, repair dependent selectors and preview before Apply. `detach_sketch_text` retains geometry and constraints while removing the editable text intent.
+
+Text preparation uses the actor-owned exact-revision draft, then the ordinary sketch update path after asynchronous outline generation. Failed, cancelled, expired or stale preparation must leave the draft unchanged. These tools cannot expand browser auto-apply grants.

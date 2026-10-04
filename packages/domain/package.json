@@ -91,7 +91,8 @@
     "./assembly-poses": "./src/assembly-poses.ts",
     "./reference-frame": "./src/reference-frame.ts",
     "./sketch-solution-evidence": "./src/sketch-solution-evidence.ts",
-    "./assembly-pinned-insertion": "./src/assembly-pinned-insertion.ts"
+    "./assembly-pinned-insertion": "./src/assembly-pinned-insertion.ts",
+    "./part-design-subtract": "./src/part-design-subtract.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

@@ -9,10 +9,12 @@ import {
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
+  extrusionFeatureParametersV7Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
@@ -197,7 +199,7 @@ function valuesFromFeature(
   if (!parameters) throw new Error("Extrusion parameters are unavailable.")
   return {
     ...advancedValuesFromParameters(parameters),
-    advanced: feature.type.schemaVersion === 6,
+    advanced: feature.type.schemaVersion === 6 || feature.type.schemaVersion === 7,
     distance: quantityExpression(parameters.distance),
     extended: feature.type.schemaVersion >= 5,
     reversed: parameters.reversed,
@@ -244,7 +246,7 @@ function extrusionRecord(
           (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
         )
   if (mode.kind === "edit") {
-    const preserved = preserveLegacyExtrusionSchema(mode.feature, parameters)
+    const preserved = preserveExtrusionSchema(mode.feature, parameters)
     return featureRecordSchema.parse({
       ...mode.feature,
       ...preserved,
@@ -262,6 +264,22 @@ function extrusionRecord(
     suppressed: false,
     label: mode.featureLabel,
   })
+}
+
+function preserveExtrusionSchema(
+  feature: FeatureRecord,
+  parameters: Parameters<typeof extrusionType>[0],
+) {
+  if (
+    feature.type.schemaVersion === 7 &&
+    "endCondition" in parameters &&
+    parameters.endCondition.kind === "up-to-face"
+  )
+    return {
+      type: extrusionFeatureTypeV7.type,
+      parameters: extrusionFeatureParametersV7Schema.parse(parameters),
+    }
+  return preserveLegacyExtrusionSchema(feature, parameters)
 }
 
 function preserveLegacyExtrusionSchema(
@@ -292,7 +310,11 @@ function extrusionType(
     | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>
     | ReturnType<typeof extrusionFeatureParametersV6Schema.parse>,
 ) {
-  if ("endCondition" in parameters) return extrusionFeatureTypeV6.type
+  if ("endCondition" in parameters)
+    return parameters.endCondition.kind === "up-to-face" &&
+      parameters.endCondition.face.signature.geometryClass !== "PLANE"
+      ? extrusionFeatureTypeV7.type
+      : extrusionFeatureTypeV6.type
   if ("reversed" in parameters) return extrusionFeatureTypeV5.type
   if (!("profiles" in parameters)) return extrusionFeatureType.type
   return parameters.operation === "new"
@@ -422,7 +444,8 @@ function parseExtrusionEnd(
     targetBody: { schemaVersion: 0, featureId: target.id, outputRole: target.outputRole },
     sourceContentHash: target.contentHash,
   }
-  if (values.endKind !== "up-to-face") return { ok: true as const, value: base }
+  if (values.endKind !== "up-to-face")
+    return { ok: true as const, value: { ...base, kind: values.endKind } }
   const face = target.faces?.find((item) => JSON.stringify(item.reference) === values.endFace)
   return face
     ? { ok: true as const, value: { ...base, kind: "up-to-face" as const, face: face.reference } }
@@ -470,7 +493,11 @@ function parseAdvancedExtents(
   if (!quantities.ok) return quantities
   const end = parseExtrusionEnd(values, options, copy)
   if (!end.ok) return end
-  const parsed = extrusionFeatureParametersV6Schema.safeParse({
+  const schema =
+    end.value.kind === "up-to-face" && end.value.face.signature.geometryClass !== "PLANE"
+      ? extrusionFeatureParametersV7Schema
+      : extrusionFeatureParametersV6Schema
+  const parsed = schema.safeParse({
     ...basic.parameters,
     targetBody: targetBody.value,
     ...quantities.value,
@@ -984,7 +1011,7 @@ function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormCont
                     name="endFace"
                     label={t("endFace")}
                     value={values.endFace}
-                    description={t("planarOnly")}
+                    description={t("finiteFaceCoverage")}
                     disabled={controller.disabled}
                     onChange={(event) => {
                       controller.clearSubmissionErrors()
