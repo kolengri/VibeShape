@@ -5,6 +5,57 @@ import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
+test("selects an exact planar extrusion endpoint and saves its captured body revision", async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.goto("/")
+  await saved(page)
+  const commands = page.getByRole("toolbar", { name: "Model commands" })
+  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  const box = page.getByRole("form", { name: "Create box", exact: true })
+  for (const name of ["Width", "Depth"])
+    await box.getByRole("combobox", { name, exact: true }).fill("200 mm")
+  await box.getByRole("combobox", { name: "Height", exact: true }).fill("20 mm")
+  await box.getByRole("button", { name: "Create box", exact: true }).click()
+  await commands.getByRole("button", { name: "Create sketch", exact: true }).click()
+  await confirmSketchPlane(page, "xy")
+  await drawRectangle(page)
+  await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  await viewport
+    .getByRole("combobox", { name: "Select saved profile" })
+    .selectOption({ label: "Sketch 1 · Profile 1" })
+  await commands.getByRole("button", { name: "Extrude", exact: true }).click()
+  const form = page.getByRole("form", { name: "Extrude profile", exact: true })
+  await form
+    .getByRole("combobox", { name: "End condition", exact: true })
+    .selectOption("up-to-face")
+  await form
+    .getByRole("combobox", { name: "End support body", exact: true })
+    .selectOption({ label: "Box 1 · result" })
+  await form
+    .getByRole("combobox", { name: "End face", exact: true })
+    .selectOption({ label: "Box 1 · result · primitive.box.cap.end" })
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
+  await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
+  await saved(page)
+  const backup = await saveProject(page)
+  const feature = backup.project.snapshot.features.find(
+    (item) => item.type.schemaVersion === 6 && readExtrusionFeatureParameters(item),
+  )
+  if (!feature) throw new Error("Expected an authored face-terminated Extrusion v6.")
+  expect(readExtrusionFeatureParameters(feature)).toMatchObject({
+    targetBody: null,
+    endCondition: {
+      kind: "up-to-face",
+      sourceContentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      targetBody: { outputRole: "result" },
+      face: { outputRole: "result", semanticRole: "primitive.box.cap.end" },
+    },
+  })
+})
+
 test("authors start offset and draft through the exact extrusion preview and reopens the stored values", async ({
   page,
 }) => {
