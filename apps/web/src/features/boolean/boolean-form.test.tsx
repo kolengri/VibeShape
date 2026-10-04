@@ -3,7 +3,10 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { booleanFeatureType, featureIdSchema, featureRecordSchema } from "@vibeshape/domain"
+import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
+import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { BooleanForm, type BooleanFormMode, type BooleanInputOption } from "./boolean-form"
 
 const ids = {
@@ -64,6 +67,7 @@ function renderForm(
     createFeatureId: () => ids.boolean,
     featureLabel: "Subtract 1",
   },
+  inputOptions: readonly BooleanInputOption[] = options,
 ) {
   const formCopy =
     mode.kind === "edit"
@@ -74,7 +78,7 @@ function renderForm(
       baseRevision={4}
       copy={formCopy}
       mode={mode}
-      options={options}
+      options={inputOptions}
       onCancel={vi.fn()}
       onSave={onSave}
       onSaved={onSaved}
@@ -195,4 +199,92 @@ describe("BooleanForm", () => {
     )
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
   })
+})
+
+describe("exact-body Boolean form", () => {
+  const exactOptions = [0, 1].map((index) => {
+    const body = bodyReferenceSchema.parse({
+      schemaVersion: 0,
+      featureId: ids.box,
+      outputRole: `pattern.instance.${index}`,
+    })
+    return { id: exactBodyOptionId(body), body, label: `Body ${index + 1}` }
+  })
+  it("previews and saves two distinct roles from one producer, then restores the authored inputs", async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn(
+      async (_revision: number, _feature: ReturnType<typeof featureRecordSchema.parse>) => ({
+        ok: true as const,
+      }),
+    )
+    const onPreviewChange = vi.fn()
+    const mode = {
+      kind: "create" as const,
+      createFeatureId: () => ids.boolean,
+      featureLabel: "Subtract 1",
+    }
+    const view = render(
+      <BooleanForm
+        baseRevision={4}
+        copy={copy}
+        mode={mode}
+        options={exactOptions}
+        onCancel={vi.fn()}
+        onSave={onSave}
+        onSaved={vi.fn()}
+        onPreviewChange={onPreviewChange}
+      />,
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: booleanFeatureTypeV2.type,
+          dependencies: [ids.box],
+          parameters: {
+            operation: "subtract",
+            targetBody: exactOptions[0]?.body,
+            toolBody: exactOptions[1]?.body,
+          },
+        }),
+      ),
+    )
+    await user.click(screen.getByRole("checkbox", { name: copy.keepTools }))
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: booleanFeatureTypeV2.type,
+        dependencies: [ids.box],
+        parameters: {
+          operation: "subtract",
+          keepTools: true,
+          targetBody: exactOptions[0]?.body,
+          toolBody: exactOptions[1]?.body,
+        },
+      }),
+    )
+    const saved = onSave.mock.calls[0]?.[1]
+    view.unmount()
+    if (!saved) throw new Error("Expected saved exact-body feature.")
+    renderForm(undefined, undefined, { kind: "edit", feature: saved }, exactOptions)
+    expect((screen.getByRole("combobox", { name: copy.tool }) as HTMLSelectElement).value).toBe(
+      exactOptions[1]?.id,
+    )
+  })
+})
+
+it("releases Subtract submission after a rejected save and permits a successful retry", async () => {
+  const user = userEvent.setup()
+  const onSave = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Save failed"))
+    .mockResolvedValue({ ok: true })
+  const { onSaved } = renderForm(onSave)
+  const submit = screen.getByRole("button", { name: copy.submit })
+  await user.click(submit)
+  await screen.findByText(copy.saveFailed)
+  expect((submit as HTMLButtonElement).disabled).toBe(false)
+  await user.click(submit)
+  expect(onSave).toHaveBeenCalledTimes(2)
+  await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
 })

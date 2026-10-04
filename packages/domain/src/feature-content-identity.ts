@@ -5,7 +5,7 @@ import { featureBodyDependencies } from "./feature-dependencies"
 import { type FeatureRecord, featureParametersSchema, featureTypeSchema } from "./feature-graph"
 import type { FeatureTypeRegistry } from "./feature-type-registry"
 import { featureIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
-import { isBodyCombinationV2 } from "./part-design-body-combination"
+import { readBooleanFeatureParametersV2, usesSlottedBodyInputs } from "./part-design-subtract"
 import { topoRefContentSchema } from "./topology"
 
 const MAX_DEPENDENCIES = 1_024
@@ -288,8 +288,9 @@ function canonicalBodyInputContent(
 ):
   | { ok: true; schemaVersion: 0 | 1 | 2; fields: Readonly<Record<string, unknown>> }
   | { ok: false; diagnostic: FeatureContentIdentityDiagnostic } {
-  const bodies = featureBodyDependencies(feature)
-  if (isBodyCombinationV2(feature)) {
+  const boolean = readBooleanFeatureParametersV2(feature)
+  const bodies = boolean ? [boolean.targetBody, boolean.toolBody] : featureBodyDependencies(feature)
+  if (usesSlottedBodyInputs(feature)) {
     if ([...dependencies.values()].some(({ outputRole }) => outputRole !== undefined)) {
       return diagnostic(
         "invalid-feature-dependency-content",

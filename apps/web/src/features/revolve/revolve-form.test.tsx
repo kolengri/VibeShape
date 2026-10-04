@@ -16,11 +16,14 @@ import {
   topoRefSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
+import { revolveFeatureTypeV7 } from "@vibeshape/domain/part-design"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
-import { RevolveForm, type RevolveFormMode } from "./revolve-form"
+import { exactBodyOptionId } from "../part-design/exact-body-options"
+import { RevolveForm, type RevolveFormMode, type RevolveTargetOption } from "./revolve-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3701")
 const supportFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3703")
@@ -133,7 +136,7 @@ function renderForm(
     profiles: [profile],
   },
   onPreviewChange = vi.fn(),
-  options: readonly { id: FeatureId; label: string }[] = [],
+  options: readonly RevolveTargetOption[] = [],
   axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"],
   angleRequest?: Readonly<{ angle: number; featureId: FeatureId; sequence: number }>,
 ) {
@@ -470,3 +473,33 @@ describe("RevolveForm", () => {
     )
   })
 })
+
+it.each(["add", "remove", "intersect"] as const)(
+  "saves %s Revolve v7 with a selected exact body role",
+  async (operation) => {
+    const user = userEvent.setup()
+    const body = bodyReferenceSchema.parse({
+      schemaVersion: 0,
+      featureId: targetFeatureId,
+      outputRole: "split.positive",
+    })
+    const { onSave, onPreviewChange } = renderForm(undefined, undefined, undefined, undefined, [
+      { id: exactBodyOptionId(body), label: "Split positive", body },
+    ])
+    await selectOperation(user, operation)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: revolveFeatureTypeV7.type,
+        dependencies: [targetFeatureId],
+        parameters: expect.objectContaining({ operation, targetBody: body }),
+      }),
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenCalledWith(
+        expect.objectContaining({ type: revolveFeatureTypeV7.type }),
+      ),
+    )
+  },
+)

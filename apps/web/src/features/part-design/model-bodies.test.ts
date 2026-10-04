@@ -1,3 +1,4 @@
+import type { DocumentSnapshot } from "@vibeshape/domain"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -5,8 +6,10 @@ import {
   featureRecordSchema,
   filletFeatureType,
 } from "@vibeshape/domain"
+import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { DOCUMENT_PROTOCOL_VERSION, type DocumentWorkerResponse } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import { exactSolidBodyOptions } from "./exact-body-options"
 import { terminalModelBodies } from "./model-bodies"
 import { modifyingSolidTargetFeatures } from "./part-design-tool"
 
@@ -212,5 +215,72 @@ describe("terminalModelBodies", () => {
     )
 
     expect(result).toBeNull()
+  })
+})
+
+describe("exact solid body options", () => {
+  const bodies = [0, 1, 2].map((index) => ({
+    outputRole: `pattern.instance.${index}`,
+    shape: geometryRecord(sourceId).geometry.shape,
+    mesh,
+    topologyCandidates: [],
+  }))
+  const targetBody = { schemaVersion: 0, featureId: sourceId, outputRole: "pattern.instance.0" }
+  const cut = featureRecordSchema.parse({
+    ...consumer,
+    type: booleanFeatureTypeV2.type,
+    parameters: {
+      operation: "subtract",
+      targetBody,
+      toolBody: { ...targetBody, outputRole: "pattern.instance.1" },
+    },
+  })
+  const snapshot = (features: DocumentSnapshot["features"]) => ({ features }) as DocumentSnapshot
+  const response = (features: DocumentSnapshot["features"]) =>
+    rebuild(
+      features.map(({ id }) => ({ featureId: id, status: "succeeded", contentHash: hash })),
+      [
+        geometryRecord(sourceId, bodies),
+        geometryRecord(consumerId, [{ ...bodies[0], outputRole: "result" }]),
+      ],
+    )
+  it("keeps roles distinct and retains saved edit inputs while excluding later History", () => {
+    const features = [source, cut]
+    const outcome = { ok: true as const, response: response(features) }
+    expect(
+      exactSolidBodyOptions(snapshot(features), outcome, undefined, [], "Body").map(
+        ({ body }) => body,
+      ),
+    ).toEqual([
+      { ...targetBody, outputRole: "pattern.instance.2" },
+      { schemaVersion: 0, featureId: consumerId, outputRole: "result" },
+    ])
+    expect(
+      exactSolidBodyOptions(snapshot(features), outcome, cut.id, [], "Body").map(
+        ({ body }) => body.outputRole,
+      ),
+    ).toEqual(["pattern.instance.0", "pattern.instance.1", "pattern.instance.2"])
+  })
+  it("does not restore stale failed or mismatched retained geometry", () => {
+    const features = [source, cut]
+    const original = response(features)
+    for (const records of [
+      original.evaluation.records.map((record) => ({ ...record, status: "failed" })),
+      original.evaluation.records.map((record) => ({ ...record, contentHash: "b".repeat(64) })),
+    ]) {
+      const stale = {
+        ...original,
+        evaluation: { ...original.evaluation, records },
+      } as typeof original
+      expect(
+        exactSolidBodyOptions(
+          snapshot(features),
+          { ok: true, response: stale },
+          cut.id,
+          [],
+          "Body",
+        ),
+      ).toEqual([])
+    }
   })
 })

@@ -43,6 +43,15 @@ origin support xy/xz/yz (empty dependencies/references) or an existing planar fa
 cannot be substituted. Preview downstream sketches/features before commit.
 \`create_boolean\`/\`update_boolean\` perform legacy whole-result subtraction: operation=subtract,
 optional keepTools, exactly two distinct dependencies ordered target before tool, empty references.
+Additive \`create_body_subtract\`/\`update_body_subtract\` author Subtract v2 with exact targetBody/toolBody
+selectors, including distinct roles from one producer. Dependencies deduplicate producers in target/tool
+order; references are empty. keepTools retains the tool Part without changing geometry identity.
+\`create_body_revolve\`/\`update_body_revolve\` author Revolve v7 Add/Remove/Intersect with an exact
+targetBody, canonical same-sketch profiles, typed angle and existing origin/sketch-line/model-edge axis.
+Dependencies are target first, then distinct sketch-support and model-edge owners; preserve existing
+sketch-support references. New Revolve keeps its existing tools. Get roles from current body measurements;
+missing roles fail closed. No caller content hash or native index is accepted. Both use ordinary owned
+revision-bound drafts, preview, review and Apply on local and paired remote transports.
 \`create_union\`/\`update_union\` select two to eight distinct exact bodies in ordered \`bodies\`;
 \`create_compound\`/\`update_compound\` select them in ordered \`slots\` with stable UUIDv7 slotId.
 Both use feature schema v2. Dependencies list each producer once in first-occurrence order;

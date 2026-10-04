@@ -132,6 +132,7 @@ describe("module registry", () => {
       ).toEqual([1, 2, 3])
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
+        "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
         "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.chamfer",
@@ -159,6 +160,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.pattern",
         "org.vibeshape.feature.part-design.placement",
         "org.vibeshape.feature.part-design.pyramid",
+        "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",

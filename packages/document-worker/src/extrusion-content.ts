@@ -463,7 +463,7 @@ function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null
     ? {
         kind: "revolve",
         parameters: revolve,
-        multiProfile: feature.type.schemaVersion === 5 || feature.type.schemaVersion === 6,
+        multiProfile: feature.type.schemaVersion >= 5,
       }
     : null
 }

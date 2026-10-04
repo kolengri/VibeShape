@@ -59,6 +59,7 @@ import {
   type BasicPrimitiveFormMode,
   type BasicPrimitiveKind,
 } from "../features/part-design/basic-primitive-form"
+import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
 import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
 import {
   type FeatureDeleteEligibility,
@@ -66,7 +67,6 @@ import {
 } from "../features/part-design/feature-delete-eligibility"
 import {
   type ActivePartDesignTool,
-  booleanInputFeatures,
   isBooleanFeature,
   isBoxFeature,
   isChamferFeature,
@@ -94,7 +94,11 @@ import {
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
 import type { RevolveAngleRequest } from "../features/revolve/revolve-angle-manipulator"
-import { RevolveForm, type RevolveFormMode } from "../features/revolve/revolve-form"
+import {
+  RevolveForm,
+  type RevolveFormMode,
+  type RevolveTargetOption,
+} from "../features/revolve/revolve-form"
 import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
 import {
   externalModelCurveLabelKind,
@@ -845,7 +849,7 @@ function RevolveTaskPanel({
   onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
   onProfilesClear?: (() => void) | undefined
   onProfileSelectionRequest?: (() => void) | undefined
-  options: readonly { id: FeatureRecord["id"]; label: string }[]
+  options: readonly RevolveTargetOption[]
   profileSelectionActive?: boolean | undefined
   preview: Readonly<{
     onChange: TaskPanelProps["onFeaturePreviewChange"]
@@ -1026,12 +1030,17 @@ function BooleanTaskPanel({
   onCloseTool,
   onCompleteTool,
   options,
+  preview,
   report,
 }: {
   mode: BooleanFormMode
   onCloseTool: () => void
   onCompleteTool: () => void
   options: readonly BooleanInputOption[]
+  preview: {
+    onChange: TaskPanelProps["onFeaturePreviewChange"]
+    status: FeaturePreviewState["status"]
+  }
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -1048,6 +1057,8 @@ function BooleanTaskPanel({
         disabled={report.mode === "read-only"}
         mode={mode}
         options={options}
+        onPreviewChange={preview.onChange}
+        previewStatus={preview.status}
         onCancel={onCloseTool}
         onSave={task.onSave}
         onSaved={onCompleteTool}
@@ -1165,14 +1176,16 @@ function createDatumPlaneFormMode(
 
 function booleanOptions(
   report: NonNullable<DocumentControllerState["report"]>,
-  editingFeatureId: Extract<BooleanFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
+  editingFeatureId: string | undefined,
   unnamedFeature: string,
+  parts: readonly ResolvedAuthoredPart[],
 ) {
-  return booleanInputFeatures(report.snapshot.features, editingFeatureId, report.rebuild).map(
-    (feature) => ({
-      id: feature.id,
-      label: feature.label ?? unnamedFeature,
-    }),
+  return exactSolidBodyOptions(
+    report.snapshot,
+    report.rebuild,
+    editingFeatureId,
+    parts,
+    unnamedFeature,
   )
 }
 
@@ -1193,17 +1206,17 @@ function extrusionOptions(
 
 function revolveOptions(
   report: NonNullable<DocumentControllerState["report"]>,
-  editingFeatureId: Extract<RevolveFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
+  editingFeatureId: string | undefined,
   unnamedFeature: string,
+  parts: readonly ResolvedAuthoredPart[],
 ) {
-  return modifyingSolidTargetFeatures(
-    report.snapshot.features,
-    editingFeatureId,
+  return exactSolidBodyOptions(
+    report.snapshot,
     report.rebuild,
-  ).map((feature) => ({
-    id: feature.id,
-    label: feature.label ?? unnamedFeature,
-  }))
+    editingFeatureId,
+    parts,
+    unnamedFeature,
+  )
 }
 
 function StartModelingAction({
@@ -1387,12 +1400,15 @@ function canCreateFeature(controller: DocumentControllerState) {
 }
 
 function canCreateSubtract(controller: DocumentControllerState) {
-  if (!canCreateFeature(controller)) return false
+  if (!canCreateFeature(controller) || !controller.report) return false
+  const report = controller.report
   return (
-    booleanInputFeatures(
-      controller.report?.snapshot.features ?? [],
+    exactSolidBodyOptions(
+      report.snapshot,
+      report.rebuild,
       undefined,
-      controller.report?.rebuild,
+      currentAuthoredParts(controller),
+      "",
     ).length >= 2
   )
 }
@@ -1638,11 +1654,18 @@ function ActiveSubtractTaskPanel({
   onCloseTool,
   onCompleteTool,
   report,
+  parts,
+  preview,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-subtract" | "edit-subtract" }>
   onCloseTool: () => void
   onCompleteTool: () => void
   report: NonNullable<DocumentControllerState["report"]>
+  parts: readonly ResolvedAuthoredPart[]
+  preview: {
+    onChange: TaskPanelProps["onFeaturePreviewChange"]
+    status: FeaturePreviewState["status"]
+  }
 }) {
   const t = useTranslations("app.shell.taskPanel")
   const modelTreeT = useTranslations("app.shell.modelTree")
@@ -1657,10 +1680,12 @@ function ActiveSubtractTaskPanel({
     report,
     mode.kind === "edit" ? mode.feature.id : undefined,
     modelTreeT("unnamedFeature"),
+    parts,
   )
   return (
     <BooleanTaskPanel
       report={report}
+      preview={preview}
       mode={mode}
       options={options}
       onCloseTool={onCloseTool}
@@ -1900,6 +1925,7 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
         props.report,
         mode.kind === "edit" ? mode.feature.id : undefined,
         modelTreeT("unnamedFeature"),
+        props.parts,
       )
     : []
   return mode ? (
@@ -1938,6 +1964,9 @@ function SubtractToolTaskPanel({
   onCloseTool,
   onCompleteTool,
   report,
+  parts,
+  onFeaturePreviewChange,
+  featurePreviewStatus,
 }: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-subtract" && activeTool.kind !== "edit-subtract") return null
   return (
@@ -1946,6 +1975,8 @@ function SubtractToolTaskPanel({
       onCloseTool={onCloseTool}
       onCompleteTool={onCompleteTool}
       report={report}
+      parts={parts}
+      preview={{ onChange: onFeaturePreviewChange, status: featurePreviewStatus }}
     />
   )
 }

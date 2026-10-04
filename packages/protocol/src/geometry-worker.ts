@@ -742,7 +742,7 @@ export const revolveMultiProfileFeatureContentParametersSchema =
       path: ["axisDirection"],
     })
 
-/** Multi-profile modifying revolve content; schema-version 6 only. */
+/** Multi-profile modifying revolve content for versions 6 and 7. */
 export const revolveMultiProfileModifyingFeatureContentParametersSchema =
   revolveMultiProfileFeatureContentBaseSchema
     .extend({ operation: z.enum(["add", "remove", "intersect"]) })

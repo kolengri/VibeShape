@@ -295,6 +295,42 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
 )
 
 describe("remote MCP in workerd", () => {
+  it("rejects oversized browser results after serving the larger static schema catalog", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const catalog = await mcp(authenticated.token, 1, "tools/list")
+    expect(catalog.status).toBe(200)
+    expect(new TextEncoder().encode(await catalog.text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 2, "tools/call", { name: "model_info", arguments: {} })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected owned browser work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "model_info",
+        result: {
+          ok: false,
+          diagnostic: {
+            code: "oversized-fixture",
+            message: "x".repeat(193 * 1024),
+            retryable: false,
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({ result: { isError: true } })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
   it("rejects a successful draft result when the session expires during result persistence", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -442,6 +478,10 @@ describe("remote MCP in workerd", () => {
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "model_info",
+          "create_body_revolve",
+          "update_body_revolve",
+          "create_body_subtract",
+          "update_body_subtract",
           "draft_body_measurements",
           "draft_body_topology",
           "create_reference_mirror",
