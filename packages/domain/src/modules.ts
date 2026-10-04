@@ -19,6 +19,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -42,6 +43,7 @@ import {
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
+import { loftFeatureTypeV3 } from "./part-design-loft-v3"
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
@@ -457,6 +459,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     splitFeatureTypeV2,
     loftFeatureType,
     loftFeatureTypeV2,
+    loftFeatureTypeV3,
     sweepFeatureType,
     importedFeatureType,
     meshImportFeatureType,
@@ -485,6 +488,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     extrusionFeatureTypeV4,
     extrusionFeatureTypeV5,
     extrusionFeatureTypeV6,
+    extrusionFeatureTypeV7,
     filletFeatureType,
     filletFeatureTypeV2,
     legacyRevolveFeatureType,

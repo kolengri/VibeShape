@@ -130,4 +130,10 @@ export const copy: SweepLoftFormCopy = {
   removeSection: (profile) => `Remove section ${profile}`,
   moveEarlier: (number) => `Move section ${number} earlier`,
   moveLater: (number) => `Move section ${number} later`,
+  track: (number) => `Track ${number}`,
+  rail: (number) => `Rail ${number}`,
+  guide: (number) => `Guide ${number}`,
+  endConstraint: (number) => `End constraint ${number}`,
+  directedSegment: (track, section) => `Track ${track} · Section ${section}`,
+  directionOption: (curve, point) => `${curve} · start at ${point}`,
 }

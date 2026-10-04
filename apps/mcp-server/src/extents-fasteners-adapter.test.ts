@@ -12,7 +12,7 @@ function quantity(value: number, dimension = "length", unit = "mm") {
   return { schemaVersion: 0, dimension, value, unit, source: { value, unit, expression: null } }
 }
 
-it("advertises versioned endpoint, recess and axis contracts on all six existing MCP tools", async () => {
+it("advertises versioned endpoint, recess and axis contracts on existing MCP tools and additive v7 face extent tools", async () => {
   const broker = createBrowserBroker({ origin: "http://127.0.0.1:43118" })
   const adapter = createLocalMcpAdapter(broker, createExportResources())
   const client = new Client({ name: "extent-fastener-schema", version: "1" })
@@ -102,6 +102,30 @@ it("advertises versioned endpoint, recess and axis contracts on all six existing
     const listed = await client.listTools()
     for (const [suffix, parameters] of [
       ["extrude", extrude],
+      [
+        "face_extent_extrude",
+        {
+          ...extrude,
+          endCondition: {
+            ...extrude.endCondition,
+            face: {
+              schemaVersion: 1,
+              featureId: targetBody.featureId,
+              outputRole: targetBody.outputRole,
+              kind: "face",
+              signature: {
+                kind: "face",
+                geometryClass: "SPHERE",
+                measure: 64 * Math.PI,
+                centroid: [0, 0, 8],
+                bounds: { min: [-4, -4, 4], max: [4, 4, 12] },
+                boundaryCount: 1,
+                adjacentGeometryClasses: [],
+              },
+            },
+          },
+        },
+      ],
       ["hole", hole],
       ["thread", thread],
     ] as const) {

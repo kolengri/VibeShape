@@ -5,6 +5,7 @@ import {
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
 import { historyOperationSchema } from "@vibeshape/automation-api/history-tools"
+import { isLocalImport, type LocalImportOperation } from "@vibeshape/automation-api/imports"
 import {
   isLocalSketchTextOperation,
   type LocalSketchTextOperation,
@@ -39,6 +40,7 @@ import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
 import type { createBrowserHistoryAutomationSession } from "./history-automation-session"
+import type { createImportAutomationSession } from "./import-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -61,6 +63,7 @@ type LocalSessionPort = Readonly<{
   history?: ReturnType<typeof createBrowserHistoryAutomationSession>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
+  imports?: ReturnType<typeof createImportAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -304,14 +307,22 @@ export function createLocalToolExecutor(
       return session.history
         ? session.history.execute(actor, history.data, signal)
         : localFailure("history-unavailable", "The paired session cannot navigate saved changes.")
-    if (isAssemblyLibraryToolName(operation.tool))
-      return session.assembly
-        ? session.assembly.execute(actor, operation, signal)
-        : localFailure(
-            "assembly-authority-unavailable",
-            "The paired document has no assembly authority.",
-          )
+    if (isLocalImport(operation)) return importFile(operation, signal)
+    if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
     return null
+  }
+  function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
+    return session.imports
+      ? session.imports.execute(actor, operation, signal)
+      : localFailure("import-unavailable", "The paired session cannot import source files.")
+  }
+  function assemblyLibrary(operation: LocalOperation, signal?: AbortSignal) {
+    return session.assembly
+      ? session.assembly.execute(actor, operation, signal)
+      : localFailure(
+          "assembly-authority-unavailable",
+          "The paired document has no assembly authority.",
+        )
   }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
     const routed = dispatchSessionExtension(operation, signal)

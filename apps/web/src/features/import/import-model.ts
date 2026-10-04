@@ -3,6 +3,7 @@ import {
   type HistoryItemRef,
   insertFeatureInHistoryCommandSchema,
 } from "@vibeshape/domain"
+import { type CommandActor, commandActorSchema } from "@vibeshape/domain/commands"
 import { documentV4CommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { draftIdSchema, featureIdSchema } from "@vibeshape/domain/identifiers"
 import {
@@ -211,7 +212,9 @@ export function createImportTransaction(
   inspection: SourceImportInspection | MeshImportInspection,
   label: string,
   uuid = browserAuthoredUuid,
+  actor: CommandActor = { type: "user", userId: null },
 ) {
+  const authoredActor = commandActorSchema.parse(actor)
   const { asset, feature } = capturedImportFeature(prepared, inspection, label, uuid)
   const issuedAt = new Date().toISOString()
   let revision = context.revision
@@ -220,7 +223,7 @@ export function createImportTransaction(
     documentId: context.documentId,
     baseRevision: revision++,
     issuedAt,
-    actor: { type: "user" as const, userId: null },
+    actor: authoredActor,
   })
   const commands = [
     ...sourceAuthorityUpgradeCommands(context.authorityVersion, envelope),

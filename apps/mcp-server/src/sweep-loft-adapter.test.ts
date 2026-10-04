@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { expect, it } from "vitest"
+import { createLoftV3Project } from "../../../tests/support/loft-v3-fixture"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
@@ -47,6 +48,38 @@ it("discovers strict ordered Loft and directed Sweep tools without unpaired docu
         required: tool.inputSchema.required ?? [],
       })
       expect(validate(input).valid).toBe(true)
+      if (name.endsWith("loft")) {
+        const fixture = createLoftV3Project()
+        const v3 = {
+          ...base,
+          parameters: {
+            sections: fixture.sections,
+            ruled: false,
+            outerCorrespondence: fixture.outerCorrespondence,
+            rails: [{ vertexTrack: 0, path: fixture.railPath }],
+            guides: [{ name: "Wall", segmentTrack: 0, continuity: "C0", path: fixture.guidePath }],
+            start: [],
+            end: [],
+          },
+        }
+        expect(validate(v3).valid).toBe(true)
+        expect(
+          validate({
+            ...v3,
+            parameters: {
+              ...v3.parameters,
+              guides: [{ ...v3.parameters.guides[0], continuity: "G2" }],
+            },
+          }).valid,
+        ).toBe(false)
+        expect(
+          validate({ ...v3, parameters: { ...v3.parameters, guessedCorrespondence: true } }).valid,
+        ).toBe(false)
+        expect(await client.callTool({ name, arguments: v3 })).toMatchObject({
+          isError: true,
+          structuredContent: { result: { ok: false, diagnostic: { code: "not-paired" } } },
+        })
+      }
       expect(validate({ ...input, parameters: { ...parameters, autoPosition: true } }).valid).toBe(
         false,
       )

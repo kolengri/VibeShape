@@ -16,6 +16,7 @@ import {
   remoteServerMessageSchema,
 } from "@vibeshape/automation-api/remote-session"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import type { RemoteEnv } from "./environment"
 import worker from "./index"
 
@@ -352,6 +353,46 @@ describe("remote MCP in workerd", () => {
       ).toBe(false)
     },
   )
+  it("revokes a forged exact-solid result for a mesh import", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const value = nativeImportInspection("stl")
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 1, "tools/call", {
+      name: "inspect_import_upload",
+      arguments: { uploadId: value.upload.uploadId },
+    })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected import inspection work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "inspect_import_upload",
+        result: {
+          ok: true,
+          value: {
+            ...value,
+            representation: "exact-solid",
+            outputs: value.outputs.map((output) => ({ ...output, volumeMm3: 1 })),
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({
+      result: {
+        structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+      },
+    })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
+
   it.each(["duplicate", "reversed-duplicate", "foreign", "missing", "extra"] as const)(
     "requires exact unique interference coverage and revokes a %s response",
     async (invalid) => {
@@ -613,6 +654,8 @@ describe("remote MCP in workerd", () => {
           "update_body_subtract",
           "draft_body_measurements",
           "draft_body_topology",
+          "create_face_extent_extrude",
+          "update_face_extent_extrude",
           "create_reference_mirror",
           "update_reference_mirror",
           "create_reference_split",
@@ -675,6 +718,11 @@ describe("remote MCP in workerd", () => {
     const listed = await mcp(authenticated.token, 3, "resources/list")
     const resources = (await listed.json()) as { result: { resources: { uri: string }[] } }
     expect(resources.result.resources).toHaveLength(agentSkillResources.length)
+    expect(resources.result.resources).toContainEqual(
+      expect.objectContaining({
+        uri: "vibeshape://agent-skills/vibeshape-modeling/references/native-import.md",
+      }),
+    )
     expect(resources.result.resources).not.toContainEqual(
       expect.objectContaining({ uri: "vibeshape://model" }),
     )

@@ -51,6 +51,14 @@ import {
   historyToolInputs,
 } from "./history-tools"
 import {
+  importUploadCommitSchema,
+  importUploadDescriptorSchema,
+  importUploadDiscardSchema,
+  importUploadInspectionSchema,
+  localImportInputs,
+  localImportOperations,
+} from "./imports"
+import {
   libraryItemsViewSchema,
   libraryOperations,
   libraryToolInputs,
@@ -144,6 +152,7 @@ const chamfer = z
   .strict()
 export const localToolInputs = {
   ...historyToolInputs,
+  ...localImportInputs,
   model_sketch_solution: sketchSolutionArgumentsSchema,
   ...localBinaryExportInputs,
   model_measurements: modelMeasurementQuerySchema.omit({
@@ -257,6 +266,11 @@ export const localToolOutputs = {
   create_sketch_text: resultOf(automationDraftStateSchema),
   update_sketch_text: resultOf(automationDraftStateSchema),
   detach_sketch_text: resultOf(automationDraftStateSchema),
+  begin_import_upload: resultOf(importUploadDescriptorSchema),
+  append_import_chunk: resultOf(importUploadDescriptorSchema),
+  inspect_import_upload: resultOf(importUploadInspectionSchema),
+  commit_import_upload: resultOf(importUploadCommitSchema),
+  discard_import_upload: resultOf(importUploadDiscardSchema),
   model_sketch_solution: resultOf(sketchSolutionViewSchema),
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
   prepare_model_export: resultOf(binaryExportDescriptorSchema),
@@ -318,6 +332,8 @@ export const localToolOutputs = {
   update_sketch: resultOf(automationDraftStateSchema),
   create_extrude: resultOf(automationDraftStateSchema),
   update_extrude: resultOf(automationDraftStateSchema),
+  create_face_extent_extrude: resultOf(automationDraftStateSchema),
+  update_face_extent_extrude: resultOf(automationDraftStateSchema),
   create_body_revolve: resultOf(automationDraftStateSchema),
   update_body_revolve: resultOf(automationDraftStateSchema),
   create_body_subtract: resultOf(automationDraftStateSchema),
@@ -375,6 +391,11 @@ export const localToolNameSchema = z.enum([
   "create_sketch_text",
   "update_sketch_text",
   "detach_sketch_text",
+  "begin_import_upload",
+  "append_import_chunk",
+  "inspect_import_upload",
+  "commit_import_upload",
+  "discard_import_upload",
   "model_sketch_solution",
   "draft_sketch_solution",
   "prepare_model_export",
@@ -419,6 +440,8 @@ export const localToolNameSchema = z.enum([
   "update_sketch",
   "create_extrude",
   "update_extrude",
+  "create_face_extent_extrude",
+  "update_face_extent_extrude",
   "create_body_revolve",
   "update_body_revolve",
   "create_body_subtract",
@@ -468,6 +491,7 @@ export const localToolNameSchema = z.enum([
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
   ...localBinaryExportOperations,
+  ...localImportOperations,
   z
     .object({
       tool: z.literal("model_sketch_solution"),

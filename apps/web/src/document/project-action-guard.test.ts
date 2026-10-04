@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest"
 import { createProjectActionGuard, type ProjectActionBlock } from "./project-action-guard"
 
 describe("mounted project action guard readers", () => {
+  it("continues reading editor and surface blockers when a private reviewed commit excludes its own transport busy state", () => {
+    const guard = createProjectActionGuard()
+    guard.register(() => "automation-busy")
+    let editor: ProjectActionBlock | null = "editor-draft"
+    guard.register(() => editor)
+    guard.register(() => "surface-texture-draft")
+    const reviewed = () => guard.read((block) => block !== "automation-busy")
+    expect(guard.read()).toBe("automation-busy")
+    expect(reviewed()).toBe("editor-draft")
+    editor = null
+    expect(reviewed()).toBe("surface-texture-draft")
+  })
+
   it("allows a captured private review to exclude automation busy while retaining all editor drafts", () => {
     const guard = createProjectActionGuard()
     guard.register(() => "automation-busy")

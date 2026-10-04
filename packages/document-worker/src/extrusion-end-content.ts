@@ -1,8 +1,9 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
-import { resolveReferencePlane } from "@vibeshape/application/reference-frame"
+import { resolveReferenceFace, resolveReferencePlane } from "@vibeshape/application/reference-frame"
 import type {
   DocumentSnapshot,
   ExtrusionFeatureParametersV6,
+  ExtrusionFeatureParametersV7,
   FeatureRecord,
 } from "@vibeshape/domain"
 import type { ExtrusionFeatureContentParametersV6 } from "@vibeshape/protocol"
@@ -14,7 +15,7 @@ type Context = {
 }
 export function prepareExtrusionEndContent(
   feature: FeatureRecord,
-  parameters: ExtrusionFeatureParametersV6,
+  parameters: ExtrusionFeatureParametersV6 | ExtrusionFeatureParametersV7,
   context: Context,
   frame: ExtrusionFeatureContentParametersV6["frame"],
 ) {
@@ -58,6 +59,15 @@ export function prepareExtrusionEndContent(
     inputIndex: feature.dependencies.indexOf(end.targetBody.featureId),
   }
   if (end.kind !== "up-to-face") return { ok: true as const, distance, endCondition: base }
+  if (feature.type.schemaVersion === 7 && end.face.signature.geometryClass !== "PLANE") {
+    if (!resolveReferenceFace(end.face, context)) return { ok: false as const }
+    const { featureId: _featureId, ...face } = end.face
+    return {
+      ok: true as const,
+      distance,
+      endCondition: { ...base, kind: "up-to-curved-face" as const, face },
+    }
+  }
   const plane = resolveReferencePlane({ kind: "planar-face", reference: end.face }, context)
   if (!plane || Math.abs(dot(plane.normal)) < 1e-8) return { ok: false as const }
   const { featureId: _featureId, ...face } = end.face

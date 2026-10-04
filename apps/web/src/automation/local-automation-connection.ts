@@ -184,6 +184,7 @@ export function createLocalAutomationConnection() {
     if (!active) return null
     const review = [
       "commit_draft",
+      "commit_import_upload",
       "change_metadata",
       "commit_assembly_draft",
       "save_library_definition",
@@ -377,6 +378,12 @@ export function createLocalAutomationConnection() {
       () => undefined,
     )
   }
+  const onBeforeUnload = () => {
+    // Browsers may abort fetch before pagehide. Suspend while the document handle is live.
+    onPageHide()
+    // If navigation is cancelled, the current document must regain its reviewed connection.
+    if (readResume()) retryRestore()
+  }
   const onPageShow = () => {
     void status()
   }
@@ -397,6 +404,7 @@ export function createLocalAutomationConnection() {
     disable,
     status,
     start() {
+      window.addEventListener("beforeunload", onBeforeUnload)
       window.addEventListener("pagehide", onPageHide)
       window.addEventListener("pageshow", onPageShow)
     },
@@ -406,6 +414,7 @@ export function createLocalAutomationConnection() {
       return () => listeners.delete(listener)
     },
     dispose() {
+      window.removeEventListener("beforeunload", onBeforeUnload)
       window.removeEventListener("pagehide", onPageHide)
       window.removeEventListener("pageshow", onPageShow)
       // Loading-to-ready remounts transfer the tab's recovery record to the new owner.

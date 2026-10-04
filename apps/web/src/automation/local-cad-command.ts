@@ -8,6 +8,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
@@ -25,7 +26,8 @@ import {
   holeFeatureTypeV2,
   holeFeatureTypeV3,
 } from "@vibeshape/domain/part-design-hole"
-import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
 import {
   mirrorFeatureType,
   mirrorFeatureTypeV2,
@@ -49,6 +51,8 @@ type CadOperation = Extract<
       | "update_sketch"
       | "create_extrude"
       | "update_extrude"
+      | "create_face_extent_extrude"
+      | "update_face_extent_extrude"
       | "create_body_revolve"
       | "update_body_revolve"
       | "create_body_subtract"
@@ -89,6 +93,8 @@ type CadOperation = Extract<
 >
 
 const directCadFeatureTypes = {
+  create_face_extent_extrude: extrusionFeatureTypeV7.type,
+  update_face_extent_extrude: extrusionFeatureTypeV7.type,
   create_body_revolve: revolveFeatureTypeV7.type,
   update_body_revolve: revolveFeatureTypeV7.type,
   create_body_subtract: booleanFeatureTypeV2.type,
@@ -111,6 +117,8 @@ const directCadFeatureTypes = {
   update_compound: compoundFeatureTypeV2.type,
   create_shell: shellFeatureTypeV2.type,
   update_shell: shellFeatureTypeV2.type,
+  create_hole: holeFeatureType.type,
+  update_hole: holeFeatureType.type,
   create_mirror: mirrorFeatureType.type,
   update_mirror: mirrorFeatureType.type,
   create_body_pattern: patternFeatureType.type,
@@ -125,6 +133,7 @@ const directCadFeatureTypes = {
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
+  if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
   if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
   if (
@@ -135,6 +144,18 @@ function cadFeatureType(
   )
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
+}
+function loftCadFeatureType(
+  parameters: Exclude<
+    CadOperation,
+    { tool: "create_sketch" | "update_sketch" }
+  >["arguments"]["parameters"],
+) {
+  return "outerCorrespondence" in parameters
+    ? loftFeatureTypeV3.type
+    : "holeCorrespondence" in parameters
+      ? loftFeatureTypeV2.type
+      : loftFeatureType.type
 }
 
 function isBodySelectionOperation(

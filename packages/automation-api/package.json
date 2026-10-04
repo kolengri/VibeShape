@@ -19,10 +19,11 @@
     "./authored-metadata": "./src/authored-metadata.ts",
     "./agent-skills": "./src/agent-skills.ts",
     "./query-byte-budget": "./src/query-byte-budget.ts",
+    "./binary-exports": "./src/binary-exports.ts",
+    "./imports": "./src/imports.ts",
     "./assembly-tools": "./src/assembly-tools.ts",
     "./library-tools": "./src/library-tools.ts",
     "./assembly-result-context": "./src/assembly-result-context.ts",
-    "./binary-exports": "./src/binary-exports.ts",
     "./history-tools": "./src/history-tools.ts"
   },
   "scripts": {

@@ -17,6 +17,7 @@ import {
   type PersistentSketchSolveOptions,
   type PersistentSketchSolveResult,
 } from "@vibeshape/application/persistent-document-session"
+import { localFailure } from "@vibeshape/automation-api/local-tools"
 import type {
   CadInspectionDetailQuery,
   CadInspectionListQuery,
@@ -85,8 +86,7 @@ import {
 } from "@vibeshape/domain/assembly-authority"
 import { mergeCapturedAssemblyAssets } from "@vibeshape/domain/assembly-pinned-insertion"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
-import type { DocumentCommand } from "@vibeshape/domain/commands"
-import { commandActorsEqual } from "@vibeshape/domain/commands"
+import { commandActorsEqual, type DocumentCommand } from "@vibeshape/domain/commands"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import type {
   AuthoredDocumentSnapshot,
@@ -139,9 +139,12 @@ import {
 } from "../automation/assembly-automation-session"
 import { assemblyInspectionView } from "../automation/assembly-inspection-view"
 import { automationReviews } from "../automation/automation-review-controller"
+import { isImportReview } from "../automation/automation-review-state"
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
+import { createImportAutomationSession } from "../automation/import-automation-session"
+import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
@@ -831,6 +834,30 @@ export function createActiveDocumentAutomationSession() {
     isActive: () => currentReport() !== null,
     commit: (command, expected) => commitReviewedMetadata(active, command, expected),
   })
+  const imports = createImportAutomationSession({
+    documentId: capturedDocumentId,
+    isActive: sourceSessionAvailable,
+    createId: browserUuidV7,
+    readContext() {
+      const snapshot = currentReport() ? active.authoredSnapshot : null
+      return snapshot && snapshot.schemaVersion !== 1
+        ? {
+            documentId: capturedDocumentId,
+            revision: snapshot.revision,
+            authorityVersion: snapshot.schemaVersion,
+            historyAfter: state.report?.historyItems?.at(-1) ?? null,
+          }
+        : null
+    },
+    async commit(input) {
+      if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
+        return localFailure(
+          "import-review-mismatch",
+          "The captured import review no longer matches.",
+        )
+      return commitReviewedImport(active, input)
+    },
+  })
   const assembly = createBrowserAssemblyAutomationSession({
     documentId: capturedDocumentId,
     createId: browserUuidV7,
@@ -991,6 +1018,7 @@ export function createActiveDocumentAutomationSession() {
       revision = active.snapshot.revision
       factory.cancel("stale-revision")
       metadata.cancel("stale-revision")
+      imports.cancel("stale-revision")
       assembly.cancel("stale-revision")
       history.cancel("stale-revision")
     }
@@ -1001,6 +1029,7 @@ export function createActiveDocumentAutomationSession() {
     window.removeEventListener("pagehide", dispose)
     closeAutomation()
     metadata.dispose()
+    imports.dispose()
     assembly.dispose()
     history.dispose()
     exports.dispose()
@@ -1014,6 +1043,7 @@ export function createActiveDocumentAutomationSession() {
     },
     host: factory.host,
     metadata,
+    imports,
     assembly,
     history,
     exports,
@@ -1025,6 +1055,7 @@ export function createActiveDocumentAutomationSession() {
     cancel: (reason?: Parameters<typeof factory.cancel>[0]) => {
       factory.cancel(reason)
       metadata.cancel(reason)
+      imports.cancel(reason)
       assembly.cancel(reason)
       history.cancel(reason)
       exports.cancel()
@@ -1179,6 +1210,50 @@ function reviewedMetadataBase(active: PersistentDocumentSession, baseRevision: n
     return null
   const base = active.authoredSnapshot
   return base && base.schemaVersion !== 1 && base.revision === baseRevision ? base : null
+}
+
+function importReviewedInputMatches(input: ImportReviewedCommit) {
+  const review = automationReviews.getSnapshot()
+  if (review?.status !== "applying" || !isImportReview(review.input)) return false
+  const expected = review.input
+  return (
+    commandActorsEqual(expected.actor, input.actor) &&
+    importReviewIdentity(expected) === importReviewIdentity(input)
+  )
+}
+function importReviewIdentity(input: ImportReviewInput) {
+  return canonicalJson({
+    draft: input.draft,
+    source: input.source,
+    label: input.label,
+    transaction: input.transaction,
+  })
+}
+
+async function commitReviewedImport(
+  active: PersistentDocumentSession,
+  input: ImportReviewedCommit,
+) {
+  if (
+    !reviewedMetadataBase(active, input.draft.baseRevision) ||
+    active.snapshot.id !== input.draft.documentId ||
+    projectActionGuard.read((block) => block !== "automation-busy") ||
+    !importReviewedInputMatches(input)
+  )
+    return localFailure(
+      "stale-revision",
+      "The reviewed import base has an active edit or changed.",
+      true,
+    )
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.commitAuthoredTransaction({
+    ...input.transaction,
+    assetBlobs: input.assetBlobs,
+  })
+  publishAuthoredResult(active, result)
+  return result.ok
+    ? { ok: true as const, value: { revision: result.snapshot.revision } }
+    : localFailure(result.diagnostic.code, result.diagnostic.message, result.diagnostic.retryable)
 }
 
 async function commitReviewedMetadata(

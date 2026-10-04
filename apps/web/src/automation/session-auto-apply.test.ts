@@ -100,7 +100,9 @@ describe("session CAD auto-apply allowlist", () => {
     ["union", 1, false],
     ["union", 3, false],
     ["loft", 1, true],
-    ["loft", 2, false],
+    ["loft", 2, true],
+    ["loft", 3, true],
+    ["loft", 4, false],
     ["compound", 2, false],
     ["sweep", 1, false],
   ] as const)("bounds %s schema version %i to the explicit grant", (name, version, expected) => {
@@ -174,6 +176,7 @@ describe("session CAD auto-apply allowlist", () => {
   it.each([
     [5, true],
     [6, false],
+    [7, false],
   ] as const)("explicitly bounds independent extrusion schema version %i", (version, expected) => {
     const review = input()
     const command = review.commands[0]

@@ -19,6 +19,7 @@ import {
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
+  extrusionFeatureParametersV7Schema,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
@@ -32,7 +33,15 @@ import {
   holeFeatureParametersV3Schema,
   holeTreatmentSchema,
 } from "@vibeshape/domain/part-design-hole"
-import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
+import {
+  loftFeatureParametersSchema,
+  loftFeatureParametersV2Schema,
+  MAX_LOFT_SECTIONS,
+} from "@vibeshape/domain/part-design-loft"
+import {
+  loftFeatureParametersV3Schema,
+  MAX_LOFT_V3_DEPENDENCIES,
+} from "@vibeshape/domain/part-design-loft-v3"
 import {
   mirrorFeatureParametersSchema,
   mirrorFeatureParametersV2Schema,
@@ -129,6 +138,7 @@ const extrude = z
         message: "A sketch support must retain its whole result slot.",
       })
   })
+const faceExtentExtrude = extrude.safeExtend({ parameters: extrusionFeatureParametersV7Schema })
 const revolve = z
   .object({
     ...feature,
@@ -387,10 +397,25 @@ const multiSketchFeature = {
 const loft = z
   .object({
     ...multiSketchFeature,
-    dependencies: featureRecordSchema.shape.dependencies.max(MAX_LOFT_SECTIONS),
-    parameters: loftFeatureParametersSchema,
+    dependencies: featureRecordSchema.shape.dependencies.max(MAX_LOFT_V3_DEPENDENCIES),
+    parameters: z.union([
+      loftFeatureParametersSchema,
+      loftFeatureParametersV2Schema,
+      loftFeatureParametersV3Schema,
+    ]),
   })
   .strict()
+  .superRefine((input, context) => {
+    if (
+      !("outerCorrespondence" in input.parameters) &&
+      input.dependencies.length > MAX_LOFT_SECTIONS
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message: "Loft v1/v2 permits at most twenty-four producers.",
+      })
+  })
 const sweep = z.object({ ...multiSketchFeature, parameters: sweepFeatureParametersSchema }).strict()
 
 const datumPlane = z
@@ -528,6 +553,8 @@ export const localCadInputs = {
   update_sketch: sketch,
   create_extrude: extrude,
   update_extrude: extrude,
+  create_face_extent_extrude: faceExtentExtrude,
+  update_face_extent_extrude: faceExtentExtrude,
   create_revolve: revolve,
   update_revolve: revolve,
   create_hole: hole,
@@ -581,6 +608,12 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_sketch"), arguments: sketch }).strict(),
   z.object({ tool: z.literal("create_extrude"), arguments: extrude }).strict(),
   z.object({ tool: z.literal("update_extrude"), arguments: extrude }).strict(),
+  z
+    .object({ tool: z.literal("create_face_extent_extrude"), arguments: faceExtentExtrude })
+    .strict(),
+  z
+    .object({ tool: z.literal("update_face_extent_extrude"), arguments: faceExtentExtrude })
+    .strict(),
   z.object({ tool: z.literal("create_revolve"), arguments: revolve }).strict(),
   z.object({ tool: z.literal("update_revolve"), arguments: revolve }).strict(),
   z.object({ tool: z.literal("create_hole"), arguments: hole }).strict(),

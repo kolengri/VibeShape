@@ -15,6 +15,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
+  extrusionFeatureTypeV7,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -45,6 +46,12 @@ import {
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2, readLoftFeatureParameters } from "./part-design-loft"
+import {
+  loftFeatureTypeV3,
+  loftV3SketchIds,
+  loftV3SupportBodies,
+  readLoftFeatureParametersV3,
+} from "./part-design-loft-v3"
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
@@ -105,6 +112,7 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureTypeV4.type),
   featureTypeKey(extrusionFeatureTypeV5.type),
   featureTypeKey(extrusionFeatureTypeV6.type),
+  featureTypeKey(extrusionFeatureTypeV7.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),
@@ -139,24 +147,57 @@ const sketchSolidInputReaders = new Map<
   ],
 ])
 
+function constrainedLoftSemanticInputs(
+  feature: VersionedFeatureRecord,
+): FirstPartySemanticInputProjection {
+  const parameters = readLoftFeatureParametersV3(feature)
+  return parameters
+    ? {
+        recognized: true,
+        ok: true,
+        inputs: [
+          ...loftV3SketchIds(parameters).map((id) => ({ kind: "sketch" as const, id })),
+          ...loftV3SupportBodies(parameters).map(({ featureId }) => ({
+            kind: "feature" as const,
+            id: featureId,
+          })),
+        ],
+      }
+    : {
+        recognized: true,
+        ok: false,
+        message: "A constrained Loft requires complete authored correspondence.",
+      }
+}
+
+function sketchSolidSemanticInputs(
+  feature: VersionedFeatureRecord,
+  readSketchSolidInputs: (feature: VersionedFeatureRecord) => readonly SketchId[] | null,
+): FirstPartySemanticInputProjection {
+  const sketchIds = readSketchSolidInputs(feature)
+  return sketchIds
+    ? {
+        recognized: true,
+        ok: true,
+        inputs: [...new Set(sketchIds)].map((id) => ({ kind: "sketch", id })),
+      }
+    : {
+        recognized: true,
+        ok: false,
+        message: "A sketch-based solid must contain valid ordered sketch selectors.",
+      }
+}
+
 export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
 ): FirstPartySemanticInputProjection {
   const typeKey = featureTypeKey(feature.type)
+  if (typeKey === featureTypeKey(loftFeatureTypeV3.type))
+    return constrainedLoftSemanticInputs(feature)
+
   const readSketchSolidInputs = sketchSolidInputReaders.get(typeKey)
   if (readSketchSolidInputs) {
-    const sketchIds = readSketchSolidInputs(feature)
-    return sketchIds
-      ? {
-          recognized: true,
-          ok: true,
-          inputs: [...new Set(sketchIds)].map((id) => ({ kind: "sketch", id })),
-        }
-      : {
-          recognized: true,
-          ok: false,
-          message: "A sketch-based solid must contain valid ordered sketch selectors.",
-        }
+    return sketchSolidSemanticInputs(feature, readSketchSolidInputs)
   }
   if (
     typeKey === featureTypeKey(holeFeatureType.type) ||

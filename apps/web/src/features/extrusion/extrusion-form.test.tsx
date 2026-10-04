@@ -3,10 +3,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
+  createAngleQuantity,
   createLengthQuantity,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV7,
   featureIdSchema,
   featureRecordSchema,
   legacyExtrusionFeatureType,
@@ -171,6 +173,85 @@ beforeAll(() => {
 })
 
 afterEach(cleanup)
+
+it("authors v7 when choosing a current finite curved face from the real body collector", async () => {
+  const options = collectedExtrusionOptions(undefined, false, "SPHERE")
+  const selected = options[0]?.faces?.[0]
+  if (!selected) throw new Error("Expected a uniquely resolved spherical face.")
+  const onSave = vi.fn(async () => ({ ok: true as const }))
+  renderForm(onSave, vi.fn(), undefined, vi.fn(), undefined, "deg", options)
+  fireEvent.change(screen.getByLabelText("End condition"), { target: { value: "up-to-face" } })
+  fireEvent.change(screen.getByLabelText("End face"), {
+    target: { value: JSON.stringify(selected.reference) },
+  })
+  await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
+  await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+  expect(onSave).toHaveBeenCalledWith(
+    4,
+    expect.objectContaining({
+      type: expect.objectContaining({ schemaVersion: 7 }),
+      parameters: expect.objectContaining({
+        targetBody: null,
+        endCondition: expect.objectContaining({ kind: "up-to-face", face: selected.reference }),
+      }),
+      dependencies: [selected.reference.featureId],
+    }),
+  )
+})
+
+it("preserves the saved v7 schema when explicitly changing its endpoint to a planar face", async () => {
+  const options = collectedExtrusionOptions(undefined, false, "PLANE")
+  const selected = options[0]?.faces?.[0]
+  if (!selected) throw new Error("Expected a uniquely resolved planar face.")
+  const original = featureRecordSchema.parse({
+    ...existingFeature,
+    type: extrusionFeatureTypeV7.type,
+    parameters: {
+      profiles: { schemaVersion: 0, profiles: [profile] },
+      distance: createLengthQuantity(10),
+      symmetric: false,
+      reversed: false,
+      secondDistance: null,
+      operation: "new",
+      targetBody: null,
+      startOffset: createLengthQuantity(0),
+      draftAngle: createAngleQuantity(0),
+      endCondition: {
+        kind: "up-to-face",
+        targetBody: {
+          schemaVersion: 0,
+          featureId: selected.reference.featureId,
+          outputRole: selected.reference.outputRole,
+        },
+        sourceContentHash: options[0]?.contentHash,
+        face: selected.reference,
+      },
+    },
+    dependencies: [selected.reference.featureId],
+  })
+  const onSave = vi.fn(async () => ({ ok: true as const }))
+  renderForm(
+    onSave,
+    vi.fn(),
+    { kind: "edit", feature: original, profiles: [profile] },
+    vi.fn(),
+    undefined,
+    "deg",
+    options,
+  )
+  await userEvent.setup().click(screen.getByRole("button", { name: "Update extrusion" }))
+  await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+  expect(onSave).toHaveBeenCalledWith(
+    4,
+    expect.objectContaining({
+      id: original.id,
+      type: expect.objectContaining({ schemaVersion: 7 }),
+      parameters: expect.objectContaining({
+        endCondition: expect.objectContaining({ face: selected.reference }),
+      }),
+    }),
+  )
+})
 
 async function selectOperation(user: ReturnType<typeof userEvent.setup>, operation: string) {
   const labels: Record<string, string> = {

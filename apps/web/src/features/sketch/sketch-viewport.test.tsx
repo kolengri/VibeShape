@@ -6572,9 +6572,11 @@ describe("SketchViewport", () => {
     })
     expect(annotation.className).toContain("border-dashed")
     expect(annotation.getAttribute("aria-label")).toBe("Select constraint (42 mm)")
-    expect(onReferenceDimensionLabelsChange).toHaveBeenLastCalledWith({
-      [driving.id]: "(42 mm)",
-    })
+    await waitFor(() =>
+      expect(onReferenceDimensionLabelsChange).toHaveBeenLastCalledWith({
+        [driving.id]: "(42 mm)",
+      }),
+    )
 
     const changed = sketchRecordSchema.parse({
       ...reference,

@@ -27,6 +27,7 @@ import {
 } from "./part-design-hole"
 import { importedFeatureTypeHandler } from "./part-design-import"
 import { loftFeatureTypeHandler, loftFeatureTypeHandlerV2 } from "./part-design-loft"
+import { loftFeatureTypeHandlerV3 } from "./part-design-loft-v3"
 import { meshImportFeatureTypeHandler } from "./part-design-mesh-import"
 import {
   mirrorFeatureTypeHandler,
@@ -565,6 +566,20 @@ export const extrusionFeatureParametersV6Schema = extrusionFeatureParametersV5Sc
 export type ExtrusionFeatureParametersV6 = Readonly<
   z.infer<typeof extrusionFeatureParametersV6Schema>
 >
+export const extrusionFaceEndConditionV7Schema = z
+  .object({
+    kind: z.literal("up-to-face"),
+    targetBody: bodyReferenceSchema,
+    sourceContentHash: extrusionSourceHashSchema,
+    face: bodyFaceRefSchema,
+  })
+  .strict()
+export const extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema.safeExtend({
+  endCondition: extrusionFaceEndConditionV7Schema,
+})
+export type ExtrusionFeatureParametersV7 = Readonly<
+  z.infer<typeof extrusionFeatureParametersV7Schema>
+>
 export function expectedExtrusionV6DependencyIds(
   target: FeatureId | null,
   support: FeatureId | null,
@@ -584,8 +599,13 @@ function extrusionSupportUsesNamedBody(
     (body) => body?.featureId === support && body?.outputRole !== "result",
   )
 }
-function extrusionV6Invariant(feature: FeatureRecord) {
-  const parameters = extrusionFeatureParametersV6Schema.parse(feature.parameters)
+function extrusionV6Invariant(
+  feature: FeatureRecord,
+  schema:
+    | typeof extrusionFeatureParametersV6Schema
+    | typeof extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema,
+) {
+  const parameters = schema.parse(feature.parameters)
   const support = feature.references[0]?.featureId ?? null
   const end =
     parameters.endCondition.kind === "distance"
@@ -613,8 +633,14 @@ function extrusionV6Invariant(feature: FeatureRecord) {
     })
   return issues
 }
-function resolveExtrusionV6Parameters(parameters: unknown, variables: VariableValues) {
-  const parsed = extrusionFeatureParametersV6Schema.safeParse(parameters)
+function resolveExtrusionV6Parameters(
+  parameters: unknown,
+  variables: VariableValues,
+  schema:
+    | typeof extrusionFeatureParametersV6Schema
+    | typeof extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema,
+) {
+  const parsed = schema.safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
   const resolved = { ...parsed.data }
   for (const key of ["distance", "secondDistance", "startOffset", "draftAngle"] as const) {
@@ -624,7 +650,7 @@ function resolveExtrusionV6Parameters(parameters: unknown, variables: VariableVa
     if (!value.ok) return expressionFailure(key, value.diagnostic.message, value.diagnostic.code)
     Object.assign(resolved, { [key]: value.quantity })
   }
-  const valid = extrusionFeatureParametersV6Schema.safeParse(resolved)
+  const valid = schema.safeParse(resolved)
   return valid.success
     ? { ok: true as const, parameters: valid.data }
     : expressionFailure(
@@ -1155,6 +1181,10 @@ export const extrusionFeatureTypeV6 = featureTypeDescriptorSchema.parse({
   type: { ...extrusionFeatureTypeV5.type, schemaVersion: 6 },
   dependencies: { min: 0, max: 3 },
 })
+export const extrusionFeatureTypeV7 = featureTypeDescriptorSchema.parse({
+  ...extrusionFeatureTypeV6,
+  type: { ...extrusionFeatureTypeV6.type, schemaVersion: 7 },
+})
 
 export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -1250,6 +1280,7 @@ export function isExtrusionType(feature: Pick<FeatureRecord, "type">) {
     extrusionFeatureTypeV4.type,
     extrusionFeatureTypeV5.type,
     extrusionFeatureTypeV6.type,
+    extrusionFeatureTypeV7.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1265,6 +1296,7 @@ type ExtrusionParameters =
   | z.infer<typeof extrusionFeatureParametersV4Schema>
   | z.infer<typeof extrusionFeatureParametersV5Schema>
   | z.infer<typeof extrusionFeatureParametersV6Schema>
+  | z.infer<typeof extrusionFeatureParametersV7Schema>
 
 const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>>([
   [1, legacyExtrusionFeatureParametersSchema],
@@ -1273,6 +1305,7 @@ const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>
   [4, extrusionFeatureParametersV4Schema],
   [5, extrusionFeatureParametersV5Schema],
   [6, extrusionFeatureParametersV6Schema],
+  [7, extrusionFeatureParametersV7Schema],
 ])
 
 export function readExtrusionFeatureParameters(
@@ -1891,6 +1924,23 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       }
     },
   },
+  {
+    type: extrusionFeatureTypeV7.type,
+    parametersSchema: extrusionFeatureParametersV7Schema,
+    validateFeature: (feature) => extrusionV6Invariant(feature, extrusionFeatureParametersV7Schema),
+    resolveParameters: (parameters, variables) =>
+      resolveExtrusionV6Parameters(parameters, variables, extrusionFeatureParametersV7Schema),
+    contentParameters(parameters) {
+      const value = extrusionFeatureParametersV7Schema.parse(parameters)
+      return {
+        ...value,
+        distance: value.distance.value,
+        secondDistance: value.secondDistance?.value ?? null,
+        startOffset: value.startOffset.value,
+        draftAngle: value.draftAngle.value,
+      }
+    },
+  },
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   holeFeatureTypeHandlerV3,
@@ -1906,6 +1956,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   splitFeatureTypeHandlerV2,
   loftFeatureTypeHandler,
   loftFeatureTypeHandlerV2,
+  loftFeatureTypeHandlerV3,
   sweepFeatureTypeHandler,
   importedFeatureTypeHandler,
   meshImportFeatureTypeHandler,
