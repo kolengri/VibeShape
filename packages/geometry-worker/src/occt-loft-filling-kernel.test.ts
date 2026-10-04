@@ -341,31 +341,79 @@ it("matches nonzero cylindrical G2 curvature at both independent section ends", 
   }
 }, 120000)
 
-it.each(["C0", "G1"] as const)(
-  "rejects %s guides whose requested geometric residuals do not converge",
-  (order) => {
-    const support = makePolygon([
+it("rejects C0 guides whose requested geometric residuals do not converge", () => {
+  expect(() => createOcctLoftPatchNetwork(occt, fixture(0.01)).delete()).toThrow(
+    /exceeded.*tolerance/,
+  )
+  const recovered = createOcctLoftPatchNetwork(occt, fixture())
+  recovered.delete()
+}, 120000)
+
+function outOfPatchG1Fixture(support: Face): LoftPatchNetwork {
+  const network = fixture(0.1),
+    guide = network.guides[0],
+    segment = guide?.path.segments[0]
+  if (!guide || !segment || segment.type !== "line")
+    throw new Error("The negative fixture requires its authored line guide.")
+  // The exact plane fits G1 cheaply; the guide still lies outside the finite patch.
+  return {
+    ...network,
+    guides: [
+      {
+        ...guide,
+        path: {
+          ...guide.path,
+          frame: { ...guide.path.frame, origin: [0, -2, 0] },
+          segments: [{ ...segment, start: [3, 5], end: [4, 5] }],
+        },
+      },
+    ],
+    start: [{ segmentTrack: 0, continuity: "G1", support }],
+  }
+}
+
+it("rejects a guide outside the finite G1 patch after native continuity converges", () => {
+  const support = makePolygon([
       [-3, -2, -1],
       [3, -2, -1],
       [3, -2, 11],
       [-3, -2, 11],
-    ])
+    ]),
+    supportArea = measureArea(support),
+    supportDelete = vi.spyOn(support, "delete"),
+    g1Error = vi.spyOn(occt.BRepOffsetAPI_MakeFilling.prototype, "G1Error_1")
+  try {
+    let failure: unknown
     try {
-      // Smaller excursions still fail strict residual gates without the costly 1 mm fit.
-      expect(() =>
-        createOcctLoftPatchNetwork(occt, {
-          ...fixture(order === "C0" ? 0.01 : 0.1),
-          start: order === "C0" ? [] : [{ segmentTrack: 0, continuity: order, support }],
-        }).delete(),
-      ).toThrow(/exceeded.*tolerance/)
-      const recovered = createOcctLoftPatchNetwork(occt, fixture())
-      recovered.delete()
-    } finally {
-      support.delete()
+      createOcctLoftPatchNetwork(occt, outOfPatchG1Fixture(support)).delete()
+    } catch (error) {
+      failure = error
     }
-  },
-  120000,
-)
+    expect(failure).toBeInstanceOf(Error)
+    if (!(failure instanceof Error)) throw new Error("Expected a native Loft residual failure.")
+    expect(failure.message).toMatch(/guide or section exceeded its geometric C0 tolerance/)
+    expect(g1Error).toHaveBeenCalled()
+    for (const result of g1Error.mock.results) {
+      expect(result.type).toBe("return")
+      expect(result.value).toBeLessThanOrEqual(1e-5)
+    }
+    const projectedDistance = failure.message.match(/distance=([^)]+)/)?.[1]
+    expect(projectedDistance).toBeDefined()
+    expect(Number(projectedDistance)).toBeLessThanOrEqual(1e-7)
+    expect(supportDelete).not.toHaveBeenCalled()
+    expect(measureArea(support)).toBeCloseTo(supportArea, 8)
+    const recovered = createOcctLoftPatchNetwork(occt, fixture())
+    try {
+      validateOcctProfileSolid(occt, recovered)
+      expect(measureVolume(recovered)).toBeCloseTo(160, 5)
+    } finally {
+      recovered.delete()
+    }
+  } finally {
+    g1Error.mockRestore()
+    support.delete()
+  }
+}, 120000)
 
 it("releases owned curves and support copies after native filling failure without deleting borrowed supports", () => {
   const support = makePolygon([
