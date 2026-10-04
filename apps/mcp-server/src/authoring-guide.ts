@@ -18,8 +18,8 @@ Owned drafts also expose \`remove_feature\`, \`remove_sketch\`, \`set_feature_su
 and \`rename_project\` through ordinary registered commands. Referenced records block removal;
 repair consumers explicitly. Suppression is an explicit boolean, and exact preview diagnoses blocked
 downstream geometry. Project rename uses a normalized nonempty name of at most 120 characters.
-All lifecycle commands require manual browser review even with CAD auto-apply enabled; there is no
-cascade, preserve-intent override, History navigation or generic execution authority.
+All lifecycle commands require manual browser review even with CAD auto-apply enabled. These tools
+do not cascade, override reference intent, navigate saved-change History or execute generic commands.
 
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
 linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
@@ -130,6 +130,7 @@ one new revision rather than moving the revision backward. A new authored change
 reopening preserves the saved state/events but resets transient Undo/Redo stacks. Never supply
 raw checkpoints, scripts or approval flags. For stale or unconfirmed results inspect the saved
 project before proposing again. The organization operator skill owns the detailed recovery workflow.
+
 ## Placement and editable sketch text
 
 \`create_placement\`/\`update_placement\` use typed translation/rotation parameters, an exact
@@ -203,8 +204,9 @@ inspect the actual document revision before proposing a new change.
 
 Use \`discard_draft\` to abandon private intent. MCP request cancellation revokes the whole pairing
 and cancels disposable work; enable a new browser AI session before continuing. Cancellation after
-persistence begins cannot roll back an accepted transaction. Ordinary Undo/Redo is available in the
-browser, not as an MCP tool. Reopening/reloading the page requires pairing again.
+persistence begins cannot roll back an accepted transaction. For committed Undo/Redo, use the
+document/revision-bound saved-change tools above and wait for manual browser review. A same-document
+reload can restore an unexpired pairing with auto-apply off; explicit Stop AI prevents restoration.
 
 ## Units and IDs
 
@@ -554,8 +556,10 @@ unique and sorted in \`outerBoundaryEntityIds\`, with \`holeBoundaryEntityIds: [
 Add fixed sketch points on an origin plane normal to each mounting face, then Hole features
 with the preceding solid as the first dependency. Preview checks cutting direction and placement;
 never guess transient face/edge indices. A supported alternative is two sketch-backed Extrudes,
-with the second using Add and target-first dependencies. For existing complex sketches, complete
-profile/face discovery is not yet exposed; do not infer a profile from arbitrary edge order.
+with the second using Add and target-first dependencies. Discover solved profile selectors with
+\`model_sketch_solution\` or \`draft_sketch_solution\` at the exact revision. Discover exact
+body faces separately with \`model_body_topology\` or \`draft_body_topology\`; use their returned
+selectors and durable references rather than arbitrary edge order.
 
 ## Independent extrusion depths
 
@@ -618,9 +622,10 @@ sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft and custom Thread create/update;
 variables; bounded inspection; draft lifecycle and export; review-bound feature/sketch removal,
-explicit feature suppression and project rename.
-History navigation are not currently exposed through MCP. There is no
-generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
+explicit feature suppression and project rename; Placement and editable sketch text;
+owned native/planar imports, assembly/library authoring, surface textures and saved-change Undo/Redo.
+Read the relevant operator workflow for its separate revision and manual-review contract. There is
+no generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.
 
 Operations are serialized: one pending MCP operation per session. Each serialized operation
