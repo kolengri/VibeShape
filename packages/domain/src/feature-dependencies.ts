@@ -19,7 +19,7 @@ import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hol
 import { readImportedFeatureParameters } from "./part-design-import"
 import { readLoftFeatureParameters } from "./part-design-loft"
 import { readMeshImportFeatureParameters } from "./part-design-mesh-import"
-import { readMirrorFeatureParameters } from "./part-design-mirror"
+import { mirrorPreservesSource, readMirrorFeatureParameters } from "./part-design-mirror"
 import { readPatternFeatureParameters } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readShellFeatureParameters } from "./part-design-shell"
@@ -41,6 +41,7 @@ const edgeModifierTypes = new Set(
   ),
 )
 export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
+  if (mirrorPreservesSource(feature)) return []
   if (independentBodyReaders.some((read) => read(feature) !== null)) return []
   if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type))
     return booleanFeatureParametersSchema.safeParse(feature.parameters).data?.keepTools

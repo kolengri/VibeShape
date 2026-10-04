@@ -1,4 +1,4 @@
-import { featureIdSchema, generateUuidV7 } from "@vibeshape/domain"
+import { draftIdSchema, featureIdSchema, generateUuidV7 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 
@@ -29,5 +29,58 @@ describe("local body measurement query", () => {
       cursor: null,
       limit: 20,
     })
+  })
+})
+
+it("keeps draft body targets and the paired document distinct from draft identity", () => {
+  expect(
+    createLocalInspectionQuery(
+      {
+        tool: "draft_body_topology",
+        arguments: {
+          draftId: draftIdSchema.parse(id),
+          revision: 7,
+          featureId: id,
+          outputRole: "result",
+          topologyKind: "face",
+          cursor: null,
+          limit: 10,
+        },
+      },
+      id,
+    ),
+  ).toEqual({
+    kind: "org.vibeshape.model.body-topology",
+    schemaVersion: 1,
+    documentId: id,
+    revision: 7,
+    featureId: id,
+    outputRole: "result",
+    topologyKind: "face",
+    cursor: null,
+    limit: 10,
+  })
+  expect(
+    createLocalInspectionQuery(
+      {
+        tool: "draft_body_measurements",
+        arguments: {
+          draftId: draftIdSchema.parse(id),
+          revision: 7,
+          featureId: id,
+          outputRole: "result",
+          cursor: null,
+          limit: 10,
+        },
+      },
+      id,
+    ),
+  ).toMatchObject({
+    kind: "org.vibeshape.model.body-measurements",
+    schemaVersion: 1,
+    documentId: id,
+    revision: 7,
+    featureId: id,
+    outputRole: "result",
   })
 })

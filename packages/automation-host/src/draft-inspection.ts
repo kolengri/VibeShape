@@ -1,119 +1,175 @@
-import {
-  type AutomationDraftInspectionRequest,
-  automationDraftEdgeEvidenceSchema,
-} from "@vibeshape/automation-api/draft-inspection"
+import type { AutomationDraftInspectionRequest } from "@vibeshape/automation-api/draft-inspection"
 import type {
   AutomationQueryView,
-  ModelEdgeQuery,
+  DerivedQueryContext,
   QueryDiagnosticCode,
   QueryDispatcher,
   QueryResult,
 } from "@vibeshape/automation-api/queries"
+import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
-import type { FeatureId } from "@vibeshape/domain/identifiers"
-import {
-  type ModelEdgeEvidenceResult,
-  modelEdgeEvidenceResultSchema,
-} from "@vibeshape/domain/model-edges"
+import { modelBodyMeasurementEvidenceSchema } from "@vibeshape/domain/model-body-measurements"
+import { modelBodyTopologyEvidenceResultSchema } from "@vibeshape/domain/model-body-topology"
+import { modelEdgeEvidenceResultSchema } from "@vibeshape/domain/model-edges"
+import { z } from "zod"
 import type { DraftGeometryPort } from "./exact-draft-preview"
 
-type ModelEdgeEvidence = Extract<ModelEdgeEvidenceResult, { ok: true }>["evidence"]
-
-export type DraftEdgeCache = Readonly<{
+export type DraftInspectionCache = Readonly<{
   draftId: string
   revision: number
-  featureId: FeatureId
-  evidence: ModelEdgeEvidence
+  target: string
+  context: DerivedQueryContext
 }>
 
 type InspectionFailure = Extract<QueryResult, { ok: false }>
+type GeometryQuery = Extract<
+  AutomationDraftInspectionRequest["query"],
+  {
+    kind:
+      | "org.vibeshape.model.edges"
+      | "org.vibeshape.model.body-topology"
+      | "org.vibeshape.model.body-measurements"
+  }
+>
+const bodyMeasurementResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), evidence: modelBodyMeasurementEvidenceSchema }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      code: z.enum(["geometry-unavailable", "stale-geometry", "invalid-geometry-evidence"]),
+    })
+    .strict(),
+])
 function failure(code: QueryDiagnosticCode, message: string, retryable = false): InspectionFailure {
   return { ok: false, diagnostic: { code, message, retryable, issues: [] } }
 }
-
-async function readEdgeEvidence(
+function targetKey(query: GeometryQuery) {
+  return JSON.stringify([
+    query.kind,
+    query.featureId,
+    "outputRole" in query ? query.outputRole : null,
+    "topologyKind" in query ? query.topologyKind : null,
+  ])
+}
+async function readGeometryEvidence(
   snapshot: DocumentSnapshot,
-  featureId: FeatureId,
+  query: GeometryQuery,
   geometry: DraftGeometryPort,
-): Promise<{ ok: true; evidence: ModelEdgeEvidence } | InspectionFailure> {
-  if (!geometry.inspectEdges)
-    return failure("geometry-unavailable", "Exact draft edge evidence is unavailable.", true)
-  const raw = await geometry.inspectEdges(documentSnapshotSchema.parse(snapshot), featureId)
-  const parsed = modelEdgeEvidenceResultSchema.safeParse(raw)
-  if (!parsed.success)
+) {
+  const detached = documentSnapshotSchema.parse(snapshot)
+  switch (query.kind) {
+    case "org.vibeshape.model.edges":
+      return geometry.inspectEdges
+        ? {
+            parsed: modelEdgeEvidenceResultSchema.safeParse(
+              await geometry.inspectEdges(detached, query.featureId),
+            ),
+            key: "edges" as const,
+          }
+        : null
+    case "org.vibeshape.model.body-topology":
+      return geometry.inspectBodyTopology
+        ? {
+            parsed: modelBodyTopologyEvidenceResultSchema.safeParse(
+              await geometry.inspectBodyTopology(detached, {
+                featureId: query.featureId,
+                outputRole: query.outputRole,
+                kind: query.topologyKind,
+              }),
+            ),
+            key: "bodyTopology" as const,
+          }
+        : null
+    case "org.vibeshape.model.body-measurements":
+      return geometry.inspectBodyMeasurements
+        ? {
+            parsed: bodyMeasurementResultSchema.safeParse(
+              await geometry.inspectBodyMeasurements(detached),
+            ),
+            key: "bodyMeasurements" as const,
+          }
+        : null
+  }
+}
+function validatedContext(
+  read: Awaited<ReturnType<typeof readGeometryEvidence>>,
+  snapshot: DocumentSnapshot,
+): { ok: true; context: DerivedQueryContext } | InspectionFailure {
+  if (!read)
+    return failure("geometry-unavailable", "Exact draft geometry evidence is unavailable.", true)
+  if (!read.parsed.success)
     return failure(
       "invalid-geometry-evidence",
-      "The draft geometry port returned invalid edge evidence.",
+      "The draft geometry port returned invalid evidence.",
     )
-  if (!parsed.data.ok)
-    return failure(parsed.data.code, "Exact draft edge evidence could not be prepared.", true)
-  const evidence = automationDraftEdgeEvidenceSchema.safeParse(parsed.data.evidence)
-  if (!evidence.success)
-    return failure("query-result-too-large", "The draft edge catalog exceeds the 4 MiB limit.")
-  if (
-    evidence.data.documentId !== snapshot.id ||
-    evidence.data.revision !== snapshot.revision ||
-    evidence.data.featureId !== featureId
-  )
+  const result = read.parsed.data
+  if (!result.ok)
+    return failure(result.code, "Exact draft geometry evidence could not be prepared.", true)
+  const evidence = result.evidence
+  if (serializedQueryBytes(evidence, 4 * 1024 * 1024) > 4 * 1024 * 1024)
+    return failure("query-result-too-large", "The draft geometry catalog exceeds the 4 MiB limit.")
+  if (evidence.documentId !== snapshot.id || evidence.revision !== snapshot.revision)
     return failure(
       "stale-geometry",
-      "The draft edge evidence does not match the requested draft.",
+      "The draft geometry evidence does not match the requested draft.",
       true,
     )
-  return { ok: true, evidence: evidence.data }
+  return {
+    ok: true,
+    context: { [read.key]: read.key === "bodyMeasurements" ? evidence : { ok: true, evidence } },
+  }
 }
 
-async function readEdgeCache(
-  query: ModelEdgeQuery,
+async function readCache(
+  query: GeometryQuery,
   snapshot: DocumentSnapshot,
   draftId: string,
   geometry: DraftGeometryPort,
-  cache: DraftEdgeCache | null,
-): Promise<{ ok: true; cache: DraftEdgeCache } | InspectionFailure> {
-  if (
-    cache?.draftId === draftId &&
-    cache.revision === snapshot.revision &&
-    cache.featureId === query.featureId
-  )
+  cache: DraftInspectionCache | null,
+): Promise<{ ok: true; cache: DraftInspectionCache } | InspectionFailure> {
+  const target = targetKey(query)
+  if (cache?.draftId === draftId && cache.revision === snapshot.revision && cache.target === target)
     return { ok: true, cache }
   if (query.cursor !== null)
     return failure(
       "stale-geometry",
-      "The draft edge cursor is no longer available; restart paging.",
+      "The draft geometry cursor is no longer available; restart paging.",
       true,
     )
-  const read = await readEdgeEvidence(snapshot, query.featureId, geometry)
-  return read.ok
-    ? {
-        ok: true,
-        cache: {
-          draftId,
-          revision: snapshot.revision,
-          featureId: query.featureId,
-          evidence: read.evidence,
-        },
-      }
-    : read
-}
+  const checked = validatedContext(await readGeometryEvidence(snapshot, query, geometry), snapshot)
+  if (!checked.ok) return checked
 
+  return {
+    ok: true,
+    cache: {
+      draftId,
+      revision: snapshot.revision,
+      target,
+      context: checked.context,
+    },
+  }
+}
 export async function inspectDraftQuery(
   request: AutomationDraftInspectionRequest,
   snapshot: DocumentSnapshot,
   draftId: string,
   geometry: DraftGeometryPort,
   queries: QueryDispatcher,
-  cache: DraftEdgeCache | null,
+  cache: DraftInspectionCache | null,
 ): Promise<
-  { ok: true; view: AutomationQueryView; cache: DraftEdgeCache | null } | InspectionFailure
+  { ok: true; view: AutomationQueryView; cache: DraftInspectionCache | null } | InspectionFailure
 > {
   let nextCache = cache
-  if (request.query.kind === "org.vibeshape.model.edges") {
-    const read = await readEdgeCache(request.query, snapshot, draftId, geometry, cache)
+  const query = request.query
+  if (
+    query.kind === "org.vibeshape.model.edges" ||
+    query.kind === "org.vibeshape.model.body-topology" ||
+    query.kind === "org.vibeshape.model.body-measurements"
+  ) {
+    const read = await readCache(query, snapshot, draftId, geometry, cache)
     if (!read.ok) return read
     nextCache = read.cache
   }
-  const result = queries.dispatch(snapshot, request.query, {
-    edges: nextCache ? { ok: true, evidence: nextCache.evidence } : undefined,
-  })
+  const result = queries.dispatch(snapshot, query, nextCache?.context)
   return result.ok ? { ok: true, view: result.view, cache: nextCache } : result
 }

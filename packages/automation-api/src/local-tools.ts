@@ -4,6 +4,7 @@ import {
   featureIdSchema,
   revisionSchema,
 } from "@vibeshape/domain/identifiers"
+import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
@@ -139,9 +140,18 @@ export const localModelInfoSchema = z
   .object({
     summary: documentSummaryViewSchema,
     measurements: modelMeasurementViewSchema.nullable(),
+    diagnostics: modelDiagnosticsEvidenceSchema.nullable().optional(),
     measurementDiagnostic: localFailureSchema.shape.diagnostic.nullable(),
   })
   .strict()
+  .refine(
+    (value) =>
+      !value.diagnostics ||
+      (value.diagnostics.documentId === value.summary.documentId &&
+        value.diagnostics.revision === value.summary.revision &&
+        (!value.measurements || value.diagnostics.generation === value.measurements.generation)),
+    "Diagnostics must describe the same model revision and rebuild.",
+  )
   .refine(
     (value) =>
       value.measurements === null ||
@@ -173,6 +183,8 @@ export const localToolOutputs = {
   draft_entity: resultOf(automationDraftInspectionViewSchema),
   draft_variables: resultOf(automationDraftInspectionViewSchema),
   draft_edges: resultOf(automationDraftInspectionViewSchema),
+  draft_body_measurements: resultOf(automationDraftInspectionViewSchema),
+  draft_body_topology: resultOf(automationDraftInspectionViewSchema),
   model_edges: resultOf(modelEdgeViewSchema),
   model_body_measurements: resultOf(modelBodyMeasurementViewSchema),
   model_body_topology: resultOf(modelBodyTopologyViewSchema),
@@ -236,6 +248,8 @@ export const localToolNameSchema = z.enum([
   "draft_entity",
   "draft_variables",
   "draft_edges",
+  "draft_body_measurements",
+  "draft_body_topology",
   "model_edges",
   "model_body_measurements",
   "model_body_topology",
@@ -365,7 +379,15 @@ export type LocalInspectionOperation = Extract<
 
 export type LocalDraftInspectionOperation = Extract<
   LocalOperation,
-  { tool: "draft_tree" | "draft_entity" | "draft_variables" | "draft_edges" }
+  {
+    tool:
+      | "draft_tree"
+      | "draft_entity"
+      | "draft_variables"
+      | "draft_edges"
+      | "draft_body_measurements"
+      | "draft_body_topology"
+  }
 >
 
 export function isLocalDraftInspection(
@@ -375,7 +397,9 @@ export function isLocalDraftInspection(
     operation.tool === "draft_tree" ||
     operation.tool === "draft_entity" ||
     operation.tool === "draft_variables" ||
-    operation.tool === "draft_edges"
+    operation.tool === "draft_edges" ||
+    operation.tool === "draft_body_measurements" ||
+    operation.tool === "draft_body_topology"
   )
 }
 

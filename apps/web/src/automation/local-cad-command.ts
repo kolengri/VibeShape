@@ -22,7 +22,7 @@ import {
   holeFeatureTypeV2,
 } from "@vibeshape/domain/part-design-hole"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
+import { mirrorFeatureType, mirrorFeatureTypeV2 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
@@ -93,10 +93,13 @@ const directCadFeatureTypes = {
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
-  if (operation.tool === "create_hole" || operation.tool === "update_hole")
-    return "targetBody" in operation.arguments.parameters
-      ? holeFeatureTypeV2.type
-      : holeFeatureType.type
+  if (
+    operation.tool === "create_mirror" ||
+    operation.tool === "update_mirror" ||
+    operation.tool === "create_hole" ||
+    operation.tool === "update_hole"
+  )
+    return bodySelectionFeatureType(operation)
   if (
     operation.tool === "create_extrude" ||
     operation.tool === "update_extrude" ||
@@ -105,6 +108,21 @@ function cadFeatureType(
   )
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
+}
+
+function bodySelectionFeatureType(
+  operation: Extract<
+    CadOperation,
+    { tool: "create_mirror" | "update_mirror" | "create_hole" | "update_hole" }
+  >,
+) {
+  if (operation.tool === "create_mirror" || operation.tool === "update_mirror")
+    return "offset" in operation.arguments.parameters
+      ? mirrorFeatureTypeV2.type
+      : mirrorFeatureType.type
+  return "targetBody" in operation.arguments.parameters
+    ? holeFeatureTypeV2.type
+    : holeFeatureType.type
 }
 
 function profileFeatureType(

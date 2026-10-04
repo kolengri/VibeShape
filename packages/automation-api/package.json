@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./drafts": "./src/drafts.ts",
+    "./draft-inspection-result": "./src/draft-inspection-result.ts",
     "./draft-inspection": "./src/draft-inspection.ts",
     "./queries": "./src/queries.ts",
     "./local-tools": "./src/local-tools.ts",

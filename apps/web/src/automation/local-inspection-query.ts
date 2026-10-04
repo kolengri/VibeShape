@@ -47,12 +47,14 @@ export function createLocalInspectionQuery(
         kind: "org.vibeshape.model.edges",
       })
     case "model_body_topology":
+    case "draft_body_topology":
       return modelBodyTopologyQuerySchema.parse({
         ...common,
         ...argumentsInput,
         kind: "org.vibeshape.model.body-topology",
       })
     case "model_body_measurements":
+    case "draft_body_measurements":
       return modelBodyMeasurementQuerySchema.parse({
         ...common,
         ...argumentsInput,

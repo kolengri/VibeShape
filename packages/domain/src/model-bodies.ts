@@ -1,5 +1,6 @@
 import { featureBodyDependencies } from "./feature-dependencies"
 import type { FeatureRecord } from "./feature-graph"
+import { mirrorPreservesSource } from "./part-design-mirror"
 
 type BodyOutput = { featureId: string; outputRole?: string | undefined }
 
@@ -22,7 +23,7 @@ function consumeFeatureBodies<T extends BodyOutput>(
   for (const dependency of featureBodyDependencies(feature)) {
     const selected = dependencyBodies(dependency, byFeature)
     if (!selected) return false
-    for (const body of selected) consumed.add(body)
+    if (!mirrorPreservesSource(feature)) for (const body of selected) consumed.add(body)
   }
   return true
 }

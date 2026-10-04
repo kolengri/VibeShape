@@ -1,44 +1,66 @@
-import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
+import type {
+  DocumentDisplayUnits,
+  FeatureId,
+  FeatureRecord,
+  VariableDefinition,
+} from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
+  type PrimitiveLengthCopy,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
+import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import {
   type MirrorFormMode,
-  type MirrorPlane,
+  type MirrorFormValues,
   mirrorFeatureRecord,
-  mirrorInitialPlane,
+  mirrorFormValues,
+  parseMirrorForm,
 } from "./mirror-form-model"
 
-export type MirrorFormCopy = ParameterPanelCopy & {
-  parameters: string
-  plane: string
-  submit: string
-  staleRevision: string
-  saveFailed: string
-}
+export type MirrorFormCopy = ParameterPanelCopy &
+  PrimitiveLengthCopy & {
+    parameters: string
+    plane: string
+    offset: string
+    offsetDescription: string
+    preserveSource: string
+    preserveSourceDescription: string
+    validationSummary: string
+    submit: string
+    staleRevision: string
+    saveFailed: string
+  }
 type MirrorFormProps = FeatureParameterFormProps<MirrorFormMode, MirrorFormCopy> & {
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
 }
 function MirrorPreview({
-  plane,
+  values,
+  variables,
+  units,
+  copy,
   mode,
   featureId,
   onPreviewChange,
 }: {
-  plane: MirrorPlane
+  values: MirrorFormValues
+  variables: readonly VariableDefinition[]
+  units: DocumentDisplayUnits
+  copy: MirrorFormCopy
   mode: MirrorFormMode
   featureId: FeatureId
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
+  const parsed = parseMirrorForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: mirrorFeatureRecord(mode, featureId, plane),
+    preview: parsed.ok ? mirrorFeatureRecord(mode, featureId, parsed.plane, parsed) : null,
   })
   return null
 }
@@ -52,36 +74,51 @@ export function MirrorForm({
   onSave,
   onSaved,
   previewStatus,
+  variables,
 }: MirrorFormProps) {
+  const state = useParameterFormState(variables)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const [message, setMessage] = useState<string | null>(null)
   const form = useAppForm({
-    defaultValues: { plane: mirrorInitialPlane(mode) },
+    defaultValues: mirrorFormValues(mode, state.displayUnits),
     onSubmit: async ({ value }) => {
-      setMessage(null)
+      const parsed = parseMirrorForm(value, variables, state.displayUnits, copy)
+      if (!parsed.ok) {
+        state.setIssues(parsed.issues)
+        state.setMessage(copy.validationSummary)
+        return
+      }
+      state.clearSubmissionErrors()
       try {
         await submitFeatureMutation({
           baseRevision,
           copy,
-          feature: mirrorFeatureRecord(mode, featureId, value.plane),
+          feature: mirrorFeatureRecord(mode, featureId, parsed.plane, parsed),
           onSave,
           onSaved,
-          setMessage,
+          setMessage: state.setMessage,
         })
       } catch {
-        setMessage(copy.saveFailed)
+        state.setMessage(copy.saveFailed)
       }
     },
   })
+  const invalidOffset = Boolean(state.issues.offset)
+  useEffect(() => {
+    if (invalidOffset)
+      state.formElementRef.current?.querySelector<HTMLInputElement>('[name="offset"]')?.focus()
+  }, [invalidOffset, state.formElementRef])
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
+    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
       {onPreviewChange && (
-        <form.Subscribe selector={(state) => state.values.plane}>
-          {(plane) => (
+        <form.Subscribe selector={(formState) => formState.values}>
+          {(values) => (
             <MirrorPreview
-              plane={plane}
+              values={values}
+              variables={variables}
+              units={state.displayUnits}
+              copy={copy}
               mode={mode}
               featureId={featureId}
               onPreviewChange={onPreviewChange}
@@ -89,13 +126,13 @@ export function MirrorForm({
           )}
         </form.Subscribe>
       )}
-      <form.Subscribe selector={(state) => state.isSubmitting}>
+      <form.Subscribe selector={(formState) => formState.isSubmitting}>
         {(pending) => (
           <ParameterPanel
             copy={copy}
             legend={copy.parameters}
             disabled={disabled || pending}
-            message={message}
+            message={state.message}
             actions={
               <TaskPanelFormActions
                 acceptLabel={copy.submit}
@@ -120,7 +157,7 @@ export function MirrorForm({
                         checked={field.state.value === plane}
                         onBlur={field.handleBlur}
                         onChange={() => {
-                          setMessage(null)
+                          state.clearSubmissionErrors()
                           field.handleChange(plane)
                         }}
                       />
@@ -128,6 +165,50 @@ export function MirrorForm({
                     </label>
                   ))}
                 </fieldset>
+              )}
+            </form.Field>
+            <form.Field name="offset">
+              {(field) => (
+                <LengthExpressionField
+                  id="mirror-offset"
+                  name="offset"
+                  value={field.state.value}
+                  label={copy.offset}
+                  description={copy.offsetDescription}
+                  error={state.issues.offset}
+                  suggestions={state.suggestions}
+                  onBlur={field.handleBlur}
+                  onValueChange={(value) => {
+                    state.clearSubmissionErrors()
+                    field.handleChange(value)
+                  }}
+                />
+              )}
+            </form.Field>
+            <form.Field name="preserveSource">
+              {(field) => (
+                <div className="grid gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name="preserveSource"
+                      checked={field.state.value}
+                      onBlur={field.handleBlur}
+                      aria-describedby="mirror-preserve-source-description"
+                      onChange={(event) => {
+                        state.clearSubmissionErrors()
+                        field.handleChange(event.target.checked)
+                      }}
+                    />
+                    {copy.preserveSource}
+                  </label>
+                  <p
+                    id="mirror-preserve-source-description"
+                    className="text-xs text-muted-foreground"
+                  >
+                    {copy.preserveSourceDescription}
+                  </p>
+                </div>
               )}
             </form.Field>
           </ParameterPanel>

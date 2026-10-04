@@ -25,7 +25,10 @@ import {
   unionFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-body-combination"
 import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureParametersSchema } from "@vibeshape/domain/part-design-mirror"
+import {
+  mirrorFeatureParametersSchema,
+  mirrorFeatureParametersV2Schema,
+} from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureParametersSchema } from "@vibeshape/domain/part-design-pattern"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureParametersSchema } from "@vibeshape/domain/part-design-split"
@@ -139,7 +142,10 @@ function matchingBodyDependency(operation: string) {
   }
 }
 const mirror = z
-  .object({ ...exactBodyFeature, parameters: mirrorFeatureParametersSchema })
+  .object({
+    ...exactBodyFeature,
+    parameters: z.union([mirrorFeatureParametersSchema, mirrorFeatureParametersV2Schema]),
+  })
   .strict()
   .superRefine(matchingBodyDependency("Mirror"))
 const shell = z

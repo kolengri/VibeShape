@@ -77,6 +77,39 @@ it("discovers client-valid exact-body Mirror and Shell tools without granting un
           }
         : args
       expect(validate(input).valid).toBe(true)
+      if (name.endsWith("mirror")) {
+        expect(
+          validate({
+            ...args,
+            parameters: {
+              ...args.parameters,
+              offset: {
+                schemaVersion: 0,
+                dimension: "length",
+                value: -25.4,
+                unit: "mm",
+                source: { value: -1, unit: "in", expression: null },
+              },
+              preserveSource: true,
+            },
+          }).valid,
+        ).toBe(true)
+        expect(
+          validate({
+            ...args,
+            parameters: {
+              ...args.parameters,
+              offset: {
+                schemaVersion: 0,
+                dimension: "length",
+                value: 0,
+                unit: "mm",
+                source: { value: 0, unit: "mm", expression: null },
+              },
+            },
+          }).valid,
+        ).toBe(false)
+      }
       expect(validate({ ...input, dependencies: [] }).valid).toBe(false)
       expect(
         validate({ ...input, parameters: { ...input.parameters, plane: "custom" } }).valid,

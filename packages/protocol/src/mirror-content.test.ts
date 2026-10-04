@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { mirrorFeatureContentParametersSchema } from "./geometry-worker"
+import {
+  mirrorFeatureContentParametersSchema,
+  mirrorFeatureContentParametersV2Schema,
+} from "./geometry-worker"
 
 describe("mirror worker parameters", () => {
   it.each(["XY", "XZ", "YZ"])("accepts the %s origin plane", (plane) => {
@@ -14,5 +17,35 @@ describe("mirror worker parameters", () => {
     {},
   ])("rejects unsupported or noncanonical worker intent %j", (parameters) => {
     expect(mirrorFeatureContentParametersSchema.safeParse(parameters).success).toBe(false)
+  })
+  it.each([-100_000, -25.4, 0, 25.4, 100_000])(
+    "accepts signed offset %s only in the explicit v2 contract",
+    (offset) => {
+      const parameters = { plane: "XZ", offset, preserveSource: true }
+      expect(mirrorFeatureContentParametersV2Schema.parse(parameters)).toEqual(parameters)
+      expect(mirrorFeatureContentParametersSchema.safeParse(parameters).success).toBe(false)
+    },
+  )
+  it.each([
+    { offset: 100_001 },
+    { offset: -100_001 },
+    { offset: Number.NaN },
+    { preserveSource: "true" },
+    { offset: {} },
+  ])("rejects invalid v2 content %j", (changes) => {
+    expect(
+      mirrorFeatureContentParametersV2Schema.safeParse({
+        plane: "XY",
+        offset: 0,
+        preserveSource: false,
+        ...changes,
+      }).success,
+    ).toBe(false)
+  })
+  it("requires both enhanced fields without filling legacy defaults", () => {
+    expect(mirrorFeatureContentParametersV2Schema.safeParse({ plane: "XY" }).success).toBe(false)
+    expect(
+      mirrorFeatureContentParametersV2Schema.safeParse({ plane: "XY", offset: 0 }).success,
+    ).toBe(false)
   })
 })

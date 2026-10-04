@@ -39,7 +39,7 @@ import {
 } from "@vibeshape/domain/part-design-body-combination"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
+import { mirrorFeatureType, mirrorFeatureTypeV2 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
@@ -261,7 +261,10 @@ function isSplitFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, splitFeatureType.type)
 }
 function isMirrorFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, mirrorFeatureType.type)
+  return (
+    hasFeatureType(feature, mirrorFeatureType.type) ||
+    hasFeatureType(feature, mirrorFeatureTypeV2.type)
+  )
 }
 
 function isUnionFeature(feature: FeatureRecord) {

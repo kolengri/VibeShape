@@ -63,8 +63,8 @@ The read-only `model_body_topology` tool exposes registered query
 feature/output-role pair and returns scoped v1 references with conservative resolution status.
 Pages bind the full document/rebuild/body/kind provenance and are limited to 100 entries and
 128 KiB UTF-8. Missing catalogs/roles and stale cursors fail closed. Existing `model_edges` and
-`draft_edges` remain unchanged. The new references are inspection contracts; current modeling
-commands still reject them until explicitly versioned consumers are implemented.
+`draft_edges` retain their separate selection contract. Shell is the explicitly versioned consumer
+of body-bound face references and source hashes; Hole, Fillet and Chamfer do not accept them.
 [ADR-0051](../adr/0051-body-bound-topology-inspection.md) records that staged boundary.
 
 ## Goals and non-goals
@@ -341,7 +341,8 @@ MCP never expands an extension's capability grant. An MCP client also receives n
 
 ## Owned draft inspection
 
-`draft_tree`, `draft_entity`, `draft_variables` and `draft_edges` require the owned draft ID and its
+`draft_tree`, `draft_entity`, `draft_variables`, `draft_edges`, `draft_body_measurements` and
+`draft_body_topology` require the owned draft ID and its
 exact current revision. They dispatch the existing registered queries over the draft snapshot and
 return `{ schemaVersion, draft, view }`. The browser injects the paired document; the broker binds
 successful responses to the draft, revision, view kind, target and edge cursor. Inspection is
@@ -354,6 +355,26 @@ with no meshes or native handles. Pages reuse its rebuild identity. Commands inv
 catalogs; stale cursors require restarting at `cursor: null`. Ownership, expiration and the committed
 base revision are checked before and after asynchronous work. Creating source geometry, inspecting
 edges and repairing selected treatments can therefore precede one final browser Apply.
+
+Draft body inspection reuses the registered committed body-measurement and body-topology query
+contracts over disposable worker evidence for the exact draft snapshot. Roles, content hashes and
+face references remain scoped to one producer/body and rebuild. Current draft topology can select
+Shell openings without an intermediate saved solid. Source edits invalidate discovery cursors; existing Shell v2 openings retain only unique durable face identity, and unresolved selections require explicit reselection;
+draft authority and cursor validation remain mandatory before and after asynchronous evaluation.
+
+`model_info.diagnostics` and `preview_draft.geometry.diagnostics` expose revision/generation-bound
+model health independently of successful solid measurements. Entries identify the affected feature
+or sketch, authoritative failure code/values, blocked dependencies, support producer and a repair
+action where relevant. Support and external-reference health reuse the editor's resolution evidence;
+missing or ambiguous support remains visible even when semantic frame evaluation produces a solid.
+Unknown or unavailable health is distinct from valid health, and bounded output fails explicitly
+rather than silently truncating diagnostics.
+
+Mirror v2 extends the existing Part Design owner with a signed length offset and explicit source
+preservation. Its reflected feature still exposes one `result` body. A preserved source retains
+its current authored part while the reflected result receives an independent part; a subsequent
+Union selects the two exact producer references. Legacy v1 replacement and content identity remain
+unchanged. See [ADR-0077](../adr/0077-mirror-copies-and-draft-shell-selection.md).
 
 ## Security and privacy
 

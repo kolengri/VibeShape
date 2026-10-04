@@ -1,13 +1,17 @@
 import { datumPlaneFeatureType } from "@vibeshape/domain"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
+import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import { createDisposableDocumentPreview } from "./disposable-document-preview"
+import { createModelDiagnosticsEvidence } from "./model-diagnostics"
 import {
   createModelBodyMeasurementEvidence,
   createModelMeasurementEvidence,
 } from "./model-measurements"
+import { sketchFrame } from "./support-frame"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f2101"
 const featureIds = [
@@ -390,4 +394,247 @@ describe("createModelBodyMeasurementEvidence", () => {
       ),
     ).toEqual({ ok: false, code: "invalid-geometry-evidence" })
   })
+})
+
+it("reports every ambiguous datum support despite valid solid geometry and semantic frames", async () => {
+  const current = snapshot()
+  const datumId = featureIds[0]
+  if (!datumId) throw new Error("Missing fixture ID")
+  current.features = [
+    featureRecordSchema.parse({
+      ...current.features[0],
+      type: datumPlaneFeatureType.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(5),
+      },
+    }),
+  ]
+  const signature = {
+    kind: "face",
+    geometryClass: "PLANE",
+    measure: 100,
+    centroid: [0, 0, 5],
+    bounds: { min: [-5, -5, 5], max: [5, 5, 5] },
+    direction: [0, 0, 1],
+    directionMode: "oriented",
+    boundaryCount: 4,
+    adjacentGeometryClasses: [],
+  }
+  const reference = {
+    schemaVersion: 0,
+    featureId: datumId,
+    kind: "face",
+    semanticRole: "datum.plane",
+    signature,
+  }
+  current.sketches = Array.from({ length: 6 }, (_, index) =>
+    sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: `0195b5ac-b220-7a2c-8c33-${String(2300 + index).padStart(12, "0")}`,
+      label: `Supported sketch ${index}`,
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      support: { kind: "feature-face", reference },
+    }),
+  )
+  const source = response([{ featureId: datumId, status: "succeeded", contentHash: successHash }], {
+    geometry: [
+      successGeometry({
+        topologyCandidates: ["first", "second"].map((candidateId) => ({
+          candidateId,
+          kind: "face",
+          semanticRole: "datum.plane",
+          lineageTokens: [],
+          signature,
+        })),
+      }),
+    ],
+  })
+  expect(createModelMeasurementEvidence(current, rebuild(source))).toMatchObject({
+    ok: true,
+    evidence: { features: [{ status: "succeeded", shape: { valid: true, volume: 120 } }] },
+  })
+  for (const sketch of current.sketches)
+    expect(sketchFrame(sketch, current, current.features)).not.toBeNull()
+  const diagnostics = createModelDiagnosticsEvidence(current, rebuild(source))
+  expect(diagnostics).toMatchObject({
+    ok: true,
+    evidence: {
+      status: "invalid",
+      truncated: false,
+      documentId: current.id,
+      revision: 4,
+      generation: 9,
+    },
+  })
+  if (!diagnostics.ok) throw new Error("Expected complete support diagnostics")
+  expect(diagnostics.evidence.entries).toHaveLength(6)
+  expect(diagnostics.evidence.entries.map((entry) => entry.entity.id)).toEqual(
+    current.sketches.map((sketch) => sketch.id),
+  )
+  for (const entry of diagnostics.evidence.entries)
+    expect(entry).toMatchObject({
+      code: "org.vibeshape.sketch.support-ambiguous",
+      supportFeatureId: datumId,
+      resolution: "ambiguous",
+      action: "reselect-support",
+    })
+  let terminated = 0
+  const preview = createDisposableDocumentPreview({
+    mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    createRebuildPort: () => ({
+      rebuild: async () => source as never,
+      terminate: () => {
+        terminated++
+      },
+      dispose: async () => {},
+      exportDocument: async () => ({}) as never,
+      solveSketch: async () => ({}) as never,
+    }),
+  })
+  expect(await preview.preview(current)).toMatchObject({
+    ok: true,
+    valid: false,
+    diagnostics: diagnostics.evidence,
+  })
+  expect(terminated).toBe(1)
+  expect(createModelDiagnosticsEvidence(current, rebuild({ ...source, revision: 3 }))).toEqual({
+    ok: false,
+    code: "stale-geometry",
+  })
+})
+
+it("preserves all authoritative feature codes, values and blocking dependencies", () => {
+  const source = response([
+    {
+      featureId: featureIds[0],
+      status: "failed",
+      diagnostics: [
+        {
+          code: "org.vibeshape.feature.sketch-support-unresolved",
+          values: { reason: "missing-reference", sketchId: "source-sketch" },
+        },
+      ],
+    },
+    { featureId: featureIds[1], status: "blocked", blockedBy: [featureIds[0]] },
+    { featureId: featureIds[2], status: "suppressed" },
+  ])
+  expect(createModelDiagnosticsEvidence(snapshot(), rebuild(source))).toMatchObject({
+    ok: true,
+    evidence: {
+      status: "invalid",
+      entries: [
+        {
+          entity: { kind: "feature", id: featureIds[0] },
+          code: "org.vibeshape.feature.sketch-support-unresolved",
+          values: { reason: "missing-reference", sketchId: "source-sketch" },
+          action: "inspect-feature",
+        },
+        {
+          entity: { kind: "feature", id: featureIds[1] },
+          blockedBy: [featureIds[0]],
+          action: "repair-dependency",
+        },
+      ],
+    },
+  })
+})
+
+it("uses worker model-reference health and propagates a broken source into dependent sketch diagnostics", () => {
+  const current = snapshot()
+  current.features = []
+  const ids = Array.from(
+    { length: 6 },
+    (_, n) => `0195b5ac-b220-7a2c-8c33-${String(2800 + n).padStart(12, "0")}`,
+  )
+  const source = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: ids[0],
+    label: "Model source",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: ids[1],
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId: featureIds[0],
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: ids[2],
+      },
+    ],
+  })
+  const dependent = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: ids[3],
+    label: "Dependent",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: ids[4],
+        sourceSketchId: source.id,
+        sourcePointId: ids[2],
+        projectedPointId: ids[5],
+      },
+    ],
+  })
+  current.sketches = [source, dependent]
+  const broken = response([], {
+    modelReferenceEvidence: [{ sketchId: source.id, referenceId: ids[1], status: "broken" }],
+  })
+  expect(createModelDiagnosticsEvidence(current, rebuild(broken))).toMatchObject({
+    ok: true,
+    evidence: {
+      status: "invalid",
+      entries: [
+        {
+          entity: { kind: "sketch", id: ids[0] },
+          referenceId: ids[1],
+          resolution: "broken",
+          action: "repair-reference",
+        },
+        {
+          entity: { kind: "sketch", id: ids[3] },
+          referenceId: ids[4],
+          resolution: "broken",
+          action: "repair-reference",
+        },
+      ],
+    },
+  })
+  expect(createModelDiagnosticsEvidence(current, rebuild(response([])))).toMatchObject({
+    ok: true,
+    evidence: {
+      status: "unknown",
+      entries: [{ resolution: "unknown" }, { resolution: "unknown" }],
+    },
+  })
+  expect(
+    createModelDiagnosticsEvidence(
+      current,
+      rebuild({
+        ...broken,
+        modelReferenceEvidence: [{ sketchId: source.id, referenceId: ids[1], status: "resolved" }],
+      }),
+    ),
+  ).toMatchObject({ ok: true, evidence: { status: "valid", entries: [] } })
 })

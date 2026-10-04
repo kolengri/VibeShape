@@ -10,12 +10,21 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
 
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
 linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
-feature/output-role targets from \`model_body_measurements\`.
-Shell openings require current body topology references and their source content hash. Sweep
+feature/output-role targets from \`model_body_measurements\` or \`draft_body_measurements\`.
+Use \`draft_body_topology\` to select openings on a new draft body and create Shell before
+one final Apply. Shell openings require current exact body topology references and their source content hash. Sweep
 requires an already aligned profile at the start of an open tangent-continuous line/arc path;
 Loft takes two to twenty-four ordered hole-free sections within a 2,000-curve aggregate budget. Thread models a custom 60-degree V groove
 with at most sixteen total turns, without ISO/DIN fit certification. Use the live schema for
 limits, quantities, dependencies and repair; exact preview remains mandatory.
+
+Before writing, read the modeling skill's construction strategy. Prefer dimensioned analytical
+profiles, Extrude/Revolve for straight/rotational regions, and symmetry where the source supports it.
+Use Shell for a constant-thickness interior; retain explicit inner profiles for variable thickness
+or protected mating geometry. A failed operation needs diagnosis before additional construction.
+Mirror plane-only inputs retain v1 replacement. Supplying offset and preserveSource selects v2;
+offset is a signed length along +Z/+Y/+X for XY/XZ/YZ. preserveSource=true keeps the original part
+and creates a reflected result part. Join exact source/copy bodies explicitly with Union when needed.
 
 \`create_datum_plane\`/\`update_datum_plane\` use offset mode, a signed typed length and
 origin support xy/xz/yz (empty dependencies/references) or an existing planar face v0 TopoRef
@@ -73,7 +82,13 @@ inspect the actual document revision before proposing a new change.
    dependencies, expressions, suppression, and references you did not intend to change.
    For selected Fillet/Chamfer, omitting \`edges\` changes scope to all edges. For Hole,
    omitting \`targetBody\` changes exact-body scope to legacy whole-feature scope.
-4. Call \`preview_draft\`. Check \`geometry.status\`, diagnostics, exact bounds and volume.
+   Inspect unsaved body roles with \`draft_body_measurements\` and Shell opening faces with
+   \`draft_body_topology\`, at the current draft revision. Source edits invalidate old selections;
+   restart stale discovery and reselect unresolved openings; Shell v2 retains unique durable face identities within the same body. Inspection does not renew draft expiry or save geometry.
+4. Call \`preview_draft\`. Check \`geometry.status\`, \`geometry.diagnostics\`, exact bounds and volume.
+   \`model_info.diagnostics\` and preview diagnostics identify feature/sketch errors, blocked
+   dependencies and support/reference health with codes and repair actions. Successful solids can
+   coexist with unresolved supports; unknown/unavailable diagnostics are not a clean result.
    Repair invalid intent with a new command ID and the returned current draft revision.
 5. Call \`commit_draft\`; by default the person reviews and clicks Apply or Discard in the browser.
    A person may explicitly enable session-only auto-apply for valid allowlisted CAD edits in the

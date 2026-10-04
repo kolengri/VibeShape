@@ -40,7 +40,7 @@ import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType } from "./part-design-loft"
 import { meshImportFeatureType } from "./part-design-mesh-import"
-import { mirrorFeatureType } from "./part-design-mirror"
+import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
 import { patternFeatureType } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
@@ -437,6 +437,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
   featureTypes: [
     placementFeatureType,
     mirrorFeatureType,
+    mirrorFeatureTypeV2,
     patternFeatureType,
     shellFeatureType,
     shellFeatureTypeV2,
