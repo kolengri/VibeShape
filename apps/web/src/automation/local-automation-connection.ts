@@ -188,6 +188,8 @@ export function createLocalAutomationConnection() {
       "commit_planar_import_upload",
       "change_metadata",
       "commit_assembly_draft",
+      "undo_model",
+      "redo_model",
       "save_library_definition",
       "update_library_metadata",
       "create_surface_texture",
