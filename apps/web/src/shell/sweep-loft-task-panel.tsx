@@ -1,5 +1,6 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
+import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { ReactNode } from "react"
@@ -10,6 +11,7 @@ import {
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import { ineligibleProfileSketchIds } from "../features/part-design/profile-feature-selection"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { loftSupportCatalogue } from "../features/sweep-loft/loft-support-catalogue"
 import { sweepLoftCatalogue } from "../features/sweep-loft/sweep-loft-catalogue"
 import { SweepLoftForm, type SweepLoftFormCopy } from "../features/sweep-loft/sweep-loft-form"
 import type {
@@ -26,9 +28,14 @@ type Props = {
   onCompleteTool: () => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   featurePreviewStatus: FeaturePreviewState["status"]
+  featurePreviewDiagnostic?: string | undefined
   renderDelete: (feature: FeatureRecord) => ReactNode
 }
-const parameterReaders = { loft: readLoftFeatureParameters, sweep: readSweepFeatureParameters }
+const parameterReaders = {
+  loft: (feature: FeatureRecord) =>
+    readLoftFeatureParametersV3(feature) ?? readLoftFeatureParameters(feature),
+  sweep: readSweepFeatureParameters,
+}
 function createMode(
   operation: SweepLoftOperation,
   features: readonly FeatureRecord[],
@@ -102,6 +109,32 @@ function useFormCopy(mode: SweepLoftFormMode | null): SweepLoftFormCopy {
     startPoint: t("startPoint"),
     chooseStart: t("chooseStart"),
     unavailablePath: t("unavailablePath"),
+    constrained: t("constrained"),
+    constraintsDescription: t("constraintsDescription"),
+    outerTracks: t("outerTracks"),
+    addTrack: t("addTrack"),
+    chooseSegment: t("chooseSegment"),
+    unavailableSegment: t("unavailableSegment"),
+    vertexTrack: t("vertexTrack"),
+    segmentTrack: t("segmentTrack"),
+    addRail: t("addRail"),
+    addGuide: t("addGuide"),
+    guideName: t("guideName"),
+    guideContinuity: t("guideContinuity"),
+    startContinuity: t("startContinuity"),
+    endContinuity: t("endContinuity"),
+    addEnd: t("addEnd"),
+    supportFace: t("supportFace"),
+    chooseSupport: t("chooseSupport"),
+    unavailableSupport: t("unavailableSupport"),
+    continuity: t("continuity"),
+    remove: t("remove"),
+    track: (number) => t("track", { number }),
+    rail: (number) => t("rail", { number }),
+    guide: (number) => t("guide", { number }),
+    endConstraint: (number) => t("endConstraint", { number }),
+    directedSegment: (track, section) => t("directedSegment", { track, section }),
+    directionOption: (curve, point) => t("directionOption", { curve, point }),
   }
 }
 export function SweepLoftTaskPanel(props: Props) {
@@ -132,9 +165,9 @@ export function SweepLoftTaskPanel(props: Props) {
       point: (number, [x, y, z]) =>
         t("pointOption", {
           number,
-          x: format.number(x, { maximumFractionDigits: 3 }),
-          y: format.number(y, { maximumFractionDigits: 3 }),
-          z: format.number(z, { maximumFractionDigits: 3 }),
+          x: format.number(Math.abs(x) < 0.0005 ? 0 : x, { maximumFractionDigits: 3 }),
+          y: format.number(Math.abs(y) < 0.0005 ? 0 : y, { maximumFractionDigits: 3 }),
+          z: format.number(Math.abs(z) < 0.0005 ? 0 : z, { maximumFractionDigits: 3 }),
         }),
     },
   )
@@ -142,6 +175,20 @@ export function SweepLoftTaskPanel(props: Props) {
     mode.kind === "edit"
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `${mode.operation}:${report.snapshot.revision}`
+  const supports = loftSupportCatalogue(
+    report.snapshot,
+    report.rebuild,
+    mode.kind === "edit" ? mode.feature.id : null,
+    (body, role, number, [x, y, z]) =>
+      t("supportFaceOption", {
+        body,
+        role,
+        number,
+        x: format.number(Math.abs(x) < 0.0005 ? 0 : x, { maximumFractionDigits: 3 }),
+        y: format.number(Math.abs(y) < 0.0005 ? 0 : y, { maximumFractionDigits: 3 }),
+        z: format.number(Math.abs(z) < 0.0005 ? 0 : z, { maximumFractionDigits: 3 }),
+      }),
+  )
   return (
     <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <SweepLoftForm
@@ -150,6 +197,8 @@ export function SweepLoftTaskPanel(props: Props) {
         mode={mode}
         snapshot={report.snapshot}
         {...catalogue}
+        supports={supports}
+        previewDiagnostic={props.featurePreviewDiagnostic}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />

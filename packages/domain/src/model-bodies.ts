@@ -1,5 +1,6 @@
 import { featureBodyDependencies } from "./feature-dependencies"
 import type { FeatureRecord } from "./feature-graph"
+import { readLoftFeatureParametersV3 } from "./part-design-loft-v3"
 import { mirrorPreservesSource } from "./part-design-mirror"
 
 type BodyOutput = { featureId: string; outputRole?: string | undefined }
@@ -20,10 +21,12 @@ function consumeFeatureBodies<T extends BodyOutput>(
   byFeature: ReadonlyMap<string, readonly T[]>,
   consumed: Set<T>,
 ) {
+  const retainsSources =
+    mirrorPreservesSource(feature) || readLoftFeatureParametersV3(feature) !== null
   for (const dependency of featureBodyDependencies(feature)) {
     const selected = dependencyBodies(dependency, byFeature)
     if (!selected) return false
-    if (!mirrorPreservesSource(feature)) for (const body of selected) consumed.add(body)
+    if (!retainsSources) for (const body of selected) consumed.add(body)
   }
   return true
 }

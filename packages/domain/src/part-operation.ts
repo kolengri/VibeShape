@@ -25,6 +25,7 @@ import {
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
+import { loftFeatureTypeV3 } from "./part-design-loft-v3"
 import { meshImportOutputRole, readMeshImportFeatureParameters } from "./part-design-mesh-import"
 import {
   mirrorPreservesSource,
@@ -73,6 +74,7 @@ const newTypes = new Set(
     cylinderFeatureType,
     loftFeatureType,
     loftFeatureTypeV2,
+    loftFeatureTypeV3,
     sweepFeatureType,
     sphereFeatureType,
     coneFeatureType,

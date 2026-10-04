@@ -9,6 +9,8 @@ import {
 } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
+import { type LoftConstraintCopy, LoftConstraintFields } from "./loft-constraint-fields"
+import { type LoftSupportOption, remapLoftOuterTracks } from "./loft-constraint-model"
 import { LoftHoleFields } from "./loft-hole-fields"
 import { type LoftSectionCopy, LoftSectionFields } from "./loft-section-fields"
 import {
@@ -21,6 +23,7 @@ import {
 import { type SweepPathCopy, SweepPathFields } from "./sweep-path-fields"
 export type SweepLoftFormCopy = ParameterPanelCopy &
   LoftSectionCopy &
+  LoftConstraintCopy &
   SweepPathCopy &
   Readonly<{
     submit: string
@@ -35,6 +38,8 @@ type Props = FeatureParameterFormProps<SweepLoftFormMode, SweepLoftFormCopy> &
     snapshot: DocumentSnapshot
     profiles: readonly ProfileOption[]
     paths: readonly PathSketchOption[]
+    supports?: readonly LoftSupportOption[]
+    previewDiagnostic?: string | undefined
     onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
   }>
 function SweepLoftPreview({
@@ -55,6 +60,8 @@ export function SweepLoftForm({
   snapshot,
   profiles,
   paths,
+  supports = [],
+  previewDiagnostic,
   onCancel,
   onPreviewChange,
   onSave,
@@ -68,7 +75,15 @@ export function SweepLoftForm({
   const form = useAppForm({
     defaultValues: sweepLoftFormValues(mode),
     onSubmit: async ({ value }) => {
-      const feature = sweepLoftFeatureRecord(mode, featureId, value, profiles, paths, snapshot)
+      const feature = sweepLoftFeatureRecord(
+        mode,
+        featureId,
+        value,
+        profiles,
+        paths,
+        snapshot,
+        supports,
+      )
       if (!feature) {
         setMessage(copy.validationSummary)
         return
@@ -85,7 +100,15 @@ export function SweepLoftForm({
     <Form form={form} aria-label={copy.title} className="gap-0">
       <form.Subscribe selector={(state) => [state.values, state.isSubmitting] as const}>
         {([values, pending]) => {
-          const feature = sweepLoftFeatureRecord(mode, featureId, values, profiles, paths, snapshot)
+          const feature = sweepLoftFeatureRecord(
+            mode,
+            featureId,
+            values,
+            profiles,
+            paths,
+            snapshot,
+            supports,
+          )
           return (
             <>
               {onPreviewChange && (
@@ -95,7 +118,10 @@ export function SweepLoftForm({
                 copy={copy}
                 legend={copy.parameters}
                 disabled={disabled || pending}
-                message={message ?? (previewStatus === "error" ? copy.previewFailed : null)}
+                message={
+                  message ??
+                  (previewStatus === "error" ? (previewDiagnostic ?? copy.previewFailed) : null)
+                }
                 actions={
                   <TaskPanelFormActions
                     acceptLabel={copy.submit}
@@ -112,6 +138,7 @@ export function SweepLoftForm({
                     <LoftSectionFields
                       sections={values.sections}
                       ruled={values.ruled}
+                      ruledDisabled={values.constrained}
                       profiles={profiles}
                       copy={copy}
                       onSectionsChange={(sections) => {
@@ -131,6 +158,14 @@ export function SweepLoftForm({
                             }))
                           : []
                         form.setFieldValue("holeCorrespondence", tracks)
+                        form.setFieldValue(
+                          "outerCorrespondence",
+                          remapLoftOuterTracks(
+                            values.outerCorrespondence,
+                            values.sections,
+                            sections,
+                          ),
+                        )
                         form.setFieldValue("sections", sections)
                       }}
                       onRuledChange={(ruled) => {
@@ -138,10 +173,33 @@ export function SweepLoftForm({
                         form.setFieldValue("ruled", ruled)
                       }}
                     />
-                    <LoftHoleFields
+                    {!values.constrained && (
+                      <LoftHoleFields
+                        sections={values.sections}
+                        tracks={values.holeCorrespondence}
+                        onChange={(tracks) => form.setFieldValue("holeCorrespondence", tracks)}
+                      />
+                    )}
+                    <LoftConstraintFields
+                      values={values}
                       sections={values.sections}
-                      tracks={values.holeCorrespondence}
-                      onChange={(tracks) => form.setFieldValue("holeCorrespondence", tracks)}
+                      paths={paths}
+                      supports={supports}
+                      copy={copy}
+                      onChange={(changes) => {
+                        setMessage(null)
+                        if (changes.constrained !== undefined) {
+                          form.setFieldValue("constrained", changes.constrained)
+                          if (changes.constrained) form.setFieldValue("ruled", false)
+                        }
+                        if (changes.outerCorrespondence !== undefined)
+                          form.setFieldValue("outerCorrespondence", changes.outerCorrespondence)
+                        if (changes.rails !== undefined) form.setFieldValue("rails", changes.rails)
+                        if (changes.guides !== undefined)
+                          form.setFieldValue("guides", changes.guides)
+                        if (changes.start !== undefined) form.setFieldValue("start", changes.start)
+                        if (changes.end !== undefined) form.setFieldValue("end", changes.end)
+                      }}
                     />
                   </>
                 ) : (

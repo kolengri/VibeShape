@@ -170,6 +170,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.imported",
         "org.vibeshape.feature.part-design.loft",
         "org.vibeshape.feature.part-design.loft",
+        "org.vibeshape.feature.part-design.loft",
         "org.vibeshape.feature.part-design.mirror",
         "org.vibeshape.feature.part-design.mirror",
         "org.vibeshape.feature.part-design.mirror",

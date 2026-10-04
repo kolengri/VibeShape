@@ -37,8 +37,10 @@ import {
   type KernelSpikeParameters,
   type LoftFeatureContentParameters,
   type LoftFeatureContentParametersV2,
+  type LoftFeatureContentParametersV3,
   loftFeatureContentParametersSchema,
   loftFeatureContentParametersV2Schema,
+  loftFeatureContentParametersV3Schema,
   type MirrorFeatureContentParameters,
   type MirrorFeatureContentParametersV2,
   type MirrorFeatureContentParametersV3,
@@ -83,6 +85,7 @@ import {
   unionFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
+import type { Face } from "replicad"
 import {
   assembleWire,
   cast,
@@ -151,6 +154,7 @@ import {
 import { createOcctCountersink } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
+import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 import { mirrorOcctShape } from "./occt-mirror"
 import { patternOcctShape } from "./occt-pattern"
@@ -1243,6 +1247,7 @@ type ParsedFeature =
       kind: "pattern"
       parameters: PatternFeatureContentParameters | PatternFeatureContentParametersV2
     }
+  | { kind: "constrained-loft"; parameters: LoftFeatureContentParametersV3 }
   | { kind: "loft"; parameters: LoftFeatureContentParameters | LoftFeatureContentParametersV2 }
   | { kind: "sweep"; parameters: SweepFeatureContentParameters }
   | {
@@ -2194,6 +2199,33 @@ function parseLoftFeature(input: FeatureEvaluationInput): FeatureParseResult {
   return { ok: true, feature: { kind: "loft", parameters: parameters.data } }
 }
 
+function parseConstrainedLoftFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parsed = loftFeatureContentParametersV3Schema.safeParse(input.content.feature.parameters)
+  if (!parsed.success)
+    return featureFailure("invalid-feature-parameters", "Constrained Loft parameters are invalid.")
+  const parameters = parsed.data
+  if (
+    !analyticalSketchInputsAreValid(
+      input,
+      [
+        ...parameters.sections,
+        ...parameters.rails.map((r) => r.path),
+        ...parameters.guides.map((g) => g.path),
+      ],
+      128,
+    )
+  )
+    return invalidInputCardinality("Constrained Loft requires exact scheduled sketch owner inputs.")
+  for (const condition of [...parameters.start, ...parameters.end]) {
+    const dependency = input.dependencies[condition.supportInputIndex]
+    if (!dependency || dependency.outputRole !== condition.support.outputRole)
+      return invalidInputCardinality(
+        "Constrained Loft end supports require their exact named body input.",
+      )
+  }
+  return { ok: true, feature: { kind: "constrained-loft", parameters } }
+}
+
 function parseSweepFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const parameters = sweepFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
   if (!parameters.success)
@@ -2286,6 +2318,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [PATTERN_FEATURE_TYPE_KEY.replace("#1", "#2"), parsePatternFeatureV2],
   [LOFT_FEATURE_TYPE_KEY, parseLoftFeature],
   [LOFT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseLoftFeature],
+  [LOFT_FEATURE_TYPE_KEY.replace("#1", "#3"), parseConstrainedLoftFeature],
   [SWEEP_FEATURE_TYPE_KEY, parseSweepFeature],
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
   [BOOLEAN_FEATURE_TYPE_V2_KEY, parseExactBooleanFeature],
@@ -2779,6 +2812,7 @@ function createFeatureShape(
     ParsedFeature,
     {
       kind:
+        | "constrained-loft"
         | "selected-fillet"
         | "selected-chamfer"
         | "placement"
@@ -3639,6 +3673,8 @@ function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSoli
       return feature.parameters.operation === "new"
         ? "multi-extrusion"
         : "multi-extrusion-modifying"
+    case "constrained-loft":
+      return "loft"
     case "selected-fillet":
       return "fillet"
     case "selected-chamfer":
@@ -3686,6 +3722,7 @@ function evaluateFeatureGeometry(
       "split",
       "pattern",
       "loft",
+      "constrained-loft",
       "sweep",
       "compound",
       "union",
@@ -4136,6 +4173,7 @@ class ShellOpeningRepairError extends Error {
     super(`Shell opening faces are ${reason}. Reselect the opening faces on the current body.`)
   }
 }
+class ConstrainedLoftError extends Error {}
 
 function shellOpeningShapeKeys(candidateIds: readonly string[], snapshot: TopologyCaptureSnapshot) {
   return candidateIds.map((id) => {
@@ -4327,6 +4365,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const cleanupSucceeded = disposeTemporaryShape(temporaryShape)
       if (cleanupSucceeded && error instanceof ShellOpeningRepairError)
         return featureFailure("invalid-feature-parameters", error.message)
+      if (cleanupSucceeded && error instanceof ConstrainedLoftError)
+        return featureFailure("invalid-feature-geometry", error.message)
       return featureFailure(
         "invalid-feature-geometry",
         cleanupSucceeded
@@ -4412,6 +4452,20 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
   ) {
+    if (feature.kind === "constrained-loft")
+      return this.#createConstrainedLoft(opencascade, feature.parameters, dependencies, input)
+    return this.#createUncachedStandardFeature(opencascade, feature, dependencies, input)
+  }
+
+  #createUncachedStandardFeature(
+    opencascade: OpenCascadeInstance,
+    feature: Exclude<
+      ParsedFeature,
+      { kind: "compound" | "split" | "pattern" | "imported" | "constrained-loft" }
+    >,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
     switch (feature.kind) {
       case "extent-extrusion":
         return this.#createExtentExtrusion(opencascade, feature, dependencies, input)
@@ -4488,6 +4542,54 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         : createMultiExtrusionModifyingFeatureShape(opencascade, parameters, dependencies, face)
     } finally {
       face.delete()
+    }
+  }
+
+  #takeLoftEndSupport(
+    entry: LoftFeatureContentParametersV3["start"][number],
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    const body = dependencies[entry.supportInputIndex],
+      dependency = input.dependencies[entry.supportInputIndex],
+      snapshot = body ? this.#topologySnapshots.get(body) : undefined
+    if (!body || !snapshot || !dependency?.outputRole || !this.resolveShellOpenings)
+      throw new Error("Exact named Loft end support topology is unavailable.")
+    const face = takeResolvedBodyFace(
+      body,
+      snapshot,
+      entry.support,
+      { featureId: dependency.featureId, outputRole: dependency.outputRole },
+      this.resolveShellOpenings,
+    )
+    return face
+  }
+
+  #createConstrainedLoft(
+    occt: OpenCascadeInstance,
+    parameters: LoftFeatureContentParametersV3,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    const supports: Face[] = []
+    const resolve = (entries: LoftFeatureContentParametersV3["start"]): LoftEndSupport[] =>
+      entries.map((entry) => {
+        const face = this.#takeLoftEndSupport(entry, dependencies, input)
+        supports.push(face)
+        return { segmentTrack: entry.segmentTrack, continuity: entry.continuity, support: face }
+      })
+    try {
+      return createOcctLoftPatchNetwork(occt, {
+        ...parameters,
+        start: resolve(parameters.start),
+        end: resolve(parameters.end),
+      })
+    } catch (error) {
+      throw new ConstrainedLoftError(
+        error instanceof Error ? error.message : "Exact OCCT constrained Loft construction failed.",
+      )
+    } finally {
+      for (const face of supports.reverse()) face.delete()
     }
   }
 

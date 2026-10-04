@@ -78,6 +78,57 @@ const historyStats = {
 }
 
 describe("geometry worker protocol", () => {
+  it.each([25, 128])("permits %i producer inputs only for registered Loft v3", (count) => {
+    const dependencies = Array.from({ length: count }, (_, index) => ({
+      featureId: `0195b5ac-b220-7a2c-8c33-${String(index + 1).padStart(12, "0")}`,
+      contentHash: String(index + 1).padStart(64, "0"),
+    }))
+    const feature = {
+      ...boxContent.feature,
+      type: {
+        ...boxFeatureType,
+        typeId: "org.vibeshape.feature.part-design.loft",
+        schemaVersion: 3,
+      },
+      parameters: {},
+      inputs: dependencies.map(({ contentHash }) => contentHash),
+    }
+    const request = {
+      ...validEnvelope,
+      type: "evaluateFeature",
+      featureId: "0195b5ac-b220-7a2c-8c33-000000000999",
+      contentHash: "c".repeat(64),
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      dependencies,
+      content: { ...boxContent, feature },
+    }
+    expect(geometryWorkerRequestSchema.safeParse(request).success).toBe(true)
+    for (const type of [
+      { ...feature.type, schemaVersion: 2 },
+      { ...feature.type, moduleId: "org.example.extension" },
+    ])
+      expect(
+        geometryWorkerRequestSchema.safeParse({
+          ...request,
+          content: { ...request.content, feature: { ...feature, type } },
+        }).success,
+      ).toBe(false)
+    const extra = {
+      featureId: "0195b5ac-b220-7a2c-8c33-000000000129",
+      contentHash: "d".repeat(64),
+    }
+    if (count === 128)
+      expect(
+        geometryWorkerRequestSchema.safeParse({
+          ...request,
+          dependencies: [...dependencies, extra],
+          content: {
+            ...request.content,
+            feature: { ...feature, inputs: [...feature.inputs, extra.contentHash] },
+          },
+        }).success,
+      ).toBe(false)
+  })
   it.each([19, 24])(
     "permits %i ordered producer inputs only for registered Loft v1/v2",
     (count) => {
