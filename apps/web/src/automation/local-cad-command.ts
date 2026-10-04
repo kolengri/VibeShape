@@ -28,6 +28,7 @@ import {
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
+import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
@@ -37,6 +38,8 @@ type CadOperation = Extract<
   LocalOperation,
   {
     tool:
+      | "create_placement"
+      | "update_placement"
       | "create_sketch"
       | "update_sketch"
       | "create_extrude"
@@ -77,6 +80,8 @@ type CadOperation = Extract<
 >
 
 const directCadFeatureTypes = {
+  create_placement: placementFeatureType.type,
+  update_placement: placementFeatureType.type,
   create_reference_body_pattern: patternFeatureTypeV2.type,
   update_reference_body_pattern: patternFeatureTypeV2.type,
   create_reference_split: splitFeatureTypeV2.type,

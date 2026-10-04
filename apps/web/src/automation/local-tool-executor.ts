@@ -4,6 +4,10 @@ import {
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
 import {
+  isLocalSketchTextOperation,
+  type LocalSketchTextOperation,
+} from "@vibeshape/automation-api/local-sketch-text-tools"
+import {
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
@@ -32,6 +36,7 @@ import type { createBinaryExportSession } from "./binary-export-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
+import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
 
@@ -174,7 +179,10 @@ function isVariableCommand(operation: LocalOperation): operation is Extract<
 }
 
 function draftCommandRequest(
-  operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+  operation: Exclude<
+    Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+    LocalSketchTextOperation
+  >,
   actor: CommandActor,
   documentId: string,
 ) {
@@ -195,7 +203,10 @@ async function dispatchDraftCommand(
   session: LocalSessionPort,
   actor: CommandActor,
   operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+  signal?: AbortSignal,
 ) {
+  if (isLocalSketchTextOperation(operation))
+    return executeSketchTextCommand(session.host, actor, session.documentId, operation, signal)
   const request = draftCommandRequest(operation, actor, session.documentId)
   const result = await session.host.applyCommand(actor, request)
   return result.ok ? { ok: true as const, value: result.value } : diagnostic(result)
@@ -256,7 +267,8 @@ export function createLocalToolExecutor(
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
-    if (isLocalDraftCommand(operation)) return dispatchDraftCommand(session, actor, operation)
+    if (isLocalDraftCommand(operation))
+      return dispatchDraftCommand(session, actor, operation, signal)
     if (isLocalDraftInspection(operation)) {
       const result = await session.host.inspectDraft(actor, {
         schemaVersion: 1,
