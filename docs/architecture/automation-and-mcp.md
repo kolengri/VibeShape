@@ -39,9 +39,15 @@ than exact dimensions, clearance, topology, printability or physical fit. Operat
 
 ## Recommendation
 
-VibeShape exposes AI automation through local stdio and explicitly paired remote HTTPS MCP adapters
+VibeShape exposes AI automation through local stdio, development HTTP, and explicitly paired remote HTTPS MCP adapters
 over the ordinary document command and query contracts. MCP is an integration boundary, not a second
 CAD engine, extension runtime, persistence layer, or privileged scripting API.
+
+`bun run dev` embeds the existing local adapter and browser broker into Vite through a development-only
+Streamable HTTP endpoint. It shares the editor origin and preserves explicit pairing and browser
+review. The dev CLI runs Vite under the pinned Bun runtime so server-side TypeScript workspace
+exports resolve consistently. Production builds and preview do not load this bridge. See
+[ADR-0096](../adr/0096-development-http-mcp.md) for local boundaries and lifecycle.
 
 The broad target remains proposed in [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
 The implemented local stdio subset is accepted by [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md). The adapter-neutral host validates actor identities supplied separately from payloads, owns bounded expiring drafts, retains original parsed commands,
