@@ -1,6 +1,7 @@
 import type { DocumentId } from "@vibeshape/domain"
 import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { commandIdSchema } from "@vibeshape/domain/identifiers"
+import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import {
   LocalDocumentRepository,
   VersionedLocalDocumentRepository,
@@ -36,8 +37,11 @@ export class BrowserProjectRepository {
     )
   }
 
-  materializeAssemblySourceAssets(authority: DocumentSnapshotV4) {
-    return materializeAssemblySourceAssets(this.#database, authority)
+  materializeAssemblySourceAssets(
+    authority: DocumentSnapshotV4,
+    ownedBlobs: readonly SourceAssetBlob[] = [],
+  ) {
+    return materializeAssemblySourceAssets(this.#database, authority, ownedBlobs)
   }
 
   async hasCommandId(input: string) {

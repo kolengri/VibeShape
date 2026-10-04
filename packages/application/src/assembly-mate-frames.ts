@@ -14,6 +14,7 @@ import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { sameBodyReference } from "@vibeshape/domain/part-operation"
 import { resolveTopologyReference } from "@vibeshape/domain/topology"
 import type { TopologyCandidate } from "@vibeshape/protocol"
+import { projectTopologyCandidate } from "./topology-candidate-projection"
 
 export type AssemblyMateSourceGeometry = Readonly<{
   definitionId: string
@@ -198,15 +199,7 @@ function resolveFrame(
   if (!source) fail("topology-missing", "The joint frame's frozen source geometry is unavailable.")
   if (source.representation !== "exact-solid")
     fail("unsupported-topology", "Topology-bound joint frames require an exact source body.")
-  const candidates = source.candidates.map(
-    ({ candidateId, kind, semanticRole, lineageTokens, signature }) => ({
-      candidateId,
-      kind,
-      ...(semanticRole ? { semanticRole } : {}),
-      lineageTokens,
-      signature,
-    }),
-  )
+  const candidates = source.candidates.map(projectTopologyCandidate)
   const resolution = resolveTopologyReference(binding.reference, candidates)
   if (resolution.status !== "resolved")
     fail(

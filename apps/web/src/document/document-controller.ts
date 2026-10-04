@@ -33,7 +33,9 @@ import {
   modelMeasurementQuerySchema,
   modelMeasurementViewSchema,
 } from "@vibeshape/automation-api/queries"
+import type { AssemblySessionConfiguration } from "@vibeshape/automation-host/assembly-session-contract"
 import type { AutomationDocumentPort, AutomationHostResult } from "@vibeshape/automation-host/host"
+import { DocumentWorkerRequestError } from "@vibeshape/document-worker/client"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
   createCommandDispatcher,
@@ -75,8 +77,10 @@ import {
   emptyAssemblyAuthority,
   pinnedAssemblyDefinitionSchema,
 } from "@vibeshape/domain/assembly-authority"
+import { mergeCapturedAssemblyAssets } from "@vibeshape/domain/assembly-pinned-insertion"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentCommand } from "@vibeshape/domain/commands"
+import { commandActorsEqual } from "@vibeshape/domain/commands"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import type {
   AuthoredDocumentSnapshot,
@@ -93,11 +97,12 @@ import {
 } from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
-import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
+import { documentSnapshotV4Schema, promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
+import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
 import {
   readAuthoredVShape,
@@ -122,15 +127,23 @@ import type {
 import { assemblyExportSettingsSchema } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
+import {
+  assemblyPortFailure,
+  createBrowserAssemblyAutomationSession,
+} from "../automation/assembly-automation-session"
+import { assemblyInspectionView } from "../automation/assembly-inspection-view"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
+import { createAutomationLibraryPort } from "./browser-library-repository"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { prepareDocumentGeometryExport } from "./document-geometry-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
+import { captureLibrarySource } from "./library-source"
 import { createProjectActionGuard } from "./project-action-guard"
 import { materializeDocumentSourceAssets } from "./source-assets-rebuild"
 import { formatProjectCopyName } from "./versioned-project-file"
@@ -810,6 +823,73 @@ export function createActiveDocumentAutomationSession() {
     isActive: () => currentReport() !== null,
     commit: (command, expected) => commitReviewedMetadata(active, command, expected),
   })
+  const assembly = createBrowserAssemblyAutomationSession({
+    documentId: capturedDocumentId,
+    createId: browserUuidV7,
+    isActive: sourceSessionAvailable,
+    readSnapshot: () => (sourceSessionAvailable() ? active.authoredSnapshot : null),
+    library: createAutomationLibraryPort(async (input) => {
+      if (!sourceSessionAvailable() || assemblySourceCaptureBlock())
+        return assemblyPortFailure({
+          code: "document-write-unavailable",
+          message: "The paired source document is not writable for library capture.",
+          retryable: true,
+        })
+      const captured = captureLibrarySource(getDocumentControllerState(), input)
+      const { libraryBinding: _binding, ...definition } = captured
+      const authority = active.authoredSnapshot
+      if (!authority || authority.schemaVersion === 1)
+        throw new Error("The paired library source authority is unavailable.")
+      const materials = await verifyCapturedFrozenDefinition(definition, {
+        active,
+        repository,
+        authority,
+      })
+      const blobs = new Map(
+        materials.map(({ asset, bytes }) => [
+          asset.digest,
+          { digest: asset.digest, bytes: bytes.slice() },
+        ]),
+      )
+      return { ok: true, value: { definition, blobs: [...blobs.values()] } }
+    }),
+    async inspect(revision, input) {
+      if (!sourceSessionAvailable() || active.snapshot.revision !== revision)
+        return assemblyPortFailure({
+          code: "stale-revision",
+          message: "The paired assembly revision changed.",
+          retryable: true,
+        })
+      const result = await inspectActiveAssembly(input.interferencePairs)
+      return result.ok
+        ? {
+            ok: true,
+            value: assemblyInspectionView(
+              capturedDocumentId,
+              revision,
+              result.inspection,
+              input.topology,
+            ),
+          }
+        : assemblyPortFailure(result.diagnostic)
+    },
+    async preview(changes, baseRevision, blobs) {
+      if (!sourceSessionAvailable() || active.snapshot.revision !== baseRevision)
+        return assemblyPortFailure({
+          code: "stale-revision",
+          message: "The paired assembly revision changed.",
+          retryable: true,
+        })
+      const result = await previewAssemblyChanges(changes, baseRevision, blobs)
+      return result.ok
+        ? {
+            ok: true,
+            value: assemblyInspectionView(capturedDocumentId, baseRevision, result.inspection),
+          }
+        : assemblyPortFailure(result.diagnostic)
+    },
+    commit: (input) => commitReviewedAssembly(active, input),
+  })
   const closeAutomation = factory.dispose
   let revision = active.snapshot.revision
   const unsubscribe = subscribeDocumentController(() => {
@@ -821,6 +901,7 @@ export function createActiveDocumentAutomationSession() {
       revision = active.snapshot.revision
       factory.cancel("stale-revision")
       metadata.cancel("stale-revision")
+      assembly.cancel("stale-revision")
     }
   })
   function dispose() {
@@ -829,6 +910,7 @@ export function createActiveDocumentAutomationSession() {
     window.removeEventListener("pagehide", dispose)
     closeAutomation()
     metadata.dispose()
+    assembly.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
   return {
@@ -839,6 +921,7 @@ export function createActiveDocumentAutomationSession() {
     },
     host: factory.host,
     metadata,
+    assembly,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     readInfo,
     readSketchSolution: factory.readSketchSolution,
@@ -847,6 +930,7 @@ export function createActiveDocumentAutomationSession() {
     cancel: (reason?: Parameters<typeof factory.cancel>[0]) => {
       factory.cancel(reason)
       metadata.cancel(reason)
+      assembly.cancel(reason)
     },
     dispose,
   }
@@ -1057,9 +1141,15 @@ function captureAssemblyContext() {
   const active = session
   const repository = activeRepository
   const authority = active?.authoredSnapshot
-  if (!active || !repository || state.status !== "ready" || authority?.schemaVersion !== 4)
+  if (
+    !active ||
+    !repository ||
+    state.status !== "ready" ||
+    !authority ||
+    authority.schemaVersion === 1
+  )
     throw new Error("Assembly authority is unavailable.")
-  return { active, repository, authority }
+  return { active, repository, authority: promoteDocumentSnapshotV4(authority) }
 }
 
 function assertAuthorityCurrent(active: NonNullable<typeof session>, revision: number) {
@@ -1068,6 +1158,10 @@ function assertAuthorityCurrent(active: NonNullable<typeof session>, revision: n
 }
 
 function assemblyFailure(message: unknown, operation: string) {
+  const constraint =
+    message instanceof DocumentWorkerRequestError && message.response?.type === "failure"
+      ? message.response.diagnostic.assembly
+      : undefined
   return {
     ok: false as const,
     diagnostic: {
@@ -1075,6 +1169,7 @@ function assemblyFailure(message: unknown, operation: string) {
       message: message instanceof Error ? message.message : `${operation} failed.`,
       retryable: false,
       sourceCode: "assembly-operation-failed",
+      ...(constraint ? { assembly: constraint } : {}),
     },
   }
 }
@@ -1096,6 +1191,7 @@ export async function inspectActiveAssembly(
 export async function previewAssemblyChanges(
   changes: readonly AssemblyMutation[],
   revision: number,
+  ownedBlobs: readonly SourceAssetBlob[] = [],
 ) {
   try {
     const context = captureAssemblyContext()
@@ -1107,8 +1203,12 @@ export async function previewAssemblyChanges(
       changes,
     )
     const assembly = applyCapturedAssemblyMutations(context.authority.assembly, captured)
-    const authority = documentSnapshotV4Schema.parse({ ...context.authority, assembly })
-    return await inspectCapturedAssembly({ ...context, authority }, [])
+    const authority = documentSnapshotV4Schema.parse({
+      ...context.authority,
+      assets: mergeCapturedAssemblyAssets(context.authority, captured),
+      assembly,
+    })
+    return await inspectCapturedAssembly({ ...context, authority }, [], ownedBlobs)
   } catch (error) {
     return assemblyFailure(error, "Assembly preview")
   }
@@ -1117,11 +1217,13 @@ export async function previewAssemblyChanges(
 async function inspectCapturedAssembly(
   context: ReturnType<typeof captureAssemblyContext>,
   pairs: readonly { leftInstanceId: string; rightInstanceId: string }[],
+  ownedBlobs: readonly SourceAssetBlob[] = [],
 ) {
   const { active, repository, authority } = context
   const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
   try {
-    const sourceAssets = await repository.materializeAssemblySourceAssets(authority)
+    const sourceAssets = await repository.materializeAssemblySourceAssets(authority, ownedBlobs)
+    assertAuthorityCurrent(active, authority.revision)
     const result = await worker.inspectAssembly(
       {
         authorityJson: canonicalJson(authority),
@@ -1212,8 +1314,15 @@ function captureLibrarySourceContext() {
 
 /** Verifies a saved library pin using an isolated occurrence, including definitions without instances. */
 export async function verifyActiveFrozenDefinition(input: unknown) {
+  return verifyCapturedFrozenDefinition(input, captureLibrarySourceContext())
+}
+
+async function verifyCapturedFrozenDefinition(
+  input: unknown,
+  context: ReturnType<typeof captureLibrarySourceContext>,
+) {
   const definition = pinnedAssemblyDefinitionSchema.parse(input)
-  const { active, repository, authority } = captureLibrarySourceContext()
+  const { active, repository, authority } = context
   const frozen = documentSnapshotV4Schema.parse({
     ...authority,
     schemaVersion: 4,
@@ -1251,6 +1360,63 @@ export async function verifyActiveFrozenDefinition(input: unknown) {
   } finally {
     worker.terminate()
   }
+}
+
+function assemblyEditorDraftBlock() {
+  return projectActionGuard.read((block) => block !== "automation-busy")
+}
+function assemblySourceCaptureBlock() {
+  const review = automationReviews.getSnapshot()
+  return (
+    assemblyEditorDraftBlock() ?? (review && review.status !== "error" ? "automation-busy" : null)
+  )
+}
+function assemblyReviewedInputMatches(
+  input: Parameters<AssemblySessionConfiguration["commit"]>[0],
+) {
+  const review = automationReviews.getSnapshot()
+  if (
+    review?.status !== "applying" ||
+    !("kind" in review.input) ||
+    review.input.kind !== "assembly"
+  )
+    return false
+  const owned = review.input
+  return (
+    owned.draft.draftId === input.draftId &&
+    owned.draft.baseRevision === input.baseRevision &&
+    owned.draft.draftVersion === input.draftVersion &&
+    commandActorsEqual(owned.actor, input.actor) &&
+    canonicalJson(owned.changes) === canonicalJson(input.changes)
+  )
+}
+async function commitReviewedAssembly(
+  active: PersistentDocumentSession,
+  input: Parameters<AssemblySessionConfiguration["commit"]>[0],
+) {
+  const base = reviewedMetadataBase(active, input.baseRevision)
+  if (!base || assemblyEditorDraftBlock() || !assemblyReviewedInputMatches(input))
+    return assemblyPortFailure({
+      code: "stale-revision",
+      message: "The reviewed assembly base is no longer writable.",
+      retryable: true,
+    })
+  const transaction = createAssemblyTransaction(
+    { documentId: base.id, revision: base.revision, authorityVersion: base.schemaVersion },
+    input.changes,
+    browserUuidV7,
+    input.actor,
+  )
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.commitAuthoredTransaction({
+    ...transaction,
+    transactionId: input.draftId,
+    assetBlobs: input.blobs,
+  })
+  publishAuthoredResult(active, result)
+  return result.ok
+    ? { ok: true as const, value: { revision: active.snapshot.revision } }
+    : assemblyPortFailure(result.diagnostic)
 }
 
 export async function commitAuthoredTransaction(

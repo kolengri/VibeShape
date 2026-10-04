@@ -82,8 +82,8 @@
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 | [0080](0080-general-assembly-mates-and-topology-bound-frames.md) | Accepted | General assembly mates and topology-bound frames |
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
-
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
+| [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
 
 Statuses:
 

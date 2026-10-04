@@ -52,10 +52,23 @@ Preserve existing slot IDs on update. Missing roles fail closed. Manual review r
 an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
 and schema upgrades still require manual review. Tools cannot enable the grant.
 
-Geometry/planar import, text generation, assemblies, the local component library and surface
+Geometry/planar import, text generation and surface
 texture authoring use the editor. They are not named MCP construction tools. The shared local
 and paired remote feature tools follow the same draft/review/commit workflow; remote omits
 file exports. Read the modeling operator skill for the relevant feature family.
+
+## Assembly and local component library
+
+Use model_assembly and inspect_assembly at the committed revision. create_assembly_draft returns
+an original baseRevision and private draftVersion; retain both and use the latest returned version
+for named definition/instance/joint edits. upgrade_assembly explicitly enables general v2 mates.
+preview_assembly_draft evaluates exact owned geometry without saving; commit_assembly_draft always
+requires browser Apply and repeats exact preflight before ordinary revision CAS and Undo.
+inspect_assembly provides bounded frozen-source topology pages and explicitly requested interference.
+Library source closure remains controller-owned. save_library_definition and update_library_metadata
+require manual review and metadata CAS; insert/relink select immutable versions inside an assembly
+draft with explicit copy/reference semantics. Read the modeling skill's assembly/library reference.
+Callers cannot provide frozen pins, raw bytes, document authority or an approval flag.
 
 ## Authored parts and History folders
 

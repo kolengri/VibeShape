@@ -1,3 +1,4 @@
+import { assemblyLibraryItemSchema } from "@vibeshape/domain/assembly-library"
 import {
   commandIdSchema,
   draftIdSchema,
@@ -8,6 +9,18 @@ import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnost
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
+import {
+  assemblyCommitViewSchema,
+  assemblyConstraintDiagnosticSchema,
+  assemblyDiscardViewSchema,
+  assemblyDraftPreviewSchema,
+  assemblyDraftStateSchema,
+  assemblyInspectionViewSchema,
+  assemblyModelViewSchema,
+  assemblyOperations,
+  assemblyToolInputs,
+  assemblyToolNames,
+} from "./assembly-tools"
 import {
   authoredFoldersViewSchema,
   authoredHistoryListArgumentsSchema,
@@ -24,6 +37,12 @@ import {
   automationDraftPreviewSchema,
   automationDraftStateSchema,
 } from "./drafts"
+import {
+  libraryItemsViewSchema,
+  libraryOperations,
+  libraryToolInputs,
+  libraryVersionViewSchema,
+} from "./library-tools"
 import { localCadInputs, localCadOperations } from "./local-cad-tools"
 import {
   localDraftInspectionInputs,
@@ -57,6 +76,7 @@ export const localFailureSchema = z
         code: z.string().regex(/^[a-z][a-z0-9-]{0,95}$/),
         message: z.string().min(1).max(512),
         retryable: z.boolean(),
+        assembly: assemblyConstraintDiagnosticSchema.optional(),
       })
       .strict(),
   })
@@ -105,6 +125,8 @@ export const localToolInputs = {
     schemaVersion: true,
     documentId: true,
   }),
+  ...assemblyToolInputs,
+  ...libraryToolInputs,
   model_history: authoredHistoryListArgumentsSchema,
   model_parts: authoredListArgumentsSchema,
   model_folders: authoredListArgumentsSchema,
@@ -187,6 +209,31 @@ export const localToolOutputs = {
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
+  model_assembly: resultOf(assemblyModelViewSchema),
+  inspect_assembly: resultOf(assemblyInspectionViewSchema),
+  create_assembly_draft: resultOf(assemblyDraftStateSchema),
+  upgrade_assembly: resultOf(assemblyDraftStateSchema),
+  create_assembly_definition: resultOf(assemblyDraftStateSchema),
+  update_assembly_definition: resultOf(assemblyDraftStateSchema),
+  relink_assembly_definition: resultOf(assemblyDraftStateSchema),
+  remove_assembly_definition: resultOf(assemblyDraftStateSchema),
+  create_assembly_instance: resultOf(assemblyDraftStateSchema),
+  update_assembly_instance: resultOf(assemblyDraftStateSchema),
+  remove_assembly_instance: resultOf(assemblyDraftStateSchema),
+  create_assembly_joint: resultOf(assemblyDraftStateSchema),
+  update_assembly_joint: resultOf(assemblyDraftStateSchema),
+  remove_assembly_joint: resultOf(assemblyDraftStateSchema),
+  preview_assembly_draft: resultOf(assemblyDraftPreviewSchema),
+  commit_assembly_draft: resultOf(assemblyCommitViewSchema),
+  discard_assembly_draft: resultOf(assemblyDiscardViewSchema),
+  library_items: resultOf(libraryItemsViewSchema),
+  library_version: resultOf(libraryVersionViewSchema),
+  save_library_definition: resultOf(libraryVersionViewSchema),
+  update_library_metadata: resultOf(assemblyLibraryItemSchema),
+  insert_library_version: resultOf(assemblyDraftStateSchema),
+  relink_library_definition: resultOf(assemblyDraftStateSchema),
+  detach_library_definition: resultOf(assemblyDraftStateSchema),
+
   model_history: resultOf(authoredHistoryViewSchema),
   model_parts: resultOf(authoredPartsViewSchema),
   model_folders: resultOf(authoredFoldersViewSchema),
@@ -262,6 +309,14 @@ export const localToolNameSchema = z.enum([
   "draft_sketch_solution",
   "model_measurements",
   "draft_measurements",
+  ...assemblyToolNames,
+  "library_items",
+  "library_version",
+  "save_library_definition",
+  "update_library_metadata",
+  "insert_library_version",
+  "relink_library_definition",
+  "detach_library_definition",
   "model_history",
   "model_parts",
   "model_folders",
@@ -346,6 +401,8 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
       arguments: localToolInputs.model_measurements,
     })
     .strict(),
+  ...assemblyOperations,
+  ...libraryOperations,
   z.object({ tool: z.literal("model_history"), arguments: localToolInputs.model_history }).strict(),
   z.object({ tool: z.literal("model_parts"), arguments: localToolInputs.model_parts }).strict(),
   z.object({ tool: z.literal("model_folders"), arguments: localToolInputs.model_folders }).strict(),

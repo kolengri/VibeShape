@@ -20,6 +20,7 @@ import {
   assemblyJointRecordSchema as assemblyJointSchema,
 } from "@vibeshape/domain/assembly-mates"
 import { composeAssemblyPoses } from "@vibeshape/domain/assembly-poses"
+import type { CommandActor } from "@vibeshape/domain/commands"
 import { documentV4CommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import type { AssemblyInspection } from "@vibeshape/protocol"
@@ -122,6 +123,7 @@ export function createAssemblyTransaction(
   context: AssemblyDocumentContext,
   input: readonly AssemblyMutation[],
   uuid = browserAuthoredUuid,
+  actor: CommandActor = { type: "user", userId: null },
 ) {
   const changes = assemblyMutationsSchema.parse(input)
   let revision = context.revision
@@ -131,7 +133,7 @@ export function createAssemblyTransaction(
     documentId: context.documentId,
     baseRevision: revision++,
     issuedAt,
-    actor: { type: "user" as const, userId: null },
+    actor,
   })
   const commands = [
     ...sourceAuthorityUpgradeCommands(context.authorityVersion, envelope),

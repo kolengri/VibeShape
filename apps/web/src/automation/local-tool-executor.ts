@@ -1,3 +1,4 @@
+import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
 import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
@@ -27,6 +28,7 @@ import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budge
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
+import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -43,6 +45,7 @@ type LocalSessionPort = Readonly<{
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
+  assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -223,11 +226,40 @@ function changeMetadata(
     : localFailure("authored-metadata-unavailable", "The paired document has no authored metadata.")
 }
 
+async function dispatchBasicOperation(
+  session: LocalSessionPort,
+  actor: CommandActor,
+  operation: LocalOperation,
+) {
+  switch (operation.tool) {
+    case "model_info":
+      return readModelInfo(session)
+    case "export_model":
+      return encodeExport(session, operation)
+    case "create_draft":
+    case "preview_draft":
+    case "commit_draft":
+    case "discard_draft": {
+      const result = await dispatchDraftLifecycle(session, actor, operation)
+      return hostResult(result)
+    }
+    default:
+      return localFailure("invalid-operation", "The named automation operation is unavailable.")
+  }
+}
+
 export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
 ): LocalToolExecutor {
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (isAssemblyLibraryToolName(operation.tool))
+      return session.assembly
+        ? session.assembly.execute(actor, operation, signal)
+        : localFailure(
+            "assembly-authority-unavailable",
+            "The paired document has no assembly authority.",
+          )
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
@@ -241,16 +273,7 @@ export function createLocalToolExecutor(
       return hostResult(result)
     }
     if (isLocalInspection(operation)) return readCommittedInspection(session, operation)
-    switch (operation.tool) {
-      case "model_info":
-        return readModelInfo(session)
-      case "export_model":
-        return encodeExport(session, operation)
-      default: {
-        const result = await dispatchDraftLifecycle(session, actor, operation)
-        return hostResult(result)
-      }
-    }
+    return dispatchBasicOperation(session, actor, operation)
   }
   return {
     execute: (operation, signal) =>

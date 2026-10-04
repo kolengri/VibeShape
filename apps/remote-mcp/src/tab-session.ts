@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers"
+import { assemblyResultContextMatches } from "@vibeshape/automation-api/assembly-result-context"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
@@ -328,6 +329,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     )
       return this.revoke()
     const result = localToolOutputs[message.tool].parse(message.result)
+    if (assemblyResultContextMatches(this.pending.operation, result) === false) return this.revoke()
     if (result.ok && isLocalDraftInspection(this.pending.operation)) {
       const inspection = automationDraftInspectionViewSchema.parse(result.value)
       if (!draftInspectionMatches(this.pending.operation, inspection, inspection.draft.documentId))

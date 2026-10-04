@@ -53,3 +53,9 @@ Applicable surface texture layers cannot currently be frozen into an assembly or
 Capture fails with an explicit diagnostic: remove the layers or choose an untextured source.
 Ordinary Model STL/3MF exports still include enabled relief; STEP exports the exact base B-Rep.
 No capture silently replaces a textured source with its untextured shape.
+
+Paired local and remote MCP can author definitions, instances and general mates through owned assembly
+drafts, inspect bounded frozen topology and exact interference, and publish/insert explicit immutable
+local-library versions. All writes require manual browser review and ordinary revision/metadata CAS.
+See the [assembly/library workflow](../../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)
+and [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-drafts.md).

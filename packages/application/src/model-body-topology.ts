@@ -6,6 +6,7 @@ import {
   modelBodyTopologyEvidenceSchema,
 } from "@vibeshape/domain/model-body-topology"
 import { documentWorkerResponseSchema } from "@vibeshape/protocol"
+import { projectTopologyCandidate } from "./topology-candidate-projection"
 
 type TopologyKind = "edge" | "face"
 
@@ -130,13 +131,7 @@ function projectEvidence(
 ): ModelBodyTopologyEvidenceResult {
   const candidates = body.topologyCandidates
     .filter((candidate) => candidate.kind === target.kind)
-    .map(({ candidateId, kind, semanticRole, lineageTokens, signature }) => ({
-      candidateId,
-      kind,
-      ...(semanticRole ? { semanticRole } : {}),
-      lineageTokens,
-      signature,
-    }))
+    .map(projectTopologyCandidate)
   if (candidates.length !== body.shape[`${target.kind}Count`]) return invalidResult()
   const evidence = modelBodyTopologyEvidenceSchema.safeParse({
     schemaVersion: 1,

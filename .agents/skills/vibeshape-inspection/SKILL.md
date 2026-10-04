@@ -20,6 +20,8 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | Which body faces/edges can be measured or selected for Shell? | `model_body_topology` or `draft_body_topology` |
 | Which edge references can a treatment select? | `model_edges` or `draft_edges` |
 | What unsaved intent is in the draft? | `draft_tree`, `draft_entity` at the current draft revision |
+| Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |
+| Which immutable local component version is available? | `library_items`, `library_version` |
 | Does the entire draft rebuild correctly? | `preview_draft`, followed by relevant draft reads |
 
 Use the exact committed revision from `model_info` for model reads; draft reads use the draft's current revision and host-returned draft ID. Follow `nextCursor` until null for a complete requested collection, or stop when a targeted question is answered. Start with `cursor: null` where required. Reduce page size when a response exceeds budget. Do not mix pages across revisions.
@@ -45,3 +47,5 @@ For an invalid preview, locate the first relevant failure in diagnostics, inspec
 Report measured values with their declared units, revision, and relevant tolerance. Separate exact kernel validity, visible appearance, slicer interpretation, and physical fit/strength. None implies the others. A request only to inspect does not authorize a commit or an export.
 
 Use `model_measurements` and `draft_measurements` for paged feature measurements. Their `scope` defaults to `terminal`; set `scope: "all"` to inspect failed or blocked upstream features. Begin draft paging with a null cursor; another inspection target or draft edit invalidates the detached catalog.
+
+Assembly inspection omits meshes and frozen source bytes. Topology pages bind an occurrence/source to its body and pin revision; use only uniquely resolved analytical recipes for frame binding. Relinking requires fresh selection. Local DOF is mobility at the solved branch, not global uniqueness. Assembly previews retain the original committed base and private draft version; follow the [assembly/library workflow](../vibeshape-modeling/references/assembly-and-library.md).

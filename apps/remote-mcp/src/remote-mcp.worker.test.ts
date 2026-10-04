@@ -8,6 +8,7 @@ import {
 import { env } from "cloudflare:workers"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { agentSkillResources } from "@vibeshape/automation-api/agent-skills"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import {
   remotePairResponseSchema,
@@ -294,6 +295,42 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
 )
 
 describe("remote MCP in workerd", () => {
+  it("rejects oversized browser results after serving the larger static schema catalog", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const catalog = await mcp(authenticated.token, 1, "tools/list")
+    expect(catalog.status).toBe(200)
+    expect(new TextEncoder().encode(await catalog.text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 2, "tools/call", { name: "model_info", arguments: {} })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected owned browser work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "model_info",
+        result: {
+          ok: false,
+          diagnostic: {
+            code: "oversized-fixture",
+            message: "x".repeat(193 * 1024),
+            retryable: false,
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({ result: { isError: true } })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
   it("rejects a successful draft result when the session expires during result persistence", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -430,7 +467,7 @@ describe("remote MCP in workerd", () => {
     })
     const listed = await mcp(authenticated.token, 3, "resources/list")
     const resources = (await listed.json()) as { result: { resources: { uri: string }[] } }
-    expect(resources.result.resources).toHaveLength(10)
+    expect(resources.result.resources).toHaveLength(agentSkillResources.length)
     expect(resources.result.resources).not.toContainEqual(
       expect.objectContaining({ uri: "vibeshape://model" }),
     )
@@ -787,6 +824,9 @@ describe("remote MCP in workerd", () => {
     expect(await eventStream.json()).toEqual({ error: "sse_not_supported" })
     const listed = await mcp(authenticated.token, 1, "tools/list")
     expect(listed.status).toBe(200)
+    expect(new TextEncoder().encode(await listed.clone().text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
     const catalog = (await listed.json()) as { result: { tools: { name: string }[] } }
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("create_hole")
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("change_metadata")

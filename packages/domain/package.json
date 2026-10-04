@@ -90,7 +90,8 @@
     "./assembly-mates": "./src/assembly-mates.ts",
     "./assembly-poses": "./src/assembly-poses.ts",
     "./reference-frame": "./src/reference-frame.ts",
-    "./sketch-solution-evidence": "./src/sketch-solution-evidence.ts"
+    "./sketch-solution-evidence": "./src/sketch-solution-evidence.ts",
+    "./assembly-pinned-insertion": "./src/assembly-pinned-insertion.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
