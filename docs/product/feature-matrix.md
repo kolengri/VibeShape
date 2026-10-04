@@ -152,6 +152,8 @@ chamfers, and constituent-body targeting remain open. See [ADR-0040](../adr/0040
 | Direct face move/delete |  |  | ✓ |
 | Surface modeling |  |  | ✓ |
 
+Shell version 2 supports open or closed cavities with expression-aware thickness and inward/outward direction. Opening faces can be toggled in the viewport or selected from the task list. Unique durable face identities survive source edits within the same exact body; missing or ambiguous identities require explicit repair. Version 1 retains strict source binding until updated. See [ADR-0076](../adr/0076-closed-shells-and-durable-opening-identity.md).
+
 Every feature requires:
 
 - a stable `FeatureId`;

@@ -59,7 +59,11 @@ import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, readMirrorFeatureParameters } from "./part-design-mirror"
 import { patternFeatureType, readPatternFeatureParameters } from "./part-design-pattern"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
-import { readShellFeatureParameters, shellFeatureType } from "./part-design-shell"
+import {
+  readShellFeatureParameters,
+  shellFeatureType,
+  shellFeatureTypeV2,
+} from "./part-design-shell"
 import { readSplitFeatureParameters, splitFeatureType } from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import { readThreadFeatureParameters, threadFeatureType } from "./part-design-thread"
@@ -206,6 +210,7 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(threadFeatureType.type), readThreadFeatureParameters],
   [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
+  [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],
   [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],
   [featureTypeKey(compoundFeatureType.type), readCompoundFeatureParameters],
   [featureTypeKey(compoundFeatureTypeV2.type), readCompoundFeatureParameters],
@@ -794,7 +799,34 @@ function validateFeatureIntent(
     semanticFailure ??
     validateRevolveSupportIntent(document, feature, index) ??
     validateHoleSupportIntent(document, feature, index) ??
+    validateShellOpeningIntent(document, feature, index) ??
     validateMultiProfileResultInputs(document, feature, index)
+  )
+}
+
+function validateShellOpeningIntent(
+  document: IndexedDocument,
+  feature: VersionedFeatureRecord,
+  index: number,
+): GraphFailure | undefined {
+  if (featureTypeKey(feature.type) !== featureTypeKey(shellFeatureTypeV2.type)) return
+  const shell = readShellFeatureParameters(feature)
+  if (!shell) return
+  const source = document.byKey.get(key({ kind: "feature", id: shell.targetBody.featureId }))
+  if (source?.ref.kind !== "feature" || !("type" in source.record)) return
+  const extrusion = readExtrusionFeatureParameters(source.record)
+  if (!extrusion || extrusion.operation === "new") return
+  const unsafeOpening = shell.openings.findIndex(({ semanticRole }) => semanticRole !== undefined)
+  if (unsafeOpening < 0) return
+  return diagnostic(
+    "invalid-feature",
+    "Shell openings on modifier Extrusions require signatures or native history.",
+    [
+      {
+        path: `features.${index}.parameters.openings.${unsafeOpening}.semanticRole`,
+        message: "Modifier Extrusion face roles cannot be persisted as durable Shell identities.",
+      },
+    ],
   )
 }
 

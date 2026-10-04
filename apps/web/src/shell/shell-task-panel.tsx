@@ -1,8 +1,8 @@
 import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
-import type { FeatureRecord } from "@vibeshape/domain"
+import { type FeatureRecord, readExtrusionFeatureParameters } from "@vibeshape/domain"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { useTranslations } from "@vibeshape/i18n"
-import type { ReactNode } from "react"
+import { type ReactNode, useMemo } from "react"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -12,6 +12,7 @@ import type { FeaturePreviewState } from "../features/preview/use-feature-previe
 import { ShellForm, type ShellFormCopy } from "../features/shell/shell-form"
 import type { ShellFormMode } from "../features/shell/shell-form-model"
 import { shellTargetBody } from "../features/shell/shell-form-model"
+import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
 import { featureTaskFormProps } from "./feature-task-form-props"
 
 type ShellPanelProps = {
@@ -23,6 +24,8 @@ type ShellPanelProps = {
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   featurePreviewStatus: FeaturePreviewState["status"]
   renderDelete: (feature: FeatureRecord) => ReactNode
+  shellPickRequest?: ShellPickRequest | null | undefined
+  onShellPickingContextChange?: ((context: ShellPickingContext | null) => void) | undefined
 }
 function shellMode(
   tool: ActivePartDesignTool,
@@ -54,6 +57,9 @@ function useShellCopy(editing: boolean): ShellFormCopy {
     inward: t("inward"),
     outward: t("outward"),
     openings: t("openings"),
+    cavity: t("cavity"),
+    openCavity: t("openCavity"),
+    closedCavity: t("closedCavity"),
     openingsDescription: t("openingsDescription"),
     repair: t("repair"),
     unavailable: t("unavailable"),
@@ -72,13 +78,26 @@ export function ShellTaskPanel(props: ShellPanelProps) {
   const { report } = props
   const features = report.snapshot.features
   const count = features.filter((feature) => readShellFeatureParameters(feature)).length
-  const mode = shellMode(props.activeTool, features, t("featureLabel", { number: count + 1 }))
+  const label = t("featureLabel", { number: count + 1 })
+  const mode = useMemo(
+    () => shellMode(props.activeTool, features, label),
+    [props.activeTool, features, label],
+  )
   const copy = useShellCopy(mode?.kind === "edit")
+  const result = useMemo(
+    () =>
+      mode
+        ? createModelBodyTopologyEvidence(report.snapshot, report.rebuild, {
+            ...shellTargetBody(mode),
+            kind: "face",
+          })
+        : null,
+    [mode, report],
+  )
   if (!mode) return null
-  const result = createModelBodyTopologyEvidence(report.snapshot, report.rebuild, {
-    ...shellTargetBody(mode),
-    kind: "face",
-  })
+  const sourceFeature = features.find(({ id }) => id === shellTargetBody(mode).featureId)
+  const extrusion = sourceFeature ? readExtrusionFeatureParameters(sourceFeature) : null
+  const allowSemanticRebinding = !extrusion || extrusion.operation === "new"
   const key =
     mode.kind === "edit"
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
@@ -88,7 +107,10 @@ export function ShellTaskPanel(props: ShellPanelProps) {
       <ShellForm
         key={key}
         copy={copy}
-        evidence={result.ok ? result.evidence : null}
+        evidence={result?.ok ? result.evidence : null}
+        allowSemanticRebinding={allowSemanticRebinding}
+        pickingRequest={props.shellPickRequest ?? null}
+        onPickingContextChange={props.onShellPickingContextChange}
         mode={mode}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}

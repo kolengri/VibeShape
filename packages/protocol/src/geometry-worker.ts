@@ -1331,6 +1331,9 @@ export const shellFeatureContentParametersSchema = z
   })
   .strict()
 export type ShellFeatureContentParameters = z.infer<typeof shellFeatureContentParametersSchema>
+export const shellFeatureContentParametersV2Schema = shellFeatureContentParametersSchema.extend({
+  openings: z.array(shellOpeningContentSchema).max(64),
+})
 
 const featureContentIdentityV0Schema = z
   .object({

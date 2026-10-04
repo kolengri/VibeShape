@@ -17,7 +17,7 @@ import { meshImportFeatureTypeHandler } from "./part-design-mesh-import"
 import { mirrorFeatureTypeHandler } from "./part-design-mirror"
 import { patternFeatureTypeHandler } from "./part-design-pattern"
 import { placementFeatureTypeHandler } from "./part-design-placement"
-import { shellFeatureTypeHandler } from "./part-design-shell"
+import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
 import { splitFeatureTypeHandler } from "./part-design-split"
 import { sweepFeatureTypeHandler } from "./part-design-sweep"
 import { threadFeatureTypeHandler } from "./part-design-thread"
@@ -1045,7 +1045,7 @@ export const legacyRevolveFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 1 },
 })
 
-export function isExtrusionType(feature: FeatureRecord) {
+export function isExtrusionType(feature: Pick<FeatureRecord, "type">) {
   const type = feature.type
   if (!type) return false
   return [
@@ -1078,7 +1078,7 @@ const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>
 ])
 
 export function readExtrusionFeatureParameters(
-  feature: FeatureRecord,
+  feature: Pick<FeatureRecord, "type" | "parameters">,
 ): NormalizedExtrusionParameters | null {
   if (!isExtrusionType(feature)) return null
   const schema = extrusionParameterSchemas.get(feature.type.schemaVersion)
@@ -1654,6 +1654,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   mirrorFeatureTypeHandler,
   patternFeatureTypeHandler,
   shellFeatureTypeHandler,
+  shellFeatureTypeHandlerV2,
   splitFeatureTypeHandler,
   loftFeatureTypeHandler,
   sweepFeatureTypeHandler,

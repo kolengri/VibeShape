@@ -1,6 +1,6 @@
 # ADR 0058: Persisted body-bound Shell openings
 
-Status: Accepted
+Status: Accepted; version-2 authoring superseded by [ADR-0076](0076-closed-shells-and-durable-opening-identity.md)
 
 ## Context
 

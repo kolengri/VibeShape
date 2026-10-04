@@ -41,7 +41,7 @@ import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType } from "./part-design-mirror"
 import { patternFeatureType } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
-import { shellFeatureType } from "./part-design-shell"
+import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType } from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType } from "./part-design-thread"
@@ -64,6 +64,7 @@ const emptySemanticInputTypeKeys = new Set(
     mirrorFeatureType,
     patternFeatureType,
     shellFeatureType,
+    shellFeatureTypeV2,
     splitFeatureType,
     compoundFeatureType,
     compoundFeatureTypeV2,

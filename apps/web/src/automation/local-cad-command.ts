@@ -24,7 +24,7 @@ import {
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
 import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
-import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
+import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
@@ -75,8 +75,8 @@ const directCadFeatureTypes = {
   update_union: unionFeatureTypeV2.type,
   create_compound: compoundFeatureTypeV2.type,
   update_compound: compoundFeatureTypeV2.type,
-  create_shell: shellFeatureType.type,
-  update_shell: shellFeatureType.type,
+  create_shell: shellFeatureTypeV2.type,
+  update_shell: shellFeatureTypeV2.type,
   create_mirror: mirrorFeatureType.type,
   update_mirror: mirrorFeatureType.type,
   create_thread: threadFeatureType.type,
