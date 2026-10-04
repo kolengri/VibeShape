@@ -7,6 +7,7 @@ import {
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV6,
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
@@ -18,8 +19,10 @@ import {
 import {
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
+  holeFeatureParametersV3Schema,
   holeFeatureType,
   holeFeatureTypeV2,
+  holeFeatureTypeV3,
 } from "@vibeshape/domain/part-design-hole"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
 import {
@@ -32,7 +35,7 @@ import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
-import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
+import { threadFeatureType, threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 
 type CadOperation = Extract<
   LocalOperation,
@@ -100,8 +103,6 @@ const directCadFeatureTypes = {
   update_shell: shellFeatureTypeV2.type,
   create_mirror: mirrorFeatureType.type,
   update_mirror: mirrorFeatureType.type,
-  create_thread: threadFeatureType.type,
-  update_thread: threadFeatureType.type,
   create_body_pattern: patternFeatureType.type,
   update_body_pattern: patternFeatureType.type,
   create_split: splitFeatureType.type,
@@ -114,13 +115,8 @@ const directCadFeatureTypes = {
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
-  if (
-    operation.tool === "create_mirror" ||
-    operation.tool === "update_mirror" ||
-    operation.tool === "create_hole" ||
-    operation.tool === "update_hole"
-  )
-    return bodySelectionFeatureType(operation)
+  if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
+  if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
   if (
     operation.tool === "create_extrude" ||
     operation.tool === "update_extrude" ||
@@ -129,6 +125,34 @@ function cadFeatureType(
   )
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
+}
+
+function isBodySelectionOperation(
+  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
+): operation is Extract<
+  CadOperation,
+  { tool: "create_mirror" | "update_mirror" | "create_hole" | "update_hole" }
+> {
+  return (
+    operation.tool === "create_mirror" ||
+    operation.tool === "update_mirror" ||
+    operation.tool === "create_hole" ||
+    operation.tool === "update_hole"
+  )
+}
+
+function isThreadOperation(
+  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
+): operation is Extract<CadOperation, { tool: "create_thread" | "update_thread" }> {
+  return operation.tool === "create_thread" || operation.tool === "update_thread"
+}
+function threadType(
+  parameters: Extract<
+    CadOperation,
+    { tool: "create_thread" | "update_thread" }
+  >["arguments"]["parameters"],
+) {
+  return "origin" in parameters ? threadFeatureType.type : threadFeatureTypeV2.type
 }
 
 function bodySelectionFeatureType(
@@ -141,6 +165,7 @@ function bodySelectionFeatureType(
     return "offset" in operation.arguments.parameters
       ? mirrorFeatureTypeV2.type
       : mirrorFeatureType.type
+  if ("treatment" in operation.arguments.parameters) return holeFeatureTypeV3.type
   return "targetBody" in operation.arguments.parameters
     ? holeFeatureTypeV2.type
     : holeFeatureType.type
@@ -154,6 +179,7 @@ function profileFeatureType(
 ) {
   const parameters = operation.arguments.parameters
   if (operation.tool === "create_extrude" || operation.tool === "update_extrude") {
+    if ("endCondition" in parameters) return extrusionFeatureTypeV6.type
     if ("reversed" in parameters) return extrusionFeatureTypeV5.type
     if ("profile" in parameters) return extrusionFeatureType.type
     return parameters.operation === "new"
@@ -195,9 +221,11 @@ export function createLocalCadCommand(
   const featureInput = operation.arguments
   const parameters =
     operation.tool === "create_hole" || operation.tool === "update_hole"
-      ? ("targetBody" in featureInput.parameters
-          ? holeFeatureParametersV2Schema
-          : holeFeatureParametersSchema
+      ? ("treatment" in featureInput.parameters
+          ? holeFeatureParametersV3Schema
+          : "targetBody" in featureInput.parameters
+            ? holeFeatureParametersV2Schema
+            : holeFeatureParametersSchema
         ).parse(featureInput.parameters)
       : featureInput.parameters
   const feature = featureRecordSchema.parse({

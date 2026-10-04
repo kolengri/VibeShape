@@ -303,3 +303,89 @@ describe("sketch-point hole contract", () => {
     ).toMatchObject({ ok: true })
   })
 })
+
+describe("counterbore and countersink authored intent", () => {
+  it("keeps old schemas strict and validates recess geometry", async () => {
+    const { holeFeatureParametersV3Schema, holeFeatureTypeV3 } = await import("./part-design-hole")
+    const { createAngleQuantity } = await import("./units")
+    const base = {
+      ...parameters(),
+      targetBody: { schemaVersion: 0, featureId: targetId, outputRole: "result" },
+    }
+    const counterbore = {
+      kind: "counterbore",
+      diameter: createLengthQuantity(14),
+      depth: createLengthQuantity(3),
+    }
+    const countersink = {
+      kind: "countersink",
+      diameter: createLengthQuantity(14),
+      angle: createAngleQuantity(90, "deg"),
+    }
+    for (const treatment of [counterbore, countersink]) {
+      const value = holeFeatureParametersV3Schema.parse({ ...base, treatment })
+      const record = feature({
+        type: holeFeatureTypeV3.type,
+        parameters: value,
+        dependencies: [targetId],
+      })
+      expect(readHoleFeatureParameters(record)).toEqual(value)
+      expect(readHoleBodyTarget(record)).toEqual(base.targetBody)
+      expect(holeFeatureParametersSchema.safeParse(value).success).toBe(false)
+    }
+    expect(
+      holeFeatureParametersV3Schema.safeParse({
+        ...base,
+        treatment: { ...counterbore, diameter: base.diameter },
+      }).success,
+    ).toBe(false)
+    expect(
+      holeFeatureParametersV3Schema.safeParse({
+        ...base,
+        treatment: { ...counterbore, depth: base.depth },
+      }).success,
+    ).toBe(false)
+    expect(
+      holeFeatureParametersV3Schema.safeParse({
+        ...base,
+        treatment: { ...countersink, angle: createAngleQuantity(0, "deg") },
+      }).success,
+    ).toBe(false)
+    expect(
+      holeFeatureParametersV3Schema.safeParse({
+        ...base,
+        depth: createLengthQuantity(2),
+        treatment: countersink,
+      }).success,
+    ).toBe(false)
+  })
+
+  it("resolves recess expressions and fails closed when they consume the blind depth", async () => {
+    const { holeFeatureTypeHandlerV3 } = await import("./part-design-hole")
+    const value = {
+      ...parameters(),
+      targetBody: { schemaVersion: 0, featureId: targetId, outputRole: "result" },
+      treatment: {
+        kind: "counterbore",
+        diameter: createLengthQuantity(14, "mm", "#recess"),
+        depth: createLengthQuantity(3, "mm", "#recessDepth"),
+      },
+    }
+    const vars = new Map([
+      ["diameter", { dimension: "length" as const, value: 8 }],
+      ["depth", { dimension: "length" as const, value: 12 }],
+      ["recess", { dimension: "length" as const, value: 16 }],
+      ["recessDepth", { dimension: "length" as const, value: 4 }],
+    ])
+    const resolved = holeFeatureTypeHandlerV3.resolveParameters?.(value, vars)
+    expect(resolved).toMatchObject({
+      ok: true,
+      parameters: { treatment: { diameter: { value: 16 }, depth: { value: 4 } } },
+    })
+    vars.set("recessDepth", { dimension: "length", value: 12 })
+    expect(holeFeatureTypeHandlerV3.resolveParameters?.(value, vars)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-hole-recess" },
+    })
+  })
+})

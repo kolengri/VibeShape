@@ -22,6 +22,7 @@ function setup(
     onSave?: ReturnType<typeof save>
     status?: "ready" | "loading" | "error"
     unavailable?: boolean
+    axisOptions?: boolean
   } = {},
 ) {
   const onSave = options.onSave ?? save(),
@@ -35,6 +36,24 @@ function setup(
         copy={copy}
         mode={options.mode ?? mode}
         sourceAvailable={!options.unavailable}
+        axisOptions={
+          options.axisOptions
+            ? {
+                planes: [],
+                axes: [
+                  {
+                    key: "authored-axis",
+                    label: "Authored axis",
+                    support: {
+                      kind: "explicit-axis",
+                      origin: [0, 0, 0],
+                      direction: [0, 0, 1],
+                    },
+                  },
+                ],
+              }
+            : undefined
+        }
         variables={[pitchVariable]}
         onCancel={onCancel}
         onSave={onSave}
@@ -48,6 +67,31 @@ function setup(
 }
 afterEach(cleanup)
 describe("Modeled Thread form", () => {
+  it("ignores hidden origin errors for a reference axis and restores them on returning to legacy controls", async () => {
+    const f = setup({ axisOptions: true })
+    await userEvent.click(screen.getByText(copy.advanced))
+    const origin = screen.getByRole("combobox", { name: "Origin X" })
+    await userEvent.clear(origin)
+    await userEvent.type(origin, "invalid")
+    const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
+    expect(apply.disabled).toBe(true)
+    fireEvent.change(screen.getByRole("combobox", { name: "Reference source" }), {
+      target: { value: "authored-axis" },
+    })
+    expect(screen.queryByRole("combobox", { name: "Origin X" })).toBeNull()
+    expect(apply.disabled).toBe(false)
+    await userEvent.click(apply)
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      type: { schemaVersion: 2 },
+      parameters: { axis: { kind: "explicit-axis", origin: [0, 0, 0], direction: [0, 0, 1] } },
+    })
+    await userEvent.click(screen.getByRole("radio", { name: /^X$/ }))
+    expect((screen.getByRole("combobox", { name: "Origin X" }) as HTMLInputElement).value).toBe(
+      "invalid",
+    )
+    expect(apply.disabled).toBe(true)
+  })
   it("exposes radial allowance and advanced explicit frame/direction while retaining variable pitch", async () => {
     const f = setup()
     expect(screen.getByText(copy.clearanceDescription)).toBeTruthy()

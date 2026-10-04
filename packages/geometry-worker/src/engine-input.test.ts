@@ -48,6 +48,130 @@ const namedInput: FeatureEvaluationInput = {
 
 describe("direct geometry engine input boundary", () => {
   it.each([
+    {
+      operation: "add",
+      targetRole: "result",
+      separateSupport: false,
+      endpoint: false,
+      accepted: true,
+    },
+    {
+      operation: "new",
+      targetRole: "result",
+      separateSupport: false,
+      endpoint: true,
+      accepted: true,
+    },
+    {
+      operation: "remove",
+      targetRole: "named.target",
+      separateSupport: true,
+      endpoint: false,
+      accepted: true,
+    },
+    {
+      operation: "intersect",
+      targetRole: "named.target",
+      separateSupport: false,
+      endpoint: false,
+      accepted: false,
+    },
+    {
+      operation: "new",
+      targetRole: "named.target",
+      separateSupport: false,
+      endpoint: true,
+      accepted: false,
+    },
+  ])("validates v6 whole-result sketch support sharing %j", async (testCase) => {
+    const engine = new ReplicadGeometryEngine()
+    const initialize = vi.spyOn(engine, "initialize").mockResolvedValue({} as never)
+    const supportId = testCase.separateSupport
+      ? "0195b5ac-b220-7a2c-8c33-67a36a7f3104"
+      : sourceFeatureId
+    const slot = testCase.separateSupport ? 1 : 0
+    const dependencies = [
+      { featureId: sourceFeatureId, contentHash: hash, outputRole: testCase.targetRole },
+      ...(testCase.separateSupport ? [{ featureId: supportId, contentHash: "c".repeat(64) }] : []),
+    ]
+    const result = await engine.evaluateFeature(
+      {
+        ...namedInput,
+        dependencies,
+        content: {
+          ...namedInput.content,
+          schemaVersion: 1,
+          feature: {
+            ...namedInput.content.feature,
+            type: {
+              ...namedInput.content.feature.type,
+              typeId: "org.vibeshape.feature.part-design.extrusion",
+              schemaVersion: 6,
+            },
+            parameters: {
+              sketchId: sourceFeatureId,
+              supportFeatureId: supportId,
+              frame: { origin: [0, 0, 0], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+              profiles: [
+                {
+                  outer: {
+                    sourceEntityIds: [sourceFeatureId],
+                    segments: [
+                      { entityId: sourceFeatureId, type: "circle", center: [0, 0], radius: 2 },
+                    ],
+                  },
+                  holes: [],
+                },
+              ],
+              distance: 10,
+              symmetric: false,
+              reversed: false,
+              secondDistance: null,
+              operation: testCase.operation,
+              startOffset: 0,
+              draftAngle: 0,
+              endCondition: testCase.endpoint
+                ? {
+                    kind: "up-to-body",
+                    inputIndex: 0,
+                    outputRole: testCase.targetRole,
+                    sourceContentHash: hash,
+                  }
+                : { kind: "distance" },
+            },
+            inputs: dependencies.map(({ contentHash }) => contentHash),
+            inputRoles: [testCase.targetRole, ...(testCase.separateSupport ? [null] : [])],
+            references: [
+              {
+                schemaVersion: 0,
+                kind: "face",
+                inputIndex: slot,
+                signature: {
+                  kind: "face",
+                  geometryClass: "PLANE",
+                  measure: 1,
+                  centroid: [0, 0, 0],
+                  bounds: { min: [0, 0, 0], max: [1, 1, 0] },
+                  boundaryCount: 4,
+                  adjacentGeometryClasses: [],
+                },
+              },
+            ],
+          },
+        },
+      },
+      vi.fn(),
+    )
+    expect(initialize).toHaveBeenCalledTimes(testCase.accepted ? 1 : 0)
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: testCase.accepted ? "invalid-feature-geometry" : "invalid-feature-parameters",
+      },
+    })
+    expect(engine.getHealth().ownedShapeCount).toBe(0)
+  })
+  it.each([
     ["pyramid", { sides: 2, radius: 4, height: 12, centered: false }],
     ["pyramid", { sides: 65, radius: 4, height: 12, centered: false }],
     ["pyramid", { sides: 4.5, radius: 4, height: 12, centered: false }],
