@@ -15,6 +15,6 @@ Establish the paired session using [vibeshape-use](../vibeshape-use/SKILL.md). M
 
 Folder members form a nonempty contiguous History range. Folders cannot overlap or nest. Changing membership does not reorder features, alter dependencies, or change solids. Removing a folder only ungroups its members; it never deletes features.
 
-Part visibility does not remove a body or necessarily exclude it from export. Project/feature/sketch rename and arbitrary History mutation are not exposed by `change_metadata`; use an available authorized editor route or report the specific gap.
+Part visibility does not remove a body or necessarily exclude it from export. Project rename is available separately as the owned-draft `rename_project` command; see the [lifecycle modeling contract](../vibeshape-modeling/references/modeling.md). Feature/sketch rename and arbitrary History mutation are not exposed by `change_metadata`; use an available authorized editor route or report the specific gap.
 
 Proposals expire after five minutes and become invalid after a revision change or lost authority. After an interrupted or unconfirmed Apply, follow [session recovery](../vibeshape-use/references/session.md) and inspect the saved state before proposing again. Do not replay a stale organization change over a person's edits.

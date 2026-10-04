@@ -13,6 +13,7 @@ import {
 } from "@vibeshape/domain/reference-frame"
 import type { FeatureGeometryRecord } from "./feature-rebuild"
 import { datumPlaneFrame } from "./support-frame"
+import { projectTopologyCandidate } from "./topology-candidate-projection"
 
 type Vector = readonly [number, number, number]
 export type ResolvedReferencePlane = Readonly<{ origin: Vector; normal: Vector }>
@@ -32,15 +33,7 @@ function currentBodyCandidate(reference: BodyTopoRef, context: Context) {
   )
   if (!body?.shape.valid || body.shape.solidCount !== 1) return null
   const candidates = body.topologyCandidates.filter(({ kind }) => kind === reference.kind)
-  const domainCandidates: TopologyCandidate[] = candidates.map(
-    ({ candidateId, kind, semanticRole, lineageTokens, signature }) => ({
-      candidateId,
-      kind,
-      ...(semanticRole ? { semanticRole } : {}),
-      lineageTokens,
-      signature,
-    }),
-  )
+  const domainCandidates: TopologyCandidate[] = candidates.map(projectTopologyCandidate)
   const { outputRole: _outputRole, schemaVersion: _schemaVersion, ...legacyReference } = reference
   const resolution = resolveTopologyReference(
     { ...legacyReference, schemaVersion: 0 },

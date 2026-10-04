@@ -5,6 +5,7 @@ import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-co
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
+import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import { commandActorSchema, documentCommandSchema } from "@vibeshape/domain/commands"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -18,7 +19,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const review = (status: "ready" | "error" | "applying" = "ready"): AutomationReviewState => {
+const review = (
+  status: "ready" | "error" | "applying" = "ready",
+): AutomationReviewState & { input: DraftReviewInput } => {
   const raw = {
     id: "review-1",
     status,

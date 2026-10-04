@@ -4,6 +4,7 @@ import { featureTypeKey } from "./feature-type-contracts"
 import type { SketchId } from "./identifiers"
 import {
   booleanFeatureType,
+  booleanFeatureTypeV2,
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
@@ -27,6 +28,7 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV7,
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
@@ -88,6 +90,7 @@ const emptySemanticInputTypeKeys = new Set(
     pyramidFeatureType,
     torusFeatureType,
     booleanFeatureType,
+    booleanFeatureTypeV2,
     datumPlaneFeatureType,
     filletFeatureType,
     chamferFeatureType,
@@ -112,6 +115,7 @@ const revolveTypeKeys = new Set([
   featureTypeKey(legacyRevolveFeatureTypeV3.type),
   featureTypeKey(revolveFeatureTypeV5.type),
   featureTypeKey(revolveFeatureTypeV6.type),
+  featureTypeKey(revolveFeatureTypeV7.type),
 ])
 
 const sketchSolidInputReaders = new Map<

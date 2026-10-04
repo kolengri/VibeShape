@@ -1,8 +1,16 @@
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
-import { type SourceAsset, sourceAssetIdSchema } from "@vibeshape/domain/source-assets"
-import { readSourceAssetBytes, type VibeShapeDatabase } from "@vibeshape/persistence"
+import {
+  type SourceAsset,
+  type SourceAssetBlob,
+  sourceAssetIdSchema,
+} from "@vibeshape/domain/source-assets"
+import {
+  readSourceAssetBytes,
+  type VibeShapeDatabase,
+  verifySourceAssetBlobs,
+} from "@vibeshape/persistence"
 import {
   type SourceAssetMaterialization,
   sourceAssetMaterializationsSchema,
@@ -35,15 +43,28 @@ export async function materializeDocumentSourceAssets(
   return readMaterializations(database, assets)
 }
 
-async function readMaterializations(database: VibeShapeDatabase, assets: readonly SourceAsset[]) {
+async function readMaterializations(
+  database: VibeShapeDatabase,
+  assets: readonly SourceAsset[],
+  ownedBlobs: readonly SourceAssetBlob[] = [],
+) {
   if (
     assets.length > 128 ||
     assets.reduce((total, asset) => total + asset.byteLength, 0) > 64 * 1024 * 1024
   )
     throw new Error("Source geometry exceeds its materialization budget.")
   const materials: SourceAssetMaterialization[] = []
+  const prepared = new Map(
+    (await verifySourceAssetBlobs(ownedBlobs)).map((blob) => [blob.digest, blob.bytes]),
+  )
+  const digests = new Set(assets.map((asset) => asset.digest))
+  if ([...prepared.keys()].some((digest) => !digests.has(digest)))
+    throw new Error("Disposable source bytes must belong to the frozen assembly closure.")
   for (const asset of assets) {
-    const read = await readSourceAssetBytes(database, asset.digest)
+    const bytes = prepared.get(asset.digest)
+    const read = bytes
+      ? { ok: true as const, value: bytes }
+      : await readSourceAssetBytes(database, asset.digest)
     if (!read.ok) throw new Error(read.diagnostic.message)
     if (read.value.byteLength !== asset.byteLength)
       throw new Error("Source byte length disagrees with its descriptor.")
@@ -70,6 +91,7 @@ function assemblySourceDescriptors(authority: DocumentSnapshotV4) {
 export async function materializeAssemblySourceAssets(
   database: VibeShapeDatabase,
   authority: DocumentSnapshotV4,
+  ownedBlobs: readonly SourceAssetBlob[] = [],
 ): Promise<readonly SourceAssetMaterialization[]> {
-  return readMaterializations(database, assemblySourceDescriptors(authority))
+  return readMaterializations(database, assemblySourceDescriptors(authority), ownedBlobs)
 }

@@ -12,6 +12,7 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV7,
 } from "@vibeshape/domain/part-design"
 import {
   compoundFeatureTypeV2,
@@ -35,6 +36,7 @@ import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
+import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 
@@ -50,6 +52,10 @@ type CadOperation = Extract<
       | "update_extrude"
       | "create_face_extent_extrude"
       | "update_face_extent_extrude"
+      | "create_body_revolve"
+      | "update_body_revolve"
+      | "create_body_subtract"
+      | "update_body_subtract"
       | "create_revolve"
       | "update_revolve"
       | "create_hole"
@@ -88,6 +94,10 @@ type CadOperation = Extract<
 const directCadFeatureTypes = {
   create_face_extent_extrude: extrusionFeatureTypeV7.type,
   update_face_extent_extrude: extrusionFeatureTypeV7.type,
+  create_body_revolve: revolveFeatureTypeV7.type,
+  update_body_revolve: revolveFeatureTypeV7.type,
+  create_body_subtract: booleanFeatureTypeV2.type,
+  update_body_subtract: booleanFeatureTypeV2.type,
   create_placement: placementFeatureType.type,
   update_placement: placementFeatureType.type,
   create_reference_body_pattern: patternFeatureTypeV2.type,

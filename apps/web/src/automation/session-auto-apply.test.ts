@@ -78,6 +78,24 @@ function input(): DraftReviewInput {
 
 describe("session CAD auto-apply allowlist", () => {
   it.each([
+    ["org.vibeshape.feature.remove", { featureId: id(4) }],
+    ["org.vibeshape.sketch.remove", { sketchId: id(4) }],
+    ["org.vibeshape.feature.set-suppressed", { featureId: id(4), suppressed: false }],
+    ["org.vibeshape.document.rename", { name: "Renamed" }],
+  ] as const)(
+    "requires manual review for lifecycle command %s despite a valid CAD grant",
+    (kind, payload) => {
+      const review = input()
+      const command = review.commands[0]
+      if (!command) throw new Error("Missing review command.")
+      const lifecycle = documentCommandSchema.parse({ ...command, kind, payload })
+      expect(mayAutoApplyCadReview({ ...review, commands: [lifecycle] }, actor)).toBe(false)
+      expect(mayAutoApplyCadReview({ ...review, commands: [command, lifecycle] }, actor)).toBe(
+        false,
+      )
+    },
+  )
+  it.each([
     ["union", 2, true],
     ["union", 1, false],
     ["union", 3, false],

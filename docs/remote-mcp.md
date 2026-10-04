@@ -189,3 +189,14 @@ Use the exact revision and sketch ID; choose points, circles, failed constraints
 diagnostics. Each bounded page includes native solver status and DOF. Usable profile pages
 provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
 after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.
+
+Assembly and local-library tools use the same paired authority on local and remote MCP. Read the
+[assembly/library workflow](../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)
+for private draft versions, topology frames, immutable component versions and mandatory manual Apply.
+Assembly previews are unsaved; callers cannot provide frozen pins or source bytes.
+
+Exact-body modifying operations are additive: `create_body_revolve`/`update_body_revolve` author
+Revolve v7 Add/Remove/Intersect on a stable target role; `create_body_subtract`/`update_body_subtract`
+author Subtract v2 with ordered exact target/tool roles, including distinct bodies of one producer.
+Legacy names preserve their contracts. See the [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md)
+for dependency ordering, tool retention, preview, and ordinary review/Apply.

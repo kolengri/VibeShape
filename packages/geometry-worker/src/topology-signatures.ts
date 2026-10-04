@@ -16,49 +16,7 @@ import {
 import { edgeDisplayPolyline } from "./edge-display-polyline"
 
 type Vector3 = [number, number, number]
-type ReferenceGeometry =
-  | { kind: "vertex"; position: Vector3 }
-  | { kind: "line-edge"; start: Vector3; end: Vector3 }
-  | {
-      kind: "circle-edge"
-      center: Vector3
-      xAxis: Vector3
-      yAxis: Vector3
-      normal: Vector3
-      radius: number
-    }
-  | {
-      kind: "arc-edge"
-      center: Vector3
-      xAxis: Vector3
-      yAxis: Vector3
-      normal: Vector3
-      radius: number
-      start: Vector3
-      middle: Vector3
-      end: Vector3
-    }
-  | {
-      kind: "ellipse-edge"
-      center: Vector3
-      xAxis: Vector3
-      yAxis: Vector3
-      normal: Vector3
-      majorRadius: number
-      minorRadius: number
-    }
-  | {
-      kind: "elliptical-arc-edge"
-      center: Vector3
-      xAxis: Vector3
-      yAxis: Vector3
-      normal: Vector3
-      majorRadius: number
-      minorRadius: number
-      start: Vector3
-      middle: Vector3
-      end: Vector3
-    }
+type ReferenceGeometry = NonNullable<TopologyCandidate["referenceGeometry"]>
 
 interface TopologySample {
   candidateId: string
@@ -204,16 +162,67 @@ function readEllipticalReferenceGeometry(edge: Edge): ReferenceGeometry | undefi
   }
 }
 
+function readAnalyticFaceGeometry(
+  face: Face,
+  normal: Vector3 | undefined,
+): ReferenceGeometry | undefined {
+  if (!["PLANE", "CYLINDRE", "SPHERE"].includes(face.geomType)) return undefined
+  const adaptor = new (getOC().BRepAdaptor_Surface_2)(face.wrapped, true)
+  try {
+    if (face.geomType === "PLANE") {
+      const plane = adaptor.Plane()
+      try {
+        return normal
+          ? { kind: "plane-face", origin: readOcctCoordinate(plane.Location()), normal }
+          : undefined
+      } finally {
+        plane.delete()
+      }
+    }
+    if (face.geomType === "SPHERE") {
+      const sphere = adaptor.Sphere()
+      try {
+        return {
+          kind: "sphere-face",
+          center: readOcctCoordinate(sphere.Location()),
+          radius: sphere.Radius(),
+        }
+      } finally {
+        sphere.delete()
+      }
+    }
+    const cylinder = adaptor.Cylinder()
+    try {
+      const axis = cylinder.Axis()
+      try {
+        return {
+          kind: "cylinder-face",
+          origin: readOcctCoordinate(cylinder.Location()),
+          axis: readOcctCoordinate(axis.Direction()),
+          radius: cylinder.Radius(),
+        }
+      } finally {
+        axis.delete()
+      }
+    } finally {
+      cylinder.delete()
+    }
+  } finally {
+    adaptor.delete()
+  }
+}
 function readFaceSample(face: Face, index: number): TopologySample {
   const properties = measureShapeSurfaceProperties(face)
   const edges = face.edges
   try {
     const direction = normalizedDirection(face.normalAt())
+    const referenceGeometry = readAnalyticFaceGeometry(face, direction)
     return {
       candidateId: `face:${index}`,
       kind: "face",
       ownKey: face.hashCode,
       boundaryKeys: edges.map((edge) => edge.hashCode),
+      ...(referenceGeometry ? { referenceGeometry } : {}),
       signature: {
         kind: "face",
         geometryClass: face.geomType,

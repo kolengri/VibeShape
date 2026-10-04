@@ -145,6 +145,9 @@ type ProtocolReferenceGeometry = NonNullable<ProtocolTopologyCandidate["referenc
 
 const EDGE_DISPLAY_BY_REFERENCE_KIND = {
   vertex: null,
+  "plane-face": null,
+  "cylinder-face": null,
+  "sphere-face": null,
   "line-edge": { displayKind: "line", geometryClass: "LINE" },
   "circle-edge": { displayKind: "curve", geometryClass: "CIRCLE" },
   "arc-edge": { displayKind: "curve", geometryClass: "CIRCLE" },

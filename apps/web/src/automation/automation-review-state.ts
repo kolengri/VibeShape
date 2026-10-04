@@ -1,4 +1,8 @@
 import type {
+  AssemblyResult,
+  AssemblyReviewInput,
+} from "@vibeshape/automation-host/assembly-session-contract"
+import type {
   AutomationHostDiagnosticCode,
   AutomationHostResult,
   DraftReviewInput,
@@ -8,9 +12,9 @@ type Decision = "approved" | "rejected" | "cancelled"
 
 export type AutomationReviewState = Readonly<{
   id: string
-  input: DraftReviewInput
+  input: DraftReviewInput | AssemblyReviewInput
   status: "ready" | "applying" | "error"
-  diagnostic: AutomationHostDiagnosticCode | null
+  diagnostic: string | null
 }>
 
 type PendingReview = {
@@ -53,9 +57,14 @@ export function createAutomationReviewController() {
     pending = null
   }
 
-  function request(owner: symbol, input: DraftReviewInput): Promise<Decision> {
+  function request(
+    owner: symbol,
+    input: DraftReviewInput | AssemblyReviewInput,
+  ): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
-    const expiresIn = Date.parse(input.preview.draft.expiresAt) - Date.now()
+    const expiresIn =
+      Date.parse("kind" in input ? input.draft.expiresAt : input.preview.draft.expiresAt) -
+      Date.now()
     if (!Number.isFinite(expiresIn) || expiresIn <= 0) return Promise.resolve("cancelled")
     let finish = () => {}
     const completed = new Promise<void>((resolve) => {
@@ -80,7 +89,12 @@ export function createAutomationReviewController() {
   function decide(id: string, decision: "approved" | "rejected"): Promise<void> {
     const record = pending
     if (!record || record.id !== id || !state || state.status !== "ready") return Promise.resolve()
-    if (Date.now() >= Date.parse(state.input.preview.draft.expiresAt)) {
+    if (
+      Date.now() >=
+      Date.parse(
+        "kind" in state.input ? state.input.draft.expiresAt : state.input.preview.draft.expiresAt,
+      )
+    ) {
       cancel(record.owner, "draft-expired")
       return Promise.resolve()
     }
@@ -95,7 +109,10 @@ export function createAutomationReviewController() {
     return record.completed
   }
 
-  function complete(owner: symbol, result: AutomationHostResult<unknown>) {
+  function complete(
+    owner: symbol,
+    result: AutomationHostResult<unknown> | AssemblyResult<unknown>,
+  ) {
     if (!pending || pending.owner !== owner) return
     settle(pending, "cancelled")
     pending.finish()

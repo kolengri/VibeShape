@@ -1,5 +1,7 @@
+import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
 import createNativeSketchSolver from "../runtime/vibeshape_slvs.mjs"
 import nativeSketchSolverWasmUrl from "../runtime/vibeshape_slvs.wasm?url"
+import { solveAssemblyConstraints } from "./assembly"
 import { type SketchCompilationInput, solveSketchRecord } from "./production"
 
 export type BrowserSketchSolvePort = (
@@ -20,4 +22,9 @@ function loadNativeModule() {
 export async function createBrowserSketchSolvePort(): Promise<BrowserSketchSolvePort> {
   const module = await loadNativeModule()
   return (input) => solveSketchRecord(module, input)
+}
+
+export async function createBrowserAssemblyConstraintSolvePort(): Promise<AssemblyConstraintSolvePort> {
+  const module = await loadNativeModule()
+  return (assembly) => solveAssemblyConstraints(module, assembly)
 }

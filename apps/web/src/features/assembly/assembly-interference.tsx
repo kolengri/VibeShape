@@ -1,5 +1,5 @@
-import type { AssemblyInstance } from "@vibeshape/domain/assembly"
 import type { AssemblyAuthority } from "@vibeshape/domain/assembly-authority"
+import type { AssemblyInstanceRecord as AssemblyInstance } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"

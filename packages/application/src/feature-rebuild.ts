@@ -25,9 +25,9 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain/part-design"
-import { isBodyCombinationV2 } from "@vibeshape/domain/part-design-body-combination"
 import { readHoleFeatureParameters } from "@vibeshape/domain/part-design-hole"
 import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
+import { usesSlottedBodyInputs } from "@vibeshape/domain/part-design-subtract"
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
@@ -361,7 +361,7 @@ function successfulDependencies(
   records: readonly FeatureEvaluationRecord[],
 ) {
   const bodyRoles = new Map(
-    (isBodyCombinationV2(feature) ? [] : featureGeometryDependencies(feature)).map(
+    (usesSlottedBodyInputs(feature) ? [] : featureGeometryDependencies(feature)).map(
       ({ featureId, outputRole }) => [featureId, outputRole],
     ),
   )

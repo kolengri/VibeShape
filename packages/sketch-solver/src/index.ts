@@ -9,6 +9,7 @@ export {
   SOLVESPACE_CONSTRAINT_TYPE,
   SOLVESPACE_ENTITY_TYPE,
 } from "./abi"
+export { solveAssemblyConstraints } from "./assembly"
 export { SKETCH_SOLVER_BUILD } from "./build-info"
 export {
   type CompiledSketchSystem,

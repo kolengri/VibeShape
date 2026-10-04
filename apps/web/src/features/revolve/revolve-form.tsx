@@ -14,13 +14,16 @@ import {
   readRevolveFeatureParameters,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV6Schema,
+  revolveFeatureParametersV7Schema,
   revolveFeatureType,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV7,
   type SketchProfileSelector,
   type SketchProfileSet,
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
+import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { Button } from "@vibeshape/ui/components/button"
 import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
@@ -35,6 +38,7 @@ import {
   normalizeExpressionWithDisplayUnit,
   positiveDirectManipulationAngleExpression,
 } from "../../document/document-display-units"
+import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import {
   profileSelectorsEqual,
@@ -48,6 +52,8 @@ import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import type { RevolveAngleRequest } from "./revolve-angle-manipulator"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
+
+export type RevolveTargetOption = Readonly<{ id: string; label: string; body?: BodyReference }>
 
 const EMPTY_TARGET_OPTIONS = [] as const
 const IGNORE_PREVIEW = () => undefined
@@ -113,7 +119,9 @@ function valuesFromFeature(
     operation: p.operation,
     profiles: createSketchProfileSet(profiles),
     supportReference: supportReference ?? null,
-    targetFeatureId: feature.dependencies[0] ?? "",
+    targetFeatureId: p.targetBody
+      ? exactBodyOptionId(p.targetBody)
+      : (feature.dependencies[0] ?? ""),
   }
 }
 function featureIdForMode(mode: RevolveFormMode) {
@@ -123,7 +131,7 @@ function featureIdForMode(mode: RevolveFormMode) {
 function defaultValuesForMode(
   mode: RevolveFormMode,
   angleUnit: "rad" | "deg",
-  targetOptions: readonly { id: FeatureId; label: string }[],
+  targetOptions: readonly RevolveTargetOption[],
 ): Values {
   if (mode.kind === "edit")
     return valuesFromFeature(mode.feature, mode.profiles, mode.supportReference)
@@ -154,7 +162,7 @@ type RevolveSubmitHandlerInput = Readonly<{
   mode: RevolveFormMode
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
-  options: readonly { id: FeatureId; label: string }[]
+  options: readonly RevolveTargetOption[]
   setIssues: (issues: Readonly<Record<string, string | undefined>>) => void
   setMessage: (message: string | null) => void
   variables: readonly VariableDefinition[]
@@ -194,7 +202,8 @@ function record(
   parameters:
     | ReturnType<typeof revolveFeatureParametersSchema.parse>
     | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>
-    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>,
+    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>
+    | ReturnType<typeof revolveFeatureParametersV7Schema.parse>,
   targetFeatureId: FeatureId | null,
   supportReference: TopoRef | null,
 ) {
@@ -234,8 +243,10 @@ function revolveType(
   parameters:
     | ReturnType<typeof revolveFeatureParametersSchema.parse>
     | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>
-    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>,
+    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>
+    | ReturnType<typeof revolveFeatureParametersV7Schema.parse>,
 ) {
+  if ("targetBody" in parameters) return revolveFeatureTypeV7.type
   if (!("profiles" in parameters)) return revolveFeatureType.type
   return parameters.operation === "new"
     ? multiProfileRevolveFeatureType.type
@@ -247,7 +258,7 @@ function parseValues(
   variables: readonly VariableDefinition[],
   unit: "rad" | "deg",
   copy: RevolveFormCopy,
-  options: readonly { id: FeatureId; label: string }[],
+  options: readonly RevolveTargetOption[],
 ) {
   const angle = parseAngle(values.angle, variables, unit, copy)
   if (!angle.ok) return angle
@@ -255,26 +266,34 @@ function parseValues(
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
   const parsed =
-    values.profiles.profiles.length > 1
-      ? operation === "new"
-        ? multiProfileRevolveFeatureParametersSchema.safeParse({
-            profiles: values.profiles,
-            axis: values.axis,
-            angle: angle.quantity,
-            operation,
-          })
-        : revolveFeatureParametersV6Schema.safeParse({
-            profiles: values.profiles,
-            axis: values.axis,
-            angle: angle.quantity,
-            operation,
-          })
-      : revolveFeatureParametersSchema.safeParse({
-          profile: values.profiles.profiles[0],
+    operation !== "new" && target.body
+      ? revolveFeatureParametersV7Schema.safeParse({
+          profiles: values.profiles,
           axis: values.axis,
           angle: angle.quantity,
           operation,
+          targetBody: target.body,
         })
+      : values.profiles.profiles.length > 1
+        ? operation === "new"
+          ? multiProfileRevolveFeatureParametersSchema.safeParse({
+              profiles: values.profiles,
+              axis: values.axis,
+              angle: angle.quantity,
+              operation,
+            })
+          : revolveFeatureParametersV6Schema.safeParse({
+              profiles: values.profiles,
+              axis: values.axis,
+              angle: angle.quantity,
+              operation,
+            })
+        : revolveFeatureParametersSchema.safeParse({
+            profile: values.profiles.profiles[0],
+            axis: values.axis,
+            angle: angle.quantity,
+            operation,
+          })
   if (!parsed.success) return { ok: false as const, issues: { angle: copy.invalidRange } }
   return {
     ok: true as const,
@@ -303,14 +322,14 @@ function parseAngle(
 function parseTarget(
   rawTargetFeatureId: string,
   operation: ReturnType<typeof extrusionOperationSchema.parse>,
-  options: readonly { id: FeatureId; label: string }[],
+  options: readonly RevolveTargetOption[],
   copy: RevolveFormCopy,
 ) {
-  if (operation === "new") return { ok: true as const, featureId: null }
-  const availableTargetIds = new Set(options.map(({ id }) => id))
-  const target = featureIdSchema.safeParse(rawTargetFeatureId)
-  return target.success && availableTargetIds.has(target.data)
-    ? { ok: true as const, featureId: target.data }
+  if (operation === "new") return { ok: true as const, featureId: null, body: null }
+  const selected = options.find(({ id }) => id === rawTargetFeatureId)
+  const featureId = featureIdSchema.safeParse(selected?.body?.featureId ?? selected?.id)
+  return selected && featureId.success
+    ? { ok: true as const, featureId: featureId.data, body: selected.body ?? null }
     : { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
 }
 
@@ -329,7 +348,7 @@ function RevolvePreviewSync({
   featureId: FeatureId
   mode: RevolveFormMode
   onPreviewChange: (feature: FeatureRecord | null) => void
-  options: readonly { id: FeatureId; label: string }[]
+  options: readonly RevolveTargetOption[]
   values: Values
   variables: readonly VariableDefinition[]
 }) {
@@ -461,7 +480,7 @@ export type RevolveFormProps = Readonly<{
   onAxisChange?: ((axis: RevolveAxis) => void) | undefined
   onAxisSelectionRequest?: (() => void) | undefined
   onProfileSelectionRequest?: (() => void) | undefined
-  options?: readonly { id: FeatureId; label: string }[]
+  options?: readonly RevolveTargetOption[]
   profileLabel: string
   profileLabels?: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
@@ -637,8 +656,8 @@ function RevolveTargetField({ controller }: { controller: RevolveFormController 
                   field.handleChange(event.currentTarget.value)
                 }}
               >
-                {controller.targetOptions.length === 0 ? (
-                  <option value="">{controller.copy.missingTarget}</option>
+                {!controller.targetOptions.some(({ id }) => id === field.state.value) ? (
+                  <option value={field.state.value}>{controller.copy.missingTarget}</option>
                 ) : null}
                 {controller.targetOptions.map((option) => (
                   <option key={option.id} value={option.id}>

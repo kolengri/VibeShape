@@ -9,11 +9,26 @@ closure. Reuse that definition through independent named instances with UUIDs an
 poses. Editing or deleting the original Part does not change the frozen source. Explicit relinking
 captures a new definition revision while keeping its occurrence identities.
 
-Grounded instances establish roots. Attach an ungrounded child through a fixed, revolute or
-prismatic joint with explicit parent/child frames and axis. Revolute and prismatic limits and drive
-values use the domain's bounded static kinematic solver. Degrees of freedom and failures are
-visible. The solver accepts a grounded forest with one inbound joint per child; it does not solve
-closed linkage loops or claim physical dynamics.
+Existing assembly version 1 retains grounded forests with one inbound fixed, revolute or prismatic
+joint per child. **Enable general mates** explicitly upgrades to version 2, preserving old driven
+poses and frozen pins. Undo restores version 1. General mates support closed loops, multiple mates
+per instance, cylindrical joints and ball joints. At least one instance in each connected component
+must be grounded. Passive coordinates remain free; locking a drive adds its equality constraint.
+The displayed degrees of freedom describe local mobility at the solved pose. Redundant-consistent
+mates can solve successfully. Conflicts and nonconvergence leave the proposed edit uncommitted.
+
+Parent and child frames can use explicit numeric poses or geometry from their frozen definition.
+Select a planar, cylindrical or spherical face, a circle/arc edge or a vertex. An origin hint and X
+direction establish a finite right-handed frame; numeric fields become offsets from that frame.
+Bindings use durable topology references and pin revisions. Missing, ambiguous or stale geometry
+requires explicit reselection. Mesh bodies support numeric frames but have no exact topology frame.
+
+The worker reuses the installed SolveSpace WASM for a local static solve. Editable initial poses
+select branches and seed passive motion. A solved pose does not prove global uniqueness. Passive
+limits are checked after solving, never clamped; change an initial pose or lock a drive to recover
+an out-of-limit branch. No physical dynamics or collision response is claimed. See
+[ADR-0080](../adr/0080-general-assembly-mates-and-topology-bound-frames.md) for the mathematical and
+failure contract.
 
 The viewport renders already placed occurrence meshes and selects instances independently of Model
 Parts. Interference checks use native transformed exact solids; bounds only reject separated pairs.
@@ -38,3 +53,9 @@ Applicable surface texture layers cannot currently be frozen into an assembly or
 Capture fails with an explicit diagnostic: remove the layers or choose an untextured source.
 Ordinary Model STL/3MF exports still include enabled relief; STEP exports the exact base B-Rep.
 No capture silently replaces a textured source with its untextured shape.
+
+Paired local and remote MCP can author definitions, instances and general mates through owned assembly
+drafts, inspect bounded frozen topology and exact interference, and publish/insert explicit immutable
+local-library versions. All writes require manual browser review and ordinary revision/metadata CAS.
+See the [assembly/library workflow](../../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)
+and [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-drafts.md).
