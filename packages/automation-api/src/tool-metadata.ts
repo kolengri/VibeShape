@@ -31,6 +31,16 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Set one feature's explicit suppressed boolean in an owned draft, preserving its complete authored record and identity. This is a state assignment, not a toggle. Preview reports blocked downstream consumers. Ordinary browser review is required even with CAD auto-apply enabled; use a fresh commandId/current draft revision.",
   rename_project:
     "Stage a normalized nonempty project name of at most 120 characters through the registered document.rename command in an owned draft. Geometry and authored IDs stay intact. Ordinary browser review is required even with CAD auto-apply enabled; use a fresh commandId/current draft revision. Approval follows normal persistence and Undo/Redo.",
+  create_placement:
+    "Stage a Placement of one exact targetBody in an owned draft. Supply its sole dependency, empty references, typed XYZ translation in mm and XYZ rotation in radians; expressions retain authored variable intent. Preserve source body identity through ordinary exact preview and commit review.",
+  update_placement:
+    "Update an existing Placement preserving feature identity. Resubmit exact targetBody, its sole dependency, no references and full typed translation/rotation. Preview downstream geometry before ordinary commit.",
+  create_sketch_text:
+    "Generate an editable text group in an owned sketch draft using the pinned bundled Noto Sans font. Supply new UUIDv7 groupId, sketchId, current draft revision, explicit text/height/alignment/tracking/kerning and XY origin in mm. Outline geometry IDs and digest are generated internally; no font bytes, source hash or raw authority accepted. Single-line supported scripts and existing text budgets apply. Preview before ordinary commit.",
+  update_sketch_text:
+    "Regenerate an existing text group preserving groupId and editable intent. Resubmit layout/origin and explicitly choose removeAttachedConstraints; false fails if constraints attach to replaced geometry. New outline IDs invalidate former downstream profile selectors; rediscover and repair before preview/commit. Async preparation cannot overwrite an edited, expired or revoked draft.",
+  detach_sketch_text:
+    "Detach one existing text group's editable font intent in an owned draft, retaining all current geometry and constraints. Supply exact groupId/sketchId, fresh commandId and current draft revision. Preview and ordinary commit; detached geometry is no longer regenerated as text.",
   model_sketch_solution:
     "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
   draft_sketch_solution:
@@ -213,7 +223,13 @@ export function localToolAnnotations(name: LocalToolName) {
       "draft_body_topology",
       "export_model",
     ].includes(name),
-    destructiveHint: ["commit_draft", "remove_feature", "remove_sketch"].includes(name),
+    destructiveHint: [
+      "commit_draft",
+      "remove_feature",
+      "remove_sketch",
+      "update_sketch_text",
+      "detach_sketch_text",
+    ].includes(name),
     idempotentHint: [
       "read_export_chunk",
       "discard_export",
