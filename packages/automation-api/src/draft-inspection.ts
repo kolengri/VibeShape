@@ -20,8 +20,10 @@ import {
   variableListViewSchema,
 } from "./queries"
 import { serializedQueryBytes } from "./query-byte-budget"
+import { sketchSolutionQuerySchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
 
 export const automationDraftInspectionQuerySchema = z.discriminatedUnion("kind", [
+  sketchSolutionQuerySchema,
   cadInspectionListQuerySchema,
   cadInspectionDetailQuerySchema,
   variableListQuerySchema,
@@ -44,6 +46,7 @@ export const automationDraftInspectionViewSchema = z
     schemaVersion: z.literal(1),
     draft: automationDraftStateSchema,
     view: z.discriminatedUnion("kind", [
+      sketchSolutionViewSchema,
       cadInspectionListViewSchema,
       cadInspectionDetailViewSchema,
       variableListViewSchema,

@@ -93,3 +93,9 @@ a blank page from missing old asset URLs.
 A production distribution must also meet the repository's controlled geometry runtime, source
 and license delivery, browser/recovery, offline and update gates. A local source launch by itself
 is not evidence that those release gates passed.
+
+Solved sketches can be inspected with `model_sketch_solution` and `draft_sketch_solution`.
+Use the exact revision and sketch ID; choose points, circles, failed constraints, profiles or
+diagnostics. Each bounded page includes native solver status and DOF. Usable profile pages
+provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
+after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.

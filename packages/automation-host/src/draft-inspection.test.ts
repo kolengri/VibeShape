@@ -5,8 +5,13 @@ import {
   createCoreCommandHandlers,
 } from "@vibeshape/domain/command-dispatcher"
 import { applyDocumentCommand, commandActorSchema } from "@vibeshape/domain/commands"
-import type { DocumentSnapshot } from "@vibeshape/domain/document"
+import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import { createFeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
+import {
+  sketchConstraintIdSchema,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+} from "@vibeshape/domain/identifiers"
 import {
   createModuleRegistry,
   documentCoreModule,
@@ -14,6 +19,8 @@ import {
   partDesignModule,
 } from "@vibeshape/domain/modules"
 import { boxFeatureType, partDesignFeatureTypeHandlers } from "@vibeshape/domain/part-design"
+import { createRectangleSketch } from "@vibeshape/domain/rectangle-sketch"
+import { sketchSolutionEvidenceSchema } from "@vibeshape/domain/sketch-solution-evidence"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { describe, expect, it, vi } from "vitest"
 import { type AutomationDocumentPort, createAutomationHost } from "./host"
@@ -123,13 +130,15 @@ function edgeEvidence(snapshot: DocumentSnapshot, rebuildId = "draft-rebuild") {
 function hostFixture(
   options: {
     now?: () => number
+    snapshot?: DocumentSnapshot
+    inspectSketchSolution?: (snapshot: DocumentSnapshot) => unknown
     inspectEdges?: (snapshot: DocumentSnapshot) => unknown
     inspectBodyMeasurements?: (snapshot: DocumentSnapshot) => unknown
     inspectBodyTopology?: (snapshot: DocumentSnapshot) => unknown
     evaluate?: (snapshot: DocumentSnapshot) => unknown
   } = {},
 ) {
-  const snapshot = snapshotWithBox()
+  const snapshot = options.snapshot ?? snapshotWithBox()
   let current: DocumentSnapshot | null = snapshot
   const documents: AutomationDocumentPort = {
     readSnapshot: () => current,
@@ -152,6 +161,9 @@ function hostFixture(
       ? { inspectBodyTopology: vi.fn(options.inspectBodyTopology) }
       : {}),
     ...(options.inspectEdges ? { inspectEdges: vi.fn(options.inspectEdges) } : {}),
+    ...(options.inspectSketchSolution
+      ? { inspectSketchSolution: vi.fn(options.inspectSketchSolution) }
+      : {}),
   }
   const created = createAutomationHost({
     ...dispatchers(),
@@ -887,4 +899,161 @@ describe("draft feature measurement catalogs", () => {
       diagnostic: { code: "stale-geometry" },
     })
   })
+})
+
+const sketchId = "0195b5ac-b220-7a2c-8c33-000000000200"
+const inspectionId = "d8dc8f8a-bb72-43a2-83f3-956f1f36ad62"
+function sketchSnapshot() {
+  let entity = 1,
+    constraint = 100
+  const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${String(n).padStart(12, "0")}`
+  return documentSnapshotSchema.parse({
+    ...snapshotWithBox(),
+    sketches: [
+      createRectangleSketch({
+        id: sketchIdSchema.parse(sketchId),
+        label: "Rectangle",
+        plane: "xy",
+        width: createLengthQuantity(10),
+        height: createLengthQuantity(8),
+        createEntityId: () => sketchEntityIdSchema.parse(id(entity++)),
+        createConstraintId: () => sketchConstraintIdSchema.parse(id(constraint++)),
+      }),
+    ],
+  })
+}
+function sketchEvidence(snapshot: DocumentSnapshot) {
+  const sketch = snapshot.sketches[0]
+  if (!sketch) throw new Error("Missing fixture sketch")
+  return {
+    ok: true,
+    evidence: sketchSolutionEvidenceSchema.parse({
+      schemaVersion: 1,
+      documentId: snapshot.id,
+      revision: snapshot.revision,
+      generation: 1,
+      inspectionId,
+      sketchId,
+      summary: {
+        status: "fully-constrained",
+        degreesOfFreedom: 0,
+        maximumResidual: 0,
+        solver: "SolveSpace",
+        moduleSha256: "a".repeat(64),
+        wasmSha256: "b".repeat(64),
+      },
+      points: sketch.entities
+        .filter((entity) => entity.type === "point")
+        .map((point) => ({ entityId: point.id, x: point.x, y: point.y })),
+      circles: [],
+      failedConstraintIds: [],
+      profiles: [],
+      diagnostics: [],
+    }),
+  }
+}
+function sketchQuery(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: "org.vibeshape.sketch.solution",
+    schemaVersion: 1,
+    documentId,
+    revision: 2,
+    sketchId,
+    section: "points",
+    limit: 2,
+    cursor: null,
+    ...overrides,
+  }
+}
+it("binds solved draft paging to its owner, revision, single catalog and command lifecycle", async () => {
+  const fixture = hostFixture({ snapshot: sketchSnapshot(), inspectSketchSolution: sketchEvidence })
+  const first = await request(fixture, sketchQuery())
+  expect(first).toMatchObject({
+    ok: true,
+    value: {
+      view: { data: { total: 4 }, nextCursor: { inspectionId, section: "points", offset: 2 } },
+    },
+  })
+  if (!first.ok || first.value.view.kind !== "org.vibeshape.sketch.solution")
+    throw new Error("Missing solved points")
+  const cursor = first.value.view.nextCursor
+  const inspect = (query: Record<string, unknown>, owner = actor) =>
+    fixture.host.inspectDraft(owner, { schemaVersion: 1, draftId, query })
+  await expect(inspect(sketchQuery({ cursor }), otherActor)).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "draft-owner-mismatch" },
+  })
+  await expect(inspect(sketchQuery({ cursor }))).resolves.toMatchObject({
+    ok: true,
+    value: { view: { nextCursor: null } },
+  })
+  await expect(inspect(sketchQuery({ section: "profiles" }))).resolves.toMatchObject({ ok: true })
+  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledOnce()
+  const changed = await fixture.host.applyCommand(actor, {
+    schemaVersion: 1,
+    draftId,
+    command: {
+      kind: "org.vibeshape.document.rename",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b222-7a2c-8c33-67a36a7f21ac",
+      documentId,
+      baseRevision: 2,
+      issuedAt: "2026-10-04T00:00:00Z",
+      actor,
+      payload: { name: "Edited" },
+    },
+  })
+  expect(changed.ok).toBe(true)
+  await expect(inspect(sketchQuery({ revision: 3, cursor }))).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "stale-geometry" },
+  })
+  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledOnce()
+  await expect(inspect(sketchQuery({ revision: 3 }))).resolves.toMatchObject({ ok: true })
+  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledTimes(2)
+})
+it("rejects a cold solved draft cursor without invoking native geometry", async () => {
+  const fixture = hostFixture({ snapshot: sketchSnapshot(), inspectSketchSolution: sketchEvidence })
+  await expect(
+    request(fixture, sketchQuery({ cursor: { inspectionId, section: "points", offset: 2 } })),
+  ).resolves.toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
+  expect(fixture.geometry.inspectSketchSolution).not.toHaveBeenCalled()
+})
+it("revalidates draft expiry and committed base after asynchronous sketch solving", async () => {
+  for (const reason of ["expiry", "base"] as const) {
+    let now = 1000,
+      release!: (value: unknown) => void
+    const fixture = hostFixture({
+      snapshot: sketchSnapshot(),
+      now: () => now,
+      inspectSketchSolution: () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+    })
+    const pending = request(fixture, sketchQuery())
+    await vi.waitFor(() => expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledOnce())
+    if (reason === "expiry") now = 301001
+    else fixture.replace({ ...fixture.snapshot, revision: 3 })
+    release(sketchEvidence(fixture.snapshot))
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: reason === "expiry" ? "draft-expired" : "stale-revision" },
+    })
+  }
+})
+it("rejects malformed or foreign sketch solver evidence before installing a draft catalog", async () => {
+  const snapshot = sketchSnapshot(),
+    valid = sketchEvidence(snapshot)
+  for (const raw of [
+    { ...valid, evidence: { ...valid.evidence, revision: 99 } },
+    { ...valid, evidence: { ...valid.evidence, points: [] } },
+    { ...valid, evidence: { ...valid.evidence, inspectionId: "not-an-opaque-id" } },
+  ]) {
+    const fixture = hostFixture({ snapshot, inspectSketchSolution: () => raw })
+    const result = await request(fixture, sketchQuery())
+    expect(result).toMatchObject({ ok: false })
+    if (result.ok) throw new Error("Invalid evidence accepted")
+    expect(["stale-geometry", "invalid-geometry-evidence"]).toContain(result.diagnostic.code)
+  }
 })

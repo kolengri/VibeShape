@@ -1,3 +1,4 @@
+import { isLocalBinaryExport } from "@vibeshape/automation-api/binary-exports"
 import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
@@ -22,12 +23,14 @@ import type {
   ModelEdgeQuery,
   ModelMeasurementQuery,
   QueryResult,
+  SketchSolutionQuery,
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
+import type { createBinaryExportSession } from "./binary-export-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -45,6 +48,8 @@ type LocalSessionPort = Readonly<{
   revision: number
   host: AutomationHost
   metadata?: ReturnType<typeof createMetadataAutomationSession>
+  readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
+  exports?: ReturnType<typeof createBinaryExportSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -233,7 +238,29 @@ export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
 ): LocalToolExecutor {
+  function transfer(
+    operation: Extract<
+      LocalOperation,
+      {
+        tool:
+          | "prepare_model_export"
+          | "prepare_project_backup"
+          | "read_export_chunk"
+          | "discard_export"
+      }
+    >,
+    signal?: AbortSignal,
+  ) {
+    return session.exports
+      ? session.exports.execute(actor, operation, signal)
+      : localFailure(
+          "export-unavailable",
+          "The paired session cannot prepare file transfers.",
+          true,
+        )
+  }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
@@ -246,10 +273,7 @@ export function createLocalToolExecutor(
       })
       return hostResult(result)
     }
-    if (isLocalInspection(operation)) {
-      const result = session.readCad(createLocalInspectionQuery(operation, session.documentId))
-      return result.ok ? { ok: true as const, value: result.view } : diagnostic(result)
-    }
+    if (isLocalInspection(operation)) return readCommittedInspection(session, operation)
     switch (operation.tool) {
       case "model_info":
         return readModelInfo(session)
@@ -272,3 +296,23 @@ export function createLocalToolExecutor(
 }
 
 export type { LocalOperation }
+
+async function readCommittedInspection(
+  session: LocalSessionPort,
+  operation: import("@vibeshape/automation-api/local-tools").LocalInspectionOperation,
+) {
+  const query = createLocalInspectionQuery(operation, session.documentId)
+  if (query.kind === "org.vibeshape.sketch.solution" && !session.readSketchSolution)
+    return localFailure(
+      "geometry-unavailable",
+      "The paired session cannot inspect solved sketches.",
+      true,
+    )
+  const result =
+    query.kind === "org.vibeshape.sketch.solution"
+      ? await session.readSketchSolution?.(query)
+      : session.readCad(query)
+  if (!result)
+    return localFailure("geometry-unavailable", "Solved sketch inspection is unavailable.", true)
+  return result.ok ? { ok: true, value: result.view } : diagnostic(result)
+}

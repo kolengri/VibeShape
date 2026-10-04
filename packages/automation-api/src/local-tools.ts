@@ -17,6 +17,13 @@ import {
   metadataChangeArgumentsSchema,
   metadataCommitViewSchema,
 } from "./authored-metadata"
+import {
+  binaryExportChunkSchema,
+  binaryExportDescriptorSchema,
+  binaryExportDiscardSchema,
+  localBinaryExportInputs,
+  localBinaryExportOperations,
+} from "./binary-exports"
 import { automationDraftInspectionViewSchema } from "./draft-inspection"
 import {
   automationDraftCommitViewSchema,
@@ -57,6 +64,7 @@ import {
   variableListQuerySchema,
   variableListViewSchema,
 } from "./queries"
+import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
 
 export const localFailureSchema = z
   .object({
@@ -108,6 +116,8 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  model_sketch_solution: sketchSolutionArgumentsSchema,
+  ...localBinaryExportInputs,
   model_measurements: modelMeasurementQuerySchema.omit({
     kind: true,
     schemaVersion: true,
@@ -177,7 +187,7 @@ export const localModelInfoSchema = z
         value.summary.revision === value.measurements.revision),
     "Model views must describe the same revision.",
   )
-export const LOCAL_EXPORT_MAX_BYTES = 6 * 1024 * 1024
+export { BINARY_EXPORT_MAX_BYTES as LOCAL_EXPORT_MAX_BYTES } from "./binary-exports"
 export const localExportSchema = z
   .object({
     documentId: documentSummaryViewSchema.shape.documentId,
@@ -208,6 +218,12 @@ export const localToolOutputs = {
   remove_sketch: resultOf(automationDraftStateSchema),
   set_feature_suppressed: resultOf(automationDraftStateSchema),
   rename_project: resultOf(automationDraftStateSchema),
+  model_sketch_solution: resultOf(sketchSolutionViewSchema),
+  draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
+  prepare_model_export: resultOf(binaryExportDescriptorSchema),
+  prepare_project_backup: resultOf(binaryExportDescriptorSchema),
+  read_export_chunk: resultOf(binaryExportChunkSchema),
+  discard_export: resultOf(binaryExportDiscardSchema),
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
   model_history: resultOf(authoredHistoryViewSchema),
@@ -283,6 +299,12 @@ export const localToolOutputs = {
 export const localToolNameSchema = z.enum([
   ...primitiveToolNames,
   ...lifecycleToolNames,
+  "model_sketch_solution",
+  "draft_sketch_solution",
+  "prepare_model_export",
+  "prepare_project_backup",
+  "read_export_chunk",
+  "discard_export",
   "model_measurements",
   "draft_measurements",
   "model_history",
@@ -357,6 +379,13 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  ...localBinaryExportOperations,
+  z
+    .object({
+      tool: z.literal("model_sketch_solution"),
+      arguments: localToolInputs.model_sketch_solution,
+    })
+    .strict(),
   z
     .object({
       tool: z.literal("model_measurements"),
@@ -445,6 +474,7 @@ export type LocalInspectionOperation = Extract<
   LocalOperation,
   {
     tool:
+      | "model_sketch_solution"
       | "model_measurements"
       | "model_tree"
       | "model_entity"
@@ -459,6 +489,7 @@ export type LocalDraftInspectionOperation = Extract<
   LocalOperation,
   {
     tool:
+      | "draft_sketch_solution"
       | "draft_measurements"
       | "draft_tree"
       | "draft_entity"
@@ -473,6 +504,7 @@ export function isLocalDraftInspection(
   operation: LocalOperation,
 ): operation is LocalDraftInspectionOperation {
   return (
+    operation.tool === "draft_sketch_solution" ||
     operation.tool === "draft_measurements" ||
     operation.tool === "draft_tree" ||
     operation.tool === "draft_entity" ||
@@ -487,6 +519,7 @@ export function isLocalInspection(
   operation: LocalOperation,
 ): operation is LocalInspectionOperation {
   return (
+    operation.tool === "model_sketch_solution" ||
     operation.tool === "model_measurements" ||
     operation.tool === "model_tree" ||
     operation.tool === "model_entity" ||

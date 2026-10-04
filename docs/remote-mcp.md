@@ -47,8 +47,14 @@ Reload, disconnect, project changes or connection failures require a new pairing
 If a connection ends during Apply, inspect the current revision; a save already accepted by ordinary
 persistence may finish. Requests with uncertain outcomes are never automatically retried.
 
-Remote `export_model` is deferred because its large binary resource contract needs its own transport
-budget and lifecycle. The editor's existing STEP/STL/3MF file export remains available.
+Use `prepare_model_export` for exact committed STEP/STL/3MF or `prepare_project_backup` for an
+editable `.vshape`, then `read_export_chunk` and `discard_export`. Both transports expose these
+actor-owned transfers with a 6 MiB file limit, 90 KiB decoded chunks and five-minute expiry.
+Reconstruct bytes outside the conversation and verify the descriptor's byte count and SHA-256.
+Preparation evicts the prior file; reads do not renew expiry. Respect the shared remote rate and
+128-operation lifetime budgets. See [the export workflow](../.agents/skills/vibeshape-export/SKILL.md)
+and [ADR-0087](adr/0087-paired-binary-export-chunks.md). Legacy `export_model` and its local resources
+remain excluded remotely. Larger files and explicit part exports use the editor's ordinary dialog.
 
 ## Required deployment configuration
 
@@ -126,7 +132,7 @@ unsupported grants. Payload and admission budgets still apply before SDK writes.
 | Pending tool operation | Six minutes, one operation in flight |
 | Operations | 30/minute and 128 per tab lifetime |
 | MCP request/browser frame | 192 KiB UTF-8; onboarding bodies have smaller limits |
-| Complete MCP response | 512 KiB, including SDK text/structured output duplication; static tool discovery catalog up to 1 MiB |
+| Complete MCP response | 512 KiB, including SDK text/structured output duplication; static tool discovery catalog up to 2 MiB |
 
 Invalid configuration fails closed. The quota configuration requires
 `2 * clients + 4 * consents + 4 * tokens <= 800`, reserving conservative SDK writes below Free's
@@ -177,3 +183,9 @@ Primary references: [Cloudflare OAuth provider](https://github.com/cloudflare/wo
 [WebSocket Hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/),
 [rate limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) and
 [Free resource quotas](https://developers.cloudflare.com/workers/platform/pricing/).
+
+Solved sketches can be inspected with `model_sketch_solution` and `draft_sketch_solution`.
+Use the exact revision and sketch ID; choose points, circles, failed constraints, profiles or
+diagnostics. Each bounded page includes native solver status and DOF. Usable profile pages
+provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
+after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.

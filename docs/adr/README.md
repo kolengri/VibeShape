@@ -81,6 +81,9 @@
 | [0076](0076-closed-shells-and-durable-opening-identity.md) | Accepted | Closed Shells and durable opening identity |
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
+
+| [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
+| [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 | [0088](0088-named-primitive-and-lifecycle-mcp-commands.md) | Accepted | Registered primitive and review-bound lifecycle MCP commands |
 
 Statuses:

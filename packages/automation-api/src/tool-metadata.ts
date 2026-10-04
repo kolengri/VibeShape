@@ -31,6 +31,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Set one feature's explicit suppressed boolean in an owned draft, preserving its complete authored record and identity. This is a state assignment, not a toggle. Preview reports blocked downstream consumers. Ordinary browser review is required even with CAD auto-apply enabled; use a fresh commandId/current draft revision.",
   rename_project:
     "Stage a normalized nonempty project name of at most 120 characters through the registered document.rename command in an owned draft. Geometry and authored IDs stay intact. Ordinary browser review is required even with CAD auto-apply enabled; use a fresh commandId/current draft revision. Approval follows normal persistence and Undo/Redo.",
+  model_sketch_solution:
+    "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
+  draft_sketch_solution:
+    "Read the solver state and stable profile selectors of a sketch in an owned draft. Choose section points, circles, failed-constraints, profiles or diagnostics. Exact isolated solving retains no worker or mesh. Begin cursor null; edits, another geometry target or cancellation invalidate paging without renewing expiry.",
   create_reference_mirror:
     "Stage Mirror v3 of an exact targetBody using plane: origin-plane XY/XZ/YZ, datum-plane featureId, planar-face BodyFaceRef, or explicit-plane origin in mm and unit normal. Supply typed signed offset and preserveSource; true creates an independent reflected part and retains the source. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable body-bound planar refs from body topology inspection; no caller content hash or native face index. Use fresh UUIDv7 IDs/current draft revision and preview before ordinary commit review. Legacy create_mirror retains v1/v2 behavior.",
   update_reference_mirror:
@@ -43,6 +47,14 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Stage body Pattern v2 using exact targetBody and axis: origin-axis X/Y/Z, datum-axis featureId with x/y/normal, linear-edge stable BodyTopoRef with authored unit direction, or explicit-axis origin in mm and unit direction. Supply typed scalar count 2–256 including seed and signed linear spacing or circular angle up to one revolution; circular center comes from the axis. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable LINE refs from body topology inspection, never native edge indices or caller hashes. Preview before ordinary commit review; legacy create_body_pattern retains XYZ/center v1 behavior.",
   update_reference_body_pattern:
     "Update body Pattern as v2 preserving feature identity and instance roles. Resubmit exact targetBody, reference axis, typed count and signed spacing or circular angle, ordered target/distinct-support dependencies and empty references. Explicit edits may upgrade legacy Pattern; reference axes replace its circular center. Preview before ordinary commit review.",
+  prepare_model_export:
+    "Prepare an immutable STEP/STL/3MF file for the exact committed revision, up to 6 MiB. Returns an owner-bound export ID, SHA-256 and five-minute expiry. Read bounded chunks and verify the complete byte length/hash. A new preparation evicts the previous file; no filesystem paths or model edits.",
+  prepare_project_backup:
+    "Prepare an editable .vshape backup of the exact committed revision including portable history, assembly authority and source-asset closure, up to 6 MiB. Read bounded chunks before the five-minute expiry and verify complete length/SHA-256. This does not save or edit the project.",
+  read_export_chunk:
+    "Read one bounded base64 chunk of an owned prepared export or project backup. Pass its opaque export ID and byte offset; use nextOffset unchanged until null. Chunks are at most 90 KiB decoded and reads do not renew expiry. Reconstruct bytes outside the model context and verify the descriptor SHA-256.",
+  discard_export:
+    "Release an owned prepared file from the active paired browser session. This does not delete a project, local file or saved document.",
   model_measurements:
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:
@@ -175,8 +187,14 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "prepare_model_export",
+      "prepare_project_backup",
+      "read_export_chunk",
+      "discard_export",
       "model_measurements",
       "draft_measurements",
+      "model_sketch_solution",
+      "draft_sketch_solution",
       "model_info",
       "model_history",
       "model_parts",
@@ -197,8 +215,12 @@ export function localToolAnnotations(name: LocalToolName) {
     ].includes(name),
     destructiveHint: ["commit_draft", "remove_feature", "remove_sketch"].includes(name),
     idempotentHint: [
+      "read_export_chunk",
+      "discard_export",
       "model_measurements",
       "draft_measurements",
+      "model_sketch_solution",
+      "draft_sketch_solution",
       "model_info",
       "model_history",
       "model_parts",

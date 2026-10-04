@@ -1,4 +1,5 @@
 import { createDisposableDocumentPreview } from "@vibeshape/application/disposable-document-preview"
+import { createDisposableSketchInspection } from "@vibeshape/application/disposable-sketch-inspection"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
 import {
   type AutomationDocumentPort,
@@ -12,6 +13,7 @@ import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { SourceAssetMaterialization } from "@vibeshape/protocol"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { automationReviews } from "./automation-review-controller"
+import { createCommittedSketchInspection } from "./committed-sketch-inspection"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
 
 // Client identity and pairing remain the transport's responsibility.
@@ -41,6 +43,22 @@ export function createDocumentAutomationSession(
           ? { materializeSourceAssets: input.materializeSourceAssets }
           : {},
       ),
+  })
+  const sketchInspection = createDisposableSketchInspection({
+    mesh: PRODUCT_MESH_POLICY,
+    createInspectionId: () => crypto.randomUUID(),
+    createRebuildPort: (documentId) =>
+      createDocumentWorkerSession(
+        documentId,
+        input.materializeSourceAssets
+          ? { materializeSourceAssets: input.materializeSourceAssets }
+          : {},
+      ),
+  })
+  const committedSketch = createCommittedSketchInspection({
+    documents: input.documents,
+    queries: queries.dispatcher,
+    inspection: sketchInspection,
   })
   const factory = createAutomationHost({
     commandDispatcher: input.commands,
@@ -81,6 +99,15 @@ export function createDocumentAutomationSession(
       },
     },
     geometry: {
+      async inspectSketchSolution(snapshot, sketchId) {
+        if (closed) return { ok: false, code: "geometry-unavailable" }
+        const result = await sketchInspection.inspect(snapshot, sketchId)
+        if (result.ok) return result
+        return {
+          ok: false,
+          code: result.code.startsWith("preview-") ? "geometry-unavailable" : result.code,
+        }
+      },
       async inspectBodyMeasurements(snapshot) {
         if (closed) throw new Error("The browser automation session is closed.")
         const result = await preview.preview(snapshot)
@@ -109,10 +136,12 @@ export function createDocumentAutomationSession(
   })
   if (!factory.ok) {
     preview.dispose()
+    committedSketch.dispose()
     return factory
   }
   return {
     ok: true as const,
+    readSketchSolution: committedSketch.read,
     // Trusted browser composition only: this is deliberately absent from the MCP tool surface.
     enableAutoApply(actor: unknown) {
       const parsed = commandActorSchema.safeParse(actor)
@@ -170,6 +199,7 @@ export function createDocumentAutomationSession(
     },
     cancel(reason?: AutomationHostDiagnosticCode) {
       preview.cancel()
+      committedSketch.cancel()
       // The ordinary commit publishes its own new revision before its promise returns.
       if (!persisting) automationReviews.cancel(reviewOwner, reason)
     },
@@ -178,6 +208,7 @@ export function createDocumentAutomationSession(
       autoApplyActor = null
       commitGrant = null
       preview.dispose()
+      committedSketch.dispose()
       // An accepted persistence transaction must report its actual outcome after disconnect.
       if (!persisting) automationReviews.cancel(reviewOwner)
     },

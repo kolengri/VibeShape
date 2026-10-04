@@ -8,6 +8,7 @@ import {
 import { env } from "cloudflare:workers"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { BINARY_EXPORT_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/binary-exports"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import {
   remotePairResponseSchema,
@@ -294,6 +295,42 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
 )
 
 describe("remote MCP in workerd", () => {
+  it("rejects oversized browser results after serving the larger static schema catalog", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const catalog = await mcp(authenticated.token, 1, "tools/list")
+    expect(catalog.status).toBe(200)
+    expect(new TextEncoder().encode(await catalog.text()).byteLength).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    )
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 2, "tools/call", { name: "model_info", arguments: {} })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected owned browser work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "model_info",
+        result: {
+          ok: false,
+          diagnostic: {
+            code: "oversized-fixture",
+            message: "x".repeat(193 * 1024),
+            retryable: false,
+          },
+        },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({ result: { isError: true } })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
   it("rejects a successful draft result when the session expires during result persistence", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -363,6 +400,61 @@ describe("remote MCP in workerd", () => {
     }
   })
 
+  it("relays a maximum binary chunk and revokes a mismatched export offset without widening message limits", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const exportId = "0195b5ac-b250-7a2c-8c33-000000000001"
+    const value = {
+      exportId,
+      documentId: "0195b5ac-b250-7a2c-8c33-000000000002",
+      revision: 4,
+      offset: 0,
+      totalBytes: BINARY_EXPORT_CHUNK_MAX_BYTES,
+      byteLength: BINARY_EXPORT_CHUNK_MAX_BYTES,
+      base64: "A".repeat((BINARY_EXPORT_CHUNK_MAX_BYTES / 3) * 4),
+      nextOffset: null,
+    }
+    async function dispatch(requestId: number, requestedOffset: number) {
+      const work = nextMessage(tab.socket)
+      const response = mcp(authenticated.token, requestId, "tools/call", {
+        name: "read_export_chunk",
+        arguments: { exportId, offset: requestedOffset, limit: BINARY_EXPORT_CHUNK_MAX_BYTES },
+      })
+      const operation = await work
+      if (operation.type !== "work") throw new Error("Expected binary export work.")
+      const revoked = requestedOffset !== value.offset ? nextMessage(tab.socket) : null
+      tab.socket.send(
+        JSON.stringify({
+          type: "result",
+          protocolVersion: 1,
+          requestId: operation.requestId,
+          tool: "read_export_chunk",
+          result: { ok: true, value },
+        }),
+      )
+      return { response: await response, revoked }
+    }
+    const { response } = await dispatch(1, 0)
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    expect(new TextEncoder().encode(body).byteLength).toBeLessThan(512 * 1024)
+    expect(JSON.parse(body)).toMatchObject({
+      result: { structuredContent: { result: { ok: true, value } } },
+    })
+    const rejected = await dispatch(2, 1)
+    expect(await rejected.response.json()).toMatchObject({
+      result: { structuredContent: { result: { ok: false } } },
+    })
+    if (!rejected.revoked) throw new Error("Expected the mismatch revocation.")
+    expect((await rejected.revoked).type).toBe("revoked")
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  })
+
   it("keeps a standard SDK client usable after its optional SSE probe", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -409,6 +501,10 @@ describe("remote MCP in workerd", () => {
           "remove_sketch",
           "set_feature_suppressed",
           "rename_project",
+          "prepare_model_export",
+          "prepare_project_backup",
+          "read_export_chunk",
+          "discard_export",
         ]),
       )
       await vi.waitFor(() => expect(probes).toEqual([405]))

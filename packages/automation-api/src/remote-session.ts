@@ -40,10 +40,10 @@ export const remoteClientSchema = z
 export const remoteGrantSchema = z
   .object({ sessionId, clientId: remoteClientSchema.shape.clientId })
   .strict()
-// The initial remote path deliberately excludes large file exports.
+// The legacy monolithic file export stays local; bounded prepared-file chunks use shared tools.
 export const remoteOperationSchema = localOperationSchema.refine(
   (operation) => operation.tool !== "export_model",
-  "Remote file export is not available.",
+  "Use prepared-file chunk tools for remote export.",
 )
 export const remoteBrowserMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("authenticate"), token }).strict(),

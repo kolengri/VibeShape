@@ -39,6 +39,7 @@ import type { RemoteEnv } from "./environment"
 import { digest, failure } from "./request-security"
 import type { TabSession } from "./tab-session"
 
+const STATIC_TOOL_CATALOG_MAX_BYTES = 2 * 1024 * 1024
 const tools = localToolNameSchema.options.filter((name) => name !== "export_model")
 
 function toolResult(result: unknown) {
@@ -189,7 +190,10 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
     if (!(await finishCancellation())) return failure(400, "invalid_cancellation")
     // Static tool schemas need their own catalog budget; ordinary browser results retain their cap.
     const serialized = await response.text()
-    if (new TextEncoder().encode(serialized).byteLength > (listingTools ? 1024 : 512) * 1024)
+    if (
+      new TextEncoder().encode(serialized).byteLength >
+      (listingTools ? STATIC_TOOL_CATALOG_MAX_BYTES : 512 * 1024)
+    )
       return failure(413, "response_budget")
     return new Response(serialized || null, { status: response.status, headers: response.headers })
   } finally {
