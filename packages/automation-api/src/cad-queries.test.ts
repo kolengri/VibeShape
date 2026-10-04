@@ -6,6 +6,9 @@ import {
   extrusionFeatureTypeV3,
   revolveFeatureTypeV5,
 } from "@vibeshape/domain/part-design"
+import { holeFeatureType } from "@vibeshape/domain/part-design-hole"
+import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { createAngleQuantity, createLengthQuantity } from "@vibeshape/domain/units"
 import { describe, expect, it } from "vitest"
@@ -87,6 +90,53 @@ function detailQuery(overrides: Record<string, unknown> = {}) {
 }
 
 describe("CAD inspection queries", () => {
+  it("includes Hole, Loft and Sweep semantic sketch inputs in dependency summaries", () => {
+    const profile = (id: string) => ({
+      schemaVersion: 0,
+      sketchId: id,
+      outerBoundaryEntityIds: [featureId],
+      holeBoundaryEntityIds: [],
+    })
+    const cases = [
+      [
+        holeFeatureType.type,
+        {
+          sketchId,
+          pointIds: [featureId],
+          diameter: createLengthQuantity(2),
+          direction: "forward",
+          extent: "through-all",
+        },
+        [sketchId],
+      ],
+      [
+        loftFeatureType.type,
+        { sections: [profile(sketchId), profile(secondFeatureId)], ruled: false },
+        [sketchId, secondFeatureId],
+      ],
+      [
+        sweepFeatureType.type,
+        {
+          profile: profile(sketchId),
+          path: {
+            schemaVersion: 0,
+            sketchId: secondFeatureId,
+            entityIds: [featureId],
+            startPointId: featureId,
+          },
+        },
+        [sketchId, secondFeatureId],
+      ],
+    ] as const
+    for (const [type, parameters, expected] of cases) {
+      const record = featureRecordSchema.parse({ ...feature(), type, parameters })
+      const result = dispatcher().dispatch(snapshot({ features: [record] }), listQuery())
+      expect(result).toMatchObject({
+        ok: true,
+        view: { data: { items: [{ id: featureId, dependencies: expected }] } },
+      })
+    }
+  })
   it("dispatches bounded semantic pages of feature summaries", () => {
     const current = snapshot({ features: [feature()] })
     const result = dispatcher().dispatch(current, listQuery({ limit: 1 }))
