@@ -8,6 +8,19 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
 
 ## Additional exact feature tools
 
+Box retains \`create_box\` millimeter shorthand and adds typed \`update_box\`.
+Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid have named create/update tools.
+Use complete quantity parameters, quantity origin, applicable centered state and explicit suppression;
+preserve existing IDs, labels and raw expressions. These independent primitives accept no dependencies
+or topology references. Wedge and truncated Cone have no registered primitive tool.
+
+Owned drafts also expose \`remove_feature\`, \`remove_sketch\`, \`set_feature_suppressed\`
+and \`rename_project\` through ordinary registered commands. Referenced records block removal;
+repair consumers explicitly. Suppression is an explicit boolean, and exact preview diagnoses blocked
+downstream geometry. Project rename uses a normalized nonempty name of at most 120 characters.
+All lifecycle commands require manual browser review even with CAD auto-apply enabled; there is no
+cascade, preserve-intent override, History navigation or generic execution authority.
+
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
 linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
 feature/output-role targets from \`model_body_measurements\` or \`draft_body_measurements\`.
@@ -44,6 +57,15 @@ origin support xy/xz/yz (empty dependencies/references) or an existing planar fa
 cannot be substituted. Preview downstream sketches/features before commit.
 \`create_boolean\`/\`update_boolean\` perform legacy whole-result subtraction: operation=subtract,
 optional keepTools, exactly two distinct dependencies ordered target before tool, empty references.
+Additive \`create_body_subtract\`/\`update_body_subtract\` author Subtract v2 with exact targetBody/toolBody
+selectors, including distinct roles from one producer. Dependencies deduplicate producers in target/tool
+order; references are empty. keepTools retains the tool Part without changing geometry identity.
+\`create_body_revolve\`/\`update_body_revolve\` author Revolve v7 Add/Remove/Intersect with an exact
+targetBody, canonical same-sketch profiles, typed angle and existing origin/sketch-line/model-edge axis.
+Dependencies are target first, then distinct sketch-support and model-edge owners; preserve existing
+sketch-support references. New Revolve keeps its existing tools. Get roles from current body measurements;
+missing roles fail closed. No caller content hash or native index is accepted. Both use ordinary owned
+revision-bound drafts, preview, review and Apply on local and paired remote transports.
 \`create_union\`/\`update_union\` select two to eight distinct exact bodies in ordered \`bodies\`;
 \`create_compound\`/\`update_compound\` select them in ordered \`slots\` with stable UUIDv7 slotId.
 Both use feature schema v2. Dependencies list each producer once in first-occurrence order;
@@ -546,12 +568,13 @@ stable LINE references also select Thread axes. Edge treatments retain their sep
 contract. Use \`draft_body_measurements\` for unsaved output roles. A newly authored single-solid
 Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on scoped updates.
 
-Tools currently cover Box creation; sketch, Extrude, Revolve and Hole create/update;
+Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
+sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft and custom Thread create/update;
-variables; bounded inspection; draft lifecycle and export.
-Box update, Cylinder, feature/sketch removal, dedicated suppression,
-model rename and history navigation are not currently exposed through MCP. There is no
+variables; bounded inspection; draft lifecycle and export; review-bound feature/sketch removal,
+explicit feature suppression and project rename.
+History navigation are not currently exposed through MCP. There is no
 generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.
 

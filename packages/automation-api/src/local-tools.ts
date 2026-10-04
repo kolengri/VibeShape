@@ -55,6 +55,16 @@ import {
   localDraftInspectionInputs,
   localDraftInspectionOperations,
 } from "./local-draft-inspection"
+import {
+  lifecycleToolNames,
+  localLifecycleInputs,
+  localLifecycleOperations,
+} from "./local-lifecycle-tools"
+import {
+  localPrimitiveInputs,
+  localPrimitiveOperations,
+  primitiveToolNames,
+} from "./local-primitive-tools"
 import { localSketchTextInputs, localSketchTextOperations } from "./local-sketch-text-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
@@ -145,6 +155,8 @@ export const localToolInputs = {
   model_body_measurements: modelBodyMeasurementArgumentsSchema,
   model_body_topology: modelBodyTopologyArgumentsSchema,
   ...localCadInputs,
+  ...localPrimitiveInputs,
+  ...localLifecycleInputs,
   ...localSketchTextInputs,
   ...localVariableInputs,
   model_variables: variableListQuerySchema.omit({
@@ -215,6 +227,21 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  update_box: resultOf(automationDraftStateSchema),
+  create_cylinder: resultOf(automationDraftStateSchema),
+  update_cylinder: resultOf(automationDraftStateSchema),
+  create_cone: resultOf(automationDraftStateSchema),
+  update_cone: resultOf(automationDraftStateSchema),
+  create_sphere: resultOf(automationDraftStateSchema),
+  update_sphere: resultOf(automationDraftStateSchema),
+  create_torus: resultOf(automationDraftStateSchema),
+  update_torus: resultOf(automationDraftStateSchema),
+  create_pyramid: resultOf(automationDraftStateSchema),
+  update_pyramid: resultOf(automationDraftStateSchema),
+  remove_feature: resultOf(automationDraftStateSchema),
+  remove_sketch: resultOf(automationDraftStateSchema),
+  set_feature_suppressed: resultOf(automationDraftStateSchema),
+  rename_project: resultOf(automationDraftStateSchema),
   create_placement: resultOf(automationDraftStateSchema),
   update_placement: resultOf(automationDraftStateSchema),
   create_sketch_text: resultOf(automationDraftStateSchema),
@@ -281,6 +308,10 @@ export const localToolOutputs = {
   update_sketch: resultOf(automationDraftStateSchema),
   create_extrude: resultOf(automationDraftStateSchema),
   update_extrude: resultOf(automationDraftStateSchema),
+  create_body_revolve: resultOf(automationDraftStateSchema),
+  update_body_revolve: resultOf(automationDraftStateSchema),
+  create_body_subtract: resultOf(automationDraftStateSchema),
+  update_body_subtract: resultOf(automationDraftStateSchema),
   create_revolve: resultOf(automationDraftStateSchema),
   update_revolve: resultOf(automationDraftStateSchema),
   create_hole: resultOf(automationDraftStateSchema),
@@ -324,6 +355,8 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  ...primitiveToolNames,
+  ...lifecycleToolNames,
   "create_placement",
   "update_placement",
   "create_sketch_text",
@@ -373,6 +406,10 @@ export const localToolNameSchema = z.enum([
   "update_sketch",
   "create_extrude",
   "update_extrude",
+  "create_body_revolve",
+  "update_body_revolve",
+  "create_body_subtract",
+  "update_body_subtract",
   "create_revolve",
   "update_revolve",
   "create_hole",
@@ -453,6 +490,8 @@ export const localOperationSchema = z.discriminatedUnion("tool", [
     })
     .strict(),
   ...localCadOperations,
+  ...localPrimitiveOperations,
+  ...localLifecycleOperations,
   ...localSketchTextOperations,
   ...localVariableOperations,
   z
@@ -484,6 +523,24 @@ export type LocalDraftCommandOperation = Extract<
   LocalOperation,
   { arguments: { commandId: string; draftId: string } }
 >
+export type LocalPrimitiveCommandOperation = Extract<
+  LocalOperation,
+  { tool: (typeof primitiveToolNames)[number] }
+>
+export type LocalLifecycleCommandOperation = Extract<
+  LocalOperation,
+  { tool: (typeof lifecycleToolNames)[number] }
+>
+export function isLocalPrimitiveCommand(
+  operation: LocalOperation,
+): operation is LocalPrimitiveCommandOperation {
+  return operation.tool in localPrimitiveInputs
+}
+export function isLocalLifecycleCommand(
+  operation: LocalOperation,
+): operation is LocalLifecycleCommandOperation {
+  return operation.tool in localLifecycleInputs
+}
 
 export function isLocalDraftCommand(
   operation: LocalOperation,

@@ -1,25 +1,25 @@
-import {
-  booleanFeatureParametersSchema,
-  booleanFeatureType,
-  type FeatureId,
-  type FeatureRecord,
-  featureIdSchema,
-  featureRecordSchema,
-} from "@vibeshape/domain"
+import type { FeatureRecord } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { featureSubmissionMessage } from "../part-design/primitive-form"
+import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
+import {
+  type BooleanFormMode,
+  type BooleanInputOption,
+  booleanFeatureRecord,
+  defaultBooleanValues,
+  parseBooleanValues,
+} from "./boolean-form-model"
+
+export type { BooleanFormMode, BooleanInputOption } from "./boolean-form-model"
+
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { BooleanParameterPanel, type BooleanParameterPanelCopy } from "./boolean-parameter-panel"
 
 type InputField = "targetFeatureId" | "toolFeatureId"
-
-export type BooleanInputOption = Readonly<{
-  id: FeatureId
-  label: string
-}>
 
 type BooleanFormCopy = BooleanParameterPanelCopy &
   Readonly<{
@@ -36,98 +36,17 @@ type BooleanFormCopy = BooleanParameterPanelCopy &
     saveFailed: string
   }>
 
-type BooleanFormValues = Readonly<{
-  targetFeatureId: string
-  toolFeatureId: string
-  keepTools: boolean
-}>
-
-export type BooleanFormMode =
-  | Readonly<{
-      kind: "create"
-      createFeatureId: () => FeatureId
-      featureLabel: string
-    }>
-  | Readonly<{
-      kind: "edit"
-      feature: FeatureRecord
-    }>
-
-function defaultBooleanValues(
-  mode: BooleanFormMode,
-  options: readonly BooleanInputOption[],
-): BooleanFormValues {
-  const inputIds = mode.kind === "edit" ? mode.feature.dependencies : options.map(({ id }) => id)
-  const [targetFeatureId = "", toolFeatureId = ""] = inputIds
-  return {
-    targetFeatureId,
-    toolFeatureId,
-    keepTools:
-      mode.kind === "edit"
-        ? (booleanFeatureParametersSchema.safeParse(mode.feature.parameters).data?.keepTools ??
-          false)
-        : false,
-  }
+function BooleanPreviewSync({
+  feature,
+  onPreviewChange,
+}: {
+  feature: FeatureRecord | null
+  onPreviewChange: (feature: FeatureRecord | null) => void
+}) {
+  useDebouncedFeaturePreview({ preview: feature, onPreviewChange })
+  return null
 }
-
-function parseBooleanValues(
-  values: BooleanFormValues,
-  options: readonly BooleanInputOption[],
-  copy: BooleanFormCopy,
-) {
-  const availableIds = new Set(options.map(({ id }) => id))
-  const targetFeatureId = featureIdSchema.safeParse(values.targetFeatureId)
-  const toolFeatureId = featureIdSchema.safeParse(values.toolFeatureId)
-  const issues: Partial<Record<InputField, string>> = {}
-  if (!targetFeatureId.success || !availableIds.has(targetFeatureId.data)) {
-    issues.targetFeatureId = copy.missingInput
-  }
-  if (!toolFeatureId.success || !availableIds.has(toolFeatureId.data)) {
-    issues.toolFeatureId = copy.missingInput
-  }
-  if (
-    targetFeatureId.success &&
-    toolFeatureId.success &&
-    targetFeatureId.data === toolFeatureId.data
-  ) {
-    issues.toolFeatureId = copy.sameInput
-  }
-  if (Object.keys(issues).length > 0) return { ok: false as const, issues }
-  return {
-    ok: true as const,
-    targetFeatureId: targetFeatureId.data as FeatureId,
-    toolFeatureId: toolFeatureId.data as FeatureId,
-  }
-}
-
-function booleanFeatureRecord(
-  mode: BooleanFormMode,
-  targetFeatureId: FeatureId,
-  toolFeatureId: FeatureId,
-  keepTools: boolean,
-) {
-  const parameters = booleanFeatureParametersSchema.parse({
-    operation: "subtract",
-    ...(keepTools ? { keepTools: true } : {}),
-  })
-  if (mode.kind === "edit") {
-    return featureRecordSchema.parse({
-      ...mode.feature,
-      parameters,
-      dependencies: [targetFeatureId, toolFeatureId],
-    })
-  }
-  return featureRecordSchema.parse({
-    schemaVersion: 0,
-    id: mode.createFeatureId(),
-    type: booleanFeatureType.type,
-    parameters,
-    dependencies: [targetFeatureId, toolFeatureId],
-    references: [],
-    suppressed: false,
-    label: mode.featureLabel,
-  })
-}
+const IGNORE_PREVIEW = () => undefined
 
 export function BooleanForm({
   baseRevision,
@@ -138,6 +57,8 @@ export function BooleanForm({
   onSave,
   onSaved,
   options,
+  onPreviewChange = IGNORE_PREVIEW,
+  previewStatus,
 }: {
   baseRevision: number
   copy: BooleanFormCopy
@@ -147,9 +68,14 @@ export function BooleanForm({
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
   options: readonly BooleanInputOption[]
+  onPreviewChange?: (feature: FeatureRecord | null) => void
+  previewStatus?: FeaturePreviewState["status"]
 }) {
   const formElementRef = useRef<HTMLFormElement>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [featureId] = useState(() =>
+    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
+  )
   const form = useAppForm({
     defaultValues: defaultBooleanValues(mode, options),
     validators: {
@@ -170,14 +96,19 @@ export function BooleanForm({
       setMessage(null)
       const feature = booleanFeatureRecord(
         mode,
-        parsed.targetFeatureId,
-        parsed.toolFeatureId,
+        featureId,
+        parsed.target,
+        parsed.tool,
         value.keepTools,
       )
-      const result = await onSave(baseRevision, feature)
-      const resultMessage = featureSubmissionMessage(result, copy)
-      setMessage(resultMessage)
-      if (!resultMessage) onSaved()
+      try {
+        const result = await onSave(baseRevision, feature)
+        const resultMessage = featureSubmissionMessage(result, copy)
+        setMessage(resultMessage)
+        if (!resultMessage) onSaved()
+      } catch {
+        setMessage(copy.saveFailed)
+      }
     },
   })
 
@@ -190,6 +121,9 @@ export function BooleanForm({
           required
           onValueChange={() => setMessage(null)}
         >
+          {!options.some(({ id }) => id === field.state.value) && (
+            <option value={field.state.value}>{copy.missingInput}</option>
+          )}
           {options.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
@@ -202,6 +136,27 @@ export function BooleanForm({
 
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      <form.Subscribe selector={(state) => state.values}>
+        {(values) => {
+          const parsed = parseBooleanValues(values, options, copy)
+          return (
+            <BooleanPreviewSync
+              onPreviewChange={onPreviewChange}
+              feature={
+                parsed.ok
+                  ? booleanFeatureRecord(
+                      mode,
+                      featureId,
+                      parsed.target,
+                      parsed.tool,
+                      values.keepTools,
+                    )
+                  : null
+              }
+            />
+          )
+        }}
+      </form.Subscribe>
       <BooleanParameterPanel
         actions={
           <TaskPanelFormActions
@@ -209,6 +164,7 @@ export function BooleanForm({
             ariaLabel={copy.title}
             cancelLabel={copy.cancel}
             disabled={disabled || options.length < 2}
+            previewStatus={previewStatus}
             onCancel={onCancel}
           />
         }

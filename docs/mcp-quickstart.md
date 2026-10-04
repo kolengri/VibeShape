@@ -5,6 +5,11 @@ named tools; the browser remains the document owner and manual approval is the d
 There is no embedded chat. The bridge serves the production editor at a stable loopback origin;
 use the same origin to retain browser-local projects.
 
+Named tools cover all registered Box, Cylinder, Cone, Sphere, Torus and Pyramid authoring, plus
+owned-draft feature/sketch removal, explicit suppression and project rename. Lifecycle changes
+always require browser review and retain dependency-blocked diagnostics; see the
+[modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md#feature-and-sketch-lifecycle).
+
 Read `vibeshape://agent-skills` for the bundled [application-use skill pack](agent-skills.md), then load the entrypoint and relevant modeling, inspection, organization, export, or recovery documents. Clients exposing only tools can call `read_agent_skill` with no arguments for the index and a listed `uri` for a document. Local installation of the pack is optional.
 
 From the repository, install the pinned Bun workspace dependencies and build the editor using
@@ -69,8 +74,9 @@ Compound select ordered exact bodies through schema v2. Read the
 before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1 creation
 and same-version edits; Compound and version-upgrade edits still require review.
 
-The current MCP surface is a supported subset of the editor, not full CAD parity. Box update,
-Cylinder, Placement, removal, dedicated suppression and History mutation tools are not exposed.
+The current MCP surface is a supported subset of the editor, not full CAD parity. Placement and
+History mutation tools are not exposed. Registered primitives and lifecycle commands follow the
+typed draft contracts above.
 The AI can inspect their saved records and must preserve them during supported upstream edits.
 There is no arbitrary script or direct storage tool. Production printability analysis remains open.
 See the served guide for the complete current scope and
@@ -98,3 +104,9 @@ Assembly and local-library tools use the same paired authority on local and remo
 [assembly/library workflow](../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)
 for private draft versions, topology frames, immutable component versions and mandatory manual Apply.
 Assembly previews are unsaved; callers cannot provide frozen pins or source bytes.
+
+Exact-body modifying operations are additive: `create_body_revolve`/`update_body_revolve` author
+Revolve v7 Add/Remove/Intersect on a stable target role; `create_body_subtract`/`update_body_subtract`
+author Subtract v2 with ordered exact target/tool roles, including distinct bodies of one producer.
+Legacy names preserve their contracts. See the [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md)
+for dependency ordering, tool retention, preview, and ordinary review/Apply.

@@ -1,6 +1,14 @@
 import { z } from "zod"
 import { type BodyReference, bodyReferenceSchema } from "./body-reference"
 import { bodyFaceRefSchema } from "./body-topology-reference"
+import { booleanFeatureTypeHandlerV2 } from "./part-design-subtract"
+
+export {
+  booleanFeatureParametersV2Schema,
+  booleanFeatureTypeV2,
+  readBooleanFeatureParametersV2,
+} from "./part-design-subtract"
+
 import { canonicalJson } from "./canonical-json"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
@@ -697,6 +705,11 @@ export const revolveFeatureParametersV6Schema = z
   })
   .strict()
 
+export const revolveFeatureParametersV7Schema = revolveFeatureParametersV6Schema
+  .extend({ targetBody: bodyReferenceSchema })
+  .strict()
+export type RevolveFeatureParametersV7 = Readonly<z.infer<typeof revolveFeatureParametersV7Schema>>
+
 type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSchema> & {
   profiles?: z.infer<typeof sketchProfileSetSchema>
   reversed: boolean
@@ -707,6 +720,7 @@ type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSc
   endCondition?: z.infer<typeof extrusionEndConditionSchema>
 }
 type NormalizedRevolveParameters = z.infer<typeof revolveFeatureParametersSchema> & {
+  targetBody?: z.infer<typeof bodyReferenceSchema>
   profiles?: z.infer<typeof sketchProfileSetSchema>
 }
 
@@ -728,6 +742,7 @@ function normalizeMultiProfileRevolveParameters(
   parameters:
     | z.infer<typeof revolveFeatureParametersV5Schema>
     | z.infer<typeof revolveFeatureParametersV6Schema>
+    | z.infer<typeof revolveFeatureParametersV7Schema>
     | null,
 ): NormalizedRevolveParameters | null {
   if (!parameters) return null
@@ -1181,6 +1196,11 @@ export const revolveFeatureTypeV6 = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 1 },
 })
 
+export const revolveFeatureTypeV7 = featureTypeDescriptorSchema.parse({
+  ...revolveFeatureTypeV6,
+  type: { ...revolveFeatureTypeV6.type, schemaVersion: 7 },
+})
+
 export const legacyRevolveFeatureTypeV3 = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -1285,6 +1305,7 @@ export function isRevolveType(feature: FeatureRecord) {
     revolveFeatureType.type,
     revolveFeatureTypeV5.type,
     revolveFeatureTypeV6.type,
+    revolveFeatureTypeV7.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1318,6 +1339,10 @@ export function readRevolveFeatureParameters(
     case 6:
       return normalizeMultiProfileRevolveParameters(
         parseRevolveParameters(revolveFeatureParametersV6Schema, feature.parameters),
+      )
+    case 7:
+      return normalizeMultiProfileRevolveParameters(
+        parseRevolveParameters(revolveFeatureParametersV7Schema, feature.parameters),
       )
     default:
       return null
@@ -1360,6 +1385,7 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
       revolveFeatureParametersSchema,
       revolveFeatureParametersV5Schema,
       revolveFeatureParametersV6Schema,
+      revolveFeatureParametersV7Schema,
     ])
     .safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
@@ -1398,13 +1424,20 @@ function revolveSketchAxisIssue(
   return null
 }
 
+function revolveTargetOwner(
+  feature: FeatureRecord,
+  parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
+) {
+  if (parameters.operation === "new") return null
+  return parameters.targetBody?.featureId ?? feature.dependencies[0] ?? null
+}
 function revolveDependencyIssue(
   feature: FeatureRecord,
   parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
 ) {
   const expectedDependencies = expectedRevolveDependencyIds(
     parameters,
-    parameters.operation === "new" ? null : (feature.dependencies[0] ?? null),
+    revolveTargetOwner(feature, parameters),
     feature.references.map(({ featureId }) => featureId),
   )
   const matches =
@@ -1826,6 +1859,22 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       }
     },
   },
+  {
+    type: revolveFeatureTypeV7.type,
+    parametersSchema: revolveFeatureParametersV7Schema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = revolveFeatureParametersV7Schema.parse(parameters)
+      return {
+        profiles: revolve.profiles,
+        axis: revolve.axis,
+        angle: revolve.angle.value,
+        operation: revolve.operation,
+      }
+    },
+  },
+  booleanFeatureTypeHandlerV2,
   {
     type: extrusionFeatureTypeV6.type,
     parametersSchema: extrusionFeatureParametersV6Schema,
