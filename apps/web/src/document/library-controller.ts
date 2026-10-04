@@ -20,6 +20,7 @@ import {
   type DocumentMutationResult,
   getDocumentControllerState,
   getProjectActionBlock,
+  previewAssemblyChanges,
   verifyActiveFrozenDefinition,
 } from "./document-controller"
 import { captureLibrarySource } from "./library-source"
@@ -137,7 +138,7 @@ export async function insertLocalLibraryVersion(
         ? { libraryBinding: { itemId: request.itemId, version: request.version } }
         : {}),
     })
-    const transaction = createAssemblyTransaction(context, [
+    const changes = [
       { kind: "definition.insert-pinned", definition },
       {
         kind: "instance.create",
@@ -149,7 +150,12 @@ export async function insertLocalLibraryVersion(
           activeAssembly(controller).schemaVersion,
         ),
       },
-    ])
+    ] as const
+    if (activeAssembly(controller).schemaVersion === 2) {
+      const preview = await previewAssemblyChanges(changes, context.revision, read.value.blobs)
+      if (!preview.ok) return preview
+    }
+    const transaction = createAssemblyTransaction(context, changes)
     return commitAuthoredTransaction(context.revision, {
       ...transaction,
       assetBlobs: read.value.blobs,
@@ -179,9 +185,12 @@ export async function relinkActiveLibraryDefinition(
       name: current.name,
       libraryBinding: { itemId: request.itemId, version: request.version },
     })
-    const transaction = createAssemblyTransaction(context, [
-      { kind: "definition.relink-pinned", definition },
-    ])
+    const changes = [{ kind: "definition.relink-pinned", definition }] as const
+    if (activeAssembly(controller).schemaVersion === 2) {
+      const preview = await previewAssemblyChanges(changes, context.revision, read.value.blobs)
+      if (!preview.ok) return preview
+    }
+    const transaction = createAssemblyTransaction(context, changes)
     return commitAuthoredTransaction(context.revision, {
       ...transaction,
       assetBlobs: read.value.blobs,

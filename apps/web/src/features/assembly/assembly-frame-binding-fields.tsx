@@ -3,6 +3,7 @@ import {
   type AssemblyFrameBinding,
   assemblyFrameBindingSchema,
 } from "@vibeshape/domain/assembly-mates"
+import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { topoRefSchema } from "@vibeshape/domain/topology"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection, TopologyCandidate } from "@vibeshape/protocol"
@@ -39,10 +40,35 @@ function defaultX(candidate: TopologyCandidate): [number, number, number] {
   direction[index] = 1
   return direction
 }
-function bindingOptions(inspection: AssemblyInspection | null | undefined, instanceId: string) {
+function currentOccurrence(
+  assembly: AssemblyAuthority,
+  occurrence: AssemblyInspection["occurrences"][number],
+) {
+  const instance = assembly.instances.find(({ id }) => id === occurrence.instanceId)
+  const definition = assembly.definitions.find(({ id }) => id === instance?.definitionId)
+  const pinned = definition?.pinnedModels.find(
+    ({ sourceIndex }) => sourceIndex === occurrence.sourceIndex,
+  )
+  return (
+    definition?.id === occurrence.definitionId &&
+    definition.pinRevision === occurrence.pinRevision &&
+    pinned !== undefined &&
+    canonicalJson(pinned.selectedBody) === canonicalJson(occurrence.selectedBody)
+  )
+}
+function bindingOptions(
+  assembly: AssemblyAuthority,
+  inspection: AssemblyInspection | null | undefined,
+  instanceId: string,
+) {
   return (
     inspection?.occurrences
-      .filter((o) => o.instanceId === instanceId && o.representation === "exact-solid")
+      .filter(
+        (o) =>
+          o.instanceId === instanceId &&
+          o.representation === "exact-solid" &&
+          currentOccurrence(assembly, o),
+      )
       .flatMap((occurrence) =>
         (occurrence.topologyCandidates ?? []).flatMap((candidate) => {
           const geometry = frameRecipe(candidate)
@@ -58,6 +84,22 @@ function bindingOptions(inspection: AssemblyInspection | null | undefined, insta
             : []
         }),
       ) ?? []
+  )
+}
+type BindingOption = ReturnType<typeof bindingOptions>[number]
+function bindingSourceMatches(binding: AssemblyFrameBinding, option: BindingOption) {
+  return (
+    option.occurrence.sourceIndex === binding.sourceIndex &&
+    option.occurrence.pinRevision === binding.pinRevision &&
+    canonicalJson(option.occurrence.selectedBody) === canonicalJson(binding.body) &&
+    binding.reference.featureId === option.occurrence.selectedBody.featureId
+  )
+}
+function bindingCandidateMatches(binding: AssemblyFrameBinding, option: BindingOption) {
+  return (
+    binding.reference.kind === option.candidate.kind &&
+    binding.geometry === option.geometry &&
+    canonicalJson(option.candidate.signature) === canonicalJson(binding.reference.signature)
   )
 }
 export function readAssemblyFrameBinding(
@@ -89,14 +131,11 @@ export function AssemblyFrameBindingFields({
   onChange: (binding: AssemblyFrameBinding | undefined) => void
 }) {
   const t = useTranslations("app.assembly"),
-    options = bindingOptions(inspection, instanceId)
+    options = bindingOptions(assembly, inspection, instanceId)
   const selected = binding
     ? options.find(
         (option) =>
-          option.occurrence.sourceIndex === binding.sourceIndex &&
-          option.candidate.signature.geometryClass === binding.reference.signature.geometryClass &&
-          JSON.stringify(option.candidate.signature) ===
-            JSON.stringify(binding.reference.signature),
+          bindingSourceMatches(binding, option) && bindingCandidateMatches(binding, option),
       )
     : undefined
   const value = binding ? (selected?.key ?? "unresolved") : "explicit"

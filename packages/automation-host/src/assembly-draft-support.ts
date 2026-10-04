@@ -8,6 +8,7 @@ import {
   applyCapturedAssemblyMutations,
   captureAssemblyMutations,
 } from "@vibeshape/domain/assembly-authority"
+import { assemblyLibraryDefinitionAssets } from "@vibeshape/domain/assembly-library"
 import { mergeCapturedAssemblyAssets } from "@vibeshape/domain/assembly-pinned-insertion"
 import type { CommandActor } from "@vibeshape/domain/commands"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
@@ -37,6 +38,15 @@ export function renewedDraft(record: AssemblyDraftRecord, now: number) {
     ...record.state,
     expiresAt: new Date(now + ASSEMBLY_DRAFT_TTL_MS).toISOString(),
   })
+}
+export function previewAssemblyBlobs(record: AssemblyDraftRecord) {
+  const current = draftAssemblyAuthority(record)
+  const digests = new Set(
+    current.assembly.definitions
+      .flatMap(assemblyLibraryDefinitionAssets)
+      .map(({ digest }) => digest),
+  )
+  return record.blobs.filter(({ digest }) => digests.has(digest))
 }
 export function mergeOwnedBlobs(
   previous: readonly SourceAssetBlob[],

@@ -1,5 +1,7 @@
 import { assemblyLibraryItemSchema } from "@vibeshape/domain/assembly-library"
+import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import {
+  type AssemblyInspectionView,
   type AssemblyOperation,
   assemblyCommitViewSchema,
   assemblyDiscardViewSchema,
@@ -23,13 +25,55 @@ type DocumentContext = (documentId: string) => boolean
 export function isAssemblyLibraryToolName(name: string) {
   return Object.hasOwn(assemblyToolInputs, name) || Object.hasOwn(libraryToolInputs, name)
 }
-function samePair(
-  left: { leftInstanceId: string; rightInstanceId: string },
-  right: { leftInstanceId: string; rightInstanceId: string },
+function pairKey(pair: { leftInstanceId: string; rightInstanceId: string }) {
+  return [pair.leftInstanceId, pair.rightInstanceId].sort().join(":")
+}
+type TopologyInput = NonNullable<
+  Extract<AssemblyOperation, { tool: "inspect_assembly" }>["arguments"]["topology"]
+>
+type TopologyPage = NonNullable<AssemblyInspectionView["topology"]>
+const topologyReferenceKinds = {
+  "planar-face": "face",
+  "cylindrical-face": "face",
+  "spherical-face": "face",
+  "circular-edge": "edge",
+  vertex: "vertex",
+} as const
+function topologyPaginationMatches(input: TopologyInput, topology: TopologyPage) {
+  if (input.offset > topology.total) return false
+  const count = Math.min(input.limit, topology.total - input.offset)
+  const nextOffset = input.offset + count < topology.total ? input.offset + count : null
+  return topology.references.length === count && topology.nextOffset === nextOffset
+}
+function topologyOwnerMatches(
+  input: TopologyInput,
+  topology: TopologyPage,
+  occurrence: AssemblyInspectionView["occurrences"][number],
 ) {
   return (
-    [left.leftInstanceId, left.rightInstanceId].sort().join(":") ===
-    [right.leftInstanceId, right.rightInstanceId].sort().join(":")
+    topology.instanceId === input.instanceId &&
+    topology.sourceIndex === input.sourceIndex &&
+    topology.pinRevision === occurrence.pinRevision &&
+    canonicalJson(topology.body) === canonicalJson(occurrence.selectedBody)
+  )
+}
+function topologyMatches(input: TopologyInput, view: AssemblyInspectionView) {
+  const topology = view.topology
+  if (!topology) return false
+  const occurrences = view.occurrences.filter(
+    ({ instanceId, sourceIndex }) =>
+      instanceId === input.instanceId && sourceIndex === input.sourceIndex,
+  )
+  const occurrence = occurrences[0]
+  if (occurrences.length !== 1 || occurrence?.representation !== "exact-solid") return false
+  return (
+    topologyOwnerMatches(input, topology, occurrence) &&
+    topologyPaginationMatches(input, topology) &&
+    topology.references.every(
+      ({ reference, geometry }) =>
+        reference.featureId === occurrence.selectedBody.featureId &&
+        reference.kind === topologyReferenceKinds[geometry],
+    )
   )
 }
 function inspectionMatches(
@@ -40,18 +84,18 @@ function inspectionMatches(
   const view = assemblyInspectionViewSchema.parse(value)
   if (!belongs(view.documentId) || view.revision !== operation.arguments.revision) return false
   const requested = operation.arguments.interferencePairs
+  const expectedPairs = new Set(requested.map(pairKey))
+  const actualPairs = new Set(view.interference.map(pairKey))
   if (
-    view.interference.length !== requested.length ||
-    !view.interference.every((pair) => requested.some((expected) => samePair(pair, expected)))
+    expectedPairs.size !== requested.length ||
+    actualPairs.size !== view.interference.length ||
+    actualPairs.size !== expectedPairs.size ||
+    ![...expectedPairs].every((pair) => actualPairs.has(pair))
   )
     return false
   const topology = operation.arguments.topology
   if (!topology) return view.topology === undefined
-  return (
-    view.topology?.instanceId === topology.instanceId &&
-    view.topology.sourceIndex === topology.sourceIndex &&
-    view.topology.references.length <= topology.limit
-  )
+  return topologyMatches(topology, view)
 }
 function createdDraftMatches(
   operation: Extract<AssemblyOperation, { tool: "create_assembly_draft" }>,

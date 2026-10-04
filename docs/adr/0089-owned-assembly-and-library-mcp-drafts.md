@@ -29,6 +29,9 @@ Named graph edits may temporarily violate assembly invariants while related reco
 Exact preview applies the complete graph to a disposable promoted V4 authority and invokes the
 controller's ordinary worker solver/materializer. Existing v1 forests remain strict; general mates
 require an explicit v2 upgrade. Unsolvable or unresolved graphs cannot be committed.
+Disposable preview receives only owned blobs required by the final definition graph. The full staged
+source closure remains available to the authored transaction and portable history, including sources
+inserted and then removed or replaced within the same draft.
 
 Every assembly commit requires browser-owned manual review, even with CAD auto-apply enabled. The
 coordinator captures the exact actor/base/draft-version/payload before showing the dialog, rejects
@@ -41,6 +44,9 @@ verifies the current source closure, reviews metadata and publishes immutable co
 metadata CAS. Insert/relink load owned immutable versions; clients choose copy/reference semantics,
 stable IDs and numeric pose but cannot provide the closure. Metadata edits do not change versions. A trusted synchronous guard rechecks captured actor/session/base/expiry inside library write transactions after asynchronous hashing and reads; throwing aborts all staged blob/version/metadata writes. The guard is a private port callback, not an MCP payload. Ordinary UI callers may omit it.
 No external upload or paid service is involved.
+Ordinary editor insertion and relinking also run v2 native preflight before the authored CAS. Saved
+joint frames and available topology choices must match the current instance, source body and pin;
+relinking never silently repairs an older frame binding.
 
 Read views omit meshes, native handles and closure bytes. Frozen topology discovery is explicitly
 paged for one selected occurrence/source. Operation responses retain a 128 KiB serialized budget. The
@@ -48,6 +54,8 @@ server-generated static `tools/list` catalog has a separate 2 MiB cap; this does
 operation or result limits. Exact
 interference requires explicit pairs. Typed mate failures preserve joint IDs; local DOF and
 redundancy are evidence at the solved branch, not proof of global uniqueness.
+Both transports require exact unique unordered pair coverage and validate topology page count,
+cursor progression and occurrence/source/pin/body ownership before accepting inspection responses.
 
 ## Consequences
 

@@ -29,6 +29,7 @@ import {
   draftAssemblyAuthority,
   mergeOwnedBlobs,
   namedAssemblyMutation,
+  previewAssemblyBlobs,
   renewedDraft,
 } from "./assembly-draft-support"
 import { executeLibraryOperation } from "./assembly-library-operations"
@@ -188,7 +189,10 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
     const exact = await configuration.preview(
       assemblyMutationsSchema.parse(record.changes),
       record.state.baseRevision,
-      record.blobs.map((blob) => ({ digest: blob.digest, bytes: Uint8Array.from(blob.bytes) })),
+      previewAssemblyBlobs(record).map((blob) => ({
+        digest: blob.digest,
+        bytes: Uint8Array.from(blob.bytes),
+      })),
     )
     const interrupted = current()
     if (interrupted) return interrupted
