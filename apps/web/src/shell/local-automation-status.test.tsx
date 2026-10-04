@@ -49,6 +49,38 @@ async function openSetup() {
 afterEach(cleanup)
 
 describe("local AI auto-apply controls", () => {
+  it("explains why AI access is disabled until an MCP client is connected", async () => {
+    const { connection, rerender } = setup({ ...manual, connected: false, client: null })
+    const enable = screen.getByRole("button", { name: "Enable AI session" })
+    expect(enable.textContent).toBe("AI access")
+    expect(enable.getAttribute("data-variant")).toBe("outline")
+    expect(enable.hasAttribute("disabled")).toBe(true)
+    expect(
+      document.getElementById(enable.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toBe("MCP client not connected")
+    expect(enable.title).toBe("Connect an MCP client, then enable AI access to this project.")
+    await userEvent.click(enable)
+    expect(connection.enable).not.toHaveBeenCalled()
+
+    rerender({ ...manual, connected: false })
+    expect(enable.hasAttribute("disabled")).toBe(false)
+    expect(enable.hasAttribute("aria-describedby")).toBe(false)
+    expect(screen.queryByText("MCP client not connected")).toBeNull()
+    expect(connection.enable).not.toHaveBeenCalled()
+    await userEvent.click(enable)
+    expect(connection.enable).toHaveBeenCalledOnce()
+  })
+
+  it("keeps active AI access and Stop AI visibly styled as buttons", () => {
+    setup()
+    const settings = screen.getByRole("button", { name: "AI connection and approval mode" })
+    expect(settings.textContent).toBe("AI access on · Approve each change")
+    expect(settings.getAttribute("data-variant")).toBe("outline")
+    expect(screen.getByRole("button", { name: "Stop AI" }).getAttribute("data-variant")).toBe(
+      "outline",
+    )
+  })
+
   it("offers project management as a separate explicit grant with a described browser-local scope", async () => {
     const { connection, rerender } = setup()
     await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
@@ -129,7 +161,7 @@ describe("local AI auto-apply controls", () => {
 
   it("exposes the active indicator and stops the whole AI session without another confirmation", async () => {
     const { connection } = setup({ ...manual, autoApply: true })
-    expect(screen.getByRole("status").textContent).toBe("AI on · Auto-apply on")
+    expect(screen.getByRole("status").textContent).toBe("AI access on · Auto-apply on")
     expect(screen.getByRole("button", { name: "AI connection and approval mode" })).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
     expect(connection.disable).toHaveBeenCalledOnce()

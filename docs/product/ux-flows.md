@@ -35,8 +35,11 @@ Workspace (settings and command palette), AI (connection and session controls wh
 Help (FAQ, MCP setup, and keyboard shortcuts). The header retains the project name, rename action,
 save status, and the Model / Assembly mode switch. Mode selection stays above the command toolbar
 and is unavailable while a feature or sketch is being edited or the document is saving.
-An active local or remote AI session keeps a direct **Stop AI** action and a compact
-session status in the header. Auto-apply consent remains in the existing session dialog.
+The status bar exposes local **AI access** as an outlined button. It stays disabled with
+the visible **MCP client not connected** explanation until a client is available. An active
+local or remote AI session shows **AI access on**, its approval mode, and a direct outlined
+**Stop AI** action. Stop AI revokes session access; it does not stop the development MCP
+server. Auto-apply consent remains in the existing session dialog.
 
 The menu supports arrow-key navigation, typeahead, Enter, and Escape. Opening a dialog preserves
 its existing guards and pending behavior; dismissing it closes the menu and returns focus to the

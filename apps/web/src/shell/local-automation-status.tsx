@@ -55,7 +55,8 @@ export function LocalAutomationStatus({
                 ref={trigger}
                 type="button"
                 size="xs"
-                variant="ghost"
+                variant="outline"
+                className="text-foreground"
                 aria-label={t("approvalSettings")}
               >
                 <span role="status" className="whitespace-nowrap">
@@ -157,22 +158,38 @@ function InactiveConnectionStatus({
   current: ReturnType<Connection["getSnapshot"]>
 }) {
   const t = useTranslations("app.shell.applicationBar")
+  const waitingDescriptionId = useId()
+  const waitingForClient = current.client === null
   return current.recovering ? (
     <span role="status" className="px-2 text-xs text-muted-foreground">
       {t("aiRecovering")}
     </span>
   ) : (
-    <Button
-      type="button"
-      size="xs"
-      variant="ghost"
-      aria-label={t("enableAi")}
-      title={t("enableAi")}
-      disabled={current.client === null}
-      onClick={connection.enable}
-    >
-      {t("aiShort")}
-    </Button>
+    <>
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        className="text-foreground disabled:text-muted-foreground disabled:opacity-100"
+        aria-label={t("enableAi")}
+        aria-describedby={waitingForClient ? waitingDescriptionId : undefined}
+        title={t(waitingForClient ? "aiWaitingDescription" : "enableAi")}
+        disabled={waitingForClient}
+        onClick={connection.enable}
+      >
+        {t("aiAccess")}
+      </Button>
+      {waitingForClient ? (
+        <span
+          id={waitingDescriptionId}
+          role="status"
+          className="px-1 text-xs text-muted-foreground"
+          title={t("aiWaitingDescription")}
+        >
+          {t("aiWaitingForClient")}
+        </span>
+      ) : null}
+    </>
   )
 }
 function StopConnectionControl({
@@ -188,7 +205,8 @@ function StopConnectionControl({
     <Button
       type="button"
       size="xs"
-      variant="ghost"
+      variant="outline"
+      className="text-foreground"
       title={t("stopAiDescription")}
       onClick={connection.disable}
     >
