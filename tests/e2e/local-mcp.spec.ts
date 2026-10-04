@@ -52,9 +52,12 @@ test("creates, repairs, reviews, commits and exports a model through real local 
   try {
     const tools = await local.client.listTools()
     expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
+      "append_import_chunk",
+      "begin_import_upload",
       "change_metadata",
       "commit_assembly_draft",
       "commit_draft",
+      "commit_import_upload",
       "create_assembly_definition",
       "create_assembly_draft",
       "create_assembly_instance",
@@ -97,6 +100,7 @@ test("creates, repairs, reviews, commits and exports a model through real local 
       "discard_assembly_draft",
       "discard_draft",
       "discard_export",
+      "discard_import_upload",
       "draft_body_measurements",
       "draft_body_topology",
       "draft_edges",
@@ -108,6 +112,7 @@ test("creates, repairs, reviews, commits and exports a model through real local 
       "export_model",
       "insert_library_version",
       "inspect_assembly",
+      "inspect_import_upload",
       "library_items",
       "library_version",
       "model_assembly",

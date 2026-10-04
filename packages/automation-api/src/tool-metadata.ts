@@ -46,6 +46,16 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Regenerate an existing text group preserving groupId and editable intent. Resubmit layout/origin and explicitly choose removeAttachedConstraints; false fails if constraints attach to replaced geometry. New outline IDs invalidate former downstream profile selectors; rediscover and repair before preview/commit. Async preparation cannot overwrite an edited, expired or revoked draft.",
   detach_sketch_text:
     "Detach one existing text group's editable font intent in an owned draft, retaining all current geometry and constraints. Supply exact groupId/sketchId, fresh commandId and current draft revision. Preview and ordinary commit; detached geometry is no longer regenerated as text.",
+  begin_import_upload:
+    "Begin one owner-bound native source upload for the exact committed revision, up to 6 MiB. Supply a safe leaf filename, total byteLength and explicit sourceUnit for STEP/STP/BREP/STL; 3MF requires null and uses declared units. Returns an opaque upload ID and 90 KiB decoded chunk budget. This only retains temporary bytes; it does not author or save a feature. A new upload replaces the previous one.",
+  append_import_chunk:
+    "Append canonical base64 bytes to an owned source upload at its receivedBytes offset. Use exactly chunkMaxBytes decoded bytes except for the final chunk. An exact duplicate chunk is idempotent; conflicting or out-of-order bytes fail. Do not send paths, hashes or provenance. Successful new chunks renew the five-minute idle expiry; duplicates do not.",
+  inspect_import_upload:
+    "Explicitly inspect a complete owned upload through the existing native STEP/BREP or triangle-mesh STL/3MF reader. The browser computes SHA-256, captures stable output roles and returns representation, normalization, bounds and exact volume only for solids. It does not reconstruct meshes as solids or save intent. Retain uploadVersion for commit; malformed sources remain failures.",
+  commit_import_upload:
+    "Request ordinary manual browser review of an inspected upload at its exact uploadVersion and base revision. Source inspection is repeated before review. The person reviews the source preview and applies one atomic transaction containing verified bytes, captured import intent and Parts. No tool approves the proposal or grants auto-apply. Stale, cancelled or unreviewed imports never publish source assets.",
+  discard_import_upload:
+    "Release an owned temporary source upload and captured inspection. This does not delete a saved project, source asset or local file.",
   model_sketch_solution:
     "Read solved sketch status, degrees of freedom, maximum residual and paged solved points, radii, failed constraints, stable profile selectors or diagnostics. Use the current revision. Begin with cursor null; pass nextCursor unchanged for the same section. Profile selectors contain authored boundary IDs, never transient profile indices.",
   draft_sketch_solution:
@@ -212,6 +222,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "begin_import_upload",
+      "append_import_chunk",
+      "inspect_import_upload",
+      "discard_import_upload",
       "prepare_model_export",
       "prepare_project_backup",
       "read_export_chunk",
@@ -241,6 +255,7 @@ export function localToolAnnotations(name: LocalToolName) {
     ].includes(name),
     destructiveHint: [
       "commit_draft",
+      "commit_import_upload",
       "update_sketch_text",
       "detach_sketch_text",
       "commit_assembly_draft",
@@ -250,6 +265,9 @@ export function localToolAnnotations(name: LocalToolName) {
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "append_import_chunk",
+      "inspect_import_upload",
+      "discard_import_upload",
       "read_export_chunk",
       "discard_export",
       "model_measurements",

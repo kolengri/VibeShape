@@ -1,0 +1,120 @@
+import { useFormatter, useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
+import { useState } from "react"
+import { ImportPreview } from "../features/import/import-preview"
+import { automationReviews } from "./automation-review-controller"
+import type { AutomationReviewState } from "./automation-review-state"
+import type { ImportReviewInput } from "./import-upload-session"
+
+export function ImportReviewPanel({
+  review,
+}: {
+  review: AutomationReviewState & { input: ImportReviewInput }
+}) {
+  const t = useTranslations("app.shell.taskPanel.importReview")
+  const actions = useTranslations("app.shell.taskPanel.automationReview")
+  const formatter = useFormatter()
+  const [previewReady, setPreviewReady] = useState(false)
+  const { input } = review
+  const number = (value: number) => formatter.number(value, { maximumFractionDigits: 3 })
+  return (
+    <section
+      aria-label={t("title")}
+      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-l bg-panel"
+    >
+      <header className="border-b px-4 py-3">
+        <h2 className="text-sm font-medium">{t("title")}</h2>
+      </header>
+      <div className="grid min-h-0 gap-3 overflow-auto p-4">
+        <p className="text-sm">{t("description")}</p>
+        <dl className="grid gap-1 text-xs">
+          <div>
+            <dt className="font-medium">{t("file")}</dt>
+            <dd>{input.source.upload.filename}</dd>
+          </div>
+          <div>
+            <dt className="font-medium">{t("label")}</dt>
+            <dd>{input.label}</dd>
+          </div>
+          <div>
+            <dt className="font-medium">{t("representation")}</dt>
+            <dd>
+              {t(input.source.representation === "exact-solid" ? "exactSolid" : "triangleMesh")}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium">{t("units")}</dt>
+            <dd>
+              {t("normalization", {
+                sourceUnit: input.source.normalization.sourceUnit,
+                scale: number(input.source.normalization.scaleToMillimeters),
+              })}
+            </dd>
+          </div>
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          {t(input.source.upload.format === "3mf" ? "declaredUnits" : "explicitUnits")}
+        </p>
+        <ImportPreview
+          inspection={input.inspection}
+          label={t("preview")}
+          failedMessage={t("previewFailed")}
+          onReady={setPreviewReady}
+        />
+        <ul className="grid gap-2 text-xs" aria-label={t("outputs")}>
+          {input.source.outputs.map((output) => (
+            <li key={output.outputRole} className="rounded border p-2">
+              <div className="break-all font-medium">{output.outputRole}</div>
+              <div>
+                {t("size", {
+                  x: number(output.bounds.max[0] - output.bounds.min[0]),
+                  y: number(output.bounds.max[1] - output.bounds.min[1]),
+                  z: number(output.bounds.max[2] - output.bounds.min[2]),
+                })}
+              </div>
+              {output.volumeMm3 !== null && (
+                <div>{t("volume", { value: number(output.volumeMm3) })}</div>
+              )}
+              <div>{t("area", { value: number(output.surfaceAreaMm2) })}</div>
+              <div>{t("triangles", { count: output.triangleCount })}</div>
+            </li>
+          ))}
+        </ul>
+        {input.source.warnings.map((warning) => (
+          <p key={warning.code} className="text-xs text-muted-foreground">
+            {t("degenerateTriangles", { count: warning.count })}
+          </p>
+        ))}
+        {review.status === "error" && (
+          <p role="status" className="text-sm text-destructive">
+            {actions("applyFailed")}
+          </p>
+        )}
+      </div>
+      <footer className="flex justify-end gap-2 border-t px-4 py-3">
+        {review.status === "error" ? (
+          <Button variant="outline" onClick={() => automationReviews.dismiss(review.id)}>
+            {actions("close")}
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              disabled={review.status !== "ready"}
+              onClick={() => automationReviews.decide(review.id, "rejected")}
+            >
+              {actions("discard")}
+            </Button>
+            <Button
+              disabled={review.status !== "ready" || !previewReady}
+              isLoading={review.status === "applying"}
+              onClick={() => automationReviews.decide(review.id, "approved")}
+            >
+              {actions("apply")}
+            </Button>
+          </>
+        )}
+      </footer>
+    </section>
+  )
+}

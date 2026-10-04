@@ -95,6 +95,7 @@
 | [0081](0081-constrained-loft-native-patch-networks.md) | Accepted | Constrained Loft native patch networks |
 | [0094](0094-finite-curved-face-extrusion.md) | Accepted | Exact finite curved-face extrusion and additive v7 authoring |
 | [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
+| [0091](0091-paired-native-source-imports.md) | Accepted | Paired native source uploads, inspection and manual atomic import |
 
 Statuses:
 
