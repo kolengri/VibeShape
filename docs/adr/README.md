@@ -86,6 +86,7 @@
 
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
+| [0088](0088-named-primitive-and-lifecycle-mcp-commands.md) | Accepted | Registered primitive and review-bound lifecycle MCP commands |
 
 | [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
 
