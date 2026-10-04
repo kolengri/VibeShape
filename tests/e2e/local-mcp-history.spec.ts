@@ -1,6 +1,6 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { enableLocalAi, openAiConnections } from "./application-menu-support"
+import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b260-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -90,10 +90,9 @@ test("navigates exact saved geometry through named MCP manual history review eve
     const second = await addBox(first.revision, 20, [4, 5, 6])
     expect(await state(second.revision)).toMatchObject({ canUndo: true, canRedo: false })
     await openAiConnections(page)
-    await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
+    await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
-    await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
     const rejected = call("undo_model", {
       documentId,
       baseRevision: second.revision,

@@ -1,7 +1,7 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi, openAiConnections } from "./application-menu-support"
+import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -226,10 +226,9 @@ test("requires browser opt-in before automatically applying an exact Union v2 dr
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await enableLocalAi(page)
     await openAiConnections(page)
-    await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
+    await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
-    await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
     const draft = await createDraft(local)
     await draft.stage("create_box", { featureId: id(2), widthMm: 20, depthMm: 10, heightMm: 5 })
     await draft.stage("create_box", { featureId: id(3), widthMm: 10, depthMm: 10, heightMm: 10 })

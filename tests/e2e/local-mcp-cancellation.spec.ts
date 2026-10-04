@@ -87,9 +87,6 @@ for (const mode of ["client-abort", "browser-disable", "client-close"] as const)
       await expect(
         connectionSettings.getByRole("button", { name: "Enable AI session", exact: true }),
       ).toBeVisible()
-      await connectionSettings
-        .getByRole("button", { name: "Close AI connections", exact: true })
-        .click()
       await dismissErrorReview(page)
       await expect(
         page.getByRole("treeitem", { name: "Cancelled MCP box", exact: true }),

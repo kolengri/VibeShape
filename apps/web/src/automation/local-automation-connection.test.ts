@@ -48,13 +48,15 @@ function deferred<T>() {
 }
 let connection: ReturnType<typeof createLocalAutomationConnection>
 const dispose = vi.fn()
+const optOut = vi.fn()
 const enableAutoApply = vi.fn()
 beforeEach(() => {
   sessionStorage.clear()
   vi.useFakeTimers()
   vi.clearAllMocks()
-  mocks.review.mockReturnValue({ status: "idle" })
+  mocks.review.mockReturnValue(null)
   enableAutoApply.mockReturnValue(true)
+  optOut.mockReturnValue(true)
   document.head.innerHTML = '<meta name="vibeshape-local-automation" content="1">'
   mocks.createHandle.mockReturnValue({
     ok: true,
@@ -62,6 +64,7 @@ beforeEach(() => {
     revision: 4,
     dispose,
     enableAutoApply,
+    disableAutoApply: optOut,
     readInfo: () => ({ summary: { documentId: id, revision: 4, data: { name: "Bracket" } } }),
   })
   mocks.execute.mockResolvedValue(failedResult)
@@ -194,6 +197,12 @@ describe("browser-owned local AI connection lifecycle", () => {
     expect(connection.enableAutoApply()).toBe(true)
     expect(enableAutoApply).toHaveBeenCalledWith(credential.actor)
     expect(connection.getSnapshot().autoApply).toBe(true)
+    optOut.mockReturnValueOnce(false)
+    expect(connection.disableAutoApply()).toBe(false)
+    expect(connection.getSnapshot().autoApply).toBe(true)
+    expect(connection.disableAutoApply()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(dispose).not.toHaveBeenCalled()
     const disabling = connection.disable()
     expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
     expect(dispose).toHaveBeenCalledOnce()

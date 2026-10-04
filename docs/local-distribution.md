@@ -45,7 +45,7 @@ The client owns that process's lifetime; protocol stdout contains only MCP messa
 reported loopback editor URL and enable its AI session when using MCP. An already paired MCP process
 must stay with its owning client; these commands never stop it or discover and kill another PID.
 
-Manual draft approval is the default. **Set up auto-apply** explicitly enables valid allowlisted CAD
+Manual draft approval is the default. The bottom status bar's **AI connection and approval mode → Apply automatically → Set up auto-apply** explicitly enables valid allowlisted CAD
 edits for this project and paired session only; **Auto-apply on** and **Stop AI** remain visible.
 Stop ends the pairing, and reconnect/reload/project change requires a fresh opt-in. See the
 [MCP quickstart](mcp-quickstart.md) for review, Undo, and cancellation behavior.

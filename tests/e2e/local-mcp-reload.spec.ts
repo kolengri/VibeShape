@@ -1,6 +1,6 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { enableLocalAi, openAiConnections } from "./application-menu-support"
+import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 test("restores local MCP after reload with fresh consent for auto-apply and respects Stop AI", async ({
@@ -18,16 +18,14 @@ test("restores local MCP after reload with fresh consent for auto-apply and resp
       (await local.callTool({ name: "model_info", arguments: {} })).structuredContent?.result,
     )
     if (!before.ok) throw new Error(before.diagnostic.message)
-    const dialog = await openAiConnections(page)
-    await dialog.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
+    await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await dialog.getByRole("button", { name: "Close AI connections", exact: true }).click()
-    await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
     await page.reload()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByText("Auto-apply on", { exact: true })).toHaveCount(0)
+    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toHaveCount(0)
     const after = localToolOutputs.model_info.parse(
       (await local.callTool({ name: "model_info", arguments: {} })).structuredContent?.result,
     )

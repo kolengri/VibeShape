@@ -8,9 +8,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
-import { useId, useState } from "react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@vibeshape/ui/components/dropdown-menu"
+import { useRef, useState } from "react"
 import type { createLocalAutomationConnection } from "../automation/local-automation-connection"
 
 type Connection = ReturnType<typeof createLocalAutomationConnection>
@@ -19,53 +25,17 @@ export function LocalAutomationStatus({
   connection,
   current,
 }: {
-  connection: Pick<Connection, "enable" | "disable" | "enableAutoApply">
+  connection: Pick<Connection, "enable" | "disable" | "enableAutoApply" | "disableAutoApply">
   current: ReturnType<Connection["getSnapshot"]>
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const [open, setOpen] = useState(false)
   const [failed, setFailed] = useState(false)
-  const stopDescriptionId = useId()
-  const action = current.connected
-    ? { label: "disableAi" as const, run: connection.disable, disabled: false }
-    : { label: "enableAi" as const, run: connection.enable, disabled: current.client === null }
-
+  const trigger = useRef<HTMLButtonElement>(null)
+  const openingDialog = useRef(false)
   return (
     <div className="flex shrink-0 items-center gap-1">
-      {current.connected && current.autoApply ? (
-        <>
-          <span role="status" className="whitespace-nowrap text-xs font-medium text-primary">
-            {t("autoApplyOn")}
-          </span>
-          <Button
-            type="button"
-            size="xs"
-            variant="destructive"
-            aria-describedby={stopDescriptionId}
-            title={t("stopAiDescription")}
-            onClick={connection.disable}
-          >
-            {t("stopAi")}
-          </Button>
-          <span id={stopDescriptionId} className="sr-only">
-            {t("stopAiDescription")}
-          </span>
-        </>
-      ) : (
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          aria-label={t(action.label)}
-          title={t(action.label)}
-          disabled={action.disabled}
-          onClick={action.run}
-        >
-          <span className="sm:hidden">{t(current.connected ? "aiConnectedShort" : "aiShort")}</span>
-          <span className="hidden sm:inline">{t(action.label)}</span>
-        </Button>
-      )}
-      {current.connected && !current.autoApply ? (
+      {current.connected ? (
         <Dialog
           open={open}
           onOpenChange={(next) => {
@@ -73,62 +43,100 @@ export function LocalAutomationStatus({
             setFailed(false)
           }}
         >
-          <DialogTrigger asChild>
-            <Button type="button" size="xs" variant="outline" aria-label={t("autoApplySetup")}>
-              <span className="sm:hidden">{t("autoApplySetupShort")}</span>
-              <span className="hidden sm:inline">{t("autoApplySetup")}</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent
-            closeLabel={t("autoApplyCancel")}
-            className="flex flex-col overflow-hidden p-4"
-          >
-            <DialogHeader className="shrink-0">
-              <DialogTitle>{t("autoApplySetup")}</DialogTitle>
-              <DialogDescription>{t("autoApplyScope")}</DialogDescription>
-            </DialogHeader>
-            <section
-              aria-label={t("autoApplySetup")}
-              className="min-h-0 space-y-3 overflow-y-auto text-sm"
-              // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll the consent details.
-              tabIndex={0}
-            >
-              <p>{t("autoApplyEdits")}</p>
-              <p>{t("autoApplyManual")}</p>
-              <p>{t("autoApplyExcluded")}</p>
-              <p>{t("autoApplyReset")}</p>
-              <p>{t("stopAiDescription")}</p>
-            </section>
-            {failed ? (
-              <p role="alert" className="shrink-0 text-sm text-destructive">
-                {t("autoApplyBusy")}
-              </p>
-            ) : null}
-            <DialogFooter className="shrink-0">
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  {t("autoApplyCancel")}
-                </Button>
-              </DialogClose>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
+                ref={trigger}
                 type="button"
-                onClick={() => {
-                  if (connection.enableAutoApply()) setOpen(false)
-                  else setFailed(true)
-                }}
+                size="xs"
+                variant="ghost"
+                aria-label={t("approvalSettings")}
               >
-                {t("autoApplyEnable")}
+                <span role="status" className="whitespace-nowrap">
+                  {t("approvalStatus", {
+                    mode: t(current.autoApply ? "autoApplyOn" : "manualApproval"),
+                  })}
+                </span>
               </Button>
-            </DialogFooter>
-          </DialogContent>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              onCloseAutoFocus={(event) => {
+                if (openingDialog.current) {
+                  event.preventDefault()
+                  openingDialog.current = false
+                }
+              }}
+            >
+              <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                {current.client?.name ?? t("aiConnectedShort")}
+              </p>
+              <DropdownMenuRadioGroup value={current.autoApply ? "automatic" : "manual"}>
+                <DropdownMenuRadioItem
+                  value="manual"
+                  disabled={current.busy}
+                  onSelect={() => {
+                    if (current.autoApply) setFailed(!connection.disableAutoApply())
+                  }}
+                >
+                  {t("manualApproval")}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem
+                  value="automatic"
+                  onSelect={() => {
+                    if (!current.autoApply) {
+                      setFailed(false)
+                      openingDialog.current = true
+                      setOpen(true)
+                    }
+                  }}
+                >
+                  {t("automaticApproval")}
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <AutoApplyConsentContent
+            failed={failed}
+            onClose={() => trigger.current?.focus()}
+            onEnable={() => {
+              if (connection.enableAutoApply()) {
+                setFailed(false)
+                setOpen(false)
+              } else setFailed(true)
+            }}
+          />
         </Dialog>
+      ) : (
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          aria-label={t("enableAi")}
+          title={t("enableAi")}
+          disabled={current.client === null}
+          onClick={connection.enable}
+        >
+          {t("aiShort")}
+        </Button>
+      )}
+      {current.connected ? (
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          title={t("stopAiDescription")}
+          onClick={connection.disable}
+        >
+          {t("stopAi")}
+        </Button>
       ) : null}
-      <span
-        className="hidden max-w-32 truncate text-xs text-muted-foreground lg:block"
-        title={current.client?.name}
-      >
-        {current.client?.name}
-      </span>
+      {failed && !open ? (
+        <span role="alert" className="sr-only">
+          {t("autoApplyBusy")}
+        </span>
+      ) : null}
       {current.error ? (
         <span
           role="status"
@@ -138,5 +146,59 @@ export function LocalAutomationStatus({
         </span>
       ) : null}
     </div>
+  )
+}
+
+function AutoApplyConsentContent({
+  failed,
+  onClose,
+  onEnable,
+}: {
+  failed: boolean
+  onClose: () => void
+  onEnable: () => void
+}) {
+  const t = useTranslations("app.shell.applicationBar")
+  return (
+    <DialogContent
+      closeLabel={t("autoApplyCancel")}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault()
+        onClose()
+      }}
+      className="flex flex-col overflow-hidden p-4"
+    >
+      <DialogHeader className="shrink-0">
+        <DialogTitle>{t("autoApplySetup")}</DialogTitle>
+        <DialogDescription>{t("autoApplyScope")}</DialogDescription>
+      </DialogHeader>
+      <section
+        aria-label={t("autoApplySetup")}
+        className="min-h-0 space-y-3 overflow-y-auto text-sm"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll the consent details.
+        tabIndex={0}
+      >
+        <p>{t("autoApplyEdits")}</p>
+        <p>{t("autoApplyManual")}</p>
+        <p>{t("autoApplyExcluded")}</p>
+        <p>{t("autoApplyReset")}</p>
+        <p>{t("stopAiDescription")}</p>
+      </section>
+      {failed ? (
+        <p role="alert" className="shrink-0 text-sm text-destructive">
+          {t("autoApplyBusy")}
+        </p>
+      ) : null}
+      <DialogFooter className="shrink-0">
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            {t("autoApplyCancel")}
+          </Button>
+        </DialogClose>
+        <Button type="button" onClick={onEnable}>
+          {t("autoApplyEnable")}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   )
 }

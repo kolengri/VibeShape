@@ -253,7 +253,10 @@ approving a later review. Only one session can own the confirmation surface at a
 An idle paired user may explicitly opt in to the session CAD allowlist in ADR-0052. The browser
 then approves qualifying valid drafts through the same review port, with a persistent Auto-apply on
 indicator and Stop AI control. An existing review cannot acquire this grant retroactively. All
-other drafts keep the review surface above; disconnect or project change resets the grant.
+other drafts keep the review surface above; disconnect or project change resets the grant. The
+bottom status bar exposes neutral connection and Stop AI controls plus an approval-mode menu.
+Returning an idle session to manual review clears its browser-owned grant without revoking pairing;
+active operations or reviews block that change. No MCP tool can change either approval mode.
 
 Once the ordinary atomic persistence operation has started, cancellation is not a rollback request.
 The editor keeps action controls locked while it completes. Unexpected persistence failures remain

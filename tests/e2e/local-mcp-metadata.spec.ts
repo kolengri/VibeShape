@@ -7,6 +7,7 @@ import {
   enableLocalAi,
   openAiConnections,
   openApplicationMenuItem,
+  openAutoApplySetup,
 } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
@@ -154,9 +155,8 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
     ).toBe(part.name)
     // The browser grant for CAD never grants metadata consent.
     await openAiConnections(page)
-    await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
+    await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
     const renameId = await change(
       { kind: "part.rename", partId: part.id, name: "MCP housing" },
       "Name: MCP housing",

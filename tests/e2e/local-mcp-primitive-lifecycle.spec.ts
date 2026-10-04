@@ -8,7 +8,7 @@ import {
   primitiveParameters,
   primitiveVolumes,
 } from "../support/primitive-lifecycle"
-import { enableLocalAi, openAiConnections } from "./application-menu-support"
+import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 function success<T>(
@@ -179,10 +179,9 @@ test("authors registered primitive geometry and review-bound lifecycle changes t
     expect((await preview()).geometry.status).toBe("valid")
     const fixtureCommit = await apply()
     await openAiConnections(page)
-    await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
+    await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
-    await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
     draft = success(
       localToolOutputs.create_draft.parse(
         await call("create_draft", { baseRevision: fixtureCommit.revision }),

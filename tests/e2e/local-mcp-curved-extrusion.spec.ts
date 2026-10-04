@@ -2,7 +2,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import type { ModelMeasurementEntry } from "../../packages/domain/src/model-measurements"
 import { createAngleQuantity, createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi, openAiConnections } from "./application-menu-support"
+import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -40,10 +40,9 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
     await expect(page.getByRole("treeitem", { name: "Sphere 1", exact: true })).toBeVisible()
     await enableLocalAi(page)
     await openAiConnections(page)
-    await page.getByRole("button", { name: "Set up auto-apply", exact: true }).click()
+    await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await page.getByRole("button", { name: "Close AI connections", exact: true }).click()
-    await expect(page.getByText("Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const history = success(
       localToolOutputs.model_history.parse(
