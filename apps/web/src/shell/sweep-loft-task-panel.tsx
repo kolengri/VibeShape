@@ -128,7 +128,7 @@ export function SweepLoftTaskPanel(props: Props) {
     mode.operation,
     {
       profile: (sketch, number) => t("profileOption", { sketch, number }),
-      curve: (kind, number) => t("curveOption", { kind, number }),
+      curve: (kind, number) => t("curveOption", { kind: kind.replaceAll("-", "_"), number }),
       point: (number, [x, y, z]) =>
         t("pointOption", {
           number,

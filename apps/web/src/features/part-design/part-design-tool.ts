@@ -38,7 +38,7 @@ import {
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
-import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import {
   mirrorFeatureType,
   mirrorFeatureTypeV2,
@@ -250,7 +250,9 @@ function isShellFeature(feature: FeatureRecord) {
   return readShellFeatureParameters(feature) !== null
 }
 function isLoftFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, loftFeatureType.type)
+  return (
+    hasFeatureType(feature, loftFeatureType.type) || hasFeatureType(feature, loftFeatureTypeV2.type)
+  )
 }
 function isSweepFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, sweepFeatureType.type)

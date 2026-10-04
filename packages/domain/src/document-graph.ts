@@ -54,7 +54,7 @@ import {
   readHoleFeatureParameters,
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
-import { loftFeatureType, readLoftFeatureParameters } from "./part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2, readLoftFeatureParameters } from "./part-design-loft"
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import {
   mirrorFeatureType,
@@ -263,6 +263,7 @@ const multiProfileResultTypeKeys = new Set([
 ])
 const sketchSolidFeatureTypeKeys = new Set([
   featureTypeKey(loftFeatureType.type),
+  featureTypeKey(loftFeatureTypeV2.type),
   featureTypeKey(sweepFeatureType.type),
 ])
 
@@ -276,6 +277,7 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   [featureTypeKey(holeFeatureType.type), readHoleFeatureParameters],
   [featureTypeKey(holeFeatureTypeV2.type), readHoleFeatureParameters],
   [featureTypeKey(loftFeatureType.type), readLoftFeatureParameters],
+  [featureTypeKey(loftFeatureTypeV2.type), readLoftFeatureParameters],
   [featureTypeKey(sweepFeatureType.type), readSweepFeatureParameters],
   ...[...extrusionTypeKeys].map((typeKey) => [typeKey, readExtrusionFeatureParameters] as const),
   ...[...revolveTypeKeys].map((typeKey) => [typeKey, readRevolveFeatureParameters] as const),

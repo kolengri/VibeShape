@@ -217,6 +217,7 @@ import {
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
+import { SketchCornerTreatmentPanel } from "./sketch-corner-treatment-panel"
 import {
   SketchDimensionInlineEditor,
   type SketchDimensionInlineEditorResult,
@@ -6525,6 +6526,8 @@ const placementBuilders = {
   Exclude<
     SketchEditorTool,
     | "dimension"
+    | "fillet"
+    | "chamfer"
     | "intersection"
     | "pierce"
     | "select"
@@ -6536,15 +6539,13 @@ const placementBuilders = {
 >
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
-  return tool === "select" ||
-    tool === "dimension" ||
+  return isSketchSelectionTool(tool) ||
     tool === "use" ||
     tool === "intersection" ||
     tool === "pierce" ||
-    isSketchModificationTool(tool) ||
-    isSketchConstraintEditorTool(tool)
+    isSketchModificationTool(tool)
     ? null
-    : placementBuilders[tool](input)
+    : placementBuilders[tool as keyof typeof placementBuilders](input)
 }
 
 function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
@@ -7597,6 +7598,8 @@ const pointInferenceSupport = {
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
   "centered-slot": (pending) => pending?.kind !== "centered-slot-width",
   dimension: neverSupportsPointInference,
+  fillet: neverSupportsPointInference,
+  chamfer: neverSupportsPointInference,
   extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   intersection: neverSupportsPointInference,
@@ -9457,6 +9460,7 @@ function SketchDrawingView({
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
       />
+      <SketchCornerPanel configuration={configuration} />
       <SketchLinearPatternPanel
         configuration={configuration}
         handlers={handlers}
@@ -9487,6 +9491,31 @@ function SketchDrawingView({
         selectedEntityIds={configuration.selectedEntityIds}
       />
     </div>
+  )
+}
+
+function SketchCornerPanel({ configuration }: { configuration: SketchDrawingConfiguration }) {
+  const kind = configuration.editorTool
+  if ((kind !== "fillet" && kind !== "chamfer") || !configuration.draft) return null
+  return (
+    <SketchCornerTreatmentPanel
+      key={kind}
+      draft={configuration.draft}
+      kind={kind}
+      selectedEntityIds={configuration.selectedEntityIds}
+      solvedPoints={
+        new Map(
+          configuration.solution?.points.map(({ entityId, x, y }) => [entityId, { x, y }]) ?? [],
+        )
+      }
+      variables={configuration.variables}
+      onApply={(next) => {
+        configuration.onDraftChange(next, "record")
+        configuration.onEditorToolChange("select")
+        configuration.onSelectionChange([])
+      }}
+      onCancel={() => configuration.onEditorToolChange("select")}
+    />
   )
 }
 
@@ -11416,9 +11445,11 @@ function SketchDrawing({
         return
       }
       onSelectionChange(
-        editorTool === "dimension" && draft && !additive
-          ? nextSketchDimensionSelection(draft, selectedEntityIds, entityId)
-          : toggleSelection(selectedEntityIds, entityId, additive),
+        editorTool === "fillet" || editorTool === "chamfer"
+          ? toggleSelection(selectedEntityIds, entityId, true).slice(-2)
+          : editorTool === "dimension" && draft && !additive
+            ? nextSketchDimensionSelection(draft, selectedEntityIds, entityId)
+            : toggleSelection(selectedEntityIds, entityId, additive),
       )
     },
     [draft, editorTool, onDraftChange, onSelectionChange, resetDimensionEditor, selectedEntityIds],

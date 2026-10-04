@@ -1,4 +1,5 @@
 import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
+import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
@@ -8,6 +9,7 @@ import {
 } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
+import { LoftHoleFields } from "./loft-hole-fields"
 import { type LoftSectionCopy, LoftSectionFields } from "./loft-section-fields"
 import {
   type PathSketchOption,
@@ -106,20 +108,42 @@ export function SweepLoftForm({
                 }
               >
                 {mode.operation === "loft" ? (
-                  <LoftSectionFields
-                    sections={values.sections}
-                    ruled={values.ruled}
-                    profiles={profiles}
-                    copy={copy}
-                    onSectionsChange={(sections) => {
-                      setMessage(null)
-                      form.setFieldValue("sections", sections)
-                    }}
-                    onRuledChange={(ruled) => {
-                      setMessage(null)
-                      form.setFieldValue("ruled", ruled)
-                    }}
-                  />
+                  <>
+                    <LoftSectionFields
+                      sections={values.sections}
+                      ruled={values.ruled}
+                      profiles={profiles}
+                      copy={copy}
+                      onSectionsChange={(sections) => {
+                        setMessage(null)
+                        const tracks = sections.some(
+                          ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length > 0,
+                        )
+                          ? values.holeCorrespondence.map((track) => ({
+                              sectionBoundaryEntityIds: sections.map((section) => {
+                                const oldIndex = values.sections.findIndex(
+                                  (old) =>
+                                    sketchProfileSelectorKey(old) ===
+                                    sketchProfileSelectorKey(section),
+                                )
+                                return [...(track.sectionBoundaryEntityIds[oldIndex] ?? [])]
+                              }),
+                            }))
+                          : []
+                        form.setFieldValue("holeCorrespondence", tracks)
+                        form.setFieldValue("sections", sections)
+                      }}
+                      onRuledChange={(ruled) => {
+                        setMessage(null)
+                        form.setFieldValue("ruled", ruled)
+                      }}
+                    />
+                    <LoftHoleFields
+                      sections={values.sections}
+                      tracks={values.holeCorrespondence}
+                      onChange={(tracks) => form.setFieldValue("holeCorrespondence", tracks)}
+                    />
+                  </>
                 ) : (
                   <SweepPathFields
                     values={values}

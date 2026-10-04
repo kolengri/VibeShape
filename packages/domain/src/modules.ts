@@ -38,7 +38,7 @@ import {
 } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
-import { loftFeatureType } from "./part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
@@ -446,6 +446,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     splitFeatureType,
     splitFeatureTypeV2,
     loftFeatureType,
+    loftFeatureTypeV2,
     sweepFeatureType,
     importedFeatureType,
     meshImportFeatureType,

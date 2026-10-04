@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  analyticalPathSegmentTangents,
   analyticalProfileSchema,
   analyticalSweepPathSchema,
   loftFeatureContentParametersSchema,
@@ -36,6 +37,45 @@ const path = {
 }
 
 describe("prepared analytical Sweep and Loft contracts", () => {
+  it("validates Bezier and ellipse tangents and fails closed on singular or non-G1 joins", () => {
+    const cubic = {
+      ...line(2, [0, 0], [10, 0]),
+      type: "cubic-bezier" as const,
+      control1PointId: id(300),
+      control2PointId: id(301),
+      control1: [2, 0],
+      control2: [8, 2],
+    }
+    expect(analyticalSweepPathSchema.safeParse({ ...path, segments: [cubic] }).success).toBe(true)
+    expect(
+      analyticalSweepPathSchema.safeParse({
+        ...path,
+        segments: [{ ...cubic, control1: cubic.start }],
+      }).success,
+    ).toBe(false)
+    expect(
+      analyticalSweepPathSchema.safeParse({
+        ...path,
+        sourceEntityIds: [id(2), id(3)],
+        segments: [cubic, line(3, [10, 0], [20, 0])],
+      }).success,
+    ).toBe(false)
+    const ellipse = analyticalSweepPathSchema.parse({
+      ...path,
+      segments: [
+        {
+          ...line(2, [0, 0], [10, 12]),
+          type: "elliptical-arc",
+          center: [10, 0],
+          primaryAxisPoint: [20, 0],
+          secondaryAxisPoint: [10, -12],
+        },
+      ],
+    }).segments[0]
+    if (!ellipse) throw new Error("Expected ellipse fixture.")
+    expect(analyticalPathSegmentTangents(ellipse).start[1]).toBeCloseTo(1)
+    expect(analyticalPathSegmentTangents(ellipse).end[0]).toBeCloseTo(1)
+  })
   it.each([19, 24])("accepts %i prepared ordered Loft sections", (count) => {
     const sections = Array.from({ length: count }, (_, index) => profile(index + 1))
     expect(

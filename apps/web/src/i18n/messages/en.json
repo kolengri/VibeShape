@@ -516,6 +516,14 @@
           "label": "Mirror",
           "keywords": "mirror sketch geometry|reflect entities|symmetry line|copy across axis"
         },
+        "sketchFillet": {
+          "label": "Sketch fillet",
+          "keywords": "sketch fillet|round corner|tangent arc"
+        },
+        "sketchChamfer": {
+          "label": "Sketch chamfer",
+          "keywords": "sketch chamfer|bevel corner|cut corner"
+        },
         "sketchOffset": {
           "label": "Offset",
           "keywords": "offset sketch geometry|parallel copy|offset chain|offset loop"
@@ -1758,6 +1766,18 @@
         "invalid": "Enter a valid center, a count from 2 to 100, and an open angle between 0° and 360°.",
         "apply": "Apply circular pattern",
         "cancel": "Cancel"
+      },
+      "cornerTreatment": {
+        "fillet": "Sketch fillet",
+        "chamfer": "Sketch chamfer",
+        "select": "Select two adjacent non-construction lines. Existing dimensions stay on the virtual sharp corner.",
+        "radius": "Radius",
+        "firstDistance": "First setback",
+        "secondDistance": "Second setback",
+        "preview": "Corner treatment preview",
+        "invalid": "Select an unbranched corner and positive values that fit inside both lines.",
+        "cancel": "Cancel",
+        "apply": "Apply corner treatment"
       }
     },
     "variables": {
@@ -2201,7 +2221,7 @@
       "loftFeatureLabel": "Loft {number}",
       "sweepFeatureLabel": "Sweep {number}",
       "loftDescription": "Create and save closed sketches on origin or datum planes, then add two to twenty-four hole-free profiles in section order. Preview uses their exact authored positions; sketches are never repositioned automatically.",
-      "sweepDescription": "Choose one closed profile and an authored line/arc path. Create and save the profile sketch at the path start, normal to its starting tangent, using origin or datum planes. Preview checks the exact frames; it never repositions the profile.",
+      "sweepDescription": "Choose one closed profile and an authored open line, circular arc, cubic Bezier or elliptical arc path. Create and save the profile sketch at the path start, normal to its starting tangent, using origin or datum planes. Preview checks the exact frames; it never repositions the profile.",
       "sectionProfile": "Section profile",
       "chooseProfile": "Choose a solved closed profile",
       "addSection": "Add section",
@@ -2216,12 +2236,12 @@
       "pathSketch": "Path sketch",
       "choosePath": "Choose a saved path sketch",
       "pathCurves": "Path curves",
-      "pathDescription": "Select one open connected line/arc chain with tangent-continuous joins. Choose an exposed endpoint as its start to define direction. Branches, closed paths, corners and disconnected selections fail preview.",
+      "pathDescription": "Select one open connected path of lines, circular arcs, cubic Bezier curves or elliptical arcs with tangent-continuous joins. Choose an exposed endpoint as its start to define direction. Branches, closed paths, corners and disconnected selections fail preview.",
       "startPoint": "Path start point",
       "chooseStart": "Choose the path direction endpoint",
       "unavailablePath": "Select an available saved sketch containing authored lines or arcs.",
       "profileOption": "{sketch} · Profile {number}",
-      "curveOption": "{kind, select, line {Line} arc {Arc} other {Curve}} {number}",
+      "curveOption": "{kind, select, line {Line} arc {Arc} cubic_bezier {Bezier} elliptical_arc {Elliptical arc} other {Curve}} {number}",
       "pointOption": "Point {number} · ({x}, {y}, {z}) mm",
       "validationSummary": "Choose available hole-free profiles and a valid ordered section list or path selection before applying.",
       "previewFailed": "The exact feature could not be built. For Loft, check section order and compatible closed boundaries. For Sweep, check an open connected tangent-continuous path and a profile at its start normal to the starting tangent.",
@@ -2634,6 +2654,17 @@
       "originCoordinate": "Origin {axis} (mm)",
       "directionCoordinate": "Direction {axis}",
       "invalid": "Enter finite coordinates within 100,000 mm and a nonzero direction."
+    },
+    "partDesign": {
+      "loftHoles": {
+        "title": "Hole correspondence",
+        "description": "Match each hole boundary explicitly across every ordered section. Unmatched, duplicate or crossing holes block Apply.",
+        "boundary": "Hole track {track} · Section {section}",
+        "choose": "Choose a hole boundary",
+        "hole": "Hole {number}",
+        "remove": "Remove hole track {number}",
+        "add": "Add hole track"
+      }
     }
   }
 }

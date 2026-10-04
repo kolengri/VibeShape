@@ -12,7 +12,7 @@ import {
 } from "./part-design-body-combination"
 import { holeFeatureTypeHandler, holeFeatureTypeHandlerV2 } from "./part-design-hole"
 import { importedFeatureTypeHandler } from "./part-design-import"
-import { loftFeatureTypeHandler } from "./part-design-loft"
+import { loftFeatureTypeHandler, loftFeatureTypeHandlerV2 } from "./part-design-loft"
 import { meshImportFeatureTypeHandler } from "./part-design-mesh-import"
 import {
   mirrorFeatureTypeHandler,
@@ -1665,6 +1665,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   splitFeatureTypeHandler,
   splitFeatureTypeHandlerV2,
   loftFeatureTypeHandler,
+  loftFeatureTypeHandlerV2,
   sweepFeatureTypeHandler,
   importedFeatureTypeHandler,
   meshImportFeatureTypeHandler,

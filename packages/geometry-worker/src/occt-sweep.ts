@@ -16,7 +16,7 @@ import {
 } from "./occt-loft"
 
 type ProfileSegment = AnalyticalProfile["outer"]["segments"][number]
-type PathSegment = Extract<ProfileSegment, { type: "line" | "arc" }>
+type PathSegment = Exclude<ProfileSegment, { type: "circle" | "ellipse" }>
 export type AnalyticalSweepPath = Readonly<{
   frame: ExtrusionMultiProfileContentParameters["frame"]
   sourceEntityIds: readonly string[]
@@ -30,8 +30,8 @@ function parseSweepPath(path: AnalyticalSweepPath) {
   })
   const segments: PathSegment[] = []
   for (const segment of loop.segments) {
-    if (segment.type !== "line" && segment.type !== "arc")
-      throw new Error("Sweep paths support analytical lines and circular arcs only.")
+    if (segment.type === "circle" || segment.type === "ellipse")
+      throw new Error("Sweep paths require open analytical curves.")
     segments.push(segment)
   }
   return { frame, sourceEntityIds: loop.sourceEntityIds, segments }
