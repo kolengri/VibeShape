@@ -21,6 +21,10 @@ import {
   type LocalOperation,
   localFailure,
 } from "@vibeshape/automation-api/local-tools"
+import {
+  isLocalPlanarImport,
+  type LocalPlanarImportOperation,
+} from "@vibeshape/automation-api/planar-imports"
 import type {
   CadInspectionDetailQuery,
   CadInspectionListQuery,
@@ -48,6 +52,7 @@ import { createLocalPrimitiveCommand } from "./local-primitive-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
+import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
 import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
 
 type LocalExportResult =
@@ -64,6 +69,7 @@ type LocalSessionPort = Readonly<{
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
+  planarImports?: ReturnType<typeof createPlanarImportAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -301,10 +307,22 @@ export function createLocalToolExecutor(
           true,
         )
   }
-  function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
-    return session.imports
-      ? session.imports.execute(actor, operation, signal)
-      : localFailure("import-unavailable", "The paired session cannot import source files.")
+  async function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
+    if (!session.imports)
+      return localFailure("import-unavailable", "The paired session cannot import source files.")
+    const result = await session.imports.execute(actor, operation, signal)
+    if (operation.tool === "begin_import_upload" && result.ok) session.planarImports?.cancel()
+    return result
+  }
+  async function planarImportFile(operation: LocalPlanarImportOperation, signal?: AbortSignal) {
+    if (!session.planarImports)
+      return localFailure(
+        "planar-import-unavailable",
+        "The paired session cannot import planar sources.",
+      )
+    const result = await session.planarImports.execute(actor, operation, signal)
+    if (operation.tool === "begin_planar_import_upload" && result.ok) session.imports?.cancel()
+    return result
   }
   function assemblyLibrary(operation: LocalOperation, signal?: AbortSignal) {
     return session.assembly
@@ -322,8 +340,21 @@ export function createLocalToolExecutor(
           "The paired document has no surface texture authority.",
         )
   }
+  function isSourceImport(
+    operation: LocalOperation,
+  ): operation is LocalImportOperation | LocalPlanarImportOperation {
+    return isLocalImport(operation) || isLocalPlanarImport(operation)
+  }
+  function sourceImportFile(
+    operation: LocalImportOperation | LocalPlanarImportOperation,
+    signal?: AbortSignal,
+  ) {
+    return isLocalPlanarImport(operation)
+      ? planarImportFile(operation, signal)
+      : importFile(operation, signal)
+  }
   function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
-    if (isLocalImport(operation)) return importFile(operation, signal)
+    if (isSourceImport(operation)) return sourceImportFile(operation, signal)
     if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
     if (isSurfaceTextureToolName(operation.tool)) return surfaceTexture(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)

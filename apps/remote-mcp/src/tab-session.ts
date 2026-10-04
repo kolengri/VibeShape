@@ -14,6 +14,10 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import {
+  isLocalPlanarImport,
+  planarImportResultMatches,
+} from "@vibeshape/automation-api/planar-imports"
+import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_REQUEST_TIMEOUT_MS,
   REMOTE_SESSION_MAX_OPERATIONS,
@@ -360,6 +364,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     const operation = this.pending?.operation
     if (!operation || !result.ok) return true
     if (isLocalImport(operation)) return importResultMatches(operation, result.value)
+    if (isLocalPlanarImport(operation)) return planarImportResultMatches(operation, result.value)
     return !isLocalBinaryExport(operation) || binaryExportResultMatches(operation, result.value)
   }
   private async confirmResult(pending: Pending, result: unknown) {

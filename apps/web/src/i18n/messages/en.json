@@ -1546,6 +1546,22 @@
           "degenerateTriangles": "{count, plural, one {# degenerate triangle was removed.} other {# degenerate triangles were removed.}}",
           "explicitUnits": "Source units are caller-supplied metadata, not a file-unit measurement. STEP uses its declared file units; BREP and STL use the selected scale.",
           "declaredUnits": "3MF uses declared source units and component transforms."
+        },
+        "planarImportReview": {
+          "title": "Review AI sketch import",
+          "description": "Review the source curves, units and plane before adding an editable Sketch. Apply stores the source and Sketch together; it creates no Part.",
+          "file": "Source file",
+          "label": "Sketch name",
+          "units": "Source units",
+          "normalization": "{sourceUnit} · scale {scale} to millimeters",
+          "plane": "Sketch plane: {plane}",
+          "preview": "Imported planar curve preview",
+          "paths": "{count, plural, one {# source path} other {# source paths}}",
+          "closedPaths": "{count, plural, one {# closed path} other {# closed paths}}",
+          "curves": "{count, plural, one {# curve} other {# curves}}",
+          "size": "Size: {x} × {y} mm",
+          "declared": "Uses declared DXF units.",
+          "selected": "Uses the selected source units. SVG px uses 96 dpi."
         }
       },
       "viewport": {

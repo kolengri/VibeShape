@@ -185,6 +185,7 @@ export function createLocalAutomationConnection() {
     const review = [
       "commit_draft",
       "commit_import_upload",
+      "commit_planar_import_upload",
       "change_metadata",
       "commit_assembly_draft",
       "save_library_definition",

@@ -24,6 +24,7 @@ Use the [inspection skill](../vibeshape-inspection/SKILL.md) to choose targets a
 ## Capability boundaries
 
 For an authorized STEP/STP/BREP/STL/3MF source import, read [native source import](references/native-import.md).
+For SVG/DXF editable sketch import, read [planar source import](references/planar-import.md).
 Its upload, inspection and manual review flow is separate from CAD draft construction; it does not accept
 caller source hashes or bypass ordinary atomic persistence.
 

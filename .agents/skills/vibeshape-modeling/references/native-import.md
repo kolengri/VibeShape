@@ -3,7 +3,7 @@
 Use this flow only when the five import tools are advertised and the user authorized importing
 the selected source into the paired project. STEP/STP and BREP create exact solids. STL and 3MF
 create triangle meshes; they do not acquire BREP faces, edges or solid volume. SVG/DXF planar
-drawings and editable `.vshape` project files use their separate visible editor workflows.
+drawings use [planar source import](planar-import.md); editable `.vshape` project files use the visible editor workflow.
 
 1. Read the selected source with an authorized file capability, retain its raw bytes and safe leaf
    filename, and reject files above 6 MiB before uploading. An MCP connection does not itself grant
@@ -26,7 +26,7 @@ drawings and editable `.vshape` project files use their separate visible editor 
    result before reporting a saved revision. One accepted transaction stores source bytes, import
    feature and its ordinary Parts together, with normal CAS and Undo/Redo.
 6. Use `discard_import_upload` to release an unused temporary upload. It does not remove saved source
-   assets or delete a local file. Begin replaces the previous upload; disconnect, project replacement,
+   assets or delete a local file. Beginning either native or planar import replaces the previous temporary source; disconnect, project replacement,
    cancellation and five-minute idle expiry invalidate access. Restart from current revision after a
    stale base or lost session. If an accepted write's transport outcome is unknown, inspect the
    committed document before attempting another import.

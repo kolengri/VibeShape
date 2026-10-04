@@ -205,7 +205,23 @@ and 73 total operations including begin/inspect/commit/discard, within the exist
 The 192 KiB remote work budget is unchanged. Known units are required for STEP/BREP/STL; 3MF uses
 its declared units. Paths, URLs, caller hashes, pins and provenance are not accepted. See
 [ADR-0091](adr/0091-paired-native-source-imports.md) and the bundled modeling native-import workflow.
-SVG/DXF sketch and editable `.vshape` project import remain separate editor workflows.
+SVG/DXF sketch import uses the distinct planar source tools described below. Editable `.vshape` project import remains an editor workflow.
+
+## Planar source import
+
+The paired transports also advertise `begin_planar_import_upload`, `append_planar_import_chunk`,
+`inspect_planar_import_upload`, `commit_planar_import_upload` and `discard_planar_import_upload`.
+They reuse the same 6 MiB/90 KiB transfer bounds and existing SVG/DXF parser, exact transform
+preparation, editable Sketch builder and atomic source-assets transaction. SVG requires explicit
+physical units or `px` at 96 dpi. DXF accepts declared file units or a physical override. Choose
+`xy`, `xz` or `yz` before uploading. No caller transforms, hashes or authorizing flags are accepted.
+
+Inspection computes SHA-256 and captures sketch/path identities, normalization, 2D bounds and
+counts without saving a model. Commit reparses the source and opens manual analytical curve
+review. Apply creates an ordinary editable Sketch with source provenance, without a Part;
+rediscover solved profiles before adding an ordinary downstream feature. Unsupported geometry
+fails without flattening or partial import. Beginning either import kind releases the other
+temporary source. See [ADR-0092](adr/0092-paired-planar-source-imports.md) and the bundled planar-import workflow.
 
 Assembly and local-library tools use the same paired authority on local and remote MCP. Read the
 [assembly/library workflow](../.agents/skills/vibeshape-modeling/references/assembly-and-library.md)

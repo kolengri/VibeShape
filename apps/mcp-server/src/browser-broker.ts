@@ -46,6 +46,11 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import {
+  isLocalPlanarImport,
+  type LocalPlanarImportOperation,
+  planarImportResultMatches,
+} from "@vibeshape/automation-api/planar-imports"
+import {
   cadInspectionDetailViewSchema,
   cadInspectionListViewSchema,
   modelBodyMeasurementViewSchema,
@@ -327,6 +332,8 @@ function resultContextMatches(
   if (operation.tool === "change_metadata")
     return metadataCommitMatches(operation, result.value, documentId)
   if (isLocalImport(operation)) return importResultMatches(operation, result.value, documentId)
+  if (isLocalPlanarImport(operation))
+    return planarImportResultMatches(operation, result.value, documentId)
   return resultMatches(operation, result, documentId)
 }
 function resultMatches(
@@ -335,6 +342,7 @@ function resultMatches(
     | LocalMetadataReadOperation
     | Extract<LocalOperation, { tool: "change_metadata" }>
     | LocalImportOperation
+    | LocalPlanarImportOperation
   >,
   result: LocalToolResult,
   documentId: string,

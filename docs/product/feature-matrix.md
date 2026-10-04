@@ -273,7 +273,7 @@ A printability warning is a heuristic, not a guarantee of a successful print.
 | STEP AP242/AP214 | P0 | P0 | Exact B-Rep exchange |
 | Binary STL | P0 | P0 | Mesh compatibility |
 | 3MF Core | P1 in alpha, P0 for v1 | P0 | Primary printing exchange |
-| SVG/DXF 2D | P1 | P1 | Sketches and templates |
+| SVG/DXF 2D | P1 | P1 | Editable exact Sketch curves through editor and paired MCP source review |
 | OBJ/glTF | P2 | P2 | Visual mesh workflows |
 | IGES | P2 | P2 | Legacy CAD |
 | Proprietary CAD | Out | Out | Requires commercial SDKs or converters |

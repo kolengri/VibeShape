@@ -23,6 +23,8 @@ read contract. Exact automation drafts connect to ordinary browser persistence a
 
 Native STEP/STP/BREP/STL/3MF sources use bounded owned uploads, native inspection and manual browser Apply;
 see [the native import workflow](.agents/skills/vibeshape-modeling/references/native-import.md).
+SVG/DXF sources use separate [planar import tools](.agents/skills/vibeshape-modeling/references/planar-import.md)
+with analytical review and an ordinary editable Sketch transaction.
 Editable relief uses four named [SurfaceTexture tools](.agents/skills/vibeshape-modeling/references/surface-textures.md),
 lossless packed grayscale maps up to 256 by 256, exact face targets and ordered brush masks.
 Texture mutations require manual native relief preview and Apply even when CAD auto-apply is enabled.

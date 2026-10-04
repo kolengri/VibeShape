@@ -21,8 +21,9 @@ import { useSurfaceTexturePreviewContext } from "../features/surface-texture/sur
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
-import { isImportReview } from "./automation-review-state"
+import { isImportReview, isPlanarImportReview } from "./automation-review-state"
 import { ImportReviewPanel } from "./import-review-panel"
+import { PlanarImportReviewPanel } from "./planar-import-review-panel"
 import { SurfaceTextureReviewPanel } from "./surface-texture-review-panel"
 
 const commandLabels: Readonly<Record<DocumentCommand["kind"], string>> = {
@@ -367,6 +368,8 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
 }
 
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
+  if (isPlanarImportReview(review.input))
+    return <PlanarImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
   if (isImportReview(review.input))
     return <ImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
   if ("kind" in review.input && review.input.kind === "surface-texture")

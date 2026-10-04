@@ -1,4 +1,5 @@
 import { insertSketchInHistoryCommandSchema } from "@vibeshape/domain"
+import { type CommandActor, commandActorSchema } from "@vibeshape/domain/commands"
 import { documentV4AssetsCommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { draftIdSchema, sketchEntityIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
 import { authorPreparedPlanarImport } from "@vibeshape/domain/planar-import-authoring"
@@ -71,7 +72,9 @@ export function createPlanarImportTransaction(
   plane: z.infer<typeof planarPlaneSchema>,
   label: string,
   uuid = browserAuthoredUuid,
+  actor: CommandActor = { type: "user", userId: null },
 ) {
+  const authoredActor = commandActorSchema.parse(actor)
   const inspection = planarParserResponseSchema.parse(inspected)
   if (!inspection.ok || inspection.prepared.format !== source.input.format)
     throw new Error("Inspection must belong to the selected source format.")
@@ -104,7 +107,7 @@ export function createPlanarImportTransaction(
     commandId: uuid(),
     baseRevision: revision++,
     issuedAt,
-    actor: { type: "user" as const, userId: null },
+    actor: authoredActor,
   })
   const commands = [
     ...sourceAuthorityUpgradeCommands(context.authorityVersion, envelope),

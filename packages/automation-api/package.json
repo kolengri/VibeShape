@@ -21,6 +21,7 @@
     "./query-byte-budget": "./src/query-byte-budget.ts",
     "./binary-exports": "./src/binary-exports.ts",
     "./imports": "./src/imports.ts",
+    "./planar-imports": "./src/planar-imports.ts",
     "./assembly-tools": "./src/assembly-tools.ts",
     "./library-tools": "./src/library-tools.ts",
     "./assembly-result-context": "./src/assembly-result-context.ts",

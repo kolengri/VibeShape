@@ -76,6 +76,13 @@ import {
 import { localSketchTextInputs, localSketchTextOperations } from "./local-sketch-text-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
+  localPlanarImportInputs,
+  localPlanarImportOperations,
+  planarUploadCommitSchema,
+  planarUploadDescriptorSchema,
+  planarUploadInspectionSchema,
+} from "./planar-imports"
+import {
   cadInspectionDetailQuerySchema,
   cadInspectionDetailViewSchema,
   cadInspectionListQuerySchema,
@@ -152,6 +159,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  ...localPlanarImportInputs,
   ...localImportInputs,
   model_sketch_solution: sketchSolutionArgumentsSchema,
   ...localBinaryExportInputs,
@@ -248,6 +256,11 @@ export const localToolOutputs = {
   create_surface_texture: resultOf(surfaceTextureCommitViewSchema),
   update_surface_texture: resultOf(surfaceTextureCommitViewSchema),
   remove_surface_texture: resultOf(surfaceTextureCommitViewSchema),
+  begin_planar_import_upload: resultOf(planarUploadDescriptorSchema),
+  append_planar_import_chunk: resultOf(planarUploadDescriptorSchema),
+  inspect_planar_import_upload: resultOf(planarUploadInspectionSchema),
+  commit_planar_import_upload: resultOf(planarUploadCommitSchema),
+  discard_planar_import_upload: resultOf(importUploadDiscardSchema),
   update_box: resultOf(automationDraftStateSchema),
   create_cylinder: resultOf(automationDraftStateSchema),
   update_cylinder: resultOf(automationDraftStateSchema),
@@ -383,6 +396,11 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "begin_planar_import_upload",
+  "append_planar_import_chunk",
+  "inspect_planar_import_upload",
+  "commit_planar_import_upload",
+  "discard_planar_import_upload",
   ...primitiveToolNames,
   ...lifecycleToolNames,
   "create_placement",
@@ -490,6 +508,7 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  ...localPlanarImportOperations,
   ...localBinaryExportOperations,
   ...localImportOperations,
   z
