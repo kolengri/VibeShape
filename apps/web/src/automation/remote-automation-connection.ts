@@ -377,6 +377,18 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
       publish({ autoApply: true })
       return true
     },
+    disableAutoApply() {
+      const current = pair
+      if (
+        !current ||
+        snapshot.busy ||
+        automationReviews.getSnapshot() ||
+        !current.handle.disableAutoApply()
+      )
+        return false
+      publish({ autoApply: false })
+      return true
+    },
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
       listeners.add(listener)

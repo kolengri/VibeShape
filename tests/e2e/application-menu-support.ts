@@ -7,17 +7,19 @@ export async function openApplicationMenuItem(page: Page, name: string) {
 }
 
 export async function openAiConnections(page: Page) {
-  const dialog = page.getByRole("dialog", { name: "AI connections…", exact: true })
-  if (!(await dialog.isVisible())) await openApplicationMenuItem(page, "AI connections…")
-  return dialog
+  const footer = page.locator("main > footer")
+  await expect(footer).toBeVisible()
+  return footer
 }
 
 export async function enableLocalAi(page: Page) {
-  const dialog = await openAiConnections(page)
-  await dialog.getByRole("button", { name: "Enable AI session", exact: true }).click()
-  await expect(
-    dialog.getByRole("button", { name: "Disable AI session", exact: true }),
-  ).toBeVisible()
-  await dialog.getByRole("button", { name: "Close AI connections", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+  const footer = await openAiConnections(page)
+  await footer.getByRole("button", { name: "Enable AI session", exact: true }).click()
+  await expect(footer.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+}
+
+export async function openAutoApplySetup(page: Page) {
+  const footer = await openAiConnections(page)
+  await footer.getByRole("button", { name: "AI connection and approval mode", exact: true }).click()
+  await page.getByRole("menuitemradio", { name: "Apply automatically", exact: true }).click()
 }

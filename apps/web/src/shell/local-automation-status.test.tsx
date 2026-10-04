@@ -24,6 +24,7 @@ function setup(current: Props["current"] = manual) {
     enable: vi.fn().mockResolvedValue(true),
     disable: vi.fn().mockResolvedValue(undefined),
     enableAutoApply: vi.fn().mockReturnValue(true),
+    disableAutoApply: vi.fn().mockReturnValue(true),
   }
   const content = (snapshot: Props["current"]) => (
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -37,18 +38,23 @@ function setup(current: Props["current"] = manual) {
   }
 }
 
+async function openSetup() {
+  await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+  await userEvent.click(screen.getByRole("menuitemradio", { name: "Apply automatically" }))
+}
+
 afterEach(cleanup)
 
 describe("local AI auto-apply controls", () => {
   it("offers explicit setup only after pairing and preserves manual session actions", async () => {
     const { connection, rerender } = setup({ ...manual, connected: false })
-    expect(screen.queryByRole("button", { name: "Set up auto-apply" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "AI connection and approval mode" })).toBeNull()
     await userEvent.click(screen.getByRole("button", { name: "Enable AI session" }))
     expect(connection.enable).toHaveBeenCalledOnce()
     expect(connection.enableAutoApply).not.toHaveBeenCalled()
     rerender(manual)
-    expect(screen.getByRole("button", { name: "Disable AI session" })).toBeTruthy()
-    await userEvent.click(screen.getByRole("button", { name: "Set up auto-apply" }))
+    expect(screen.getByRole("button", { name: "Stop AI" })).toBeTruthy()
+    await openSetup()
     expect(screen.getByRole("dialog", { name: "Set up auto-apply" })).toBeTruthy()
     expect(screen.getByText(/only for this project and this paired AI session/)).toBeTruthy()
     expect(screen.getByText(/with Undo/)).toBeTruthy()
@@ -62,7 +68,7 @@ describe("local AI auto-apply controls", () => {
   it("keeps rejected setup visible and enables only after explicit successful confirmation", async () => {
     const { connection } = setup()
     connection.enableAutoApply.mockReturnValueOnce(false)
-    await userEvent.click(screen.getByRole("button", { name: "Set up auto-apply" }))
+    await openSetup()
     await userEvent.click(screen.getByRole("button", { name: "Enable auto-apply" }))
     expect(screen.getByRole("alert").textContent).toBe(
       "Wait for the current AI operation or review to finish, then try again.",
@@ -71,26 +77,56 @@ describe("local AI auto-apply controls", () => {
     await userEvent.click(screen.getByRole("button", { name: "Enable auto-apply" }))
     expect(connection.enableAutoApply).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 
   it("closes setup on disconnect and supports cancellation with focus restoration", async () => {
     const { rerender } = setup()
-    const trigger = screen.getByRole("button", { name: "Set up auto-apply" })
-    await userEvent.click(trigger)
+    const trigger = screen.getByRole("button", { name: "AI connection and approval mode" })
+    await openSetup()
     await userEvent.keyboard("{Escape}")
     expect(screen.queryByRole("dialog")).toBeNull()
     expect(document.activeElement).toBe(trigger)
-    await userEvent.click(trigger)
+    await openSetup()
     rerender({ ...manual, connected: false })
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("exposes the active indicator and stops the whole AI session without another confirmation", async () => {
     const { connection } = setup({ ...manual, autoApply: true })
-    expect(screen.getByRole("status").textContent).toBe("Auto-apply on")
-    expect(screen.queryByRole("button", { name: "Set up auto-apply" })).toBeNull()
+    expect(screen.getByRole("status").textContent).toBe("AI on · Auto-apply on")
+    expect(screen.getByRole("button", { name: "AI connection and approval mode" })).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
     expect(connection.disable).toHaveBeenCalledOnce()
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+  it("switches to manual approval without disconnecting and restores menu focus", async () => {
+    const { connection } = setup({ ...manual, autoApply: true })
+    const trigger = screen.getByRole("button", { name: "AI connection and approval mode" })
+    trigger.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Apply automatically" })
+        .getAttribute("aria-checked"),
+    ).toBe("true")
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Approve each change" }))
+    expect(connection.disableAutoApply).toHaveBeenCalledOnce()
+    expect(connection.disable).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it("blocks mode changes during an AI operation while keeping Stop AI available", async () => {
+    const { connection } = setup({ ...manual, autoApply: true, busy: true })
+    await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Approve each change" })
+        .hasAttribute("data-disabled"),
+    ).toBe(true)
+    expect(connection.disableAutoApply).not.toHaveBeenCalled()
+    await userEvent.keyboard("{Escape}")
+    await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+    expect(connection.disable).toHaveBeenCalledOnce()
   })
 })

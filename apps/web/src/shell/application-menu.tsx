@@ -1,13 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@vibeshape/ui/components/dialog"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -22,7 +15,7 @@ import {
   Keyboard,
   Settings,
 } from "@vibeshape/ui/components/icons"
-import { type ReactNode, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
@@ -38,7 +31,6 @@ type MenuDialog =
   | "export"
   | "settings"
   | "faq"
-  | "ai"
   | "source-import"
   | "planar-import"
   | "library"
@@ -48,7 +40,6 @@ export function ApplicationMenu({
   hideModelExport = false,
   blockedReason,
   unitChangesBlocked,
-  automationControls,
   remoteEndpoint,
   onOpenCommandPalette,
   onOpenShortcutHelp,
@@ -57,7 +48,6 @@ export function ApplicationMenu({
   hideModelExport?: boolean
   blockedReason: string | null
   unitChangesBlocked: boolean
-  automationControls: ReactNode
   remoteEndpoint?: string | undefined
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
@@ -169,14 +159,6 @@ export function ApplicationMenu({
               </kbd>
             </DropdownMenuItem>
           </DropdownMenuGroup>
-          {automationControls ? (
-            <DropdownMenuGroup aria-label={t("ai")} className="mt-1 border-t pt-1">
-              <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("ai")}</p>
-              <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("ai")}>
-                {t("aiConnections")}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          ) : null}
           <DropdownMenuGroup aria-label={t("help")} className="mt-1 border-t pt-1">
             <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("help")}</p>
             <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("faq")}>
@@ -255,15 +237,6 @@ export function ApplicationMenu({
         onOpenChange={dialogOpenChange}
         onCloseAutoFocus={closeDialogMenu}
       />
-      <Dialog open={dialog === "ai"} onOpenChange={dialogOpenChange}>
-        <DialogContent closeLabel={t("closeAi")} onCloseAutoFocus={closeDialogMenu}>
-          <DialogHeader>
-            <DialogTitle>{t("aiConnections")}</DialogTitle>
-            <DialogDescription>{t("aiDescription")}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">{automationControls}</div>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

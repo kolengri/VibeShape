@@ -16,6 +16,7 @@ it("shows the exact consent client and return address, approves explicitly and d
     enable: vi.fn(),
     disable: vi.fn(),
     enableAutoApply: vi.fn(),
+    disableAutoApply: vi.fn(),
     configuration: vi.fn(),
     subscribe: vi.fn(),
     getSnapshot: vi.fn(),

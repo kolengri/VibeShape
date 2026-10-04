@@ -606,7 +606,7 @@ At the 1024 px authoring minimum, direct sketch creation, profile features, view
 
 ## Automation and MCP Experience
 
-AI automation is an inspectable participant in the existing command workflow, not an invisible cursor. Pairing and document sharing are separate explicit user actions.
+AI automation is an inspectable participant in the existing command workflow, not an invisible cursor. Pairing and document sharing are separate explicit user actions. The bottom status bar owns local/remote pairing, connected state, and the neutral Stop AI action. Clicking the connected status opens the manual/automatic approval menu. Automatic application retains explicit project/session consent; switching an idle session back to manual review keeps pairing active. Mode changes cannot alter a commit already in progress.
 
 The automation surface shows:
 

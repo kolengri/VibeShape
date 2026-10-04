@@ -407,6 +407,18 @@ export function createLocalAutomationConnection() {
       publish({ ...snapshot, autoApply: true })
       return true
     },
+    disableAutoApply() {
+      const current = pair
+      if (
+        !current ||
+        snapshot.busy ||
+        automationReviews.getSnapshot() ||
+        !current.handle.disableAutoApply()
+      )
+        return false
+      publish({ ...snapshot, autoApply: false })
+      return true
+    },
     disable,
     status,
     start() {

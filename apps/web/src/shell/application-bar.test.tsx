@@ -9,6 +9,8 @@ import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
 import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { ApplicationBar } from "./application-bar"
+import { AutomationConnectionsProvider } from "./automation-status"
+import { StatusBar } from "./status-bar"
 import { ViewerPreferencesProvider } from "./viewer-preferences"
 import { WorkspaceLayoutPreferencesProvider } from "./workspace-layout-preferences"
 
@@ -16,6 +18,7 @@ const work = vi.hoisted(() => ({
   active: vi.fn(),
   register: vi.fn(() => () => {}),
   disable: vi.fn(),
+  remoteDisable: vi.fn(),
   remoteConsent: vi.fn(),
   remote: {
     available: false,
@@ -57,7 +60,7 @@ vi.mock("../automation/remote-automation-connection", () => ({
     subscribe: () => () => {},
     start: vi.fn(),
     dispose: vi.fn(),
-    disable: vi.fn(),
+    disable: work.remoteDisable,
     consent: work.remoteConsent,
   }),
 }))
@@ -70,6 +73,7 @@ vi.mock("../editor-session/editor-session-provider", () => {
 beforeEach(() => {
   work.local = { available: false, busy: false, connected: false, autoApply: false, client: null }
   work.disable.mockReset()
+  work.remoteDisable.mockReset()
   work.remoteConsent.mockReset()
   work.remote = {
     available: false,
@@ -123,11 +127,13 @@ it("keeps File blocked after save failure while allowing unit retry only without
         <ViewerPreferencesProvider>
           <WorkspaceLayoutPreferencesProvider>
             <TooltipProvider>
-              <ApplicationBar
-                controller={controller}
-                onOpenCommandPalette={vi.fn()}
-                onOpenShortcutHelp={vi.fn()}
-              />
+              <AutomationConnectionsProvider controller={controller}>
+                <ApplicationBar
+                  controller={controller}
+                  onOpenCommandPalette={vi.fn()}
+                  onOpenShortcutHelp={vi.fn()}
+                />
+              </AutomationConnectionsProvider>
             </TooltipProvider>
           </WorkspaceLayoutPreferencesProvider>
         </ViewerPreferencesProvider>
@@ -179,12 +185,15 @@ function renderHeader(
       <ViewerPreferencesProvider>
         <WorkspaceLayoutPreferencesProvider>
           <TooltipProvider>
-            <ApplicationBar
-              controller={controller}
-              hideModelExport={hideModelExport}
-              onOpenCommandPalette={onOpenCommandPalette}
-              onOpenShortcutHelp={onOpenShortcutHelp}
-            />
+            <AutomationConnectionsProvider controller={controller}>
+              <ApplicationBar
+                controller={controller}
+                hideModelExport={hideModelExport}
+                onOpenCommandPalette={onOpenCommandPalette}
+                onOpenShortcutHelp={onOpenShortcutHelp}
+              />
+              <StatusBar controller={controller} selectedOriginPlane={null} selection={null} />
+            </AutomationConnectionsProvider>
           </TooltipProvider>
         </WorkspaceLayoutPreferencesProvider>
       </ViewerPreferencesProvider>
@@ -226,14 +235,49 @@ it("invokes palette and shortcut help with the persistent menu trigger as the re
   expect(shortcuts).toHaveBeenCalledWith(trigger)
 })
 
-it("keeps Stop AI directly accessible while connection settings are in the menu", async () => {
+it("keeps AI status and neutral Stop AI in the footer instead of the application header", async () => {
   work.local = { available: true, busy: false, connected: true, autoApply: true, client: null }
   renderHeader()
   expect(screen.queryByRole("button", { name: "Remote AI…" })).toBeNull()
-  await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+  const stop = screen.getByRole("button", { name: "Stop AI" })
+  expect(stop.closest("footer")).toBeTruthy()
+  expect(stop.closest("header")).toBeNull()
+  expect(stop.className).not.toContain("bg-destructive")
+  await userEvent.click(stop)
   expect(work.disable).toHaveBeenCalledTimes(1)
+  expect(work.remoteDisable).toHaveBeenCalledTimes(1)
   await userEvent.click(screen.getByRole("button", { name: "Application menu" }))
-  expect(screen.getByRole("menuitem", { name: "AI connections…" })).toBeTruthy()
+  expect(screen.queryByRole("menuitem", { name: "AI connections…" })).toBeNull()
+})
+
+it("stops both connections when a remote pairing hides an already connected local client", async () => {
+  work.local = { available: true, busy: false, connected: true, autoApply: true, client: null }
+  work.remote = {
+    ...work.remote,
+    available: true,
+    connected: true,
+    pairingCode: "ABCDEF0123456789",
+  }
+  renderHeader()
+  expect(screen.getAllByRole("button", { name: "Stop AI" })).toHaveLength(1)
+  await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+  expect(work.disable).toHaveBeenCalledOnce()
+  expect(work.remoteDisable).toHaveBeenCalledOnce()
+})
+
+it("keeps local AI status and Stop visible while remote pairing is still awaiting authorization", async () => {
+  work.local = { available: true, busy: false, connected: true, autoApply: true, client: null }
+  work.remote = {
+    ...work.remote,
+    available: true,
+    connected: false,
+    pairingCode: "ABCDEF0123456789",
+  }
+  renderHeader()
+  expect(screen.getByText("AI on · Auto-apply on").closest("footer")).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+  expect(work.disable).toHaveBeenCalledOnce()
+  expect(work.remoteDisable).toHaveBeenCalledOnce()
 })
 
 it("shows incoming remote consent while the application menu and connection settings are closed", async () => {

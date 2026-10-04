@@ -1127,6 +1127,7 @@ export function createActiveDocumentAutomationSession() {
     surfaceTextures,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
+    disableAutoApply: factory.disableAutoApply,
     readInfo,
     readSketchSolution: factory.readSketchSolution,
     readCad,

@@ -47,22 +47,31 @@ export function RemoteAutomationStatus({
   useEffect(() => {
     if (current.consent) setOpen(false)
   }, [current.consent])
-  return (
+  return current.connected ? (
+    <LocalAutomationStatus
+      connection={{
+        enable: async () => false,
+        disable: connection.disable,
+        enableAutoApply: connection.enableAutoApply,
+        disableAutoApply: connection.disableAutoApply,
+      }}
+      current={{
+        available: true,
+        connected: true,
+        autoApply: current.autoApply,
+        busy: current.busy,
+        client: { name: current.client?.name ?? "", version: "OAuth" },
+        error: current.error,
+      }}
+    />
+  ) : (
     <div className="flex shrink-0 items-center gap-1">
-      <Dialog
-        open={open && current.consent === null}
-        onOpenChange={(next) => {
-          setOpen(next)
-          if (!next) {
-            if (current.consent) connection.consent(false)
-          }
-        }}
-      >
+      <Dialog open={open && current.consent === null} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button
             type="button"
             size="xs"
-            variant="outline"
+            variant="ghost"
             disabled={blocked && !current.pairingCode}
           >
             {t("trigger")}
@@ -70,7 +79,7 @@ export function RemoteAutomationStatus({
         </DialogTrigger>
         <DialogContent closeLabel={t("close")}>
           <DialogHeader>
-            <DialogTitle>{t(current.consent ? "consentTitle" : "title")}</DialogTitle>
+            <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("scope")}</DialogDescription>
           </DialogHeader>
           <RemoteDialogBody
@@ -88,23 +97,6 @@ export function RemoteAutomationStatus({
           ) : null}
         </DialogContent>
       </Dialog>
-      {current.connected ? (
-        <LocalAutomationStatus
-          connection={{
-            enable: async () => false,
-            disable: connection.disable,
-            enableAutoApply: connection.enableAutoApply,
-          }}
-          current={{
-            available: true,
-            connected: true,
-            autoApply: current.autoApply,
-            busy: current.busy,
-            client: { name: current.client?.name ?? "", version: "OAuth" },
-            error: current.error,
-          }}
-        />
-      ) : null}
     </div>
   )
 }

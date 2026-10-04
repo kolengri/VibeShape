@@ -156,6 +156,11 @@ export function createDocumentAutomationSession(
       autoApplyActor = parsed.data
       return true
     },
+    disableAutoApply() {
+      if (closed || commitActive || automationReviews.getSnapshot()) return false
+      autoApplyActor = null
+      return true
+    },
     host: {
       ...factory.host,
       async commitDraft(actor: unknown, request: unknown) {

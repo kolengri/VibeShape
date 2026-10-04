@@ -7,6 +7,8 @@ import { useDocumentDisplayUnits } from "../document/document-display-units"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import { modelFaceSelectionDisplayOrdinal } from "../features/sketch/external-model-geometry"
 
+import { AutomationStatus } from "./automation-status"
+
 const EMPTY_GEOMETRY = [] as const
 
 function rebuiltGeometry(controller: DocumentControllerState) {
@@ -105,14 +107,16 @@ export function StatusBar({
   const selectedEntity = useSelectionLabel(controller, selection, selectedOriginPlane, selectedBody)
 
   return (
-    <footer
-      className="flex items-center gap-4 border-t bg-toolbar px-2 text-xs text-muted-foreground"
-      role="status"
-    >
+    <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 text-xs text-muted-foreground">
       <span>{t("units", displayUnits)}</span>
-      <span>{t("filter", { filter: t("selectionAny") })}</span>
-      <span>{t("selection", { selection: selectedEntity })}</span>
-      <span className="ml-auto">{t("ready")}</span>
+      <span className="hidden lg:inline">{t("filter", { filter: t("selectionAny") })}</span>
+      <span className="min-w-0 truncate" role="status">
+        {t("selection", { selection: selectedEntity })}
+      </span>
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <AutomationStatus controller={controller} />
+        <span className="hidden xl:inline">{t("ready")}</span>
+      </div>
     </footer>
   )
 }

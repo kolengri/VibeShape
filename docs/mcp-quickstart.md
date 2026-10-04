@@ -40,16 +40,16 @@ by the adapter from [authoring-guide.ts](../apps/mcp-server/src/authoring-guide.
 without document access. The session resource exposes no token or document identity.
 
 Open the returned editor URL, open or create the intended project, then choose
-**VibeShape → AI connections… → Enable AI session**.
+**Enable AI session** in the bottom status bar.
 Read `model_info`, create a draft at its committed revision, issue supported named commands,
 preview exact geometry, and request `commit_draft`. Click Apply in the browser review. Then read
 the new revision and export STEP/STL/3MF. The export response contains a resource link; read it,
 decode the returned base64 blob and save it with the client's file tools. Ordinary saved state,
 manual editing and Undo use the same document session.
 
-For this project and paired session only, **Set up auto-apply** offers an explicit opt-in for valid
-CAD creation and parameter edits. The visible **Auto-apply on** indicator always includes **Stop AI**,
-which ends the pairing immediately. Destructive or unsupported drafts still require review; an
+For this project and paired session only, **AI connection and approval mode → Apply automatically** opens **Set up auto-apply** for an explicit opt-in for valid
+CAD creation and parameter edits. The neutral status-bar **Auto-apply on** indicator always includes **Stop AI**. **Approve each change** returns an idle session to manual review without ending pairing.
+Stop AI ends the pairing immediately. Destructive or unsupported drafts still require review; an
 already pending review cannot be auto-approved. Invalid geometry and stale revisions are rejected.
 The grant resets on disconnect, project change, and reload. Local MCP restores the same project
 after a reload in the same tab within 60 seconds, without extending the original session expiry.

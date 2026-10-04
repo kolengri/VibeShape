@@ -45,6 +45,7 @@ const work = {
 }
 const fetchMock = vi.fn<typeof fetch>()
 const dispose = vi.fn()
+const optOut = vi.fn()
 const optIn = vi.fn()
 const sockets: FakeSocket[] = []
 let connection: ReturnType<typeof createRemoteAutomationConnection>
@@ -74,9 +75,11 @@ beforeEach(() => {
     documentId: id,
     dispose,
     enableAutoApply: optIn,
+    disableAutoApply: optOut,
     readInfo: () => ({ summary: { documentId: id, revision: 4, data: { name: "Bracket" } } }),
   })
   optIn.mockReturnValue(true)
+  optOut.mockReturnValue(true)
   mocks.activeWork.mockReturnValue(null)
   mocks.review.mockReturnValue(null)
   mocks.execute.mockResolvedValue(result)
@@ -130,6 +133,12 @@ describe("browser-owned remote automation lifecycle", () => {
     expect(optIn).not.toHaveBeenCalled()
     expect(connection.enableAutoApply()).toBe(true)
     expect(optIn).toHaveBeenCalledWith(actor)
+    optOut.mockReturnValueOnce(false)
+    expect(connection.disableAutoApply()).toBe(false)
+    expect(connection.getSnapshot().autoApply).toBe(true)
+    expect(connection.disableAutoApply()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(dispose).not.toHaveBeenCalled()
     await connection.disable()
     expect(dispose).toHaveBeenCalledOnce()
     expect(connection.getSnapshot()).toMatchObject({
