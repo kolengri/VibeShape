@@ -153,6 +153,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.shell",
+        "org.vibeshape.feature.part-design.shell",
         "org.vibeshape.feature.part-design.sphere",
         "org.vibeshape.feature.part-design.split",
         "org.vibeshape.feature.part-design.sweep",

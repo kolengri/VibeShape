@@ -9,6 +9,7 @@ import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { ShellForm } from "./shell-form"
 import { formatShellMeasurement, type ShellFormMode, shellFormFeature } from "./shell-form-model"
+import type { ShellPickRequest } from "./shell-picking"
 
 const sourceId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7801")
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7802")
@@ -52,7 +53,12 @@ const copy = {
   face: ({ area, z }: { number: number; area: string; x: string; y: string; z: string }) =>
     `Top face: ${area} mm² at z=${z} mm`,
 }
-function setup(formMode = mode, source = evidence, status: "ready" | "loading" = "ready") {
+function setup(
+  formMode = mode,
+  source = evidence,
+  status: "ready" | "loading" = "ready",
+  pickingRequest: ShellPickRequest | null = null,
+) {
   const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({
     ok: true as const,
   }))
@@ -72,6 +78,7 @@ function setup(formMode = mode, source = evidence, status: "ready" | "loading" =
         onCancel={onCancel}
         onPreviewChange={onPreviewChange}
         previewStatus={status}
+        pickingRequest={pickingRequest}
       />
     </I18nProvider>,
   )
@@ -81,7 +88,7 @@ function editedFeature() {
   const feature = shellFormFeature(
     mode,
     featureId,
-    { thickness: "1 mm", direction: "inward", openingIds: ["face:top"] },
+    { closed: false, thickness: "1 mm", direction: "inward", openingIds: ["face:top"] },
     evidence,
     [],
     { length: "mm", angle: "deg" },
@@ -131,7 +138,10 @@ describe("Shell form and explicit opening repair", () => {
   })
   it("clears stale openings and permits explicit reselection against new source evidence", async () => {
     const f = setup(
-      { kind: "edit", feature: editedFeature() },
+      {
+        kind: "edit",
+        feature: { ...editedFeature(), type: { ...editedFeature().type, schemaVersion: 1 } },
+      },
       { ...evidence, contentHash: "b".repeat(64) },
     )
     expect(screen.getByText(copy.repair)).toBeTruthy()
@@ -173,5 +183,79 @@ describe("Shell form and explicit opening repair", () => {
     expect(
       (screen.getByRole("button", { name: "Apply shell" }) as HTMLButtonElement).disabled,
     ).toBe(true)
+  })
+  it("authors a closed cavity explicitly and restores open face selection when switching back", async () => {
+    const f = setup()
+    await userEvent.click(screen.getByRole("checkbox", { name: /Top face/ }))
+    await userEvent.click(screen.getByRole("radio", { name: "Closed cavity" }))
+    expect(screen.queryByRole("checkbox")).toBeNull()
+    await waitFor(() =>
+      expect(f.onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: expect.objectContaining({ schemaVersion: 2 }),
+          parameters: expect.objectContaining({ openings: [] }),
+        }),
+      ),
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Open cavity" }))
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true)
+    await userEvent.click(screen.getByRole("radio", { name: "Closed cavity" }))
+    await userEvent.click(screen.getByRole("button", { name: "Apply shell" }))
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1].parameters.openings).toEqual([])
+  })
+  it("retains a version 2 semantic opening after source dimensions change", () => {
+    setup(
+      { kind: "edit", feature: editedFeature() },
+      {
+        ...evidence,
+        contentHash: "b".repeat(64),
+        candidates: evidence.candidates.map((candidate) => ({
+          ...candidate,
+          signature: { ...candidate.signature, measure: 700, centroid: [0, 0, 45] },
+        })),
+      },
+    )
+    expect(screen.queryByText(copy.repair)).toBeNull()
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true)
+  })
+  it("does not turn a lost opening into a closed cavity", () => {
+    setup(
+      { kind: "edit", feature: editedFeature() },
+      {
+        ...evidence,
+        contentHash: "b".repeat(64),
+        candidates: evidence.candidates.map((candidate) => ({
+          ...candidate,
+          semanticRole: "another-face",
+        })),
+      },
+    )
+    expect(screen.getByText(copy.repair)).toBeTruthy()
+    expect((screen.getByRole("radio", { name: "Open cavity" }) as HTMLInputElement).checked).toBe(
+      true,
+    )
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false)
+  })
+  it("accepts one viewport face request once and rejects stale source evidence", async () => {
+    const f = setup(mode, evidence, "ready", {
+      sequence: 1,
+      featureId,
+      sourceContentHash: evidence.contentHash,
+      candidateId: "face:top",
+    })
+    await waitFor(() =>
+      expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true),
+    )
+    await userEvent.click(screen.getByRole("radio", { name: /Outward/ }))
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true)
+    f.unmount()
+    setup(mode, evidence, "ready", {
+      sequence: 2,
+      featureId,
+      sourceContentHash: "b".repeat(64),
+      candidateId: "face:top",
+    })
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false)
   })
 })

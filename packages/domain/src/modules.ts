@@ -43,7 +43,7 @@ import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType } from "./part-design-mirror"
 import { patternFeatureType } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
-import { shellFeatureType } from "./part-design-shell"
+import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType } from "./part-design-thread"
@@ -439,6 +439,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     mirrorFeatureType,
     patternFeatureType,
     shellFeatureType,
+    shellFeatureTypeV2,
     splitFeatureType,
     loftFeatureType,
     sweepFeatureType,

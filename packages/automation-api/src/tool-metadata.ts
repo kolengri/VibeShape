@@ -34,9 +34,9 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   update_split:
     "Update an existing Split in an owned draft. Preserve feature identity and exact targetBody, supply its sole matching dependency, no topology references, plane and signed offset. Its two independently owned output roles remain split.negative and split.positive. Use a fresh commandId and current draft revision; preview before commit.",
   create_shell:
-    "Stage a single-body shell with exact body-bound opening faces and explicit inward/outward thickness in a draft. Changed source geometry requires reselecting openings.",
+    "Stage a single-body Shell with explicit inward/outward thickness. Use empty openings for a closed cavity or exact body-bound face references for an open cavity. Unique durable face identities survive source edits; missing or ambiguous openings require repair.",
   update_shell:
-    "Update a shell in a draft. Supply current exact body topology references and source content hash to explicitly repair stale openings.",
+    "Update a Shell in a draft using version 2. Supply current exact body topology references and source content hash to repair unresolved openings, or empty openings for a closed cavity.",
   create_thread:
     "Model a custom 60-degree V-groove external/internal thread on one exact named body in an owned draft. Supply targetBody, its sole matching dependency, no topology references, XYZ axis and explicit XYZ origin quantities, nominalDiameter, pitch, length, depth, radial clearance, right/left handedness, scalar starts from 1 to 4, phase angle and nonnegative runIn/runOut unthreaded axial allowances. All quantities retain expression intent. The positive band is limited to 16 total turns and depth to 0.75 times pitch. This is custom geometry, without ISO/DIN fit or smooth taper claims. Preview must succeed before ordinary commit; use fresh commandId/current draft revision.",
   update_thread:
