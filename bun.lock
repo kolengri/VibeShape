@@ -31,6 +31,7 @@
       },
       "devDependencies": {
         "@vibeshape/typescript-config": "workspace:*",
+        "vite": "catalog:",
       },
     },
     "apps/remote-mcp": {
@@ -94,9 +95,11 @@
         "@tailwindcss/vite": "catalog:",
         "@testing-library/react": "16.3.2",
         "@testing-library/user-event": "14.6.3",
+        "@types/node": "26.1.2",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
         "@vibeshape/extension-spike": "workspace:*",
+        "@vibeshape/mcp-server": "workspace:*",
         "@vibeshape/test-models": "workspace:*",
         "@vibeshape/typescript-config": "workspace:*",
         "@vitejs/plugin-react": "catalog:",

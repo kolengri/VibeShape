@@ -10,11 +10,11 @@
     "#lib/*": "./src/lib/*.ts"
   },
   "scripts": {
-    "dev": "vite",
-    "dev:e2e": "vite --host 127.0.0.1 --port 4173",
+    "dev": "bun node_modules/vite/bin/vite.js",
+    "dev:e2e": "bun node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.vite.json"
   },
   "dependencies": {
     "@dnd-kit/dom": "catalog:",
@@ -43,6 +43,8 @@
     "@vibeshape/print-analysis": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "26.1.2",
+    "@vibeshape/mcp-server": "workspace:*",
     "rollup-plugin-license": "3.7.1",
     "@tailwindcss/vite": "catalog:",
     "@testing-library/react": "16.3.2",

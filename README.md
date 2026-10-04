@@ -190,6 +190,11 @@ VibeShape is distributed under the **GNU General Public License v3.0 or later**.
 
 ## Local MCP development preview
 
+`bun run dev` starts the Vite editor and a loopback Streamable HTTP MCP endpoint in the same
+process. Connect an HTTP MCP client to the `Local MCP` URL printed in the terminal (normally
+`http://localhost:5173/mcp`), open that editor, and enable its AI session. Vite hot reload and
+browser-local projects remain on the development origin. See [development MCP setup](docs/mcp-quickstart.md#development-server).
+
 Build the editor with `bun run build`, then configure a local stdio MCP client to run `bun` with the
 absolute path to `apps/mcp-server/src/index.ts`. The process writes its editor URL to stderr and
 keeps stdout for MCP. The default is `http://127.0.0.1:43114`; open that URL, open/import a project,

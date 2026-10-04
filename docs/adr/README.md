@@ -101,6 +101,7 @@
 | [0092](0092-paired-planar-source-imports.md) | Accepted | Paired SVG/DXF source uploads, analytical review and editable Sketch publication |
 
 | [0095](0095-local-mcp-continuous-recovery.md) | Accepted | Continuous recovery of approved local MCP sessions |
+| [0096](0096-development-http-mcp.md) | Accepted | Development HTTP MCP sharing the Vite editor origin |
 
 Statuses:
 
