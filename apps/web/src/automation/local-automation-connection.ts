@@ -182,11 +182,15 @@ export function createLocalAutomationConnection() {
   function progress(current: Pair) {
     const active = current.active
     if (!active) return null
-    const review =
-      active.work.operation.tool === "commit_draft" ||
-      active.work.operation.tool === "change_metadata"
-        ? automationReviews.getSnapshot()
-        : null
+    const review = [
+      "commit_draft",
+      "change_metadata",
+      "commit_assembly_draft",
+      "save_library_definition",
+      "update_library_metadata",
+    ].includes(active.work.operation.tool)
+      ? automationReviews.getSnapshot()
+      : null
     const stage =
       review?.status === "applying"
         ? "applying"

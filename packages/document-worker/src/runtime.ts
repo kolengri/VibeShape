@@ -22,6 +22,7 @@ import {
   type SketchRecord,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
 import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type {
@@ -32,6 +33,7 @@ import type {
 import { preparePrintMeshes } from "@vibeshape/print-analysis"
 import type { PrintPreparationSettings } from "@vibeshape/protocol"
 import {
+  assemblyConstraintFailureSchema,
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerDiagnosticCode,
   type DocumentWorkerRequest,
@@ -45,7 +47,7 @@ import {
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import { exportAssemblyRuntime } from "./assembly-export"
-import { inspectAssemblyRuntime } from "./assembly-inspection"
+import { AssemblyMaterializationError, inspectAssemblyRuntime } from "./assembly-inspection"
 import { exportBodyName, selectExportBodies } from "./export-bodies"
 import {
   type ExternalModelMaterializationCache,
@@ -298,6 +300,7 @@ export class DocumentWorkerRuntime {
     private readonly endpoint: DocumentWorkerEndpoint,
     private readonly registry: FeatureTypeRegistry = createBuiltInFeatureRegistry(),
     private readonly solveSketch: SketchSolvePort | null = null,
+    private readonly solveAssembly: AssemblyConstraintSolvePort | undefined = undefined,
   ) {}
 
   async handle(input: unknown) {
@@ -354,6 +357,7 @@ export class DocumentWorkerRuntime {
           request.input.assembly,
           request,
           request.input.settings,
+          this.solveAssembly,
         )
         this.#post({
           ...requestEnvelope(request),
@@ -370,6 +374,7 @@ export class DocumentWorkerRuntime {
           this.solveSketch,
           request.input,
           request,
+          this.solveAssembly,
         )
         this.#post({ ...requestEnvelope(request), type: "assemblyInspected", inspection })
         return
@@ -400,8 +405,23 @@ export class DocumentWorkerRuntime {
       this.#documents.delete(request.documentId)
       this.#post({ ...requestEnvelope(request), type: "documentDisposed", ownedShapeCount })
     } catch (error) {
-      this.#postFailure(request, "internal-error", errorMessage(error), false)
+      this.#postOperationError(request, error)
     }
+  }
+  #postOperationError(request: DocumentWorkerRequest, error: unknown) {
+    if (error instanceof AssemblyMaterializationError) {
+      const assembly = { code: error.diagnostic.code, jointIds: error.diagnostic.jointIds ?? [] }
+      this.#post({
+        ...requestEnvelope(request),
+        type: "failure",
+        diagnostic: {
+          code: "assembly-solve-failed",
+          message: errorMessage(error),
+          retryable: false,
+          ...(assemblyConstraintFailureSchema.safeParse(assembly).success ? { assembly } : {}),
+        },
+      })
+    } else this.#postFailure(request, "internal-error", errorMessage(error), false)
   }
 
   async #inspectSource(request: Extract<DocumentWorkerRequest, { type: "inspectSourceImport" }>) {
@@ -783,12 +803,17 @@ export class DocumentWorkerRuntime {
 export function createDocumentWorkerRuntime(
   engine: GeometryKernelEngine,
   endpoint: DocumentWorkerEndpoint,
-  options: Readonly<{ registry?: FeatureTypeRegistry; solveSketch?: SketchSolvePort }> = {},
+  options: Readonly<{
+    registry?: FeatureTypeRegistry
+    solveSketch?: SketchSolvePort
+    solveAssembly?: AssemblyConstraintSolvePort
+  }> = {},
 ) {
   return new DocumentWorkerRuntime(
     engine,
     endpoint,
     options.registry ?? createBuiltInFeatureRegistry(),
     options.solveSketch ?? null,
+    options.solveAssembly,
   )
 }

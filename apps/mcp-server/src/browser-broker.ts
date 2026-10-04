@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
+import { assemblyResultContextMatches } from "@vibeshape/automation-api/assembly-result-context"
 import {
   authoredFoldersViewSchema,
   authoredHistoryViewSchema,
@@ -30,6 +31,7 @@ import {
   isLocalInspection,
   isLocalMetadataRead,
   isLocalMetadataTool,
+  type LocalDraftCommandOperation,
   type LocalInspectionOperation,
   type LocalMetadataReadOperation,
   localExportSchema,
@@ -110,9 +112,7 @@ function bodyLimit(operation: LocalOperation | null) {
   return operation?.tool === "export_model" ? MAX_EXPORT_BODY : MAX_BODY
 }
 
-type StateOperation = Extract<LocalOperation, { arguments: { baseRevision: number } }> & {
-  tool: Exclude<LocalOperation["tool"], "change_metadata">
-}
+type StateOperation = Extract<LocalOperation, { tool: "create_draft" }> | LocalDraftCommandOperation
 function stateMatches(operation: StateOperation, value: unknown, documentId: string) {
   const state = automationDraftStateSchema.parse(value)
   if (state.documentId !== documentId) return false
@@ -123,13 +123,10 @@ function stateMatches(operation: StateOperation, value: unknown, documentId: str
     state.revision === operation.arguments.baseRevision + 1
   )
 }
-function draftResultMatches(
-  operation: Extract<LocalOperation, { tool: "preview_draft" | "commit_draft" | "discard_draft" }>,
-  value: unknown,
-  documentId: string,
-) {
+function draftResultMatches(operation: LocalOperation, value: unknown, documentId: string) {
   if (operation.tool === "discard_draft")
     return automationDraftDiscardViewSchema.parse(value).draftId === operation.arguments.draftId
+  if (operation.tool !== "preview_draft" && operation.tool !== "commit_draft") return false
   const draft =
     operation.tool === "preview_draft"
       ? automationDraftPreviewSchema.parse(value).draft
@@ -314,6 +311,8 @@ function resultContextMatches(
   result: LocalToolResult,
   documentId: string,
 ) {
+  const assembly = assemblyResultContextMatches(operation, result, documentId)
+  if (assembly !== null) return assembly
   if (!result.ok) return true
   if (isLocalMetadataRead(operation))
     return metadataListMatches(operation, result.value, documentId)

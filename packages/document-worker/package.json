@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*",
+    "replicad": "catalog:",
     "replicad-opencascadejs": "catalog:",
     "vite": "catalog:"
   }

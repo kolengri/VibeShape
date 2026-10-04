@@ -1,6 +1,7 @@
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
 import {
   booleanFeatureType,
+  booleanFeatureTypeV2,
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
@@ -23,6 +24,7 @@ import {
   readExtrusionFeatureParameters,
   revolveFeatureType,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV7,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
   sphereFeatureType,
@@ -222,7 +224,10 @@ export function isChamferFeature(feature: FeatureRecord) {
 }
 
 export function isBooleanFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, booleanFeatureType.type)
+  return (
+    hasFeatureType(feature, booleanFeatureType.type) ||
+    hasFeatureType(feature, booleanFeatureTypeV2.type)
+  )
 }
 
 export function isExtrusionFeature(feature: FeatureRecord) {
@@ -234,6 +239,7 @@ export function isRevolveFeature(feature: FeatureRecord) {
     hasFeatureType(feature, revolveFeatureType.type) ||
     hasFeatureType(feature, multiProfileRevolveFeatureType.type) ||
     hasFeatureType(feature, revolveFeatureTypeV6.type) ||
+    hasFeatureType(feature, revolveFeatureTypeV7.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV3.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV2.type) ||
     hasFeatureType(feature, legacyRevolveFeatureType.type)

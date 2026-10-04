@@ -46,6 +46,7 @@ import {
   SPLIT_NEGATIVE_OUTPUT_ROLE,
   SPLIT_POSITIVE_OUTPUT_ROLE,
 } from "./part-design-split"
+import { readBooleanFeatureParametersV2 } from "./part-design-subtract"
 import { sweepFeatureType } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
 
@@ -131,7 +132,19 @@ function classifyFanOutOperation(
   return null
 }
 
+function classifyExactSubtract(feature: FeatureRecordV1): PartOperation | null {
+  const boolean = readBooleanFeatureParametersV2(feature)
+  if (boolean)
+    return {
+      kind: "modify",
+      target: boolean.targetBody,
+      consumed: boolean.keepTools ? [] : [boolean.toolBody],
+    }
+  return null
+}
 function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation | null {
+  const boolean = classifyExactSubtract(feature)
+  if (boolean) return boolean
   const thread = readThreadFeatureParameters(feature)
   if (thread) return { kind: "modify", target: thread.targetBody, consumed: [] }
   const placement = readPlacementFeatureParameters(feature)
@@ -199,19 +212,36 @@ export function classifyPartOperation(
   const bodySelection = classifyBodySelectionOperation(feature)
   if (bodySelection) return bodySelection
   if (newTypes.has(typeKey)) return { kind: "new" }
+  return classifyLegacyModifier(feature, typeKey)
+}
+function classifyNewProfile(
+  profile:
+    | ReturnType<typeof readRevolveFeatureParameters>
+    | ReturnType<typeof readExtrusionFeatureParameters>,
+): PartOperation | null {
+  if (profile?.operation !== "new") return null
+  return (profile.profiles?.profiles.length ?? 1) === 1 ? { kind: "new" } : { kind: "unmanaged" }
+}
+function legacyModifierTarget(feature: FeatureRecordV1, targetId: FeatureRecord["id"]) {
+  const legacy: FeatureRecord = { ...feature, schemaVersion: 0 }
+  return (
+    readExtrusionFeatureParameters(legacy)?.targetBody ??
+    readHoleBodyTarget(legacy) ??
+    readRevolveFeatureParameters(legacy)?.targetBody ??
+    featureResultBody({ id: targetId })
+  )
+}
+function classifyLegacyModifier(feature: FeatureRecordV1, typeKey: string): PartOperation {
   const legacy: FeatureRecord = { ...feature, schemaVersion: 0 }
   const profile = readExtrusionFeatureParameters(legacy) ?? readRevolveFeatureParameters(legacy)
-  if (profile?.operation === "new")
-    return (profile.profiles?.profiles.length ?? 1) === 1 ? { kind: "new" } : { kind: "unmanaged" }
+  const newProfile = classifyNewProfile(profile)
+  if (newProfile) return newProfile
   const hole = readHoleFeatureParameters(feature)
   const isBoolean = typeKey === featureTypeKey(booleanFeatureType.type)
   if (!profile && !hole && !isBoolean && !modifierTypes.has(typeKey)) return { kind: "unmanaged" }
   const targetId = feature.dependencies[0]
   if (!targetId) return { kind: "unmanaged" }
-  const target =
-    readExtrusionFeatureParameters(legacy)?.targetBody ??
-    readHoleBodyTarget(legacy) ??
-    featureResultBody({ id: targetId })
+  const target = legacyModifierTarget(feature, targetId)
   return {
     kind: "modify",
     target,

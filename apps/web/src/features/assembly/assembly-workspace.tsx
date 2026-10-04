@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import type { AssemblyInspection } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ComponentType } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -50,6 +51,7 @@ function JointTask({ view, task }: TaskProps) {
       assembly={view.assembly}
       joint={joint}
       selectedId={view.selected.activeId}
+      inspection={view.inspection.inspection}
       actions={assemblyTaskActions(view)}
     />
   ) : null
@@ -73,6 +75,7 @@ const taskForms: Record<AssemblyTask["kind"], ComponentType<TaskProps>> = {
     <AssemblyJointForm
       assembly={view.assembly}
       selectedId={view.selected.activeId}
+      inspection={view.inspection.inspection}
       actions={assemblyTaskActions(view)}
     />
   ),
@@ -82,7 +85,11 @@ function InstanceActions({ view }: { view: AssemblyWorkspaceView }) {
   const t = useTranslations("app.assembly")
   const instance = view.selected.instance
   if (!instance) return null
-  const joint = view.assembly.joints.find(({ childInstanceId }) => childInstanceId === instance.id)
+  const joints = view.assembly.joints.filter(
+    ({ childInstanceId, parentInstanceId }) =>
+      childInstanceId === instance.id ||
+      (view.assembly.schemaVersion === 2 && parentInstanceId === instance.id),
+  )
   return (
     <div className="grid gap-2">
       <h3 className="break-words text-sm font-semibold">{instance.name}</h3>
@@ -95,8 +102,9 @@ function InstanceActions({ view }: { view: AssemblyWorkspaceView }) {
       >
         {t("editInstance")}
       </Button>
-      {joint && (
+      {joints.map((joint) => (
         <Button
+          key={joint.id}
           type="button"
           variant="outline"
           size="sm"
@@ -105,7 +113,7 @@ function InstanceActions({ view }: { view: AssemblyWorkspaceView }) {
         >
           {t("editJoint")}
         </Button>
-      )}
+      ))}
       {!instance.grounded && (
         <Button
           type="button"
@@ -169,6 +177,46 @@ function DefinitionActions({ view }: { view: AssemblyWorkspaceView }) {
     </div>
   )
 }
+function AssemblySolveSummary({ kinematics }: { kinematics: AssemblyInspection["kinematics"] }) {
+  const t = useTranslations("app.assembly")
+  if (!kinematics) return null
+  return (
+    <div role="status" className="grid gap-1 text-sm">
+      <p>
+        {t("solverState", {
+          status: t(
+            kinematics.status === "fully-constrained" ? "fullyConstrained" : "underConstrained",
+          ),
+          dof: kinematics.degreesOfFreedom,
+        })}
+      </p>
+      {kinematics.redundant && (
+        <p className="text-xs text-muted-foreground">{t("redundantMates")}</p>
+      )}
+    </div>
+  )
+}
+function GeneralMateStatus({ view }: { view: AssemblyWorkspaceView }) {
+  const t = useTranslations("app.assembly")
+  return (
+    <>
+      {view.assembly.schemaVersion === 1 && (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={view.disabled || view.inspection.pending}
+            onClick={() => void view.upgrade()}
+          >
+            {t("generalMates")}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t("generalMatesExplanation")}</p>
+        </>
+      )}
+      <AssemblySolveSummary kinematics={view.inspection.inspection?.kinematics} />
+    </>
+  )
+}
 function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
   const t = useTranslations("app.assembly")
   const available = {
@@ -191,6 +239,7 @@ function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
           </Button>
         ))}
       </div>
+      <GeneralMateStatus view={view} />
       <AssemblyExportDialog
         key={view.documentKey}
         instances={view.assembly.instances}
@@ -308,6 +357,7 @@ export function AssemblyWorkspace({
         <AssemblyRemoveDialog
           key={`${view.removal.kind}:${view.removal.id}`}
           removal={view.removal}
+          general={view.assembly.schemaVersion === 2}
           pending={view.disabled}
           error={view.mutations.error}
           onApply={view.mutations.apply}

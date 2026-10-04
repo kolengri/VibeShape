@@ -11,10 +11,10 @@ export function createProjectActionGuard() {
         readers.delete(owner)
       }
     },
-    read() {
+    read(include: (block: ProjectActionBlock) => boolean = () => true) {
       for (const reader of readers.values()) {
         const blocked = reader()
-        if (blocked) return blocked
+        if (blocked && include(blocked)) return blocked
       }
       return null
     },

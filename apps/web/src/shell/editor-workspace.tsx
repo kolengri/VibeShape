@@ -160,6 +160,8 @@ function committedGeometry(controller: DocumentControllerState) {
 }
 
 const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = new Set([
+  "create-subtract",
+  "edit-subtract",
   "create-compound",
   "edit-compound",
   "create-union",

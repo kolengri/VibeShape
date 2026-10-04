@@ -236,4 +236,26 @@ describe("disposable assembly runtime ownership", () => {
     expect(disposed).not.toHaveBeenCalled()
     expect(materializeAssembly).not.toHaveBeenCalled()
   })
+  it("disposes derived geometry on a mate conflict and preserves structured diagnostic identity", async () => {
+    const { engine, disposed, registry } = fixture(),
+      solve = vi.fn()
+    vi.mocked(materializeAssembly).mockImplementationOnce(async (options) => {
+      await options.rebuildPinnedModel(snapshot, [])
+      expect(options.solveAssemblyConstraints).toBe(solve)
+      return {
+        ok: false,
+        code: "conflicting-mates",
+        message: "Contradictory closed loop.",
+        jointIds: ["0195b5ac-b220-7a2c-8c33-000000000070"],
+      }
+    })
+    const action = vi.fn()
+    await expect(
+      withMaterializedAssemblyRuntime(engine, registry, null, input, identity, action, solve),
+    ).rejects.toMatchObject({
+      diagnostic: { code: "conflicting-mates", jointIds: ["0195b5ac-b220-7a2c-8c33-000000000070"] },
+    })
+    expect(action).not.toHaveBeenCalled()
+    expect(disposed).toHaveBeenCalledTimes(1)
+  })
 })

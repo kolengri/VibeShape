@@ -1,9 +1,9 @@
 import type { PartId } from "@vibeshape/domain/identifiers"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { SketchCameraMode } from "../editor-session/editor-session-store"
+import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
 import {
   type activePartDesignCommand,
-  booleanInputFeatures,
   modifyingSolidTargetFeatures,
 } from "../features/part-design/part-design-tool"
 import {
@@ -1115,9 +1115,9 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: (context) => {
       const eligibility = canCreateFeature(context)
       if (!eligibility.enabled) return eligibility
-      const features = context.state.controller.report?.snapshot.features ?? []
-      return booleanInputFeatures(features, undefined, context.state.controller.report?.rebuild)
-        .length >= 2
+      const report = context.state.controller.report
+      return report &&
+        exactSolidBodyOptions(report.snapshot, report.rebuild, undefined, [], "").length >= 2
         ? editorCommandEnabled()
         : editorCommandDisabled("selectTwoSolids")
     },

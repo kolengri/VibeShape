@@ -1,4 +1,6 @@
 import {
+  assemblyInstanceIdSchema,
+  assemblyJointIdSchema,
   assemblyRigidPoseSchema,
   boxFeatureType,
   captureAssemblyDefinition,
@@ -9,13 +11,23 @@ import {
   featureIdSchema,
   meshImportFeatureType,
   meshImportOutputRole,
+  projectAssemblyAuthority,
   sourceAssetSchema,
+  upgradeAssemblyAuthority,
 } from "@vibeshape/domain"
+import {
+  type AssemblyConstraintSolvePort,
+  type AssemblyMateGraph,
+  assemblyFrameBindingSchema,
+  assemblyMateGraphSchema,
+} from "@vibeshape/domain/assembly-mates"
 import {
   type FeatureContentEnvironment,
   featureEvaluationEngineResultSchema,
+  topologyCandidateSchema,
 } from "@vibeshape/protocol"
 import { describe, expect, it, vi } from "vitest"
+import { type AssemblyMateSourceGeometry, resolveAssemblyMateFrames } from "./assembly-mate-frames"
 import {
   AssemblyMaterializationCache,
   type AssemblyMaterializationOptions,
@@ -231,6 +243,261 @@ function options(document = fixture()) {
     cache: new AssemblyMaterializationCache(),
   } satisfies AssemblyMaterializationOptions
 }
+
+function boundFixture() {
+  const document = fixture(),
+    authority = upgradeAssemblyAuthority(document.assembly)
+  authority.instances.push({
+    schemaVersion: 2,
+    id: assemblyInstanceIdSchema.parse(id(61)),
+    definitionId: required(authority.definitions[0]).id,
+    name: "Moving block",
+    grounded: false,
+    initialFrame: pose,
+  })
+  const signature = {
+    kind: "face",
+    geometryClass: "PLANE",
+    measure: 6,
+    centroid: [1, 1.5, 4],
+    bounds: { min: [0, 0, 4], max: [2, 3, 4] },
+    direction: [0, 0, 1],
+    directionMode: "oriented",
+    boundaryCount: 4,
+    adjacentGeometryClasses: ["PLANE"],
+  }
+  const candidate = topologyCandidateSchema.parse({
+    candidateId: "face:unpersisted",
+    kind: "face",
+    signature,
+    lineageTokens: [],
+    referenceGeometry: { kind: "plane-face", origin: [0, 0, 4], normal: [0, 0, 1] },
+  })
+  const definition = required(authority.definitions[0]),
+    binding = assemblyFrameBindingSchema.parse({
+      sourceIndex: 0,
+      pinRevision: definition.pinRevision,
+      body: required(definition.pinnedModels[0]).selectedBody,
+      reference: { schemaVersion: 0, featureId: id(2), kind: "face", signature },
+      geometry: "planar-face",
+      originHint: [1, 1, 9],
+      xDirection: [1, 0, 0],
+      reversed: false,
+    })
+  authority.joints.push({
+    schemaVersion: 2,
+    id: assemblyJointIdSchema.parse(id(70)),
+    kind: "ball",
+    parentInstanceId: required(authority.instances[0]).id,
+    childInstanceId: required(authority.instances[1]).id,
+    parentFrame: pose,
+    childFrame: pose,
+    parentBinding: binding,
+  })
+  const graph = assemblyMateGraphSchema.parse(projectAssemblyAuthority(authority))
+  const sources: AssemblyMateSourceGeometry[] = [
+    {
+      definitionId: definition.id,
+      sourceIndex: 0,
+      selectedBody: binding.body,
+      representation: "exact-solid",
+      candidates: [candidate],
+    },
+  ]
+  return {
+    document: documentSnapshotV4Schema.parse({ ...document, assembly: authority }),
+    graph,
+    sources,
+    definition,
+    binding,
+    candidate,
+  }
+}
+
+describe("frozen topology-bound joint frames", () => {
+  it("projects an analytical frame and composes source coordinates and authored offsets exactly once", () => {
+    const f = boundFixture()
+    f.definition.sourceFrame = assemblyRigidPoseSchema.parse({ ...pose, translation: [10, 0, 0] })
+    required(f.graph.joints[0]).parentFrame = assemblyRigidPoseSchema.parse({
+      ...pose,
+      translation: [0, 0, 2],
+    })
+    const before = JSON.stringify(f.graph)
+    const result = resolveAssemblyMateFrames(f.graph, [f.definition], f.sources)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.assembly.joints[0]?.parentFrame.translation).toEqual([-9, 1, 6])
+      expect(result.assembly.joints[0]).not.toHaveProperty("parentBinding")
+      expect(result.assembly.joints[0]?.parentFrame.quaternion).toEqual([0, 0, 0, 1])
+    }
+    expect(JSON.stringify(f.graph)).toBe(before)
+    expect(f.graph.joints[0]?.parentBinding).toEqual(f.binding)
+  })
+  it.each([
+    ["missing", "topology-missing"],
+    ["ambiguous", "topology-ambiguous"],
+    ["stale", "topology-stale"],
+    ["mesh", "unsupported-topology"],
+    ["parallel-x", "unsupported-topology"],
+  ] as const)("fails closed for %s evidence and retains the responsible mate", (scenario, code) => {
+    const f = boundFixture(),
+      joint = required(f.graph.joints[0])
+    if (scenario === "missing") f.sources[0] = { ...required(f.sources[0]), candidates: [] }
+    if (scenario === "ambiguous")
+      f.sources[0] = {
+        ...required(f.sources[0]),
+        candidates: [f.candidate, { ...f.candidate, candidateId: "face:second" }],
+      }
+    if (scenario === "stale") joint.parentBinding = { ...f.binding, pinRevision: 2 }
+    if (scenario === "mesh")
+      f.sources[0] = { ...required(f.sources[0]), representation: "triangle-mesh" }
+    if (scenario === "parallel-x") joint.parentBinding = { ...f.binding, xDirection: [0, 0, 1] }
+    const before = JSON.stringify(f.graph)
+    const result = resolveAssemblyMateFrames(f.graph, [f.definition], f.sources)
+    expect(result).toMatchObject({ ok: false, code, jointIds: [id(70)] })
+    expect(result).not.toHaveProperty("assembly")
+    expect(JSON.stringify(f.graph)).toBe(before)
+  })
+  it("uses finite stable cylinder, sphere, circle and vertex frame recipes", () => {
+    const f = boundFixture()
+    const samples = [
+      {
+        recipe: "cylindrical-face",
+        kind: "face",
+        geometryClass: "CYLINDRE",
+        geometry: { kind: "cylinder-face", origin: [0, 0, 0], axis: [0, 0, 1], radius: 2 },
+        expected: [0, 0, 9],
+      },
+      {
+        recipe: "spherical-face",
+        kind: "face",
+        geometryClass: "SPHERE",
+        geometry: { kind: "sphere-face", center: [2, 3, 4], radius: 2 },
+        expected: [2, 3, 4],
+      },
+      {
+        recipe: "circular-edge",
+        kind: "edge",
+        geometryClass: "CIRCLE",
+        geometry: {
+          kind: "circle-edge",
+          center: [2, 3, 4],
+          normal: [0, 0, 1],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 1, 0],
+          radius: 2,
+        },
+        expected: [2, 3, 4],
+      },
+      {
+        recipe: "vertex",
+        kind: "vertex",
+        geometryClass: "POINT",
+        geometry: { kind: "vertex", position: [2, 3, 4] },
+        expected: [2, 3, 4],
+      },
+    ]
+    for (const sample of samples) {
+      const signature = {
+        ...f.candidate.signature,
+        kind: sample.kind,
+        geometryClass: sample.geometryClass,
+      }
+      const candidate = topologyCandidateSchema.parse({
+        ...f.candidate,
+        kind: sample.kind,
+        signature,
+        referenceGeometry: sample.geometry,
+      })
+      required(f.graph.joints[0]).parentBinding = assemblyFrameBindingSchema.parse({
+        ...f.binding,
+        geometry: sample.recipe,
+        reference: { ...f.binding.reference, kind: sample.kind, signature },
+      })
+      const result = resolveAssemblyMateFrames(
+        f.graph,
+        [f.definition],
+        [{ ...required(f.sources[0]), candidates: [candidate] }],
+      )
+      expect(result.ok).toBe(true)
+      if (result.ok)
+        expect(result.assembly.joints[0]?.parentFrame.translation).toEqual(sample.expected)
+    }
+  })
+})
+
+describe("general assembly materialization authority", () => {
+  it("passes only verified frozen analytical frames to the solver and publishes its rank", async () => {
+    const f = boundFixture(),
+      input = options(f.document)
+    input.rebuildPinnedModel.mockImplementation(async (snapshot) => {
+      const rebuilt = state(snapshot)
+      required(rebuilt.geometry[0]).geometry.topologyCandidates = [f.candidate]
+      return rebuilt
+    })
+    const solve = vi.fn<AssemblyConstraintSolvePort>((graph: AssemblyMateGraph) => ({
+      ok: true,
+      status: "under-constrained",
+      degreesOfFreedom: 3,
+      maximumResidual: 0,
+      redundant: false,
+      redundantJointIds: [],
+      instances: graph.instances.map((instance) => ({
+        instanceId: instance.id,
+        definitionId: instance.definitionId,
+        worldFrame: pose,
+        geometryFrame: pose,
+      })),
+    }))
+    const result = await materializeAssembly({
+      ...input,
+      cache: new AssemblyMaterializationCache(),
+      solveAssemblyConstraints: solve,
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      kinematics: { degreesOfFreedom: 3, status: "under-constrained" },
+    })
+    expect(solve).toHaveBeenCalledTimes(1)
+    expect(solve.mock.calls[0]?.[0].joints[0]?.parentFrame.translation).toEqual([1, 1, 4])
+    expect(solve.mock.calls[0]?.[0].joints[0]).not.toHaveProperty("parentBinding")
+    expect(f.document.assembly.joints[0]).toHaveProperty("parentBinding")
+  })
+  it("never calls the solver on stale topology and never publishes partial occurrences on a conflict", async () => {
+    const f = boundFixture(),
+      input = options(f.document),
+      solve = vi.fn<AssemblyConstraintSolvePort>(() => ({
+        ok: false,
+        code: "conflicting-mates",
+        message: "Contradictory mate geometry.",
+        jointIds: [id(70)],
+      }))
+    const missing = await materializeAssembly({ ...input, solveAssemblyConstraints: solve })
+    expect(missing).toMatchObject({ ok: false, code: "topology-missing", jointIds: [id(70)] })
+    expect(solve).not.toHaveBeenCalled()
+    input.rebuildPinnedModel.mockImplementation(async (snapshot) => {
+      const rebuilt = state(snapshot)
+      required(rebuilt.geometry[0]).geometry.topologyCandidates = [f.candidate]
+      return rebuilt
+    })
+    const result = await materializeAssembly({
+      ...input,
+      cache: new AssemblyMaterializationCache(),
+      solveAssemblyConstraints: solve,
+    })
+    expect(result).toMatchObject({ ok: false, code: "conflicting-mates", jointIds: [id(70)] })
+    expect(result).not.toHaveProperty("occurrences")
+    expect(solve).toHaveBeenCalledTimes(1)
+  })
+  it("reports a missing solver without changing legacy materialization", async () => {
+    const f = boundFixture()
+    expect(await materializeAssembly(options(f.document))).toMatchObject({
+      ok: false,
+      code: "mate-solver-unavailable",
+    })
+    expect(await materializeAssembly(options())).toMatchObject({ ok: true })
+  })
+})
 function meshFixture() {
   const document = base()
   const asset = sourceAssetSchema.parse({
@@ -659,3 +926,8 @@ describe("immutable assembly materialization", () => {
     })
   })
 })
+
+function required<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error("Required fixture evidence is missing.")
+  return value
+}
