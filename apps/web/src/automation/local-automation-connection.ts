@@ -188,6 +188,9 @@ export function createLocalAutomationConnection() {
       "commit_assembly_draft",
       "save_library_definition",
       "update_library_metadata",
+      "create_surface_texture",
+      "update_surface_texture",
+      "remove_surface_texture",
     ].includes(active.work.operation.tool)
       ? automationReviews.getSnapshot()
       : null
