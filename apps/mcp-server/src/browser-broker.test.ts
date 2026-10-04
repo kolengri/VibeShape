@@ -1,6 +1,10 @@
 // @vitest-environment node
 
 import { IMPORT_UPLOAD_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/imports"
+import {
+  localConnectResponseSchema,
+  localPollResponseSchema,
+} from "@vibeshape/automation-api/local-session"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
@@ -375,7 +379,7 @@ describe("browser automation broker", () => {
     )
   })
 
-  it("fails pending work immediately when aborted and revokes the pair", async () => {
+  it("suspends aborted work without replay and retains authenticated recovery", async () => {
     const onRevoke = vi.fn()
     const broker = makeBroker({ origin, onRevoke })
     const { token } = await connect(broker)
@@ -384,7 +388,7 @@ describe("browser automation broker", () => {
     controller.abort()
     await expect(work).resolves.toMatchObject({
       ok: false,
-      diagnostic: { code: "session-revoked" },
+      diagnostic: { code: "outcome-unknown" },
     })
     expect(onRevoke).toHaveBeenCalledOnce()
     expect(
@@ -393,7 +397,7 @@ describe("browser automation broker", () => {
           request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
         )
       ).status,
-    ).toBe(401)
+    ).toBe(409)
     const alreadyAborted = new AbortController()
     alreadyAborted.abort()
     await expect(
@@ -401,7 +405,7 @@ describe("browser automation broker", () => {
     ).resolves.toMatchObject({ ok: false, diagnostic: { code: "session-revoked" } })
   })
 
-  it("rejects oversized bodies, replayed polls, and mismatched export results", async () => {
+  it("rejects oversized bodies, altered poll replays, and mismatched export results", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)
     const bodyBroker = makeBroker({ origin })
@@ -429,7 +433,7 @@ describe("browser automation broker", () => {
           request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
         )
       ).status,
-    ).toBe(409)
+    ).toBe(200)
     const badResult = {
       ok: true,
       value: {
@@ -814,7 +818,7 @@ describe("browser automation broker", () => {
           ),
         )
       ).status,
-    ).toBe(401)
+    ).toBe(409)
   })
 
   it("closes an in-flight connect race and rejects old tokens after re-pairing", async () => {
@@ -1113,7 +1117,17 @@ describe("authenticated local reload recovery", () => {
     const next = (await resumed.json()) as { token: string; expiresAt: number }
     expect(next.token).not.toBe(credential.token)
     expect(next.expiresAt).toBe(3_601_000)
-    expect((await broker.handle(request("revoke", {}, credential.token))).status).toBe(401)
+    expect(
+      (
+        await broker.handle(
+          request(
+            "poll",
+            { protocolVersion: 1, sequence: 1, document, progress: null },
+            credential.token,
+          ),
+        )
+      ).status,
+    ).toBe(401)
     const poll = await broker.handle(
       request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, next.token),
     )
@@ -1139,7 +1153,7 @@ describe("authenticated local reload recovery", () => {
         )
       ).status,
     ).toBe(409)
-    at += 60_001
+    at += 3_600_001
     expect(
       (await broker.handle(request("resume", { protocolVersion: 1, document }, credential.token)))
         .status,
@@ -1152,4 +1166,316 @@ describe("authenticated local reload recovery", () => {
         .status,
     ).toBe(401)
   })
+})
+
+describe("recoverable local delivery", () => {
+  it("returns the same delivery for a lost poll response and rejects an altered retry", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const pending = broker.invoke({ tool: "model_info", arguments: {} })
+    const body = { protocolVersion: 1, sequence: 1, document, progress: null }
+    const first = await (await broker.handle(request("poll", body, token))).json()
+    const retry = await (await broker.handle(request("poll", body, token))).json()
+    expect(retry).toEqual(first)
+    expect(
+      (
+        await broker.handle(
+          request("poll", { ...body, document: { ...document, revision: 5 } }, token),
+        )
+      ).status,
+    ).toBe(409)
+    broker.revoke()
+    await pending
+  })
+  it("restores the approved project after bridge shutdown without replaying pending work", async () => {
+    let stored: import("./local-recovery-store").LocalRecoveryRecord | null = null
+    const recovery = {
+      load: () => stored,
+      save: (record: NonNullable<typeof stored>) => {
+        stored = record
+      },
+      clear: () => {
+        stored = null
+      },
+    }
+    let at = 1000
+    const first = makeBroker({ origin, recovery, now: () => at })
+    const credential = await connect(first)
+    const pending = first.invoke({ tool: "model_info", arguments: {} })
+    first.dispose()
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "outcome-unknown" },
+    })
+    at += 120_000
+    const resumed = makeBroker({ origin, recovery, now: () => at })
+    resumed.setClient({ name: "test-client", version: "1.0" })
+    expect(resumed.isPaired()).toBe(false)
+    const response = await resumed.handle(
+      request("resume", { protocolVersion: 1, document }, credential.token),
+    )
+    expect(response.status).toBe(200)
+    const next = localConnectResponseSchema.parse(await response.json())
+    expect(next.token).not.toBe(credential.token)
+    expect(resumed.isPaired()).toBe(true)
+    const poll = await resumed.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, next.token),
+    )
+    expect(await poll.json()).toMatchObject({ work: null })
+    await resumed.handle(request("revoke", {}, next.token))
+    expect(stored).toBeNull()
+  })
+  it("retries a lost resume response with the rotated credential and keeps old polls unauthorized", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    await broker.handle(request("suspend", {}, token))
+    const body = { protocolVersion: 1, document }
+    const first = await (await broker.handle(request("resume", body, token))).json()
+    const repeat = await (await broker.handle(request("resume", body, token))).json()
+    expect(repeat).toEqual(first)
+    expect(
+      (await broker.handle(request("poll", { ...body, sequence: 1, progress: null }, token)))
+        .status,
+    ).toBe(401)
+  })
+  it("honors Stop AI with the previous token after a lost resume acknowledgement", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const resumed = localConnectResponseSchema.parse(
+      await (
+        await broker.handle(request("resume", { protocolVersion: 1, document }, token))
+      ).json(),
+    )
+    expect((await broker.handle(request("revoke", {}, token))).status).toBe(204)
+    expect(broker.isPaired()).toBe(false)
+    for (const credential of [token, resumed.token]) {
+      expect(
+        (await broker.handle(request("resume", { protocolVersion: 1, document }, credential)))
+          .status,
+      ).toBe(401)
+    }
+  })
+  it("keeps a concurrent current-token poll valid when the old owner retries its resume", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const body = { protocolVersion: 1, document }
+    const next = localConnectResponseSchema.parse(
+      await (await broker.handle(request("resume", body, token))).json(),
+    )
+    let release!: () => void
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"))
+        release = () => {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `"protocolVersion":1,"sequence":1,"progress":null,"document":${JSON.stringify(document)}}`,
+            ),
+          )
+          controller.close()
+        }
+      },
+    })
+    const pendingPoll = broker.handle(
+      new Request(`${origin}/__vibeshape/automation/poll`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin,
+          host: "127.0.0.1:43114",
+          authorization: `Bearer ${next.token}`,
+        },
+        body: stream,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" }),
+    )
+    expect((await broker.handle(request("resume", body, token))).status).toBe(200)
+    release()
+    expect((await pendingPoll).status).toBe(200)
+    expect(broker.isPaired()).toBe(true)
+  })
+  it("retires the previous token once the browser adopts the rotated credential", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const next = localConnectResponseSchema.parse(
+      await (
+        await broker.handle(request("resume", { protocolVersion: 1, document }, token))
+      ).json(),
+    )
+    expect(
+      (
+        await broker.handle(
+          request(
+            "poll",
+            { protocolVersion: 1, sequence: 1, document, progress: null },
+            next.token,
+          ),
+        )
+      ).status,
+    ).toBe(200)
+    expect((await broker.handle(request("revoke", {}, token))).status).toBe(401)
+    expect(
+      (await broker.handle(request("resume", { protocolVersion: 1, document }, token))).status,
+    ).toBe(401)
+    expect(broker.isPaired()).toBe(true)
+  })
+  it("recovers a lost resume acknowledgement after a long outage within the approval lease", async () => {
+    let at = 1000
+    const broker = makeBroker({ origin, now: () => at })
+    const { token } = await connect(broker)
+    const first = localConnectResponseSchema.parse(
+      await (
+        await broker.handle(request("resume", { protocolVersion: 1, document }, token))
+      ).json(),
+    )
+    at += 120_000
+    const retry = await broker.handle(request("resume", { protocolVersion: 1, document }, token))
+    expect(retry.status).toBe(200)
+    expect(await retry.json()).toEqual(first)
+    expect(
+      (
+        await broker.handle(
+          request(
+            "poll",
+            { protocolVersion: 1, sequence: 1, document, progress: null },
+            first.token,
+          ),
+        )
+      ).status,
+    ).toBe(200)
+    expect(broker.isPaired()).toBe(true)
+  })
+  it("never publishes a grant when its recovery checkpoint fails", async () => {
+    let stored: import("./local-recovery-store").LocalRecoveryRecord | null = null
+    let fail = false
+    const recovery = {
+      load: () => stored,
+      save: (record: NonNullable<typeof stored>) => {
+        if (fail) throw new Error("Disk full.")
+        stored = record
+      },
+      clear: () => {
+        stored = null
+      },
+    }
+    const broker = makeBroker({ origin, recovery })
+    const { token } = await connect(broker)
+    const pending = broker.invoke({ tool: "model_info", arguments: {} })
+    fail = true
+    expect(
+      (await broker.handle(request("resume", { protocolVersion: 1, document }, token))).status,
+    ).toBe(503)
+    expect(broker.isPaired()).toBe(false)
+    expect(stored).toBeNull()
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "outcome-unknown" },
+    })
+    expect(
+      (await broker.handle(request("resume", { protocolVersion: 1, document }, token))).status,
+    ).toBe(401)
+    expect((await broker.handle(request("connect", { protocolVersion: 1, document }))).status).toBe(
+      503,
+    )
+    expect(broker.isPaired()).toBe(false)
+  })
+  it("acknowledges an identical large export retry without settling it twice", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const pending = broker.invoke({
+      tool: "export_model",
+      arguments: { revision: 4, format: "step" },
+    })
+    const poll = localPollResponseSchema.parse(
+      await (
+        await broker.handle(
+          request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+        )
+      ).json(),
+    )
+    expect(poll.work).not.toBeNull()
+    const result = {
+      ok: true,
+      value: {
+        documentId: document.id,
+        revision: 4,
+        format: "step",
+        filename: "model.step",
+        mimeType: "model/step",
+        base64: "AAAA".repeat(300_000),
+      },
+    }
+    const body = {
+      protocolVersion: 1,
+      requestId: poll.work?.requestId,
+      tool: "export_model",
+      result,
+    }
+    expect((await broker.handle(request("result", body, token))).status).toBe(200)
+    await expect(pending).resolves.toEqual(result)
+    expect((await broker.handle(request("result", body, token))).status).toBe(200)
+    expect(
+      (
+        await broker.handle(
+          request(
+            "result",
+            {
+              ...body,
+              result: { ...result, value: { ...result.value, base64: "BBBB".repeat(300_000) } },
+            },
+            token,
+          ),
+        )
+      ).status,
+    ).toBe(409)
+  })
+  it("renews an active approved session but never extends a suspended or revoked session", async () => {
+    let at = 1000
+    const broker = makeBroker({ origin, now: () => at })
+    const { token } = await connect(broker)
+    at += 10_000
+    const renewed = await broker.handle(request("renew", {}, token))
+    expect(renewed.status).toBe(200)
+    expect(await renewed.json()).toMatchObject({ token, expiresAt: 3_611_000 })
+    await broker.handle(request("suspend", {}, token))
+    expect((await broker.handle(request("renew", {}, token))).status).toBe(409)
+    await broker.handle(request("revoke", {}, token))
+    expect((await broker.handle(request("renew", {}, token))).status).toBe(401)
+  })
+})
+
+it("acknowledges a lost result response once and rejects an altered completion", async () => {
+  const broker = makeBroker({ origin })
+  const { token } = await connect(broker)
+  const pending = broker.invoke({ tool: "create_draft", arguments: { baseRevision: 4 } })
+  const poll = (await (
+    await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+  ).json()) as { work: { requestId: string } }
+  const body = {
+    protocolVersion: 1,
+    requestId: poll.work.requestId,
+    tool: "create_draft",
+    result: {
+      ok: true,
+      value: {
+        schemaVersion: 1,
+        draftId: "0195b5ac-b250-7a2c-8c33-000000000003",
+        documentId: document.id,
+        baseRevision: 4,
+        revision: 4,
+        commandCount: 0,
+        expiresAt: new Date(Date.now() + 300000).toISOString(),
+      },
+    },
+  }
+  expect((await broker.handle(request("result", body, token))).status).toBe(200)
+  await expect(pending).resolves.toMatchObject(body.result)
+  expect((await broker.handle(request("result", body, token))).status).toBe(200)
+  const altered = {
+    ...body,
+    result: { ...body.result, value: { ...body.result.value, revision: 5 } },
+  }
+  expect((await broker.handle(request("result", altered, token))).status).toBe(409)
 })

@@ -1,6 +1,6 @@
 # ADR-0075: Authenticated local MCP recovery after a tab reload
 
-- Status: Accepted
+- Status: Superseded by [ADR-0095](0095-local-mcp-continuous-recovery.md)
 - Date: 2026-10-03
 - Supersedes: the local page-exit revocation rule in [ADR-0043](0043-local-stdio-mcp-browser-session.md)
 - Preserves: remote transport rules in [ADR-0058](0058-remote-mcp-paired-browser-transport.md)

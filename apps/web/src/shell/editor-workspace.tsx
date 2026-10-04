@@ -1800,7 +1800,7 @@ export type EditorWorkspaceActions = Readonly<{
   measure: () => void
   surfaceTexture: (featureId?: FeatureId, outputRole?: string) => void
   editFeature: (featureId: FeatureId) => void
-  editSketch: (sketchId: SketchId) => void
+  editSketch: (sketchId: SketchId) => void | boolean
   preselectBody?: (body: ModelBodySelection | null) => void
   selectBody?: (body: ModelBodySelection | null) => void
   selectPart?: (partId: PartId | null) => void
@@ -1892,6 +1892,7 @@ function useEditorFeaturePreview(
     featurePreviewCandidate(activeTool, previewFeature),
     committedGeometry(controller),
     isPreviewedFeatureToolActive(activeTool),
+    controller.report?.rebuild.ok ? controller.report.rebuild.response : null,
   )
   return { featurePreview, setPreviewFeature }
 }
@@ -2091,7 +2092,7 @@ function EditorModelTree({
 }) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
   const repairSketchSupport = (sketchId: SketchId) => {
-    actions.editSketch(sketchId)
+    if (actions.editSketch(sketchId) === false) return
     actions.beginSketchSupportReplacement()
   }
   return (

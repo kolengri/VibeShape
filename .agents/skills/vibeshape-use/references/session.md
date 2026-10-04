@@ -20,14 +20,24 @@ After tool discovery and pairing, call `model_info` with `{}`. Check the actual 
 
 Manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for eligible CAD edits in this project/session. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Metadata always requires manual review. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
 
-Keep the paired tab open. Local stdio restores access after reload in the same tab and project within 60 seconds while the original session remains valid. Wait for recovery, then call `model_info` and inspect the current revision; interrupted requests and drafts are never replayed. Remote HTTPS still requires fresh pairing and client consent after reload. Project changes, Stop AI, other disconnects, cancellation, and session expiry require pairing again; auto-apply does not carry over. **Stop AI** revokes access, but a save that already entered persistence may finish. After an uncertain write, restore pairing and inspect the saved revision and affected records before deciding whether more work is needed.
+Keep the paired tab open. Local stdio automatically restores the same approved client and project
+following transient transport errors, reload, background pauses or bridge restart. The original
+browser auto-apply choice is restored only if it was explicitly enabled for that pairing. Recovery
+credentials remain tab-scoped and the bridge stores them privately under the current OS user; they
+never enter project backups. An active tab renews its one-hour lease; an expired, revoked, changed
+client or changed-document grant requires new consent. Stop AI clears recovery authority.
+
+Recovery does not replay interrupted commands, drafts, reviews or exports. After a timeout or
+uncertain write, wait for pairing recovery, call `model_info`, and inspect saved revision/records
+before deciding whether a fresh proposal is needed. A transaction already accepted by persistence
+may finish despite Stop AI. Remote HTTPS retains its existing fresh-pairing rule after reload.
 
 ## Limits and errors
 
 - Serialize operations: one request in flight per paired session. Parallel agents must not write to the same session.
-- Drafts expire five minutes after creation or the last successful draft command/preview; inspection does not renew them. Pairing lasts at most one hour.
+- Drafts expire five minutes after creation or the last successful draft command/preview; inspection does not renew them. An inactive recovery lease lasts at most one hour; an active local tab renews it.
 - Current shared serialized operation limit is 192 KiB; semantic pages are bounded to 128 KiB. Reduce page size or divide valid authoring work when necessary. Do not truncate a replacement record.
 - Remote additionally limits operations to 30/minute and 128 per tab lifetime, with bounded onboarding attempts. Follow reported rate-limit guidance; do not repeatedly reconnect to evade budgets.
 - `busy` requires waiting for the pending request. Stale committed state requires a fresh read/draft. Validation failures require corrected input. A duplicate command ID is an error, not proof of an earlier success.
-- A review operation may wait up to six minutes. Keep it pending while the person reviews; client timeout/cancellation can revoke pairing. Do not start a second commit.
+- A review operation may wait up to six minutes. Keep it pending while the person reviews; client timeout/cancellation interrupts pending work; local access can recover without replay. Do not start a second commit.
 - Unknown outcomes require inspection before retrying; a fresh ID does not make a duplicate write safe.

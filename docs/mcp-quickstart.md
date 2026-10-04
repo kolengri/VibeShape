@@ -51,11 +51,14 @@ For this project and paired session only, **AI connection and approval mode → 
 CAD creation and parameter edits. The neutral status-bar **Auto-apply on** indicator always includes **Stop AI**. **Approve each change** returns an idle session to manual review without ending pairing.
 Stop AI ends the pairing immediately. Destructive or unsupported drafts still require review; an
 already pending review cannot be auto-approved. Invalid geometry and stale revisions are rejected.
-The grant resets on disconnect, project change, and reload. Local MCP restores the same project
-after a reload in the same tab within 60 seconds, without extending the original session expiry.
-Stop AI prevents recovery. Interrupted commands and drafts are never replayed; call `model_info`
-and inspect the saved revision before continuing. Opt in to auto-apply again if desired.
-See [ADR-0075](adr/0075-local-mcp-tab-reload-recovery.md) for recovery boundaries. An edit already saving may finish after Stop; inspect the result and use Undo if needed.
+Local MCP restores the same approved project/client and its explicit auto-apply choice after a
+transient disconnect, reload, background pause or local bridge restart. An active tab renews its
+one-hour lease. Stop AI, project/client changes and lease expiry prevent restoration. Interrupted
+commands and drafts are never replayed: call `model_info` and inspect the saved revision before
+continuing. The launcher retains credentials in a private user-owned recovery file, separate from
+project backups. See [ADR-0095](adr/0095-local-mcp-continuous-recovery.md). Remote OAuth grants retain
+their existing reload/consent boundaries. An edit already saving may finish after Stop; inspect the
+result and use Undo if needed.
 
 `model_history_state` reads saved-change Undo/Redo availability using `documentId` and `revision` from `model_info`. `undo_model` and `redo_model` take that document ID, current `baseRevision` and a fresh UUIDv7 `commandId`. They preview a private saved target and always require manual browser Apply/Discard, including when auto-apply is enabled. Apply publishes one new revision. A new authored change clears Redo; reopening preserves saved state/events but resets transient stacks. See the [organization workflow](../.agents/skills/vibeshape-organization/SKILL.md#saved-change-undo-and-redo).
 

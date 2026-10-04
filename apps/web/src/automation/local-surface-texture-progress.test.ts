@@ -17,7 +17,10 @@ import type { AutomationReviewState } from "./automation-review-state"
 import { createLocalAutomationConnection } from "./local-automation-connection"
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), createHandle: vi.fn(), execute: vi.fn() }))
-vi.mock("./local-automation-http", () => ({ localAutomationRequest: mocks.request }))
+vi.mock("./local-automation-http", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./local-automation-http")>()),
+  localAutomationRequest: mocks.request,
+}))
 vi.mock("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
 }))
@@ -96,6 +99,7 @@ beforeEach(() => {
     revision: snapshot.revision,
     dispose: vi.fn(),
     enableAutoApply: vi.fn(),
+    readIdentity: () => ({ id: snapshot.id, name: snapshot.name, revision: snapshot.revision }),
     readInfo: () => ({
       summary: {
         documentId: snapshot.id,

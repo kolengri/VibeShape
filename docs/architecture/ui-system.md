@@ -179,7 +179,7 @@ stale selectors reveal nothing. The renderer and saved-profile picker remain sep
 not open a new profile-selection control. No additional worker solve or geometry rebuild is requested.
 Hovering a visible source, or another region within the same revealed sketch, preserves the rendered
 sketch collection instead of recreating its meshes. A missing sketch is a noninteractive unavailable
-source, not an unnamed locate action.
+source, not an unnamed locate action. A source-link activation invokes the existing source History row, preserving its draft guards and edit-point behavior. Untouched Extrude, Revolve and Placement editors retain their authored record and reuse successful committed geometry only at the matching document and revision; changed parameters or source references require a fresh disposable preview.
 
 The sketch projection store is a transient bridge between the analytical SVG editor and the
 Three.js viewport. Normal mode publishes sketch bounds to align the camera. Orbit editing publishes

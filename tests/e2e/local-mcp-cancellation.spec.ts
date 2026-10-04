@@ -83,10 +83,19 @@ for (const mode of ["client-abort", "browser-disable", "client-close"] as const)
           localToolOutputs.commit_draft.parse(commitOutcome.value.structuredContent?.result).ok,
         ).toBe(false)
       else expect(commitOutcome.error).toBeDefined()
-      const connectionSettings = await openAiConnections(page)
-      await expect(
-        connectionSettings.getByRole("button", { name: "Enable AI session", exact: true }),
-      ).toBeVisible()
+      if (mode === "client-abort") {
+        await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+          timeout: 30_000,
+        })
+      } else if (mode === "browser-disable") {
+        const connectionSettings = await openAiConnections(page)
+        await expect(
+          connectionSettings.getByRole("button", { name: "Enable AI session", exact: true }),
+        ).toBeVisible()
+      } else {
+        await expect(page.getByText("Reconnecting AI…", { exact: true })).toBeVisible()
+        await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+      }
       await dismissErrorReview(page)
       await expect(
         page.getByRole("treeitem", { name: "Cancelled MCP box", exact: true }),

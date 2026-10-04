@@ -1,5 +1,6 @@
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
+  canonicalJson,
   type DocumentSnapshot,
   documentSnapshotSchema,
   type FeatureRecord,
@@ -171,11 +172,48 @@ export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind
   return "extrusion"
 }
 
+function currentFeatureGeometry(
+  response: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>,
+  featureId: string,
+) {
+  const evaluation = response.evaluation.records.find((record) => record.featureId === featureId)
+  if (evaluation?.status !== "succeeded") return false
+  const source = response.geometry.find((record) => record.featureId === featureId)
+  return source?.contentHash === evaluation.contentHash
+}
+
+function matchesCommittedRevision(
+  snapshot: DocumentSnapshot,
+  response: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>,
+) {
+  return response.documentId === snapshot.id && response.revision === snapshot.revision
+}
+
+function committedPreview(
+  snapshot: DocumentSnapshot | null,
+  candidate: FeatureRecord | null,
+  response: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> | null,
+) {
+  if (!snapshot || !candidate || !response) return null
+  if (!matchesCommittedRevision(snapshot, response)) return null
+  const saved = snapshot.features.find(({ id }) => id === candidate.id)
+  if (!saved || canonicalJson(saved) !== canonicalJson(candidate)) return null
+  if (!currentFeatureGeometry(response, candidate.id)) return null
+  const candidateMesh = createFeaturePreviewCandidateMesh(response.geometry, candidate.id)
+  return {
+    status: "ready" as const,
+    kind: featurePreviewKind(candidate),
+    ...(candidateMesh ? { candidateMesh } : {}),
+    meshes: createFeaturePreviewMeshes(snapshot, response, response.geometry),
+  }
+}
+
 export function useFeaturePreview(
   snapshot: DocumentSnapshot | null,
   candidate: FeatureRecord | null,
   committedGeometry: readonly PreviewGeometryIdentity[],
   sessionActive = candidate !== null,
+  committedResponse: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> | null = null,
 ) {
   const [state, setState] = useState<FeaturePreviewState>({ status: "idle", meshes: [] })
   const sequenceRef = useRef(0)
@@ -184,7 +222,12 @@ export function useFeaturePreview(
     () => (snapshot ? createBrowserDocumentId() : null),
     [snapshot?.id],
   )
-  const previewSessionActive = snapshot !== null && sessionActive
+  const candidateKey = canonicalJson(candidate)
+  const cached = useMemo(
+    () => committedPreview(snapshot, candidate, committedResponse),
+    [snapshot, candidateKey, committedResponse],
+  )
+  const previewSessionActive = snapshot !== null && sessionActive && cached === null
 
   useEffect(() => {
     if (!previewDocumentId || !previewSessionActive) return
@@ -203,6 +246,10 @@ export function useFeaturePreview(
     const sequence = sequenceRef.current + 1
     sequenceRef.current = sequence
     const session = sessionRef.current
+    if (cached) {
+      setState(cached)
+      return
+    }
     if (!snapshot || !candidate || !previewDocumentId || !session) {
       setState({ status: "idle", meshes: [] })
       return
@@ -230,7 +277,7 @@ export function useFeaturePreview(
     return () => {
       sequenceRef.current += 1
     }
-  }, [candidate, committedGeometry, previewDocumentId, snapshot])
+  }, [candidateKey, cached, committedGeometry, previewDocumentId, snapshot])
 
   return state
 }

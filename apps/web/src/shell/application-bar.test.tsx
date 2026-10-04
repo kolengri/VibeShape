@@ -31,7 +31,14 @@ const work = vi.hoisted(() => ({
     consent: null,
     error: false,
   } as ReturnType<ReturnType<typeof createRemoteAutomationConnection>["getSnapshot"]>,
-  local: { available: false, busy: false, connected: false, autoApply: false, client: null },
+  local: {
+    available: false,
+    busy: false,
+    connected: false,
+    recovering: false,
+    autoApply: false,
+    client: null,
+  },
 }))
 vi.mock("../document/document-controller", async (original) => ({
   ...(await original<typeof import("../document/document-controller")>()),
@@ -71,7 +78,14 @@ vi.mock("../editor-session/editor-session-provider", () => {
 })
 
 beforeEach(() => {
-  work.local = { available: false, busy: false, connected: false, autoApply: false, client: null }
+  work.local = {
+    available: false,
+    busy: false,
+    connected: false,
+    recovering: false,
+    autoApply: false,
+    client: null,
+  }
   work.disable.mockReset()
   work.remoteDisable.mockReset()
   work.remoteConsent.mockReset()
@@ -236,7 +250,14 @@ it("invokes palette and shortcut help with the persistent menu trigger as the re
 })
 
 it("keeps AI status and neutral Stop AI in the footer instead of the application header", async () => {
-  work.local = { available: true, busy: false, connected: true, autoApply: true, client: null }
+  work.local = {
+    available: true,
+    busy: false,
+    connected: true,
+    recovering: false,
+    autoApply: true,
+    client: null,
+  }
   renderHeader()
   expect(screen.queryByRole("button", { name: "Remote AI…" })).toBeNull()
   const stop = screen.getByRole("button", { name: "Stop AI" })
@@ -250,8 +271,24 @@ it("keeps AI status and neutral Stop AI in the footer instead of the application
   expect(screen.queryByRole("menuitem", { name: "AI connections…" })).toBeNull()
 })
 
+it("keeps Stop AI available when the local bridge is offline during approved recovery", async () => {
+  work.local = { ...work.local, available: false, connected: false, recovering: true }
+  renderHeader()
+  expect(screen.getByText("Reconnecting AI…").closest("footer")).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+  expect(work.disable).toHaveBeenCalledOnce()
+  expect(work.remoteDisable).toHaveBeenCalledOnce()
+})
+
 it("stops both connections when a remote pairing hides an already connected local client", async () => {
-  work.local = { available: true, busy: false, connected: true, autoApply: true, client: null }
+  work.local = {
+    available: true,
+    busy: false,
+    connected: true,
+    recovering: false,
+    autoApply: true,
+    client: null,
+  }
   work.remote = {
     ...work.remote,
     available: true,
@@ -266,7 +303,14 @@ it("stops both connections when a remote pairing hides an already connected loca
 })
 
 it("keeps local AI status and Stop visible while remote pairing is still awaiting authorization", async () => {
-  work.local = { available: true, busy: false, connected: true, autoApply: true, client: null }
+  work.local = {
+    available: true,
+    busy: false,
+    connected: true,
+    recovering: false,
+    autoApply: true,
+    client: null,
+  }
   work.remote = {
     ...work.remote,
     available: true,

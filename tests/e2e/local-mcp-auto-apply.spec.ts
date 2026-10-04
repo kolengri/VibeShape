@@ -1,4 +1,7 @@
-import type { Page } from "@playwright/test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { type Page, test as recoveryTest } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import {
@@ -313,3 +316,65 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     await local.close()
   }
 })
+
+recoveryTest(
+  "recovers approved local auto-apply across reload and bridge restart without replay",
+  async ({ page }, info) => {
+    test.setTimeout(180_000)
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    const directory = mkdtempSync(join(tmpdir(), "vibeshape-recovery-e2e-"))
+    const port = 43520 + info.parallelIndex
+    let local = await createMcpTestClient(port, undefined, { recoveryDirectory: directory })
+    try {
+      await page.goto(local.origin)
+      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await enableLocalAi(page)
+      await enableAutoApply(page)
+      const before = await boxDraft(local, 100, "Before restart")
+      expect(await call(local, "commit_draft", { draftId: before.draftId })).toMatchObject({
+        ok: true,
+      })
+      const committed = success(
+        localToolOutputs.model_info.parse(await call(local, "model_info", {})),
+      )
+      await page.reload()
+      await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
+      await local.close()
+      await expect(page.getByText("Reconnecting AI…", { exact: true })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+      local = await createMcpTestClient(port, undefined, { recoveryDirectory: directory })
+      await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
+      const recovered = success(
+        localToolOutputs.model_info.parse(await call(local, "model_info", {})),
+      )
+      expect(recovered.summary.revision).toBe(committed.summary.revision)
+      await expect(page.getByRole("treeitem", { name: "Before restart", exact: true })).toHaveCount(
+        1,
+      )
+      const after = await boxDraft(local, 110, "After restart")
+      expect(await call(local, "commit_draft", { draftId: after.draftId })).toMatchObject({
+        ok: true,
+      })
+      await expect(
+        page.getByRole("region", { name: "Review AI changes", exact: true }),
+      ).toHaveCount(0)
+      await page.getByRole("button", { name: "Stop AI", exact: true }).click()
+      await page.reload()
+      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toHaveCount(0)
+      expect(await call(local, "model_info", {})).toMatchObject({
+        ok: false,
+        diagnostic: { code: "not-paired" },
+      })
+      expect(errors).toEqual([])
+    } finally {
+      await local.close()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)

@@ -79,3 +79,46 @@ test.describe("body selection identity", () => {
     await expect(page.locator("[data-selected-body-role]")).toHaveCount(0)
   })
 })
+
+test("coalesces wheel navigation redraws within the same browser frame", async ({ page }) => {
+  await page.goto("/spikes/body-selection.html")
+  await expect(page.locator("canvas")).toBeVisible()
+  const counts = await page.evaluate<{ single: number; burst: number }>(`(async () => {
+    const canvas = document.querySelector("canvas")
+    if (!canvas) throw new Error("The viewport is unavailable.")
+    const prototype = WebGL2RenderingContext.prototype
+    const original = prototype.drawElements
+    let draws = 0
+    prototype.drawElements = function (...args) {
+      draws += 1
+      return original.apply(this, args)
+    }
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    async function wheelBurst(count) {
+      await frame()
+      await frame()
+      draws = 0
+      const box = canvas.getBoundingClientRect()
+      for (let index = 0; index < count; index += 1)
+        canvas.dispatchEvent(
+          new WheelEvent("wheel", {
+            deltaY: -1,
+            clientX: box.x + box.width / 2,
+            clientY: box.y + box.height / 2,
+            bubbles: true,
+            cancelable: true,
+          }),
+        )
+      await frame()
+      await frame()
+      return draws
+    }
+    try {
+      return { single: await wheelBurst(1), burst: await wheelBurst(20) }
+    } finally {
+      prototype.drawElements = original
+    }
+  })()`)
+  expect(counts.single).toBeGreaterThan(0)
+  expect(counts.burst).toBeLessThanOrEqual(counts.single * 2)
+})

@@ -1,13 +1,24 @@
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import {
+  getDefaultEnvironment,
+  StdioClientTransport,
+} from "@modelcontextprotocol/sdk/client/stdio.js"
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js"
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
 
 export async function createMcpTestClient(
   port: number,
   launch?: { command: string; args: string[]; cwd?: string },
+  options: { recoveryDirectory?: string } = {},
 ) {
+  const directory = options.recoveryDirectory ?? mkdtempSync(join(tmpdir(), "vibeshape-mcp-test-"))
+  const cleanup = () => {
+    if (!options.recoveryDirectory) rmSync(directory, { recursive: true, force: true })
+  }
   const client = new Client({ name: "VibeShape integration client", version: "1.0" })
   const transport = new StdioClientTransport({
     command: launch?.command ?? "bun",
@@ -18,6 +29,7 @@ export async function createMcpTestClient(
     ],
     ...(launch?.cwd ? { cwd: launch.cwd } : {}),
     stderr: "pipe",
+    env: { ...getDefaultEnvironment(), VIBESHAPE_LOCAL_RECOVERY_DIRECTORY: directory },
   })
   let stderr = ""
   transport.stderr?.on("data", (chunk) => {
@@ -27,6 +39,7 @@ export async function createMcpTestClient(
     await client.connect(transport)
   } catch (error) {
     await transport.close()
+    cleanup()
     throw new Error(`The MCP test server did not initialize: ${stderr}`, { cause: error })
   }
   return {
@@ -41,6 +54,12 @@ export async function createMcpTestClient(
       )
     },
     stderr: () => stderr,
-    close: () => client.close(),
+    close: async () => {
+      try {
+        await client.close()
+      } finally {
+        cleanup()
+      }
+    },
   }
 }

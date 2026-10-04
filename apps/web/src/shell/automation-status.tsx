@@ -134,6 +134,9 @@ function editorDraftBlock(state: EditorSessionState) {
     return "editor-draft" as const
   return null
 }
+function hasRetainedLocalApproval(current: AutomationConnections["current"]) {
+  return current.connected || current.recovering
+}
 function AutomationStatusControls({
   controller,
   blockedReason,
@@ -145,7 +148,8 @@ function AutomationStatusControls({
   controller: DocumentControllerState
   blockedReason: ReturnType<typeof getProjectActionBlock>
 }) {
-  const showLocal = current.connected
+  const retainedLocal = hasRetainedLocalApproval(current)
+  const showLocal = retainedLocal
     ? !remote.connected
     : current.available && !remote.pairingCode && !remote.connecting
   return (
@@ -161,7 +165,7 @@ function AutomationStatusControls({
         <RemoteAutomationStatus
           connection={remoteConnection}
           current={remote}
-          blocked={current.connected || blockedReason !== null}
+          blocked={retainedLocal || blockedReason !== null}
         />
       ) : null}
     </>

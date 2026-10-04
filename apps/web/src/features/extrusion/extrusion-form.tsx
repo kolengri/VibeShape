@@ -23,6 +23,7 @@ import {
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
   readExtrusionFeatureParameters,
+  readExtrusionProfileSet,
   type SketchProfileSelector,
   type SketchProfileSet,
   type TopoRef,
@@ -41,6 +42,7 @@ import {
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
+import { featureEditPreview } from "../part-design/feature-edit-preview"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
   parsePrimitiveLengthExpression,
@@ -346,15 +348,26 @@ function ExtrusionPreviewSync({
   const parsed = parseValues(values, variables, options, copy, displayUnit, angleUnit)
   useDebouncedFeaturePreview({
     onPreviewChange,
-    preview: parsed.ok
-      ? extrusionRecord(
-          mode,
-          featureId,
-          parsed.parameters,
-          parsed.targetFeatureId,
-          parsed.supportReference,
-        )
-      : null,
+    preview: featureEditPreview(
+      mode,
+      values,
+      mode.kind === "edit"
+        ? valuesFromFeature(
+            mode.feature,
+            readExtrusionProfileSet(mode.feature)?.profiles ?? [],
+            mode.supportReference,
+          )
+        : null,
+      parsed.ok
+        ? extrusionRecord(
+            mode,
+            featureId,
+            parsed.parameters,
+            parsed.targetFeatureId,
+            parsed.supportReference,
+          )
+        : null,
+    ),
   })
   return null
 }

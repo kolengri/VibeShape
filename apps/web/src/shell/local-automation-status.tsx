@@ -109,29 +109,9 @@ export function LocalAutomationStatus({
           />
         </Dialog>
       ) : (
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          aria-label={t("enableAi")}
-          title={t("enableAi")}
-          disabled={current.client === null}
-          onClick={connection.enable}
-        >
-          {t("aiShort")}
-        </Button>
+        <InactiveConnectionStatus connection={connection} current={current} />
       )}
-      {current.connected ? (
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          title={t("stopAiDescription")}
-          onClick={connection.disable}
-        >
-          {t("stopAi")}
-        </Button>
-      ) : null}
+      <StopConnectionControl connection={connection} current={current} />
       {failed && !open ? (
         <span role="alert" className="sr-only">
           {t("autoApplyBusy")}
@@ -146,6 +126,53 @@ export function LocalAutomationStatus({
         </span>
       ) : null}
     </div>
+  )
+}
+function InactiveConnectionStatus({
+  connection,
+  current,
+}: {
+  connection: Pick<Connection, "enable">
+  current: ReturnType<Connection["getSnapshot"]>
+}) {
+  const t = useTranslations("app.shell.applicationBar")
+  return current.recovering ? (
+    <span role="status" className="px-2 text-xs text-muted-foreground">
+      {t("aiRecovering")}
+    </span>
+  ) : (
+    <Button
+      type="button"
+      size="xs"
+      variant="ghost"
+      aria-label={t("enableAi")}
+      title={t("enableAi")}
+      disabled={current.client === null}
+      onClick={connection.enable}
+    >
+      {t("aiShort")}
+    </Button>
+  )
+}
+function StopConnectionControl({
+  connection,
+  current,
+}: {
+  connection: Pick<Connection, "disable">
+  current: ReturnType<Connection["getSnapshot"]>
+}) {
+  const t = useTranslations("app.shell.applicationBar")
+  if (!current.connected && !current.recovering) return null
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant="ghost"
+      title={t("stopAiDescription")}
+      onClick={connection.disable}
+    >
+      {t("stopAi")}
+    </Button>
   )
 }
 

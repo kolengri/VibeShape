@@ -752,7 +752,7 @@ type ModelTreeProps = {
   onFeatureSuppressionChange: FeatureSuppressionHandler
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onHistoryMove: HistoryMoveHandler
-  onSketchActivate: (sketchId: SketchId) => void
+  onSketchActivate: (sketchId: SketchId) => void | boolean
   onSketchSupportRepair: (sketchId: SketchId) => void
   onAllSketchVisibilityToggle: () => void
   onSketchRename: SketchRenameHandler
@@ -1291,6 +1291,7 @@ function FeatureHistoryRow({
             profiles={profiles.profiles}
             labelsByRef={view.labelsByRef}
             onPreview={props.onSourceProfilePreview}
+            onOpen={props.onSketchActivate}
             dependencyDescription={t("dependencySummary", {
               parents: row.dependencies.length,
               children: row.dependents.length,
