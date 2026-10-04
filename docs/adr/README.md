@@ -88,3 +88,16 @@
 
 | [0094](0094-finite-curved-face-extrusion.md) | Accepted | Exact finite curved-face extrusion and additive v7 authoring |
 | [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
+
+Statuses:
+
+- `Proposed` — under discussion
+- `Accepted for spike` — direction selected, while the concrete implementation depends on a measurable spike
+- `Accepted` — binding project decision
+- `Accepted with reduced scope` — binding only for the explicitly accepted subset; named gates remain closed
+- `Superseded` — replaced by a newer ADR
+- `Rejected` — considered and not adopted
+
+When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
+
+- [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)
