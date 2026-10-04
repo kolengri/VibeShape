@@ -27,8 +27,10 @@ document-local UUIDs do not enter canonical parameters. Missing roles and stale 
 closed. Ordinary local save, reopen, native project import/export, STEP and STL export reuse the
 registered feature and existing document paths.
 
-The local MCP tools `create_mirror` and `update_mirror` author the same registered feature in an
-owned draft at its current revision. Read the exact body role, preview the draft, then use the existing
+The local and paired remote MCP tools `create_mirror` and `update_mirror` retain origin-plane
+version 1/2 contracts. The additive `create_reference_mirror` and `update_reference_mirror` author
+version 3 with a reference plane, typed offset and `preserveSource`. Supply target-first dependencies
+followed by any distinct support owner, and empty generic references, in an owned draft at its current revision. Read the exact body role, preview the draft, then use the existing
 browser Apply/Discard commit workflow. They grant no additional document or filesystem access.
 
 Native evaluation uses the pinned OCCT `gp_Ax2_3`, `gp_Trsf.SetMirror_3` and

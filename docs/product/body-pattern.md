@@ -36,8 +36,14 @@ Open the Pattern's History row to edit it. Count source expressions, signed spac
 center survive edit, Undo/Redo, reload, and native Save/Open. Selected-part STEP export uses the chosen
 instance's current exact body reference.
 
-The local MCP tools `create_body_pattern` and `update_body_pattern` stage the same strict records in
+The local and paired remote MCP tools `create_body_pattern` and `update_body_pattern` retain version 1 in
 an owned draft. Supply the exact `targetBody`, its sole matching dependency, empty topology references,
 `kind`, `axis`, scalar quantity `count`, and either length quantity `spacing` or angle quantity `angle`
 with explicit length-quantity `center`. Fresh command IDs, current draft revisions, exact preview,
 and ordinary commit remain required. MCP adds no document authority or instance-fusion behavior.
+
+The additive `create_reference_body_pattern` and `update_reference_body_pattern` author version 2
+with the shared reference-axis contract. Circular center comes from the axis; legacy center fields
+are omitted. Declare the target producer first followed by any distinct support owner, with empty
+generic references. Stable body-bound LINE references come from current body topology inspection;
+caller content hashes and native indices are not accepted. Missing or ambiguous supports fail closed.

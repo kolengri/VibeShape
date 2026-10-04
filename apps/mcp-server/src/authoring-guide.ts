@@ -26,6 +26,17 @@ Mirror plane-only inputs retain v1 replacement. Supplying offset and preserveSou
 offset is a signed length along +Z/+Y/+X for XY/XZ/YZ. preserveSource=true keeps the original part
 and creates a reflected result part. Join exact source/copy bodies explicitly with Union when needed.
 
+The additive \`create_reference_mirror\`/\`update_reference_mirror\` author Mirror v3,
+\`create_reference_split\`/\`update_reference_split\` author Split v2, and
+\`create_reference_body_pattern\`/\`update_reference_body_pattern\` author Pattern v2.
+Select an origin plane/axis, authored Datum Plane frame, stable exact-body planar face/LINE edge,
+or explicit world origin in mm and unit normal/direction. Get body-bound refs from current
+\`model_body_topology\` or \`draft_body_topology\`; oriented PLANE/LINE signatures must carry direction.
+Dependencies are target first followed by a distinct support owner; generic references are empty.
+Mirror retains typed offset/preserveSource, Split uses a signed offset along the chosen normal,
+and circular Pattern obtains its center from the axis. No native index or caller content hash
+is accepted. Legacy tool names keep their old versions. Preview and ordinary review remain required.
+
 \`create_datum_plane\`/\`update_datum_plane\` use offset mode, a signed typed length and
 origin support xy/xz/yz (empty dependencies/references) or an existing planar face v0 TopoRef
 (exactly its owner dependency and the same persisted reference). Body-topology v1 references

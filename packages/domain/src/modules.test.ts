@@ -7,7 +7,7 @@ import {
 } from "./modules"
 import { booleanFeatureType, boxFeatureType, extrusionFeatureTypeV6 } from "./part-design"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
+import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { threadFeatureTypeV2 } from "./part-design-thread"
 
 function moduleDescriptor(
@@ -125,11 +125,12 @@ describe("module registry", () => {
       expect(result.registry.getFeatureType(holeFeatureTypeV2.type)).toEqual(holeFeatureTypeV2)
       expect(result.registry.getFeatureType(mirrorFeatureType.type)).toEqual(mirrorFeatureType)
       expect(result.registry.getFeatureType(mirrorFeatureTypeV2.type)).toEqual(mirrorFeatureTypeV2)
+      expect(result.registry.getFeatureType(mirrorFeatureTypeV3.type)).toEqual(mirrorFeatureTypeV3)
       expect(
         result.registry.featureTypes
           .filter(({ type }) => type.typeId === "org.vibeshape.feature.part-design.mirror")
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2])
+      ).toEqual([1, 2, 3])
       expect(result.registry.getFeatureType(holeFeatureTypeV3.type)).toEqual(holeFeatureTypeV3)
       expect(result.registry.getFeatureType(threadFeatureTypeV2.type)).toEqual(threadFeatureTypeV2)
       expect(result.registry.getFeatureType(extrusionFeatureTypeV6.type)).toEqual(
@@ -161,6 +162,8 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.loft",
         "org.vibeshape.feature.part-design.mirror",
         "org.vibeshape.feature.part-design.mirror",
+        "org.vibeshape.feature.part-design.mirror",
+        "org.vibeshape.feature.part-design.pattern",
         "org.vibeshape.feature.part-design.pattern",
         "org.vibeshape.feature.part-design.placement",
         "org.vibeshape.feature.part-design.pyramid",
@@ -173,6 +176,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.shell",
         "org.vibeshape.feature.part-design.shell",
         "org.vibeshape.feature.part-design.sphere",
+        "org.vibeshape.feature.part-design.split",
         "org.vibeshape.feature.part-design.split",
         "org.vibeshape.feature.part-design.sweep",
         "org.vibeshape.feature.part-design.thread",

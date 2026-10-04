@@ -28,7 +28,9 @@ forks the negative side rather than consuming a later current tip. Each availabl
 placed, mirrored, shelled, split again, or exported separately through its exact current body reference.
 Legacy feature-only modifying tools do not list Split as one ambiguous result body.
 
-The local MCP tools `create_split` and `update_split` stage the same schema-backed feature through an
-owned draft. They require its exact `targetBody`, sole matching dependency, empty topology references,
-plane, signed length quantity, fresh command ID, and current draft revision. Preview and ordinary
+The local and paired remote MCP tools `create_split` and `update_split` retain origin-plane version 1.
+The additive `create_reference_split` and `update_reference_split` author version 2 with the shared
+reference-plane contract. Both require exact `targetBody`, empty generic topology references, a
+signed offset length quantity, fresh command ID and current owned draft revision. Version 2 declares
+the target producer first, followed by any distinct support owner. Preview and ordinary
 commit remain required; MCP has no additional document authority.

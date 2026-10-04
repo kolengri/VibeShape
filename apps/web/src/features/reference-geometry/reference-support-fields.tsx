@@ -77,11 +77,12 @@ function explicitValues(value: Props["value"]) {
 }
 type Choices = readonly ReferenceFrameOption<ReferencePlane | ReferenceAxis>[]
 function referenceSource(value: Props["value"], choices: Choices) {
-  if (value === null || value?.kind === "explicit-plane" || value?.kind === "explicit-axis")
-    return "explicit"
+  if (value == null) return value === null ? "explicit" : "origin"
+  if ("origin" in value) return "explicit"
+  if (value.kind === "origin-plane" || value.kind === "origin-axis") return "origin"
   return (
     choices.find(({ support }) => JSON.stringify(support) === JSON.stringify(value))?.key ??
-    "origin"
+    "selected"
   )
 }
 function explicitSupport(kind: Props["kind"], fields: readonly string[]) {
@@ -218,6 +219,7 @@ function ReferenceSupportFields({ kind, options, value, selectedFace, onChange }
           onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
         >
           <option value="origin">{t("origin")}</option>
+          {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
           {choices.map(({ key, label }) => (
             <option key={key} value={key}>
               {label}

@@ -51,8 +51,8 @@ export function PatternTaskPanel(props: BodyFeatureTaskPanelProps) {
   const t = useTranslations("app.bodyPattern"),
     task = useTranslations("app.shell.taskPanel")
   const { report } = props
-  const count = report.snapshot.features.filter((feature) =>
-    readPatternFeatureParameters(feature),
+  const count = report.snapshot.features.filter(
+    (feature) => readPatternFeatureParameters(feature) || readPatternFeatureParametersV2(feature),
   ).length
   const mode = bodyFeatureTaskMode({
     tool: props.activeTool,

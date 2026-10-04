@@ -2656,6 +2656,7 @@
     "referenceFrame": {
       "plane": "Reference plane",
       "axis": "Reference axis",
+      "selectedReference": "Selected reference",
       "source": "Reference source",
       "origin": "Origin reference",
       "explicit": "Explicit reference",

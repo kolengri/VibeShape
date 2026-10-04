@@ -79,7 +79,7 @@ function PatternPreview({
   referenceAxis: ReferenceAxis | null | undefined
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
-  const parsed = parsePatternForm(values, variables, units, copy)
+  const parsed = parsePatternForm(values, variables, units, copy, referenceAxis ?? undefined)
   useDebouncedFeaturePreview({
     onPreviewChange,
     preview:
@@ -144,7 +144,13 @@ export function PatternForm({
     defaultValues: patternFormValues(mode, state.displayUnits),
     onSubmit: async ({ value }) => {
       if (referenceAxis === null) return
-      const parsed = parsePatternForm(value, variables, state.displayUnits, copy)
+      const parsed = parsePatternForm(
+        value,
+        variables,
+        state.displayUnits,
+        copy,
+        referenceAxis ?? undefined,
+      )
       if (!parsed.ok) {
         state.setIssues(parsed.issues)
         state.setMessage(copy.validationSummary)
@@ -170,7 +176,13 @@ export function PatternForm({
     <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
       <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
         {([values, pending]) => {
-          const parsed = parsePatternForm(values, variables, state.displayUnits, copy)
+          const parsed = parsePatternForm(
+            values,
+            variables,
+            state.displayUnits,
+            copy,
+            referenceAxis ?? undefined,
+          )
           const fields = patternExpressionFields(values.kind, referenceAxis)
           const description = {
             count: copy.countDescription,
