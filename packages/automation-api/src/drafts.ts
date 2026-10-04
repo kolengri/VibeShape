@@ -4,6 +4,7 @@ import {
   documentIdSchema,
   draftIdSchema,
   revisionSchema,
+  sketchIdSchema,
   technicalIdentifierSchema,
   timestampSchema,
 } from "@vibeshape/domain/identifiers"
@@ -23,6 +24,16 @@ export const automationDraftOperationRequestSchema = z
   .object({
     schemaVersion: z.literal(1),
     draftId: draftIdSchema,
+  })
+  .strict()
+
+/** Trusted browser preparation reads; never advertised as a raw MCP snapshot tool. */
+export const automationDraftSketchReadRequestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    draftId: draftIdSchema,
+    revision: revisionSchema,
+    sketchId: sketchIdSchema,
   })
   .strict()
 
