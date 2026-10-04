@@ -4,5 +4,10 @@
   "compilerOptions": {
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/features/sketch/text/text-test-fixtures.ts"
+  ]
 }

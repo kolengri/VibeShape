@@ -6,6 +6,20 @@ Use an already configured server when available. If setup was requested, launch 
 
 List tools and resources. Read `vibeshape://session` for the actual `editorUrl` and `paired` status, then the advertised `vibeshape://authoring-guide` for schemas and examples. Open that exact URL and intended project. Have the person choose **Enable AI session** in the bottom status bar. The default source bridge origin is `http://127.0.0.1:43114`, but the session resource is authoritative; changing host or port changes browser-local storage.
 
+## Development HTTP
+
+When using a source checkout's running `bun run dev`, configure a Streamable HTTP client with the
+`Local MCP` endpoint printed in its terminal (normally `http://localhost:5173/mcp`). The bridge shares
+the Vite editor's origin, hot reload, and browser-local projects; no production build is needed.
+Discover tools and read `vibeshape://session` and `vibeshape://authoring-guide`, then open the exact
+editor URL and have the person enable its AI session as for local stdio. Named tools and review
+rules are identical. GET `/mcp` returns 405; use POST, including its SSE progress responses.
+
+One initialized HTTP client owns this development bridge. HTTP 409 on a new initialization means
+the existing client must terminate its session with DELETE, or the developer must restart `dev`.
+HTTP session termination revokes browser authority. A development server restart requires new MCP
+initialization and approval; the stdio bridge's persisted restart recovery does not apply.
+
 ## Remote HTTPS
 
 Get the configured endpoint from the editor's **VibeShape → FAQ and MCP setup… → Connect an AI through MCP**, rather than guessing a hostname. Configure a client supporting Streamable HTTP and OAuth/PKCE. The person opens **Remote AI…** in the bottom status bar, completes the browser challenge, creates a pairing code, enters it on the OAuth consent page, verifies the client and return address in that exact editor tab, and chooses **Allow this client**. Do not solve the challenge, expose the code, or grant consent on their behalf.

@@ -5,6 +5,9 @@
   "description": "Local stdio MCP adapter with an opt-in browser-owned document session.",
   "license": "GPL-3.0-or-later",
   "type": "module",
+  "exports": {
+    "./development-plugin": "./src/development-plugin.ts"
+  },
   "scripts": {
     "start": "bun run src/index.ts",
     "typecheck": "tsc -p tsconfig.json"
@@ -15,6 +18,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@vibeshape/typescript-config": "workspace:*"
+    "@vibeshape/typescript-config": "workspace:*",
+    "vite": "catalog:"
   }
 }
