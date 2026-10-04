@@ -6,12 +6,14 @@ import {
   modelBodyMeasurementArgumentsSchema,
   modelBodyTopologyArgumentsSchema,
   modelEdgeQuerySchema,
+  modelMeasurementQuerySchema,
   variableListQuerySchema,
 } from "./queries"
 
 const omit = { kind: true, schemaVersion: true, documentId: true } as const
 const draft = { draftId: draftIdSchema }
 export const localDraftInspectionInputs = {
+  draft_measurements: modelMeasurementQuerySchema.omit(omit).extend(draft),
   draft_tree: cadInspectionListQuerySchema.omit(omit).extend(draft),
   draft_entity: cadInspectionDetailQuerySchema.omit(omit).extend(draft),
   draft_variables: variableListQuerySchema.omit(omit).extend(draft),
@@ -21,6 +23,12 @@ export const localDraftInspectionInputs = {
 } as const
 
 export const localDraftInspectionOperations = [
+  z
+    .object({
+      tool: z.literal("draft_measurements"),
+      arguments: localDraftInspectionInputs.draft_measurements,
+    })
+    .strict(),
   z
     .object({
       tool: z.literal("draft_body_measurements"),

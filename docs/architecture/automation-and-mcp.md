@@ -458,3 +458,9 @@ Manual review remains the default. The browser-owned explicit session grant addi
 Union schema v2 and Loft schema v1 creation and same-version updates. Actor/document matching,
 valid exact preview, unsuppressed matching prior versions, expiry and persistence remain mandatory.
 Compound, version upgrades and future feature versions require manual review.
+
+`model_measurements` and `draft_measurements` expose paged feature evidence. Their default
+`scope: "terminal"` preserves terminal-output behavior; `scope: "all"` includes upstream failed
+and blocked features. Draft feature measurement paging shares the existing single detached
+4 MiB geometry catalog, ownership and expiry checks. Another target or draft edit invalidates
+cursors without retaining a worker or renewing expiry.

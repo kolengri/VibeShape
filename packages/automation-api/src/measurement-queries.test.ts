@@ -78,6 +78,43 @@ function dispatch() {
   if (!result.ok) throw new Error(result.diagnostic.message)
   return result.dispatcher.dispatch
 }
+
+it("includes upstream failures with scope all while preserving terminal defaults", () => {
+  const { snapshot, evidence } = fixture(2)
+  const upstream = snapshot.features[0]
+  const downstream = snapshot.features[1]
+  if (!upstream || !downstream) throw new Error("Expected two features.")
+  downstream.dependencies = [upstream.id]
+  evidence.features = [
+    {
+      featureId: upstream.id,
+      status: "failed",
+      diagnosticCodes: ["org.vibeshape.geometry.invalid"],
+    },
+    { featureId: downstream.id, status: "blocked", blockedBy: [upstream.id] },
+  ]
+  expect(dispatch()(snapshot, query(), { measurements: evidence })).toMatchObject({
+    ok: true,
+    view: { data: { total: 1, features: [{ featureId: id(1), status: "blocked" }] } },
+  })
+  expect(
+    dispatch()(snapshot, query({ scope: "all", limit: 1 }), { measurements: evidence }),
+  ).toMatchObject({
+    ok: true,
+    view: {
+      nextCursor: "1",
+      data: { total: 2, features: [{ featureId: id(0), status: "failed" }] },
+    },
+  })
+  expect(
+    dispatch()(snapshot, query({ scope: "all", limit: 1, cursor: "1" }), {
+      measurements: evidence,
+    }),
+  ).toMatchObject({
+    ok: true,
+    view: { nextCursor: null, data: { features: [{ featureId: id(1), blockedBy: [id(0)] }] } },
+  })
+})
 const query = (overrides: Record<string, unknown> = {}) => ({
   kind: "org.vibeshape.model.measurements",
   schemaVersion: 1,
