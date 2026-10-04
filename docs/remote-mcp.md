@@ -6,6 +6,12 @@ documents, review, persistence and Undo. The local Bun/stdio workflow remains av
 The shared `model_history_state`, `undo_model` and `redo_model` tools use explicit current document/revision context and always require manual browser history review, including auto-apply sessions. Historical snapshots stay private; Apply uses the ordinary restore CAS and publishes one new revision. Read the [organization workflow](../.agents/skills/vibeshape-organization/SKILL.md#saved-change-undo-and-redo) for availability, expiry and recovery.
 See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
+`render_preview` is available on both transports. Request an exact saved model or owned CAD draft
+revision to receive a native PNG image and metadata. The default isometric/front/right/top collage
+does not alter the user's viewport. Forward image tool content to a vision-capable model; structured
+metadata alone cannot establish appearance. Read [visual inspection](../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection)
+for exact body targeting, focused views, representation limits and complementary numeric checks.
+
 The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,
 `create_boolean`/`update_boolean`, `create_union`/`update_union`, and
 `create_compound`/`update_compound`. Plane support/offset, legacy whole-result subtraction and v2

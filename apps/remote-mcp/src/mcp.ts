@@ -20,6 +20,7 @@ import {
 import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
 import {
   localFailure,
+  localFailureSchema,
   localOperationSchema,
   localToolInputs,
   localToolNameSchema,
@@ -32,6 +33,10 @@ import {
   remoteGrantSchema,
 } from "@vibeshape/automation-api/remote-session"
 import {
+  renderPreviewMcpResult,
+  renderPreviewMetadataSchema,
+} from "@vibeshape/automation-api/render-preview"
+import {
   localToolAnnotations,
   localToolDescriptions,
 } from "@vibeshape/automation-api/tool-metadata"
@@ -42,6 +47,10 @@ import type { TabSession } from "./tab-session"
 
 const STATIC_TOOL_CATALOG_MAX_BYTES = 2 * 1024 * 1024
 const tools = localToolNameSchema.options.filter((name) => name !== "export_model")
+const renderedResultSchema = z.discriminatedUnion("ok", [
+  localFailureSchema,
+  z.object({ ok: z.literal(true), value: renderPreviewMetadataSchema }).strict(),
+])
 
 function toolResult(result: unknown) {
   return {
@@ -49,6 +58,14 @@ function toolResult(result: unknown) {
     structuredContent: { result },
     isError: typeof result === "object" && result !== null && "ok" in result && result.ok === false,
   }
+}
+
+function presentToolResult(name: string, result: unknown, signals: readonly AbortSignal[]) {
+  if (name !== "render_preview") return toolResult(result)
+  if (signals.some((signal) => signal.aborted))
+    return toolResult(localFailure("request-cancelled", "The request was cancelled."))
+  const rendered = localToolOutputs.render_preview.parse(result)
+  return rendered.ok ? renderPreviewMcpResult(rendered.value) : toolResult(rendered)
 }
 
 function cancellationRoute(
@@ -131,14 +148,22 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
         ...tools.map((name) => ({
           name,
           description: localToolDescriptions[name],
-          inputSchema: z.toJSONSchema(localToolInputs[name], {
-            reused: "ref",
-            io: isAssemblyLibraryToolName(name) ? "input" : "output",
-          }),
-          outputSchema: z.toJSONSchema(z.object({ result: localToolOutputs[name] }), {
-            reused: "ref",
-            io: isAssemblyLibraryToolName(name) ? "input" : "output",
-          }),
+          inputSchema: {
+            ...z.toJSONSchema(localToolInputs[name], {
+              reused: "ref",
+              io: isAssemblyLibraryToolName(name) ? "input" : "output",
+            }),
+            type: "object" as const,
+          },
+          outputSchema: z.toJSONSchema(
+            z.object({
+              result: name === "render_preview" ? renderedResultSchema : localToolOutputs[name],
+            }),
+            {
+              reused: "ref",
+              io: isAssemblyLibraryToolName(name) ? "input" : "output",
+            },
+          ),
           annotations: localToolAnnotations(name),
         })),
       ],
@@ -181,7 +206,7 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
         return toolResult(
           localFailure("result-too-large", "The result exceeds the remote response budget."),
         )
-      return toolResult(parsed)
+      return presentToolResult(operation.data.tool, parsed, [extra.signal, request.signal])
     } finally {
       extra.signal.removeEventListener("abort", cancel)
       request.signal.removeEventListener("abort", cancel)

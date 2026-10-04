@@ -105,6 +105,7 @@ import {
   variableListQuerySchema,
   variableListViewSchema,
 } from "./queries"
+import { renderPreviewArgumentsSchema, renderPreviewResultSchema } from "./render-preview"
 import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
 import {
   surfaceTextureCommitViewSchema,
@@ -165,6 +166,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...localPlanarImportInputs,
   ...localImportInputs,
@@ -259,6 +261,7 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  render_preview: resultOf(renderPreviewResultSchema),
   model_history_state: resultOf(historyStateViewSchema),
   undo_model: resultOf(historyCommitViewSchema),
   redo_model: resultOf(historyCommitViewSchema),
@@ -406,6 +409,7 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "render_preview",
   "model_history_state",
   "undo_model",
   "redo_model",
@@ -521,6 +525,7 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,
   ...localImportOperations,

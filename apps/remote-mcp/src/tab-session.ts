@@ -30,6 +30,7 @@ import {
   remoteGrantSchema,
   remoteOperationSchema,
 } from "@vibeshape/automation-api/remote-session"
+import { renderPreviewResultContextMatches } from "@vibeshape/automation-api/render-preview"
 import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/surface-texture-result-context"
 import { z } from "zod"
 import type { RemoteEnv } from "./environment"
@@ -72,6 +73,7 @@ function authoredResultContextMatches(
   result: { ok: boolean; value?: unknown },
 ) {
   return (
+    renderPreviewResultContextMatches(operation, result) !== false &&
     historyResultContextMatches(operation, result) !== false &&
     assemblyResultContextMatches(operation, result) !== false &&
     surfaceTextureResultContextMatches(operation, result) !== false

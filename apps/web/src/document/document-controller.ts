@@ -682,6 +682,24 @@ export function createActiveDocumentAutomationSession() {
   }
   const factory = createDocumentAutomationSession({
     materializeSourceAssets: materializeAutomationSourceAssets,
+    unsupportedPreviewRepresentation(target) {
+      const authority = active.authoredSnapshot
+      if (!authority || authority.schemaVersion === 1) return null
+      if (!target && authority.schemaVersion === 4 && authority.assembly.instances.length)
+        return "Preview rendering does not support assembly occurrence placement. Request an exact local CAD body instead."
+      if (
+        authority.schemaVersion !== 2 &&
+        authority.surfaceTextures.some(
+          (layer) =>
+            layer.enabled &&
+            (!target ||
+              (layer.featureId === target.featureId &&
+                layer.target.outputRole === target.outputRole)),
+        )
+      )
+        return "Preview rendering does not support authored surface relief on the requested bodies."
+      return null
+    },
     commands: coreCommandDispatcher(),
     modules: coreRegistries().modules,
     createDraftId: browserUuidV7,
@@ -1140,6 +1158,7 @@ export function createActiveDocumentAutomationSession() {
     readInfo,
     readIdentity,
     readSketchSolution: factory.readSketchSolution,
+    readRenderPreview: factory.readRenderPreview,
     readCad,
     exportRevisionBound,
     cancel: (reason?: Parameters<typeof factory.cancel>[0]) => {

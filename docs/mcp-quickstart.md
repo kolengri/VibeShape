@@ -12,6 +12,14 @@ always require browser review and retain dependency-blocked diagnostics; see the
 
 Read `vibeshape://agent-skills` for the bundled [application-use skill pack](agent-skills.md), then load the entrypoint and relevant modeling, inspection, organization, export, or recovery documents. Clients exposing only tools can call `read_agent_skill` with no arguments for the index and a listed `uri` for a document. Local installation of the pack is optional.
 
+For visual checks, call `render_preview` with `source: "model"` and the saved `revision`, or
+`source: "draft"`, `draftId` and the current draft `revision`. It returns a native PNG image plus
+revision-tagged metadata; the default collage contains isometric/front/right/top views. Clients must
+forward image content to a vision-capable model. See [visual inspection](../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection)
+for focused views, exact body targets, representation limits and numerical checks.
+For a custom close-up, replace `views` with `camera: { position: [40, -40, 30], target: [0, 0, 5], viewHeightMm: 20 }`.
+Position, target and vertical view span use millimeters; the projection is orthographic.
+
 From the repository, install the pinned Bun workspace dependencies and build the editor using
 `bun ci` and `bun run prepare:local`. Configure a stdio MCP client to launch Bun with the absolute path
 to `apps/mcp-server/src/index.ts` as its argument. For example:

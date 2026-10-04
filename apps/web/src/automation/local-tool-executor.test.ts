@@ -37,6 +37,129 @@ const edgeReference = (featureId: ReturnType<typeof featureIdSchema.parse>, role
 })
 
 describe("local automation tool executor", () => {
+  it("forwards a custom camera through the owned draft renderer", async () => {
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.preview",
+      sessionId: id(1),
+    })
+    const renderDraft = vi.fn().mockResolvedValue({
+      ok: false,
+      diagnostic: {
+        code: "geometry-unavailable",
+        message: "Unavailable",
+        retryable: true,
+        issues: [],
+      },
+    })
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn(),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+      renderDraft,
+    }
+    const session = {
+      documentId: id(2),
+      revision: 4,
+      host,
+      readCad: vi.fn(),
+      readInfo: () => null,
+      exportRevisionBound: vi.fn(),
+    }
+    const camera = { position: [10, 20, 30], target: [0, 0, 0], viewHeightMm: 3 }
+    const operation = localOperationSchema.parse({
+      tool: "render_preview",
+      arguments: { source: "draft", draftId: id(3), revision: 4, camera },
+    })
+    await createLocalToolExecutor(session, actor).execute(operation)
+    expect(renderDraft).toHaveBeenCalledExactlyOnceWith(
+      actor,
+      { schemaVersion: 1, draftId: id(3), revision: 4, camera },
+      undefined,
+    )
+  })
+  it.each(["model", "draft"] as const)(
+    "routes %s render previews to the revision-bound owner with cancellation",
+    async (source) => {
+      const actor = commandActorSchema.parse({
+        type: "mcp",
+        clientId: "org.example.preview",
+        sessionId: id(1),
+      })
+      const response = {
+        ok: false as const,
+        diagnostic: {
+          code: "geometry-unavailable" as const,
+          message: "Unavailable",
+          retryable: true,
+          issues: [],
+        },
+      }
+      const renderDraft = vi.fn().mockResolvedValue(response),
+        readRenderPreview = vi.fn().mockResolvedValue(response),
+        readCad = vi.fn()
+      const host = {
+        createDraft: vi.fn(),
+        inspectDraft: vi.fn(),
+        applyCommand: vi.fn(),
+        previewDraft: vi.fn(),
+        commitDraft: vi.fn(),
+        discardDraft: vi.fn(),
+        renderDraft,
+      }
+      const session = {
+        documentId: id(2),
+        revision: 4,
+        host,
+        readRenderPreview,
+        readCad,
+        readInfo: () => null,
+        exportRevisionBound: vi.fn(),
+      }
+      const target = { featureId: id(4), outputRole: "result" }
+      const argumentsInput = {
+        source,
+        revision: 4,
+        views: ["front"],
+        target,
+        ...(source === "draft" ? { draftId: id(3) } : {}),
+      }
+      const operation = localOperationSchema.parse({
+        tool: "render_preview",
+        arguments: argumentsInput,
+      })
+      const signal = new AbortController().signal
+      await expect(
+        createLocalToolExecutor(session, actor).execute(operation, signal),
+      ).resolves.toMatchObject({ ok: false, diagnostic: { code: "geometry-unavailable" } })
+      if (source === "model") {
+        expect(readRenderPreview).toHaveBeenCalledExactlyOnceWith(
+          id(2),
+          operation.arguments,
+          signal,
+        )
+        expect(renderDraft).not.toHaveBeenCalled()
+      } else {
+        expect(renderDraft).toHaveBeenCalledExactlyOnceWith(
+          actor,
+          { schemaVersion: 1, draftId: id(3), revision: 4, views: ["front"], target },
+          signal,
+        )
+        expect(readRenderPreview).not.toHaveBeenCalled()
+      }
+      expect(readCad).not.toHaveBeenCalled()
+      expect(host.applyCommand).not.toHaveBeenCalled()
+      expect(host.commitDraft).not.toHaveBeenCalled()
+      const abort = new AbortController()
+      abort.abort()
+      await expect(
+        createLocalToolExecutor(session, actor).execute(operation, abort.signal),
+      ).resolves.toMatchObject({ ok: false, diagnostic: { code: "request-cancelled" } })
+    },
+  )
   it.each(["model_history_state", "undo_model", "redo_model"] as const)(
     "routes %s through its optional typed history port before CAD dispatch",
     async (tool) => {

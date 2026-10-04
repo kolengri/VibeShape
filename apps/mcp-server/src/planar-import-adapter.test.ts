@@ -21,7 +21,7 @@ it("discovers client-valid planar import schemas without acquiring unpaired auth
     expect(tools.map((tool) => tool.name).sort()).toEqual(
       [...localToolNameSchema.options, agentSkillTool.name].sort(),
     )
-    expect(tools).toHaveLength(144)
+    expect(tools).toHaveLength(145)
     const inputs = {
       begin_planar_import_upload: {
         revision: 4,

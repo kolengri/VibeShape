@@ -2,13 +2,79 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
+import { renderPreviewMetadataSchema } from "@vibeshape/automation-api/render-preview"
 import { expect, it, vi } from "vitest"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
+
+it("delivers client-valid native preview images and withholds them after revocation", async () => {
+  const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+  vi.spyOn(broker, "invoke").mockResolvedValue(
+    localToolOutputs.render_preview.parse({
+      ok: true,
+      value: {
+        source: "model",
+        documentId: "0195b5ac-b250-7a2c-8c33-000000000001",
+        revision: 4,
+        generation: 1,
+        geometryStatus: "valid",
+        bodyCount: 1,
+        image: { mimeType: "image/png", base64: png, width: 1, height: 1, views: ["front"] },
+      },
+    }),
+  )
+  const paired = vi.spyOn(broker, "isPaired").mockReturnValue(true)
+  const adapter = createLocalMcpAdapter(broker, createExportResources())
+  const client = new Client({ name: "preview-image-client", version: "1" })
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  try {
+    await Promise.all([adapter.connect(serverTransport), client.connect(clientTransport)])
+    const tool = (await client.listTools()).tools.find(({ name }) => name === "render_preview")
+    expect(tool?.annotations).toMatchObject({
+      readOnlyHint: true,
+      idempotentHint: true,
+      destructiveHint: false,
+    })
+    if (!tool) throw new Error("The render_preview tool was not advertised.")
+    const validate = new AjvJsonSchemaValidator().getValidator({
+      ...tool.inputSchema,
+      properties: tool.inputSchema.properties ?? {},
+      required: tool.inputSchema.required ?? [],
+    })
+    expect(
+      validate({ source: "draft", draftId: "0195b5ac-b250-7a2c-8c33-000000000001", revision: 5 })
+        .valid,
+    ).toBe(true)
+    expect(validate({ source: "draft", revision: 5 }).valid).toBe(false)
+    const request = {
+      name: "render_preview",
+      arguments: { source: "model", revision: 4, views: ["front"] },
+    }
+    const rendered = CallToolResultSchema.parse(await client.callTool(request))
+    expect(rendered.content).toContainEqual({ type: "image", data: png, mimeType: "image/png" })
+    const structured = rendered.structuredContent?.result as { ok: boolean; value: unknown }
+    expect(renderPreviewMetadataSchema.safeParse(structured.value).success).toBe(true)
+    expect(JSON.stringify(rendered.structuredContent)).not.toContain(png)
+    paired.mockReturnValue(false)
+    const revoked = CallToolResultSchema.parse(await client.callTool(request))
+    expect(revoked).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "session-revoked" } } },
+    })
+    expect(revoked.content.some((content) => content.type === "image")).toBe(false)
+  } finally {
+    await client.close()
+    await adapter.close()
+    broker.dispose()
+  }
+})
 
 it("advertises client-valid Datum Plane, Boolean and exact-body combination tools", async () => {
   const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })

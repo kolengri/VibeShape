@@ -1,5 +1,42 @@
 # Automation and MCP architecture
 
+## Revision-bound visual inspection
+
+`render_preview` is a read-only tool shared by local and remote MCP. Its explicit `source` selects
+either a saved model at `revision`, or an actor-owned CAD draft at `draftId` and its current
+`revision`. Default output is a labeled isometric/front/right/top PNG collage; one to four unique
+standard views can be requested. An optional exact `featureId`/`outputRole` target selects one body,
+including historical geometry, and never silently falls back to a whole feature or another body.
+Alternatively, `camera` supplies world-mm `position` and `target`, an optional orientation `up`
+vector, and optional `viewHeightMm`. Camera and standard views are exclusive. The orthographic
+vertical span controls detail zoom and permits intentional cropping; omitting it auto-fits the
+selected geometry from the requested angle. Metadata echoes the camera and labels the single view
+`custom`. Changing camera distance alone does not change orthographic scale.
+
+The browser composes complete CAD body meshes from an isolated disposable document-worker rebuild
+and renders on a separate Three.js canvas. The live viewport camera, selection, document and Undo
+history are untouched. The automation host serializes draft access and rechecks ownership, expiry
+and base revision after asynchronous work; browser composition checks session cancellation and
+saved revision before returning. Source assets use the ordinary materialization path. No Three.js
+dependency enters the domain or automation host.
+
+Metadata identifies the document, revision, rebuild generation, rendered body count and geometry
+status; drafts also identify their draft and base revision. Invalid rebuilds may show surviving
+bodies and remain explicitly invalid. Empty/unsupported geometry, stale work, unavailable WebGL
+and unencodable bounded images return diagnostics. Assembly occurrence placement and surface-relief
+layers are outside this CAD body render contract and must not be silently represented as complete.
+
+The renderer retains all triangles, fits each view, and bounds raster size to 1024 by 768 pixels.
+It may reduce raster resolution to keep the PNG within the wire budget, never sample away geometry.
+Adapters return image bytes once in native MCP `image` content and place only image metadata in
+text/structured output. Protocol schemas bound bytes and dimensions and validate PNG header sizes;
+both brokers reject results with mismatched revision, source, draft, target or views. Native image
+support in the MCP protocol does not prove a client passes images to its model.
+
+Pictures complement exact measurements and diagnostics. They establish visible appearance rather
+than exact dimensions, clearance, topology, printability or physical fit. Operator usage is owned by
+[the inspection skill](../../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection).
+
 ## Recommendation
 
 VibeShape exposes AI automation through local stdio and explicitly paired remote HTTPS MCP adapters

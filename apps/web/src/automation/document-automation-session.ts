@@ -1,6 +1,7 @@
 import { createDisposableDocumentPreview } from "@vibeshape/application/disposable-document-preview"
 import { createDisposableSketchInspection } from "@vibeshape/application/disposable-sketch-inspection"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
+import type { RenderPreviewArguments } from "@vibeshape/automation-api/render-preview"
 import {
   type AutomationDocumentPort,
   type AutomationHostDiagnosticCode,
@@ -11,9 +12,11 @@ import type { CommandDispatcher, ModuleRegistry } from "@vibeshape/domain"
 import { type CommandActor, commandActorSchema } from "@vibeshape/domain/commands"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { SourceAssetMaterialization } from "@vibeshape/protocol"
+import { renderModelPreview } from "@vibeshape/viewer/model-preview"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { automationReviews } from "./automation-review-controller"
 import { createCommittedSketchInspection } from "./committed-sketch-inspection"
+import { createModelPreviewSession } from "./model-preview-session"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
 
 // Client identity and pairing remain the transport's responsibility.
@@ -23,6 +26,7 @@ export function createDocumentAutomationSession(
     modules: ModuleRegistry
     documents: AutomationDocumentPort
     materializeSourceAssets?: (document: unknown) => Promise<readonly SourceAssetMaterialization[]>
+    unsupportedPreviewRepresentation?: (target: RenderPreviewArguments["target"]) => string | null
     createDraftId: () => string
   }>,
 ) {
@@ -54,6 +58,24 @@ export function createDocumentAutomationSession(
           ? { materializeSourceAssets: input.materializeSourceAssets }
           : {},
       ),
+  })
+  const renderedPreview = createModelPreviewSession({
+    documents: input.documents,
+    render: renderModelPreview,
+    ...(input.unsupportedPreviewRepresentation
+      ? { unsupportedRepresentation: input.unsupportedPreviewRepresentation }
+      : {}),
+    preview: createDisposableDocumentPreview({
+      retainRebuild: true,
+      mesh: PRODUCT_MESH_POLICY,
+      createRebuildPort: (documentId) =>
+        createDocumentWorkerSession(
+          documentId,
+          input.materializeSourceAssets
+            ? { materializeSourceAssets: input.materializeSourceAssets }
+            : {},
+        ),
+    }),
   })
   const committedSketch = createCommittedSketchInspection({
     documents: input.documents,
@@ -99,6 +121,7 @@ export function createDocumentAutomationSession(
       },
     },
     geometry: {
+      renderPreview: renderedPreview.renderSnapshot,
       async inspectSketchSolution(snapshot, sketchId) {
         if (closed) return { ok: false, code: "geometry-unavailable" }
         const result = await sketchInspection.inspect(snapshot, sketchId)
@@ -136,12 +159,14 @@ export function createDocumentAutomationSession(
   })
   if (!factory.ok) {
     preview.dispose()
+    renderedPreview.dispose()
     committedSketch.dispose()
     return factory
   }
   return {
     ok: true as const,
     readSketchSolution: committedSketch.read,
+    readRenderPreview: renderedPreview.read,
     // Trusted browser composition only: this is deliberately absent from the MCP tool surface.
     enableAutoApply(actor: unknown) {
       const parsed = commandActorSchema.safeParse(actor)
@@ -204,6 +229,7 @@ export function createDocumentAutomationSession(
     },
     cancel(reason?: AutomationHostDiagnosticCode) {
       preview.cancel()
+      renderedPreview.cancel()
       committedSketch.cancel()
       // The ordinary commit publishes its own new revision before its promise returns.
       if (!persisting) automationReviews.cancel(reviewOwner, reason)
@@ -213,6 +239,7 @@ export function createDocumentAutomationSession(
       autoApplyActor = null
       commitGrant = null
       preview.dispose()
+      renderedPreview.dispose()
       committedSketch.dispose()
       // An accepted persistence transaction must report its actual outcome after disconnect.
       if (!persisting) automationReviews.cancel(reviewOwner)

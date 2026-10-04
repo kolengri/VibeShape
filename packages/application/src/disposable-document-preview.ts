@@ -4,7 +4,12 @@ import type { ModelBodyTopologyEvidenceResult } from "@vibeshape/domain/model-bo
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import type { ModelEdgeEvidenceResult } from "@vibeshape/domain/model-edges"
 import type { ModelMeasurementEvidence } from "@vibeshape/domain/model-measurements"
-import { type FeatureMeshPolicy, featureMeshPolicySchema } from "@vibeshape/protocol"
+import {
+  type DocumentWorkerTerminalResponse,
+  documentWorkerResponseSchema,
+  type FeatureMeshPolicy,
+  featureMeshPolicySchema,
+} from "@vibeshape/protocol"
 import { createModelBodyTopologyEvidence } from "./model-body-topology"
 import { createModelDiagnosticsEvidence } from "./model-diagnostics"
 import { createModelEdgeEvidence } from "./model-edges"
@@ -32,6 +37,7 @@ export type DisposableDocumentPreviewResult =
       bodyMeasurements: ModelBodyMeasurementResult
       bodyTopology?: ModelBodyTopologyEvidenceResult
       edges?: ModelEdgeEvidenceResult
+      rebuild?: Extract<DocumentWorkerTerminalResponse, { type: "documentRebuilt" }>
     }
   | { ok: false; code: DisposableDocumentPreviewFailureCode }
 
@@ -48,6 +54,7 @@ export type DisposableDocumentPreview = Readonly<{
 export type DisposableDocumentPreviewOptions = Readonly<{
   createRebuildPort: (documentId: DocumentId) => DocumentRebuildPort
   mesh: FeatureMeshPolicy
+  retainRebuild?: boolean
 }>
 
 type PendingPreview = {
@@ -55,6 +62,37 @@ type PendingPreview = {
   readonly resolve: (result: DisposableDocumentPreviewResult) => void
   settled: boolean
   terminated: boolean
+}
+
+type RebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentRebuilt" }>
+
+function retainedRebuild(response: RebuildResponse): RebuildResponse {
+  function copyMesh(mesh: RebuildResponse["geometry"][number]["geometry"]["mesh"]) {
+    return {
+      positions: mesh.positions.slice(),
+      normals: mesh.normals.slice(),
+      indices: mesh.indices.slice(),
+      triangleFaceIds: mesh.triangleFaceIds.slice(),
+    }
+  }
+  return {
+    ...response,
+    geometry: response.geometry.map((record) => ({
+      ...record,
+      geometry: {
+        ...record.geometry,
+        mesh: copyMesh(record.geometry.mesh),
+        ...(record.geometry.bodies
+          ? {
+              bodies: record.geometry.bodies.map((body) => ({
+                ...body,
+                mesh: copyMesh(body.mesh),
+              })),
+            }
+          : {}),
+      },
+    })),
+  }
 }
 
 function failure(code: DisposableDocumentPreviewFailureCode): DisposableDocumentPreviewResult {
@@ -101,6 +139,44 @@ export function createDisposableDocumentPreview(
     cancel()
   }
 
+  function projectPreview(
+    snapshot: DocumentSnapshot,
+    response: RebuildResponse,
+    edgeFeatureId?: FeatureId,
+    bodyTopologyTarget?: { featureId: FeatureId; outputRole: string; kind: "edge" | "face" },
+  ): DisposableDocumentPreviewResult {
+    const projected = createModelMeasurementEvidence(snapshot, { ok: true, response })
+    if (!projected.ok) return failure(projected.code)
+    const diagnostics = createModelDiagnosticsEvidence(snapshot, { ok: true, response })
+    if (!diagnostics.ok) return failure(diagnostics.code)
+    const valid =
+      diagnostics.evidence.status === "valid" &&
+      projected.evidence.features.every(
+        (entry) => entry.status !== "failed" && entry.status !== "blocked",
+      )
+    return {
+      ok: true,
+      evidence: projected.evidence,
+      valid,
+      diagnostics: diagnostics.evidence,
+      // Rendering retains caller-owned buffers; ordinary inspections avoid the additional copy.
+      ...(options.retainRebuild ? { rebuild: retainedRebuild(response) } : {}),
+      bodyMeasurements: createModelBodyMeasurementEvidence(snapshot, { ok: true, response }),
+      ...(bodyTopologyTarget === undefined
+        ? {}
+        : {
+            bodyTopology: createModelBodyTopologyEvidence(
+              snapshot,
+              { ok: true, response },
+              bodyTopologyTarget,
+            ),
+          }),
+      ...(edgeFeatureId === undefined
+        ? {}
+        : { edges: createModelEdgeEvidence(snapshot, { ok: true, response }, edgeFeatureId) }),
+    }
+  }
+
   async function run(
     operation: PendingPreview,
     snapshot: DocumentSnapshot,
@@ -108,42 +184,14 @@ export function createDisposableDocumentPreview(
     bodyTopologyTarget?: { featureId: FeatureId; outputRole: string; kind: "edge" | "face" },
   ): Promise<void> {
     try {
-      const response = await operation.port.rebuild({ document: snapshot, mesh })
+      const rebuilt = await operation.port.rebuild({ document: snapshot, mesh })
       if (operation.settled) return
-      const projected = createModelMeasurementEvidence(snapshot, { ok: true, response })
-      if (!projected.ok) {
-        settle(operation, failure(projected.code))
+      const parsed = documentWorkerResponseSchema.safeParse(rebuilt)
+      if (!parsed.success || parsed.data.type !== "documentRebuilt") {
+        settle(operation, failure("invalid-geometry-evidence"))
         return
       }
-      const diagnostics = createModelDiagnosticsEvidence(snapshot, { ok: true, response })
-      if (!diagnostics.ok) {
-        settle(operation, failure(diagnostics.code))
-        return
-      }
-      const valid =
-        diagnostics.evidence.status === "valid" &&
-        projected.evidence.features.every(
-          (entry) => entry.status !== "failed" && entry.status !== "blocked",
-        )
-      settle(operation, {
-        ok: true,
-        evidence: projected.evidence,
-        valid,
-        diagnostics: diagnostics.evidence,
-        bodyMeasurements: createModelBodyMeasurementEvidence(snapshot, { ok: true, response }),
-        ...(bodyTopologyTarget === undefined
-          ? {}
-          : {
-              bodyTopology: createModelBodyTopologyEvidence(
-                snapshot,
-                { ok: true, response },
-                bodyTopologyTarget,
-              ),
-            }),
-        ...(edgeFeatureId === undefined
-          ? {}
-          : { edges: createModelEdgeEvidence(snapshot, { ok: true, response }, edgeFeatureId) }),
-      })
+      settle(operation, projectPreview(snapshot, parsed.data, edgeFeatureId, bodyTopologyTarget))
     } catch {
       if (!operation.settled) settle(operation, failure("preview-failed"))
     }

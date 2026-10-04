@@ -1,12 +1,27 @@
 import type { QueryDispatcher } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
+import {
+  type RenderPreviewArguments,
+  type RenderPreviewResult,
+  renderDraftPreviewRequestSchema,
+  renderPreviewResultContextMatches,
+  renderPreviewResultSchema,
+} from "@vibeshape/automation-api/render-preview"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
 import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurements"
 import { z } from "zod"
+import type { AutomationHostResult } from "./host"
 
 export type DraftGeometryPort = Readonly<{
+  renderPreview?: (
+    snapshot: DocumentSnapshot,
+    options: Pick<RenderPreviewArguments, "views" | "target" | "camera">,
+    signal?: Readonly<{ aborted: boolean }>,
+  ) =>
+    | PromiseLike<AutomationHostResult<Extract<RenderPreviewResult, { source: "model" }>>>
+    | AutomationHostResult<Extract<RenderPreviewResult, { source: "model" }>>
   inspectSketchSolution?: (
     snapshot: DocumentSnapshot,
     sketchId: import("@vibeshape/domain/identifiers").SketchId,
@@ -22,6 +37,62 @@ export type DraftGeometryPort = Readonly<{
     featureId: FeatureId,
   ) => PromiseLike<unknown> | unknown
 }>
+
+export async function renderDraftGeometry(
+  snapshot: DocumentSnapshot,
+  request: ReturnType<typeof renderDraftPreviewRequestSchema.parse>,
+  geometry: DraftGeometryPort,
+  signal?: Readonly<{ aborted: boolean }>,
+): Promise<AutomationHostResult<Extract<RenderPreviewResult, { source: "model" }>>> {
+  const render = geometry.renderPreview
+  if (!render)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "render-preview-unavailable",
+        message: "The draft geometry port cannot render previews.",
+        retryable: false,
+        issues: [],
+      },
+    }
+  const { views, target, camera } = renderDraftPreviewRequestSchema.parse(request)
+  return render(
+    documentSnapshotSchema.parse(snapshot),
+    {
+      ...(views ? { views } : {}),
+      ...(target ? { target } : {}),
+      ...(camera ? { camera } : {}),
+    },
+    signal,
+  )
+}
+
+export function validateRenderedDraftGeometry(
+  snapshot: DocumentSnapshot,
+  request: ReturnType<typeof renderDraftPreviewRequestSchema.parse>,
+  result: { ok: true; value: unknown },
+  baseRevision: number,
+): AutomationHostResult<Extract<RenderPreviewResult, { source: "draft" }>> {
+  const parsed = renderPreviewResultSchema.safeParse(result.value)
+  const invalid = {
+    ok: false as const,
+    diagnostic: {
+      code: "invalid-geometry-evidence" as const,
+      message: "The rendered image does not describe the requested draft rebuild.",
+      retryable: false,
+      issues: [],
+    },
+  }
+  if (!parsed.success || parsed.data.source !== "model") return invalid
+  const value = { ...parsed.data, source: "draft" as const, draftId: request.draftId, baseRevision }
+  const rendered = { ok: true as const, value }
+  const { schemaVersion: _schemaVersion, ...argumentsInput } = request
+  const context = {
+    tool: "render_preview",
+    arguments: { source: "draft", ...argumentsInput },
+  }
+  return renderPreviewResultContextMatches(context, rendered, snapshot.id) ? rendered : invalid
+}
 
 export async function evaluateDraftGeometry(
   snapshot: DocumentSnapshot,

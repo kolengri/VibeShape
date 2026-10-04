@@ -1,3 +1,4 @@
+export * from "./model-preview"
 export * from "./origin-planes"
 export * from "./project-thumbnail"
 export * from "./three-viewport"

@@ -38,4 +38,4 @@ In the visible editor, select a current exact Part or its body/face to reveal th
 
 ## Accept the model
 
-Before commit, compare exact bounds, volume, body count, intended feature parameters, and diagnostics with the requested outcome. Inspect visually when shape or spatial relationships cannot be established by these measurements. After commit, identify the saved revision and relevant changed parameters. Export or back up only when requested, using [vibeshape-export](../vibeshape-export/SKILL.md).
+Before commit, compare exact bounds, volume, body count, intended feature parameters, and diagnostics with the requested outcome. Use `render_preview` for the owned draft after meaningful construction steps and before acceptance when shape or spatial relationships matter; follow [visual inspection](../vibeshape-inspection/SKILL.md). Repair discrepancies and repeat the affected numerical and visual checks at the new revision. After commit, identify the saved revision and relevant changed parameters. Export or back up only when requested, using [vibeshape-export](../vibeshape-export/SKILL.md).
