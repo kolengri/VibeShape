@@ -76,11 +76,10 @@ export function referenceFrameDependencyIds(
   return owner && owner !== targetFeatureId ? [targetFeatureId, owner] : [targetFeatureId]
 }
 export function referenceFrameTopoReferences(
-  support: ReferenceSupport,
+  _support: ReferenceSupport,
 ): FeatureRecord["references"] {
-  if (!("reference" in support)) return []
-  const { schemaVersion: _schemaVersion, outputRole: _outputRole, ...reference } = support.reference
-  return [{ ...reference, schemaVersion: 0 }]
+  // Body-bound topology resolves against its exact output role, never the producer aggregate.
+  return []
 }
 export function referenceFrameInvariant(
   feature: FeatureRecord,

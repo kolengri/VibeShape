@@ -30,7 +30,8 @@
     "./surface-textures": "./src/surface-textures.ts",
     "./authored-parts": "./src/authored-parts.ts",
     "./shell-opening-resolution": "./src/shell-opening-resolution.ts",
-    "./model-topology-measurements": "./src/model-topology-measurements.ts"
+    "./model-topology-measurements": "./src/model-topology-measurements.ts",
+    "./reference-frame": "./src/reference-frame.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
