@@ -38,12 +38,16 @@ import {
   loftFeatureContentParametersV2Schema,
   type MirrorFeatureContentParameters,
   type MirrorFeatureContentParametersV2,
+  type MirrorFeatureContentParametersV3,
   mirrorFeatureContentParametersSchema,
   mirrorFeatureContentParametersV2Schema,
+  mirrorFeatureContentParametersV3Schema,
   type PatternFeatureContentParameters,
+  type PatternFeatureContentParametersV2,
   type PlacementFeatureContentParameters,
   patternContentOutputRoles,
   patternFeatureContentParametersSchema,
+  patternFeatureContentParametersV2Schema,
   placementFeatureContentParametersSchema,
   pyramidFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
@@ -54,6 +58,7 @@ import {
   type SourceImportInspection,
   SPLIT_OUTPUT_ROLES,
   type SplitFeatureContentParameters,
+  type SplitFeatureContentParametersV2,
   type SurfaceTextureExportLayers,
   type SurfaceTextureMeshLayer,
   type SurfaceTextureQuality,
@@ -63,6 +68,7 @@ import {
   sourceImportInspectionSchema,
   sphereFeatureContentParametersSchema,
   splitFeatureContentParametersSchema,
+  splitFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
   type ThreadContentParameters,
   type TopologyCandidate,
@@ -138,6 +144,7 @@ import { mirrorOcctShape } from "./occt-mirror"
 import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
 import { splitOcctShape } from "./occt-plane-split"
+import { splitOcctShapeByReferencePlane } from "./occt-reference-plane"
 import {
   createOcctBox,
   createOcctCone,
@@ -1206,13 +1213,19 @@ type ParsedFeature =
     }
   | { kind: "thread"; parameters: ThreadContentParameters }
   | { kind: "imported"; parameters: ImportedFeatureContentParameters }
-  | { kind: "split"; parameters: SplitFeatureContentParameters }
-  | { kind: "pattern"; parameters: PatternFeatureContentParameters }
+  | { kind: "split"; parameters: SplitFeatureContentParameters | SplitFeatureContentParametersV2 }
+  | {
+      kind: "pattern"
+      parameters: PatternFeatureContentParameters | PatternFeatureContentParametersV2
+    }
   | { kind: "loft"; parameters: LoftFeatureContentParameters | LoftFeatureContentParametersV2 }
   | { kind: "sweep"; parameters: SweepFeatureContentParameters }
   | {
       kind: "mirror"
-      parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2
+      parameters:
+        | MirrorFeatureContentParameters
+        | MirrorFeatureContentParametersV2
+        | MirrorFeatureContentParametersV3
     }
   | { kind: "compound"; parameters: CompoundFeatureContentParameters }
   | { kind: "union" }
@@ -1859,6 +1872,68 @@ function parsePlacementFeature(input: FeatureEvaluationInput): FeatureParseResul
     : featureFailure("invalid-feature-parameters", "Placement content parameters are invalid.")
 }
 
+function referenceBodyInputsAreValid(input: FeatureEvaluationInput, supportInputIndex?: 0 | 1) {
+  const content = input.content
+  if (
+    content.schemaVersion !== 1 ||
+    input.dependencies.length < 1 ||
+    input.dependencies.length > 2 ||
+    content.feature.references.length !== 0 ||
+    content.feature.inputRoles[0] == null
+  )
+    return false
+  const expected = supportInputIndex === 1 ? 2 : 1
+  return (
+    input.dependencies.length === expected &&
+    (expected === 1 || content.feature.inputRoles[1] === null)
+  )
+}
+function parseMirrorFeatureV3(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = mirrorFeatureContentParametersV3Schema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Mirror reference plane parameters are invalid.",
+    )
+  return referenceBodyInputsAreValid(input, parameters.data.supportInputIndex)
+    ? { ok: true, feature: { kind: "mirror", parameters: parameters.data } }
+    : invalidInputCardinality(
+        "Mirror requires its exact target body followed by its reference-plane support.",
+      )
+}
+function parseSplitFeatureV2(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = splitFeatureContentParametersV2Schema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Split reference plane parameters are invalid.",
+    )
+  return referenceBodyInputsAreValid(input, parameters.data.supportInputIndex)
+    ? { ok: true, feature: { kind: "split", parameters: parameters.data } }
+    : invalidInputCardinality(
+        "Split requires its exact target body followed by its reference-plane support.",
+      )
+}
+function parsePatternFeatureV2(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = patternFeatureContentParametersV2Schema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Pattern reference axis parameters are invalid.",
+    )
+  return referenceBodyInputsAreValid(input, parameters.data.supportInputIndex)
+    ? { ok: true, feature: { kind: "pattern", parameters: parameters.data } }
+    : invalidInputCardinality(
+        "Pattern requires its exact target body followed by its reference-axis support.",
+      )
+}
+
 function parseImportedFeature(input: FeatureEvaluationInput): FeatureParseResult {
   if (
     input.dependencies.length !== 0 ||
@@ -2013,12 +2088,15 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
   [MIRROR_FEATURE_TYPE_KEY, parseMirrorFeature],
   [MIRROR_FEATURE_TYPE_V2_KEY, parseMirrorFeature],
+  [MIRROR_FEATURE_TYPE_KEY.replace("#1", "#3"), parseMirrorFeatureV3],
   [SHELL_FEATURE_TYPE_KEY, parseShellFeature],
   [SHELL_FEATURE_TYPE_V2_KEY, (input) => parseShellFeature(input, 2)],
   [THREAD_FEATURE_TYPE_KEY, parseThreadFeature],
   [IMPORTED_FEATURE_TYPE_KEY, parseImportedFeature],
   [SPLIT_FEATURE_TYPE_KEY, parseSplitFeature],
+  [SPLIT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseSplitFeatureV2],
   [PATTERN_FEATURE_TYPE_KEY, parsePatternFeature],
+  [PATTERN_FEATURE_TYPE_KEY.replace("#1", "#2"), parsePatternFeatureV2],
   [LOFT_FEATURE_TYPE_KEY, parseLoftFeature],
   [LOFT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseLoftFeature],
   [SWEEP_FEATURE_TYPE_KEY, parseSweepFeature],
@@ -2395,7 +2473,10 @@ function createPlacementFeatureShape(
 
 function createMirrorFeatureShape(
   opencascade: OpenCascadeInstance,
-  parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2,
+  parameters:
+    | MirrorFeatureContentParameters
+    | MirrorFeatureContentParametersV2
+    | MirrorFeatureContentParametersV3,
   source: Shape3D | undefined,
 ) {
   if (!source) throw new Error("Mirror target body is unavailable.")
@@ -3427,9 +3508,31 @@ function createGeneratedBodyBundle(
   if (feature.kind === "pattern")
     return aggregateOwnedOutputs(
       opencascade,
-      patternOcctShape(opencascade, target, feature.parameters),
+      patternOcctShape(
+        opencascade,
+        target,
+        "axisDirection" in feature.parameters
+          ? feature.parameters.kind === "linear"
+            ? {
+                kind: "linear",
+                count: feature.parameters.count,
+                axis: feature.parameters.axisDirection,
+                spacing: feature.parameters.spacing,
+              }
+            : {
+                kind: "circular",
+                count: feature.parameters.count,
+                axis: feature.parameters.axisDirection,
+                center: feature.parameters.axisOrigin,
+                angle: feature.parameters.angle,
+              }
+          : feature.parameters,
+      ),
     )
-  const split = splitOcctShape(opencascade, target, feature.parameters)
+  const split =
+    "planeOrigin" in feature.parameters
+      ? splitOcctShapeByReferencePlane(opencascade, target, feature.parameters)
+      : splitOcctShape(opencascade, target, feature.parameters)
   return aggregateOwnedOutputs(opencascade, [
     { role: SPLIT_OUTPUT_ROLES[0], shape: split.negative },
     { role: SPLIT_OUTPUT_ROLES[1], shape: split.positive },

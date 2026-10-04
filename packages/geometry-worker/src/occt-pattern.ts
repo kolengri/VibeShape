@@ -8,7 +8,7 @@ type Axis = "X" | "Y" | "Z"
 type Vector3 = readonly [number, number, number]
 type Bounds = Readonly<{ min: Vector3; max: Vector3 }>
 type Metrics = Readonly<{ valid: boolean; solidCount: number; volume: number }>
-export type PatternKernelParameters = Readonly<{ count: number; axis: Axis }> &
+export type PatternKernelParameters = Readonly<{ count: number; axis: Axis | Vector3 }> &
   (
     | Readonly<{ kind: "linear"; spacing: number }>
     | Readonly<{ kind: "circular"; angle: number; center: Vector3 }>
@@ -20,7 +20,7 @@ type NativeOperations = Readonly<{
     occt: OpenCascadeInstance,
     source: Shape3D,
     center: Vector3,
-    axis: Axis,
+    axis: Axis | Vector3,
     angle: number,
   ) => Shape3D
   bounds: (occt: OpenCascadeInstance, shape: Shape3D) => Bounds
@@ -32,6 +32,20 @@ const axisVectors: Record<Axis, [number, number, number]> = {
   Z: [0, 0, 1],
 }
 
+function axisVector(axis: Axis | Vector3): Vector3 {
+  if (typeof axis === "string") {
+    if (!Object.hasOwn(axisVectors, axis)) throw new Error("Pattern axis is invalid.")
+    return axisVectors[axis]
+  }
+  if (
+    !Array.isArray(axis) ||
+    axis.length !== 3 ||
+    !axis.every(Number.isFinite) ||
+    Math.abs(Math.hypot(...axis) - 1) > 1e-8
+  )
+    throw new Error("Pattern axis must be a unit vector.")
+  return axis
+}
 function nativeBounds(occt: OpenCascadeInstance, shape: Shape3D): Bounds {
   const box = new occt.Bnd_Box_1()
   try {
@@ -58,12 +72,12 @@ function rotateCopy(
   occt: OpenCascadeInstance,
   source: Shape3D,
   center: Vector3,
-  axis: Axis,
+  axis: Axis | Vector3,
   angle: number,
 ): Shape3D {
   const point = new occt.gp_Pnt_3(...center)
   try {
-    const direction = new occt.gp_Dir_4(...axisVectors[axis])
+    const direction = new occt.gp_Dir_4(...axisVector(axis))
     try {
       const rotationAxis = new occt.gp_Ax1_2(point, direction)
       try {
@@ -122,7 +136,7 @@ function validateCircularParameters(
 function validateParameters(parameters: PatternKernelParameters) {
   if (!Number.isInteger(parameters.count) || parameters.count < 2 || parameters.count > 256)
     throw new Error("Pattern count must be an integer between 2 and 256.")
-  if (!Object.hasOwn(axisVectors, parameters.axis)) throw new Error("Pattern axis is invalid.")
+  axisVector(parameters.axis)
   if (parameters.kind === "linear") return validateLinearParameters(parameters)
   if (parameters.kind === "circular") return validateCircularParameters(parameters)
   throw new Error("Pattern kind is invalid.")
@@ -144,9 +158,11 @@ function displacement(
   parameters: Extract<PatternKernelParameters, { kind: "linear" }>,
   index: number,
 ): Vector3 {
-  return axisVectors[parameters.axis].map(
-    (component) => component * parameters.spacing * index,
-  ) as [number, number, number]
+  return axisVector(parameters.axis).map((component) => component * parameters.spacing * index) as [
+    number,
+    number,
+    number,
+  ]
 }
 function preflight(
   operations: NativeOperations,

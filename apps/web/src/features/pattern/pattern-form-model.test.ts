@@ -98,6 +98,28 @@ describe("Body Pattern authoring contract", () => {
       ),
     ).toMatchObject({ ok: false, issues: { angle: message } })
   })
+  it("ignores hidden legacy center errors when upgrading to a reference axis", () => {
+    const values = {
+      ...patternFormValues(mode, units),
+      kind: "circular" as const,
+      centerX: "#missing",
+      centerY: "100001 mm",
+      centerZ: "invalid",
+    }
+    const axis = { kind: "datum-axis" as const, featureId: targetId, axis: "normal" as const }
+    const parsed = parsePatternForm(values, [], units, copy, axis)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error("Expected reference axis to ignore unused center fields.")
+    const feature = patternFeatureRecord(mode, featureId, parsed, axis)
+    expect(feature.type.schemaVersion).toBe(2)
+    expect(feature.parameters).toMatchObject({ axis })
+    expect(feature.parameters).not.toHaveProperty("center")
+    expect(parsePatternForm(values, [], units, copy).ok).toBe(false)
+    expect(parsePatternForm({ ...values, angle: "0 deg" }, [], units, copy, axis)).toMatchObject({
+      ok: false,
+      issues: { angle: copy.invalidAngleRange },
+    })
+  })
   it("rejects explicit centers outside their bounds", () => {
     expect(
       parsePatternForm(

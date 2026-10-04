@@ -22,6 +22,7 @@ function setup(
     onSave?: ReturnType<typeof save>
     status?: "ready" | "loading" | "error"
     unavailable?: boolean
+    referenceOptions?: { planes: []; axes: [] }
   } = {},
 ) {
   const onSave = options.onSave ?? save(),
@@ -31,6 +32,7 @@ function setup(
   const view = render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <PatternForm
+        referenceOptions={options.referenceOptions}
         baseRevision={7}
         copy={copy}
         mode={options.mode ?? mode}
@@ -86,6 +88,30 @@ describe("Body Pattern form", () => {
         }),
       }),
     )
+  })
+  it("allows Apply after switching an invalid legacy center to an explicit axis", async () => {
+    const f = setup({ referenceOptions: { planes: [], axes: [] } })
+    await userEvent.click(screen.getByRole("radio", { name: "Circular" }))
+    const center = screen.getByRole("combobox", { name: "Center X" })
+    await userEvent.clear(center)
+    await userEvent.type(center, "bad")
+    const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
+    expect(apply.disabled).toBe(true)
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Reference source" }),
+      "explicit",
+    )
+    expect(screen.queryByRole("combobox", { name: "Center X" })).toBeNull()
+    expect(apply.disabled).toBe(false)
+    await userEvent.click(apply)
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      type: { schemaVersion: 2 },
+      parameters: {
+        kind: "circular",
+        axis: { kind: "explicit-axis", origin: [0, 0, 0], direction: [0, 0, 1] },
+      },
+    })
   })
   it("blocks invalid count and exposes its scalar/integer diagnostic before preview", async () => {
     const f = setup()

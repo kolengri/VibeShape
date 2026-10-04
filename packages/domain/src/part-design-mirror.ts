@@ -3,8 +3,13 @@ import { bodyReferenceSchema } from "./body-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
+import { referenceFrameInvariant, referencePlaneSchema } from "./reference-frame"
 import { lengthQuantitySchema } from "./units"
-import { resolveQuantityExpression } from "./variables"
+import {
+  type EvaluatedVariable,
+  type ExpressionValue,
+  resolveQuantityExpression,
+} from "./variables"
 
 export const mirrorFeatureParametersSchema = z
   .object({
@@ -54,6 +59,8 @@ export function readMirrorFeatureParameters(
   return parsed.success ? parsed.data : null
 }
 export function mirrorPreservesSource(feature: Pick<FeatureRecord, "type" | "parameters">) {
+  const v3 = readMirrorFeatureParametersV3(feature)
+  if (v3) return v3.preserveSource
   if (featureTypeKey(feature.type) !== featureTypeKey(mirrorFeatureTypeV2.type)) return false
   const parameters = mirrorFeatureParametersV2Schema.safeParse(feature.parameters)
   return parameters.success && parameters.data.preserveSource
@@ -83,27 +90,10 @@ export const mirrorFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
   resolveParameters(parameters, variables) {
     const parsed = mirrorFeatureParametersV2Schema.safeParse(parameters)
     if (!parsed.success) return { ok: true, parameters }
-    const expression = resolveQuantityExpression(parsed.data.offset, variables)
-    const offset = expression.ok
-      ? mirrorFeatureParametersV2Schema.shape.offset.safeParse(expression.quantity)
-      : null
-    if (!expression.ok || !offset?.success)
-      return {
-        ok: false,
-        diagnostic: {
-          code: expression.ok ? "invalid-mirror-offset" : expression.diagnostic.code,
-          message: "The mirror plane offset expression is invalid.",
-          issues: [
-            {
-              path: "offset",
-              message: expression.ok
-                ? "Offset must resolve to a length within 100,000 mm."
-                : expression.diagnostic.message,
-            },
-          ],
-        },
-      }
-    return { ok: true, parameters: { ...parsed.data, offset: offset.data } }
+    const resolved = resolveMirrorOffset(parsed.data.offset, variables)
+    return resolved.ok
+      ? { ok: true, parameters: { ...parsed.data, offset: resolved.offset } }
+      : resolved
   },
   validateFeature(feature) {
     const parameters = mirrorFeatureParametersV2Schema.parse(feature.parameters)
@@ -120,4 +110,66 @@ export const mirrorFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
     const { plane, offset, preserveSource } = mirrorFeatureParametersV2Schema.parse(parameters)
     return { plane, offset: offset.value, preserveSource }
   },
+}
+
+export const mirrorFeatureParametersV3Schema = mirrorFeatureParametersV2Schema
+  .extend({ plane: referencePlaneSchema })
+  .strict()
+export type MirrorFeatureParametersV3 = Readonly<z.infer<typeof mirrorFeatureParametersV3Schema>>
+export const mirrorFeatureTypeV3 = featureTypeDescriptorSchema.parse({
+  ...mirrorFeatureType,
+  type: { ...mirrorFeatureType.type, schemaVersion: 3 },
+  dependencies: { min: 1, max: 2 },
+})
+export function readMirrorFeatureParametersV3(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+): MirrorFeatureParametersV3 | null {
+  if (featureTypeKey(feature.type) !== featureTypeKey(mirrorFeatureTypeV3.type)) return null
+  return mirrorFeatureParametersV3Schema.safeParse(feature.parameters).data ?? null
+}
+export const mirrorFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
+  type: mirrorFeatureTypeV3.type,
+  parametersSchema: mirrorFeatureParametersV3Schema,
+  resolveParameters(parameters, variables) {
+    const parsed = mirrorFeatureParametersV3Schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true, parameters }
+    const resolved = resolveMirrorOffset(parsed.data.offset, variables)
+    return resolved.ok
+      ? { ok: true, parameters: { ...parsed.data, offset: resolved.offset } }
+      : resolved
+  },
+  validateFeature(feature) {
+    const { targetBody, plane } = mirrorFeatureParametersV3Schema.parse(feature.parameters)
+    return referenceFrameInvariant(feature, targetBody.featureId, plane)
+  },
+  contentParameters(parameters) {
+    const { plane, offset, preserveSource } = mirrorFeatureParametersV3Schema.parse(parameters)
+    return { plane, offset: offset.value, preserveSource }
+  },
+}
+function resolveMirrorOffset(
+  offsetQuantity: MirrorFeatureParametersV2["offset"],
+  variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
+) {
+  const expression = resolveQuantityExpression(offsetQuantity, variables)
+  const offset = expression.ok
+    ? mirrorFeatureParametersV2Schema.shape.offset.safeParse(expression.quantity)
+    : null
+  if (!expression.ok || !offset?.success)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: expression.ok ? "invalid-mirror-offset" : expression.diagnostic.code,
+        message: "The mirror plane offset expression is invalid.",
+        issues: [
+          {
+            path: "offset",
+            message: expression.ok
+              ? "Offset must resolve to a length within 100,000 mm."
+              : expression.diagnostic.message,
+          },
+        ],
+      },
+    }
+  return { ok: true as const, offset: offset.data }
 }
