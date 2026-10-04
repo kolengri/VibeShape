@@ -13,6 +13,17 @@ and owner-bound revisioned drafts as local stdio. An explicit browser session au
 covers Union v2 and Loft v1 creation and same-version edits; Compound and schema upgrades require
 manual review. Tools cannot enable the grant.
 
+The shared catalog also exposes `draft_body_measurements` and `draft_body_topology`. They evaluate
+owned unsaved geometry at the exact current draft revision, allowing selection of Shell opening
+faces before one final Apply. Reads retain bounded cursor and body scope, do not save or renew
+expiry, and require fresh discovery after source edits. Mirror accepts legacy plane-only v1 inputs
+or explicit v2 `offset` and `preserveSource` parameters for a shifted plane and an independent
+reflected copy. See the [body-operation contracts](../.agents/skills/vibeshape-modeling/references/modeling.md#body-operations-and-section-features).
+
+`model_info.diagnostics` and `preview_draft.geometry.diagnostics` expose feature failures, blocked
+dependencies and sketch/datum/external-reference health with affected entity IDs and repair actions.
+Valid solid measurements do not imply valid support references; inspect diagnostic status separately.
+
 The server bundles the [application-use skill pack](agent-skills.md), including modeling, recovery and the browser export fallback. After authentication, read `vibeshape://agent-skills`, then the entrypoint and relevant document URIs. Clients exposing only tools can use `read_agent_skill`. Both routes retain live-tab OAuth checks, return static instructions only, and never dispatch browser work. No checkout or local skill installation is required.
 
 ## User workflow

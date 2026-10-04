@@ -13,16 +13,22 @@ import {
 const omit = { kind: true, schemaVersion: true, documentId: true } as const
 const draft = { draftId: draftIdSchema }
 export const localDraftInspectionInputs = {
+  draft_measurements: modelMeasurementQuerySchema.omit(omit).extend(draft),
   draft_tree: cadInspectionListQuerySchema.omit(omit).extend(draft),
   draft_entity: cadInspectionDetailQuerySchema.omit(omit).extend(draft),
   draft_variables: variableListQuerySchema.omit(omit).extend(draft),
-  draft_edges: modelEdgeQuerySchema.omit(omit).extend(draft),
-  draft_measurements: modelMeasurementQuerySchema.omit(omit).extend(draft),
   draft_body_measurements: modelBodyMeasurementArgumentsSchema.safeExtend(draft),
   draft_body_topology: modelBodyTopologyArgumentsSchema.extend(draft),
+  draft_edges: modelEdgeQuerySchema.omit(omit).extend(draft),
 } as const
 
 export const localDraftInspectionOperations = [
+  z
+    .object({
+      tool: z.literal("draft_measurements"),
+      arguments: localDraftInspectionInputs.draft_measurements,
+    })
+    .strict(),
   z
     .object({
       tool: z.literal("draft_body_measurements"),
@@ -33,12 +39,6 @@ export const localDraftInspectionOperations = [
     .object({
       tool: z.literal("draft_body_topology"),
       arguments: localDraftInspectionInputs.draft_body_topology,
-    })
-    .strict(),
-  z
-    .object({
-      tool: z.literal("draft_measurements"),
-      arguments: localDraftInspectionInputs.draft_measurements,
     })
     .strict(),
   z

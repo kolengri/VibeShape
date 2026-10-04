@@ -21,6 +21,7 @@ import type {
   QueryDispatcher,
   QueryIssue,
 } from "@vibeshape/automation-api/queries"
+import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
 import type {
   CommandDispatcher,
   CommandDispatcherDiagnosticCode,
@@ -337,7 +338,7 @@ export function createAutomationHost(
     .nonnegative()
     .max(8_640_000_000_000_000 - options.draftTtlMs)
   let operationQueue: Promise<void> = Promise.resolve()
-  let edgeCache: DraftInspectionCache | null = null
+  let inspectionCache: DraftInspectionCache | null = null
 
   function enqueue<Value>(
     operation: () => Promise<AutomationHostResult<Value>>,
@@ -363,13 +364,13 @@ export function createAutomationHost(
     return result
   }
 
-  function invalidateDraftEdges(draftId: DraftId) {
-    if (edgeCache?.draftId === draftId) edgeCache = null
+  function invalidateDraftInspection(draftId: DraftId) {
+    if (inspectionCache?.draftId === draftId) inspectionCache = null
   }
 
   function forgetDraft(draftId: DraftId) {
     drafts.delete(draftId)
-    invalidateDraftEdges(draftId)
+    invalidateDraftInspection(draftId)
   }
 
   function purgeExpired(at: number) {
@@ -701,7 +702,7 @@ export function createAutomationHost(
       operation.value.at,
     )
     drafts.set(record.draft.id, record)
-    invalidateDraftEdges(record.draft.id)
+    invalidateDraftInspection(record.draft.id)
     return { ok: true, value: createDraftState(record) }
   }
 
@@ -710,7 +711,7 @@ export function createAutomationHost(
   ): Promise<AutomationHostResult<number>> {
     const base = await readDraftBase(record.draft.documentId, record.draft.baseRevision)
     if (!base.ok) {
-      invalidateDraftEdges(record.draft.id)
+      invalidateDraftInspection(record.draft.id)
       return base
     }
     const time = currentTime()
@@ -743,6 +744,24 @@ export function createAutomationHost(
     return { ok: true as const, value: { geometry: exact.geometry, at: refreshed.value } }
   }
 
+  function draftInspectionSnapshot(
+    record: ManagedDraft,
+    query: ReturnType<typeof automationDraftInspectionRequestSchema.parse>["query"],
+  ): AutomationHostResult<DocumentSnapshot> {
+    const snapshot = record.draft.snapshot
+    if (!snapshot)
+      return failure(hostDiagnostic("draft-empty", "The draft has no document to inspect."))
+    if (query.documentId !== snapshot.id || query.revision !== snapshot.revision)
+      return failure(
+        hostDiagnostic(
+          "stale-query-revision",
+          "The draft query does not match the draft revision.",
+          true,
+        ),
+      )
+    return { ok: true, value: snapshot }
+  }
+
   async function inspectDraft(
     actorInput: unknown,
     input: unknown,
@@ -755,20 +774,9 @@ export function createAutomationHost(
       operation.value.at,
     )
     if (!owned.ok) return owned
-    const snapshot = owned.value.draft.snapshot
-    if (!snapshot)
-      return failure(hostDiagnostic("draft-empty", "The draft has no document to inspect."))
-    if (
-      operation.value.request.query.documentId !== snapshot.id ||
-      operation.value.request.query.revision !== snapshot.revision
-    )
-      return failure(
-        hostDiagnostic(
-          "stale-query-revision",
-          "The draft query does not match the draft revision.",
-          true,
-        ),
-      )
+    const document = draftInspectionSnapshot(owned.value, operation.value.request.query)
+    if (!document.ok) return document
+    const snapshot = document.value
     const current = await revalidateAfterGeometry(owned.value)
     if (!current.ok) return current
     const inspected = await inspectDraftQuery(
@@ -777,19 +785,27 @@ export function createAutomationHost(
       owned.value.draft.id,
       configuration.geometry,
       configuration.queryDispatcher,
-      edgeCache,
+      inspectionCache,
     )
     if (!inspected.ok) return failure(inspected.diagnostic)
     const refreshed = await revalidateAfterGeometry(owned.value)
     if (!refreshed.ok) return refreshed
-    edgeCache = inspected.cache
+    const value = automationDraftInspectionViewSchema.parse({
+      schemaVersion: 1,
+      draft: createDraftState(owned.value),
+      view: inspected.view,
+    })
+    if (serializedQueryBytes(value) > 128 * 1024)
+      return failure(
+        hostDiagnostic(
+          "query-result-too-large",
+          "The complete draft inspection exceeds the 128 KiB response budget.",
+        ),
+      )
+    inspectionCache = inspected.cache
     return {
       ok: true,
-      value: automationDraftInspectionViewSchema.parse({
-        schemaVersion: 1,
-        draft: createDraftState(owned.value),
-        view: inspected.view,
-      }),
+      value,
     }
   }
 
@@ -813,6 +829,13 @@ export function createAutomationHost(
       summary: queried.view,
       geometry,
     })
+    if (serializedQueryBytes(preview) > 128 * 1024)
+      return failure(
+        hostDiagnostic(
+          "query-result-too-large",
+          "The complete draft preview exceeds the 128 KiB response budget.",
+        ),
+      )
     const reviewCommands = detachedReviewCommands(record)
     if (!reviewCommands.ok) return reviewCommands
     let reviewResult: unknown
@@ -856,17 +879,22 @@ export function createAutomationHost(
       return failure(queried.diagnostic)
     }
 
+    const value = automationDraftPreviewSchema.parse({
+      schemaVersion: 2,
+      draft: createDraftState(owned.value),
+      summary: queried.view,
+      geometry: exact.value.geometry,
+    })
+    if (serializedQueryBytes(value) > 128 * 1024)
+      return failure(
+        hostDiagnostic(
+          "query-result-too-large",
+          "The complete draft preview exceeds the 128 KiB response budget.",
+        ),
+      )
     const record = renew(owned.value, exact.value.at)
     drafts.set(record.draft.id, record)
-    return {
-      ok: true,
-      value: automationDraftPreviewSchema.parse({
-        schemaVersion: 2,
-        draft: createDraftState(record),
-        summary: queried.view,
-        geometry: exact.value.geometry,
-      }),
-    }
+    return { ok: true, value: { ...value, draft: createDraftState(record) } }
   }
 
   async function commitDraft(

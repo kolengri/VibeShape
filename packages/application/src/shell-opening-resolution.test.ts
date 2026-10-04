@@ -61,4 +61,107 @@ describe("conservative shell opening resolution", () => {
       reason: "duplicate",
     })
   })
+  it("preserves changed faces only through unambiguous semantic or history identity", () => {
+    const changed = { ...candidate, signature: { ...candidate.signature, measure: 13 } }
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...content, semanticRole: "top" }],
+        [{ ...changed, semanticRole: "top" }],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: true, candidateIds: [candidate.candidateId] })
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...content, lineageToken: "history:top" }],
+        [{ ...changed, lineageTokens: ["history:top"] }],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: true, candidateIds: [candidate.candidateId] })
+    expect(resolveShellOpeningCandidates([content], [candidate], scope, "durable")).toEqual({
+      ok: false,
+      reason: "missing",
+    })
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...content, semanticRole: "top" }],
+        [candidate],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: false, reason: "missing" })
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...content, semanticRole: "top" }],
+        [
+          { ...changed, semanticRole: "top" },
+          { ...changed, semanticRole: "top", candidateId: "face:other" },
+        ],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: false, reason: "ambiguous" })
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...content, semanticRole: "top", lineageToken: "history:top" }],
+        [
+          { ...changed, semanticRole: "top" },
+          { ...changed, lineageTokens: ["history:top"], candidateId: "face:other" },
+        ],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: false, reason: "ambiguous" })
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...content, semanticRole: "top", outputRole: "other" }],
+        [{ ...changed, semanticRole: "top" }],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: false, reason: "missing" })
+  })
+  it("fails closed on duplicate durable resolutions and does not manufacture a closed cavity", () => {
+    const references = [
+      { ...content, semanticRole: "top" },
+      { ...content, lineageToken: "history:top" },
+    ]
+    expect(
+      resolveShellOpeningCandidates(
+        references,
+        [{ ...candidate, semanticRole: "top", lineageTokens: ["history:top"] }],
+        scope,
+        "durable",
+      ),
+    ).toEqual({ ok: false, reason: "duplicate" })
+    expect(resolveShellOpeningCandidates([], [candidate], scope, "durable")).toEqual({
+      ok: false,
+      reason: "missing",
+    })
+  })
+  it("requires native history when semantic roles are not reliable for modified source bodies", () => {
+    const semantic = { ...content, semanticRole: "extrusion.cap.end" }
+    const faces = [
+      { ...candidate, semanticRole: semantic.semanticRole, lineageTokens: ["native:face"] },
+    ]
+    const options = { allowSemanticRebinding: false }
+    expect(resolveShellOpeningCandidates([semantic], faces, scope, "durable", options)).toEqual({
+      ok: false,
+      reason: "missing",
+    })
+    expect(
+      resolveShellOpeningCandidates(
+        [{ ...semantic, lineageToken: "native:face" }],
+        faces,
+        scope,
+        "durable",
+        options,
+      ),
+    ).toEqual({ ok: true, candidateIds: [candidate.candidateId] })
+    expect(resolveShellOpeningCandidates([semantic], faces, scope, "exact", options)).toEqual({
+      ok: true,
+      candidateIds: [candidate.candidateId],
+    })
+  })
 })

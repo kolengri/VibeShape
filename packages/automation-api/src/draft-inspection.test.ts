@@ -6,6 +6,7 @@ import {
   automationDraftInspectionViewSchema,
 } from "./draft-inspection"
 import { localOperationSchema } from "./local-tools"
+import { remoteOperationSchema } from "./remote-session"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const draftId = "0195b5ac-b216-7a2c-bc33-67a36a7f21ac"
@@ -165,3 +166,55 @@ describe("draft inspection contracts", () => {
     ).toBe(false)
   })
 })
+
+it.each(["draft_body_measurements", "draft_body_topology"] as const)(
+  "shares strict %s discovery inputs with both transports",
+  (tool) => {
+    const argumentsInput = {
+      draftId,
+      revision: 4,
+      featureId,
+      outputRole: "result",
+      ...(tool === "draft_body_topology" ? { topologyKind: "face" } : {}),
+    }
+    const local = localOperationSchema.parse({ tool, arguments: argumentsInput })
+    expect(local.arguments).toMatchObject({ cursor: null, limit: 20 })
+    expect(remoteOperationSchema.parse({ tool, arguments: argumentsInput })).toEqual(local)
+    expect(
+      localOperationSchema.safeParse({ tool, arguments: { ...argumentsInput, documentId } })
+        .success,
+    ).toBe(false)
+    expect(
+      automationDraftInspectionRequestSchema.safeParse({
+        schemaVersion: 1,
+        draftId,
+        query: {
+          ...argumentsInput,
+          draftId: undefined,
+          documentId,
+          kind:
+            tool === "draft_body_topology"
+              ? "org.vibeshape.model.body-topology"
+              : "org.vibeshape.model.body-measurements",
+          schemaVersion: 1,
+        },
+      }).success,
+    ).toBe(false)
+    const { draftId: _, ...queryArguments } = argumentsInput
+    expect(
+      automationDraftInspectionRequestSchema.safeParse({
+        schemaVersion: 1,
+        draftId,
+        query: {
+          ...queryArguments,
+          documentId,
+          kind:
+            tool === "draft_body_topology"
+              ? "org.vibeshape.model.body-topology"
+              : "org.vibeshape.model.body-measurements",
+          schemaVersion: 1,
+        },
+      }).success,
+    ).toBe(true)
+  },
+)

@@ -1,4 +1,4 @@
-import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
+import { localModelInfoSchema, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { documentSummaryViewSchema } from "@vibeshape/automation-api/queries"
 import {
   commandActorSchema,
@@ -93,6 +93,16 @@ describe("local automation tool executor", () => {
     ],
     ["draft_variables", "org.vibeshape.variable.list", {}],
     ["draft_edges", "org.vibeshape.model.edges", { featureId: id(8) }],
+    [
+      "draft_body_measurements",
+      "org.vibeshape.model.body-measurements",
+      { featureId: id(8), outputRole: "result" },
+    ],
+    [
+      "draft_body_topology",
+      "org.vibeshape.model.body-topology",
+      { featureId: id(8), outputRole: "result", topologyKind: "face" },
+    ],
   ])("routes %s to the owned draft host with the paired document", async (tool, kind, extra) => {
     const failure = {
       ok: false,
@@ -476,4 +486,68 @@ it("routes metadata to its typed paired port and forwards request cancellation",
     diagnostic: { code: "request-cancelled" },
   })
   expect(metadata.change).toHaveBeenCalledTimes(1)
+})
+
+it("counts complete model info bytes before returning a diagnostic catalog", async () => {
+  const info = localModelInfoSchema.parse({
+    summary: {
+      kind: "org.vibeshape.document.summary",
+      schemaVersion: 1,
+      documentId: id(),
+      revision: 0,
+      classification: "semantic",
+      truncated: false,
+      data: {
+        name: "Model",
+        createdAt: "2026-10-04T00:00:00.000Z",
+        updatedAt: "2026-10-04T00:00:00.000Z",
+      },
+    },
+    measurements: null,
+    measurementDiagnostic: {
+      code: "geometry-unavailable",
+      message: "x".repeat(512),
+      retryable: true,
+    },
+    diagnostics: {
+      schemaVersion: 1,
+      documentId: id(),
+      revision: 0,
+      generation: 1,
+      status: "invalid",
+      truncated: false,
+      entries: [
+        {
+          entity: { kind: "feature", id: id(3) },
+          code: "org.vibeshape.feature.geometry-evaluation-failed",
+          values: { reason: "x".repeat(130000) },
+          action: "inspect-feature",
+        },
+      ],
+    },
+  })
+  expect(new TextEncoder().encode(JSON.stringify(info.diagnostics)).byteLength).toBeLessThan(131072)
+  expect(new TextEncoder().encode(JSON.stringify(info)).byteLength).toBeGreaterThan(131072)
+  const host = {
+    createDraft: vi.fn(),
+    inspectDraft: vi.fn(),
+    applyCommand: vi.fn(),
+    previewDraft: vi.fn(),
+    commitDraft: vi.fn(),
+    discardDraft: vi.fn(),
+  }
+  const executor = createLocalToolExecutor(
+    {
+      documentId: id(),
+      revision: 0,
+      host,
+      readInfo: () => ({ ...info, diagnostics: info.diagnostics ?? null }),
+      readCad: vi.fn(),
+      exportRevisionBound: vi.fn(),
+    },
+    commandActorSchema.parse({ type: "mcp", clientId: "org.example.client", sessionId: id(1) }),
+  )
+  expect(
+    await executor.execute(localOperationSchema.parse({ tool: "model_info", arguments: {} })),
+  ).toMatchObject({ ok: false, diagnostic: { code: "query-result-too-large" } })
 })

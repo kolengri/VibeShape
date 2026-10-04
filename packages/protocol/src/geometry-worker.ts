@@ -47,6 +47,12 @@ export const mirrorFeatureContentParametersSchema = z
   .object({ plane: z.enum(["XY", "XZ", "YZ"]) })
   .strict()
 export type MirrorFeatureContentParameters = z.infer<typeof mirrorFeatureContentParametersSchema>
+export const mirrorFeatureContentParametersV2Schema = mirrorFeatureContentParametersSchema
+  .extend({ offset: cadCoordinateSchema, preserveSource: z.boolean() })
+  .strict()
+export type MirrorFeatureContentParametersV2 = z.infer<
+  typeof mirrorFeatureContentParametersV2Schema
+>
 export const splitFeatureContentParametersSchema = z
   .object({ plane: z.enum(["XY", "XZ", "YZ"]), offset: cadCoordinateSchema })
   .strict()
@@ -1331,6 +1337,9 @@ export const shellFeatureContentParametersSchema = z
   })
   .strict()
 export type ShellFeatureContentParameters = z.infer<typeof shellFeatureContentParametersSchema>
+export const shellFeatureContentParametersV2Schema = shellFeatureContentParametersSchema.extend({
+  openings: z.array(shellOpeningContentSchema).max(64),
+})
 
 const featureContentIdentityV0Schema = z
   .object({

@@ -35,7 +35,9 @@ import {
   type LoftFeatureContentParameters,
   loftFeatureContentParametersSchema,
   type MirrorFeatureContentParameters,
+  type MirrorFeatureContentParametersV2,
   mirrorFeatureContentParametersSchema,
+  mirrorFeatureContentParametersV2Schema,
   type PatternFeatureContentParameters,
   type PlacementFeatureContentParameters,
   patternContentOutputRoles,
@@ -55,6 +57,7 @@ import {
   type SurfaceTextureQuality,
   type SweepFeatureContentParameters,
   shellFeatureContentParametersSchema,
+  shellFeatureContentParametersV2Schema,
   sourceImportInspectionSchema,
   sphereFeatureContentParametersSchema,
   splitFeatureContentParametersSchema,
@@ -274,8 +277,12 @@ const THREAD_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.thread#1"
 const SHELL_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#1"
+const SHELL_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#2"
 const MIRROR_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.mirror#1"
+const MIRROR_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.mirror#2"
 const PLACEMENT_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.placement#1"
 const COMPOUND_FEATURE_TYPE_KEY =
@@ -1190,14 +1197,21 @@ type ParsedFeature =
     }
   | { kind: "hole"; parameters: HoleContentParameters }
   | { kind: "placement"; parameters: PlacementFeatureContentParameters }
-  | { kind: "shell"; parameters: ShellFeatureContentParameters }
+  | {
+      kind: "shell"
+      parameters: ShellFeatureContentParameters
+      openingResolution: "exact" | "durable"
+    }
   | { kind: "thread"; parameters: ThreadContentParameters }
   | { kind: "imported"; parameters: ImportedFeatureContentParameters }
   | { kind: "split"; parameters: SplitFeatureContentParameters }
   | { kind: "pattern"; parameters: PatternFeatureContentParameters }
   | { kind: "loft"; parameters: LoftFeatureContentParameters }
   | { kind: "sweep"; parameters: SweepFeatureContentParameters }
-  | { kind: "mirror"; parameters: MirrorFeatureContentParameters }
+  | {
+      kind: "mirror"
+      parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2
+    }
   | { kind: "compound"; parameters: CompoundFeatureContentParameters }
   | { kind: "union" }
 
@@ -1881,7 +1895,11 @@ function parseMirrorFeature(input: FeatureEvaluationInput): FeatureParseResult {
       "Mirror requires one exact named body dependency and no topology references.",
     )
   }
-  const parameters = mirrorFeatureContentParametersSchema.safeParse(feature.parameters)
+  const parameters = (
+    feature.type.schemaVersion === 2
+      ? mirrorFeatureContentParametersV2Schema
+      : mirrorFeatureContentParametersSchema
+  ).safeParse(feature.parameters)
   return parameters.success
     ? { ok: true, feature: { kind: "mirror", parameters: parameters.data } }
     : featureFailure("invalid-feature-parameters", "Mirror content parameters are invalid.")
@@ -1947,16 +1965,19 @@ function parseSplitFeature(input: FeatureEvaluationInput): FeatureParseResult {
     : featureFailure("invalid-feature-parameters", "Split content parameters are invalid.")
 }
 
-function parseShellFeature(input: FeatureEvaluationInput): FeatureParseResult {
+function parseShellFeature(input: FeatureEvaluationInput, version = 1): FeatureParseResult {
   const feature = input.content.feature
   if (!hasExactSingleBodyInput(input))
     return invalidInputCardinality(
       "Shell requires one exact named body dependency and no generic topology references.",
     )
-  const parameters = shellFeatureContentParametersSchema.safeParse(feature.parameters)
+  const schema =
+    version === 2 ? shellFeatureContentParametersV2Schema : shellFeatureContentParametersSchema
+  const parameters = schema.safeParse(feature.parameters)
   if (!parameters.success)
     return featureFailure("invalid-feature-parameters", "Shell content parameters are invalid.")
-  if (parameters.data.sourceContentHash !== input.dependencies[0]?.contentHash)
+  const sourceChanged = parameters.data.sourceContentHash !== input.dependencies[0]?.contentHash
+  if (version === 1 && sourceChanged)
     return featureFailure(
       "invalid-feature-parameters",
       "Shell source changed. Reselect the opening faces on the current body.",
@@ -1967,7 +1988,14 @@ function parseShellFeature(input: FeatureEvaluationInput): FeatureParseResult {
       "invalid-feature-parameters",
       "Shell openings must target the exact input body role. Reselect the opening faces.",
     )
-  return { ok: true, feature: { kind: "shell", parameters: parameters.data } }
+  return {
+    ok: true,
+    feature: {
+      kind: "shell",
+      parameters: parameters.data,
+      openingResolution: sourceChanged ? "durable" : "exact",
+    },
+  }
 }
 
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
@@ -1977,7 +2005,9 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [UNION_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "union", 2)],
   [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
   [MIRROR_FEATURE_TYPE_KEY, parseMirrorFeature],
+  [MIRROR_FEATURE_TYPE_V2_KEY, parseMirrorFeature],
   [SHELL_FEATURE_TYPE_KEY, parseShellFeature],
+  [SHELL_FEATURE_TYPE_V2_KEY, (input) => parseShellFeature(input, 2)],
   [THREAD_FEATURE_TYPE_KEY, parseThreadFeature],
   [IMPORTED_FEATURE_TYPE_KEY, parseImportedFeature],
   [SPLIT_FEATURE_TYPE_KEY, parseSplitFeature],
@@ -2354,7 +2384,7 @@ function createPlacementFeatureShape(
 
 function createMirrorFeatureShape(
   opencascade: OpenCascadeInstance,
-  parameters: MirrorFeatureContentParameters,
+  parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2,
   source: Shape3D | undefined,
 ) {
   if (!source) throw new Error("Mirror target body is unavailable.")
@@ -3157,6 +3187,14 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   })
 }
 
+function modifierExtrusionHasHeuristicFaces(feature: ParsedFeature) {
+  return (
+    feature.kind === "multi-extrusion-modifying" ||
+    ((feature.kind === "extrusion" || feature.kind === "extent-extrusion") &&
+      feature.parameters.operation !== "new")
+  )
+}
+
 function featureProfileCount(feature: ParsedFeature) {
   if (feature.kind === "compound") return feature.parameters.outputRoles.length
   if (feature.kind === "pattern") return feature.parameters.count
@@ -3641,6 +3679,8 @@ export type GeometryShellOpeningResolver = (
   references: ShellFeatureContentParameters["openings"],
   candidates: readonly TopologyCaptureSnapshot["candidates"][number][],
   scope: { featureId: string; outputRole: string },
+  mode?: "exact" | "durable",
+  options?: { allowSemanticRebinding?: boolean },
 ) =>
   | { ok: true; candidateIds: readonly string[] }
   | { ok: false; reason: "missing" | "ambiguous" | "changed" | "duplicate" }
@@ -3648,6 +3688,14 @@ class ShellOpeningRepairError extends Error {
   constructor(reason: string) {
     super(`Shell opening faces are ${reason}. Reselect the opening faces on the current body.`)
   }
+}
+
+function shellOpeningShapeKeys(candidateIds: readonly string[], snapshot: TopologyCaptureSnapshot) {
+  return candidateIds.map((id) => {
+    const key = snapshot.transientShapeKeys.get(id)
+    if (!id.startsWith("face:") || key === undefined) throw new ShellOpeningRepairError("missing")
+    return key
+  })
 }
 
 export type GeometryTopologyResolver = (
@@ -3659,6 +3707,7 @@ export type GeometryTopologyResolver = (
 export class ReplicadGeometryEngine implements GeometryKernelEngine {
   readonly #ownedShapes = new OwnedShapeRegistry()
   readonly #topologySnapshots = new WeakMap<Shape3D, TopologyCaptureSnapshot>()
+  readonly #modifierExtrusionShapes = new WeakSet<Shape3D>()
   readonly #featureShapes = new DocumentFeatureShapeRegistry<Shape3D>((shape) =>
     this.#topologySnapshots.delete(shape),
   )
@@ -3803,6 +3852,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       temporaryShape = evaluatedShape.temporaryShape
       const evaluation = evaluateFeatureGeometry(opencascade, evaluatedShape.shape, feature)
       this.#topologySnapshots.set(evaluatedShape.shape, evaluation.topologySnapshot)
+      if (modifierExtrusionHasHeuristicFaces(feature))
+        this.#modifierExtrusionShapes.add(evaluatedShape.shape)
 
       reportProgress("feature-tessellation", 0.7)
       const tessellation = tessellateFeatureGeometry(opencascade, evaluatedShape.shape, input.mesh)
@@ -3929,7 +3980,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return threadOcctShape(opencascade, target, feature.parameters)
     }
     if (feature.kind === "shell")
-      return this.#createShellFeature(opencascade, feature.parameters, dependencies[0], input)
+      return this.#createShellFeature(opencascade, feature, dependencies[0], input)
 
     if (feature.kind !== "selected-fillet" && feature.kind !== "selected-chamfer") {
       return createFeatureShape(opencascade, feature, dependencies)
@@ -3939,26 +3990,40 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
   #createShellFeature(
     opencascade: OpenCascadeInstance,
-    parameters: ShellFeatureContentParameters,
+    feature: Extract<ParsedFeature, { kind: "shell" }>,
     target: Shape3D | undefined,
     input: FeatureEvaluationInput,
   ) {
-    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
-    const dependency = input.dependencies[0]
-    if (!target || !snapshot || !dependency?.outputRole || !this.resolveShellOpenings)
-      throw new ShellOpeningRepairError("unavailable")
+    const { parameters } = feature
+    if (!target) throw new ShellOpeningRepairError("unavailable")
     validateCombinationSources(opencascade, [target])
-    const resolved = this.resolveShellOpenings(parameters.openings, snapshot.candidates, {
-      featureId: dependency.featureId,
-      outputRole: dependency.outputRole,
-    })
-    if (!resolved.ok) throw new ShellOpeningRepairError(resolved.reason)
-    const keys = resolved.candidateIds.map((id) => {
-      const key = snapshot.transientShapeKeys.get(id)
-      if (!id.startsWith("face:") || key === undefined) throw new ShellOpeningRepairError("missing")
-      return key
-    })
+    if (parameters.openings.length === 0)
+      return shellOcctShape(opencascade, target, [], parameters.thickness, parameters.direction)
+    const keys = this.#resolveShellOpeningKeys(feature, target, input)
     return shellOcctShape(opencascade, target, keys, parameters.thickness, parameters.direction)
+  }
+
+  #resolveShellOpeningKeys(
+    feature: Extract<ParsedFeature, { kind: "shell" }>,
+    target: Shape3D,
+    input: FeatureEvaluationInput,
+  ) {
+    const snapshot = this.#topologySnapshots.get(target)
+    const dependency = input.dependencies[0]
+    if (!snapshot || !dependency?.outputRole || !this.resolveShellOpenings)
+      throw new ShellOpeningRepairError("unavailable")
+    const resolved = this.resolveShellOpenings(
+      feature.parameters.openings,
+      snapshot.candidates,
+      {
+        featureId: dependency.featureId,
+        outputRole: dependency.outputRole,
+      },
+      feature.openingResolution,
+      { allowSemanticRebinding: !this.#modifierExtrusionShapes.has(target) },
+    )
+    if (!resolved.ok) throw new ShellOpeningRepairError(resolved.reason)
+    return shellOpeningShapeKeys(resolved.candidateIds, snapshot)
   }
 
   #createSelectedEdgeFeature(

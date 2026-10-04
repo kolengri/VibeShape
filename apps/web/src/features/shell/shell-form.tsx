@@ -6,7 +6,7 @@ import type {
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -24,7 +24,9 @@ import {
   shellFormFeature,
   shellInitialSelection,
   shellInitialValues,
+  shellTargetBody,
 } from "./shell-form-model"
+import type { ShellPickingContext, ShellPickRequest } from "./shell-picking"
 
 export type ShellFormCopy = ParameterPanelCopy &
   PrimitiveLengthCopy & {
@@ -35,6 +37,9 @@ export type ShellFormCopy = ParameterPanelCopy &
     inward: string
     outward: string
     openings: string
+    cavity: string
+    openCavity: string
+    closedCavity: string
     openingsDescription: string
     repair: string
     unavailable: string
@@ -46,7 +51,82 @@ export type ShellFormCopy = ParameterPanelCopy &
   }
 type ShellFormProps = FeatureParameterFormProps<ShellFormMode, ShellFormCopy> & {
   evidence: ModelBodyTopologyEvidence | null
+  allowSemanticRebinding?: boolean
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+  pickingRequest?: ShellPickRequest | null
+  onPickingContextChange?: ((context: ShellPickingContext | null) => void) | undefined
+}
+
+function ShellPickingSync({
+  values,
+  evidence,
+  featureId,
+  mode,
+  request,
+  onContextChange,
+  onOpeningsChange,
+}: {
+  values: ShellFormValues
+  evidence: ModelBodyTopologyEvidence | null
+  featureId: FeatureId
+  mode: ShellFormMode
+  request: ShellPickRequest | null
+  onContextChange: ShellFormProps["onPickingContextChange"]
+  onOpeningsChange: (ids: string[]) => void
+}) {
+  const lastSequence = useRef<number | null>(null)
+  const target = shellTargetBody(mode)
+  useEffect(() => {
+    onContextChange?.(
+      evidence && !values.closed
+        ? {
+            featureId,
+            targetBody: {
+              schemaVersion: 0,
+              featureId: target.featureId,
+              outputRole: target.outputRole,
+            },
+            evidence,
+            openingIds: values.openingIds,
+          }
+        : null,
+    )
+    return () => onContextChange?.(null)
+  }, [
+    evidence,
+    featureId,
+    onContextChange,
+    target.featureId,
+    target.outputRole,
+    values.closed,
+    values.openingIds,
+  ])
+  useEffect(() => {
+    if (!request || lastSequence.current === request.sequence) return
+    lastSequence.current = request.sequence
+    const ids = pickedShellOpenings(values, featureId, evidence, request)
+    if (ids) onOpeningsChange(ids)
+  }, [evidence, featureId, onOpeningsChange, request, values.closed, values.openingIds])
+  return null
+}
+
+function pickedShellOpenings(
+  values: ShellFormValues,
+  featureId: FeatureId,
+  evidence: ModelBodyTopologyEvidence | null,
+  request: ShellPickRequest,
+): string[] | null {
+  if (
+    values.closed ||
+    request.featureId !== featureId ||
+    request.sourceContentHash !== evidence?.contentHash
+  )
+    return null
+  if (!evidence.candidates.some(({ candidateId }) => candidateId === request.candidateId))
+    return null
+  if (values.openingIds.includes(request.candidateId))
+    return values.openingIds.filter((id) => id !== request.candidateId)
+  return values.openingIds.length < 64 ? [...values.openingIds, request.candidateId] : null
 }
 function ShellPreview(props: {
   values: ShellFormValues
@@ -56,6 +136,7 @@ function ShellPreview(props: {
   variables: readonly VariableDefinition[]
   units: DocumentDisplayUnits
   copy: ShellFormCopy
+  allowSemanticRebinding: boolean
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
   useDebouncedFeaturePreview({
@@ -68,6 +149,7 @@ function ShellPreview(props: {
       props.variables,
       props.units,
       props.copy,
+      props.allowSemanticRebinding,
     ),
   })
   return null
@@ -83,15 +165,18 @@ export function ShellForm({
   onSave,
   onSaved,
   previewStatus,
+  pickingRequest = null,
+  onPickingContextChange,
+  allowSemanticRebinding = true,
   variables,
 }: ShellFormProps) {
   const state = useParameterFormState(variables)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const repair = shellInitialSelection(mode, evidence).repair
+  const repair = shellInitialSelection(mode, evidence, allowSemanticRebinding).repair
   const form = useAppForm({
-    defaultValues: shellInitialValues(mode, evidence, state.displayUnits),
+    defaultValues: shellInitialValues(mode, evidence, state.displayUnits, allowSemanticRebinding),
     onSubmit: async ({ value }) => {
       const feature = shellFormFeature(
         mode,
@@ -101,6 +186,7 @@ export function ShellForm({
         variables,
         state.displayUnits,
         copy,
+        allowSemanticRebinding,
       )
       if (!feature) {
         state.setMessage(copy.validationSummary)
@@ -123,6 +209,22 @@ export function ShellForm({
   })
   return (
     <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      <form.Subscribe selector={(formState) => formState.values}>
+        {(values) => (
+          <ShellPickingSync
+            values={values}
+            evidence={evidence}
+            featureId={featureId}
+            mode={mode}
+            request={pickingRequest}
+            onContextChange={onPickingContextChange}
+            onOpeningsChange={(ids) => {
+              state.clearSubmissionErrors()
+              form.setFieldValue("openingIds", ids)
+            }}
+          />
+        )}
+      </form.Subscribe>
       {onPreviewChange && (
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
@@ -134,6 +236,7 @@ export function ShellForm({
               variables={variables}
               units={state.displayUnits}
               copy={copy}
+              allowSemanticRebinding={allowSemanticRebinding}
               onPreviewChange={onPreviewChange}
             />
           )}
@@ -206,39 +309,72 @@ export function ShellForm({
                 </fieldset>
               )}
             </form.Field>
-            <form.Field name="openingIds">
+            <form.Field name="closed">
               {(field) => (
                 <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.openings}</legend>
-                  <p className="text-xs text-muted-foreground">{copy.openingsDescription}</p>
-                  {evidence?.candidates.map((candidate, index) => (
-                    <label key={candidate.candidateId} className="flex items-start gap-2 text-xs">
+                  <legend className="mb-2 text-xs font-medium">{copy.cavity}</legend>
+                  {([false, true] as const).map((closed) => (
+                    <label key={String(closed)} className="flex items-center gap-2 text-sm">
                       <input
-                        type="checkbox"
-                        name="openings"
-                        checked={field.state.value.includes(candidate.candidateId)}
+                        type="radio"
+                        name="closed"
+                        checked={field.state.value === closed}
                         onBlur={field.handleBlur}
-                        onChange={(event) => {
+                        onChange={() => {
                           state.clearSubmissionErrors()
-                          field.handleChange(
-                            event.currentTarget.checked
-                              ? [...field.state.value, candidate.candidateId]
-                              : field.state.value.filter((id) => id !== candidate.candidateId),
-                          )
+                          field.handleChange(closed)
                         }}
                       />
-                      {copy.face({
-                        number: index + 1,
-                        area: formatShellMeasurement(candidate.signature.measure),
-                        x: formatShellMeasurement(candidate.signature.centroid[0]),
-                        y: formatShellMeasurement(candidate.signature.centroid[1]),
-                        z: formatShellMeasurement(candidate.signature.centroid[2]),
-                      })}
+                      {closed ? copy.closedCavity : copy.openCavity}
                     </label>
                   ))}
                 </fieldset>
               )}
             </form.Field>
+            <form.Subscribe selector={(formState) => formState.values.closed}>
+              {(closed) =>
+                closed ? null : (
+                  <form.Field name="openingIds">
+                    {(field) => (
+                      <fieldset className="grid gap-2">
+                        <legend className="mb-2 text-xs font-medium">{copy.openings}</legend>
+                        <p className="text-xs text-muted-foreground">{copy.openingsDescription}</p>
+                        {evidence?.candidates.map((candidate, index) => (
+                          <label
+                            key={candidate.candidateId}
+                            className="flex items-start gap-2 text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              name="openings"
+                              checked={field.state.value.includes(candidate.candidateId)}
+                              onBlur={field.handleBlur}
+                              onChange={(event) => {
+                                state.clearSubmissionErrors()
+                                field.handleChange(
+                                  event.currentTarget.checked
+                                    ? [...field.state.value, candidate.candidateId]
+                                    : field.state.value.filter(
+                                        (id) => id !== candidate.candidateId,
+                                      ),
+                                )
+                              }}
+                            />
+                            {copy.face({
+                              number: index + 1,
+                              area: formatShellMeasurement(candidate.signature.measure),
+                              x: formatShellMeasurement(candidate.signature.centroid[0]),
+                              y: formatShellMeasurement(candidate.signature.centroid[1]),
+                              z: formatShellMeasurement(candidate.signature.centroid[2]),
+                            })}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
+                  </form.Field>
+                )
+              }
+            </form.Subscribe>
           </ParameterPanel>
         )}
       </form.Subscribe>

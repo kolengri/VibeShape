@@ -1,6 +1,6 @@
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, createLengthQuantity } from "@vibeshape/domain"
-import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
+import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { describe, expect, it } from "vitest"
 import { createLocalCadCommand } from "./local-cad-command"
 
@@ -56,7 +56,7 @@ describe("named Shell draft commands", () => {
           actor,
           kind:
             tool === "create_shell" ? "org.vibeshape.feature.add" : "org.vibeshape.feature.update",
-          payload: { feature: { type: shellFeatureType.type, parameters: args.parameters } },
+          payload: { feature: { type: shellFeatureTypeV2.type, parameters: args.parameters } },
         },
       })
     },
@@ -80,5 +80,20 @@ describe("named Shell draft commands", () => {
         },
       }).success,
     ).toBe(false)
+  })
+  it("authors a version 2 closed cavity through the named MCP command", () => {
+    const operation = localOperationSchema.parse({
+      tool: "create_shell",
+      arguments: { ...args, parameters: { ...args.parameters, openings: [] } },
+    })
+    if (operation.tool !== "create_shell") throw new Error("Expected a Shell draft.")
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.client",
+      sessionId: id(5),
+    })
+    expect(createLocalCadCommand(operation, actor, id(6)).command.payload).toMatchObject({
+      feature: { type: { schemaVersion: 2 }, parameters: { openings: [] } },
+    })
   })
 })

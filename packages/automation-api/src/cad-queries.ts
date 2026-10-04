@@ -1,5 +1,6 @@
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
+import { projectFirstPartyFeatureSemanticInputs } from "@vibeshape/domain/feature-semantic-inputs"
 import {
   documentIdSchema,
   featureIdSchema,
@@ -126,17 +127,28 @@ function sketchDependencies(sketch: DocumentSnapshot["sketches"][number]) {
   return [...dependencies]
 }
 
+function featureProfileSketchIds(feature: DocumentSnapshot["features"][number]) {
+  const parameters =
+    readExtrusionFeatureParameters(feature) ?? readRevolveFeatureParameters(feature)
+  if (!parameters) return []
+  const profiles = parameters.profiles?.profiles ?? [parameters.profile]
+  return profiles.map(({ sketchId }) => sketchId)
+}
+
 function featureDependencies(feature: DocumentSnapshot["features"][number]) {
-  const dependencies = new Set<string>(feature.dependencies)
-  const extrusion = readExtrusionFeatureParameters(feature)
+  const projection = projectFirstPartyFeatureSemanticInputs(feature)
+  const semanticInputs =
+    projection.recognized && projection.ok ? projection.inputs.map(({ id }) => id) : []
   const revolve = readRevolveFeatureParameters(feature)
-  if (extrusion) dependencies.add(extrusion.profile.sketchId)
-  if (revolve) {
-    dependencies.add(revolve.profile.sketchId)
-    if (revolve.axis.kind === "model-edge") dependencies.add(revolve.axis.reference.featureId)
-    if (revolve.axis.kind === "sketch-line") dependencies.add(revolve.axis.sketchId)
-  }
-  return [...dependencies]
+  const axisInputs = revolve?.axis.kind === "sketch-line" ? [revolve.axis.sketchId] : []
+  return [
+    ...new Set([
+      ...feature.dependencies,
+      ...semanticInputs,
+      ...featureProfileSketchIds(feature),
+      ...axisInputs,
+    ]),
+  ]
 }
 
 export function queryCadInspectionList(

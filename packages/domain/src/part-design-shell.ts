@@ -45,6 +45,10 @@ export const shellFeatureParametersSchema = z
     }
   })
 export type ShellFeatureParameters = Readonly<z.infer<typeof shellFeatureParametersSchema>>
+export const shellFeatureParametersV2Schema = shellFeatureParametersSchema.safeExtend({
+  openings: z.array(bodyFaceRefSchema).max(64),
+})
+export type ShellFeatureParametersV2 = Readonly<z.infer<typeof shellFeatureParametersV2Schema>>
 export const shellFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -57,54 +61,81 @@ export const shellFeatureType = featureTypeDescriptorSchema.parse({
   dependencies: { min: 1, max: 1 },
   references: { min: 0, max: 0 },
 })
+export const shellFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  ...shellFeatureType,
+  type: { ...shellFeatureType.type, schemaVersion: 2 },
+})
 export function readShellFeatureParameters(
   feature: Pick<FeatureRecord, "type" | "parameters">,
 ): ShellFeatureParameters | null {
-  if (featureTypeKey(feature.type) !== featureTypeKey(shellFeatureType.type)) return null
-  const parsed = shellFeatureParametersSchema.safeParse(feature.parameters)
+  const key = featureTypeKey(feature.type)
+  const schema =
+    key === featureTypeKey(shellFeatureType.type)
+      ? shellFeatureParametersSchema
+      : key === featureTypeKey(shellFeatureTypeV2.type)
+        ? shellFeatureParametersV2Schema
+        : null
+  if (!schema) return null
+  const parsed = schema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
 }
-export const shellFeatureTypeHandler: TrustedFeatureTypeHandler = {
-  type: shellFeatureType.type,
-  parametersSchema: shellFeatureParametersSchema,
-  resolveParameters(parameters, variables) {
-    const parsed = shellFeatureParametersSchema.safeParse(parameters)
-    if (!parsed.success) return { ok: true, parameters }
-    const resolved = resolveQuantityExpression(parsed.data.thickness, variables)
-    const thickness = resolved.ok ? shellThicknessSchema.safeParse(resolved.quantity) : null
-    if (!resolved.ok || !thickness?.success)
-      return {
-        ok: false,
-        diagnostic: {
-          code: "invalid-shell-thickness",
-          message: "Shell thickness expression is invalid.",
-          issues: [
-            { path: "thickness", message: "Thickness must resolve to a positive bounded length." },
-          ],
-        },
-      }
-    return { ok: true, parameters: { ...parsed.data, thickness: thickness.data } }
-  },
-  validateFeature(feature) {
-    const parameters = shellFeatureParametersSchema.parse(feature.parameters)
-    return parameters.targetBody.featureId === feature.dependencies[0]
-      ? []
-      : [
-          {
-            path: "parameters.targetBody.featureId",
-            message: "Shell must target its sole dependency.",
+function createShellFeatureTypeHandler(
+  type: typeof shellFeatureType.type,
+  parametersSchema: typeof shellFeatureParametersSchema,
+): TrustedFeatureTypeHandler {
+  return {
+    type,
+    parametersSchema,
+    resolveParameters(parameters, variables) {
+      const parsed = parametersSchema.safeParse(parameters)
+      if (!parsed.success) return { ok: true, parameters }
+      const resolved = resolveQuantityExpression(parsed.data.thickness, variables)
+      const thickness = resolved.ok ? shellThicknessSchema.safeParse(resolved.quantity) : null
+      if (!resolved.ok || !thickness?.success)
+        return {
+          ok: false,
+          diagnostic: {
+            code: "invalid-shell-thickness",
+            message: "Shell thickness expression is invalid.",
+            issues: [
+              {
+                path: "thickness",
+                message: "Thickness must resolve to a positive bounded length.",
+              },
+            ],
           },
-        ]
-  },
-  contentParameters(parameters) {
-    const parsed = shellFeatureParametersSchema.parse(parameters)
-    return {
-      thickness: parsed.thickness.value,
-      direction: parsed.direction,
-      sourceContentHash: parsed.sourceContentHash,
-      openings: parsed.openings
-        .map(({ featureId: _featureId, ...reference }) => reference)
-        .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right))),
-    }
-  },
+        }
+      return { ok: true, parameters: { ...parsed.data, thickness: thickness.data } }
+    },
+    validateFeature(feature) {
+      const parameters = parametersSchema.parse(feature.parameters)
+      return parameters.targetBody.featureId === feature.dependencies[0]
+        ? []
+        : [
+            {
+              path: "parameters.targetBody.featureId",
+              message: "Shell must target its sole dependency.",
+            },
+          ]
+    },
+    contentParameters(parameters) {
+      const parsed = parametersSchema.parse(parameters)
+      return {
+        thickness: parsed.thickness.value,
+        direction: parsed.direction,
+        sourceContentHash: parsed.sourceContentHash,
+        openings: parsed.openings
+          .map(({ featureId: _featureId, ...reference }) => reference)
+          .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right))),
+      }
+    },
+  }
 }
+export const shellFeatureTypeHandler = createShellFeatureTypeHandler(
+  shellFeatureType.type,
+  shellFeatureParametersSchema,
+)
+export const shellFeatureTypeHandlerV2 = createShellFeatureTypeHandler(
+  shellFeatureTypeV2.type,
+  shellFeatureParametersV2Schema,
+)

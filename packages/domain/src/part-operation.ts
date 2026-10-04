@@ -26,7 +26,7 @@ import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hol
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
 import { loftFeatureType } from "./part-design-loft"
 import { meshImportOutputRole, readMeshImportFeatureParameters } from "./part-design-mesh-import"
-import { readMirrorFeatureParameters } from "./part-design-mirror"
+import { mirrorPreservesSource, readMirrorFeatureParameters } from "./part-design-mirror"
 import {
   patternInstanceOutputRole,
   patternOutputRoles,
@@ -129,7 +129,10 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
   const mirror = readMirrorFeatureParameters(feature)
   const shell = readShellFeatureParameters(feature)
   if (shell) return { kind: "modify", target: shell.targetBody, consumed: [] }
-  if (mirror) return { kind: "modify", target: mirror.targetBody, consumed: [] }
+  if (mirror)
+    return mirrorPreservesSource(feature)
+      ? { kind: "new" }
+      : { kind: "modify", target: mirror.targetBody, consumed: [] }
   if (placement) return { kind: "modify", target: placement.targetBody, consumed: [] }
   const compound = readCompoundFeatureParameters(feature)
   if (compound)

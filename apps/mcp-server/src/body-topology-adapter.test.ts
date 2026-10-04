@@ -59,6 +59,46 @@ const view = {
   },
 }
 
+it.each(["draft_body_measurements", "draft_body_topology"])(
+  "advertises client-valid read-only %s schemas",
+  async (name) => {
+    const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
+    const adapter = createLocalMcpAdapter(broker, createExportResources())
+    const client = new Client({ name: "draft-body-schema-test", version: "1" })
+    try {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+      await Promise.all([adapter.connect(serverTransport), client.connect(clientTransport)])
+      const listed = await client.listTools()
+      const draftTool = listed.tools.find((tool) => tool.name === name)
+      expect(draftTool).toMatchObject({
+        annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+      })
+      if (!draftTool) throw new Error(`Missing ${name}`)
+      const validateDraftInput = new AjvJsonSchemaValidator().getValidator({
+        ...draftTool.inputSchema,
+        properties: draftTool.inputSchema.properties ?? {},
+        required: draftTool.inputSchema.required ?? [],
+      })
+      expect(
+        validateDraftInput({
+          draftId: documentId,
+          revision: 4,
+          featureId,
+          outputRole: "result",
+          cursor: null,
+          limit: 20,
+          ...(name === "draft_body_topology" ? { topologyKind: "face" } : {}),
+        }).valid,
+      ).toBe(true)
+      expect(validateDraftInput({ revision: 4, featureId, outputRole: "result" }).valid).toBe(false)
+    } finally {
+      await client.close()
+      await adapter.close()
+      broker.dispose()
+    }
+  },
+)
+
 it("advertises a client-valid body topology schema and read-only annotation", async () => {
   const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
   const adapter = createLocalMcpAdapter(broker, createExportResources())

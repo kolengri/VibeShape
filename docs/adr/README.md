@@ -78,7 +78,8 @@
 | [0072](0072-derived-assembly-geometry-and-exact-interference.md) | Accepted | Derived assembly geometry and exact interference |
 | [0073](0073-immutable-local-assembly-library.md) | Accepted | Immutable local assembly library revisions |
 | [0074](0074-ordered-body-slots-in-compound-and-union.md) | Accepted | Ordered exact body slots in Compound and Union |
-| [0082](0082-owned-draft-body-inspection-and-diagnostics.md) | Accepted | Owned draft body inspection and complete evaluation diagnostics |
+| [0076](0076-closed-shells-and-durable-opening-identity.md) | Accepted | Closed Shells and durable opening identity |
+| [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 
 Statuses:
 
@@ -90,3 +91,5 @@ Statuses:
 - `Rejected` — considered and not adopted
 
 When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
+
+- [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)

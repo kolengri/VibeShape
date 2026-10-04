@@ -7,6 +7,7 @@ import {
 } from "./modules"
 import { booleanFeatureType, boxFeatureType } from "./part-design"
 import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
+import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
 
 function moduleDescriptor(
   id: string,
@@ -121,6 +122,13 @@ describe("module registry", () => {
       expect(result.registry.getFeatureType(booleanFeatureType.type)).toEqual(booleanFeatureType)
       expect(result.registry.getFeatureType(holeFeatureType.type)).toEqual(holeFeatureType)
       expect(result.registry.getFeatureType(holeFeatureTypeV2.type)).toEqual(holeFeatureTypeV2)
+      expect(result.registry.getFeatureType(mirrorFeatureType.type)).toEqual(mirrorFeatureType)
+      expect(result.registry.getFeatureType(mirrorFeatureTypeV2.type)).toEqual(mirrorFeatureTypeV2)
+      expect(
+        result.registry.featureTypes
+          .filter(({ type }) => type.typeId === "org.vibeshape.feature.part-design.mirror")
+          .map(({ type }) => type.schemaVersion),
+      ).toEqual([1, 2])
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
@@ -143,6 +151,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.imported",
         "org.vibeshape.feature.part-design.loft",
         "org.vibeshape.feature.part-design.mirror",
+        "org.vibeshape.feature.part-design.mirror",
         "org.vibeshape.feature.part-design.pattern",
         "org.vibeshape.feature.part-design.placement",
         "org.vibeshape.feature.part-design.pyramid",
@@ -152,6 +161,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
+        "org.vibeshape.feature.part-design.shell",
         "org.vibeshape.feature.part-design.shell",
         "org.vibeshape.feature.part-design.sphere",
         "org.vibeshape.feature.part-design.split",

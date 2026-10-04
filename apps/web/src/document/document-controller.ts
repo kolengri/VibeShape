@@ -1,6 +1,7 @@
 import { openAuthorityDocumentSession } from "@vibeshape/application/authority-document-session"
 import { createAuthorityPersistenceAdapter } from "@vibeshape/application/authority-persistence-adapter"
 import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
+import { createModelDiagnosticsEvidence } from "@vibeshape/application/model-diagnostics"
 import { createModelEdgeEvidence } from "@vibeshape/application/model-edges"
 import {
   createModelBodyMeasurementEvidence,
@@ -93,6 +94,7 @@ import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
+import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
 import {
   readAuthoredVShape,
@@ -169,6 +171,7 @@ export type ActiveDocumentExportResult =
 export type ActiveAutomationInfo = Readonly<{
   summary: ReturnType<typeof documentSummaryViewSchema.parse>
   measurements: ReturnType<typeof modelMeasurementViewSchema.parse> | null
+  diagnostics?: ModelDiagnosticsEvidence | null
   measurementDiagnostic: { code: string; message: string; retryable: boolean } | null
 }>
 
@@ -685,8 +688,15 @@ export function createActiveDocumentAutomationSession() {
     })
     if (!summary.ok) return null
     const evidence = createModelMeasurementEvidence(snapshot, report.rebuild)
+    const diagnostics = createModelDiagnosticsEvidence(snapshot, report.rebuild)
     const measurementDiagnostic = evidence.ok
-      ? null
+      ? diagnostics.ok
+        ? null
+        : {
+            code: diagnostics.code,
+            message: "Complete model diagnostics are unavailable.",
+            retryable: true,
+          }
       : {
           code: evidence.code,
           message: "Exact model measurements are unavailable.",
@@ -710,6 +720,7 @@ export function createActiveDocumentAutomationSession() {
       summary: documentSummaryViewSchema.parse(summary.view),
       measurements: measurement?.ok ? modelMeasurementViewSchema.parse(measurement.view) : null,
       measurementDiagnostic,
+      diagnostics: diagnostics.ok ? diagnostics.evidence : null,
     }
   }
   const readBodyMeasurements = (

@@ -37,11 +37,12 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureType } from "@vibeshape/domain/part-design-mirror"
+import { mirrorFeatureType, mirrorFeatureTypeV2 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
-import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
+import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
@@ -242,7 +243,7 @@ function isPlacementFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, placementFeatureType.type)
 }
 function isShellFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, shellFeatureType.type)
+  return readShellFeatureParameters(feature) !== null
 }
 function isLoftFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, loftFeatureType.type)
@@ -260,7 +261,10 @@ function isSplitFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, splitFeatureType.type)
 }
 function isMirrorFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, mirrorFeatureType.type)
+  return (
+    hasFeatureType(feature, mirrorFeatureType.type) ||
+    hasFeatureType(feature, mirrorFeatureTypeV2.type)
+  )
 }
 
 function isUnionFeature(feature: FeatureRecord) {
@@ -292,6 +296,17 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isThreadFeature,
     isUnionFeature,
   ].some((matches) => matches(feature))
+}
+
+function isBodyTargetFeature(feature: FeatureRecord) {
+  return (
+    isPartDesignSolidFeature(feature) ||
+    hasFeatureType(feature, importedFeatureType.type) ||
+    hasFeatureType(feature, patternFeatureType.type) ||
+    hasFeatureType(feature, splitFeatureType.type) ||
+    hasFeatureType(feature, compoundFeatureType.type) ||
+    hasFeatureType(feature, compoundFeatureTypeV2.type)
+  )
 }
 
 function isModifyingInputFeature(feature: FeatureRecord) {
@@ -417,7 +432,7 @@ export function eligibleHoleTargetFeatures(
     : new Set<FeatureId>()
   return features.filter(
     (feature) =>
-      !feature.suppressed && !excludedIds.has(feature.id) && isModifyingInputFeature(feature),
+      !feature.suppressed && !excludedIds.has(feature.id) && isBodyTargetFeature(feature),
   )
 }
 

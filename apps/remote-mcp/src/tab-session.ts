@@ -1,6 +1,12 @@
 import { DurableObject } from "cloudflare:workers"
+import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
+import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
-import { localFailure, localToolOutputs } from "@vibeshape/automation-api/local-tools"
+import {
+  isLocalDraftInspection,
+  localFailure,
+  localToolOutputs,
+} from "@vibeshape/automation-api/local-tools"
 import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_REQUEST_TIMEOUT_MS,
@@ -36,7 +42,7 @@ const metadataSchema = z
 type Metadata = z.infer<typeof metadataSchema>
 type Pending = {
   id: string
-  tool: LocalOperation["tool"]
+  operation: LocalOperation
   resolve: (result: unknown) => void
   timer: ReturnType<typeof setTimeout>
 }
@@ -172,7 +178,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
       const timer = setTimeout(() => {
         if (this.pending?.id === id) void this.revoke()
       }, REMOTE_REQUEST_TIMEOUT_MS)
-      this.pending = { id, tool: operation.tool, resolve, timer }
+      this.pending = { id, operation, resolve, timer }
       this.send({ type: "work", requestId: id, operation })
     })
   }
@@ -317,17 +323,34 @@ export class TabSession extends DurableObject<RemoteEnv> {
   private async resolveResult(message: Extract<BrowserMessage, { type: "result" }>) {
     if (
       this.pending?.id !== message.requestId ||
-      this.pending.tool !== message.tool ||
+      this.pending.operation.tool !== message.tool ||
       !this.metadata
     )
       return this.revoke()
     const result = localToolOutputs[message.tool].parse(message.result)
+    if (result.ok && isLocalDraftInspection(this.pending.operation)) {
+      const inspection = automationDraftInspectionViewSchema.parse(result.value)
+      if (!draftInspectionMatches(this.pending.operation, inspection, inspection.draft.documentId))
+        return this.revoke()
+    }
     const pending = this.pending
     this.pending = null
     this.metadata.active = null
     this.metadata.activeKey = null
     clearTimeout(pending.timer)
+    return this.confirmResult(pending, result)
+  }
+  private async confirmResult(pending: Pending, result: unknown) {
     await this.save()
+    if (!this.live() || !this.browser()) {
+      pending.resolve(
+        localFailure(
+          "outcome-unknown",
+          "The connection ended. Inspect the current document revision before making another change.",
+        ),
+      )
+      return this.revoke()
+    }
     pending.resolve(result)
   }
   async webSocketClose(socket: WebSocket) {

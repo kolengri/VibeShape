@@ -337,6 +337,7 @@ function renderViewport(
     setSketchProfileSelections: vi.fn(),
     setSelectionCandidateStackPreserved: vi.fn(),
     setSelectionPreselection: vi.fn(),
+    setFaceSelections: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),

@@ -22,6 +22,7 @@ import type {
   QueryResult,
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
+import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
@@ -137,6 +138,11 @@ async function dispatchDraftLifecycle(
 
 function readModelInfo(session: LocalSessionPort) {
   const info = session.readInfo()
+  if (info && serializedQueryBytes(info) > 128 * 1024)
+    return localFailure(
+      "query-result-too-large",
+      "Complete model diagnostics and measurements exceed the 128 KiB response budget.",
+    )
   return info
     ? { ok: true as const, value: info }
     : localFailure("stale-revision", "The active document changed.", true)

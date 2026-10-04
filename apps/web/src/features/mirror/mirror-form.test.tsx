@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
+import {
+  createLengthQuantity,
+  type FeatureRecord,
+  featureIdSchema,
+  mirrorFeatureTypeV2,
+} from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
@@ -59,7 +64,12 @@ describe("Mirror form", () => {
       expect(f.onPreviewChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: featureId,
-          parameters: { targetBody: mode.kind === "create" ? mode.targetBody : null, plane: "XY" },
+          parameters: expect.objectContaining({
+            targetBody: mode.kind === "create" ? mode.targetBody : null,
+            plane: "XY",
+            preserveSource: false,
+            offset: expect.objectContaining({ value: 0 }),
+          }),
         }),
       ),
     )
@@ -79,10 +89,13 @@ describe("Mirror form", () => {
       expect.objectContaining({
         id: featureId,
         dependencies: [target],
-        parameters: {
+        type: mirrorFeatureTypeV2.type,
+        parameters: expect.objectContaining({
           targetBody: { schemaVersion: 0, featureId: target, outputRole: "body.primary" },
           plane: "YZ",
-        },
+          preserveSource: false,
+          offset: expect.objectContaining({ value: 0 }),
+        }),
       }),
     )
   })
@@ -101,9 +114,86 @@ describe("Mirror form", () => {
     await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
     expect(onSave.mock.calls[1]?.[1]).toMatchObject({
       id: featureId,
+      type: feature.type,
       dependencies: [target],
       parameters: { targetBody: feature.parameters.targetBody, plane: "XY" },
     })
+  })
+  it("previews and saves a separate reflected part with a signed unit-aware offset", async () => {
+    const f = setup()
+    const offset = screen.getByRole("combobox", { name: "Plane offset" })
+    await userEvent.clear(offset)
+    await userEvent.type(offset, "-1 in")
+    await userEvent.click(screen.getByRole("checkbox", { name: "Preserve source part" }))
+    await waitFor(() =>
+      expect(f.onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: mirrorFeatureTypeV2.type,
+          parameters: expect.objectContaining({
+            preserveSource: true,
+            offset: expect.objectContaining({
+              value: -25.4,
+              source: expect.objectContaining({ expression: "-1 in" }),
+            }),
+          }),
+        }),
+      ),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      id: featureId,
+      type: mirrorFeatureTypeV2.type,
+      dependencies: [target],
+      parameters: {
+        targetBody: mode.kind === "create" ? mode.targetBody : null,
+        preserveSource: true,
+        offset: { value: -25.4 },
+      },
+    })
+  })
+  it("preserves all v2 values and edit identity when changing only the plane", async () => {
+    const base = mirrorFeatureRecord(mode, featureId, "XZ")
+    const feature = {
+      ...base,
+      type: mirrorFeatureTypeV2.type,
+      parameters: {
+        ...base.parameters,
+        offset: createLengthQuantity(-2, "cm"),
+        preserveSource: true,
+      },
+    }
+    const f = setup({ mode: { kind: "edit", feature } })
+    expect(screen.getByRole("combobox", { name: "Plane offset" }).getAttribute("value")).toBe(
+      "-2 cm",
+    )
+    expect(
+      (screen.getByRole("checkbox", { name: "Preserve source part" }) as HTMLInputElement).checked,
+    ).toBe(true)
+    await userEvent.click(screen.getByRole("radio", { name: "YZ" }))
+    await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      id: featureId,
+      type: mirrorFeatureTypeV2.type,
+      parameters: {
+        plane: "YZ",
+        preserveSource: true,
+        offset: { value: -20, source: { expression: "-2 cm" } },
+      },
+    })
+  })
+  it("invalidates preview and focuses invalid offset without saving", async () => {
+    const f = setup()
+    const offset = screen.getByRole("combobox", { name: "Plane offset" })
+    await userEvent.clear(offset)
+    await userEvent.type(offset, "100001 mm")
+    await waitFor(() => expect(f.onPreviewChange).toHaveBeenLastCalledWith(null))
+    await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
+    await waitFor(() => expect(screen.getByText(copy.validationSummary)).toBeTruthy())
+    expect(screen.getByText(copy.invalidRange).getAttribute("role")).toBe("alert")
+    expect(document.activeElement).toBe(offset)
+    expect(f.onSave).not.toHaveBeenCalled()
   })
   it("cancels without saving and disposes the preview on unmount", async () => {
     const f = setup()

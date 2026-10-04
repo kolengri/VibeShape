@@ -25,9 +25,12 @@ import {
   unionFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-body-combination"
 import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureParametersSchema } from "@vibeshape/domain/part-design-mirror"
+import {
+  mirrorFeatureParametersSchema,
+  mirrorFeatureParametersV2Schema,
+} from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureParametersSchema } from "@vibeshape/domain/part-design-pattern"
-import { shellFeatureParametersSchema } from "@vibeshape/domain/part-design-shell"
+import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureParametersSchema } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureParametersSchema } from "@vibeshape/domain/part-design-thread"
@@ -139,11 +142,14 @@ function matchingBodyDependency(operation: string) {
   }
 }
 const mirror = z
-  .object({ ...exactBodyFeature, parameters: mirrorFeatureParametersSchema })
+  .object({
+    ...exactBodyFeature,
+    parameters: z.union([mirrorFeatureParametersSchema, mirrorFeatureParametersV2Schema]),
+  })
   .strict()
   .superRefine(matchingBodyDependency("Mirror"))
 const shell = z
-  .object({ ...exactBodyFeature, parameters: shellFeatureParametersSchema })
+  .object({ ...exactBodyFeature, parameters: shellFeatureParametersV2Schema })
   .strict()
   .superRefine(matchingBodyDependency("Shell"))
 const split = z

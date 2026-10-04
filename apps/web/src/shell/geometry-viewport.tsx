@@ -105,6 +105,9 @@ export type GeometryViewportSketchContext = Readonly<{
   }>
   faceIntersectionSelection?: Readonly<{
     onSelect: (selection: ViewerSelection) => void
+    sourceMesh?: ViewerMesh
+    excludedFeatureIds?: readonly string[]
+    selectedFaces?: readonly ViewerSelection[]
   }>
 }>
 
@@ -335,8 +338,12 @@ async function initializeViewport(
   try {
     const viewport = await createViewport(canvas, {
       orientationInsetOffsetElement: orientationInsetOffsetElement(canvas),
-      isSelectionCandidateEligible: (selection) =>
-        selectedSketchSupportFromController(latestControllerRef.current, selection) !== null,
+      isSelectionCandidateEligible: (selection) => {
+        const source = latestSketchContextRef.current?.faceIntersectionSelection?.sourceMesh
+        return source
+          ? selection.featureId === source.featureId && selection.outputRole === source.outputRole
+          : selectedSketchSupportFromController(latestControllerRef.current, selection) !== null
+      },
       onOriginPlanePreselectionChange,
       onOriginPlaneSelectionChange,
       onSelectionChange,
@@ -439,6 +446,9 @@ function synchronizeViewportSketchContext(
   context: GeometryViewportSketchContext | null,
 ) {
   const referenceSelection = orbitReferenceSelection(context)
+  const faceSelection = orbitFaceIntersectionSelection(context)
+  synchronizeViewportSelectedFaces(viewport, context)
+  if (faceSelection?.sourceMesh) viewport.clearSelection()
   viewport.setSketchReferenceCandidates(referenceSelection?.candidates ?? [])
   viewport.setInteractionMode(
     viewportInteractionMode(
@@ -449,6 +459,13 @@ function synchronizeViewportSketchContext(
   )
   synchronizeViewportSketchProjection(viewport, context)
   synchronizeViewportSketchNavigation(viewport, context)
+}
+
+function synchronizeViewportSelectedFaces(
+  viewport: GeometryViewportPort | null,
+  context: GeometryViewportSketchContext | null | undefined,
+) {
+  viewport?.setFaceSelections(context?.faceIntersectionSelection?.selectedFaces ?? [])
 }
 
 function activeSketchProjection(context: GeometryViewportSketchContext | null) {
@@ -492,6 +509,19 @@ function orbitReferenceSelection(context: GeometryViewportSketchContext | null) 
 function orbitFaceIntersectionSelection(context: GeometryViewportSketchContext | null) {
   if (context?.mode !== "orbit") return undefined
   return context.faceIntersectionSelection
+}
+
+function routeViewportFaceSelection(
+  selection: ViewerSelection | null,
+  context: GeometryViewportSketchContext | null,
+  onSelectionChange: (selection: ViewerSelection | null) => void,
+) {
+  const faceSelection = orbitFaceIntersectionSelection(context)
+  if (faceSelection && (selection || faceSelection.sourceMesh)) {
+    if (selection) faceSelection.onSelect(selection)
+    return
+  }
+  onSelectionChange(selection)
 }
 
 function viewportInteractionMode(
@@ -732,12 +762,11 @@ function useViewportRenderer(
       },
       (selection) => {
         profileInteraction.dismissSelectionRequest()
-        const faceSelection = orbitFaceIntersectionSelection(latest.sketchContextRef.current)
-        if (selection && faceSelection) {
-          faceSelection.onSelect(selection)
-          return
-        }
-        latest.selectionCallbacksRef.current.onSelectionChange(selection)
+        routeViewportFaceSelection(
+          selection,
+          latest.sketchContextRef.current,
+          latest.selectionCallbacksRef.current.onSelectionChange,
+        )
       },
       selectionCandidates.onChange,
       selectionCandidates.onCommit,
@@ -799,7 +828,8 @@ function useViewportRenderer(
 
   useEffect(() => {
     viewportRef.current?.setMeshes(meshes)
-  }, [meshes])
+    synchronizeViewportSelectedFaces(viewportRef.current, latest.sketchContextRef.current)
+  }, [meshes, latest.sketchContextRef])
 
   useEffect(() => {
     profileInteraction.dismissSelectionRequest()
@@ -1433,14 +1463,44 @@ function useSketchNavigationSynchronization(
   }, [sketchContext, viewportRef])
 }
 
+function withFacePickingSource(
+  meshes: readonly ViewerMesh[],
+  source: ViewerMesh | undefined,
+  excludedFeatureIds: readonly string[],
+  previewReady: boolean,
+): readonly ViewerMesh[] {
+  if (!source) return meshes
+  const excluded = new Set(excludedFeatureIds)
+  return [
+    ...meshes.filter(
+      (mesh) =>
+        authoredBodyKey(mesh) !== authoredBodyKey(source) &&
+        (previewReady || !excluded.has(mesh.featureId)),
+    ),
+    { ...source, appearance: previewReady ? "selection-source" : "model" },
+  ]
+}
+
+function facePickingPresentation(context: GeometryViewportSketchContext | undefined) {
+  return {
+    sourceMesh: context?.faceIntersectionSelection?.sourceMesh,
+    excludedFeatureIds: context?.faceIntersectionSelection?.excludedFeatureIds ?? EMPTY_IDS,
+  }
+}
+
 function useViewportMeshPresentation({
   contextualHiddenFeatureIds,
   controller,
   featurePreview,
   hiddenFeatureIds,
+  sketchContext,
 }: Pick<
   GeometryViewportProps,
-  "contextualHiddenFeatureIds" | "controller" | "featurePreview" | "hiddenFeatureIds"
+  | "contextualHiddenFeatureIds"
+  | "controller"
+  | "featurePreview"
+  | "hiddenFeatureIds"
+  | "sketchContext"
 >) {
   const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
   const hiddenIds = hiddenFeatureIds ?? EMPTY_IDS
@@ -1460,14 +1520,28 @@ function useViewportMeshPresentation({
     () => viewerMeshes(controller, hiddenIds, contextualIds),
     [authority, contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
   )
+  const { sourceMesh, excludedFeatureIds } = facePickingPresentation(sketchContext)
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)
     const authored = currentAuthoredSnapshot(controller)
     const hiddenBodies = authored ? authoredBodyKeys(authored, true) : new Set<string>()
-    return previewMeshes(featurePreview, committedMeshes).filter(
+    const presented = withFacePickingSource(
+      previewMeshes(featurePreview, committedMeshes),
+      sourceMesh,
+      excludedFeatureIds,
+      featurePreview?.status === "ready",
+    )
+    return presented.filter(
       (mesh) => !hidden.has(mesh.featureId) && !hiddenBodies.has(authoredBodyKey(mesh)),
     )
-  }, [authority, allHiddenFeatureIds, committedMeshes, featurePreview])
+  }, [
+    authority,
+    allHiddenFeatureIds,
+    committedMeshes,
+    excludedFeatureIds,
+    featurePreview,
+    sourceMesh,
+  ])
   const texturedMeshes = useTexturedMeshes(controller, meshes)
   return { allCommittedMeshes, allHiddenFeatureIds, meshes: texturedMeshes }
 }
@@ -2710,7 +2784,11 @@ function SketchContextChrome({
           )}
           role="status"
         >
-          {t("sketchIntersectionSelection")}
+          {t(
+            context.faceIntersectionSelection.sourceMesh
+              ? "shellOpeningSelection"
+              : "sketchIntersectionSelection",
+          )}
         </div>
       ) : null}
       {preselection ? (

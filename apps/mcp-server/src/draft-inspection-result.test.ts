@@ -230,3 +230,108 @@ describe("draft inspection result correlation", () => {
     ).toBe(false)
   })
 })
+
+it("binds first-page draft body views and every topology cursor provenance field", () => {
+  const query = operation({
+    tool: "draft_body_topology",
+    arguments: {
+      draftId,
+      revision: 4,
+      featureId,
+      outputRole: "result",
+      topologyKind: "face",
+      cursor: null,
+      limit: 10,
+    },
+  })
+  const view = {
+    kind: "org.vibeshape.model.body-topology",
+    schemaVersion: 1,
+    documentId,
+    revision: 4,
+    generation: 7,
+    rebuildId: "fresh-rebuild",
+    featureId,
+    contentHash: "a".repeat(64),
+    outputRole: "result",
+    topologyKind: "face",
+    classification: "derived",
+    nextCursor: null,
+    data: { topology: [], total: 0 },
+  }
+  expect(draftInspectionMatches(query, result(view), documentId)).toBe(true)
+  expect(() =>
+    draftInspectionMatches(query, result({ ...view, documentId: otherFeatureId }), documentId),
+  ).toThrow()
+  expect(() =>
+    draftInspectionMatches(query, result({ ...view, revision: 3 }), documentId),
+  ).toThrow()
+  expect(draftInspectionMatches(query, result({ ...view, outputRole: "other" }), documentId)).toBe(
+    false,
+  )
+  const {
+    kind: _kind,
+    schemaVersion: _schemaVersion,
+    classification: _classification,
+    nextCursor: _nextCursor,
+    data: _data,
+    ...provenance
+  } = view
+  const paged = localOperationSchema.parse({
+    ...query,
+    arguments: {
+      ...query.arguments,
+      cursor: {
+        ...provenance,
+        topologyKind: "face" as const,
+        documentId: otherFeatureId,
+        offset: 0,
+      },
+    },
+  })
+  if (paged.tool !== "draft_body_topology") throw new Error("Expected topology operation")
+  expect(draftInspectionMatches(paged, result(view), documentId)).toBe(false)
+  const validCursor = {
+    ...provenance,
+    documentId,
+    featureId,
+    topologyKind: "face" as const,
+    offset: 0,
+  }
+  for (const change of [
+    { generation: 8 },
+    { rebuildId: "other" },
+    { contentHash: "b".repeat(64) },
+    { featureId: otherFeatureId },
+    { outputRole: "other" },
+    { topologyKind: "edge" },
+  ]) {
+    const changed = { ...validCursor, ...change }
+    const changedOperation = localOperationSchema.parse({
+      ...query,
+      arguments: { ...query.arguments, cursor: changed },
+    })
+    if (changedOperation.tool !== "draft_body_topology")
+      throw new Error("Expected topology operation")
+    expect(draftInspectionMatches(changedOperation, result(view), documentId)).toBe(false)
+  }
+  const measurements = operation({
+    tool: "draft_body_measurements",
+    arguments: { draftId, revision: 4, featureId, outputRole: "result", cursor: null, limit: 10 },
+  })
+  const measured = {
+    kind: "org.vibeshape.model.body-measurements",
+    schemaVersion: 1,
+    documentId,
+    revision: 4,
+    generation: 7,
+    classification: "derived",
+    nextCursor: null,
+    units: { length: "mm", area: "mm2", volume: "mm3" },
+    data: { bodies: [], total: 0 },
+  }
+  expect(draftInspectionMatches(measurements, result(measured), documentId)).toBe(true)
+  expect(() =>
+    draftInspectionMatches(measurements, result({ ...measured, revision: 3 }), documentId),
+  ).toThrow()
+})
