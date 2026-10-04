@@ -6,11 +6,13 @@ import {
   type FeatureRecord,
   featureIdSchema,
   mirrorFeatureTypeV2,
+  mirrorFeatureTypeV3,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
+import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import { MirrorForm } from "./mirror-form"
 import { type MirrorFormMode, mirrorFeatureRecord } from "./mirror-form-model"
 
@@ -31,6 +33,7 @@ function setup(
     onSave?: ReturnType<typeof save>
     disabled?: boolean
     status?: "ready" | "loading"
+    referenceOptions?: ReferenceFrameOptions
   } = {},
 ) {
   const onSave = options.onSave ?? save()
@@ -44,6 +47,7 @@ function setup(
         copy={copy}
         mode={options.mode ?? mode}
         variables={[]}
+        referenceOptions={options.referenceOptions}
         disabled={options.disabled ?? false}
         onCancel={onCancel}
         onSave={onSave}
@@ -98,6 +102,47 @@ describe("Mirror form", () => {
         }),
       }),
     )
+  })
+  it("explicitly upgrades a v2 copy to an arbitrary v3 plane without losing offset or retention", async () => {
+    const feature = mirrorFeatureRecord(mode, featureId, "XZ", {
+      offset: createLengthQuantity(-25.4, "mm", "-1 in"),
+      preserveSource: true,
+      enhanced: true,
+    })
+    const f = setup({ mode: { kind: "edit", feature }, referenceOptions: { planes: [], axes: [] } })
+    expect(
+      (screen.getByRole("checkbox", { name: "Preserve source part" }) as HTMLInputElement).checked,
+    ).toBe(true)
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Reference source" }),
+      "explicit",
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      id: featureId,
+      type: mirrorFeatureTypeV3.type,
+      dependencies: [target],
+      parameters: {
+        targetBody: feature.parameters.targetBody,
+        plane: { kind: "explicit-plane", origin: [0, 0, 0], normal: [0, 0, 1] },
+        offset: { value: -25.4, source: { expression: "-1 in" } },
+        preserveSource: true,
+      },
+    })
+  })
+  it("clears preview and blocks submission when an explicit reference becomes invalid", async () => {
+    const f = setup({ referenceOptions: { planes: [], axes: [] } })
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Reference source" }),
+      "explicit",
+    )
+    await userEvent.clear(screen.getByRole("spinbutton", { name: "Direction Z" }))
+    await waitFor(() => expect(f.onPreviewChange).toHaveBeenLastCalledWith(null))
+    expect(
+      (screen.getByRole("button", { name: "Create mirror" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    expect(f.onSave).not.toHaveBeenCalled()
   })
   it("keeps edit identity and target while preserving values after storage rejection", async () => {
     const onSave = save().mockRejectedValue(new Error("Storage unavailable"))

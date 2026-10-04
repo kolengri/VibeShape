@@ -2087,7 +2087,7 @@
       "update": "Update mirror",
       "cancel": "Cancel",
       "featureLabel": "Mirror {number}",
-      "description": "Reflect the selected body across a world plane. By default, the reflected result replaces the current part and retains its identity and source history.",
+      "description": "Reflect the selected body across a reference plane. By default, the reflected result replaces the current part and retains its identity and source history.",
       "parameters": "Mirror",
       "plane": "Plane orientation",
       "offset": "Plane offset",
@@ -2668,6 +2668,18 @@
       "sketchLabel": "Imported {filename}",
       "diagnostic": "{message} Source: {source}.",
       "timeout": "Source inspection timed out. Choose a smaller source and retry."
+    },
+    "referenceFrame": {
+      "plane": "Reference plane",
+      "axis": "Reference axis",
+      "selectedReference": "Selected reference",
+      "source": "Reference source",
+      "origin": "Origin reference",
+      "explicit": "Explicit reference",
+      "useSelectedFace": "Use selected planar face",
+      "originCoordinate": "Origin {axis} (mm)",
+      "directionCoordinate": "Direction {axis}",
+      "invalid": "Enter finite coordinates within 100,000 mm and a nonzero direction."
     },
     "partDesign": {
       "loftHoles": {

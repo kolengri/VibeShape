@@ -190,6 +190,73 @@ describe("direct geometry engine input boundary", () => {
   })
 
   it.each([
+    [
+      "mirror",
+      { planeOrigin: [0, 0, 0], planeNormal: [0, 0, 0], offset: 0, preserveSource: false },
+    ],
+    ["split", { planeOrigin: [100_001, 0, 0], planeNormal: [0, 0, 1], offset: 0 }],
+    [
+      "pattern",
+      { kind: "linear", count: 3, spacing: 10, axisOrigin: [0, 0, 0], axisDirection: [0, 0, 2] },
+    ],
+    [
+      "mirror",
+      {
+        planeOrigin: [0, 0, 0],
+        planeNormal: [0, 0, 1],
+        offset: 0,
+        preserveSource: false,
+        supportInputIndex: 1,
+      },
+    ],
+    [
+      "pattern",
+      {
+        kind: "circular",
+        count: 3,
+        angle: Math.PI,
+        axisOrigin: [0, 0, 0],
+        axisDirection: [0, 0, 1],
+        supportInputIndex: 1,
+      },
+    ],
+  ])(
+    "rejects invalid versioned %s reference frames and support binding before native access",
+    async (kind, parameters) => {
+      const engine = new ReplicadGeometryEngine()
+      const initialize = vi
+        .spyOn(engine, "initialize")
+        .mockRejectedValue(new Error("Kernel accessed"))
+      const result = await engine.evaluateFeature(
+        {
+          ...namedInput,
+          content: {
+            ...namedInput.content,
+            schemaVersion: 1,
+            feature: {
+              ...namedInput.content.feature,
+              type: {
+                ...namedInput.content.feature.type,
+                typeId: `org.vibeshape.feature.part-design.${kind}`,
+                schemaVersion: kind === "mirror" ? 3 : 2,
+              },
+              parameters,
+              inputRoles: ["result"],
+            },
+          },
+        },
+        vi.fn(),
+      )
+      expect(result).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-parameters" },
+      })
+      expect(initialize).not.toHaveBeenCalled()
+      expect(engine.getHealth().ownedShapeCount).toBe(0)
+    },
+  )
+
+  it.each([
     { contentHash: hash },
     { contentHash: hash, outputRole: "pattern.instance.1" },
     { contentHash: "c".repeat(64), outputRole: "result" },

@@ -22,10 +22,14 @@ import {
   holeFeatureTypeV2,
 } from "@vibeshape/domain/part-design-hole"
 import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "@vibeshape/domain/part-design-mirror"
-import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
+import {
+  mirrorFeatureType,
+  mirrorFeatureTypeV2,
+  mirrorFeatureTypeV3,
+} from "@vibeshape/domain/part-design-mirror"
+import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
-import { splitFeatureType } from "@vibeshape/domain/part-design-split"
+import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 
@@ -41,6 +45,12 @@ type CadOperation = Extract<
       | "update_revolve"
       | "create_hole"
       | "update_hole"
+      | "create_reference_mirror"
+      | "update_reference_mirror"
+      | "create_reference_split"
+      | "update_reference_split"
+      | "create_reference_body_pattern"
+      | "update_reference_body_pattern"
       | "create_mirror"
       | "update_mirror"
       | "create_shell"
@@ -67,6 +77,12 @@ type CadOperation = Extract<
 >
 
 const directCadFeatureTypes = {
+  create_reference_body_pattern: patternFeatureTypeV2.type,
+  update_reference_body_pattern: patternFeatureTypeV2.type,
+  create_reference_split: splitFeatureTypeV2.type,
+  update_reference_split: splitFeatureTypeV2.type,
+  create_reference_mirror: mirrorFeatureTypeV3.type,
+  update_reference_mirror: mirrorFeatureTypeV3.type,
   create_datum_plane: datumPlaneFeatureType.type,
   update_datum_plane: datumPlaneFeatureType.type,
   create_boolean: booleanFeatureType.type,

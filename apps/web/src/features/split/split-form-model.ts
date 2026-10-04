@@ -1,17 +1,21 @@
-import {
-  type DocumentDisplayUnits,
-  type FeatureId,
-  type FeatureRecord,
-  featureRecordSchema,
-  type VariableDefinition,
+import type {
+  DocumentDisplayUnits,
+  FeatureId,
+  FeatureRecord,
+  VariableDefinition,
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import {
+  readSplitFeatureParametersV2,
   type SplitFeatureParameters,
   splitFeatureParametersSchema,
+  splitFeatureParametersV2Schema,
   splitFeatureType,
+  splitFeatureTypeV2,
 } from "@vibeshape/domain/part-design-split"
+import { type ReferencePlane, referenceFrameDependencyIds } from "@vibeshape/domain/reference-frame"
 import { defaultLengthExpression } from "../../document/document-display-units"
+import { bodyFeatureRecord } from "../part-design/body-feature-record"
 import {
   type PrimitiveLengthCopy,
   parsePrimitiveLengthExpression,
@@ -36,7 +40,10 @@ export type SplitFormMode =
 export function splitTargetBody(mode: SplitFormMode) {
   return mode.kind === "create"
     ? mode.targetBody
-    : splitFeatureParametersSchema.parse(mode.feature.parameters).targetBody
+    : (
+        readSplitFeatureParametersV2(mode.feature) ??
+        splitFeatureParametersSchema.parse(mode.feature.parameters)
+      ).targetBody
 }
 export function splitMidpointExpression(
   bounds: SplitBounds,
@@ -52,6 +59,12 @@ export function splitFormValues(
   units: DocumentDisplayUnits,
 ): SplitFormValues {
   if (mode.kind === "edit") {
+    const v2 = readSplitFeatureParametersV2(mode.feature)
+    if (v2)
+      return {
+        plane: v2.plane.kind === "origin-plane" ? v2.plane.plane : "XY",
+        offset: quantityExpression(v2.offset),
+      }
     const { plane, offset } = splitFeatureParametersSchema.parse(mode.feature.parameters)
     return { plane, offset: quantityExpression(offset) }
   }
@@ -83,25 +96,21 @@ export function splitFeatureRecord(
   mode: SplitFormMode,
   featureId: FeatureId,
   parsed: Extract<ReturnType<typeof parseSplitForm>, { ok: true }>,
+  referencePlane?: ReferencePlane | undefined,
 ) {
   const targetBody = splitTargetBody(mode)
-  const parameters = splitFeatureParametersSchema.parse({
+  const v2 =
+    referencePlane !== undefined || (mode.kind === "edit" && mode.feature.type.schemaVersion === 2)
+  const support = referencePlane ?? { kind: "origin-plane" as const, plane: parsed.plane }
+  const schema = v2 ? splitFeatureParametersV2Schema : splitFeatureParametersSchema
+  const parameters = schema.parse({
     targetBody,
-    plane: parsed.plane,
+    plane: v2 ? support : parsed.plane,
     offset: parsed.offset,
   })
-  return featureRecordSchema.parse(
-    mode.kind === "edit"
-      ? { ...mode.feature, parameters }
-      : {
-          schemaVersion: 0,
-          id: featureId,
-          type: splitFeatureType.type,
-          parameters,
-          dependencies: [targetBody.featureId],
-          references: [],
-          suppressed: false,
-          label: mode.featureLabel,
-        },
-  )
+  const type = v2 ? splitFeatureTypeV2.type : splitFeatureType.type
+  const dependencies = v2
+    ? referenceFrameDependencyIds(targetBody.featureId, support)
+    : [targetBody.featureId]
+  return bodyFeatureRecord(mode, featureId, { type, parameters, dependencies })
 }

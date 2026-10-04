@@ -81,6 +81,7 @@
 | [0076](0076-closed-shells-and-durable-opening-identity.md) | Accepted | Closed Shells and durable opening identity |
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 | [0080](0080-general-assembly-mates-and-topology-bound-frames.md) | Accepted | General assembly mates and topology-bound frames |
+| [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 
 Statuses:
 

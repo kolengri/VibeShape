@@ -88,7 +88,8 @@
     "./document-v4-command-schemas": "./src/document-v4-command-schemas.ts",
     "./history-document-commands": "./src/history-document-commands.ts",
     "./assembly-mates": "./src/assembly-mates.ts",
-    "./assembly-poses": "./src/assembly-poses.ts"
+    "./assembly-poses": "./src/assembly-poses.ts",
+    "./reference-frame": "./src/reference-frame.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
