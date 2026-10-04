@@ -1488,6 +1488,27 @@
           "staleRevision": "The document changed while this pyramid was being edited. Review the current model and try again.",
           "createFailed": "The pyramid could not be created. Your parameter values are preserved.",
           "updateFailed": "The pyramid could not be updated. Your parameter values are preserved."
+        },
+        "importReview": {
+          "title": "Review AI import",
+          "description": "Inspect the imported source before adding it to this project. Apply stores the source and feature together.",
+          "file": "Source file",
+          "label": "Feature name",
+          "representation": "Representation",
+          "exactSolid": "Exact solid",
+          "triangleMesh": "Triangle mesh",
+          "units": "Source units",
+          "normalization": "{sourceUnit} · scale {scale} to millimeters",
+          "preview": "Imported source preview",
+          "previewFailed": "The import preview could not be displayed. Inspect the source again.",
+          "outputs": "Imported outputs",
+          "size": "Size: {x} × {y} × {z} mm",
+          "volume": "Volume: {value} mm³",
+          "area": "Surface area: {value} mm²",
+          "triangles": "{count, plural, one {# triangle} other {# triangles}}",
+          "degenerateTriangles": "{count, plural, one {# degenerate triangle was removed.} other {# degenerate triangles were removed.}}",
+          "explicitUnits": "Source units are caller-supplied metadata, not a file-unit measurement. STEP uses its declared file units; BREP and STL use the selected scale.",
+          "declaredUnits": "3MF uses declared source units and component transforms."
         }
       },
       "viewport": {

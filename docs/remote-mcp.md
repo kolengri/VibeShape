@@ -189,3 +189,20 @@ Use the exact revision and sketch ID; choose points, circles, failed constraints
 diagnostics. Each bounded page includes native solver status and DOF. Usable profile pages
 provide stable selectors for sketch-backed feature tools. Start with a null cursor and restart
 after an edit or expired inspection; cursors cannot cross sections. Reads do not save the sketch.
+
+## Native source import
+
+Both paired transports expose `begin_import_upload`, `append_import_chunk`, `inspect_import_upload`,
+`commit_import_upload` and `discard_import_upload`. Native STEP/STP/BREP/STL/3MF files use one
+actor-owned upload, a computed SHA-256 and captured output roles, followed by explicit native
+inspection and manual browser review. Apply publishes source bytes, feature and Parts through
+one ordinary atomic CAS transaction; upload/inspection/discard never save geometry. Meshes retain
+triangle representation and have no exact volume.
+
+MCP sources are limited to 6 MiB and 90 KiB decoded chunks. The maximum transfer needs 69 appends
+and 73 total operations including begin/inspect/commit/discard, within the existing remote
+128-operation lifetime. Pace calls for 30 operations/minute and the five-minute idle expiry.
+The 192 KiB remote work budget is unchanged. Known units are required for STEP/BREP/STL; 3MF uses
+its declared units. Paths, URLs, caller hashes, pins and provenance are not accepted. See
+[ADR-0091](adr/0091-paired-native-source-imports.md) and the bundled modeling native-import workflow.
+SVG/DXF sketch and editable `.vshape` project import remain separate editor workflows.

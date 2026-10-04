@@ -2,7 +2,7 @@ import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import { commandActorSchema } from "@vibeshape/domain"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { createAutomationReviewController } from "./automation-review-state"
+import { createAutomationReviewController, isImportReview } from "./automation-review-state"
 
 function reviewInput(): DraftReviewInput {
   const documentId = "0195b5ac-b250-7a2c-8c33-000000000001"
@@ -148,7 +148,9 @@ describe("browser automation review ownership", () => {
     const input = reviewInput()
     const decision = controller.request(owner, input)
     input.preview.summary.data.name = "Changed by caller"
-    expect(controller.getSnapshot()?.input.preview.summary.data.name).toBe("Reviewed model")
+    const displayed = controller.getSnapshot()?.input
+    if (!displayed || isImportReview(displayed)) throw new Error("Expected a CAD review.")
+    expect(displayed.preview.summary.data.name).toBe("Reviewed model")
     controller.cancel(owner)
     await expect(decision).resolves.toBe("cancelled")
   })

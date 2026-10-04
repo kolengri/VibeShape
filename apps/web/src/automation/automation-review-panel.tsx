@@ -17,6 +17,8 @@ import {
 import { Button } from "@vibeshape/ui/components/button"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
+import { isImportReview } from "./automation-review-state"
+import { ImportReviewPanel } from "./import-review-panel"
 
 const commandLabels: Readonly<Record<DocumentCommand["kind"], string>> = {
   "org.vibeshape.document.create": "createDocument",
@@ -356,6 +358,18 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
 }
 
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
+  return isImportReview(review.input) ? (
+    <ImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
+  ) : (
+    <CadReviewPanel review={{ ...review, input: review.input }} />
+  )
+}
+
+function CadReviewPanel({
+  review,
+}: {
+  review: AutomationReviewState & { input: DraftReviewInput }
+}) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { input } = review
   const commands = input.commands

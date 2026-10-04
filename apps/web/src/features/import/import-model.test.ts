@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { createHash } from "node:crypto"
 import { insertFeatureInHistoryCommandSchema } from "@vibeshape/domain"
+import { commandActorSchema } from "@vibeshape/domain/commands"
 import { documentV4AssetsCommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { readImportedFeatureParameters } from "@vibeshape/domain/part-design-import"
 import { readMeshImportFeatureParameters } from "@vibeshape/domain/part-design-mesh-import"
@@ -29,6 +30,30 @@ async function readExactSource(file: ImportFile, unit: ImportSourceUnit) {
 }
 
 describe("captured exact source authoring", () => {
+  it("retains default user provenance and accepts a validated trusted paired actor for every atomic command", async () => {
+    let ordinal = 100
+    const prepared = await readExactSource(sourceFile(), "millimeter")
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.import",
+      sessionId: id(9),
+    })
+    const ordinary = createImportTransaction(context, prepared, inspection, "User source", () =>
+      id(ordinal++),
+    )
+    expect(ordinary.commands.every((command) => command.actor.type === "user")).toBe(true)
+    const paired = createImportTransaction(
+      context,
+      prepared,
+      inspection,
+      "Paired source",
+      () => id(ordinal++),
+      actor,
+    )
+    expect(paired.commands.map((command) => command.actor)).toEqual(
+      Array(paired.commands.length).fill(actor),
+    )
+  })
   it.each(importSourceUnits)(
     "hashes immutable bytes and records explicit %s metadata without a second STEP transform",
     async (unit) => {

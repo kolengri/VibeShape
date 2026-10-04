@@ -451,8 +451,10 @@ face identities may survive source edits; missing or ambiguous identities requir
 Existing version 1 records keep strict source binding until updated. Sweep retains its
 explicit path start frame; Loft retains ordered bounded sections; Thread is bounded custom
 60-degree geometry without ISO/DIN fit certification. The modeling operator skill and local
-authoring guide describe these limits. Imports, text generation, assembly/library authoring and
-texture authoring remain editor workflows. Remote MCP still excludes binary file exports.
+authoring guide describe these limits. Native source imports now use the bounded paired upload/inspection/manual review path in
+[ADR-0091](../adr/0091-paired-native-source-imports.md). Planar drawing import,
+assembly/library authoring and texture authoring retain their separately documented editor workflows.
+Prepared binary exports are shared by both transports; the legacy monolithic export remains local.
 
 Manual review remains the default. The browser-owned explicit session grant additionally permits
 Union schema v2 and Loft schema v1 creation and same-version updates. Actor/document matching,

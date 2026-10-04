@@ -3,6 +3,7 @@ import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
+import { isLocalImport, type LocalImportOperation } from "@vibeshape/automation-api/imports"
 import {
   isLocalSketchTextOperation,
   type LocalSketchTextOperation,
@@ -33,6 +34,7 @@ import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation
 import type { CommandActor } from "@vibeshape/domain"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBinaryExportSession } from "./binary-export-session"
+import type { createImportAutomationSession } from "./import-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
@@ -51,6 +53,7 @@ type LocalSessionPort = Readonly<{
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
   exports?: ReturnType<typeof createBinaryExportSession>
+  imports?: ReturnType<typeof createImportAutomationSession>
   readInfo: () => ActiveAutomationInfo | null
   readCad: (
     query:
@@ -262,7 +265,38 @@ export function createLocalToolExecutor(
           true,
         )
   }
+  function importFile(operation: LocalImportOperation, signal?: AbortSignal) {
+    return session.imports
+      ? session.imports.execute(actor, operation, signal)
+      : localFailure("import-unavailable", "The paired session cannot import source files.")
+  }
+  async function documentOperation(
+    operation: Extract<
+      LocalOperation,
+      {
+        tool:
+          | "model_info"
+          | "export_model"
+          | "create_draft"
+          | "preview_draft"
+          | "commit_draft"
+          | "discard_draft"
+      }
+    >,
+  ) {
+    switch (operation.tool) {
+      case "model_info":
+        return readModelInfo(session)
+      case "export_model":
+        return encodeExport(session, operation)
+      default: {
+        const result = await dispatchDraftLifecycle(session, actor, operation)
+        return hostResult(result)
+      }
+    }
+  }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (isLocalImport(operation)) return importFile(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
@@ -278,16 +312,7 @@ export function createLocalToolExecutor(
       return hostResult(result)
     }
     if (isLocalInspection(operation)) return readCommittedInspection(session, operation)
-    switch (operation.tool) {
-      case "model_info":
-        return readModelInfo(session)
-      case "export_model":
-        return encodeExport(session, operation)
-      default: {
-        const result = await dispatchDraftLifecycle(session, actor, operation)
-        return hostResult(result)
-      }
-    }
+    return documentOperation(operation)
   }
   return {
     execute: (operation, signal) =>

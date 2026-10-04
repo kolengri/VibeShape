@@ -19,6 +19,10 @@ Use the [inspection skill](../vibeshape-inspection/SKILL.md) to choose targets a
 
 ## Capability boundaries
 
+For an authorized STEP/STP/BREP/STL/3MF source import, read [native source import](references/native-import.md).
+Its upload, inspection and manual review flow is separate from CAD draft construction; it does not accept
+caller source hashes or bypass ordinary atomic persistence.
+
 For sketch-backed features, discover solved profile selectors with `model_sketch_solution` or `draft_sketch_solution` at the exact current revision. Inspect native status and failed constraint IDs when profiles are absent; never derive a persistent profile index from display order.
 
 Current local and paired remote MCP cover Box creation; sketch, Extrude, Revolve, Hole, Fillet, Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, linear/circular body Pattern, Shell, Split, Sweep, Loft, and custom Thread create/update; variables; inspection; drafts; and authored metadata. Arbitrary reference planes/axes use the additive `create_reference_*`/`update_reference_*` Mirror, Split and body Pattern tools; legacy names keep their original contracts. Named Placement create/update and editable sketch text create/update/detach are also available. Check discovery before using any operation.

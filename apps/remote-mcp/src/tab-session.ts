@@ -5,6 +5,7 @@ import {
 } from "@vibeshape/automation-api/binary-exports"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
+import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/imports"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
   isLocalDraftInspection,
@@ -332,7 +333,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     )
       return this.revoke()
     const result = localToolOutputs[message.tool].parse(message.result)
-    if (!this.exportResultMatches(result)) return this.revoke()
+    if (!this.transferResultMatches(result)) return this.revoke()
     if (result.ok && isLocalDraftInspection(this.pending.operation)) {
       const inspection = automationDraftInspectionViewSchema.parse(result.value)
       if (!draftInspectionMatches(this.pending.operation, inspection, inspection.draft.documentId))
@@ -345,10 +346,11 @@ export class TabSession extends DurableObject<RemoteEnv> {
     clearTimeout(pending.timer)
     return this.confirmResult(pending, result)
   }
-  private exportResultMatches(result: { ok: boolean; value?: unknown }) {
+  private transferResultMatches(result: { ok: boolean; value?: unknown }) {
     const operation = this.pending?.operation
-    if (!operation || !result.ok || !isLocalBinaryExport(operation)) return true
-    return binaryExportResultMatches(operation, result.value)
+    if (!operation || !result.ok) return true
+    if (isLocalImport(operation)) return importResultMatches(operation, result.value)
+    return !isLocalBinaryExport(operation) || binaryExportResultMatches(operation, result.value)
   }
   private async confirmResult(pending: Pending, result: unknown) {
     await this.save()

@@ -490,7 +490,12 @@ describe("remote MCP in workerd", () => {
     })
     const listed = await mcp(authenticated.token, 3, "resources/list")
     const resources = (await listed.json()) as { result: { resources: { uri: string }[] } }
-    expect(resources.result.resources).toHaveLength(10)
+    expect(resources.result.resources).toHaveLength(11)
+    expect(resources.result.resources).toContainEqual(
+      expect.objectContaining({
+        uri: "vibeshape://agent-skills/vibeshape-modeling/references/native-import.md",
+      }),
+    )
     expect(resources.result.resources).not.toContainEqual(
       expect.objectContaining({ uri: "vibeshape://model" }),
     )

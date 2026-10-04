@@ -19,7 +19,8 @@
     "./authored-metadata": "./src/authored-metadata.ts",
     "./agent-skills": "./src/agent-skills.ts",
     "./query-byte-budget": "./src/query-byte-budget.ts",
-    "./binary-exports": "./src/binary-exports.ts"
+    "./binary-exports": "./src/binary-exports.ts",
+    "./imports": "./src/imports.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

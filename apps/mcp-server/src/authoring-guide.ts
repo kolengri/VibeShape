@@ -53,10 +53,20 @@ Preserve existing slot IDs on update. Missing roles fail closed. Manual review r
 an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
 and schema upgrades still require manual review. Tools cannot enable the grant.
 
-Geometry/planar import, assemblies, the local component library and surface
+Native STEP/STP/BREP/STL/3MF import uses \`begin_import_upload\`, \`append_import_chunk\`,
+\`inspect_import_upload\`, \`commit_import_upload\` and \`discard_import_upload\` on both
+paired transports. Supply owned bytes in canonical 90 KiB decoded chunks, up to 6 MiB,
+with a safe leaf filename and explicit physical units (3MF requires null and uses declared units).
+The app computes SHA-256 and stable output roles. Inspection remains unsaved; commit reinspects
+the source and requests manual browser preview/Apply before one atomic source/feature transaction.
+Caller hashes, pins, provenance, paths and generic command payloads are unavailable. Read the
+modeling native-import reference for ownership, five-minute idle expiry and remote pacing/budgets.
+
+Planar import, assemblies, the local component library and surface
 texture authoring use the editor. They are not named MCP construction tools. The shared local
-and paired remote feature tools follow the same draft/review/commit workflow; remote omits
-file exports. Read the modeling operator skill for the relevant feature family.
+and paired remote feature tools follow the same draft/review/commit workflow. Prepared binary
+export chunks are shared; legacy monolithic file export stays local. Read the modeling operator
+skill for the relevant feature family.
 
 ## Placement and editable sketch text
 
