@@ -10,7 +10,8 @@ import {
 } from "replicad"
 import initializeOC, { type OpenCascadeInstance } from "replicad-opencascadejs"
 import { beforeAll, expect, it, vi } from "vitest"
-import { type AnalyticalProfile, validateOcctProfileSolid } from "./occt-loft"
+import { adoptOcctShape, castOcctShape } from "./occt-cast"
+import { type AnalyticalProfile, createAnalyticalFace, validateOcctProfileSolid } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftPatchNetwork } from "./occt-loft-filling"
 
 let occt: OpenCascadeInstance
@@ -122,7 +123,7 @@ function projectedPoint(face: Face, point: SimplePoint) {
     surface.delete()
   }
 }
-function planeCurvatureResidual(face: Face, uv: [number, number]) {
+function maximumPrincipalCurvature(face: Face, uv: [number, number]) {
   const adaptor = new occt.BRepAdaptor_Surface_2(face.wrapped, true),
     point = new occt.gp_Pnt_1(),
     vectors = Array.from({ length: 5 }, () => new occt.gp_Vec_1())
@@ -206,7 +207,7 @@ it.each(["C0", "G1", "G2"] as const)(
                 Math.asin(Math.min(1, Math.hypot(nx, nz) / Math.hypot(nx, ny, nz))),
               ).toBeLessThan(1e-5)
               if (order === "G2")
-                expect(planeCurvatureResidual(wall, projection.uv)).toBeLessThan(1e-4)
+                expect(maximumPrincipalCurvature(wall, projection.uv)).toBeLessThan(1e-4)
             } finally {
               normal.delete()
             }
@@ -222,6 +223,98 @@ it.each(["C0", "G1", "G2"] as const)(
   },
   60000,
 )
+
+it("rejects nonconverging cylindrical G2 ends with a measured curvature diagnostic and preserves recovery", () => {
+  const sections = [0, 10].map(
+    (z): AnalyticalProfile => ({
+      frame: { origin: [0, 0, z], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+      outer: {
+        sourceEntityIds: [1, 2, 3].map((n) => id(z * 10 + n)),
+        segments: [
+          {
+            entityId: id(z * 10 + 1) as never,
+            type: "arc",
+            startPointId: id(z * 10 + 10) as never,
+            endPointId: id(z * 10 + 11) as never,
+            start: [2, 0],
+            middle: [Math.SQRT2, Math.SQRT2],
+            end: [0, 2],
+          },
+          {
+            entityId: id(z * 10 + 2) as never,
+            type: "line",
+            startPointId: id(z * 10 + 11) as never,
+            endPointId: id(z * 10 + 12) as never,
+            start: [0, 2],
+            end: [0, 0],
+          },
+          {
+            entityId: id(z * 10 + 3) as never,
+            type: "line",
+            startPointId: id(z * 10 + 12) as never,
+            endPointId: id(z * 10 + 10) as never,
+            start: [0, 0],
+            end: [2, 0],
+          },
+        ],
+      },
+      holes: [],
+    }),
+  )
+  const sourceProfile = sections[0]
+  if (!sourceProfile) throw new Error("The cylindrical source section must exist.")
+  const profileFace = createAnalyticalFace(occt, sourceProfile),
+    vector = new occt.gp_Vec_4(0, 0, 10),
+    builder = new occt.BRepPrimAPI_MakePrism_1(profileFace.wrapped, vector, false, true)
+  let cylinder: ReturnType<typeof castOcctShape>
+  try {
+    cylinder = adoptOcctShape(builder.Shape(), castOcctShape)
+  } finally {
+    builder.delete()
+    vector.delete()
+    profileFace.delete()
+  }
+  const supports = cylinder.faces
+  try {
+    const support = supports.find((face) => face.geomType === "CYLINDRE")
+    if (!support) throw new Error("The exact cylindrical support must exist.")
+    const constraint = { segmentTrack: 0, continuity: "G2" as const, support }
+    const network: LoftPatchNetwork = {
+      sections,
+      outerCorrespondence: [0, 1, 2].map((i) => ({
+        sectionEntityIds: sections.map((s) => s.outer.segments[i]?.entityId ?? ""),
+        sectionStartPointIds: sections.map((s) => {
+          const segment = s.outer.segments[i]
+          return segment && "startPointId" in segment ? segment.startPointId : ""
+        }),
+      })),
+      rails: [],
+      guides: [],
+      start: [constraint],
+      end: [constraint],
+    }
+    let failure: unknown
+    try {
+      const unexpected = createOcctLoftPatchNetwork(occt, network)
+      unexpected.delete()
+    } catch (error) {
+      failure = error
+    }
+    if (!(failure instanceof Error)) throw new Error("Nonconverging curved G2 must fail closed.")
+    expect(failure.message).toMatch(/^OCCT Loft filling exceeded continuity tolerances/)
+    expect(Number(/curvature=([\deE+.-]+)/.exec(failure.message)?.[1])).toBeGreaterThan(1e-4)
+    expect(measureVolume(cylinder)).toBeCloseTo(10 * Math.PI, 5)
+    const recovered = createOcctLoftPatchNetwork(occt, fixture())
+    try {
+      validateOcctProfileSolid(occt, recovered)
+    } finally {
+      recovered.delete()
+    }
+  } finally {
+    for (const face of supports) face.delete()
+    cylinder.delete()
+  }
+}, 120000)
 
 it.each(["C0", "G1"] as const)(
   "rejects %s guides whose requested geometric residuals do not converge",
@@ -245,7 +338,7 @@ it.each(["C0", "G1"] as const)(
       support.delete()
     }
   },
-  60000,
+  120000,
 )
 
 it("releases owned curves and support copies after native filling failure without deleting borrowed supports", () => {

@@ -66,7 +66,7 @@ Both local and paired remote MCP expose `create_datum_plane`/`update_datum_plane
 offset intent. Boolean subtraction retains legacy whole-result target/tool semantics; Union and
 Compound select ordered exact bodies through schema v2. Read the
 [modeling contract](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
-before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1 creation
+before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1/v2/v3 creation
 and same-version edits; Compound and version-upgrade edits still require review.
 
 The current MCP surface is a supported subset of the editor, not full CAD parity. Box update,

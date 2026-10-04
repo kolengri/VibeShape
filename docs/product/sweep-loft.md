@@ -23,9 +23,21 @@ version 1 retains its hole-free replay. Editing version 2 to hole-free sections 
 preserves version 2 with an empty correspondence array.
 
 Holes must remain entirely inside the outer solid and must not cross other tracks. Degenerate or
-incompatible sections fail native preview. Guide and independent end-continuity data use the separate
-[version-3 native patch contract](../adr/0081-constrained-loft-native-patch-networks.md); live UI and MCP
-schemas establish whether an authoring adapter exposes that contract.
+incompatible sections fail native preview. Enable **Curve constraints (Loft v3)** for the separate
+[exact native patch contract](../adr/0081-constrained-loft-native-patch-networks.md). Add one track for
+every outer segment and explicitly select its directed start vertex in every section. Reordering
+sections preserves their cells; inserted sections remain unassigned. Optional rails select a vertex
+track and saved path. Named guides select a segment track and a saved C0 path. Independent start/end
+constraints select a segment track, G1 or G2, and an exact face from a named earlier body. Unavailable
+authored faces remain visible and require explicit reselection.
+
+Version 3 requires matching hole-free open-segment boundaries, three to sixty-four tracks and a smooth
+(non-ruled) surface. Complete circles/ellipses need a separate seam contract and remain available
+through version 1/2. Native convergence is bounded. Planar G2 supports pass the strict native derivative
+checks; the tested quarter-cylinder G2 case is rejected and remains a convergence gap. Larger guide
+excursions can also fail.
+The task panel exposes the native support or residual failure and retains the input for repair;
+constraints are never silently removed to make a preview succeed.
 
 ## Sweep
 
@@ -49,7 +61,10 @@ Save/Open use the shared document lifecycle. Each successful feature produces on
 part available for selected-part STEP export and downstream features.
 
 The paired local MCP tools `create_loft`, `update_loft`, `create_sweep`, and `update_sweep` stage the same
-strict schema-backed records in an owned draft. Loft supplies ordered `sections` and `ruled`; Sweep
+strict schema-backed records in an owned draft. Local and paired remote Loft adapters accept v1
+`sections`/`ruled`, v2 `holeCorrespondence`, and v3 `outerCorrespondence`, `rails`, `guides`, `start`,
+and `end`. Version 3 includes support body owners after the section/rail/guide sketch owners, within
+its 128-producer budget; v1/v2 remain limited to 24 producers. Sweep
 supplies `profile` and a durable `path` with its sketch ID, sorted unique entity IDs, and explicit start
 point ID. Sketch support and external-reference owners must match the authoritative dependency and
 topology-reference order. Fresh command IDs and current draft revisions, preview, and ordinary commit

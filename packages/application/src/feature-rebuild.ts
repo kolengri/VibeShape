@@ -80,6 +80,7 @@ const geometryEvaluationPortResultSchema = z.discriminatedUnion("ok", [
     .object({
       ok: z.literal(false),
       diagnosticCode: z.union([geometryDiagnosticCodeSchema, coordinatorDiagnosticCodeSchema]),
+      diagnosticMessage: z.string().min(1).max(1024).optional(),
     })
     .strict(),
 ])
@@ -112,6 +113,7 @@ export type FeatureGeometryEvaluationPortResult =
   | {
       ok: false
       diagnosticCode: GeometryDiagnosticCode | z.infer<typeof coordinatorDiagnosticCodeSchema>
+      diagnosticMessage?: string
     }
 
 export type FeatureGeometryEvaluationPort = (
@@ -680,6 +682,7 @@ async function requestFeatureGeometry(
   if (!parsed.data.ok) {
     return failed("org.vibeshape.feature.geometry-evaluation-failed", {
       reason: parsed.data.diagnosticCode,
+      ...(parsed.data.diagnosticMessage ? { message: parsed.data.diagnosticMessage } : {}),
     })
   }
   if (

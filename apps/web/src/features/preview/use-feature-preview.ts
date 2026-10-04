@@ -7,8 +7,10 @@ import {
   readHoleFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain"
+import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
+import { isError } from "is-what"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   createBrowserDocumentId,
@@ -48,6 +50,7 @@ export type FeaturePreviewState = Readonly<{
   kind?: FeaturePreviewKind
   meshes: readonly ViewerMesh[]
   status: "idle" | "loading" | "ready" | "error"
+  diagnostic?: string
 }>
 
 function createFeaturePreviewCandidateMesh(
@@ -131,6 +134,12 @@ async function rebuildPreview(
     ({ featureId }) => featureId === candidate.id,
   )
   if (candidateEvaluation?.status !== "succeeded") {
+    const diagnostic =
+      candidateEvaluation?.status === "failed" && readLoftFeatureParametersV3(candidate)
+        ? candidateEvaluation.diagnostics.find(({ values }) => typeof values.message === "string")
+            ?.values.message
+        : null
+    if (typeof diagnostic === "string") throw new Error(diagnostic)
     throw new Error("The feature preview could not be evaluated.")
   }
   return {
@@ -203,8 +212,16 @@ export function useFeaturePreview(
           setState({ status: "ready", meshes, kind, ...(candidateMesh ? { candidateMesh } : {}) })
         }
       },
-      () => {
-        if (sequenceRef.current === sequence) setState({ status: "error", meshes: [], kind })
+      (error: unknown) => {
+        if (sequenceRef.current === sequence)
+          setState({
+            status: "error",
+            meshes: [],
+            kind,
+            ...(readLoftFeatureParametersV3(candidate) && isError(error)
+              ? { diagnostic: error.message }
+              : {}),
+          })
       },
     )
     return () => {

@@ -13,8 +13,17 @@ linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choos
 feature/output-role targets from \`model_body_measurements\` or \`draft_body_measurements\`.
 Use \`draft_body_topology\` to select openings on a new draft body and create Shell before
 one final Apply. Shell openings require current exact body topology references and their source content hash. Sweep
-requires an already aligned profile at the start of an open tangent-continuous line/arc path;
-Loft takes two to twenty-four ordered hole-free sections within a 2,000-curve aggregate budget. Thread models a custom 60-degree V groove
+requires an already aligned profile at the start of an open tangent-continuous line, arc,
+cubic Bezier or bounded elliptical arc path. Loft takes two to twenty-four ordered sections
+within a 2,000-curve aggregate budget: v1 is hole-free, v2 matches holes through explicit
+holeCorrespondence, and v3 constrains matching hole-free open-segment sections through
+directed outerCorrespondence, rails, named C0 guides and independent start/end G1/G2
+exact BodyFaceRef supports. Obtain those faces from current model_body_topology or
+draft_body_topology; unresolved supports and native convergence failures require explicit repair.
+V3 requires ruled:false and at most 128 deduplicated producers; v1/v2 allow 24, Sweep 8.
+Declare sketch support/external owners in section, rail and guide order, then distinct end
+support owners. Guides and end constraints change exact geometry; no unconstrained fallback
+is permitted. Thread models a custom 60-degree V groove
 with at most sixteen total turns, without ISO/DIN fit certification. Use the live schema for
 limits, quantities, dependencies and repair; exact preview remains mandatory.
 
@@ -49,7 +58,7 @@ Both use feature schema v2. Dependencies list each producer once in first-occurr
 references are empty. Several roles from one producer are supported. Union requires one connected
 solid and keeps the first selected part. Compound retains separate solids and body.<slotId> roles.
 Preserve existing slot IDs on update. Missing roles fail closed. Manual review remains default;
-an explicit browser grant permits Union v2 and Loft v1 creation and same-version edits. Compound
+an explicit browser grant permits Union v2 and Loft v1/v2/v3 creation and same-version edits. Compound
 and schema upgrades still require manual review. Tools cannot enable the grant.
 
 Geometry/planar import, text generation, assemblies, the local component library and surface

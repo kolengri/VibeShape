@@ -26,6 +26,7 @@ export function LoftSectionFields({
   copy,
   onSectionsChange,
   onRuledChange,
+  ruledDisabled = false,
 }: {
   sections: readonly SketchProfileSelector[]
   ruled: boolean
@@ -33,6 +34,7 @@ export function LoftSectionFields({
   copy: LoftSectionCopy
   onSectionsChange: (sections: SketchProfileSelector[]) => void
   onRuledChange: (value: boolean) => void
+  ruledDisabled?: boolean
 }) {
   const [candidate, setCandidate] = useState("")
   const picker = useRef<HTMLSelectElement>(null)
@@ -124,6 +126,7 @@ export function LoftSectionFields({
         <input
           type="checkbox"
           checked={ruled}
+          disabled={ruledDisabled}
           onChange={(event) => onRuledChange(event.currentTarget.checked)}
         />
         {copy.ruled}

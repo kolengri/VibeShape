@@ -4,9 +4,9 @@ import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect } from "./fixtures"
 
-export async function saved(page: Page) {
+export async function saved(page: Page, timeout = 30_000) {
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached({
-    timeout: 30_000,
+    timeout,
   })
 }
 export async function createSolids(page: Page) {
@@ -38,7 +38,11 @@ export async function saveProject(page: Page) {
   return { bytes, filename: download.suggestedFilename(), project: decoded.value.project }
 }
 
-export async function openProject(page: Page, source: Awaited<ReturnType<typeof saveProject>>) {
+export async function openProject(
+  page: Page,
+  source: Awaited<ReturnType<typeof saveProject>>,
+  timeout = 30_000,
+) {
   await openApplicationMenuItem(page, "Files and projects…")
   await page
     .getByRole("dialog", { name: "Projects", exact: true })
@@ -53,8 +57,8 @@ export async function openProject(page: Page, source: Awaited<ReturnType<typeof 
       .locator("header")
       .first()
       .getByText(`${source.project.snapshot.name} imported`, { exact: true }),
-  ).toBeVisible({ timeout: 30_000 })
-  await saved(page)
+  ).toBeVisible({ timeout })
+  await saved(page, timeout)
 }
 
 export async function deleteFeatureAndUndo(page: Page, name: string) {

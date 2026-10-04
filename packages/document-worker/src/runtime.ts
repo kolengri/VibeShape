@@ -624,7 +624,15 @@ export class DocumentWorkerRuntime {
       )
       return evaluated.ok
         ? { ok: true, geometry: evaluated.result }
-        : { ok: false, diagnosticCode: evaluated.diagnostic.code }
+        : {
+            ok: false,
+            diagnosticCode: evaluated.diagnostic.code,
+            ...(evaluation.content.feature.type.typeId ===
+              "org.vibeshape.feature.part-design.loft" &&
+            evaluation.content.feature.type.schemaVersion === 3
+              ? { diagnosticMessage: evaluated.diagnostic.message.slice(0, 1024) }
+              : {}),
+          }
     }
   }
 

@@ -72,6 +72,13 @@ an actionable geometry diagnostic. Nonconverging constraints are rejected: the t
 excursion does not satisfy this pinned builder's strict residual policy, while smaller guide and mixed
 G1/G2 end constraints produce a measurable changed solid.
 
+Positive G2 evidence currently covers planar support faces with native D2 curvature checks. A
+radius-2 mm quarter-cylinder with matching complete native boundary pcurves and independent G2 at
+both ends is rejected: the pinned builder reports distance 2.86e-6, angle 4.96e-5 and curvature 0.25036.
+This is an actionable curved-support convergence gap, not proof that curved G2 is impossible. Keep
+the strict fail-closed regression and investigate initialization, parameterization and native error
+units before claiming positive nonzero-curvature G2 support.
+
 ## Evidence and integration boundary
 
 Contract and document-worker tests cover explicit correspondence, dependency slots, named support
@@ -79,9 +86,12 @@ roles, semantic inputs, and source immutability. Real kernel tests check guide p
 nearest projection, end normals and curvature through native D2, manifold validity, volume change,
 independent G1/G2 ends, missing-face failure/retry, cache reuse, and native ownership/disposal.
 
-UI and named MCP authoring adapters must expose the complete version-3 contract before advertising
-those workflows. Existing version-1/version-2 UI and operator contracts retain their established
-behavior; a kernel data contract alone is not evidence of a named MCP workflow.
+The Loft task panel and named local/paired remote create_loft/update_loft adapters expose the complete
+version-3 contract. Directed correspondence and current support faces require explicit selection;
+unmatched authored supports retain visible repair controls. Optional bounded native diagnostics pass
+through the evaluation port to disposable preview. Existing version-1/version-2 replay and hollow
+version-2 editing retain their established behavior. Operator instructions and their generated bundle
+share these contracts.
 
 ## Primary sources
 

@@ -21,7 +21,8 @@ import {
   holeFeatureType,
   holeFeatureTypeV2,
 } from "@vibeshape/domain/part-design-hole"
-import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
 import {
   mirrorFeatureType,
   mirrorFeatureTypeV2,
@@ -93,6 +94,8 @@ const directCadFeatureTypes = {
   update_compound: compoundFeatureTypeV2.type,
   create_shell: shellFeatureTypeV2.type,
   update_shell: shellFeatureTypeV2.type,
+  create_hole: holeFeatureType.type,
+  update_hole: holeFeatureType.type,
   create_mirror: mirrorFeatureType.type,
   update_mirror: mirrorFeatureType.type,
   create_thread: threadFeatureType.type,
@@ -109,13 +112,11 @@ const directCadFeatureTypes = {
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
-  if (
-    operation.tool === "create_mirror" ||
-    operation.tool === "update_mirror" ||
-    operation.tool === "create_hole" ||
-    operation.tool === "update_hole"
-  )
-    return bodySelectionFeatureType(operation)
+  if (operation.tool.endsWith("_loft")) {
+    return loftCadFeatureType(operation.arguments.parameters)
+  }
+  const selectedBodyType = bodySelectionFeatureType(operation)
+  if (selectedBodyType) return selectedBodyType
   if (
     operation.tool === "create_extrude" ||
     operation.tool === "update_extrude" ||
@@ -125,20 +126,31 @@ function cadFeatureType(
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
 }
+function loftCadFeatureType(
+  parameters: Exclude<
+    CadOperation,
+    { tool: "create_sketch" | "update_sketch" }
+  >["arguments"]["parameters"],
+) {
+  return "outerCorrespondence" in parameters
+    ? loftFeatureTypeV3.type
+    : "holeCorrespondence" in parameters
+      ? loftFeatureTypeV2.type
+      : loftFeatureType.type
+}
 
 function bodySelectionFeatureType(
-  operation: Extract<
-    CadOperation,
-    { tool: "create_mirror" | "update_mirror" | "create_hole" | "update_hole" }
-  >,
+  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
   if (operation.tool === "create_mirror" || operation.tool === "update_mirror")
     return "offset" in operation.arguments.parameters
       ? mirrorFeatureTypeV2.type
       : mirrorFeatureType.type
-  return "targetBody" in operation.arguments.parameters
-    ? holeFeatureTypeV2.type
-    : holeFeatureType.type
+  if (operation.tool === "create_hole" || operation.tool === "update_hole")
+    return "targetBody" in operation.arguments.parameters
+      ? holeFeatureTypeV2.type
+      : holeFeatureType.type
+  return null
 }
 
 function profileFeatureType(

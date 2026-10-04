@@ -142,6 +142,7 @@ type TaskPanelProps = Readonly<{
   selectedOutputRole?: string | null
   selectedFace?: ViewerSelection | null
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
+  featurePreviewDiagnostic?: string | undefined
   featurePreviewStatus: FeaturePreviewState["status"]
   onCloseTool: () => void
   onCompleteTool: () => void
@@ -1680,6 +1681,7 @@ type ActiveTaskPanelProps = Readonly<{
   onCreateSketch: () => void
   activeTool: Exclude<ActivePartDesignTool, { kind: "measure" | "surface-texture" }>
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
+  featurePreviewDiagnostic?: string | undefined
   featurePreviewStatus: FeaturePreviewState["status"]
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onFeatureProfileRemove?: TaskPanelProps["onFeatureProfileRemove"] | undefined
@@ -2277,6 +2279,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
         extrusionDistanceRequest={props.extrusionDistanceRequest}
         featureProfileSelections={props.featureProfileSelections}
         featurePreviewStatus={props.featurePreviewStatus}
+        featurePreviewDiagnostic={props.featurePreviewDiagnostic}
         onFeatureProfileRemove={props.onFeatureProfileRemove}
         onFeatureProfilesClear={props.onFeatureProfilesClear}
         report={report}

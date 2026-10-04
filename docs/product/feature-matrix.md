@@ -167,7 +167,9 @@ intent. Guide curves and independent end continuity are outside v2. See
 [ADR-0079](../adr/0079-exact-sweep-hollow-loft-and-sketch-corners.md). The separate
 [Loft v3 native contract](../adr/0081-constrained-loft-native-patch-networks.md) adds explicit outer
 correspondence, named C0 guides, and independently measured G1/G2 support-face constraints. Its bounded
-kernel contract does not establish UI or named MCP authoring availability; live schemas own that claim.
+kernel contract is exposed by the Loft task panel and named local/paired remote MCP create/update tools.
+Matching hole-free open-segment boundaries are required; unsupported seams, unavailable exact support
+faces and native convergence failures require explicit repair. Version 2 retains hollow correspondence.
 
 
 Every feature requires:
