@@ -174,6 +174,60 @@ export const extrusionFrameSchema = z
     }
   })
 
+const referenceUnitDirectionSchema = topologyVector3Schema.refine(
+  (value) => Math.abs(Math.hypot(...value) - 1) <= 1e-8,
+  "Reference direction must be normalized.",
+)
+const referenceContentSupport = {
+  supportInputIndex: z.union([z.literal(0), z.literal(1)]).optional(),
+}
+const referencePlaneContentParametersSchema = z
+  .object({
+    planeOrigin: vector3Schema,
+    planeNormal: referenceUnitDirectionSchema,
+    ...referenceContentSupport,
+  })
+  .strict()
+export const mirrorFeatureContentParametersV3Schema = referencePlaneContentParametersSchema
+  .extend({ offset: cadCoordinateSchema, preserveSource: z.boolean() })
+  .strict()
+export type MirrorFeatureContentParametersV3 = z.infer<
+  typeof mirrorFeatureContentParametersV3Schema
+>
+export const splitFeatureContentParametersV2Schema = referencePlaneContentParametersSchema
+  .extend({ offset: cadCoordinateSchema })
+  .strict()
+export type SplitFeatureContentParametersV2 = z.infer<typeof splitFeatureContentParametersV2Schema>
+const referencePatternContentCommon = {
+  count: patternContentCommon.count,
+  axisOrigin: vector3Schema,
+  axisDirection: referenceUnitDirectionSchema,
+  ...referenceContentSupport,
+}
+export const patternFeatureContentParametersV2Schema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...referencePatternContentCommon,
+      kind: z.literal("linear"),
+      spacing: cadCoordinateSchema.refine((value) => value !== 0),
+    })
+    .strict()
+    .refine(
+      ({ count, spacing }) => Math.abs((count - 1) * spacing) <= 100_000,
+      "Linear pattern total displacement must remain within 100,000 mm.",
+    ),
+  z
+    .object({
+      ...referencePatternContentCommon,
+      kind: z.literal("circular"),
+      angle: placementAngleSchema.refine((value) => value !== 0),
+    })
+    .strict(),
+])
+export type PatternFeatureContentParametersV2 = z.infer<
+  typeof patternFeatureContentParametersV2Schema
+>
+
 export const boxFeatureContentParametersSchema = z
   .object({
     width: cadLengthSchema,

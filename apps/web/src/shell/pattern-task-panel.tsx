@@ -1,43 +1,14 @@
-import type { FeatureRecord } from "@vibeshape/domain"
-import { readPatternFeatureParameters } from "@vibeshape/domain/part-design-pattern"
-import { useTranslations } from "@vibeshape/i18n"
-import type { ReactNode } from "react"
 import {
-  createBrowserFeatureId,
-  type DocumentControllerState,
-} from "../document/document-controller"
-import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
+  readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
+} from "@vibeshape/domain/part-design-pattern"
+import { useTranslations } from "@vibeshape/i18n"
 import { PatternForm, type PatternFormCopy } from "../features/pattern/pattern-form"
-import { type PatternFormMode, patternTargetBody } from "../features/pattern/pattern-form-model"
-import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { patternTargetBody } from "../features/pattern/pattern-form-model"
+import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
 import { exactTaskSource, featureTaskFormProps } from "./feature-task-form-props"
 
-type Props = {
-  activeTool: ActivePartDesignTool
-  documentBusy: boolean
-  report: NonNullable<DocumentControllerState["report"]>
-  onCloseTool: () => void
-  onCompleteTool: () => void
-  onFeaturePreviewChange: (feature: FeatureRecord | null) => void
-  featurePreviewStatus: FeaturePreviewState["status"]
-  renderDelete: (feature: FeatureRecord) => ReactNode
-}
-function patternMode(
-  tool: ActivePartDesignTool,
-  features: readonly FeatureRecord[],
-  label: string,
-): PatternFormMode | null {
-  if (tool.kind === "create-pattern")
-    return {
-      kind: "create",
-      targetBody: tool.targetBody,
-      createFeatureId: createBrowserFeatureId,
-      featureLabel: label,
-    }
-  if (tool.kind !== "edit-pattern") return null
-  const feature = features.find(({ id }) => id === tool.featureId)
-  return feature && readPatternFeatureParameters(feature) ? { kind: "edit", feature } : null
-}
 function usePatternCopy(editing: boolean): PatternFormCopy {
   const t = useTranslations("app.bodyPattern")
   return {
@@ -76,18 +47,22 @@ function usePatternCopy(editing: boolean): PatternFormCopy {
     saveFailed: t("saveFailed"),
   }
 }
-export function PatternTaskPanel(props: Props) {
+export function PatternTaskPanel(props: BodyFeatureTaskPanelProps) {
   const t = useTranslations("app.bodyPattern"),
     task = useTranslations("app.shell.taskPanel")
   const { report } = props
-  const count = report.snapshot.features.filter((feature) =>
-    readPatternFeatureParameters(feature),
+  const count = report.snapshot.features.filter(
+    (feature) => readPatternFeatureParameters(feature) || readPatternFeatureParametersV2(feature),
   ).length
-  const mode = patternMode(
-    props.activeTool,
-    report.snapshot.features,
-    t("featureLabel", { number: count + 1 }),
-  )
+  const mode = bodyFeatureTaskMode({
+    tool: props.activeTool,
+    features: report.snapshot.features,
+    label: t("featureLabel", { number: count + 1 }),
+    createKind: "create-pattern",
+    editKind: "edit-pattern",
+    accepts: (feature) =>
+      Boolean(readPatternFeatureParameters(feature) || readPatternFeatureParametersV2(feature)),
+  })
   const copy = usePatternCopy(mode?.kind === "edit")
   if (!mode) return null
   const source = exactTaskSource(report, patternTargetBody(mode))
@@ -102,6 +77,12 @@ export function PatternTaskPanel(props: Props) {
         key={key}
         copy={copy}
         mode={mode}
+        referenceOptions={referenceFrameOptions(
+          report.snapshot,
+          report.rebuild,
+          mode.kind === "edit" ? mode.feature.id : undefined,
+        )}
+        selectedFace={props.selectedFace}
         sourceAvailable={available}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}

@@ -35,7 +35,7 @@ import {
   validateImportedFeatureAssets,
 } from "./part-design-import"
 import { meshImportOutputRole, readMeshImportFeatureParameters } from "./part-design-mesh-import"
-import { readPatternFeatureParameters } from "./part-design-pattern"
+import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
 import type { PartOperation } from "./part-operation"
 import { classifyPartOperation, featureResultBody, sameBodyReference } from "./part-operation"
 import { authoredItemNameSchema } from "./parts"
@@ -160,7 +160,7 @@ function validatePinnedFeatures(snapshot: DocumentSnapshotV1, selectedBody: Body
   if (!feature) throw new Error("The pinned body producer is missing.")
   const operation = classifyPartOperation(
     feature,
-    readPatternFeatureParameters(feature)?.count.value,
+    (readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature))?.count.value,
   )
   if (!declaredBodies(operation, feature).some((body) => sameBodyReference(body, selectedBody)))
     throw new Error("The pinned semantic producer does not declare the selected body role.")

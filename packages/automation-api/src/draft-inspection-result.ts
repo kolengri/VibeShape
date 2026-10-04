@@ -3,6 +3,7 @@ import {
   automationDraftInspectionViewSchema,
 } from "./draft-inspection"
 import type { LocalDraftInspectionOperation } from "./local-tools"
+import { sketchSolutionPageMatches } from "./sketch-solution-queries"
 
 type View = AutomationDraftInspectionView["view"]
 function bodyMeasurementsMatch(
@@ -91,6 +92,8 @@ function entityMatches(
 }
 function viewMatches(operation: LocalDraftInspectionOperation, view: View) {
   switch (operation.tool) {
+    case "draft_sketch_solution":
+      return sketchSolutionMatches(operation, view)
     case "draft_measurements":
       return measurementsMatch(operation, view)
     case "draft_tree":
@@ -134,5 +137,15 @@ function measurementsMatch(
         operation.arguments.featureId === undefined ||
         feature.featureId === operation.arguments.featureId,
     )
+  )
+}
+
+function sketchSolutionMatches(
+  operation: Extract<LocalDraftInspectionOperation, { tool: "draft_sketch_solution" }>,
+  view: View,
+) {
+  return (
+    view.kind === "org.vibeshape.sketch.solution" &&
+    sketchSolutionPageMatches(view, operation.arguments)
   )
 }

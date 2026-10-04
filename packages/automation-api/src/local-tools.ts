@@ -47,6 +47,7 @@ import {
   variableListQuerySchema,
   variableListViewSchema,
 } from "./queries"
+import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
 
 export const localFailureSchema = z
   .object({
@@ -98,6 +99,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  model_sketch_solution: sketchSolutionArgumentsSchema,
   model_measurements: modelMeasurementQuerySchema.omit({
     kind: true,
     schemaVersion: true,
@@ -181,6 +183,8 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  model_sketch_solution: resultOf(sketchSolutionViewSchema),
+  draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
   model_history: resultOf(authoredHistoryViewSchema),
@@ -215,6 +219,12 @@ export const localToolOutputs = {
   update_revolve: resultOf(automationDraftStateSchema),
   create_hole: resultOf(automationDraftStateSchema),
   update_hole: resultOf(automationDraftStateSchema),
+  create_reference_mirror: resultOf(automationDraftStateSchema),
+  update_reference_mirror: resultOf(automationDraftStateSchema),
+  create_reference_split: resultOf(automationDraftStateSchema),
+  update_reference_split: resultOf(automationDraftStateSchema),
+  create_reference_body_pattern: resultOf(automationDraftStateSchema),
+  update_reference_body_pattern: resultOf(automationDraftStateSchema),
   create_mirror: resultOf(automationDraftStateSchema),
   create_shell: resultOf(automationDraftStateSchema),
   update_mirror: resultOf(automationDraftStateSchema),
@@ -248,6 +258,8 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "model_sketch_solution",
+  "draft_sketch_solution",
   "model_measurements",
   "draft_measurements",
   "model_history",
@@ -282,6 +294,12 @@ export const localToolNameSchema = z.enum([
   "update_revolve",
   "create_hole",
   "update_hole",
+  "create_reference_mirror",
+  "update_reference_mirror",
+  "create_reference_split",
+  "update_reference_split",
+  "create_reference_body_pattern",
+  "update_reference_body_pattern",
   "create_mirror",
   "create_shell",
   "update_mirror",
@@ -316,6 +334,12 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 export const localOperationSchema = z.discriminatedUnion("tool", [
+  z
+    .object({
+      tool: z.literal("model_sketch_solution"),
+      arguments: localToolInputs.model_sketch_solution,
+    })
+    .strict(),
   z
     .object({
       tool: z.literal("model_measurements"),
@@ -384,6 +408,7 @@ export type LocalInspectionOperation = Extract<
   LocalOperation,
   {
     tool:
+      | "model_sketch_solution"
       | "model_measurements"
       | "model_tree"
       | "model_entity"
@@ -398,6 +423,7 @@ export type LocalDraftInspectionOperation = Extract<
   LocalOperation,
   {
     tool:
+      | "draft_sketch_solution"
       | "draft_measurements"
       | "draft_tree"
       | "draft_entity"
@@ -412,6 +438,7 @@ export function isLocalDraftInspection(
   operation: LocalOperation,
 ): operation is LocalDraftInspectionOperation {
   return (
+    operation.tool === "draft_sketch_solution" ||
     operation.tool === "draft_measurements" ||
     operation.tool === "draft_tree" ||
     operation.tool === "draft_entity" ||
@@ -426,6 +453,7 @@ export function isLocalInspection(
   operation: LocalOperation,
 ): operation is LocalInspectionOperation {
   return (
+    operation.tool === "model_sketch_solution" ||
     operation.tool === "model_measurements" ||
     operation.tool === "model_tree" ||
     operation.tool === "model_entity" ||

@@ -8,7 +8,9 @@ import { readUnionFeatureParameters } from "./part-design-body-combination"
 import {
   patternCountSchema,
   patternFeatureType,
+  patternFeatureTypeV2,
   readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
 } from "./part-design-pattern"
 import {
   classifyPartOperation,
@@ -173,9 +175,13 @@ function resolvedPartOperation(
   feature: FeatureRecordV1,
   variables: ReadonlyMap<string, EvaluatedVariable>,
 ): PartOperation | null {
-  if (featureTypeKey(feature.type) !== featureTypeKey(patternFeatureType.type))
+  if (
+    ![patternFeatureType.type, patternFeatureTypeV2.type].some(
+      (type) => featureTypeKey(feature.type) === featureTypeKey(type),
+    )
+  )
     return classifyPartOperation(feature)
-  const pattern = readPatternFeatureParameters(feature)
+  const pattern = readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature)
   if (!pattern) return null
   const resolved = resolveQuantityExpression(pattern.count, variables)
   const count = resolved.ok ? patternCountSchema.safeParse(resolved.quantity) : null

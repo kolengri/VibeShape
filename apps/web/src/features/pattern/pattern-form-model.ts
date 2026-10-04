@@ -1,12 +1,12 @@
 import {
   createAngleQuantity,
+  createLengthQuantity,
   createScalarQuantity,
   type DocumentDisplayUnits,
   evaluateExpression,
   evaluateVariableDefinitions,
   type FeatureId,
   type FeatureRecord,
-  featureRecordSchema,
   type Quantity,
   type VariableDefinition,
 } from "@vibeshape/domain"
@@ -16,14 +16,19 @@ import {
   patternAngleSchema,
   patternCountSchema,
   patternFeatureParametersSchema,
+  patternFeatureParametersV2Schema,
   patternFeatureType,
+  patternFeatureTypeV2,
   patternSpacingSchema,
   readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
 } from "@vibeshape/domain/part-design-pattern"
+import { type ReferenceAxis, referenceFrameDependencyIds } from "@vibeshape/domain/reference-frame"
 import {
   defaultLengthExpression,
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
+import { bodyFeatureRecord } from "../part-design/body-feature-record"
 import {
   type PrimitiveLengthCopy,
   parsePrimitiveLengthExpression,
@@ -74,7 +79,10 @@ function sourceExpression(quantity: Quantity) {
 export function patternTargetBody(mode: PatternFormMode) {
   return mode.kind === "create"
     ? mode.targetBody
-    : patternFeatureParametersSchema.parse(mode.feature.parameters).targetBody
+    : (
+        readPatternFeatureParametersV2(mode.feature) ??
+        patternFeatureParametersSchema.parse(mode.feature.parameters)
+      ).targetBody
 }
 export function patternFormValues(
   mode: PatternFormMode,
@@ -92,6 +100,18 @@ export function patternFormValues(
     centerY: zero,
     centerZ: zero,
   }
+  const referenceParameters =
+    mode.kind === "edit" ? readPatternFeatureParametersV2(mode.feature) : null
+  if (referenceParameters)
+    return {
+      ...defaults,
+      kind: referenceParameters.kind,
+      axis: referenceParameters.axis.kind === "origin-axis" ? referenceParameters.axis.axis : "Z",
+      count: sourceExpression(referenceParameters.count),
+      ...(referenceParameters.kind === "linear"
+        ? { spacing: sourceExpression(referenceParameters.spacing) }
+        : { angle: sourceExpression(referenceParameters.angle) }),
+    }
   if (!parameters) return defaults
   const common = {
     ...defaults,
@@ -190,13 +210,23 @@ export function parsePatternForm(
   variables: readonly VariableDefinition[],
   units: DocumentDisplayUnits,
   copy: PatternValidationCopy,
+  referenceAxis?: ReferenceAxis,
 ): ParsedPatternForm {
   const count = parseCount(values, variables, units, copy)
   if (!count.ok) return { ok: false as const, issues: { count: count.message } }
   const common = { count: count.quantity, axis: values.axis }
   if (values.kind === "circular") {
     const angle = parseAngle(values, variables, units, copy)
-    const center = parseCenter(values, variables, units, copy)
+    const center = referenceAxis
+      ? {
+          ok: true as const,
+          center: {
+            x: createLengthQuantity(0, "mm"),
+            y: createLengthQuantity(0, "mm"),
+            z: createLengthQuantity(0, "mm"),
+          },
+        }
+      : parseCenter(values, variables, units, copy)
     if (!angle.ok || !center.ok)
       return {
         ok: false as const,
@@ -234,21 +264,26 @@ export function patternFeatureRecord(
   mode: PatternFormMode,
   featureId: FeatureId,
   parsed: Extract<ReturnType<typeof parsePatternForm>, { ok: true }>,
+  referenceAxis?: ReferenceAxis | undefined,
 ) {
   const targetBody = patternTargetBody(mode)
-  const parameters = patternFeatureParametersSchema.parse({ ...parsed.parameters, targetBody })
-  return featureRecordSchema.parse(
-    mode.kind === "edit"
-      ? { ...mode.feature, parameters }
-      : {
-          schemaVersion: 0,
-          id: featureId,
-          type: patternFeatureType.type,
-          parameters,
-          dependencies: [targetBody.featureId],
-          references: [],
-          suppressed: false,
-          label: mode.featureLabel,
-        },
-  )
+  const v2 =
+    referenceAxis !== undefined || (mode.kind === "edit" && mode.feature.type.schemaVersion === 2)
+  const support = referenceAxis ?? { kind: "origin-axis" as const, axis: parsed.parameters.axis }
+  const parameters = v2
+    ? patternFeatureParametersV2Schema.parse({
+        targetBody,
+        kind: parsed.parameters.kind,
+        count: parsed.parameters.count,
+        axis: support,
+        ...(parsed.parameters.kind === "linear"
+          ? { spacing: parsed.parameters.spacing }
+          : { angle: parsed.parameters.angle }),
+      })
+    : patternFeatureParametersSchema.parse({ ...parsed.parameters, targetBody })
+  const type = v2 ? patternFeatureTypeV2.type : patternFeatureType.type
+  const dependencies = v2
+    ? referenceFrameDependencyIds(targetBody.featureId, support)
+    : [targetBody.featureId]
+  return bodyFeatureRecord(mode, featureId, { type, parameters, dependencies })
 }

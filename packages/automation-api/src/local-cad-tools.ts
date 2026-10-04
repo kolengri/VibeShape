@@ -28,12 +28,24 @@ import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domai
 import {
   mirrorFeatureParametersSchema,
   mirrorFeatureParametersV2Schema,
+  mirrorFeatureParametersV3Schema,
 } from "@vibeshape/domain/part-design-mirror"
-import { patternFeatureParametersSchema } from "@vibeshape/domain/part-design-pattern"
+import {
+  patternFeatureParametersSchema,
+  patternFeatureParametersV2Schema,
+} from "@vibeshape/domain/part-design-pattern"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
-import { splitFeatureParametersSchema } from "@vibeshape/domain/part-design-split"
+import {
+  splitFeatureParametersSchema,
+  splitFeatureParametersV2Schema,
+} from "@vibeshape/domain/part-design-split"
 import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureParametersSchema } from "@vibeshape/domain/part-design-thread"
+import {
+  type ReferenceAxis,
+  type ReferencePlane,
+  referenceFrameDependencyIds,
+} from "@vibeshape/domain/reference-frame"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { lengthQuantitySchema } from "@vibeshape/domain/units"
 import { z } from "zod"
@@ -162,6 +174,64 @@ const bodyPattern = z
   .strict()
   .superRefine(matchingBodyDependency("Pattern"))
 
+const referenceBodyFeature = {
+  ...feature,
+  dependencies: featureRecordSchema.shape.dependencies.min(1).max(2),
+  references: featureRecordSchema.shape.references.max(0),
+}
+function matchingReferenceDependencies(
+  input: { featureId: BodyReference["featureId"]; dependencies: readonly string[] },
+  targetBody: BodyReference,
+  support: ReferencePlane | ReferenceAxis,
+  context: z.RefinementCtx,
+) {
+  const owners = referenceFrameDependencyIds(targetBody.featureId, support)
+  if (
+    owners.includes(input.featureId) ||
+    owners.length !== input.dependencies.length ||
+    owners.some((owner, index) => owner !== input.dependencies[index])
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["dependencies"],
+      message:
+        "Reference-frame features require the target followed by its distinct support owner, with no self-dependency.",
+    })
+}
+const referenceMirror = z
+  .object({ ...referenceBodyFeature, parameters: mirrorFeatureParametersV3Schema })
+  .strict()
+  .superRefine((input, context) =>
+    matchingReferenceDependencies(
+      input,
+      input.parameters.targetBody,
+      input.parameters.plane,
+      context,
+    ),
+  )
+const referenceSplit = z
+  .object({ ...referenceBodyFeature, parameters: splitFeatureParametersV2Schema })
+  .strict()
+  .superRefine((input, context) =>
+    matchingReferenceDependencies(
+      input,
+      input.parameters.targetBody,
+      input.parameters.plane,
+      context,
+    ),
+  )
+const referenceBodyPattern = z
+  .object({ ...referenceBodyFeature, parameters: patternFeatureParametersV2Schema })
+  .strict()
+  .superRefine((input, context) =>
+    matchingReferenceDependencies(
+      input,
+      input.parameters.targetBody,
+      input.parameters.axis,
+      context,
+    ),
+  )
+
 const thread = z
   .object({ ...exactBodyFeature, parameters: threadFeatureParametersSchema })
   .strict()
@@ -276,6 +346,12 @@ const compound = z
   )
 
 export const localCadInputs = {
+  create_reference_body_pattern: referenceBodyPattern,
+  update_reference_body_pattern: referenceBodyPattern,
+  create_reference_split: referenceSplit,
+  update_reference_split: referenceSplit,
+  create_reference_mirror: referenceMirror,
+  update_reference_mirror: referenceMirror,
   create_datum_plane: datumPlane,
   update_datum_plane: datumPlane,
   create_boolean: boolean,
@@ -309,6 +385,16 @@ export const localCadInputs = {
 } as const
 
 export const localCadOperations = [
+  z
+    .object({ tool: z.literal("create_reference_body_pattern"), arguments: referenceBodyPattern })
+    .strict(),
+  z
+    .object({ tool: z.literal("update_reference_body_pattern"), arguments: referenceBodyPattern })
+    .strict(),
+  z.object({ tool: z.literal("create_reference_split"), arguments: referenceSplit }).strict(),
+  z.object({ tool: z.literal("update_reference_split"), arguments: referenceSplit }).strict(),
+  z.object({ tool: z.literal("create_reference_mirror"), arguments: referenceMirror }).strict(),
+  z.object({ tool: z.literal("update_reference_mirror"), arguments: referenceMirror }).strict(),
   z.object({ tool: z.literal("create_datum_plane"), arguments: datumPlane }).strict(),
   z.object({ tool: z.literal("update_datum_plane"), arguments: datumPlane }).strict(),
   z.object({ tool: z.literal("create_boolean"), arguments: boolean }).strict(),

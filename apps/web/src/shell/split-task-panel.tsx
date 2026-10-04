@@ -1,43 +1,14 @@
-import type { FeatureRecord } from "@vibeshape/domain"
-import { readSplitFeatureParameters } from "@vibeshape/domain/part-design-split"
-import { useTranslations } from "@vibeshape/i18n"
-import type { ReactNode } from "react"
 import {
-  createBrowserFeatureId,
-  type DocumentControllerState,
-} from "../document/document-controller"
-import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
-import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+  readSplitFeatureParameters,
+  readSplitFeatureParametersV2,
+} from "@vibeshape/domain/part-design-split"
+import { useTranslations } from "@vibeshape/i18n"
+import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
 import { SplitForm, type SplitFormCopy } from "../features/split/split-form"
-import { type SplitFormMode, splitTargetBody } from "../features/split/split-form-model"
+import { splitTargetBody } from "../features/split/split-form-model"
+import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
 import { exactTaskSource, featureTaskFormProps } from "./feature-task-form-props"
 
-type SplitPanelProps = {
-  activeTool: ActivePartDesignTool
-  documentBusy: boolean
-  report: NonNullable<DocumentControllerState["report"]>
-  onCloseTool: () => void
-  onCompleteTool: () => void
-  onFeaturePreviewChange: (feature: FeatureRecord | null) => void
-  featurePreviewStatus: FeaturePreviewState["status"]
-  renderDelete: (feature: FeatureRecord) => ReactNode
-}
-function splitMode(
-  tool: ActivePartDesignTool,
-  features: readonly FeatureRecord[],
-  label: string,
-): SplitFormMode | null {
-  if (tool.kind === "create-split")
-    return {
-      kind: "create",
-      targetBody: tool.targetBody,
-      createFeatureId: createBrowserFeatureId,
-      featureLabel: label,
-    }
-  if (tool.kind !== "edit-split") return null
-  const feature = features.find(({ id }) => id === tool.featureId)
-  return feature && readSplitFeatureParameters(feature) ? { kind: "edit", feature } : null
-}
 function useSplitCopy(editing: boolean): SplitFormCopy {
   const t = useTranslations("app.split")
   return {
@@ -60,18 +31,22 @@ function useSplitCopy(editing: boolean): SplitFormCopy {
     saveFailed: t("saveFailed"),
   }
 }
-export function SplitTaskPanel(props: SplitPanelProps) {
+export function SplitTaskPanel(props: BodyFeatureTaskPanelProps) {
   const t = useTranslations("app.split")
   const task = useTranslations("app.shell.taskPanel")
   const { report } = props
-  const count = report.snapshot.features.filter((feature) =>
-    readSplitFeatureParameters(feature),
+  const count = report.snapshot.features.filter(
+    (feature) => readSplitFeatureParameters(feature) || readSplitFeatureParametersV2(feature),
   ).length
-  const mode = splitMode(
-    props.activeTool,
-    report.snapshot.features,
-    t("featureLabel", { number: count + 1 }),
-  )
+  const mode = bodyFeatureTaskMode({
+    tool: props.activeTool,
+    features: report.snapshot.features,
+    label: t("featureLabel", { number: count + 1 }),
+    createKind: "create-split",
+    editKind: "edit-split",
+    accepts: (feature) =>
+      Boolean(readSplitFeatureParameters(feature) || readSplitFeatureParametersV2(feature)),
+  })
   const copy = useSplitCopy(mode?.kind === "edit")
   if (!mode) return null
   const source = exactTaskSource(report, splitTargetBody(mode))
@@ -86,6 +61,12 @@ export function SplitTaskPanel(props: SplitPanelProps) {
         key={key}
         copy={copy}
         mode={mode}
+        referenceOptions={referenceFrameOptions(
+          report.snapshot,
+          report.rebuild,
+          mode.kind === "edit" ? mode.feature.id : undefined,
+        )}
+        selectedFace={props.selectedFace}
         sourceBounds={bounds}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}

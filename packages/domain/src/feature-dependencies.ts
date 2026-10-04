@@ -20,11 +20,15 @@ import { readImportedFeatureParameters } from "./part-design-import"
 import { readLoftFeatureParameters } from "./part-design-loft"
 import { loftV3SupportBodies, readLoftFeatureParametersV3 } from "./part-design-loft-v3"
 import { readMeshImportFeatureParameters } from "./part-design-mesh-import"
-import { mirrorPreservesSource, readMirrorFeatureParameters } from "./part-design-mirror"
-import { readPatternFeatureParameters } from "./part-design-pattern"
+import {
+  mirrorPreservesSource,
+  readMirrorFeatureParameters,
+  readMirrorFeatureParametersV3,
+} from "./part-design-mirror"
+import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readShellFeatureParameters } from "./part-design-shell"
-import { readSplitFeatureParameters } from "./part-design-split"
+import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part-design-split"
 import { readSweepFeatureParameters } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
 import { readDatumPlaneFeatureParameters } from "./reference-geometry"
@@ -51,6 +55,12 @@ export function featureBodyDependencyIds(feature: FeatureRecord): readonly Featu
       : feature.dependencies
   if (readHoleFeatureParameters(feature) || edgeModifierTypes.has(featureTypeKey(feature.type)))
     return feature.dependencies.slice(0, 1)
+  if (
+    readMirrorFeatureParametersV3(feature) ||
+    readSplitFeatureParametersV2(feature) ||
+    readPatternFeatureParametersV2(feature)
+  )
+    return feature.dependencies.slice(0, 1)
   const revolve = readRevolveFeatureParameters(feature)
   if (revolve) return revolve.operation === "new" ? [] : feature.dependencies.slice(0, 1)
   const extrusion = readExtrusionFeatureParameters(feature)
@@ -71,10 +81,11 @@ export function featureBodyDependencies(
     readThreadFeatureParameters(feature)?.targetBody ??
     readHoleBodyTarget(feature) ??
     readPlacementFeatureParameters(feature)?.targetBody ??
-    readMirrorFeatureParameters(feature)?.targetBody ??
-    readPatternFeatureParameters(feature)?.targetBody ??
+    (readMirrorFeatureParameters(feature) ?? readMirrorFeatureParametersV3(feature))?.targetBody ??
+    (readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature))
+      ?.targetBody ??
     readShellFeatureParameters(feature)?.targetBody ??
-    readSplitFeatureParameters(feature)?.targetBody
+    (readSplitFeatureParameters(feature) ?? readSplitFeatureParametersV2(feature))?.targetBody
   if (target) return [{ featureId: target.featureId, outputRole: target.outputRole }]
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
 }

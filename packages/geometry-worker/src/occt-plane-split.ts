@@ -134,13 +134,13 @@ function requireSingleSolid(metrics: SolidMetrics) {
     throw new Error("Plane split requires valid positive-volume single solids.")
 }
 
-function requireBounds(box: Bounds, tolerance: number) {
+function requireBounds(box: Bounds, tolerance: number, workspaceLimit: number) {
   for (const axis of [0, 1, 2] as const) {
     if (
       !Number.isFinite(box.min[axis]) ||
       !Number.isFinite(box.max[axis]) ||
       box.min[axis] >= box.max[axis] ||
-      Math.max(Math.abs(box.min[axis]), Math.abs(box.max[axis])) > 100_000 + tolerance
+      Math.max(Math.abs(box.min[axis]), Math.abs(box.max[axis])) > workspaceLimit + tolerance
     )
       throw new Error("Plane split requires finite source bounds within 100,000 mm.")
   }
@@ -163,6 +163,7 @@ type SplitPlan = Readonly<{
   offset: number
   tolerance: number
   sourceVolume: number
+  workspaceLimit: number
   negativeBox: Bounds
   positiveBox: Bounds
 }>
@@ -180,6 +181,7 @@ function planSplit(
   occt: OpenCascadeInstance,
   source: Shape3D,
   parameters: PlaneSplitParameters,
+  workspaceLimit: number,
 ): SplitPlan {
   const { plane, offset } = parsePlaneParameters(parameters)
   const confusion = operations.confusion(occt)
@@ -189,7 +191,7 @@ function planSplit(
   const sourceMetrics = operations.inspect(occt, source)
   requireSingleSolid(sourceMetrics)
   const sourceBounds = operations.bounds(occt, source)
-  requireBounds(sourceBounds, tolerance)
+  requireBounds(sourceBounds, tolerance, workspaceLimit)
   const axis = plane === "XY" ? 2 : plane === "XZ" ? 1 : 0
   if (offset <= sourceBounds.min[axis] || offset >= sourceBounds.max[axis])
     throw new Error("The split plane must pass through the source interior.")
@@ -203,7 +205,15 @@ function planSplit(
   const positiveBox: Bounds = { min: [...negativeBox.min], max: [...negativeBox.max] }
   negativeBox.max[axis] = offset
   positiveBox.min[axis] = offset
-  return { axis, offset, tolerance, sourceVolume: sourceMetrics.volume, negativeBox, positiveBox }
+  return {
+    axis,
+    offset,
+    tolerance,
+    workspaceLimit,
+    sourceVolume: sourceMetrics.volume,
+    negativeBox,
+    positiveBox,
+  }
 }
 
 function validateSplit(
@@ -218,8 +228,8 @@ function validateSplit(
   requireSingleSolid(positiveMetrics)
   const negativeBounds = operations.bounds(occt, bundle.negative)
   const positiveBounds = operations.bounds(occt, bundle.positive)
-  requireBounds(negativeBounds, plan.tolerance)
-  requireBounds(positiveBounds, plan.tolerance)
+  requireBounds(negativeBounds, plan.tolerance, plan.workspaceLimit)
+  requireBounds(positiveBounds, plan.tolerance, plan.workspaceLimit)
   if (
     Math.abs(negativeBounds.max[plan.axis] - plan.offset) > plan.tolerance ||
     Math.abs(positiveBounds.min[plan.axis] - plan.offset) > plan.tolerance
@@ -249,7 +259,10 @@ function releaseSplit(
   return outcome.bundle
 }
 
-export function createOcctPlaneSplitOperations(overrides: Partial<NativeOperations> = {}) {
+export function createOcctPlaneSplitOperations(
+  overrides: Partial<NativeOperations> = {},
+  workspaceLimit = 100_000,
+) {
   const operations: NativeOperations = {
     copy: (occt, source) =>
       placeOcctShape(occt, source, { translation: [0, 0, 0], rotation: [0, 0, 0] }),
@@ -267,7 +280,7 @@ export function createOcctPlaneSplitOperations(overrides: Partial<NativeOperatio
       source: Shape3D,
       parameters: PlaneSplitParameters,
     ): OwnedPlaneSplit {
-      const plan = planSplit(operations, occt, source, parameters)
+      const plan = planSplit(operations, occt, source, parameters, workspaceLimit)
       const temporaries: Shape3D[] = []
       const results: Shape3D[] = []
       let outcome: SplitOutcome

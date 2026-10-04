@@ -15,11 +15,15 @@ import { importedFeatureTypeHandler } from "./part-design-import"
 import { loftFeatureTypeHandler, loftFeatureTypeHandlerV2 } from "./part-design-loft"
 import { loftFeatureTypeHandlerV3 } from "./part-design-loft-v3"
 import { meshImportFeatureTypeHandler } from "./part-design-mesh-import"
-import { mirrorFeatureTypeHandler, mirrorFeatureTypeHandlerV2 } from "./part-design-mirror"
-import { patternFeatureTypeHandler } from "./part-design-pattern"
+import {
+  mirrorFeatureTypeHandler,
+  mirrorFeatureTypeHandlerV2,
+  mirrorFeatureTypeHandlerV3,
+} from "./part-design-mirror"
+import { patternFeatureTypeHandler, patternFeatureTypeHandlerV2 } from "./part-design-pattern"
 import { placementFeatureTypeHandler } from "./part-design-placement"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
-import { splitFeatureTypeHandler } from "./part-design-split"
+import { splitFeatureTypeHandler, splitFeatureTypeHandlerV2 } from "./part-design-split"
 import { sweepFeatureTypeHandler } from "./part-design-sweep"
 import { threadFeatureTypeHandler } from "./part-design-thread"
 import {
@@ -1654,10 +1658,13 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   placementFeatureTypeHandler,
   mirrorFeatureTypeHandler,
   mirrorFeatureTypeHandlerV2,
+  mirrorFeatureTypeHandlerV3,
   patternFeatureTypeHandler,
+  patternFeatureTypeHandlerV2,
   shellFeatureTypeHandler,
   shellFeatureTypeHandlerV2,
   splitFeatureTypeHandler,
+  splitFeatureTypeHandlerV2,
   loftFeatureTypeHandler,
   loftFeatureTypeHandlerV2,
   loftFeatureTypeHandlerV3,

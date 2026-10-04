@@ -111,7 +111,7 @@ describe("trusted exact-body plane split", () => {
     expect(types.validateFeature({ ...feature(), dependencies: [] }).ok).toBe(false)
     expect(types.validateFeature({ ...feature(), references: [splitId] }).ok).toBe(false)
     expect(
-      types.validateFeature({ ...feature(), type: { ...splitFeatureType.type, schemaVersion: 2 } }),
+      types.validateFeature({ ...feature(), type: { ...splitFeatureType.type, schemaVersion: 3 } }),
     ).toMatchObject({ ok: false, diagnostic: { code: "feature-type-unavailable" } })
   })
 

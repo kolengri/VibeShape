@@ -41,11 +41,11 @@ import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
 import { loftFeatureTypeV3 } from "./part-design-loft-v3"
 import { meshImportFeatureType } from "./part-design-mesh-import"
-import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
-import { patternFeatureType } from "./part-design-pattern"
+import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
+import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
-import { splitFeatureType } from "./part-design-split"
+import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
@@ -318,6 +318,13 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
       automation: { exposure: "resource", pagination: "cursor" },
     },
     {
+      kind: "org.vibeshape.sketch.solution",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "derived",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
       kind: "org.vibeshape.model.measurements",
       schemaVersion: 1,
       ownerModuleId: "org.vibeshape.core.document",
@@ -439,10 +446,13 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     placementFeatureType,
     mirrorFeatureType,
     mirrorFeatureTypeV2,
+    mirrorFeatureTypeV3,
     patternFeatureType,
+    patternFeatureTypeV2,
     shellFeatureType,
     shellFeatureTypeV2,
     splitFeatureType,
+    splitFeatureTypeV2,
     loftFeatureType,
     loftFeatureTypeV2,
     loftFeatureTypeV3,

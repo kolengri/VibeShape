@@ -48,7 +48,7 @@ function harness() {
       _occt: OpenCascadeInstance,
       _source: Shape3D,
       _center: readonly number[],
-      _axis: string,
+      _axis: string | readonly [number, number, number],
       _angle: number,
     ) => makeCopy([0, 0, 0]),
   )
@@ -373,6 +373,36 @@ function expectPoint(actual: readonly number[], expected: readonly number[]) {
 }
 
 describe("body patterns with pinned real OCCT", () => {
+  it("uses an arbitrary line direction for linear and circular copies", () => {
+    const source = createOcctBox(occt, [4, 6, 8], true, [10, 0, 0])
+    let linearOutputs: OwnedBodyPattern | null = null
+    let circularOutputs: OwnedBodyPattern | null = null
+    try {
+      linearOutputs = patternOcctShape(occt, source, {
+        kind: "linear",
+        count: 3,
+        axis: [0.6, 0.8, 0],
+        spacing: -10,
+      })
+      expectPoint(measure(linearOutputs[2]?.shape ?? source).center, [-2, -16, 0])
+      expectIndependent(linearOutputs, source)
+      circularOutputs = patternOcctShape(occt, source, {
+        kind: "circular",
+        count: 3,
+        axis: [0, 0.6, 0.8],
+        center: [0, 0, 0],
+        angle: Math.PI,
+      })
+      expectPoint(measure(circularOutputs[2]?.shape ?? source).center, [-10, 0, 0])
+      expectIndependent(circularOutputs, source)
+      expectPoint(measure(source).center, [10, 0, 0])
+    } finally {
+      dispose(linearOutputs)
+      dispose(circularOutputs)
+      source.delete()
+    }
+  })
+
   it.each([
     { axis: "X", spacing: 10, component: 0 },
     { axis: "Y", spacing: -12, component: 1 },

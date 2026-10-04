@@ -8,6 +8,13 @@ A new task starts at the midpoint of the exact source body's Z bounds. Changing 
 entered offset. **Use body midpoint** explicitly centers the selected plane using its normal axis.
 No plane choice silently translates the source model.
 
+Version 2 supports authored Datum Planes, stable planar faces on exact named bodies, and explicit
+world planes. Choose the current viewport face with **Use selected planar face**, or use the
+**Reference source** control. Its signed offset follows the selected plane normal. Explicit direction
+fields are normalized; zero directions and unavailable or ambiguous supports block Apply. The
+midpoint action belongs to the origin-plane workflow. Supporting bodies are retained. Existing
+version 1 records retain their original coordinate-axis offsets.
+
 Preview is disposable. The plane must cross the source and produce exactly one connected valid solid
 on each side. Missing, tangent, or disconnected-half cuts fail and block Apply. Cancel preserves the
 committed document. Apply makes one ordinary transaction; editing its History row preserves feature
@@ -21,7 +28,9 @@ forks the negative side rather than consuming a later current tip. Each availabl
 placed, mirrored, shelled, split again, or exported separately through its exact current body reference.
 Legacy feature-only modifying tools do not list Split as one ambiguous result body.
 
-The local MCP tools `create_split` and `update_split` stage the same schema-backed feature through an
-owned draft. They require its exact `targetBody`, sole matching dependency, empty topology references,
-plane, signed length quantity, fresh command ID, and current draft revision. Preview and ordinary
+The local and paired remote MCP tools `create_split` and `update_split` retain origin-plane version 1.
+The additive `create_reference_split` and `update_reference_split` author version 2 with the shared
+reference-plane contract. Both require exact `targetBody`, empty generic topology references, a
+signed offset length quantity, fresh command ID and current owned draft revision. Version 2 declares
+the target producer first, followed by any distinct support owner. Preview and ordinary
 commit remain required; MCP has no additional document authority.

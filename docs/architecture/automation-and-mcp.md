@@ -164,7 +164,7 @@ Candidate first-party module families are:
 These are logical identities, not a commitment to one Bun workspace per module. Package extraction follows demonstrated dependency, execution, ownership, or publication needs.
 
 The current registry starts with `org.vibeshape.core.document`. Its document create/rename, variable mutation, and sketch add/update/remove commands are the conformance fixtures for command ownership, explicit schema versions, confirmation classes, automation annotations, and deterministic registration. Sketch removal is explicitly destructive; add and update require review. The same module owns exact-revision document-summary, cursor-paginated variable-list, and bounded
-model-measurement queries. A bounded sketch resource remains future MCP transport work, but models and the UI already share the same trusted revisioned sketch-command dispatcher.
+model-measurement queries. Solved sketch inspection is exposed through a bounded registered query and named tools as described in [ADR-0085](../adr/0085-disposable-solved-sketch-inspection.md); models and the UI share the trusted revisioned sketch-command dispatcher.
 
 ## MCP primitives
 
@@ -464,3 +464,15 @@ Compound, version upgrades and future feature versions require manual review.
 and blocked features. Draft feature measurement paging shares the existing single detached
 4 MiB geometry catalog, ownership and expiry checks. Another target or draft edit invalidates
 cursors without retaining a worker or renewing expiry.
+
+## Solved sketch inspection
+
+`model_sketch_solution` and `draft_sketch_solution` share `org.vibeshape.sketch.solution` version 1.
+They solve a detached exact-revision snapshot in a disposable worker and return native status,
+DOF, conflicting constraint IDs, solved authored coordinates/radii and stable usable profile
+selectors. Section-bound opaque cursors page at most 200 entries within 128 KiB. Catalogs are
+limited to 4 MiB; the committed reader retains one sketch catalog, while draft reads share the
+existing one-target geometry catalog. Ownership, expiry, active document and revision remain
+validated around asynchronous evaluation. No read saves coordinates or advances a revision.
+See [ADR-0085](../adr/0085-disposable-solved-sketch-inspection.md) for evidence validation,
+cancellation and cursor recovery.
