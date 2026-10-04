@@ -257,6 +257,7 @@ export function parseThreadForm(
   const quantities: Partial<Record<ThreadQuantityField, Quantity>> = {},
     issues: Partial<Record<ThreadQuantityField, string>> = {}
   for (const field of [...threadCoreFields, ...threadAdvancedFields]) {
+    if (values.axis === "reference" && field.startsWith("origin")) continue
     const result = parseQuantity(values[field], field, evaluated.valuesByName, units, copy)
     if (result.ok) quantities[field] = result.quantity
     else issues[field] = result.message

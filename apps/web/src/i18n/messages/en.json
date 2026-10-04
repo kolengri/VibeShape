@@ -2690,7 +2690,8 @@
       "startOffset": "Start offset",
       "draftAngle": "Draft angle",
       "draftDescription": "The shifted sketch plane is the neutral plane. Enter an angle within ±45 degrees.",
-      "bodyLabel": "{label} · {role}"
+      "bodyLabel": "{label} · {role}",
+      "legacyBodyLabel": "{label} · all bodies (legacy scope)"
     }
   }
 }

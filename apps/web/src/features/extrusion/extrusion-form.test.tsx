@@ -9,6 +9,7 @@ import {
   extrusionFeatureTypeV5,
   featureIdSchema,
   featureRecordSchema,
+  legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureType,
   sketchProfileSelectorSchema,
   topoRefSchema,
@@ -18,8 +19,9 @@ import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
+import { collectedExtrusionOptions } from "./extrusion-body-test-fixtures"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
-import { ExtrusionForm, type ExtrusionFormMode } from "./extrusion-form"
+import { ExtrusionForm, type ExtrusionFormMode, type ExtrusionTargetOption } from "./extrusion-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3601")
 const supportFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3603")
@@ -134,6 +136,12 @@ function renderForm(
   onPreviewChange = vi.fn(),
   distanceRequest?: ExtrusionDistanceRequest,
   angleUnit: "deg" | "rad" = "deg",
+  options: readonly ExtrusionTargetOption[] = [
+    {
+      id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3602"),
+      label: "Box 1",
+    },
+  ],
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update extrusion" } : copy
   render(
@@ -144,12 +152,7 @@ function renderForm(
           copy={formCopy}
           distanceRequest={distanceRequest}
           mode={mode}
-          options={[
-            {
-              id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3602"),
-              label: "Box 1",
-            },
-          ]}
+          options={options}
           profileLabel="Sketch 1"
           variables={variables}
           onCancel={vi.fn()}
@@ -183,6 +186,92 @@ async function selectOperation(user: ReturnType<typeof userEvent.setup>, operati
 }
 
 describe("ExtrusionForm", () => {
+  it.each(
+    [2, 4, 5].flatMap((version) =>
+      ["add", "remove", "intersect"].map((operation) => ({ version, operation })),
+    ),
+  )(
+    "edits legacy v$version $operation using the real named-body collector without narrowing the producer",
+    async ({ version, operation }) => {
+      const feature = featureRecordSchema.parse({
+        ...existingFeature,
+        type: { ...existingFeature.type, schemaVersion: version },
+        parameters: {
+          distance: createLengthQuantity(18, "mm", "#depth"),
+          symmetric: false,
+          operation,
+          ...(version === 2
+            ? { profile }
+            : { profiles: { schemaVersion: 0, profiles: [profile] } }),
+          ...(version === 5 ? { reversed: true, secondDistance: null } : {}),
+        },
+        dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3602"],
+      })
+      const options = collectedExtrusionOptions(feature, true)
+      expect(options.map(({ outputRole }) => outputRole)).toEqual([
+        undefined,
+        "compound.input.0",
+        "compound.input.1",
+      ])
+      const { onSave } = renderForm(
+        undefined,
+        undefined,
+        { kind: "edit", feature, profiles: [profile] },
+        undefined,
+        undefined,
+        "deg",
+        options,
+      )
+      await userEvent.click(screen.getByRole("button", { name: "Update extrusion" }))
+      await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+      expect(onSave).toHaveBeenCalledExactlyOnceWith(4, feature)
+    },
+  )
+  it("preserves schema v1 New when opening and applying its existing profile", async () => {
+    const feature = featureRecordSchema.parse({
+      ...existingFeature,
+      type: legacyExtrusionFeatureType.type,
+    })
+    const { onSave } = renderForm(
+      undefined,
+      undefined,
+      { kind: "edit", feature, profiles: [profile] },
+      undefined,
+      undefined,
+      "deg",
+      collectedExtrusionOptions(feature),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Update extrusion" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+    expect(onSave).toHaveBeenCalledExactlyOnceWith(4, feature)
+  })
+  it("requires an explicit named body before upgrading a legacy whole-producer modifier", async () => {
+    const feature = featureRecordSchema.parse({
+      ...existingFeature,
+      parameters: { ...existingFeature.parameters, symmetric: false, operation: "add" },
+      dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3602"],
+    })
+    expect(
+      collectedExtrusionOptions(undefined, true).every(
+        ({ outputRole }) => outputRole !== undefined,
+      ),
+    ).toBe(true)
+    const { onSave } = renderForm(
+      undefined,
+      undefined,
+      { kind: "edit", feature, profiles: [profile] },
+      undefined,
+      undefined,
+      "deg",
+      collectedExtrusionOptions(feature, true),
+    )
+    const offset = screen.getByRole("combobox", { name: "Start offset" })
+    await userEvent.clear(offset)
+    await userEvent.type(offset, "2 mm")
+    await userEvent.click(screen.getByRole("button", { name: "Update extrusion" }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByText(copy.missingTarget)).toBeTruthy()
+  })
   it("authors signed offset and draft using the project's angle display unit", async () => {
     const { onSave } = renderForm(undefined, undefined, undefined, undefined, undefined, "rad")
     fireEvent.change(screen.getByRole("combobox", { name: "Start offset" }), {

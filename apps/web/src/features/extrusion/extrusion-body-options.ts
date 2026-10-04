@@ -1,5 +1,6 @@
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
-import type { DocumentSnapshot, FeatureId } from "@vibeshape/domain"
+import type { DocumentSnapshot, FeatureId, FeatureRecord } from "@vibeshape/domain"
+import { readExtrusionFeatureParameters } from "@vibeshape/domain"
 import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
 import { referenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import type { ExtrusionTargetOption } from "./extrusion-form"
@@ -9,6 +10,7 @@ export function extrusionBodyOptions(
   rebuild: DocumentRebuildOutcome,
   excludedFeatureId: string | undefined,
   label: (name: string | undefined, role: string) => string,
+  legacyLabel: (name: string | undefined) => string,
 ): readonly ExtrusionTargetOption[] {
   if (!rebuild.ok) return []
   const stop = excludedFeatureId
@@ -39,5 +41,32 @@ export function extrusionBodyOptions(
       }))
     byFeature.set(feature.id, options)
   }
-  return terminalBodyOutputs(features, byFeature) ?? []
+  const options = terminalBodyOutputs(features, byFeature) ?? []
+  const legacy = legacyBodyOption(snapshot.features[stop], features, rebuild, legacyLabel)
+  return legacy ? [legacy, ...options] : options
+}
+
+function legacyBodyOption(
+  edited: FeatureRecord | undefined,
+  features: readonly FeatureRecord[],
+  rebuild: Extract<DocumentRebuildOutcome, { ok: true }>,
+  label: (name: string | undefined) => string,
+) {
+  if (!edited || edited.type.schemaVersion >= 6) return null
+  const parameters = readExtrusionFeatureParameters(edited)
+  if (!parameters || parameters.operation === "new") return null
+  const target = features.find(({ id }) => id === edited.dependencies[0])
+  if (!target || !wholeProducerAvailable(rebuild, target)) return null
+  // Legacy modifiers bind the complete producer, including every constituent body.
+  return { id: target.id, label: label(target.label) }
+}
+
+function wholeProducerAvailable(
+  rebuild: Extract<DocumentRebuildOutcome, { ok: true }>,
+  target: FeatureRecord,
+) {
+  if (target.suppressed) return false
+  const shape = rebuild.response.geometry.find(({ featureId }) => featureId === target.id)?.geometry
+    .shape
+  return Boolean(shape?.valid && shape.solidCount >= 1 && shape.volume > 0)
 }

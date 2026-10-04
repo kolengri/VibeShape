@@ -244,10 +244,10 @@ function extrusionRecord(
           (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
         )
   if (mode.kind === "edit") {
+    const preserved = preserveLegacyExtrusionSchema(mode.feature, parameters)
     return featureRecordSchema.parse({
       ...mode.feature,
-      type: extrusionType(parameters),
-      parameters,
+      ...preserved,
       dependencies,
       references,
     })
@@ -262,6 +262,26 @@ function extrusionRecord(
     suppressed: false,
     label: mode.featureLabel,
   })
+}
+
+function preserveLegacyExtrusionSchema(
+  feature: FeatureRecord,
+  parameters: Parameters<typeof extrusionType>[0],
+) {
+  const type = extrusionType(parameters)
+  if (type.schemaVersion !== 2) return { type, parameters }
+  if (feature.type.schemaVersion === 1 && parameters.operation === "new")
+    return { type: feature.type, parameters }
+  if (feature.type.schemaVersion === 3 || feature.type.schemaVersion === 4) {
+    const { profile, ...common } = extrusionFeatureParametersSchema.parse(parameters)
+    const schema =
+      parameters.operation === "new"
+        ? multiProfileExtrusionFeatureParametersSchema
+        : extrusionFeatureParametersV4Schema
+    const preserved = schema.parse({ ...common, profiles: createSketchProfileSet([profile]) })
+    return { type: extrusionType(preserved), parameters: preserved }
+  }
+  return { type, parameters }
 }
 
 function extrusionType(
@@ -442,6 +462,8 @@ function parseAdvancedExtents(
   target: ExtrusionTargetOption | undefined,
   angleUnit: ReturnType<typeof useDocumentDisplayUnits>["angle"],
 ) {
+  const targetBody = advancedTargetBody(values.operation, target, copy)
+  if (!targetBody.ok) return targetBody
   const basic = parseIndependentExtents(values, distance, variables, copy, unit)
   if (!basic.ok) return basic
   const quantities = parseAdvancedQuantities(values, variables, copy, unit, angleUnit)
@@ -450,16 +472,31 @@ function parseAdvancedExtents(
   if (!end.ok) return end
   const parsed = extrusionFeatureParametersV6Schema.safeParse({
     ...basic.parameters,
-    targetBody:
-      values.operation === "new"
-        ? null
-        : { schemaVersion: 0, featureId: target?.id, outputRole: target?.outputRole ?? "result" },
+    targetBody: targetBody.value,
     ...quantities.value,
     endCondition: end.value,
   })
   return parsed.success
     ? { ok: true as const, parameters: parsed.data }
     : { ok: false as const, issues: { distance: copy.extentInvalidRange } }
+}
+
+function advancedTargetBody(
+  operation: string,
+  target: ExtrusionTargetOption | undefined,
+  copy: ExtrusionFormCopy,
+) {
+  if (operation === "new") return { ok: true as const, value: null }
+  if (!target?.outputRole)
+    return { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
+  return {
+    ok: true as const,
+    value: {
+      schemaVersion: 0,
+      featureId: target.id,
+      outputRole: target.outputRole,
+    },
+  }
 }
 
 function legacyExtrusionParameters(values: ExtrusionFormValues, distance: LengthQuantity) {

@@ -292,15 +292,22 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   ...[...revolveTypeKeys].map((typeKey) => [typeKey, readRevolveFeatureParameters] as const),
 ])
 
+function referenceBodySelectionParameters(feature: FeatureRecord) {
+  const thread = readThreadFeatureParameters(feature)
+  return (
+    readMirrorFeatureParametersV3(feature) ??
+    readSplitFeatureParametersV2(feature) ??
+    readPatternFeatureParametersV2(feature) ??
+    (thread && typeof thread.axis !== "string" ? thread : null)
+  )
+}
+
 function hasCompleteBodySelectionDependencies(
   feature: FeatureRecord,
   readParameters: BodySelectionParameterReader,
 ) {
   const bodies = featureBodyDependencies(feature).map(({ featureId }) => featureId)
-  const referenceParameters =
-    readMirrorFeatureParametersV3(feature) ??
-    readSplitFeatureParametersV2(feature) ??
-    readPatternFeatureParametersV2(feature)
+  const referenceParameters = referenceBodySelectionParameters(feature)
   if (referenceParameters) {
     const support =
       "plane" in referenceParameters ? referenceParameters.plane : referenceParameters.axis

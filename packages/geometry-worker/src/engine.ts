@@ -1610,10 +1610,24 @@ function extrusionTargetAndSupportSlots(
     const slot = input.dependencies.findIndex(
       ({ featureId }) => featureId === parameters.supportFeatureId,
     )
-    if (slot < 0 || roles[slot] !== null) return null
+    if (slot < 0 || !extrusionSupportRoleIsValid(parameters, roles[slot], slot)) return null
     expected.add(slot)
   }
   return expected
+}
+
+function extrusionSupportRoleIsValid(
+  parameters: ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>,
+  role: string | null | undefined,
+  slot: number,
+) {
+  if (role === null) return true
+  if (role !== "result") return false
+  const end = parameters.endCondition
+  return (
+    (parameters.operation !== "new" && slot === 0) ||
+    (end.kind !== "distance" && end.inputIndex === slot && end.outputRole === "result")
+  )
 }
 
 function extrusionEndBindingIsValid(

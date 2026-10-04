@@ -195,12 +195,15 @@ export function draftExtrusionTool(
     builder.Build(progress)
     if (!builder.IsDone()) throw new Error("OCCT could not build the drafted extrusion.")
     const result = adoptOcctShape(builder.Shape(), castOcctShape)
-    const metrics = inspectOcctBody(occt, result)
-    if (!metrics.valid || metrics.solidCount !== 1 || metrics.volume <= 0) {
+    try {
+      const metrics = inspectOcctBody(occt, result)
+      if (!metrics.valid || metrics.solidCount !== 1 || metrics.volume <= 0)
+        throw new Error("Extrusion draft produced an invalid solid.")
+      return result
+    } catch (error) {
       result.delete()
-      throw new Error("Extrusion draft produced an invalid solid.")
+      throw error
     }
-    return result
   } finally {
     for (const resource of resources.reverse()) resource.delete()
   }

@@ -1604,6 +1604,7 @@ function ActiveExtrusionTaskPanel({
     report.rebuild,
     mode.kind === "edit" ? mode.feature.id : undefined,
     (name, role) => extentCopy("bodyLabel", { label: name ?? modelTreeT("unnamedFeature"), role }),
+    (name) => extentCopy("legacyBodyLabel", { label: name ?? modelTreeT("unnamedFeature") }),
   )
   return (
     <ExtrusionTaskPanel
