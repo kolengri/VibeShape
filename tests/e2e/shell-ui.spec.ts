@@ -12,7 +12,7 @@ function shellParameters(project: Awaited<ReturnType<typeof saveProject>>, featu
   return parameters
 }
 
-test("previews Shell, replaces the same part, edits, undoes, reopens, exports and explicitly repairs stale opening faces", async ({
+test("previews Shell, replaces the same part, edits, undoes, reopens, exports and retains semantic opening faces after source edits", async ({
   page,
 }) => {
   test.setTimeout(180_000)
@@ -98,13 +98,8 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   await saved(page)
   await page.getByRole("treeitem", { name: "Shell 1", exact: true }).click()
   form = page.getByRole("form", { name: "Edit shell", exact: true })
-  await expect(form.getByText(/Reselect all opening faces/)).toBeVisible()
-  await expect(form.locator('input[type="checkbox"]:checked')).toHaveCount(0)
-  await expect(form.getByRole("button", { name: "Update shell", exact: true })).toBeDisabled()
-  const repairedTop = new RegExp(
-    `center \\(0\\.00, 0\\.00, ${(height + 5).toFixed(2).replace(".", "\\.")}\\)`,
-  )
-  await form.getByRole("checkbox", { name: repairedTop }).check()
+  await expect(form.getByText(/Reselect all opening faces/)).toHaveCount(0)
+  await expect(form.locator('input[type="checkbox"]:checked')).toHaveCount(1)
   await expect(form.getByRole("button", { name: "Update shell", exact: true })).toBeEnabled({
     timeout: 30_000,
   })
@@ -117,4 +112,54 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   expect(repaired.project.snapshot.parts.map(({ id }) => id)).toEqual(
     before.project.snapshot.parts.map(({ id }) => id),
   )
+})
+
+test("selects opening faces in 3D and switches to a persisted closed cavity", async ({ page }) => {
+  test.setTimeout(180_000)
+  await page.goto("/")
+  await saved(page)
+  const commands = page.getByRole("toolbar", { name: "Model commands" })
+  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  await saved(page)
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
+  await commands.getByRole("button", { name: "Shell", exact: true }).click()
+  const form = page.getByRole("form", { name: "Shell", exact: true })
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  const bounds = await viewport.boundingBox()
+  if (!bounds) throw new Error("Shell requires a visible source viewport.")
+  const point = { x: bounds.x + bounds.width * 0.43, y: bounds.y + bounds.height * 0.44 }
+  await page.mouse.click(point.x, point.y)
+  await expect(form.locator('input[type="checkbox"]:checked')).toHaveCount(1)
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
+  await page.mouse.click(point.x, point.y)
+  await expect(form.locator('input[type="checkbox"]:checked')).toHaveCount(0)
+  await expect(viewport).toHaveAttribute("data-preview-status", "idle")
+  await form.getByRole("radio", { name: "Closed cavity", exact: true }).check()
+  await expect(form.getByRole("checkbox")).toHaveCount(0)
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
+  await form.getByRole("button", { name: "Apply shell", exact: true }).click()
+  await saved(page)
+  const archive = await saveProject(page)
+  const feature = archive.project.snapshot.features.find((candidate) =>
+    readShellFeatureParameters(candidate),
+  )
+  if (!feature) throw new Error("The closed cavity must be authored.")
+  expect(feature.type.schemaVersion).toBe(2)
+  expect(readShellFeatureParameters(feature)?.openings).toEqual([])
+  await page.getByRole("button", { name: "Undo", exact: true }).click()
+  await saved(page)
+  await expect(page.getByRole("treeitem", { name: "Shell 1", exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Redo", exact: true }).click()
+  await saved(page)
+  await openProject(page, archive)
+  await page.getByRole("treeitem", { name: "Shell 1", exact: true }).click()
+  await expect(
+    page
+      .getByRole("form", { name: "Edit shell", exact: true })
+      .getByRole("radio", { name: "Closed cavity", exact: true }),
+  ).toBeChecked()
 })

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { shellFeatureContentParametersSchema } from "./geometry-worker"
+import {
+  shellFeatureContentParametersSchema,
+  shellFeatureContentParametersV2Schema,
+} from "./geometry-worker"
 
 const opening = {
   schemaVersion: 1,
@@ -49,6 +52,25 @@ describe("Shell v1 worker content", () => {
       shellFeatureContentParametersSchema.safeParse({
         ...parameters,
         openings: [{ ...opening, signature: { ...opening.signature, kind: "edge" } }],
+      }).success,
+    ).toBe(false)
+  })
+})
+describe("Shell v2 worker content", () => {
+  it("allows an explicit closed cavity without weakening v1 or accepting native face identities", () => {
+    const closed = { ...parameters, openings: [] }
+    expect(shellFeatureContentParametersV2Schema.parse(closed)).toEqual(closed)
+    expect(shellFeatureContentParametersSchema.safeParse(closed).success).toBe(false)
+    expect(
+      shellFeatureContentParametersV2Schema.safeParse({
+        ...parameters,
+        openings: Array.from({ length: 65 }, () => opening),
+      }).success,
+    ).toBe(false)
+    expect(
+      shellFeatureContentParametersV2Schema.safeParse({
+        ...parameters,
+        openings: [{ ...opening, meshFaceId: 1 }],
       }).success,
     ).toBe(false)
   })

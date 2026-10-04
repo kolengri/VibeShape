@@ -116,7 +116,7 @@ export function createLatestFramePublisher<Value>(
 
 export type ViewerMesh = Readonly<{
   textureSource?: Omit<ViewerMesh, "textureSource">
-  appearance?: "datum" | "model" | "preview"
+  appearance?: "datum" | "model" | "preview" | "selection-source"
   featureId: string
   outputRole?: string
   positions: Float32Array
@@ -503,6 +503,7 @@ export type GeometryViewport = Readonly<{
   ) => void
   setSelectionCandidateStackPreserved: (preserved: boolean) => void
   setSelectionPreselection: (selection: ViewerSelection | null) => void
+  setFaceSelections: (selections: readonly ViewerSelection[]) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   showTranslationGizmo: (position: ViewerVector3) => void
   showAxialTranslationGizmo: (gizmo: ViewerAxialGizmo) => void
@@ -1185,6 +1186,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #featureSelectionGroup = new Group()
   readonly #preselectionGroup = new Group()
   readonly #selectionGroup = new Group()
+  readonly #faceSelectionGroup = new Group()
   readonly #raycaster = new Raycaster()
   readonly #pointer = new Vector2()
   readonly #meshSources = new Map<string, ViewerMesh>()
@@ -1500,6 +1502,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#featureSelectionGroup)
     this.#scene.add(this.#preselectionGroup)
     this.#scene.add(this.#selectionGroup)
+    this.#scene.add(this.#faceSelectionGroup)
     this.#scene.add(this.#translationObject)
     this.#scene.add(this.#angularGizmoGroup)
     this.#orientationAxes.setColors(
@@ -1598,6 +1601,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#sectionPlanes = sectionClipPlanes(section)
     this.clearSelection()
+    this.#applySectionClipping()
     this.#setPreselection(null)
     this.#render()
   }
@@ -1619,6 +1623,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#selectionCandidateStackPreserved = false
     this.#clearSelectionCandidateStack()
     this.clearSelection()
+    disposeModelGroup(this.#faceSelectionGroup)
     this.#setPreselection(null)
     disposeModelGroup(this.#modelGroup)
     disposeMaterials(this.#modelSurfaceMaterials)
@@ -1632,11 +1637,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       const preview = source.appearance === "preview"
       const datum = source.appearance === "datum"
       const geometry = createViewerGeometry(source)
-      const surfaceMaterial = preview
-        ? this.#previewSurfaceMaterial
-        : datum
-          ? this.#datumSurfaceMaterial
-          : this.#createModelSurfaceMaterial(source.featureId)
+      const surfaceMaterial = this.#surfaceMaterialForMesh(source)
       const edgeMaterial = preview
         ? this.#previewEdgeMaterial
         : datum
@@ -1674,6 +1675,18 @@ class ThreeGeometryViewport implements GeometryViewport {
       visibleMesh,
       2,
     )
+  }
+
+  #surfaceMaterialForMesh(source: ViewerMesh) {
+    if (source.appearance === "preview") return this.#previewSurfaceMaterial
+    if (source.appearance === "datum") return this.#datumSurfaceMaterial
+    const material = this.#createModelSurfaceMaterial(source.featureId)
+    if (source.appearance === "selection-source") {
+      material.transparent = true
+      material.opacity = 0.12
+      material.depthWrite = false
+    }
+    return material
   }
 
   #registerTextureSourceMesh(source: ViewerMesh, material: Mesh["material"]) {
@@ -2100,6 +2113,22 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setPreselection(selection)
   }
 
+  setFaceSelections(selections: readonly ViewerSelection[]) {
+    if (this.#disposed) return
+    disposeModelGroup(this.#faceSelectionGroup)
+    for (const selection of selections) {
+      const source = this.#meshSources.get(viewerBodyKey(selection))
+      const geometry = source ? createFaceHighlightGeometry(source, selection.faceId) : null
+      if (geometry) {
+        const mesh = new Mesh(geometry, this.#selectionMaterial)
+        mesh.renderOrder = 4
+        this.#faceSelectionGroup.add(mesh)
+      }
+    }
+    this.#applySectionClipping()
+    this.#render()
+  }
+
   setSelectionCandidateStackPreserved(preserved: boolean) {
     if (this.#disposed) return
     this.#selectionCandidateStackPreserved = preserved
@@ -2157,6 +2186,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#featureSelectionGroup)
     disposeModelGroup(this.#preselectionGroup)
     disposeModelGroup(this.#selectionGroup)
+    disposeModelGroup(this.#faceSelectionGroup)
     disposeModelGroup(this.#angularGizmoGroup)
     this.#scene.remove(this.#translationObject)
     this.#previewSurfaceMaterial.dispose()
@@ -2911,6 +2941,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#featureSelectionGroup,
       this.#featurePreselectionGroup,
       this.#selectionGroup,
+      this.#faceSelectionGroup,
       this.#preselectionGroup,
     ])
       group.visible = !active
@@ -3174,6 +3205,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#featureSelectionGroup,
       this.#preselectionGroup,
       this.#selectionGroup,
+      this.#faceSelectionGroup,
     ]
     for (const group of groups)
       group.traverse((object) => {

@@ -95,6 +95,7 @@ import {
 } from "../features/reference-geometry/datum-plane-form"
 import type { RevolveAngleRequest } from "../features/revolve/revolve-angle-manipulator"
 import { RevolveForm, type RevolveFormMode } from "../features/revolve/revolve-form"
+import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
 import {
   externalModelCurveLabelKind,
   externalModelReferenceLabels,
@@ -159,6 +160,8 @@ type TaskPanelProps = Readonly<{
   onHolePickingContextChange?: (context: HolePickingContext | null) => void
   edgeTreatmentPickRequest?: EdgeTreatmentPickRequest | null
   onEdgeTreatmentPickingContextChange?: (context: EdgeTreatmentPickingContext | null) => void
+  shellPickRequest?: ShellPickRequest | null
+  onShellPickingContextChange?: (context: ShellPickingContext | null) => void
   primitivePlacementRequest: PrimitivePlacementRequest | null
   revolveAngleRequest: RevolveAngleRequest | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
@@ -1688,6 +1691,8 @@ type ActiveTaskPanelProps = Readonly<{
   onHolePickingContextChange?: TaskPanelProps["onHolePickingContextChange"]
   edgeTreatmentPickRequest?: TaskPanelProps["edgeTreatmentPickRequest"]
   onEdgeTreatmentPickingContextChange?: TaskPanelProps["onEdgeTreatmentPickingContextChange"]
+  shellPickRequest?: TaskPanelProps["shellPickRequest"]
+  onShellPickingContextChange?: TaskPanelProps["onShellPickingContextChange"]
   primitivePlacementRequest: PrimitivePlacementRequest | null
   revolveAngleRequest: RevolveAngleRequest | null
   onRevolveAxisChange?: TaskPanelProps["onRevolveAxisChange"] | undefined
@@ -2282,6 +2287,8 @@ function ModelTaskPanel(props: TaskPanelProps) {
         onHolePickingContextChange={props.onHolePickingContextChange}
         edgeTreatmentPickRequest={props.edgeTreatmentPickRequest}
         onEdgeTreatmentPickingContextChange={props.onEdgeTreatmentPickingContextChange}
+        shellPickRequest={props.shellPickRequest}
+        onShellPickingContextChange={props.onShellPickingContextChange}
         primitivePlacementRequest={props.primitivePlacementRequest}
         revolveAngleRequest={props.revolveAngleRequest}
         onRevolveAxisChange={props.onRevolveAxisChange}

@@ -93,6 +93,7 @@ import {
   revolveModelEdgeAxisCandidates,
   revolveSketchLineAxisCandidates,
 } from "../features/revolve/revolve-axis-candidates"
+import { useShellFacePicking } from "../features/shell/use-shell-face-picking"
 import {
   applyExternalModelCandidateSelection,
   applyExternalModelIntersection,
@@ -2302,6 +2303,7 @@ function EditorContent({
 function EditorTaskPanel({
   edgeTreatmentPicking,
   holePicking,
+  shellPicking,
   featurePreviewStatus,
   featureProfileSelections,
   onFeatureProfileRemove,
@@ -2317,6 +2319,7 @@ function EditorTaskPanel({
 }: {
   edgeTreatmentPicking: ReturnType<typeof useEdgeTreatmentPicking>
   holePicking: ReturnType<typeof useHolePointPicking>
+  shellPicking: ReturnType<typeof useShellFacePicking>
   featurePreviewStatus: ReturnType<typeof useFeaturePreview>["status"]
   featureProfileSelections: readonly SketchProfileSelector[]
   onFeatureProfileRemove: (profile: SketchProfileSelector) => void
@@ -2343,6 +2346,8 @@ function EditorTaskPanel({
       onHolePickingContextChange={holePicking.onContextChange}
       edgeTreatmentPickRequest={edgeTreatmentPicking.request}
       onEdgeTreatmentPickingContextChange={edgeTreatmentPicking.onContextChange}
+      shellPickRequest={shellPicking.request}
+      onShellPickingContextChange={shellPicking.onContextChange}
       activeSketchId={props.activeSketchId}
       activeSketchTool={props.activeSketchTool}
       activeTool={props.activeTool}
@@ -2442,10 +2447,19 @@ function useModelFeaturePicking(props: EditorWorkspaceProps) {
     props.activeTool,
     props.hiddenFeatureIds,
   )
+  const shellPicking = useShellFacePicking(
+    props.controller,
+    props.activeTool,
+    props.hiddenFeatureIds,
+  )
   return {
     holePicking,
     edgeTreatmentPicking,
-    viewportContext: holePicking.viewportContext ?? edgeTreatmentPicking.viewportContext,
+    shellPicking,
+    viewportContext:
+      holePicking.viewportContext ??
+      edgeTreatmentPicking.viewportContext ??
+      shellPicking.viewportContext,
   }
 }
 
@@ -2503,7 +2517,8 @@ function EditorWorkspaceContent(props: EditorWorkspaceProps) {
     automationReviews.getSnapshot,
     automationReviews.getSnapshot,
   )
-  const { holePicking, edgeTreatmentPicking, viewportContext } = useModelFeaturePicking(props)
+  const { holePicking, edgeTreatmentPicking, shellPicking, viewportContext } =
+    useModelFeaturePicking(props)
   const taskPanelT = useTranslations("app.shell.taskPanel")
   const { featurePreview, manipulatorFeature, onFeaturePreviewChange } =
     useWorkspaceFeaturePreview(props)
@@ -2577,6 +2592,7 @@ function EditorWorkspaceContent(props: EditorWorkspaceProps) {
             <EditorTaskPanel
               holePicking={holePicking}
               edgeTreatmentPicking={edgeTreatmentPicking}
+              shellPicking={shellPicking}
               featurePreviewStatus={featurePreview.status}
               featureProfileSelections={featureProfileSelection.value}
               onFeatureProfileRemove={removeFeatureProfile}

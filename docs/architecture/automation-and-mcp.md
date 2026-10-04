@@ -424,7 +424,10 @@ its 2,000-curve aggregate budget remains unchanged. Other feature evaluation req
 eight-producer limit.
 Exact named-body
 selection, stable dependencies, variable quantities, draft preview and ordinary review/commit
-remain authoritative. Shell binds current opening topology and content hash; Sweep retains its
+remain authoritative. Shell create/update authors version 2: empty openings create a closed cavity,
+while selected openings bind exact-body topology and the source content hash. Unique durable
+face identities may survive source edits; missing or ambiguous identities require explicit repair.
+Existing version 1 records keep strict source binding until updated. Sweep retains its
 explicit path start frame; Loft retains ordered bounded sections; Thread is bounded custom
 60-degree geometry without ISO/DIN fit certification. The modeling operator skill and local
 authoring guide describe these limits. Imports, text generation, assembly/library authoring and

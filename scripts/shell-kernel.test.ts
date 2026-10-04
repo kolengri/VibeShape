@@ -44,13 +44,14 @@ async function kernelFixture() {
     parameters: unknown,
     dependencies: readonly FeatureEvaluationDependency[] = [],
     name = "shell",
+    schemaVersion = 1,
   ) => {
     const content = featureContentIdentitySchema.parse({
       schemaVersion: dependencies.length ? 1 : 0,
       environment: metadata.featureContentEnvironment,
       feature: {
         schemaVersion: 0,
-        type: featureType(name),
+        type: { ...featureType(name), schemaVersion },
         parameters,
         inputs: dependencies.map(({ contentHash }) => contentHash),
         references: [],
@@ -122,6 +123,133 @@ function openings(
 const box = { width: 20, depth: 30, height: 40, centered: false, origin: [0, 0, 0] }
 afterEach(() => vi.unstubAllGlobals())
 describe("Shell with the pinned real OCCT kernel", () => {
+  it("creates a closed v2 cavity in either direction and rejects collapse", async () => {
+    const f = await kernelFixture()
+    try {
+      const source = requireSuccess(await f.evaluate(id(1), box, [], "box"))
+      const dependency = { featureId: id(1), contentHash: source.contentHash, outputRole: "result" }
+      for (const [index, direction, volume, min, max] of [
+        [2, "inward", 4848, [-10, -15, 0], [10, 15, 40]],
+        [3, "outward", 5568, [-11, -16, -1], [11, 16, 41]],
+      ] as const) {
+        const cavity = requireSuccess(
+          await f.evaluate(
+            id(index),
+            {
+              thickness: 1,
+              direction,
+              sourceContentHash: source.contentHash,
+              openings: [],
+            },
+            [dependency],
+            "shell",
+            2,
+          ),
+        )
+        expect(cavity.result.shape.valid).toBe(true)
+        expect(cavity.result.shape.solidCount).toBe(1)
+        expect(cavity.result.shape.faceCount).toBe(12)
+        expect(cavity.result.shape.volume).toBeCloseTo(volume, 6)
+        for (const axis of [0, 1, 2] as const) {
+          expect(Math.abs(cavity.result.shape.bounds.min[axis] - min[axis])).toBeLessThanOrEqual(
+            0.0011,
+          )
+          expect(Math.abs(cavity.result.shape.bounds.max[axis] - max[axis])).toBeLessThanOrEqual(
+            0.0011,
+          )
+        }
+        const exported = await f.engine.exportDocument({
+          documentId: f.documentId,
+          features: [
+            { featureId: id(index), contentHash: cavity.contentHash, outputRole: "result" },
+          ],
+          format: "step",
+        })
+        const step = new TextDecoder().decode(exported.file)
+        expect(exported.bodyCount).toBe(1)
+        expect(step.match(/\bCLOSED_SHELL\s*\(/g)).toHaveLength(2)
+        expect(step).toContain("BREP_WITH_VOIDS")
+      }
+      expect(
+        await f.evaluate(
+          id(4),
+          {
+            thickness: 100,
+            direction: "inward",
+            sourceContentHash: source.contentHash,
+            openings: [],
+          },
+          [dependency],
+          "shell",
+          2,
+        ),
+      ).toMatchObject({ ok: false })
+      expect(requireSuccess(await f.evaluate(id(1), box, [], "box")).result.shape).toEqual(
+        source.result.shape,
+      )
+    } finally {
+      f.engine.disposeDocument(f.documentId)
+      expect(f.engine.getHealth().ownedShapeCount).toBe(0)
+    }
+  }, 60_000)
+  it("retains v2 openings through source edits and rejects signature-only or conflicting repair intent", async () => {
+    const f = await kernelFixture()
+    try {
+      const source = requireSuccess(await f.evaluate(id(1), box, [], "box"))
+      const selected = openings(source.result, source.contentHash, [40])
+      const parameters = {
+        thickness: 1,
+        direction: "inward",
+        sourceContentHash: source.contentHash,
+        openings: selected,
+      }
+      const edited = requireSuccess(
+        await f.evaluate(id(1), { ...box, width: 26, height: 45 }, [], "box"),
+      )
+      const dependency = { featureId: id(1), contentHash: edited.contentHash, outputRole: "result" }
+      const retained = requireSuccess(await f.evaluate(id(2), parameters, [dependency], "shell", 2))
+      expect(retained.result.shape).toMatchObject({ valid: true, solidCount: 1 })
+      expect(retained.result.shape.volume).toBeCloseTo(5532, 6)
+      expect(await f.evaluate(id(3), parameters, [dependency])).toMatchObject({
+        ok: false,
+        diagnostic: { message: expect.stringContaining("Reselect") },
+      })
+      const signatureOnly = selected.map(
+        ({ semanticRole: _role, lineageToken: _token, ...reference }) => reference,
+      )
+      expect(
+        await f.evaluate(
+          id(4),
+          { ...parameters, openings: signatureOnly },
+          [dependency],
+          "shell",
+          2,
+        ),
+      ).toMatchObject({ ok: false, diagnostic: { message: expect.stringContaining("Reselect") } })
+      const opening = selected[0]
+      if (!opening) throw new Error("The authored top opening must be present.")
+      expect(
+        await f.evaluate(
+          id(5),
+          { ...parameters, openings: [{ ...opening, lineageToken: "history:missing" }] },
+          [dependency],
+          "shell",
+          2,
+        ),
+      ).toMatchObject({ ok: false, diagnostic: { message: expect.stringContaining("Reselect") } })
+      const closed = requireSuccess(
+        await f.evaluate(id(6), { ...parameters, openings: [] }, [dependency], "shell", 2),
+      )
+      expect(closed.result.shape.volume).toBeCloseTo(6204, 6)
+      expect(
+        requireSuccess(await f.evaluate(id(1), { ...box, width: 26, height: 45 }, [], "box")).result
+          .shape,
+      ).toEqual(edited.result.shape)
+    } finally {
+      f.engine.disposeDocument(f.documentId)
+      expect(f.engine.getHealth().ownedShapeCount).toBe(0)
+    }
+  }, 60_000)
   it("creates inward and outward sharp-wall shells from exact opening faces, preserves the source and exports one body", async () => {
     const f = await kernelFixture()
     try {

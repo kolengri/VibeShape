@@ -27,7 +27,7 @@ import {
 import { loftFeatureParametersSchema, MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
 import { mirrorFeatureParametersSchema } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureParametersSchema } from "@vibeshape/domain/part-design-pattern"
-import { shellFeatureParametersSchema } from "@vibeshape/domain/part-design-shell"
+import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureParametersSchema } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureParametersSchema } from "@vibeshape/domain/part-design-thread"
@@ -143,7 +143,7 @@ const mirror = z
   .strict()
   .superRefine(matchingBodyDependency("Mirror"))
 const shell = z
-  .object({ ...exactBodyFeature, parameters: shellFeatureParametersSchema })
+  .object({ ...exactBodyFeature, parameters: shellFeatureParametersV2Schema })
   .strict()
   .superRefine(matchingBodyDependency("Shell"))
 const split = z
