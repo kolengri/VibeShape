@@ -31,7 +31,8 @@
     "./authored-parts": "./src/authored-parts.ts",
     "./shell-opening-resolution": "./src/shell-opening-resolution.ts",
     "./model-topology-measurements": "./src/model-topology-measurements.ts",
-    "./reference-frame": "./src/reference-frame.ts"
+    "./reference-frame": "./src/reference-frame.ts",
+    "./disposable-sketch-inspection": "./src/disposable-sketch-inspection.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

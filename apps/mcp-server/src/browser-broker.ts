@@ -41,6 +41,8 @@ import {
   modelBodyTopologyViewSchema,
   modelEdgeViewSchema,
   modelMeasurementViewSchema,
+  sketchSolutionPageMatches,
+  sketchSolutionViewSchema,
   variableListViewSchema,
 } from "@vibeshape/automation-api/queries"
 import { z } from "zod"
@@ -208,6 +210,8 @@ function inspectionMatches(
     return bodyTopologyInspectionMatches(operation, value, documentId)
   if (operation.tool === "model_body_measurements")
     return bodyMeasurementInspectionMatches(operation, value, documentId)
+  if (operation.tool === "model_sketch_solution")
+    return sketchSolutionInspectionMatches(operation, value, documentId)
   if (operation.tool === "model_measurements") {
     const view = modelMeasurementViewSchema.parse(value)
     return (
@@ -227,7 +231,12 @@ function semanticInspectionMatches(
   operation: Exclude<
     LocalInspectionOperation,
     {
-      tool: "model_edges" | "model_body_topology" | "model_body_measurements" | "model_measurements"
+      tool:
+        | "model_edges"
+        | "model_body_topology"
+        | "model_body_measurements"
+        | "model_measurements"
+        | "model_sketch_solution"
     }
   >,
   value: unknown,
@@ -721,4 +730,13 @@ export function createBrowserBroker({
       revoke()
     },
   }
+}
+
+function sketchSolutionInspectionMatches(
+  operation: Extract<LocalInspectionOperation, { tool: "model_sketch_solution" }>,
+  value: unknown,
+  documentId: string,
+) {
+  const view = sketchSolutionViewSchema.parse(value)
+  return view.documentId === documentId && sketchSolutionPageMatches(view, operation.arguments)
 }

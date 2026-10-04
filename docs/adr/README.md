@@ -83,6 +83,8 @@
 | [0080](0080-general-assembly-mates-and-topology-bound-frames.md) | Accepted | General assembly mates and topology-bound frames |
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 
+| [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
+
 Statuses:
 
 - `Proposed` — under discussion
