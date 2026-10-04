@@ -7,6 +7,7 @@ import {
   technicalIdentifierSchema,
   timestampSchema,
 } from "@vibeshape/domain/identifiers"
+import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
 import { z } from "zod"
 import { documentSummaryViewSchema, modelMeasurementViewSchema } from "./queries"
 
@@ -63,11 +64,27 @@ export const automationDraftPreviewSchema = z
     draft: automationDraftStateSchema,
     summary: documentSummaryViewSchema,
     geometry: z
-      .object({ status: z.enum(["valid", "invalid"]), measurements: modelMeasurementViewSchema })
+      .object({
+        status: z.enum(["valid", "invalid"]),
+        measurements: modelMeasurementViewSchema,
+        diagnostics: modelDiagnosticsEvidenceSchema.nullable().optional(),
+      })
       .strict(),
   })
   .strict()
   .superRefine((preview, context) => {
+    const diagnostics = preview.geometry.diagnostics
+    if (
+      diagnostics &&
+      (diagnostics.documentId !== preview.draft.documentId ||
+        diagnostics.revision !== preview.draft.revision ||
+        diagnostics.generation !== preview.geometry.measurements.generation)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["geometry", "diagnostics"],
+        message: "Diagnostics must describe the same exact draft rebuild.",
+      })
     for (const [name, view] of [
       ["summary", preview.summary],
       ["geometry", preview.geometry.measurements],

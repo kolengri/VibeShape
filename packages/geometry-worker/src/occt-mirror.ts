@@ -1,6 +1,8 @@
 import {
   type MirrorFeatureContentParameters,
+  type MirrorFeatureContentParametersV2,
   mirrorFeatureContentParametersSchema,
+  mirrorFeatureContentParametersV2Schema,
 } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
@@ -11,12 +13,19 @@ export function createOcctMirrorOperations(castShape: OcctShapeCaster) {
     mirrorShape(
       opencascade: OpenCascadeInstance,
       source: Shape3D,
-      parameters: MirrorFeatureContentParameters,
+      parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2,
     ): Shape3D {
-      const { plane } = mirrorFeatureContentParametersSchema.parse(parameters)
+      const { plane, offset } =
+        "offset" in parameters
+          ? mirrorFeatureContentParametersV2Schema.parse(parameters)
+          : { ...mirrorFeatureContentParametersSchema.parse(parameters), offset: 0 }
       const normal: [number, number, number] =
         plane === "XY" ? [0, 0, 1] : plane === "XZ" ? [0, 1, 0] : [1, 0, 0]
-      const origin = new opencascade.gp_Pnt_3(0, 0, 0)
+      const origin = new opencascade.gp_Pnt_3(
+        normal[0] === 0 ? 0 : offset,
+        normal[1] === 0 ? 0 : offset,
+        normal[2] === 0 ? 0 : offset,
+      )
       try {
         const direction = new opencascade.gp_Dir_4(...normal)
         try {

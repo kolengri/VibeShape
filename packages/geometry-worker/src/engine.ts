@@ -35,7 +35,9 @@ import {
   type LoftFeatureContentParameters,
   loftFeatureContentParametersSchema,
   type MirrorFeatureContentParameters,
+  type MirrorFeatureContentParametersV2,
   mirrorFeatureContentParametersSchema,
+  mirrorFeatureContentParametersV2Schema,
   type PatternFeatureContentParameters,
   type PlacementFeatureContentParameters,
   patternContentOutputRoles,
@@ -279,6 +281,8 @@ const SHELL_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#2"
 const MIRROR_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.mirror#1"
+const MIRROR_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.mirror#2"
 const PLACEMENT_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.placement#1"
 const COMPOUND_FEATURE_TYPE_KEY =
@@ -1204,7 +1208,10 @@ type ParsedFeature =
   | { kind: "pattern"; parameters: PatternFeatureContentParameters }
   | { kind: "loft"; parameters: LoftFeatureContentParameters }
   | { kind: "sweep"; parameters: SweepFeatureContentParameters }
-  | { kind: "mirror"; parameters: MirrorFeatureContentParameters }
+  | {
+      kind: "mirror"
+      parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2
+    }
   | { kind: "compound"; parameters: CompoundFeatureContentParameters }
   | { kind: "union" }
 
@@ -1888,7 +1895,11 @@ function parseMirrorFeature(input: FeatureEvaluationInput): FeatureParseResult {
       "Mirror requires one exact named body dependency and no topology references.",
     )
   }
-  const parameters = mirrorFeatureContentParametersSchema.safeParse(feature.parameters)
+  const parameters = (
+    feature.type.schemaVersion === 2
+      ? mirrorFeatureContentParametersV2Schema
+      : mirrorFeatureContentParametersSchema
+  ).safeParse(feature.parameters)
   return parameters.success
     ? { ok: true, feature: { kind: "mirror", parameters: parameters.data } }
     : featureFailure("invalid-feature-parameters", "Mirror content parameters are invalid.")
@@ -1994,6 +2005,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [UNION_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "union", 2)],
   [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
   [MIRROR_FEATURE_TYPE_KEY, parseMirrorFeature],
+  [MIRROR_FEATURE_TYPE_V2_KEY, parseMirrorFeature],
   [SHELL_FEATURE_TYPE_KEY, parseShellFeature],
   [SHELL_FEATURE_TYPE_V2_KEY, (input) => parseShellFeature(input, 2)],
   [THREAD_FEATURE_TYPE_KEY, parseThreadFeature],
@@ -2372,7 +2384,7 @@ function createPlacementFeatureShape(
 
 function createMirrorFeatureShape(
   opencascade: OpenCascadeInstance,
-  parameters: MirrorFeatureContentParameters,
+  parameters: MirrorFeatureContentParameters | MirrorFeatureContentParametersV2,
   source: Shape3D | undefined,
 ) {
   if (!source) throw new Error("Mirror target body is unavailable.")

@@ -201,7 +201,168 @@ afterEach(async () => {
   await reset()
 })
 
+it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
+  "correlates draft body inspection %s before forwarding remote success",
+  async (field) => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const documentId = "0195b5ac-b280-7a2c-8c33-000000000001"
+    const draftId = "0195b5ac-b280-7a2c-8c33-000000000002"
+    const featureId = "0195b5ac-b280-7a2c-8c33-000000000003"
+    const provenance = {
+      documentId,
+      revision: 4,
+      generation: 7,
+      rebuildId: "fresh-rebuild",
+      featureId,
+      contentHash: "a".repeat(64),
+      outputRole: "result",
+      topologyKind: "face",
+    }
+    const args = {
+      draftId,
+      revision: 4,
+      featureId,
+      outputRole: "result",
+      topologyKind: "face",
+      cursor: field === "rebuildId" ? { ...provenance, offset: 0 } : null,
+      limit: 10,
+    }
+    const result = {
+      ok: true,
+      value: {
+        schemaVersion: 1,
+        draft: {
+          schemaVersion: 1,
+          draftId,
+          documentId,
+          baseRevision: 3,
+          revision: 4,
+          commandCount: 1,
+          expiresAt: "2026-10-04T12:00:00.000Z",
+        },
+        view: {
+          ...provenance,
+          kind: "org.vibeshape.model.body-topology",
+          schemaVersion: 1,
+          classification: "derived",
+          nextCursor: null,
+          data: { topology: [], total: 0 },
+        },
+      },
+    }
+    const sendResult = async (requestId: number, value: typeof result) => {
+      const work = nextMessage(tab.socket)
+      const response = mcp(authenticated.token, requestId, "tools/call", {
+        name: "draft_body_topology",
+        arguments: args,
+      })
+      const operation = await work
+      if (operation.type !== "work") throw new Error("Expected browser work")
+      tab.socket.send(
+        JSON.stringify({
+          type: "result",
+          protocolVersion: 1,
+          requestId: operation.requestId,
+          tool: "draft_body_topology",
+          result: value,
+        }),
+      )
+      return (await response).json()
+    }
+    expect(await sendResult(1, result)).toMatchObject({ result: { structuredContent: { result } } })
+    const changed = structuredClone(result)
+    if (field === "draftId") changed.value.draft.draftId = documentId
+    if (field === "revision") {
+      changed.value.draft.revision = 5
+      changed.value.view.revision = 5
+    }
+    if (field === "outputRole") changed.value.view.outputRole = "other"
+    if (field === "rebuildId") changed.value.view.rebuildId = "other-rebuild"
+    expect(await sendResult(2, changed)).toMatchObject({
+      result: {
+        structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+      },
+    })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  },
+)
+
 describe("remote MCP in workerd", () => {
+  it("rejects a successful draft result when the session expires during result persistence", async () => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const stub = bindings.TAB_SESSIONS.getByName(tab.credential.sessionId)
+    const grant = { sessionId: tab.credential.sessionId, clientId: authenticated.clientId }
+    const work = nextMessage(tab.socket)
+    const response = mcp(authenticated.token, 1, "tools/call", {
+      name: "create_draft",
+      arguments: { baseRevision: 0 },
+    })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected browser work")
+    let restoreSave = () => {}
+    try {
+      await runInDurableObject(stub, (_instance, state) => {
+        const put = state.storage.put
+        const save = vi.spyOn(state.storage, "put").mockImplementationOnce(async (...args) => {
+          expect(args[0]).toBe("session")
+          expect(args[1]).toMatchObject({ revoked: false, active: null, activeKey: null })
+          const expiresAt = Date.now() + 25
+          // Keep the live metadata and persisted deadline identical while delaying save completion.
+          Object.assign(args[1] ?? {}, { expiresAt })
+          expect(Date.now()).toBeLessThan(expiresAt)
+          await Reflect.apply(put, state.storage, args)
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          expect(Date.now()).toBeGreaterThanOrEqual(expiresAt)
+        })
+        restoreSave = () => save.mockRestore()
+      })
+      const revoked = nextMessage(tab.socket)
+      tab.socket.send(
+        JSON.stringify({
+          type: "result",
+          protocolVersion: 1,
+          requestId: operation.requestId,
+          tool: "create_draft",
+          result: {
+            ok: true,
+            value: {
+              schemaVersion: 1,
+              draftId: "0195b5ac-b280-7a2c-8c33-000000000002",
+              documentId: "0195b5ac-b280-7a2c-8c33-000000000001",
+              baseRevision: 0,
+              revision: 0,
+              commandCount: 0,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          },
+        }),
+      )
+      expect(await (await response).json()).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+      expect((await revoked).type).toBe("revoked")
+      expect(await stub.isAuthorized(grant)).toBe(false)
+      await runInDurableObject(stub, async (_instance, state) => {
+        expect(await state.storage.get("session")).toMatchObject({
+          revoked: true,
+          active: null,
+          activeKey: null,
+        })
+      })
+    } finally {
+      restoreSave()
+    }
+  })
+
   it("keeps a standard SDK client usable after its optional SSE probe", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -222,7 +383,9 @@ describe("remote MCP in workerd", () => {
     const client = new Client({ name: "Standard SDK test client", version: "1" })
     try {
       await client.connect(transport)
-      expect((await client.listTools()).tools.some((tool) => tool.name === "model_info")).toBe(true)
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(["model_info", "draft_body_measurements", "draft_body_topology"]),
+      )
       await vi.waitFor(() => expect(probes).toEqual([405]))
       expect((await client.listResources()).resources.length).toBeGreaterThan(0)
       expect(

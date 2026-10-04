@@ -7,6 +7,10 @@ import {
   cadInspectionDetailViewSchema,
   cadInspectionListQuerySchema,
   cadInspectionListViewSchema,
+  modelBodyMeasurementQuerySchema,
+  modelBodyMeasurementViewSchema,
+  modelBodyTopologyQuerySchema,
+  modelBodyTopologyViewSchema,
   modelEdgeQuerySchema,
   modelEdgeViewSchema,
   variableListQuerySchema,
@@ -19,6 +23,8 @@ export const automationDraftInspectionQuerySchema = z.discriminatedUnion("kind",
   cadInspectionDetailQuerySchema,
   variableListQuerySchema,
   modelEdgeQuerySchema,
+  modelBodyMeasurementQuerySchema,
+  modelBodyTopologyQuerySchema,
 ])
 
 export const automationDraftInspectionRequestSchema = z
@@ -38,6 +44,8 @@ export const automationDraftInspectionViewSchema = z
       cadInspectionDetailViewSchema,
       variableListViewSchema,
       modelEdgeViewSchema,
+      modelBodyMeasurementViewSchema,
+      modelBodyTopologyViewSchema,
     ]),
   })
   .strict()

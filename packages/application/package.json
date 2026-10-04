@@ -9,6 +9,8 @@
     ".": "./src/index.ts",
     "./feature-rebuild": "./src/feature-rebuild.ts",
     "./assembly-materialization": "./src/assembly-materialization.ts",
+    "./model-diagnostics": "./src/model-diagnostics.ts",
+    "./support-health": "./src/support-health.ts",
     "./model-measurements": "./src/model-measurements.ts",
     "./model-bodies": "./src/model-bodies.ts",
     "./disposable-document-preview": "./src/disposable-document-preview.ts",

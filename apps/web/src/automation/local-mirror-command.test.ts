@@ -1,5 +1,10 @@
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
-import { commandActorSchema, mirrorFeatureType } from "@vibeshape/domain"
+import {
+  commandActorSchema,
+  createLengthQuantity,
+  mirrorFeatureType,
+  mirrorFeatureTypeV2,
+} from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import { createLocalCadCommand } from "./local-cad-command"
 
@@ -24,6 +29,25 @@ const actor = commandActorSchema.parse({
   sessionId: id(5),
 })
 describe("local Mirror draft commands", () => {
+  it.each(["create_mirror", "update_mirror"] as const)(
+    "dispatches %s enhanced parameters as v2 without rewriting legacy operations",
+    (tool) => {
+      const parameters = {
+        ...arguments_.parameters,
+        offset: createLengthQuantity(-1, "in"),
+        preserveSource: true,
+      }
+      const operation = localOperationSchema.parse({
+        tool,
+        arguments: { ...arguments_, parameters },
+      })
+      if (operation.tool !== "create_mirror" && operation.tool !== "update_mirror")
+        throw new Error("Expected Mirror operation.")
+      expect(createLocalCadCommand(operation, actor, id(6))).toMatchObject({
+        command: { payload: { feature: { type: mirrorFeatureTypeV2.type, parameters } } },
+      })
+    },
+  )
   it.each(["create_mirror", "update_mirror"] as const)(
     "routes %s through the shared revision-bound feature command",
     (tool) => {

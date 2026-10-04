@@ -79,6 +79,27 @@ describe("owned exact OCCT reflection", () => {
     },
   )
   it.each([
+    ["XY", -5, [0, 0, -5]],
+    ["XZ", 12.7, [0, 12.7, 0]],
+    ["YZ", -25.4, [-25.4, 0, 0]],
+  ] as const)(
+    "reflects across the signed %s offset %s without consuming the cached source",
+    (plane, offset, origin) => {
+      const f = fixture()
+      expect(
+        f.operations.mirrorShape(
+          f.constructors as unknown as OpenCascadeInstance,
+          f.source as unknown as Shape3D,
+          { plane, offset, preserveSource: true },
+        ),
+      ).toBe(f.result)
+      expect(f.constructors.gp_Pnt_3).toHaveBeenCalledWith(...origin)
+      expect(f.source.delete).not.toHaveBeenCalled()
+      for (const temporary of [f.origin, f.direction, f.axis, f.transform, f.builder, f.raw])
+        expect(temporary.delete).toHaveBeenCalledOnce()
+    },
+  )
+  it.each([
     "direction",
     "axis",
     "transform",

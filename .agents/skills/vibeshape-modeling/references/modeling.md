@@ -1,8 +1,20 @@
 # Modeling contracts and recipes
 
+## Choose a construction
+
+Recover design intent rather than tracing tessellation. Identify straight, circular and rotational regions, repeated geometry, openings and protected interfaces. Use a small number of dimensioned profiles and features when they reproduce the requested shape. Prefer line/arc profiles over dense sampled boundaries for analytical geometry; use additional Loft sections only where the shape or an agreed error bound requires them.
+
+For an elongated enclosure, consider Extrude for the straight section, Revolve for rotational ends, and Mirror for genuinely symmetric regions. Join the exterior into one solid, then use Shell when the intended interior is a constant-thickness offset with selected openings. Model holes, lips, reinforcements and asymmetric ends separately. A simple planar capsule may need only one outline Extrude and Shell. Neither recipe establishes that an arbitrary source mesh has constant thickness or symmetric ends.
+
+Compare outer and inner sections before choosing Shell for a reconstruction. Use explicit inner profiles and subtraction when variable thickness, mating surfaces or exact source geometry cannot be reproduced by Shell, or when exact Shell preview demonstrates a kernel limitation. Preserve an authored interior instead of replacing it with a convenient uniform wall. State the specific reason for a more complex construction; a missing tool at an earlier connection is not evidence that it remains unavailable after an update.
+
+Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
+
 ## Sketches and profiles
 
 Use the advertised entity/constraint schema. Coordinate values are mm and solver seeds, not persistent dimensional constraints. Preserve unaffected entity and constraint IDs when replacing a sketch. Fully constrain geometry when the requested parametric intent requires it; report remaining freedom or conflicts when relevant.
+
+Constrain relationships and driving dimensions without redundantly fixing the same degrees of freedom. Do not pin every endpoint and then add dimensions or arc constraints that restate those fixed coordinates. For a conflict, inspect the solver's identified constraints and correct redundancy while preserving the intended dimensions.
 
 Horizontal/vertical distance constraints are signed: the first point's coordinate minus the second point's coordinate equals the specified value. For a positive X offset from an origin anchor, the positive point is `firstPointId` and the anchor is `secondPointId`. XY coordinates map to world X/Y; preview bounds confirm placement on other planes.
 
@@ -28,7 +40,7 @@ Union takes ordered `bodies`, requires one connected positive-volume solid and k
 
 Use 1–256 stable point IDs from an inspected sketch, a positive typed diameter, and the schema's forward/reverse direction and blind/through-all extent. Supply the target first and, where needed, one distinct sketch-support dependency with its exact support reference.
 
-`parameters.targetBody` selects an exact output role from `model_body_measurements` and must match the first dependency. Preserve it when updating a v2 Hole; omitting it requests legacy whole-feature scope. A newly authored single-solid Extrude has role `result`; there is currently no draft body-measurement tool. For other new draft bodies, do not invent output roles. A through-all cut still has a direction; exact preview must show it reaching the intended body.
+`parameters.targetBody` selects an exact output role from `model_body_measurements` or `draft_body_measurements` and must match the first dependency. Preserve it when updating a v2 Hole; omitting it requests legacy whole-feature scope. A newly authored single-solid Extrude has role `result`; inspect other draft producers instead of inventing their output roles. A through-all cut still has a direction; exact preview must show it reaching the intended body.
 
 ## Fillet and Chamfer
 
@@ -50,9 +62,11 @@ A recipe is design guidance, not a batch tool. Execute actual discovered tools s
 
 ## Body operations and section features
 
-Use `model_body_measurements` to select the exact feature/output-role pair for Mirror, body Pattern, Split, Shell and Thread. Never infer a transient OCCT index or widen a body selection to its entire feature. Preserve the matching dependency and stable feature ID on update. Linear/circular body patterns produce independently addressable copies; inspect the live count and spacing/angle limits. Split takes an origin plane and signed offset and requires one connected solid per side.
+Use `model_body_measurements` or `draft_body_measurements` to select the exact feature/output-role pair for Mirror, body Pattern, Split, Shell and Thread. Never infer a transient OCCT index or widen a body selection to its entire feature. Preserve the matching dependency and stable feature ID on update. Linear/circular body patterns produce independently addressable copies; inspect the live count and spacing/angle limits. Split takes an origin plane and signed offset and requires one connected solid per side.
 
-Shell create/update authors version 2 with explicit inward/outward direction and positive thickness. Use `openings: []` for a closed cavity. For an open cavity, obtain exact body-bound opening references and the source content hash from `model_body_topology`. After source edits, unique durable face identities preserve openings within the same exact body; missing, ambiguous, or unsupported identity requires inspecting and reselecting faces. For modifying Extrude targets, omit inferred `semanticRole` values from opening references; only native history permits automatic retention there. Existing version 1 features retain their conservative stale-source behavior until explicitly updated. Mirror retains its explicit origin plane/offset and copy intent.
+Shell create/update authors version 2 with explicit inward/outward direction and positive thickness. Use `openings: []` for a closed cavity. For an open cavity, obtain exact body-bound opening references and the source content hash from `model_body_topology` or `draft_body_topology`. For a new enclosure, create its exterior, inspect the current draft body and opening faces, create Shell in the same draft, then preview before one commit. A save solely to discover opening faces is unnecessary. After source edits, restart stale topology discovery; unique durable face identities can preserve existing v2 openings within the same exact body. Missing, ambiguous or unsupported identity requires inspecting and reselecting faces. For modifying Extrude targets, omit inferred `semanticRole` values from opening references; only native history permits automatic retention there. Existing version 1 features retain their conservative stale-source behavior until explicitly updated.
+
+Mirror plane-only parameters preserve the v1 replacement behavior. For v2, supply both a signed typed length `offset` and `preserveSource`. XY offset follows +Z, XZ follows +Y and YZ follows +X; absolute offset is at most 100,000 mm. `preserveSource: true` keeps the original part and creates a separately selectable reflected part under the Mirror feature's `result` role. Join source and reflected bodies explicitly through Union when one connected solid is intended. `false` replaces the source part. Preserve the full v2 parameters and offset expression on update; a schema upgrade retains ordinary review rules.
 
 Sweep uses one solved profile and an open connected tangent-continuous line/arc path with sorted unique entity IDs and an explicit start point. The profile must already lie at the path start normal to its tangent; the tool does not reposition it. Loft uses two to twenty-four ordered, unique, hole-free profile selectors, at most 2,000 aggregate boundary entities and an explicit ruled setting. It allows up to twenty-four deduplicated support/external producer dependencies; Sweep keeps its separate eight-dependency limit. Preserve profile-before-path or section-order support/external dependencies and their references. Inspect exact preview for continuity and intended orientation.
 

@@ -1,10 +1,18 @@
 import type { QueryDispatcher } from "@vibeshape/automation-api/queries"
+import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
+import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
 import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurements"
+import { z } from "zod"
 
 export type DraftGeometryPort = Readonly<{
   evaluate: (snapshot: DocumentSnapshot) => PromiseLike<unknown> | unknown
+  inspectBodyMeasurements?: (snapshot: DocumentSnapshot) => PromiseLike<unknown> | unknown
+  inspectBodyTopology?: (
+    snapshot: DocumentSnapshot,
+    target: { featureId: FeatureId; outputRole: string; kind: "edge" | "face" },
+  ) => PromiseLike<unknown> | unknown
   inspectEdges?: (
     snapshot: DocumentSnapshot,
     featureId: FeatureId,
@@ -16,9 +24,30 @@ export async function evaluateDraftGeometry(
   geometry: DraftGeometryPort,
   queries: QueryDispatcher,
 ) {
-  const evidence = modelMeasurementEvidenceSchema.safeParse(
-    await geometry.evaluate(documentSnapshotSchema.parse(snapshot)),
-  )
+  const evaluated = z
+    .union([
+      modelMeasurementEvidenceSchema.transform((measurements) => ({
+        measurements,
+        diagnostics: null,
+      })),
+      z
+        .object({
+          measurements: modelMeasurementEvidenceSchema,
+          diagnostics: modelDiagnosticsEvidenceSchema,
+        })
+        .strict()
+        .refine(
+          ({ measurements, diagnostics }) =>
+            measurements.documentId === diagnostics.documentId &&
+            measurements.revision === diagnostics.revision &&
+            measurements.generation === diagnostics.generation,
+          "Diagnostics must describe the same exact rebuild.",
+        ),
+    ])
+    .safeParse(await geometry.evaluate(documentSnapshotSchema.parse(snapshot)))
+  const evidence = evaluated.success
+    ? { success: true as const, data: evaluated.data.measurements }
+    : evaluated
   if (!evidence.success)
     return {
       ok: false as const,
@@ -50,15 +79,31 @@ export async function evaluateDraftGeometry(
         issues: [],
       },
     }
-  return {
+  const result = {
     ok: true as const,
     geometry: {
-      status: evidence.data.features.some(
-        (entry) => entry.status === "failed" || entry.status === "blocked",
-      )
-        ? ("invalid" as const)
-        : ("valid" as const),
+      diagnostics: evaluated.success ? evaluated.data.diagnostics : null,
+      status:
+        (evaluated.success &&
+          evaluated.data.diagnostics !== null &&
+          evaluated.data.diagnostics.status !== "valid") ||
+        evidence.data.features.some(
+          (entry) => entry.status === "failed" || entry.status === "blocked",
+        )
+          ? ("invalid" as const)
+          : ("valid" as const),
       measurements: measured.view,
     },
   }
+  if (serializedQueryBytes(result.geometry) > 128 * 1024)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "query-result-too-large" as const,
+        message: "Complete draft diagnostics and measurements exceed the 128 KiB response budget.",
+        retryable: false,
+        issues: [],
+      },
+    }
+  return result
 }

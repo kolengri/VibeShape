@@ -14,7 +14,7 @@ import { holeFeatureTypeHandler, holeFeatureTypeHandlerV2 } from "./part-design-
 import { importedFeatureTypeHandler } from "./part-design-import"
 import { loftFeatureTypeHandler } from "./part-design-loft"
 import { meshImportFeatureTypeHandler } from "./part-design-mesh-import"
-import { mirrorFeatureTypeHandler } from "./part-design-mirror"
+import { mirrorFeatureTypeHandler, mirrorFeatureTypeHandlerV2 } from "./part-design-mirror"
 import { patternFeatureTypeHandler } from "./part-design-pattern"
 import { placementFeatureTypeHandler } from "./part-design-placement"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
@@ -1652,6 +1652,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   holeFeatureTypeHandlerV2,
   placementFeatureTypeHandler,
   mirrorFeatureTypeHandler,
+  mirrorFeatureTypeHandlerV2,
   patternFeatureTypeHandler,
   shellFeatureTypeHandler,
   shellFeatureTypeHandlerV2,
