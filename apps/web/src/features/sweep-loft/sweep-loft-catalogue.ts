@@ -12,14 +12,14 @@ type SketchDisplay = Extract<
 >["sketches"][number]
 export type SweepLoftCatalogueCopy = Readonly<{
   profile: (sketch: string, number: number) => string
-  curve: (kind: "line" | "arc", number: number) => string
+  curve: (kind: "line" | "arc" | "cubic-bezier" | "elliptical-arc", number: number) => string
   point: (number: number, position: readonly [number, number, number]) => string
 }>
 export function sweepLoftCatalogue(
   snapshot: DocumentSnapshot,
   displays: readonly SketchDisplay[],
   excludedIds: readonly string[],
-  operation: SweepLoftOperation,
+  _operation: SweepLoftOperation,
   copy: SweepLoftCatalogueCopy,
 ) {
   const excluded = new Set(excludedIds)
@@ -45,7 +45,10 @@ export function sweepLoftCatalogue(
     const curves = sketch.entities.flatMap((entity, index) => {
       if (
         entity.construction ||
-        (entity.type !== "line" && entity.type !== "arc") ||
+        (entity.type !== "line" &&
+          entity.type !== "arc" &&
+          entity.type !== "cubic-bezier" &&
+          entity.type !== "elliptical-arc") ||
         !pointsById.has(entity.startPointId) ||
         !pointsById.has(entity.endPointId)
       )
@@ -70,10 +73,7 @@ export function sweepLoftCatalogue(
     paths.push({ sketch, curves, points })
   }
   return {
-    profiles:
-      operation === "loft"
-        ? profiles.filter(({ selector }) => selector.holeBoundaryEntityIds.length === 0)
-        : profiles,
+    profiles,
     paths,
   }
 }

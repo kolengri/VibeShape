@@ -177,7 +177,10 @@ function ellipticalArcSegment(
     endPointId: reversed ? entity.startPointId : entity.endPointId,
     center: [center.x, center.y] as const,
     primaryAxisPoint: [primaryAxisPoint.x, primaryAxisPoint.y] as const,
-    secondaryAxisPoint: [secondaryAxisPoint.x, secondaryAxisPoint.y] as const,
+    secondaryAxisPoint: [
+      reversed ? 2 * center.x - secondaryAxisPoint.x : secondaryAxisPoint.x,
+      reversed ? 2 * center.y - secondaryAxisPoint.y : secondaryAxisPoint.y,
+    ] as const,
     start: [start.x, start.y] as const,
     end: [end.x, end.y] as const,
   }
@@ -241,11 +244,18 @@ export function materializeSelectedProfile(
 }
 
 export function materializeDirectedSketchCurve(
-  entity: Extract<SketchEntity, { type: "line" | "arc" }>,
+  entity: Extract<SketchEntity, { type: "line" | "arc" | "cubic-bezier" | "elliptical-arc" }>,
   reversed: boolean,
   points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
 ) {
-  return entity.type === "line"
-    ? lineSegment(entity, reversed, points)
-    : arcSegment(entity, reversed, points)
+  switch (entity.type) {
+    case "line":
+      return lineSegment(entity, reversed, points)
+    case "arc":
+      return arcSegment(entity, reversed, points)
+    case "cubic-bezier":
+      return cubicBezierSegment(entity, reversed, points)
+    case "elliptical-arc":
+      return ellipticalArcSegment(entity, reversed, points)
+  }
 }

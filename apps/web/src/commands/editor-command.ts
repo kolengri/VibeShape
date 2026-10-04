@@ -65,6 +65,8 @@ export const editorCommandIds = {
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
   sketchLinearPattern: "org.vibeshape.editor.sketch.modify.linear-pattern",
   sketchMirror: "org.vibeshape.editor.sketch.modify.mirror",
+  sketchFillet: "org.vibeshape.editor.sketch.modify.fillet",
+  sketchChamfer: "org.vibeshape.editor.sketch.modify.chamfer",
   sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
   sketchOrbitView: "org.vibeshape.editor.sketch.view.orbit",
   sketchFinalContext: "org.vibeshape.editor.sketch.view.final-context",
@@ -275,6 +277,8 @@ export type EditorCommandLabelKey =
   | "sketchLine"
   | "sketchLinearPattern"
   | "sketchMirror"
+  | "sketchFillet"
+  | "sketchChamfer"
   | "sketchOffset"
   | "sketchOrbitView"
   | "sketchFinalContext"

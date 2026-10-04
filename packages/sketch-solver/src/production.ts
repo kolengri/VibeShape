@@ -1311,6 +1311,7 @@ function addRelationshipConstraint(
     builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.arcLineTangent, {
       entityA: builder.entity(constraint.arcId),
       entityB: builder.entity(constraint.lineId),
+      other: constraint.at === "end" ? 1 : 0,
     })
     return
   }

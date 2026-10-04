@@ -1624,12 +1624,12 @@ function validateFeatureEvaluationDependencyBudget(
     type.moduleId === "org.vibeshape.core.part-design" &&
     type.moduleVersion === "0.1.0" &&
     type.typeId === "org.vibeshape.feature.part-design.loft" &&
-    type.schemaVersion === 1
+    (type.schemaVersion === 1 || type.schemaVersion === 2)
   if (!loftV1 && request.dependencies.length > 8)
     context.addIssue({
       code: "custom",
       path: ["dependencies"],
-      message: "Only Loft v1 may evaluate more than eight producer dependencies.",
+      message: "Only Loft v1/v2 may evaluate more than eight producer dependencies.",
     })
 }
 

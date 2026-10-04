@@ -17,7 +17,7 @@ import {
   partDesignModule,
 } from "./modules"
 import { boxFeatureType, partDesignFeatureTypeHandlers } from "./part-design"
-import { loftFeatureType } from "./part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
 import { sweepFeatureType } from "./part-design-sweep"
 import { partBodyReference } from "./parts"
 import { sketchFeatureFaceSupportSchema } from "./sketch"
@@ -389,6 +389,29 @@ describe("ordered sketch-solid semantic inputs", () => {
     })
     expect(registry().validateFeature(value).ok).toBe(true)
   })
+  it("recognizes Loft v2 ordered section bindings and rejects malformed correspondence", () => {
+    const legacy = feature("Loft")
+    const value = {
+      ...legacy,
+      type: loftFeatureTypeV2.type,
+      parameters: { sections: [profile(401), profile(400)], ruled: false, holeCorrespondence: [] },
+    }
+    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual({
+      recognized: true,
+      ok: true,
+      inputs: [
+        { kind: "sketch", id: id(401) },
+        { kind: "sketch", id: id(400) },
+      ],
+    })
+    expect(registry().validateFeature(value).ok).toBe(true)
+    expect(
+      projectFirstPartyFeatureSemanticInputs({
+        ...value,
+        parameters: { ...value.parameters, holeCorrespondence: [{ sectionBoundaryEntityIds: [] }] },
+      }),
+    ).toMatchObject({ recognized: true, ok: false })
+  })
   it("deduplicates a Sweep profile and path on the same sketch", () => {
     const value = {
       ...feature("Sweep"),
@@ -414,7 +437,7 @@ describe("ordered sketch-solid semantic inputs", () => {
       expect(
         projectFirstPartyFeatureSemanticInputs({
           ...value,
-          type: { ...value.type, schemaVersion: 2 },
+          type: { ...value.type, schemaVersion: 99 },
         }),
       ).toEqual({ recognized: false })
     },

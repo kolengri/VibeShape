@@ -14,7 +14,9 @@ import type {
 import { featureTypeKey } from "@vibeshape/domain/feature-type-contracts"
 import {
   loftFeatureParametersSchema,
+  loftFeatureParametersV2Schema,
   loftFeatureType,
+  loftFeatureTypeV2,
   MAX_LOFT_SECTIONS,
   readLoftFeatureParameters,
 } from "@vibeshape/domain/part-design-loft"
@@ -29,6 +31,7 @@ import {
   analyticalProfileSchema,
   analyticalSweepPathSchema,
   loftFeatureContentParametersSchema,
+  loftFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import type { SolveSketchRecordResult } from "@vibeshape/sketch-solver"
@@ -59,7 +62,9 @@ function failure(reason: string, values: Readonly<Record<string, string | number
 export function shouldPrepareSweepLoftFeatureContent(feature: FeatureRecord) {
   const key = featureTypeKey(feature.type)
   return (
-    key === featureTypeKey(loftFeatureType.type) || key === featureTypeKey(sweepFeatureType.type)
+    key === featureTypeKey(loftFeatureType.type) ||
+    key === featureTypeKey(loftFeatureTypeV2.type) ||
+    key === featureTypeKey(sweepFeatureType.type)
   )
 }
 
@@ -69,10 +74,7 @@ function validateDependencies(input: PreparationInput, sketchIds: readonly strin
     sketchIds,
     input.feature.references.map(({ featureId }) => featureId),
   )
-  const limit =
-    featureTypeKey(input.feature.type) === featureTypeKey(loftFeatureType.type)
-      ? MAX_LOFT_SECTIONS
-      : 8
+  const limit = readLoftFeatureParameters(input.feature) ? MAX_LOFT_SECTIONS : 8
   if (expected.length > limit)
     return failure("dependency-budget-exceeded", { count: expected.length })
   if (
@@ -182,7 +184,7 @@ function endpointsNear(left: Endpoint, right: Endpoint) {
 
 function invalidPathCurve(
   curve: PathSegment,
-  entity: Extract<SketchEntity, { type: "line" | "arc" }>,
+  entity: Extract<SketchEntity, { type: "line" | "arc" | "cubic-bezier" | "elliptical-arc" }>,
   points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
 ) {
   if (Math.hypot(curve.end[0] - curve.start[0], curve.end[1] - curve.start[1]) <= 1e-6)
@@ -206,7 +208,13 @@ function selectedPathCurves(
   const curves: PathSegment[] = []
   for (const id of selector.entityIds) {
     const entity = sketch.entities.find((candidate) => candidate.id === id)
-    if (!entity || (entity.type !== "line" && entity.type !== "arc"))
+    if (
+      !entity ||
+      (entity.type !== "line" &&
+        entity.type !== "arc" &&
+        entity.type !== "cubic-bezier" &&
+        entity.type !== "elliptical-arc")
+    )
       return failure("path-curve-unavailable", { entityId: id })
     const curve = materializeDirectedSketchCurve(entity, false, points)
     if (!curve) return failure("path-curve-unsolved", { entityId: id })
@@ -235,6 +243,37 @@ function pathEndpoints(curves: readonly PathSegment[], startPointId: string) {
     : failure("path-start-not-terminal", { startPointId })
 }
 
+function reversePathCurve(curve: PathSegment): PathSegment {
+  const reversed = {
+    ...curve,
+    startPointId: curve.endPointId,
+    endPointId: curve.startPointId,
+    start: curve.end,
+    end: curve.start,
+  }
+  if (curve.type === "cubic-bezier")
+    return {
+      ...curve,
+      ...reversed,
+      type: "cubic-bezier",
+      control1: curve.control2,
+      control2: curve.control1,
+      control1PointId: curve.control2PointId,
+      control2PointId: curve.control1PointId,
+    }
+  if (curve.type === "elliptical-arc")
+    return {
+      ...curve,
+      ...reversed,
+      type: "elliptical-arc",
+      secondaryAxisPoint: [
+        2 * curve.center[0] - curve.secondaryAxisPoint[0],
+        2 * curve.center[1] - curve.secondaryAxisPoint[1],
+      ],
+    }
+  return reversed
+}
+
 function traversePath(
   curves: readonly PathSegment[],
   endpoints: readonly Endpoint[],
@@ -247,17 +286,7 @@ function traversePath(
     const curve = curves[endpoint.segmentIndex]
     if (!curve || used.has(endpoint.segmentIndex)) return failure("path-curve-revisited")
     used.add(endpoint.segmentIndex)
-    segments.push(
-      endpoint.start
-        ? curve
-        : {
-            ...curve,
-            startPointId: curve.endPointId,
-            endPointId: curve.startPointId,
-            start: curve.end,
-            end: curve.start,
-          },
-    )
+    segments.push(endpoint.start ? curve : reversePathCurve(curve))
     const end: Endpoint | undefined =
       endpoints[endpoint.segmentIndex * 2 + (endpoint.start ? 1 : 0)]
     if (!end) return failure("path-endpoint-unavailable")
@@ -311,6 +340,19 @@ async function preparePath(input: PreparationInput, selector: SketchPathSelector
       })
 }
 
+function parseLoftContent(
+  loft: NonNullable<ReturnType<typeof readLoftFeatureParameters>>,
+  sections: Parameters<typeof loftFeatureContentParametersSchema.parse>[0],
+) {
+  return "holeCorrespondence" in loft
+    ? loftFeatureContentParametersV2Schema.safeParse({
+        sections,
+        ruled: loft.ruled,
+        holeCorrespondence: loft.holeCorrespondence,
+      })
+    : loftFeatureContentParametersSchema.safeParse({ sections, ruled: loft.ruled })
+}
+
 async function prepareLoft(
   input: PreparationInput,
   loft: NonNullable<ReturnType<typeof readLoftFeatureParameters>>,
@@ -324,10 +366,11 @@ async function prepareLoft(
   for (const selector of loft.sections) {
     const section = await prepareProfile(input, selector)
     if (!section.ok) return section
-    if (section.profile.holes.length) return failure("loft-holes-unsupported")
+    if (section.profile.holes.length && !("holeCorrespondence" in loft))
+      return failure("loft-holes-unsupported")
     sections.push(section.profile)
   }
-  const parsed = loftFeatureContentParametersSchema.safeParse({ sections, ruled: loft.ruled })
+  const parsed = parseLoftContent(loft, sections)
   return parsed.success
     ? { ok: true, parameters: parsed.data }
     : failure("invalid-materialized-loft", {
@@ -367,10 +410,13 @@ export async function prepareSweepLoftFeatureContent(
   if (loft) return prepareLoft(input, loft)
   const sweep = readSweepFeatureParameters(input.feature)
   if (sweep) return prepareSweep(input, sweep)
+  const key = featureTypeKey(input.feature.type)
   const schema =
-    featureTypeKey(input.feature.type) === featureTypeKey(loftFeatureType.type)
-      ? loftFeatureParametersSchema
-      : sweepFeatureParametersSchema
+    key === featureTypeKey(loftFeatureTypeV2.type)
+      ? loftFeatureParametersV2Schema
+      : key === featureTypeKey(loftFeatureType.type)
+        ? loftFeatureParametersSchema
+        : sweepFeatureParametersSchema
   const invalid = schema.safeParse(input.feature.parameters)
   return failure("invalid-authored-parameters", {
     issue: invalid.success

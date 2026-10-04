@@ -9,7 +9,14 @@ import {
 } from "./geometry-worker"
 
 const profileFields = extrusionFeatureContentParametersSchema.shape
-const [lineSegmentSchema, arcSegmentSchema] = extrusionProfileSegmentSchema.options
+const [
+  lineSegmentSchema,
+  arcSegmentSchema,
+  ,
+  ,
+  ellipticalArcSegmentSchema,
+  cubicBezierSegmentSchema,
+] = extrusionProfileSegmentSchema.options
 
 export const analyticalProfileSchema = z
   .object({
@@ -39,7 +46,14 @@ export const analyticalSweepPathSchema = extrusionProfileLoopSchema
     frame: extrusionFrameSchema,
     startPointId: lineSegmentSchema.shape.startPointId,
     segments: z
-      .array(z.discriminatedUnion("type", [lineSegmentSchema, arcSegmentSchema]))
+      .array(
+        z.discriminatedUnion("type", [
+          lineSegmentSchema,
+          arcSegmentSchema,
+          ellipticalArcSegmentSchema,
+          cubicBezierSegmentSchema,
+        ]),
+      )
       .min(1)
       .max(2_000),
   })
@@ -101,6 +115,76 @@ export const loftFeatureContentParametersSchema = z
       })
   })
 
+export const analyticalLoftHoleCorrespondenceSchema = z
+  .array(
+    z
+      .object({
+        sectionBoundaryEntityIds: z
+          .array(z.array(lineSegmentSchema.shape.entityId).min(1).max(2_000))
+          .min(2)
+          .max(MAX_ANALYTICAL_LOFT_SECTIONS),
+      })
+      .strict(),
+  )
+  .max(128)
+export const loftFeatureContentParametersV2Schema = z
+  .object({
+    sections: z.array(analyticalProfileSchema).min(2).max(MAX_ANALYTICAL_LOFT_SECTIONS),
+    ruled: z.boolean(),
+    holeCorrespondence: analyticalLoftHoleCorrespondenceSchema,
+  })
+  .strict()
+  .superRefine(({ sections, holeCorrespondence }, context) => {
+    const count = sections.reduce(
+      (total, section) =>
+        total +
+        [section.outer, ...section.holes].reduce((sum, loop) => sum + loop.segments.length, 0),
+      0,
+    )
+    if (count > 2_000)
+      context.addIssue({
+        code: "custom",
+        message: "Loft sections exceed the aggregate curve budget.",
+      })
+    const selectors = sections.map(({ sketchId, outer, holes }) =>
+      JSON.stringify([
+        sketchId,
+        outer.sourceEntityIds,
+        holes.map(({ sourceEntityIds }) => sourceEntityIds),
+      ]),
+    )
+    if (new Set(selectors).size !== sections.length)
+      context.addIssue({
+        code: "custom",
+        message: "Loft sections must have unique source selectors.",
+      })
+    for (const [sectionIndex, section] of sections.entries()) {
+      const expected = section.holes
+        .map(({ sourceEntityIds }) => JSON.stringify(sourceEntityIds))
+        .sort()
+      const actual = holeCorrespondence
+        .map((track) => JSON.stringify(track.sectionBoundaryEntityIds[sectionIndex]))
+        .sort()
+      if (
+        JSON.stringify(expected) !== JSON.stringify(actual) ||
+        new Set(actual).size !== actual.length
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["holeCorrespondence"],
+          message: "Every Loft hole must have one explicit correspondence across all sections.",
+        })
+    }
+    if (
+      holeCorrespondence.some((track) => track.sectionBoundaryEntityIds.length !== sections.length)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["holeCorrespondence"],
+        message: "Hole correspondence must cover every ordered section.",
+      })
+  })
+
 export const sweepFeatureContentParametersSchema = z
   .object({ profile: analyticalProfileSchema, path: analyticalSweepPathSchema })
   .strict()
@@ -117,6 +201,7 @@ export const sweepFeatureContentParametersSchema = z
 
 export type AnalyticalProfileContent = z.infer<typeof analyticalProfileSchema>
 export type AnalyticalSweepPathContent = z.infer<typeof analyticalSweepPathSchema>
+export type LoftFeatureContentParametersV2 = z.infer<typeof loftFeatureContentParametersV2Schema>
 export type LoftFeatureContentParameters = z.infer<typeof loftFeatureContentParametersSchema>
 export type SweepFeatureContentParameters = z.infer<typeof sweepFeatureContentParametersSchema>
 
@@ -150,7 +235,7 @@ export function circularArcParameters(segment: z.infer<typeof arcSegmentSchema>)
 }
 
 export function analyticalPathSegmentTangents(
-  segment: z.infer<typeof lineSegmentSchema> | z.infer<typeof arcSegmentSchema>,
+  segment: AnalyticalSweepPathContent["segments"][number],
 ) {
   const normalized = ([x, y]: readonly [number, number]) => {
     const length = Math.hypot(x, y)
@@ -164,6 +249,34 @@ export function analyticalPathSegmentTangents(
       segment.end[1] - segment.start[1],
     ])
     return { start: tangent, end: tangent }
+  }
+  if (segment.type === "cubic-bezier") {
+    return {
+      start: normalized([
+        segment.control1[0] - segment.start[0],
+        segment.control1[1] - segment.start[1],
+      ]),
+      end: normalized([segment.end[0] - segment.control2[0], segment.end[1] - segment.control2[1]]),
+    }
+  }
+  if (segment.type === "elliptical-arc") {
+    const axes = [segment.primaryAxisPoint, segment.secondaryAxisPoint].map(
+      ([x, y]) => [x - segment.center[0], y - segment.center[1]] as const,
+    )
+    const [primary, secondary] = axes as [readonly [number, number], readonly [number, number]]
+    const tangent = (point: readonly [number, number]) => {
+      const offset = [point[0] - segment.center[0], point[1] - segment.center[1]] as const
+      const cosine =
+        (offset[0] * primary[0] + offset[1] * primary[1]) / (primary[0] ** 2 + primary[1] ** 2)
+      const sine =
+        (offset[0] * secondary[0] + offset[1] * secondary[1]) /
+        (secondary[0] ** 2 + secondary[1] ** 2)
+      return normalized([
+        -primary[0] * sine + secondary[0] * cosine,
+        -primary[1] * sine + secondary[1] * cosine,
+      ])
+    }
+    return { start: tangent(segment.start), end: tangent(segment.end) }
   }
   const { center, sign } = circularArcParameters(segment)
   const tangent = (point: readonly [number, number]) =>

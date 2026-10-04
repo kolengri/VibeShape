@@ -36,7 +36,7 @@ import {
 } from "./part-design-body-combination"
 import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
-import { loftFeatureType, readLoftFeatureParameters } from "./part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2, readLoftFeatureParameters } from "./part-design-loft"
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2 } from "./part-design-mirror"
 import { patternFeatureType } from "./part-design-pattern"
@@ -107,6 +107,11 @@ const sketchSolidInputReaders = new Map<
 >([
   [
     featureTypeKey(loftFeatureType.type),
+    (feature) =>
+      readLoftFeatureParameters(feature)?.sections.map(({ sketchId }) => sketchId) ?? null,
+  ],
+  [
+    featureTypeKey(loftFeatureTypeV2.type),
     (feature) =>
       readLoftFeatureParameters(feature)?.sections.map(({ sketchId }) => sketchId) ?? null,
   ],

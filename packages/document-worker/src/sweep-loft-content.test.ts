@@ -22,11 +22,12 @@ import {
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import { createFeatureContentIdentity } from "@vibeshape/domain/feature-content-identity"
-import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
+import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { sweepFeatureParametersSchema, sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { sketchPathSelectorSchema } from "@vibeshape/domain/sketch-path-selector"
 import {
   loftFeatureContentParametersSchema,
+  loftFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import {
@@ -321,6 +322,99 @@ function externalSourceFixture(modelOwner = false) {
   }
 }
 
+function openCurveSketch(type: "cubic-bezier" | "elliptical-arc") {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: id(700),
+    label: "Exact path",
+    plane: "xy",
+    constraints: [],
+    entities: [
+      ...[
+        [0, 0],
+        [0, 5],
+        [5, 10],
+        [10, 10],
+        [10, 0],
+        [20, 0],
+        [10, -12],
+      ].map(([x, y], index) => ({
+        schemaVersion: 0,
+        id: id(710 + index),
+        type: "point",
+        x,
+        y,
+        construction: false,
+      })),
+      type === "cubic-bezier"
+        ? {
+            schemaVersion: 0,
+            id: id(720),
+            type,
+            startPointId: id(710),
+            control1PointId: id(711),
+            control2PointId: id(712),
+            endPointId: id(713),
+            construction: false,
+          }
+        : {
+            schemaVersion: 0,
+            id: id(720),
+            type,
+            startPointId: id(710),
+            endPointId: id(713),
+            centerPointId: id(714),
+            primaryAxisPointId: id(715),
+            secondaryAxisPointId: id(716),
+            construction: false,
+          },
+    ],
+  })
+}
+
+function materializedCurveDirections(type: "cubic-bezier" | "elliptical-arc") {
+  const sketch = openCurveSketch(type)
+  const forward = materializeSelectedPath(
+    sketch,
+    solution(sketch),
+    sketchPathSelectorSchema.parse({
+      schemaVersion: 0,
+      sketchId: sketch.id,
+      entityIds: [id(720)],
+      startPointId: id(710),
+    }),
+  )
+  const reverse = materializeSelectedPath(
+    sketch,
+    solution(sketch),
+    sketchPathSelectorSchema.parse({
+      schemaVersion: 0,
+      sketchId: sketch.id,
+      entityIds: [id(720)],
+      startPointId: id(713),
+    }),
+  )
+  if (!forward.ok || !reverse.ok) throw new Error("Expected materialized open curves.")
+  return { sketch, forward, reverse }
+}
+
+describe("exact open sketch curve paths", () => {
+  it.each(["cubic-bezier", "elliptical-arc"] as const)(
+    "preserves %s locus and stable IDs when reversing path direction",
+    (type) => {
+      const { sketch, forward, reverse } = materializedCurveDirections(type)
+      expect(reverse.segments[0]?.start).toEqual(forward.segments[0]?.end)
+      expect(reverse.segments[0]?.end).toEqual(forward.segments[0]?.start)
+      const curve = reverse.segments[0]
+      if (curve?.type === "cubic-bezier") expect(curve.control1PointId).toBe(id(712))
+      if (curve?.type === "elliptical-arc") expect(curve.secondaryAxisPoint).toEqual([10, 12])
+      expect(sketch.entities.find(({ id: entityId }) => entityId === id(716))).toMatchObject({
+        y: -12,
+      })
+    },
+  )
+})
+
 describe("document preparation for exact Sweep and Loft", () => {
   it.each([19, 24])(
     "prepares %i datum-supported Loft sections without collapsing owner order",
@@ -356,6 +450,61 @@ describe("document preparation for exact Sweep and Loft", () => {
       expect(solver).toHaveBeenCalledTimes(count)
     },
   )
+  it("prepares v2 hollow Loft with explicit durable hole tracks and fails closed for stale tracks", async () => {
+    const source = loftFixture()
+    const withHole = (sketch: SketchRecord, seed: number) =>
+      sketchRecordSchema.parse({
+        ...sketch,
+        entities: [
+          ...sketch.entities,
+          point(seed, 1, 3),
+          {
+            schemaVersion: 0,
+            id: id(seed + 1),
+            type: "circle",
+            centerPointId: id(seed),
+            radius: 0.3,
+            construction: false,
+          },
+        ],
+      })
+    const first = withHole(source.first, 550)
+    const second = withHole(source.second, 560)
+    const sections = [selector(second), selector(first)]
+    expect(sections.map(({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length)).toEqual([
+      1, 1,
+    ])
+    const holeCorrespondence = [
+      {
+        sectionBoundaryEntityIds: sections.map(
+          ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds[0],
+        ),
+      },
+    ]
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      type: loftFeatureTypeV2.type,
+      parameters: { sections, ruled: false, holeCorrespondence },
+    })
+    const snapshot = document([first, second], [...source.document.features.slice(0, -1), feature])
+    const prepare = createDocumentFeatureContentPreparer(solve)
+    const result = await prepare({ document: snapshot, feature })
+    if (!result?.ok) throw new Error("Expected hollow Loft preparation.")
+    const content = loftFeatureContentParametersV2Schema.parse(result.parameters)
+    expect(content.sections.map(({ holes }) => holes[0]?.sourceEntityIds)).toEqual([
+      [id(561)],
+      [id(551)],
+    ])
+    expect(content.holeCorrespondence).toEqual(holeCorrespondence)
+    const stale = featureRecordSchema.parse({
+      ...feature,
+      parameters: {
+        ...feature.parameters,
+        holeCorrespondence: [{ sectionBoundaryEntityIds: [[id(551)], [id(561)]] }],
+      },
+    })
+    expect(await prepare({ document: snapshot, feature: stale })).toMatchObject({ ok: false })
+  })
   it("replaces ordered selectors with independently framed solved analytical sections", async () => {
     const source = loftFixture()
     const solver = vi.fn(solve)
