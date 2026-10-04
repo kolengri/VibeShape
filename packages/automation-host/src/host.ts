@@ -13,6 +13,7 @@ import {
   automationDraftDiscardViewSchema,
   automationDraftOperationRequestSchema,
   automationDraftPreviewSchema,
+  automationDraftSketchReadRequestSchema,
   automationDraftStateSchema,
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
@@ -41,6 +42,7 @@ import {
   type DraftDiagnosticCode,
 } from "@vibeshape/domain/drafts"
 import { type DocumentId, type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
+import { type SketchRecord, sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { z } from "zod"
 import { type DraftInspectionCache, inspectDraftQuery } from "./draft-inspection"
 import type { DraftReviewInput, DraftReviewPort } from "./draft-review"
@@ -128,6 +130,7 @@ export type AutomationHostResult<Value> =
   | { ok: false; diagnostic: AutomationHostDiagnostic }
 
 export type AutomationHost = Readonly<{
+  readOwnedSketch?: (actor: unknown, input: unknown) => Promise<AutomationHostResult<SketchRecord>>
   createDraft: (
     actor: unknown,
     input: unknown,
@@ -809,6 +812,40 @@ export function createAutomationHost(
     }
   }
 
+  async function readOwnedSketch(
+    actorInput: unknown,
+    input: unknown,
+  ): Promise<AutomationHostResult<SketchRecord>> {
+    const operation = parseOperation(actorInput, input, automationDraftSketchReadRequestSchema)
+    if (!operation.ok) return operation
+    const owned = ownedDraft(
+      operation.value.actor,
+      operation.value.request.draftId,
+      operation.value.at,
+    )
+    if (!owned.ok) return owned
+    const snapshot = owned.value.draft.snapshot
+    if (!snapshot || snapshot.revision !== operation.value.request.revision)
+      return failure(
+        hostDiagnostic(
+          "stale-query-revision",
+          "The draft sketch read does not match its revision.",
+          true,
+        ),
+      )
+    const current = await revalidateAfterGeometry(owned.value)
+    if (!current.ok) return current
+    const sketch = snapshot.sketches.find(({ id }) => id === operation.value.request.sketchId)
+    return sketch
+      ? { ok: true, value: sketchRecordSchema.parse(sketch) }
+      : failure(
+          hostDiagnostic(
+            "invalid-draft-request",
+            "The requested sketch is absent from the owned draft.",
+          ),
+        )
+  }
+
   async function confirmDraft(
     record: ManagedDraft,
     geometry: AutomationDraftPreview["geometry"],
@@ -997,6 +1034,7 @@ export function createAutomationHost(
       commitDraft: (actor, input) => enqueue(() => commitDraft(actor, input)),
       discardDraft: (actor, input) => enqueue(() => discardDraft(actor, input)),
       inspectDraft: (actor, input) => enqueue(() => inspectDraft(actor, input)),
+      readOwnedSketch: (actor, input) => enqueue(() => readOwnedSketch(actor, input)),
     },
   }
 }

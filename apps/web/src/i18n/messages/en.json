@@ -842,6 +842,7 @@
         "units": "Units: {length} · {angle}"
       },
       "taskPanel": {
+        "legacyBodyLabel": "{label} · all bodies (legacy scope)",
         "edgeTreatment": {
           "scopeLabel": "Edges",
           "allEdges": "All edges",

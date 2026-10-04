@@ -10,6 +10,40 @@ Compare outer and inner sections before choosing Shell for a reconstruction. Use
 
 Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
 
+## Registered primitives
+
+Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
+typed `parameters` record. Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid each
+have named create/update tools using their registered domain schemas. Supply quantity dimensions,
+quantity `{ x, y, z }` origin, applicable `centered`, explicit `suppressed`, the label to retain,
+stable feature ID, fresh command ID and current owned draft revision. These independent primitives
+accept no dependencies or topology references. Read the full existing feature before updating;
+preserve its identity and raw expressions. The live schemas define bounds and required fields.
+Torus requires major radius greater than minor radius; Pyramid takes 3–64 integer sides and a
+circumradius. Wedge and truncated Cone are not registered primitive contracts.
+
+Inspect exact preview volume, bounds and body count before commit. Existing CAD auto-apply
+eligibility is unchanged: a valid matching grant can cover Box/Cylinder v1 ordinary edits;
+the other primitive families require manual browser review.
+
+## Feature and sketch lifecycle
+
+`remove_feature` and `remove_sketch` stage ordinary destructive removal by stable ID.
+Dependencies block removal with `feature-in-use` or `sketch-in-use`; the rejected command does
+not advance the draft revision. Inspect the owning records and explicitly remove or retarget
+their consumers first. These tools never cascade or discard model-reference intent.
+
+`set_feature_suppressed` takes an explicit boolean, preserving the remaining authored record.
+Suppression can block downstream geometry; exact preview exposes that failure and must be repaired
+before Apply. `rename_project` stages the registered document rename with a normalized nonempty
+name of at most 120 characters. It preserves feature/sketch IDs and geometry.
+
+All four lifecycle tools use fresh command IDs and the current owned draft revision. They always
+require ordinary manual browser review, including with CAD auto-apply enabled. Stage a coherent
+edit, run exact preview, then `commit_draft`; the accepted transaction persists once and creates
+one normal Undo entry. Reuse the returned revision and inspect affected intent after Apply.
+History navigation and generic command execution are not new MCP authorities.
+
 ## Sketches and profiles
 
 Use the advertised entity/constraint schema. Coordinate values are mm and solver seeds, not persistent dimensional constraints. Preserve unaffected entity and constraint IDs when replacing a sketch. Fully constrain geometry when the requested parametric intent requires it; report remaining freedom or conflicts when relevant.
@@ -31,6 +65,18 @@ Independent Extrude extents use the `profiles` contract (even for one profile), 
 `create_datum_plane`/`update_datum_plane` use the existing offset mode with a signed typed length. Origin support is `{ kind: "origin-plane", plane: "xy" | "xz" | "yz" }` with empty dependencies and references. Face support uses an existing planar face v0 TopoRef, exactly its owner dependency and exactly that persisted reference. Body-topology v1 references cannot be substituted. Preserve the support and offset expression when editing. Preview downstream sketches and features to verify placement; arbitrary tilted or three-point planes are not exposed.
 
 `create_boolean`/`update_boolean` perform legacy whole-result subtraction with `operation: "subtract"`, optional `keepTools`, exactly two distinct dependencies ordered target before tool, and empty references. They do not accept exact body selectors. Use a selected-body feature operation when the requested scope is one constituent output rather than a whole producer result.
+
+For a selected constituent body, use additive `create_body_subtract`/`update_body_subtract` (Subtract v2):
+select exact `targetBody` and `toolBody`, including distinct roles of one producer. Declare each
+producer once in target/tool order and keep `references: []`. `keepTools` retains the tool Part;
+siblings remain available. Use `create_body_revolve`/`update_body_revolve` (Revolve v7) for exact-body
+Add/Remove/Intersect with a canonical same-sketch `profiles` set, typed angle, and existing origin,
+sketch-line, or stable model-edge axis. Its dependencies are target first, then distinct sketch-support
+and model-edge owners, with existing sketch-support references. New Revolve remains on `create_revolve`.
+Get roles from current `model_body_measurements` or `draft_body_measurements`, preserve selectors on
+update, and repair missing roles explicitly. These tools accept no caller content hashes or native
+indices. Local and paired remote transports use ordinary owned draft preview, review and Apply.
+
 
 `create_union`/`update_union` and `create_compound`/`update_compound` use schema v2: two to eight distinct exact bodies selected by `{ schemaVersion: 0, featureId, outputRole }`. Multiple roles from the same producer are supported; dependencies list each producer once in first-occurrence order, and references are empty. Use inspected roles for saved bodies. Known newly authored single-solid Box/Extrude/Revolve/Union outputs use `result`; do not invent roles for arbitrary multi-body features.
 
@@ -86,6 +132,16 @@ Sweep uses one solved profile and an open connected tangent-continuous line, cir
 
 Thread creates custom 60-degree V-groove geometry, without ISO/DIN fit certification. Specify external/internal, nominal diameter, pitch, length, depth, clearance, handedness, one to four starts, phase and unthreaded run-in/run-out allowances. Legacy XYZ `axis` with quantity `origin` retains v1 and sixteen total turns. V2 uses a shared `origin-axis`, `datum-axis` (x/y/normal), stable `linear-edge`, or `explicit-axis` object; explicit origin is a mm tuple and direction is a normalized signed tuple. The exact target is first, any distinct axis producer is second, and generic references remain empty because body-bound topology stays in `parameters.axis`. Single-start v2 permits twenty total turns; multi-start retains sixteen. Depth stays at most 0.75 times pitch. Preserve complete axis and quantity intent on update. Preview and measure the intended cylindrical band before commit; kernel failures must not silently fall back to an unthreaded body.
 
-Geometry/planar file import, text generation, assembly authoring, library management and surface texture authoring are editor workflows, not named MCP construction tools. Source-backed features can be inspected and survive supported upstream edits. Use the visible editor for those workflows; discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named feature schemas and ordinary draft preview/review/commit path.
+Geometry/planar file import, assembly authoring, library management and surface texture authoring are editor workflows, not named MCP construction tools. Source-backed features can be inspected and survive supported upstream edits. Use the visible editor for those workflows; discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named feature schemas and ordinary draft preview/review/commit path.
 
 Sketch fillet/chamfer are sketch edits, separate from solid Fillet/Chamfer features. In the editor, select two authored non-construction lines sharing a corner, enter the radius or two setbacks, review the disposable preview and Apply once. Construction guides preserve the original virtual-corner dimensions; the added radius/tangent or distance constraints remain editable. Branched, collinear and oversized corners fail closed. Use a named transport tool only when its live schema advertises this edit; do not emulate it with a 3D edge treatment.
+
+## Placement and editable text
+
+`create_placement`/`update_placement` take the registered typed translation/rotation parameters and an exact `targetBody`. Supply exactly that producer as the sole dependency and empty references. Placement is numeric and non-associative; preview bounds and volume before ordinary manual review. Read the existing feature before update and retain its identity.
+
+`create_sketch_text` takes `draftId`, the current draft `baseRevision` from its last returned state, a fresh `commandId`, `sketchId`, a new stable UUIDv7 `groupId`, bounded `origin: [x, y]` and `intent` (`text`, `heightMm`, `trackingMm`, `alignment`, `kerning`). Inspect the live schema for supported characters and bounds. The browser uses its pinned bundled font; do not supply font bytes, hashes, entity IDs or outline metadata. Existing outline complexity budgets still apply even below the 64-scalar text limit.
+
+For `update_sketch_text`, retain the group ID and explicitly set `removeAttachedConstraints`. False rejects replacement when existing constraints refer to the generated entities; true deliberately removes those attached constraints. Regenerated contour identities can invalidate downstream selectors: inspect the exact draft sketch solution, repair dependent selectors and preview before Apply. `detach_sketch_text` retains geometry and constraints while removing the editable text intent.
+
+Text preparation uses the actor-owned exact-revision draft, then the ordinary sketch update path after asynchronous outline generation. Failed, cancelled, expired or stale preparation must leave the draft unchanged. These tools cannot expand browser auto-apply grants.

@@ -6,10 +6,16 @@ import {
 } from "@vibeshape/automation-api/drafts"
 import { historyOperationSchema } from "@vibeshape/automation-api/history-tools"
 import {
+  isLocalSketchTextOperation,
+  type LocalSketchTextOperation,
+} from "@vibeshape/automation-api/local-sketch-text-tools"
+import {
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
+  isLocalLifecycleCommand,
   isLocalMetadataRead,
+  isLocalPrimitiveCommand,
   LOCAL_EXPORT_MAX_BYTES,
   type LocalMetadataReadOperation,
   type LocalOperation,
@@ -36,6 +42,9 @@ import type { createBrowserHistoryAutomationSession } from "./history-automation
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
+import { createLocalLifecycleCommand } from "./local-lifecycle-command"
+import { createLocalPrimitiveCommand } from "./local-primitive-command"
+import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
 
@@ -180,11 +189,18 @@ function isVariableCommand(operation: LocalOperation): operation is Extract<
 }
 
 function draftCommandRequest(
-  operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+  operation: Exclude<
+    Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+    LocalSketchTextOperation
+  >,
   actor: CommandActor,
   documentId: string,
 ) {
   if (isVariableCommand(operation)) return createLocalVariableCommand(operation, actor, documentId)
+  if (isLocalPrimitiveCommand(operation))
+    return createLocalPrimitiveCommand(operation, actor, documentId)
+  if (isLocalLifecycleCommand(operation))
+    return createLocalLifecycleCommand(operation, actor, documentId)
   switch (operation.tool) {
     case "create_box":
     case "create_fillet":
@@ -201,7 +217,10 @@ async function dispatchDraftCommand(
   session: LocalSessionPort,
   actor: CommandActor,
   operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+  signal?: AbortSignal,
 ) {
+  if (isLocalSketchTextOperation(operation))
+    return executeSketchTextCommand(session.host, actor, session.documentId, operation, signal)
   const request = draftCommandRequest(operation, actor, session.documentId)
   const result = await session.host.applyCommand(actor, request)
   return result.ok ? { ok: true as const, value: result.value } : diagnostic(result)
@@ -301,7 +320,8 @@ export function createLocalToolExecutor(
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
-    if (isLocalDraftCommand(operation)) return dispatchDraftCommand(session, actor, operation)
+    if (isLocalDraftCommand(operation))
+      return dispatchDraftCommand(session, actor, operation, signal)
     if (isLocalDraftInspection(operation)) {
       const result = await session.host.inspectDraft(actor, {
         schemaVersion: 1,

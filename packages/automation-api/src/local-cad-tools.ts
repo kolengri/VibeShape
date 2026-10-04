@@ -22,6 +22,7 @@ import {
   revolveFeatureParametersSchema,
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
+  revolveFeatureParametersV7Schema,
 } from "@vibeshape/domain/part-design"
 import {
   compoundFeatureParametersV2Schema,
@@ -41,11 +42,13 @@ import {
   patternFeatureParametersSchema,
   patternFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-pattern"
+import { placementFeatureParametersSchema } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import {
   splitFeatureParametersSchema,
   splitFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-split"
+import { booleanFeatureParametersV2Schema } from "@vibeshape/domain/part-design-subtract"
 import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
 import {
   threadFeatureParametersSchema,
@@ -136,6 +139,30 @@ const revolve = z
     ]),
   })
   .strict()
+const bodyRevolve = z
+  .object({ ...feature, parameters: revolveFeatureParametersV7Schema })
+  .strict()
+  .superRefine((input, context) => {
+    const axis = input.parameters.axis
+    const owners = [
+      ...new Set([
+        input.parameters.targetBody.featureId,
+        ...input.references.map(({ featureId }) => featureId),
+        ...(axis.kind === "model-edge" ? [axis.reference.featureId] : []),
+      ]),
+    ]
+    if (
+      owners.includes(input.featureId) ||
+      owners.length !== input.dependencies.length ||
+      owners.some((owner, index) => owner !== input.dependencies[index])
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Body Revolve requires the target followed by distinct sketch-support and axis owners.",
+      })
+  })
 const holeParameters = z.discriminatedUnion("extent", [
   z
     .object({
@@ -224,6 +251,10 @@ const exactBodyFeature = {
   dependencies: featureRecordSchema.shape.dependencies.length(1),
   references: featureRecordSchema.shape.references.max(0),
 }
+const placement = z
+  .object({ ...exactBodyFeature, parameters: placementFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Placement"))
 function matchingBodyDependency(operation: string) {
   return (
     input: { dependencies: readonly string[]; parameters: { targetBody: { featureId: string } } },
@@ -456,7 +487,29 @@ const compound = z
     ),
   )
 
+const bodySubtract = z
+  .object({
+    ...bodyCombinationFeature,
+    dependencies: featureRecordSchema.shape.dependencies.min(1).max(2),
+    parameters: booleanFeatureParametersV2Schema,
+  })
+  .strict()
+  .superRefine((input, context) =>
+    matchingSelectedDependencies(
+      input.featureId,
+      input.dependencies,
+      [input.parameters.targetBody, input.parameters.toolBody],
+      context,
+    ),
+  )
+
 export const localCadInputs = {
+  create_body_revolve: bodyRevolve,
+  update_body_revolve: bodyRevolve,
+  create_body_subtract: bodySubtract,
+  update_body_subtract: bodySubtract,
+  create_placement: placement,
+  update_placement: placement,
   create_reference_body_pattern: referenceBodyPattern,
   update_reference_body_pattern: referenceBodyPattern,
   create_reference_split: referenceSplit,
@@ -496,6 +549,16 @@ export const localCadInputs = {
 } as const
 
 export const localCadOperations = [
+  z.object({ tool: z.literal("create_body_revolve"), arguments: bodyRevolve }).strict(),
+  z.object({ tool: z.literal("update_body_revolve"), arguments: bodyRevolve }).strict(),
+  z.object({ tool: z.literal("create_body_subtract"), arguments: bodySubtract }).strict(),
+  z.object({ tool: z.literal("update_body_subtract"), arguments: bodySubtract }).strict(),
+  z
+    .object({ tool: z.literal("create_placement"), arguments: localCadInputs.create_placement })
+    .strict(),
+  z
+    .object({ tool: z.literal("update_placement"), arguments: localCadInputs.update_placement })
+    .strict(),
   z
     .object({ tool: z.literal("create_reference_body_pattern"), arguments: referenceBodyPattern })
     .strict(),

@@ -82,12 +82,17 @@
 | [0077](0077-mirror-copies-and-draft-shell-selection.md) | Accepted | Mirror copies and draft Shell selection |
 | [0078](0078-extrusion-end-conditions-and-fastener-recesses.md) | Accepted | Exact extrusion endpoints and body scope, fastener recesses, and bounded reference-axis threads |
 | [0080](0080-general-assembly-mates-and-topology-bound-frames.md) | Accepted | General assembly mates and topology-bound frames |
+
+| [0083](0083-exact-body-revolve-and-subtract.md) | Accepted | Exact-body Revolve and Subtract |
 | [0084](0084-body-reference-planes-and-axes.md) | Accepted | Body reference planes and axes |
 | [0085](0085-disposable-solved-sketch-inspection.md) | Accepted | Disposable native solved sketch inspection and stable profile discovery |
 | [0087](0087-paired-binary-export-chunks.md) | Accepted | Paired binary export chunks and editable backups |
 | [0089](0089-owned-assembly-and-library-mcp-drafts.md) | Accepted | Owned assembly/library MCP drafts with exact preflight, manual review and atomic authority guards |
 
-- [ADR-0093: Reviewed MCP history navigation](0093-reviewed-mcp-history-navigation.md)
+| [0093](0093-reviewed-mcp-history-navigation.md) | Accepted | Reviewed MCP history navigation |
+| [0088](0088-named-primitive-and-lifecycle-mcp-commands.md) | Accepted | Registered primitive and review-bound lifecycle MCP commands |
+
+| [0086](0086-named-placement-and-editable-sketch-text.md) | Accepted | Named Placement and owned editable sketch text MCP tools |
 
 Statuses:
 
