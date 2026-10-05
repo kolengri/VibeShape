@@ -2,6 +2,7 @@ import {
   applyDocumentCommand,
   applyDocumentV3Command,
   applyVersionedDocumentCommand,
+  booleanFeatureType,
   boxFeatureType,
   createLengthQuantity,
   featureRecordSchema,
@@ -26,7 +27,10 @@ import {
   createAuthorityPersistenceAdapter,
 } from "./authority-persistence-adapter"
 import { runtimeProjection } from "./authority-persistence-operations"
-import type { DocumentHistoryPreview } from "./persistent-document-session"
+import {
+  type DocumentHistoryPreview,
+  PersistentDocumentSession,
+} from "./persistent-document-session"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 const actor = { type: "user", userId: null } as const
@@ -221,6 +225,160 @@ function part(snapshot: DocumentAuthoritySnapshot) {
   if (snapshot.schemaVersion === 1 || !snapshot.parts[0]) throw new Error("Missing authored part")
   return snapshot.parts[0]
 }
+
+function validationSession(f: ReturnType<typeof fixture>) {
+  const unexpected = async (): Promise<never> => {
+    throw new Error("Draft validation must not acquire a lease or rebuild geometry")
+  }
+  const rebuildPort = {
+    rebuild: unexpected,
+    exportDocument: unexpected,
+    solveSketch: unexpected,
+    dispose: unexpected,
+    terminate() {},
+  }
+  return new PersistentDocumentSession({
+    snapshot: f.runtime(),
+    sessionId,
+    mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    leaseDurationMs: 30_000,
+    lease: null,
+    rebuildPort,
+    dependencies: {
+      commandDispatcher: { dispatch: applyDocumentCommand },
+      repository: f.adapter,
+      leases: { acquire: unexpected, release: unexpected },
+      createRebuildPort: () => rebuildPort,
+      now: () => lease.nowMs,
+    },
+  })
+}
+
+it("rejects a runtime-valid draft whose schema-2 Boolean depends on a later History item", async () => {
+  const f = fixture()
+  const source = f.runtime().features[0]
+  if (!source) throw new Error("Missing fixture feature")
+  const tool = { ...source, id: source.id.replace(/003$/, "007") }
+  const boolean = featureRecordSchema.parse({
+    ...source,
+    id: id(8),
+    type: booleanFeatureType.type,
+    label: "Private authored model label",
+    parameters: { operation: "subtract" },
+    dependencies: [source.id, tool.id],
+  })
+  for (const [index, feature] of [tool, boolean].entries()) {
+    const base = f.runtime()
+    const added = success(
+      applyDocumentCommand(base, {
+        ...f.envelope(10 + index),
+        schemaVersion: 1,
+        kind: "org.vibeshape.feature.add",
+        payload: { feature },
+      }),
+    )
+    success(
+      await f.adapter.commit({
+        sessionId,
+        lease,
+        storedAt: issuedAt,
+        baseSnapshot: base,
+        ...added,
+      }),
+    )
+  }
+  const session = validationSession(f)
+  const base = session.snapshot
+  const before = f.current()
+  const authorityJson = JSON.stringify(before)
+  const history = { ...f.adapter.history.availability }
+  const undoTarget = f.adapter.history.preview?.("undo")
+  const writes = f.writes.length
+  const replacement = { ...source, id: source.id.replace(/003$/, "009") }
+  const firstCommand = {
+    ...f.envelope(12),
+    schemaVersion: 1,
+    kind: "org.vibeshape.feature.add",
+    payload: { feature: replacement },
+  }
+  const first = success(applyDocumentCommand(base, firstCommand))
+  const secondCommand = {
+    ...f.envelope(13),
+    baseRevision: first.snapshot.revision,
+    schemaVersion: 1,
+    kind: "org.vibeshape.feature.update",
+    payload: { feature: { ...boolean, dependencies: [replacement.id, tool.id] } },
+  }
+  const second = success(applyDocumentCommand(first.snapshot, secondCommand))
+  const input = {
+    draftId: id(80),
+    commands: [firstCommand, secondCommand],
+    expectedSnapshot: second.snapshot,
+  }
+  const result = await session.validateDraft(input)
+  expect(result).toMatchObject({
+    ok: false,
+    diagnostic: { code: "invalid-draft-commit", sourceCode: "invalid-event" },
+  })
+  if (result.ok) throw new Error("Expected the later dependency to be rejected")
+  expect(result.diagnostic.message).toContain(
+    `Draft command 2 (${id(13)}, org.vibeshape.feature.update)`,
+  )
+  expect(result.diagnostic.message).toContain(
+    "history: References must precede their consumers in history.",
+  )
+  expect(result.diagnostic.message).not.toContain(boolean.label)
+  expect(result.diagnostic.message.length).toBeLessThanOrEqual(512)
+  expect(session.snapshot).toBe(base)
+  expect(session.mode).toBe("read-only")
+  expect(f.current()).toBe(before)
+  expect(JSON.stringify(f.current())).toBe(authorityJson)
+  expect(f.writes).toHaveLength(writes)
+  expect(f.drafts).toHaveLength(0)
+  expect(f.adapter.history.availability).toEqual(history)
+  expect(f.adapter.history.preview?.("undo")).toEqual(undoTarget)
+  const committed = await f.adapter.commitDraft({
+    sessionId,
+    lease,
+    storedAt: issuedAt,
+    transactionId: draftIdSchema.parse(id(80)),
+    baseSnapshot: base,
+    events: [first.event, second.event],
+    snapshot: second.snapshot,
+  })
+  expect(committed).toMatchObject({ ok: false, diagnostic: { message: result.diagnostic.message } })
+  expect(f.drafts).toHaveLength(0)
+})
+
+it("validates ordinary authored model commands without saving or adding an undo checkpoint", async () => {
+  const f = fixture()
+  const session = validationSession(f)
+  const base = session.snapshot
+  const before = f.current()
+  const authorityJson = JSON.stringify(before)
+  const source = base.features[0]
+  if (!source) throw new Error("Missing fixture feature")
+  const command = {
+    ...f.envelope(10),
+    schemaVersion: 1,
+    kind: "org.vibeshape.feature.add",
+    payload: { feature: { ...source, id: source.id.replace(/003$/, "007") } },
+  }
+  const dispatched = success(applyDocumentCommand(base, command))
+  expect(
+    await session.validateDraft({
+      draftId: id(80),
+      commands: [command],
+      expectedSnapshot: dispatched.snapshot,
+    }),
+  ).toEqual({ ok: true })
+  expect(session.snapshot).toBe(base)
+  expect(f.current()).toBe(before)
+  expect(JSON.stringify(f.current())).toBe(authorityJson)
+  expect(f.writes).toHaveLength(0)
+  expect(f.drafts).toHaveLength(0)
+  expect(f.adapter.history.availability).toEqual({ canUndo: false, canRedo: false })
+})
 
 function mutatePreviewTarget(target: DocumentHistoryPreview) {
   Reflect.set(target.snapshot.features[0]?.parameters ?? {}, "height", createLengthQuantity(999))

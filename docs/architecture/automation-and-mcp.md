@@ -66,6 +66,15 @@ geometry port now produces exact preview evidence. Preview schema version 2 comb
 summary with bounded measurements and whole-draft geometry validity. Commit recalculates geometry
 and rejects failed or blocked evaluations, stale bases, and expiry after asynchronous work.
 
+Local and remote browser draft preview first perform a read-only document-authority preflight.
+Retained commands are redispatched against the committed base and translated through the same
+ordered History, authored Part and canonical projection rules used by persistence. The adapters
+share transaction preparation with commit; preflight does not acquire a lease, write storage,
+advance authority or record Undo. A rejected command returns its bounded index, ID, kind and
+validation cause before geometry or Apply review. Commit repeats preflight before review and
+still checks current authority during the actual write. This semantic simulation cannot certify
+disk quota, a future writer lease or storage availability.
+
 The application provides a disposable worker preview service with immediate cancellation, replacement,
 late-result isolation, and worker termination. The trusted browser composition now connects the host
 to the active project's ordinary persistent session. It redispatches retained original commands and

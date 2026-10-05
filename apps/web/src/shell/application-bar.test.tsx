@@ -359,7 +359,7 @@ it("keeps local AI status and Stop visible while remote pairing is still awaitin
     pairingCode: "ABCDEF0123456789",
   }
   renderHeader()
-  expect(screen.getByText("AI on · Auto-apply on").closest("footer")).toBeTruthy()
+  expect(screen.getByText("AI access on · Auto-apply on").closest("footer")).toBeTruthy()
   await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
   expect(work.disable).toHaveBeenCalledOnce()
   expect(work.remoteDisable).toHaveBeenCalledOnce()

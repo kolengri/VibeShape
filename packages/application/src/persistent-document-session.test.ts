@@ -12,6 +12,7 @@ import {
   type DocumentRebuildPort,
   openPersistentDocumentSession,
   type PersistedRecoveryMigration,
+  type PersistenceDraftValidationInput,
   type PersistentDocumentRepositoryPort,
   type PersistentDocumentSessionDependencies,
 } from "./persistent-document-session"
@@ -294,6 +295,158 @@ async function createSession(
 }
 
 describe("persistent document session", () => {
+  it("validates domain-only drafts without renewing a lease, saving, or rebuilding", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const base = created.session.snapshot
+    const command = renameCommand(1, "01")
+    const expected = applyDocumentCommand(base, command)
+    if (!expected.ok) throw new Error(expected.diagnostic.message)
+    const acquire = vi.spyOn(state.leases, "acquire")
+    const expiresAt = state.leases.expiresAt
+    state.setNow(2_000)
+    await expect(
+      created.session.validateDraft({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2401",
+        commands: [command],
+        expectedSnapshot: expected.snapshot,
+      }),
+    ).resolves.toEqual({ ok: true })
+    expect(created.session.snapshot).toBe(base)
+    expect(state.repository.snapshot).toBe(base)
+    expect(state.repository.commitCount).toBe(1)
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(acquire).not.toHaveBeenCalled()
+    expect(state.leases.expiresAt).toBe(expiresAt)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1])
+  })
+
+  it("forwards only draft semantics to repository validation and preserves bounded causes", async () => {
+    const state = harness()
+    const command = renameCommand(1, "01")
+    const sourceMessage = `Draft command 1 (${command.commandId}, ${command.kind}) failed: History ordering. ${"x".repeat(600)}`
+    const validateDraft = vi.fn(async (_input: PersistenceDraftValidationInput) =>
+      portFailure("invalid-event", sourceMessage),
+    )
+    Object.assign(state.repository, { validateDraft })
+    const created = await createSession(state.dependencies)
+    const session = created.session
+    const acquire = vi.spyOn(state.leases, "acquire")
+    const result = await session.validateDraft({
+      draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2401",
+      commands: [command],
+    })
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-draft-commit",
+        sourceCode: "invalid-event",
+        message: sourceMessage.slice(0, 512),
+      },
+    })
+    expect(validateDraft.mock.calls[0]?.[0]).toMatchObject({
+      transactionId: "0195b5ac-b220-7a2c-8c33-67a36a7f2401",
+      baseSnapshot: { revision: 1 },
+      events: [{ commandId: command.commandId }],
+      snapshot: { revision: 2 },
+    })
+    expect(Object.keys(validateDraft.mock.calls[0]?.[0] ?? {})).toEqual([
+      "transactionId",
+      "baseSnapshot",
+      "events",
+      "snapshot",
+    ])
+    expect(session.snapshot.revision).toBe(1)
+    expect(acquire).not.toHaveBeenCalled()
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1])
+  })
+
+  it("detaches nested feature parameters before invoking a repository draft validator", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const added = await created.session.commit({
+      ...createCommand(),
+      kind: "org.vibeshape.feature.add",
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f22b1",
+      baseRevision: 1,
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f21b1",
+          type: boxFeatureType.type,
+          label: "Block",
+          parameters: {
+            width: createLengthQuantity(20),
+            depth: createLengthQuantity(20),
+            height: createLengthQuantity(20),
+            centered: false,
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      },
+    })
+    if (!added.ok) throw new Error(added.diagnostic.message)
+    const base = created.session.snapshot
+    const feature = base.features[0]
+    if (!feature) throw new Error("Missing fixture feature")
+    const command = {
+      ...createCommand(),
+      kind: "org.vibeshape.feature.update",
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f22b2",
+      baseRevision: 2,
+      payload: {
+        feature: {
+          ...feature,
+          parameters: { ...feature.parameters, width: createLengthQuantity(30) },
+        },
+      },
+    }
+    const expected = applyDocumentCommand(base, command)
+    if (!expected.ok) throw new Error(expected.diagnostic.message)
+    const originalBase = JSON.stringify(base)
+    const originalCommand = JSON.stringify(command)
+    const originalExpected = JSON.stringify(expected.snapshot)
+    const changeWidth = (parameters: Readonly<Record<string, unknown>>, value: number) => {
+      const quantity = parameters.width as { source: { value: number } }
+      quantity.source.value = value
+    }
+    const validateDraft = vi.fn(async (input: PersistenceDraftValidationInput) => {
+      const baseFeature = input.baseSnapshot.features[0]
+      const draftFeature = input.snapshot.features[0]
+      const event = input.events[0]
+      if (!baseFeature || !draftFeature || event?.type !== "org.vibeshape.feature.updated")
+        throw new Error("Missing validator feature data")
+      changeWidth(baseFeature.parameters, 100)
+      changeWidth(draftFeature.parameters, 200)
+      changeWidth(event.feature.parameters, 300)
+      return { ok: true, value: undefined } as const
+    })
+    Object.assign(state.repository, { validateDraft })
+    const acquire = vi.spyOn(state.leases, "acquire")
+    const expiresAt = state.leases.expiresAt
+    await expect(
+      created.session.validateDraft({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2401",
+        commands: [command],
+        expectedSnapshot: expected.snapshot,
+      }),
+    ).resolves.toEqual({ ok: true })
+    expect(validateDraft).toHaveBeenCalledOnce()
+    expect(created.session.snapshot).toBe(base)
+    expect(JSON.stringify(created.session.snapshot)).toBe(originalBase)
+    expect(JSON.stringify(command)).toBe(originalCommand)
+    expect(JSON.stringify(expected.snapshot)).toBe(originalExpected)
+    expect(state.repository.snapshot).toBe(base)
+    expect(state.repository.commitCount).toBe(2)
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(acquire).not.toHaveBeenCalled()
+    expect(state.leases.expiresAt).toBe(expiresAt)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1, 2])
+  })
+
   it("solves against the same rebuilt worker session as the persisted document", async () => {
     const state = harness()
     const created = await createSession(state.dependencies)
@@ -618,58 +771,64 @@ describe("persistent document session", () => {
     expect(state.rebuildPorts[0]?.revisions).toEqual([1, 2])
   })
 
-  it("rejects a draft whose expected snapshot differs before acquiring a lease or persisting", async () => {
-    const state = harness()
-    const created = await createSession(state.dependencies)
-    const acquire = vi.spyOn(state.leases, "acquire")
-    const expiresAt = state.leases.expiresAt
-    state.setNow(2_000)
-    const command = addVariableCommand(1, "07", {
-      id: "0195b5ac-b220-7a2c-8c33-67a36a7f2507",
-      name: "wall",
-      expression: "2 mm",
-    })
+  it.each(["commitDraft", "validateDraft"] as const)(
+    "%s rejects an expected snapshot mismatch before acquiring a lease or persisting",
+    async (operation) => {
+      const state = harness()
+      const created = await createSession(state.dependencies)
+      const acquire = vi.spyOn(state.leases, "acquire")
+      const expiresAt = state.leases.expiresAt
+      state.setNow(2_000)
+      const command = addVariableCommand(1, "07", {
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2507",
+        name: "wall",
+        expression: "2 mm",
+      })
 
-    await expect(
-      created.session.commitDraft({
-        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2407",
-        commands: [command],
-        expectedSnapshot: created.session.snapshot,
-      }),
-    ).resolves.toMatchObject({
-      ok: false,
-      diagnostic: { code: "invalid-draft-commit" },
-    })
-    expect(acquire).not.toHaveBeenCalled()
-    expect(state.leases.expiresAt).toBe(expiresAt)
-    expect(state.repository.draftCommitCount).toBe(0)
-    expect(created.session.snapshot.revision).toBe(1)
-    expect(state.rebuildPorts[0]?.revisions).toEqual([1])
-  })
-
-  it("keeps stale base revisions rejected when a draft is queued behind a commit", async () => {
-    const state = harness()
-    const created = await createSession(state.dependencies)
-    const queuedCommit = created.session.commit(renameCommand(1, "08"))
-    const queuedDraft = created.session.commitDraft({
-      draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2408",
-      commands: [
-        addVariableCommand(1, "08", {
-          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2508",
-          name: "wall",
-          expression: "2 mm",
+      await expect(
+        created.session[operation]({
+          draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2407",
+          commands: [command],
+          expectedSnapshot: created.session.snapshot,
         }),
-      ],
-    })
+      ).resolves.toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-draft-commit" },
+      })
+      expect(acquire).not.toHaveBeenCalled()
+      expect(state.leases.expiresAt).toBe(expiresAt)
+      expect(state.repository.draftCommitCount).toBe(0)
+      expect(created.session.snapshot.revision).toBe(1)
+      expect(state.rebuildPorts[0]?.revisions).toEqual([1])
+    },
+  )
 
-    await expect(queuedCommit).resolves.toMatchObject({ ok: true, snapshot: { revision: 2 } })
-    await expect(queuedDraft).resolves.toMatchObject({
-      ok: false,
-      diagnostic: { code: "command-rejected", sourceCode: "stale-revision" },
-    })
-    expect(state.repository.draftCommitCount).toBe(0)
-    expect(created.session.snapshot).toMatchObject({ revision: 2, variables: [] })
-  })
+  it.each(["commitDraft", "validateDraft"] as const)(
+    "%s rejects a stale base revision when queued behind a commit",
+    async (operation) => {
+      const state = harness()
+      const created = await createSession(state.dependencies)
+      const queuedCommit = created.session.commit(renameCommand(1, "08"))
+      const queuedDraft = created.session[operation]({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2408",
+        commands: [
+          addVariableCommand(1, "08", {
+            id: "0195b5ac-b220-7a2c-8c33-67a36a7f2508",
+            name: "wall",
+            expression: "2 mm",
+          }),
+        ],
+      })
+
+      await expect(queuedCommit).resolves.toMatchObject({ ok: true, snapshot: { revision: 2 } })
+      await expect(queuedDraft).resolves.toMatchObject({
+        ok: false,
+        diagnostic: { code: "command-rejected", sourceCode: "stale-revision" },
+      })
+      expect(state.repository.draftCommitCount).toBe(0)
+      expect(created.session.snapshot).toMatchObject({ revision: 2, variables: [] })
+    },
+  )
 
   it("uses the parsed expected snapshot when the caller mutates it during lease renewal", async () => {
     const state = harness()
@@ -700,29 +859,32 @@ describe("persistent document session", () => {
     expect(state.repository.draftCommitCount).toBe(1)
   })
 
-  it("rejects an invalid expected snapshot at the draft boundary", async () => {
-    const state = harness()
-    const created = await createSession(state.dependencies)
+  it.each(["commitDraft", "validateDraft"] as const)(
+    "%s rejects an invalid expected snapshot at the draft boundary",
+    async (operation) => {
+      const state = harness()
+      const created = await createSession(state.dependencies)
 
-    await expect(
-      created.session.commitDraft({
-        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2410",
-        commands: [
-          addVariableCommand(1, "10", {
-            id: "0195b5ac-b220-7a2c-8c33-67a36a7f2510",
-            name: "wall",
-            expression: "2 mm",
-          }),
-        ],
-        expectedSnapshot: { revision: "invalid" },
-      }),
-    ).resolves.toMatchObject({
-      ok: false,
-      diagnostic: { code: "invalid-draft-commit" },
-    })
-    expect(state.repository.draftCommitCount).toBe(0)
-    expect(created.session.snapshot.revision).toBe(1)
-  })
+      await expect(
+        created.session[operation]({
+          draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2410",
+          commands: [
+            addVariableCommand(1, "10", {
+              id: "0195b5ac-b220-7a2c-8c33-67a36a7f2510",
+              name: "wall",
+              expression: "2 mm",
+            }),
+          ],
+          expectedSnapshot: { revision: "invalid" },
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-draft-commit" },
+      })
+      expect(state.repository.draftCommitCount).toBe(0)
+      expect(created.session.snapshot.revision).toBe(1)
+    },
+  )
 
   it("retains the base snapshot when an atomic draft persistence commit fails", async () => {
     const state = harness()

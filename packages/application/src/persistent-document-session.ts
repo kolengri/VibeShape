@@ -5,6 +5,7 @@ import {
   commandActorSchema,
   commandActorsEqual,
   documentCommandSchema,
+  documentEventSchema,
 } from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
@@ -37,6 +38,7 @@ import {
 } from "@vibeshape/protocol"
 import { z } from "zod"
 import { authorityTransactionSchema } from "./authority-transaction"
+import { draftCommandFailure } from "./draft-validation-diagnostics"
 
 const DEFAULT_LEASE_DURATION_MS = 30_000
 
@@ -95,6 +97,15 @@ const draftCommitInputSchema = z
     draftId: draftIdSchema,
     commands: z.array(z.unknown()).min(1).max(256),
     expectedSnapshot: documentSnapshotSchema.optional(),
+  })
+  .strict()
+
+const draftValidationInputSchema = z
+  .object({
+    transactionId: draftIdSchema,
+    baseSnapshot: documentSnapshotSchema,
+    events: z.array(documentEventSchema).min(1).max(256),
+    snapshot: documentSnapshotSchema,
   })
   .strict()
 
@@ -165,6 +176,11 @@ type PersistenceDraftCommitInput = Readonly<{
   snapshot: DocumentSnapshot
 }>
 
+export type PersistenceDraftValidationInput = Pick<
+  PersistenceDraftCommitInput,
+  "transactionId" | "baseSnapshot" | "events" | "snapshot"
+>
+
 type PersistenceHistoryMoveInput = Readonly<{
   sessionId: SessionId
   lease: { epoch: number; nowMs: number }
@@ -189,6 +205,7 @@ export type PersistentDocumentRepositoryPort = Readonly<{
   semanticHistory?: DocumentSemanticHistoryPort
   commit: (input: PersistenceCommitInput) => Promise<SessionPortResult<unknown>>
   commitDraft: (input: PersistenceDraftCommitInput) => Promise<SessionPortResult<unknown>>
+  validateDraft?: (input: PersistenceDraftValidationInput) => Promise<SessionPortResult<unknown>>
   recover: (documentId: DocumentId) => Promise<SessionPortResult<PersistedRecoveryReport>>
   closeCleanly: (input: PersistenceCloseInput) => Promise<SessionPortResult<unknown>>
 }>
@@ -311,6 +328,10 @@ export type PersistentDocumentDraftCommitResult =
     }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
+export type PersistentDocumentDraftValidationResult =
+  | { ok: true }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
 export type PersistentDocumentHistoryResult =
   | { ok: true; snapshot: DocumentSnapshot; rebuild: DocumentRebuildOutcome }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
@@ -408,11 +429,19 @@ function dispatchDraftCommands(
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic } {
   let draftSnapshot = snapshot
   const events: DocumentEvent[] = []
-  for (const commandInput of input.commands) {
+  for (const [index, commandInput] of input.commands.entries()) {
     const command = dispatcher.dispatch(draftSnapshot, commandInput, {
       transactionId: input.draftId,
     })
-    if (!command.ok) return { ok: false, diagnostic: commandDiagnostic(command.diagnostic) }
+    if (!command.ok) {
+      const parsed = documentCommandSchema.safeParse(commandInput)
+      return {
+        ok: false,
+        diagnostic: commandDiagnostic(
+          draftCommandFailure(index, parsed.success ? parsed.data : null, command.diagnostic),
+        ),
+      }
+    }
     const firstEvent = events[0]
     if (firstEvent && !commandActorsEqual(firstEvent.actor, command.event.actor)) {
       return {
@@ -712,6 +741,48 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#commitDraft(input))
   }
 
+  validateDraft(input: unknown): Promise<PersistentDocumentDraftValidationResult> {
+    return this.#enqueue(async () => {
+      const prepared = this.#prepareDraft(input)
+      if (!prepared.ok) return prepared
+      const repository = this.#dependencies.repository
+      if (!repository.validateDraft) return { ok: true }
+      let result: SessionPortResult<unknown>
+      try {
+        // Clone before parsing because JSON-valued feature parameters retain their input aliases.
+        const ownedInput = draftValidationInputSchema.parse(
+          JSON.parse(
+            canonicalJson({
+              transactionId: prepared.draftId,
+              baseSnapshot: this.#snapshot,
+              events: prepared.events,
+              snapshot: prepared.snapshot,
+            }),
+          ),
+        )
+        result = await repository.validateDraft(ownedInput)
+      } catch {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "invalid-draft-commit",
+            "The document draft could not be validated.",
+          ),
+        }
+      }
+      return result.ok
+        ? { ok: true }
+        : {
+            ok: false,
+            diagnostic: portDiagnostic(
+              "invalid-draft-commit",
+              result.diagnostic.message.slice(0, 512),
+              result.diagnostic,
+            ),
+          }
+    })
+  }
+
   retryRebuild(): Promise<DocumentRebuildOutcome> {
     return this.#enqueue(() => this.#rebuild())
   }
@@ -835,17 +906,17 @@ export class PersistentDocumentSession {
     }
   }
 
-  async #commitDraft(input: unknown): Promise<PersistentDocumentDraftCommitResult> {
+  #prepareDraft(input: unknown) {
     if (this.#closed) {
       return {
-        ok: false,
+        ok: false as const,
         diagnostic: diagnostic("session-closed", "The document session is closed."),
       }
     }
     const parsed = draftCommitInputSchema.safeParse(input)
     if (!parsed.success) {
       return {
-        ok: false,
+        ok: false as const,
         diagnostic: diagnostic("invalid-draft-commit", "The document draft commit is invalid."),
       }
     }
@@ -860,20 +931,26 @@ export class PersistentDocumentSession {
       canonicalJson(dispatched.snapshot) !== canonicalJson(parsed.data.expectedSnapshot)
     ) {
       return {
-        ok: false,
+        ok: false as const,
         diagnostic: diagnostic(
           "invalid-draft-commit",
           "The document draft commit target does not match the dispatched snapshot.",
         ),
       }
     }
+    return { ...dispatched, draftId: parsed.data.draftId }
+  }
+
+  async #commitDraft(input: unknown): Promise<PersistentDocumentDraftCommitResult> {
+    const dispatched = this.#prepareDraft(input)
+    if (!dispatched.ok) return dispatched
     const lease = await this.#renewWriteAccess()
     if (!lease.ok) return lease
     const persisted = await this.#dependencies.repository.commitDraft({
       sessionId: this.#sessionId,
       lease: { epoch: lease.lease.epoch, nowMs: lease.nowMs },
       storedAt: dispatched.storedAt,
-      transactionId: parsed.data.draftId,
+      transactionId: dispatched.draftId,
       baseSnapshot: this.#snapshot,
       events: dispatched.events,
       snapshot: dispatched.snapshot,
@@ -883,7 +960,7 @@ export class PersistentDocumentSession {
         ok: false,
         diagnostic: portDiagnostic(
           "persistence-failed",
-          "The document draft was not saved.",
+          `The document draft was not saved. ${persisted.diagnostic.message}`.slice(0, 512),
           persisted.diagnostic,
         ),
       }
