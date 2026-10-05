@@ -1,6 +1,7 @@
 # ADR-0095: Continuous recovery of approved local MCP sessions
 
 - Status: Accepted
+- Local commit execution deadline superseded by [ADR-0099](0099-complete-session-cad-auto-apply.md).
 - Date: 2026-10-04
 - Supersedes: local recovery limits in [ADR-0075](0075-local-mcp-tab-reload-recovery.md) and the local disconnect grant reset in [ADR-0052](0052-session-cad-auto-apply.md)
 - Preserves: remote consent in [ADR-0058](0058-remote-mcp-paired-browser-transport.md)

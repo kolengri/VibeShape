@@ -42,7 +42,7 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const history = success(
       localToolOutputs.model_history.parse(
@@ -187,11 +187,10 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
       arguments: { draftId: draft.draftId },
     })
     const review = page.getByRole("region", { name: "Review AI changes", exact: true })
-    await expect(review).toBeVisible({ timeout: 30_000 })
-    await review.getByRole("button", { name: "Apply", exact: true }).click()
     const committed = success(
       localToolOutputs.commit_draft.parse((await committing).structuredContent?.result),
     )
+    await expect(review).toHaveCount(0)
     async function saved() {
       const current = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       const entity = success(

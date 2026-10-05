@@ -41,7 +41,8 @@ Owned drafts also expose \`remove_feature\`, \`remove_sketch\`, \`set_feature_su
 and \`rename_project\` through ordinary registered commands. Referenced records block removal;
 repair consumers explicitly. Suppression is an explicit boolean, and exact preview diagnoses blocked
 downstream geometry. Project rename uses a normalized nonempty name of at most 120 characters.
-All lifecycle commands require manual browser review even with CAD auto-apply enabled. These tools
+Supported CAD removal and suppression use an existing explicit auto-apply grant; project rename
+retains manual browser review. These tools
 do not cascade, override reference intent, navigate saved-change History or execute generic commands.
 
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
@@ -225,8 +226,9 @@ inspect the actual document revision before proposing a new change.
    coexist with unresolved supports; unknown/unavailable diagnostics are not a clean result.
    Repair invalid intent with a new command ID and the returned current draft revision.
 5. Call \`commit_draft\`; by default the person reviews and clicks Apply or Discard in the browser.
-   A person may explicitly enable session-only auto-apply for valid allowlisted CAD edits in the
-   browser. No tool can enable it; destructive or unsupported drafts still require review.
+   A person may explicitly enable session-only auto-apply for valid supported first-party CAD edits
+   in the browser, including lifecycle removal and suppression. No tool can enable it; metadata,
+   separate review services and unsupported drafts still require review.
    Allow enough time for manual review and observe progress. A successful commit saves once with one Undo entry.
    Read \`model_info\` again to observe the committed revision. Manual edits use the same saved model.
 6. If a manual edit or another writer changed the committed revision, reread the model and create
@@ -655,10 +657,13 @@ Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid 
 sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft and custom Thread create/update;
-variables; bounded inspection; draft lifecycle and export; review-bound feature/sketch removal,
+variables; bounded inspection; draft lifecycle and export; feature/sketch removal,
 explicit feature suppression and project rename; Placement and editable sketch text;
 owned native/planar imports, assembly/library authoring, surface textures and saved-change Undo/Redo.
-Read the relevant operator workflow for its separate revision and manual-review contract. There is
+An explicit session CAD auto-apply grant covers supported first-party feature versions, same-type
+upgrades, and feature/sketch/variable lifecycle changes including suppression and removal. Metadata,
+imports, assembly, history and textures retain their separate manual-review contracts. Read the
+relevant operator workflow for its revision and review contract. There is
 no generic command, script, kernel handle or filesystem mutation tool. Print-analysis is not
 a production printability report; exact geometry validity does not establish printability.
 
@@ -667,7 +672,9 @@ must fit within 192 KiB. Semantic entity/page responses are bounded to 128 KiB; 
 schemas for per-page limits. Hole/selected-treatment selections allow at most 256 IDs/references.
 Drafts expire five minutes after creation or the last successful command/preview; inspection does
 not renew expiry. An open CAD draft review has no time limit: its idle expiry is suspended while
-waiting for Apply/Discard, with access and base revision rechecked before saving. Separate import,
+waiting for Apply/Discard, with access and base revision rechecked before saving. Local commit_draft
+also has no absolute broker execution deadline while the approved browser remains live; heartbeat
+loss, cancellation, revocation and credential/approval expiry still apply. Separate import,
 assembly, metadata, history and texture proposals retain their advertised expiry. Client request timeouts can
 still cancel review; inspect the saved revision before requesting another review. The pairing
 expires after one hour or loss of browser polling.

@@ -5,35 +5,35 @@ import {
   type DocumentCommand,
 } from "@vibeshape/domain/commands"
 import type { FeatureRecord } from "@vibeshape/domain/feature-graph"
+import { featureTypeKey } from "@vibeshape/domain/feature-type-contracts"
+import {
+  documentCoreModule,
+  featureCoreModule,
+  partDesignModule,
+  referenceGeometryModule,
+} from "@vibeshape/domain/modules"
+import { importedFeatureType } from "@vibeshape/domain/part-design-import"
+import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 
-// Explicit versions keep future commands and extension features outside an existing grant.
-const featureVersions: Readonly<Record<string, readonly number[]>> = {
-  box: [1],
-  cylinder: [1],
-  boolean: [1],
-  union: [2],
-  loft: [1, 2, 3],
-  extrusion: [1, 2, 3, 4, 5],
-  revolve: [1, 2, 3, 4, 5, 6],
-  hole: [1, 2],
-  fillet: [1, 2],
-  chamfer: [1, 2],
-}
+const importedFeatureTypeIds = new Set([
+  importedFeatureType.type.typeId,
+  meshImportFeatureType.type.typeId,
+])
+// Use the shipped first-party contracts, never extension or caller-supplied registries.
+const cadFeatureKeys = new Set(
+  [...partDesignModule.featureTypes, ...referenceGeometryModule.featureTypes]
+    .filter(({ type }) => !importedFeatureTypeIds.has(type.typeId))
+    .map(({ type }) => featureTypeKey(type)),
+)
+const commandVersions = new Map(
+  [...documentCoreModule.commands, ...featureCoreModule.commands].map((descriptor) => [
+    descriptor.kind,
+    descriptor.schemaVersion,
+  ]),
+)
 
 function eligibleFeature(feature: FeatureRecord) {
-  const type = feature.type
-  if (feature.suppressed || type.moduleVersion !== "0.1.0") return false
-  if (type.moduleId === "org.vibeshape.core.reference-geometry")
-    return (
-      type.typeId === "org.vibeshape.feature.reference-geometry.datum-plane" &&
-      type.schemaVersion === 1
-    )
-  if (type.moduleId !== "org.vibeshape.core.part-design") return false
-  return Object.entries(featureVersions).some(
-    ([name, versions]) =>
-      type.typeId === `org.vibeshape.feature.part-design.${name}` &&
-      versions.includes(type.schemaVersion),
-  )
+  return cadFeatureKeys.has(featureTypeKey(feature.type))
 }
 
 function eligibleFeatureUpdate(previous: FeatureRecord | undefined, feature: FeatureRecord) {
@@ -41,35 +41,62 @@ function eligibleFeatureUpdate(previous: FeatureRecord | undefined, feature: Fea
   return (
     previous.type.moduleId === feature.type.moduleId &&
     previous.type.moduleVersion === feature.type.moduleVersion &&
-    previous.type.typeId === feature.type.typeId &&
-    previous.type.schemaVersion === feature.type.schemaVersion
+    previous.type.typeId === feature.type.typeId
   )
+}
+
+function addFeature(feature: FeatureRecord, features: Map<string, FeatureRecord>) {
+  if (features.has(feature.id) || !eligibleFeature(feature)) return false
+  features.set(feature.id, feature)
+  return true
+}
+
+function updateFeature(feature: FeatureRecord, features: Map<string, FeatureRecord>) {
+  if (!eligibleFeatureUpdate(features.get(feature.id), feature)) return false
+  features.set(feature.id, feature)
+  return true
+}
+
+function removeFeature(featureId: string, features: Map<string, FeatureRecord>) {
+  const previous = features.get(featureId)
+  if (!previous || !eligibleFeature(previous)) return false
+  features.delete(featureId)
+  return true
+}
+
+function setFeatureSuppression(
+  payload: { featureId: string; suppressed: boolean },
+  features: Map<string, FeatureRecord>,
+) {
+  const previous = features.get(payload.featureId)
+  if (!previous || !eligibleFeature(previous)) return false
+  features.set(previous.id, { ...previous, suppressed: payload.suppressed })
+  return true
 }
 
 const simpleCadCommands = new Set<DocumentCommand["kind"]>([
   "org.vibeshape.variable.add",
   "org.vibeshape.variable.set-expression",
+  "org.vibeshape.variable.rename",
+  "org.vibeshape.variable.remove",
+  "org.vibeshape.variable.replace-table",
   "org.vibeshape.sketch.add",
   "org.vibeshape.sketch.update",
+  "org.vibeshape.sketch.remove",
 ])
 
 function eligibleCommand(command: DocumentCommand, features: Map<string, FeatureRecord>) {
-  if (command.schemaVersion !== 1) return false
+  if (command.schemaVersion !== commandVersions.get(command.kind)) return false
   if (simpleCadCommands.has(command.kind)) return true
   switch (command.kind) {
-    case "org.vibeshape.feature.add": {
-      const feature = command.payload.feature
-      if (features.has(feature.id) || !eligibleFeature(feature)) return false
-      features.set(feature.id, feature)
-      return true
-    }
-    case "org.vibeshape.feature.update": {
-      const feature = command.payload.feature
-      const previous = features.get(feature.id)
-      if (!eligibleFeatureUpdate(previous, feature)) return false
-      features.set(feature.id, feature)
-      return true
-    }
+    case "org.vibeshape.feature.add":
+      return addFeature(command.payload.feature, features)
+    case "org.vibeshape.feature.update":
+      return updateFeature(command.payload.feature, features)
+    case "org.vibeshape.feature.remove":
+      return removeFeature(command.payload.featureId, features)
+    case "org.vibeshape.feature.set-suppressed":
+      return setFeatureSuppression(command.payload, features)
     default:
       return false
   }

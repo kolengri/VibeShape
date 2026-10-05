@@ -76,36 +76,54 @@ function input(): DraftReviewInput {
   }
 }
 
-describe("session CAD auto-apply allowlist", () => {
+describe("session CAD auto-apply scope", () => {
   it.each([
     ["org.vibeshape.feature.remove", { featureId: id(4) }],
     ["org.vibeshape.sketch.remove", { sketchId: id(4) }],
     ["org.vibeshape.feature.set-suppressed", { featureId: id(4), suppressed: false }],
-    ["org.vibeshape.document.rename", { name: "Renamed" }],
-  ] as const)(
-    "requires manual review for lifecycle command %s despite a valid CAD grant",
-    (kind, payload) => {
-      const review = input()
-      const command = review.commands[0]
-      if (!command) throw new Error("Missing review command.")
-      const lifecycle = documentCommandSchema.parse({ ...command, kind, payload })
-      expect(mayAutoApplyCadReview({ ...review, commands: [lifecycle] }, actor)).toBe(false)
-      expect(mayAutoApplyCadReview({ ...review, commands: [command, lifecycle] }, actor)).toBe(
-        false,
-      )
-    },
-  )
+  ] as const)("auto-applies CAD lifecycle command %s with a valid grant", (kind, payload) => {
+    const review = input()
+    const command = review.commands[0]
+    if (command?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature.")
+    const lifecycle = documentCommandSchema.parse({ ...command, kind, payload })
+    expect(
+      mayAutoApplyCadReview({ ...review, commands: [lifecycle] }, actor, [command.payload.feature]),
+    ).toBe(true)
+    expect(mayAutoApplyCadReview({ ...review, commands: [command, lifecycle] }, actor)).toBe(true)
+  })
   it.each([
     ["union", 2, true],
-    ["union", 1, false],
+    ["union", 1, true],
     ["union", 3, false],
     ["loft", 1, true],
     ["loft", 2, true],
     ["loft", 3, true],
     ["loft", 4, false],
-    ["compound", 2, false],
-    ["sweep", 1, false],
-  ] as const)("bounds %s schema version %i to the explicit grant", (name, version, expected) => {
+    ["compound", 1, true],
+    ["compound", 2, true],
+    ["sweep", 1, true],
+    ["cone", 1, true],
+    ["sphere", 1, true],
+    ["torus", 1, true],
+    ["pyramid", 1, true],
+    ["mirror", 1, true],
+    ["mirror", 2, true],
+    ["mirror", 3, true],
+    ["mirror", 4, false],
+    ["shell", 1, true],
+    ["shell", 2, true],
+    ["shell", 3, false],
+    ["pattern", 2, true],
+    ["split", 2, true],
+    ["placement", 1, true],
+    ["thread", 2, true],
+    ["revolve", 7, true],
+    ["hole", 3, true],
+    ["boolean", 2, true],
+    ["imported", 1, false],
+    ["imported-mesh", 1, false],
+    ["unknown", 1, false],
+  ] as const)("bounds %s schema version %i to shipped CAD contracts", (name, version, expected) => {
     const review = input()
     const addition = review.commands[0]
     if (addition?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature")
@@ -175,9 +193,10 @@ describe("session CAD auto-apply allowlist", () => {
   )
   it.each([
     [5, true],
-    [6, false],
-    [7, false],
-  ] as const)("explicitly bounds independent extrusion schema version %i", (version, expected) => {
+    [6, true],
+    [7, true],
+    [8, false],
+  ] as const)("bounds extrusion schema version %i to the shipped host", (version, expected) => {
     const review = input()
     const command = review.commands[0]
     if (command?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature")
@@ -193,7 +212,7 @@ describe("session CAD auto-apply allowlist", () => {
     expect(mayAutoApplyCadReview({ ...review, commands: [extrusion] }, actor)).toBe(expected)
   })
 
-  it.each(["suppressed", "extension", "type", "version", "missing"])(
+  it.each(["extension", "type", "version", "missing"])(
     "keeps updates to a %s prior feature on manual review",
     (mode) => {
       const review = input()
@@ -202,7 +221,6 @@ describe("session CAD auto-apply allowlist", () => {
       const incoming = addition.payload.feature
       const previous = featureRecordSchema.parse({
         ...incoming,
-        suppressed: mode === "suppressed",
         type: {
           ...incoming.type,
           ...(mode === "extension" ? { moduleId: "org.example.extension" } : {}),
@@ -253,7 +271,7 @@ describe("session CAD auto-apply allowlist", () => {
     review.preview.geometry.status = "invalid"
     expect(mayAutoApplyCadReview(review, actor)).toBe(false)
   })
-  it.each(["actor", "document", "extension", "version", "suppressed"])(
+  it.each(["actor", "document", "extension", "version", "module-version"])(
     "fails closed for %s scope drift",
     (mode) => {
       const review = input()
@@ -267,11 +285,11 @@ describe("session CAD auto-apply allowlist", () => {
         payload: {
           feature: {
             ...feature,
-            suppressed: mode === "suppressed",
             type: {
               ...feature.type,
               ...(mode === "extension" ? { moduleId: "org.example.extension" } : {}),
               ...(mode === "version" ? { schemaVersion: 99 } : {}),
+              ...(mode === "module-version" ? { moduleVersion: "99.0.0" } : {}),
             },
           },
         },
@@ -280,17 +298,102 @@ describe("session CAD auto-apply allowlist", () => {
     },
   )
   it.each([
-    ["org.vibeshape.feature.remove", { featureId: id(4) }],
-    ["org.vibeshape.feature.set-suppressed", { featureId: id(4), suppressed: false }],
     ["org.vibeshape.document.rename", { name: "Renamed" }],
-    ["org.vibeshape.variable.remove", { variableId: id(4) }],
-    ["org.vibeshape.variable.replace-table", { variables: [] }],
-    ["org.vibeshape.sketch.remove", { sketchId: id(4) }],
+    ["org.vibeshape.document.set-display-units", { displayUnits: { length: "mm", angle: "deg" } }],
+    ["org.vibeshape.document.create", { name: "Other project" }],
   ])("keeps %s and mixed drafts on manual review", (kind, payload) => {
     const review = input()
     const command = documentCommandSchema.parse({ ...review.commands[0], kind, payload })
     expect(
       mayAutoApplyCadReview({ ...review, commands: [...review.commands, command] }, actor),
+    ).toBe(false)
+  })
+  it.each([
+    ["org.vibeshape.variable.rename", { variableId: id(4), name: "thickness" }],
+    ["org.vibeshape.variable.remove", { variableId: id(4) }],
+    ["org.vibeshape.variable.replace-table", { variables: [] }],
+  ])("covers %s within a CAD draft", (kind, payload) => {
+    const review = input()
+    const command = documentCommandSchema.parse({ ...review.commands[0], kind, payload })
+    expect(mayAutoApplyCadReview({ ...review, commands: [command] }, actor)).toBe(true)
+  })
+  it("allows supported schema upgrades and explicit suppression without mutating the base", () => {
+    const review = input()
+    const addition = review.commands[0]
+    if (addition?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature.")
+    const previous = featureRecordSchema.parse({
+      ...addition.payload.feature,
+      suppressed: true,
+      type: { ...extrusionFeatureTypeV5.type, schemaVersion: 5 },
+    })
+    const update = documentCommandSchema.parse({
+      ...addition,
+      kind: "org.vibeshape.feature.update",
+      payload: { feature: { ...previous, type: { ...previous.type, schemaVersion: 6 } } },
+    })
+    const unsuppress = documentCommandSchema.parse({
+      ...addition,
+      kind: "org.vibeshape.feature.set-suppressed",
+      payload: { featureId: previous.id, suppressed: false },
+    })
+    expect(
+      mayAutoApplyCadReview({ ...review, commands: [update, unsuppress] }, actor, [previous]),
+    ).toBe(true)
+    expect(previous.suppressed).toBe(true)
+    expect(previous.type.schemaVersion).toBe(5)
+  })
+  it.each(["extension", "imported", "imported-mesh", "version", "missing"])(
+    "keeps lifecycle changes to %s targets outside the CAD grant",
+    (mode) => {
+      const review = input()
+      const addition = review.commands[0]
+      if (addition?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature.")
+      const previous = featureRecordSchema.parse({
+        ...addition.payload.feature,
+        type: {
+          ...addition.payload.feature.type,
+          ...(mode === "extension" ? { moduleId: "org.example.extension" } : {}),
+          ...(mode === "version" ? { schemaVersion: 99 } : {}),
+          ...(mode === "imported" || mode === "imported-mesh"
+            ? { typeId: `org.vibeshape.feature.part-design.${mode}` }
+            : {}),
+        },
+      })
+      for (const [kind, payload] of [
+        ["org.vibeshape.feature.remove", { featureId: previous.id }],
+        ["org.vibeshape.feature.set-suppressed", { featureId: previous.id, suppressed: false }],
+      ]) {
+        const command = documentCommandSchema.parse({ ...addition, kind, payload })
+        expect(
+          mayAutoApplyCadReview(
+            { ...review, commands: [command] },
+            actor,
+            mode === "missing" ? [] : [previous],
+          ),
+        ).toBe(false)
+      }
+    },
+  )
+  it("tracks removals and rejects unsupported command versions", () => {
+    const review = input()
+    const addition = review.commands[0]
+    if (addition?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature.")
+    const removal = documentCommandSchema.parse({
+      ...addition,
+      kind: "org.vibeshape.feature.remove",
+      payload: { featureId: addition.payload.feature.id },
+    })
+    expect(
+      mayAutoApplyCadReview({ ...review, commands: [addition, removal, addition] }, actor),
+    ).toBe(true)
+    expect(
+      mayAutoApplyCadReview({ ...review, commands: [addition, removal, removal] }, actor),
+    ).toBe(false)
+    expect(
+      mayAutoApplyCadReview(
+        { ...review, commands: [{ ...addition, schemaVersion: 99 } as unknown as typeof addition] },
+        actor,
+      ),
     ).toBe(false)
   })
 })

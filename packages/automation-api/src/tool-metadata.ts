@@ -245,7 +245,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   preview_draft:
     "Simulate retained draft commands against current document authority before evaluating exact CAD geometry. Invalid History or authored intent returns a bounded diagnostic naming the failing command and cause, without saving or opening Apply review. Successful geometry returns revision-tagged measurements and geometry.diagnostics for feature, sketch and reference failures. Repair failures before commit. This does not test disk quota or guarantee a later storage write.",
   commit_draft:
-    "Revalidate exact geometry, then wait for the person to Apply or Discard in the browser. A successful Apply persists once and creates one Undo entry. Allow up to six minutes; observe progress. Cancellation during persistence cannot undo an already accepted transaction.",
+    "Revalidate document authority and exact geometry, then save with the browser's explicit CAD auto-apply grant or wait for Apply/Discard. Local CAD review has no wall-clock deadline; keep the client request open and observe progress. A successful commit persists once and creates one Undo entry. Cancellation during persistence cannot undo an accepted transaction.",
   discard_draft: "Discard an owned disposable draft. This does not change the committed document.",
   export_model:
     "Export the paired committed revision as STEP, STL or 3MF (maximum 6 MiB). Returns a session-bound resource link, valid for five minutes. No filesystem path is accepted.",

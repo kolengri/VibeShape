@@ -338,9 +338,11 @@ Registered Box, Cylinder, Cone, Sphere, Torus and Pyramid primitives have named 
 tools with authored quantities and placement; legacy Box creation keeps its millimeter shorthand.
 Feature/sketch removal, explicit feature suppression and project rename use their existing
 registered domain commands in owned drafts. Dependencies block removal without cascading;
-all lifecycle changes require manual browser review even with CAD auto-apply enabled.
+supported CAD lifecycle changes use an existing explicit auto-apply grant; project rename retains
+manual browser review. Unknown, extension and import feature targets remain outside the CAD grant.
 They retain normal replay, Undo/Redo and persistence. See
-[ADR-0088](../adr/0088-named-primitive-and-lifecycle-mcp-commands.md).
+[ADR-0088](../adr/0088-named-primitive-and-lifecycle-mcp-commands.md) and
+[ADR-0099](../adr/0099-complete-session-cad-auto-apply.md).
 
 Extrusion v6 adds through-all, up-to-body, and planar up-to-face termination, signed start offset,
 and signed draft from the shifted sketch neutral plane. Add/Remove/Intersect select one exact
