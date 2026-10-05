@@ -698,6 +698,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchNavigateView,
     labelKey: "sketchNavigateView",
     ownerModuleId: sketchOwner,
+    shortcut: { key: "Space" },
     toolbarGroup: "sketch-view",
   },
   {

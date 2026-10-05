@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { Dialog, DialogContent } from "@vibeshape/ui/components/dialog"
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ResolvedEditorCommand } from "./editor-command"
 import { editorCommandEnabled, editorCommandIds } from "./editor-command"
@@ -111,12 +111,168 @@ function ShortcutHarness({
   )
 }
 
+function NavigationHoldHarness({
+  initiallyNavigating = false,
+  available = true,
+  paletteOpen = false,
+  onNavigation = vi.fn(),
+  onEditing = vi.fn(),
+  children,
+}: {
+  initiallyNavigating?: boolean
+  available?: boolean
+  paletteOpen?: boolean
+  onNavigation?: () => void
+  onEditing?: () => void
+  children?: ReactNode
+}) {
+  const [navigating, setNavigating] = useState(initiallyNavigating)
+  const navigation: ResolvedEditorCommand = {
+    ...lineCommand,
+    active: navigating,
+    descriptor: {
+      ...lineCommand.descriptor,
+      id: editorCommandIds.sketchNavigateView,
+      labelKey: "sketchNavigateView",
+      shortcut: { key: "Space" },
+    },
+    eligibility: available ? editorCommandEnabled() : { enabled: false, reason: "requiresSketch" },
+    invoke: () => {
+      onNavigation()
+      setNavigating(!navigating)
+    },
+  }
+  const editing: ResolvedEditorCommand = {
+    ...navigation,
+    descriptor: { ...navigation.descriptor, id: editorCommandIds.sketchOrbitView },
+    invoke: () => {
+      onEditing()
+      setNavigating(false)
+    },
+  }
+  return (
+    <ShortcutHarness commands={[navigation, editing]} paletteOpen={paletteOpen}>
+      <output aria-label="Navigation state">{navigating ? "navigation" : "editing"}</output>
+      {children}
+    </ShortcutHarness>
+  )
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
 describe("useEditorCommandShortcuts", () => {
+  it("holds Space for navigation, ignores repeat, and resumes editing once on release", () => {
+    const onNavigation = vi.fn(),
+      onEditing = vi.fn()
+    render(<NavigationHoldHarness onNavigation={onNavigation} onEditing={onEditing} />)
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    expect(screen.getByLabelText("Navigation state").textContent).toBe("navigation")
+    fireEvent.keyDown(document.body, { key: " ", code: "Space", repeat: true })
+    expect(onNavigation).toHaveBeenCalledOnce()
+    fireEvent.keyUp(document.body, { key: " ", code: "Space" })
+    fireEvent.keyUp(document.body, { key: " ", code: "Space" })
+    expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
+    expect(onEditing).toHaveBeenCalledOnce()
+  })
+
+  it("releases a held navigation mode when window focus is lost", () => {
+    const onEditing = vi.fn()
+    render(<NavigationHoldHarness onEditing={onEditing} />)
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    fireEvent.blur(window)
+    expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
+    fireEvent.keyUp(document.body, { key: " ", code: "Space" })
+    expect(onEditing).toHaveBeenCalledOnce()
+  })
+
+  it("preserves navigation explicitly enabled before the Space hold", () => {
+    const onNavigation = vi.fn(),
+      onEditing = vi.fn()
+    render(
+      <NavigationHoldHarness
+        initiallyNavigating
+        onNavigation={onNavigation}
+        onEditing={onEditing}
+      />,
+    )
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    fireEvent.keyUp(document.body, { key: " ", code: "Space" })
+    expect(screen.getByLabelText("Navigation state").textContent).toBe("navigation")
+    expect(onNavigation).not.toHaveBeenCalled()
+    expect(onEditing).not.toHaveBeenCalled()
+  })
+
+  it("leaves Space to text fields, native buttons and modified shortcuts", async () => {
+    const user = userEvent.setup()
+    const onNavigation = vi.fn(),
+      click = vi.fn()
+    render(
+      <NavigationHoldHarness onNavigation={onNavigation}>
+        <button type="button" onClick={click}>
+          Action
+        </button>
+      </NavigationHoldHarness>,
+    )
+    await user.click(screen.getByRole("textbox", { name: "Expression" }))
+    await user.keyboard(" ")
+    expect(screen.getByRole("textbox", { name: "Expression" })).toHaveProperty("value", " ")
+    screen.getByRole("button", { name: "Action" }).focus()
+    await user.keyboard(" ")
+    expect(click).toHaveBeenCalledOnce()
+    fireEvent.keyDown(document.body, { key: " ", code: "Space", ctrlKey: true })
+    expect(onNavigation).not.toHaveBeenCalled()
+  })
+
+  it("releases the hold before opening the command palette and cannot reopen a closed sketch", () => {
+    const onNavigation = vi.fn(),
+      onEditing = vi.fn()
+    const view = render(<NavigationHoldHarness onNavigation={onNavigation} onEditing={onEditing} />)
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    view.rerender(
+      <NavigationHoldHarness paletteOpen onNavigation={onNavigation} onEditing={onEditing} />,
+    )
+    expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
+    expect(onEditing).toHaveBeenCalledOnce()
+    fireEvent.keyUp(document.body, { key: " ", code: "Space" })
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    expect(onNavigation).toHaveBeenCalledOnce()
+    view.rerender(<NavigationHoldHarness onNavigation={onNavigation} onEditing={onEditing} />)
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    expect(onNavigation).toHaveBeenCalledTimes(2)
+    view.rerender(
+      <NavigationHoldHarness available={false} onNavigation={onNavigation} onEditing={onEditing} />,
+    )
+    fireEvent.keyUp(document.body, { key: " ", code: "Space" })
+    expect(onEditing).toHaveBeenCalledOnce()
+  })
+
+  it("does not capture Space inside a modal dialog", () => {
+    const onNavigation = vi.fn()
+    render(
+      <NavigationHoldHarness onNavigation={onNavigation}>
+        <div role="dialog" aria-modal="true" tabIndex={-1}>
+          Modal
+        </div>
+      </NavigationHoldHarness>,
+    )
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: " ", code: "Space" })
+    expect(onNavigation).not.toHaveBeenCalled()
+  })
+
+  it("releases a hold when the document becomes hidden", () => {
+    const onEditing = vi.fn()
+    render(<NavigationHoldHarness onEditing={onEditing} />)
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" })
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true)
+    fireEvent(document, new Event("visibilitychange"))
+    hidden.mockRestore()
+    expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
+    expect(onEditing).toHaveBeenCalledOnce()
+  })
+
   it("invokes a registered single-letter shortcut outside text input", async () => {
     const user = userEvent.setup()
     render(<ShortcutHarness />)

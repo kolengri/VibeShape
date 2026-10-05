@@ -1,6 +1,6 @@
 import type { ParsedHotkey } from "@tanstack/hotkeys"
 import { matchesKeyboardEvent, parseHotkey } from "@tanstack/hotkeys"
-import { useEffect, useRef } from "react"
+import { type RefObject, useEffect, useRef } from "react"
 import {
   type EditorCommandShortcut,
   editorCommandIds,
@@ -122,6 +122,82 @@ function invokeMatchingEditorCommand(
   command.invoke()
 }
 
+function isSpaceKey(event: KeyboardEvent) {
+  return event.code === "Space" || event.key === " "
+}
+
+function hasNativeSpaceTarget(event: KeyboardEvent) {
+  return (
+    hasTextInputTarget(event.target) ||
+    (event.target instanceof Element &&
+      event.target.closest(
+        'button, a[href], [role="button"], [role="combobox"], [role="menuitem"], [role="checkbox"], [role="switch"], [role="tab"]',
+      ) !== null)
+  )
+}
+
+function hasShortcutModifier(event: KeyboardEvent) {
+  return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+}
+
+function useSketchNavigationHold(
+  commands: RefObject<readonly ResolvedEditorCommand[]>,
+  enabled: boolean,
+) {
+  useEffect(() => {
+    if (!enabled) return
+    let held = false
+    const release = () => {
+      if (!held) return
+      held = false
+      const editing = commands.current.find(
+        ({ descriptor }) => descriptor.id === editorCommandIds.sketchOrbitView,
+      )
+      if (editing?.eligibility.enabled) editing.invoke()
+    }
+    const keyDown = (event: KeyboardEvent) => {
+      if (!isSpaceKey(event)) return
+      if (held) {
+        event.preventDefault()
+        return
+      }
+      if (
+        shouldIgnoreEditorShortcut(event) ||
+        hasNativeSpaceTarget(event) ||
+        isInsideModal(event) ||
+        hasShortcutModifier(event)
+      )
+        return
+      const navigation = commands.current.find(
+        ({ descriptor }) => descriptor.id === editorCommandIds.sketchNavigateView,
+      )
+      if (!navigation?.eligibility.enabled || navigation.active) return
+      event.preventDefault()
+      held = true
+      navigation.invoke()
+    }
+    const keyUp = (event: KeyboardEvent) => {
+      if (!held || !isSpaceKey(event)) return
+      event.preventDefault()
+      release()
+    }
+    const visibilityChange = () => {
+      if (document.hidden) release()
+    }
+    document.addEventListener("keydown", keyDown)
+    document.addEventListener("keyup", keyUp)
+    document.addEventListener("visibilitychange", visibilityChange)
+    window.addEventListener("blur", release)
+    return () => {
+      document.removeEventListener("keydown", keyDown)
+      document.removeEventListener("keyup", keyUp)
+      document.removeEventListener("visibilitychange", visibilityChange)
+      window.removeEventListener("blur", release)
+      release()
+    }
+  }, [commands, enabled])
+}
+
 export function useEditorCommandShortcuts({
   commands,
   paletteOpen,
@@ -139,9 +215,19 @@ export function useEditorCommandShortcuts({
 }) {
   const commandsRef = useRef(commands)
   commandsRef.current = commands
+  const navigationAvailable = commands.some(
+    ({ descriptor, eligibility }) =>
+      descriptor.id === editorCommandIds.sketchNavigateView && eligibility.enabled,
+  )
+  useSketchNavigationHold(
+    commandsRef,
+    navigationAvailable && !paletteOpen && !sketchShortcutToolbarOpen,
+  )
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Space has press/release ownership in the navigation hold, including native-control exclusions.
+      if (isSpaceKey(event)) return
       if (shouldIgnoreEditorShortcut(event) || isInsideModal(event)) return
       if (isPaletteShortcut(event)) {
         event.preventDefault()

@@ -117,6 +117,37 @@ async function inspectControlNavigation(page: Page, drawing: Locator, curveId: s
   await expectControlHandles(drawing, curveId)
 }
 
+async function inspectSpaceNavigation(page: Page, drawing: Locator, curveId: string) {
+  const rotate = page.getByRole("button", { name: "Rotate view", exact: true })
+  await drawing.focus()
+  await page.keyboard.down("Space")
+  await expect(rotate).toHaveAttribute("aria-pressed", "true")
+  await expect(drawing).not.toBeVisible()
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
+  const canvas = await viewport.locator("canvas").boundingBox()
+  if (!canvas) throw new Error("The navigation canvas must be visible during a Space hold.")
+  const start = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 }
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 25, start.y + 15, { steps: 6 })
+  // Releasing Space before the pointer must also return input ownership to the sketch.
+  await page.keyboard.up("Space")
+  await page.mouse.up()
+  await expect(rotate).toHaveAttribute("aria-pressed", "false")
+  await expect(drawing).toBeVisible()
+  await expectControlHandles(drawing, curveId)
+  await page.screenshot({ path: test.info().outputPath("bezier-space-release.png") })
+  const projection = drawing.locator("[data-sketch-plane-projection]")
+  const pose = await projection.getAttribute("transform")
+  await drawing.focus()
+  await page.keyboard.down("Space")
+  await expect(rotate).toHaveAttribute("aria-pressed", "true")
+  await page.keyboard.up("Space")
+  await expect(drawing).toBeVisible()
+  await expect(projection).toHaveAttribute("transform", pose ?? "")
+}
+
 test("creates a four-click cubic Spline, cancels previews, drags a control and retains identities through Undo and reopening", async ({
   page,
   browserName,
@@ -233,5 +264,6 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
   expect(await pointIds(drawing)).toEqual(capturedPointIds)
   await captureControlThemes(page, drawing, browserName)
   await inspectControlNavigation(page, drawing, capturedCurveId)
+  await inspectSpaceNavigation(page, drawing, capturedCurveId)
   expect(await pointIds(drawing)).toEqual(capturedPointIds)
 })

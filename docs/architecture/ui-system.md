@@ -213,6 +213,10 @@ command projections use the existing registered handler. Section parameters rema
 and render in a non-modal popover. The registered Rotate view toggle uses the transient `navigate` camera mode: the analytical overlay
 is inert, the current solved draft renders in the 3D viewer, and the canvas owns navigation without
 sketch reference picking. Selecting a sketch tool returns to orbit editing. Cleanup restores the canvas binding;
+Holding Space temporarily invokes the same registered navigation command; release returns to orbit
+editing in the resulting camera pose. Key repeat cannot toggle the mode, and blur, hidden-document
+and shortcut-scope cleanup release the hold. Text inputs, native controls, dialogs and the command
+palette retain Space ownership. An already enabled Rotate view toggle remains enabled after Space.
 primary pointer cancellation and release outside the canvas cannot leave navigation disabled.
 Explicit camera-up changes recreate OrbitControls to refresh its cached orbit axis, preserving the
 target, enabled state, input bindings, and current view before returning to modeling navigation.

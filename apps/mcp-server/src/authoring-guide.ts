@@ -66,6 +66,12 @@ limits, quantities, dependencies and repair; exact preview remains mandatory.
 
 Before writing, read the modeling skill's construction strategy. Prefer dimensioned analytical
 profiles, Extrude/Revolve for straight/rotational regions, and symmetry where the source supports it.
+Before creating sketch points, decide the symmetry axis and which half owns the dimensions.
+For a symmetric sketch, use a construction line and \`symmetric\` point-pair constraints, including
+Bezier control points; do not duplicate independent X/Y dimensions on the reflected half.
+Named Mirror tools reflect bodies. A sketch record accepted by \`create_sketch\`/\`update_sketch\`
+can express associative point symmetry without a named sketch Mirror tool. Follow the skill recipe
+and verify that a source-side dimension edit retains the intended solved closed profile.
 Use Shell for a constant-thickness interior; retain explicit inner profiles for variable thickness
 or protected mating geometry. A failed operation needs diagnosis before additional construction.
 Mirror plane-only inputs retain v1 replacement. Supplying offset and preserveSource selects v2;

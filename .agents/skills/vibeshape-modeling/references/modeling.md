@@ -10,6 +10,16 @@ Compare outer and inner sections before choosing Shell for a reconstruction. Use
 
 Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
 
+### Decide sketch symmetry before placing points
+
+Before creating a sketch, state whether the intended profile is symmetric, its axis and which half owns the dimensions. Use symmetry only when the source or requested design supports it; photographs alone do not establish a mating interface's symmetry. If independent halves are necessary, identify the asymmetric detail or demonstrated capability limitation before duplicating their dimensions.
+
+For a symmetric outline, dimension one half and add a stable construction line as the symmetry axis. Keep the reflected geometry associative with `symmetric` constraints linking corresponding point pairs to that line. Include both cubic Bezier control points as well as endpoints, since symmetric endpoints alone do not make a symmetric curve. Reuse points on the axis or constrain them to it, and retain a closed connected profile. Do not also give the reflected points independent X/Y dimensions that duplicate the symmetry equations. The reflected half still contains point and curve entities; its positions are derived rather than independently dimensioned.
+
+The editor's sketch Mirror creates reflected entities with symmetry constraints. Named MCP `create_mirror` and `create_reference_mirror` operate on bodies, not sketch entities. When a named sketch Mirror is absent, inspect the live `create_sketch`/`update_sketch` schema: a complete sketch record accepting `symmetric` can express the same point relationships. Use a body Mirror only when the feature plan calls for a reflected solid. A missing convenience tool is not evidence that associative sketch symmetry is unavailable.
+
+Inspect the solved profile and editability before committing: changing a source-side dimension must update its paired points and Bezier controls while preserving the intended single closed profile. For an existing model, read constraints and dependent features first; replacing duplicate dimensions with symmetry is a separate authorized CAD edit, not an automatic instruction upgrade.
+
 
 Choose one model coordinate frame before authoring: identify the origin, principal axes, symmetry planes and feature offsets. Prefer centering a new standalone part about an appropriate origin or symmetry axis unless the user requires another frame. For a reconstruction, preserve the source frame only when alignment, mating or another acceptance requirement depends on it; matching an arbitrary mesh bounding-box minimum is not itself a reason to translate every body.
 

@@ -43,6 +43,7 @@ it("publishes modeling and reference shortcuts on the shared descriptors", () =>
     sketchUse: { key: "u" },
     sketchMirror: { key: "i" },
     sketchNormalView: { key: "n" },
+    sketchNavigateView: { key: "Space" },
     sketchOrbitView: { key: "n", modifiers: ["shift"] },
   })
 })
