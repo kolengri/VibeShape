@@ -142,3 +142,27 @@ for (const command of ["Extrude", "Revolve"] as const) {
     await expectRotation(page, canvas, "middle")
   })
 }
+
+for (const exit of ["Cancel", "Escape", "Finish sketch"] as const) {
+  test(`restores camera rotation after reopening a History sketch and ${exit}`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await createProfile(page)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    if (exit === "Escape") await page.keyboard.press("Escape")
+    else await page.getByRole("button", { name: exit, exact: true }).click()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
+    const canvas = page.getByRole("region", { name: "3D viewport" }).locator("canvas")
+    await expectRotation(page, canvas)
+    await expectRotation(page, canvas, "middle")
+    await expect(page.getByRole("img", { name: "Solved sketch geometry" })).toHaveCount(0)
+  })
+}

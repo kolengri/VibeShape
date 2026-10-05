@@ -402,6 +402,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
               state.sketch.showFinalContext = activeSketchTool.returnTo.showFinalContext
               return
             }
+            if (activeSketchTool) state.workspace = "model"
             closeSketch(state.sketch)
           }),
         completeActiveTool: (generation) =>

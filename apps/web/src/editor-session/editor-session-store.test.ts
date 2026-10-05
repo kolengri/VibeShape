@@ -642,6 +642,34 @@ describe("editor session store", () => {
     })
   })
 
+  it.each(["normal", "orbit"] as const)(
+    "returns to modeling when canceling a saved sketch in %s view",
+    (mode) => {
+      const store = createEditorSessionStore()
+      const sketch = createSketch()
+      const { actions } = store.getState()
+      actions.beginSketchEdit(sketch)
+      actions.setSketchCameraMode(mode)
+      actions.closeActiveTool()
+      expect(store.getState()).toMatchObject({
+        workspace: "model",
+        sketch: { activeSketchId: sketch.id, activeSketchTool: null, draft: null },
+      })
+    },
+  )
+
+  it("returns to modeling and clears a canceled new sketch", () => {
+    const store = createEditorSessionStore()
+    const { actions } = store.getState()
+    actions.beginSketchCreate(createSketch())
+    actions.selectSketchPlane("xy")
+    actions.closeActiveTool()
+    expect(store.getState()).toMatchObject({
+      workspace: "model",
+      sketch: { activeSketchId: null, activeSketchTool: null, draft: null },
+    })
+  })
+
   it("starts each sketch session in the current view after an explicit normal command", () => {
     const store = createEditorSessionStore()
     const first = createSketch("First")
