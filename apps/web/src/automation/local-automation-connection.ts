@@ -89,6 +89,8 @@ export function createLocalAutomationConnection() {
   let connecting = false
   let disposed = false
   let restoreTimer: ReturnType<typeof setTimeout> | null = null
+  let statusTimer: ReturnType<typeof setTimeout> | null = null
+  let statusRequest: Promise<void> | null = null
   const listeners = new Set<() => void>()
   function publish(next: Snapshot) {
     snapshot = next
@@ -228,7 +230,7 @@ export function createLocalAutomationConnection() {
       }),
     )
   }
-  async function status() {
+  async function readStatus() {
     if (disposed || !document.querySelector('meta[name="vibeshape-local-automation"][content="1"]'))
       return
     const at = generation
@@ -242,6 +244,29 @@ export function createLocalAutomationConnection() {
         publish({ ...snapshot, available: false, recovering: readResume() !== null })
       if (readResume()) retryRestore()
     }
+  }
+  async function status() {
+    if (statusRequest) return statusRequest
+    const request = readStatus()
+    statusRequest = request
+    try {
+      await request
+    } finally {
+      if (statusRequest === request) statusRequest = null
+    }
+  }
+  function scheduleStatus() {
+    if (
+      disposed ||
+      statusTimer ||
+      !document.querySelector('meta[name="vibeshape-local-automation"][content="1"]')
+    )
+      return
+    statusTimer = setTimeout(async () => {
+      statusTimer = null
+      if (!pair && !connecting) await status()
+      scheduleStatus()
+    }, 1000)
   }
   function publishBridgeStatus(value: z.infer<typeof localStatusSchema>) {
     const saved = readResume()
@@ -685,6 +710,7 @@ export function createLocalAutomationConnection() {
       window.addEventListener("beforeunload", onBeforeUnload)
       window.addEventListener("pagehide", onPageHide)
       window.addEventListener("pageshow", onPageShow)
+      scheduleStatus()
     },
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
@@ -695,6 +721,9 @@ export function createLocalAutomationConnection() {
       if (disposed) return
       onPageHide()
       disposed = true
+      if (statusTimer) clearTimeout(statusTimer)
+      statusTimer = null
+      statusRequest = null
       window.removeEventListener("beforeunload", onBeforeUnload)
       window.removeEventListener("pagehide", onPageHide)
       window.removeEventListener("pageshow", onPageShow)

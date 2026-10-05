@@ -126,6 +126,43 @@ function deliverProjectChange(projectId: string = "0195b5ac-b250-7a2c-8c33-00000
     return original?.(path, ...args)
   })
 }
+describe("unpaired local client discovery", () => {
+  it("discovers a client that starts after the editor without granting access", async () => {
+    mocks.request.mockResolvedValueOnce(ok({ protocolVersion: 1, client: null, paired: false }))
+    await ready()
+    expect(connection.getSnapshot()).toMatchObject({ available: true, client: null })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ client, connected: false })
+    expect(mocks.createHandle).not.toHaveBeenCalled()
+    mocks.request.mockResolvedValueOnce(ok({ protocolVersion: 1, client: null, paired: false }))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().client).toBeNull()
+  })
+
+  it("coalesces slow status reads and stops discovery on disposal", async () => {
+    const pending = deferred<ReturnType<typeof ok>>()
+    mocks.request.mockReturnValueOnce(pending.promise)
+    connection.start()
+    const initial = connection.status()
+    const repeated = connection.status()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+    pending.resolve(ok({ protocolVersion: 1, client, paired: false }))
+    await Promise.all([initial, repeated])
+    connection.dispose()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not add status requests to an already paired session", async () => {
+    await ready()
+    await connection.enable()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/status")).toHaveLength(1)
+    expect(connection.getSnapshot().connected).toBe(true)
+  })
+})
+
 describe("local AI project management consent", () => {
   it("requires an idle explicit grant and clears it across recovery and Stop", async () => {
     await ready()

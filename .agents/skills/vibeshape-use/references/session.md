@@ -17,6 +17,10 @@ Discover tools and read `vibeshape://session` and `vibeshape://authoring-guide`,
 editor URL and have the person choose **AI access** (accessible name **Enable AI session**) as for local stdio. Named tools and review
 rules are identical. GET `/mcp` returns 405; use POST, including its SSE progress responses.
 
+An unpaired editor refreshes client discovery automatically. If the MCP client starts after the tab
+opens, **AI access** becomes enabled without a page reload. This only discovers the client; the person
+must still enable access to the intended project. Client disconnection disables the unpaired control.
+
 One initialized HTTP client owns this development bridge. HTTP 409 on a new initialization means
 the existing client must terminate its session with DELETE, or the developer must restart `dev`.
 HTTP session termination revokes browser authority. A development server restart requires new MCP
