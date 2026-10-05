@@ -181,7 +181,7 @@ test("authors registered primitive geometry and review-bound lifecycle changes t
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     draft = success(
       localToolOutputs.create_draft.parse(
         await call("create_draft", { baseRevision: fixtureCommit.revision }),
@@ -254,6 +254,9 @@ test("authors registered primitive geometry and review-bound lifecycle changes t
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
     await expect

@@ -1,6 +1,7 @@
 # ADR-0088: Named Primitive and Lifecycle MCP Commands
 
 - Status: Accepted
+- CAD lifecycle review restrictions superseded by [ADR-0099](0099-complete-session-cad-auto-apply.md); project rename remains manually reviewed.
 - Date: 2026-10-04
 - Related: [ADR-0013](0013-microkernel-modules-and-mcp-automation.md)
 

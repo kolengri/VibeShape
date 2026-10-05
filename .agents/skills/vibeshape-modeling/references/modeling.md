@@ -37,9 +37,10 @@ preserve its identity and raw expressions. The live schemas define bounds and re
 Torus requires major radius greater than minor radius; Pyramid takes 3–64 integer sides and a
 circumradius. Wedge and truncated Cone are not registered primitive contracts.
 
-Inspect exact preview volume, bounds and body count before commit. Existing CAD auto-apply
-eligibility is unchanged: a valid matching grant can cover Box/Cylinder v1 ordinary edits;
-the other primitive families require manual browser review.
+Inspect exact preview volume, bounds and body count before commit. A valid matching CAD auto-apply
+grant covers all shipped first-party primitive families and supported feature versions, including
+Extrusion v6/v7, Mirror and Shell. Unsupported versions, extensions and import feature targets
+remain outside the grant.
 
 ## Feature and sketch lifecycle
 
@@ -53,8 +54,9 @@ Suppression can block downstream geometry; exact preview exposes that failure an
 before Apply. `rename_project` stages the registered document rename with a normalized nonempty
 name of at most 120 characters. It preserves feature/sketch IDs and geometry.
 
-All four lifecycle tools use fresh command IDs and the current owned draft revision. They always
-require ordinary manual browser review, including with CAD auto-apply enabled. Stage a coherent
+All four lifecycle tools use fresh command IDs and the current owned draft revision. Supported CAD
+removal and suppression use an existing auto-apply grant; `rename_project` retains manual browser
+review. Stage a coherent
 edit, run exact preview, then `commit_draft`; the accepted transaction persists once and creates
 one normal Undo entry. Reuse the returned revision and inspect affected intent after Apply.
 These lifecycle tools stage authored changes; they do not navigate saved-change History or execute generic commands. For committed Undo/Redo, follow the [organization workflow](../../vibeshape-organization/SKILL.md).

@@ -1,6 +1,7 @@
 # ADR-0094: Exact extrusion to a finite curved face
 
 - Status: Accepted
+- Session auto-apply exclusion superseded by [ADR-0099](0099-complete-session-cad-auto-apply.md).
 - Date: 2026-10-04
 - Extends: [ADR-0078](0078-extrusion-end-conditions-and-fastener-recesses.md)
 

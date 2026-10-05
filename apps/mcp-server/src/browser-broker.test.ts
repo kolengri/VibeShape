@@ -932,6 +932,105 @@ describe("browser automation broker", () => {
     ).toBe(200)
   })
 
+  it("keeps a live CAD commit pending beyond the operation timeout and still honors revocation", async () => {
+    vi.useFakeTimers()
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const pending = broker.invoke(
+      localOperationSchema.parse({
+        tool: "commit_draft",
+        arguments: { draftId: document.id },
+      }),
+    )
+    const settled = vi.fn()
+    void pending.then(settled)
+    let requestId = ""
+    for (let sequence = 1; sequence <= 43; sequence += 1) {
+      const poll = await broker.handle(
+        request(
+          "poll",
+          {
+            protocolVersion: 1,
+            sequence,
+            document,
+            progress: requestId ? { requestId, stage: "review" } : null,
+          },
+          token,
+        ),
+      )
+      expect(poll.status).toBe(200)
+      const body = (await poll.json()) as { work: { requestId: string } | null }
+      if (body.work) requestId = body.work.requestId
+      await vi.advanceTimersByTimeAsync(10_000)
+    }
+    expect(broker.isPaired()).toBe(true)
+    expect(settled).not.toHaveBeenCalled()
+    const result = {
+      ok: false,
+      diagnostic: {
+        code: "draft-review-rejected",
+        message: "Discarded",
+        retryable: false,
+      },
+    }
+    expect(
+      (
+        await broker.handle(
+          request(
+            "result",
+            {
+              protocolVersion: 1,
+              requestId,
+              tool: "commit_draft",
+              result,
+            },
+            token,
+          ),
+        )
+      ).status,
+    ).toBe(200)
+    await expect(pending).resolves.toEqual(result)
+    const next = broker.invoke(
+      localOperationSchema.parse({ tool: "commit_draft", arguments: { draftId: document.id } }),
+    )
+    broker.revoke()
+    await expect(next).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-revoked" },
+    })
+  })
+
+  it("retains bounded execution for other live local operations", async () => {
+    vi.useFakeTimers()
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const pending = broker.invoke({ tool: "model_info", arguments: {} })
+    for (let sequence = 1; sequence <= 36; sequence += 1) {
+      expect(
+        (
+          await broker.handle(
+            request(
+              "poll",
+              {
+                protocolVersion: 1,
+                sequence,
+                document,
+                progress: null,
+              },
+              token,
+            ),
+          )
+        ).status,
+      ).toBe(200)
+      await vi.advanceTimersByTimeAsync(10_000)
+    }
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "outcome-unknown" },
+    })
+    expect(broker.isPaired()).toBe(false)
+  })
+
   it("expires an idle pair and an absolute TTL through its timers", async () => {
     vi.useFakeTimers()
     let clock = 1_000

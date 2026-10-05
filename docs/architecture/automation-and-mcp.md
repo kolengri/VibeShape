@@ -93,8 +93,8 @@ MCP endpoint by itself. The local adapter now pairs it explicitly and exposes na
 [ADR-0048](../adr/0048-sketch-point-holes.md), and constituent body measurements in
 [ADR-0050](../adr/0050-constituent-body-measurements.md).
 Commit requires host-owned browser review by default. An explicit, browser-owned grant may auto-apply
-allowlisted valid CAD edits only in the current paired session; see
-[ADR-0052](../adr/0052-session-cad-auto-apply.md). Stop AI revokes that session immediately.
+supported first-party CAD edits only in the current paired session; see
+[ADR-0099](../adr/0099-complete-session-cad-auto-apply.md). Stop AI revokes that session immediately.
 All geometry, revision, expiry, persistence, and Undo checks remain mandatory. See
 [ADR-0042](../adr/0042-exact-automation-draft-application-path.md) and the exact transport scope in
 [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md).
@@ -312,13 +312,20 @@ owned draft. Expiry, a changed document, or session closure cancels a pending re
 bounded message that can be dismissed. A request-specific UI identity prevents an old button from
 approving a later review. Only one session can own the confirmation surface at a time.
 
-An idle paired user may explicitly opt in to the session CAD allowlist in ADR-0052. The browser
+An idle paired user may explicitly opt in to the supported first-party CAD scope in
+[ADR-0099](../adr/0099-complete-session-cad-auto-apply.md), including feature/sketch/variable lifecycle
+edits and removal, supported schema upgrades and all shipped CAD feature versions. Import features,
+metadata and separate review services retain their existing manual-review contracts. The browser
 then approves qualifying valid drafts through the same review port, with a persistent Auto-apply on
 indicator and Stop AI control. An existing review cannot acquire this grant retroactively. All
 other drafts keep the review surface above; explicit Stop AI, project/client replacement or lease expiry resets the local grant. Temporary local interruption and reload preserve the latest explicitly chosen approval mode. Remote disconnect recovery retains its separate consent rules. The
 bottom status bar exposes neutral connection and Stop AI controls plus an approval-mode menu.
 Returning an idle session to manual review clears its browser-owned grant without revoking pairing;
 active operations or reviews block that change. No MCP tool can change either approval mode.
+
+Local `commit_draft` has no absolute broker execution deadline while its browser remains live and
+authorized. Heartbeats, cancellation, revocation and credential/approval expiry remain enforced;
+other local operations retain their bounded execution deadline.
 
 Once the ordinary atomic persistence operation has started, cancellation is not a rollback request.
 The editor keeps action controls locked while it completes. Unexpected persistence failures remain

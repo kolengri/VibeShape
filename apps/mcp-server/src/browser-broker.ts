@@ -80,7 +80,7 @@ type Pending = {
   id: string
   operation: LocalOperation
   resolve: (result: LocalToolResult) => void
-  timer: ReturnType<typeof setTimeout>
+  timer: ReturnType<typeof setTimeout> | null
   delivered: boolean
   progress?: Progress
   abortCleanup?: () => void
@@ -546,7 +546,7 @@ export function createBrowserBroker({
   }
 
   function clearPending(record: Pending, result: LocalToolResult) {
-    clearTimeout(record.timer)
+    if (record.timer !== null) clearTimeout(record.timer)
     record.abortCleanup?.()
     record.resolve(result)
   }
@@ -931,11 +931,15 @@ export function createBrowserBroker({
   ) {
     return new Promise<LocalToolResult>((resolve) => {
       const id = randomUUID()
-      const timer = setTimeout(() => {
-        if (pair?.pending?.id === id) suspendBackground(pair)
-      }, OPERATION_TTL)
+      // CAD review has no wall-clock deadline; disconnect and revocation still cancel it.
+      const timer =
+        operation.tool === "commit_draft"
+          ? null
+          : setTimeout(() => {
+              if (pair?.pending?.id === id) suspendBackground(pair)
+            }, OPERATION_TTL)
       if (options.signal?.aborted) {
-        clearTimeout(timer)
+        if (timer !== null) clearTimeout(timer)
         resolve(failure("session-revoked", "The local automation session was revoked."))
         return
       }

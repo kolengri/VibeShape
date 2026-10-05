@@ -58,7 +58,7 @@
 
 | [0060](0060-persisted-body-bound-shell-openings.md) | Accepted | Persisted exact-body Shell opening references with explicit repair and owned native offset geometry |
 
-| [0052](0052-session-cad-auto-apply.md) | Accepted | Browser-owned session CAD auto-apply |
+| [0052](0052-session-cad-auto-apply.md) | Accepted, eligibility superseded by 0099 | Browser-owned session CAD auto-apply |
 | [0053](0053-independent-extrusion-depths.md) | Accepted | Independent extrusion depths |
 | [0054](0054-authored-parts-and-organizational-history-folders.md) | Accepted | Authored parts and organizational History folders |
 | [0055](0055-trusted-exact-body-placement.md) | Accepted | Trusted exact-body Placement |
@@ -104,6 +104,8 @@
 | [0096](0096-development-http-mcp.md) | Accepted | Development HTTP MCP sharing the Vite editor origin |
 | [0097](0097-mcp-project-management.md) | Accepted | Browser-owned MCP project management |
 | [0098](0098-cad-review-without-deadline.md) | Accepted | CAD review without a deadline |
+
+| [0099](0099-complete-session-cad-auto-apply.md) | Accepted | Complete session CAD auto-apply and live local commits |
 
 Statuses:
 
