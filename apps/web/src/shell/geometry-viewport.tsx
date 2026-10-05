@@ -1,5 +1,10 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
-import { readDatumPlaneFeatureParameters, type SketchProfileSelector } from "@vibeshape/domain"
+import {
+  readDatumPlaneFeatureParameters,
+  type SketchEntity,
+  type SketchProfileSelector,
+  type SketchRecord,
+} from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { PrinterProfile } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
@@ -178,7 +183,12 @@ export function viewerSketches(
           sketch.constructionPointPositions.length > 0 ||
           sketch.profiles.length > 0),
     )
-    .map(viewerSketchDisplay)
+    .map((display) =>
+      viewerSketchDisplay(
+        display,
+        controller.report?.snapshot.sketches.find(({ id }) => id === display.sketchId),
+      ),
+    )
 }
 
 type SketchDisplayProfileLoop = SketchDisplayRecord["profiles"][number]["outerLoop"]
@@ -202,9 +212,49 @@ function viewerProfileLoopPositions(loop: SketchDisplayProfileLoop) {
   return new Float32Array(points.flat())
 }
 
-export function viewerSketchDisplay(sketch: SketchDisplayRecord): ViewerSketch {
+function solvedBezierPoles(
+  curve: Extract<SketchEntity, { type: "cubic-bezier" }>,
+  points: ReadonlyMap<string, readonly number[]>,
+) {
+  const start = points.get(curve.startPointId)
+  const end = points.get(curve.endPointId)
+  const control1 = points.get(curve.control1PointId)
+  const control2 = points.get(curve.control2PointId)
+  return start && end && control1 && control2 ? { start, end, control1, control2 } : null
+}
+
+function viewerSketchControls(
+  display: SketchDisplayRecord,
+  authored: Pick<SketchRecord, "id" | "entities"> | null | undefined,
+): Pick<ViewerSketch, "controlPointPositions" | "controlHandlePositions"> {
+  if (!authored || authored.id !== display.sketchId || !display.solvedPoints) return {}
+  const points = new Map(display.solvedPoints.map(({ entityId, position }) => [entityId, position]))
+  const controls = new Map<string, readonly number[]>()
+  const handles: number[] = []
+  for (const curve of authored.entities) {
+    if (curve.type !== "cubic-bezier") continue
+    const poles = solvedBezierPoles(curve, points)
+    if (!poles) continue
+    const { start, end, control1, control2 } = poles
+    controls.set(curve.control1PointId, control1)
+    controls.set(curve.control2PointId, control2)
+    handles.push(...start, ...control1, ...end, ...control2)
+  }
+  return controls.size > 0
+    ? {
+        controlPointPositions: new Float32Array([...controls.values()].flat()),
+        controlHandlePositions: new Float32Array(handles),
+      }
+    : {}
+}
+
+export function viewerSketchDisplay(
+  sketch: SketchDisplayRecord,
+  authored?: Pick<SketchRecord, "id" | "entities"> | null,
+): ViewerSketch {
   return {
     ...sketch,
+    ...viewerSketchControls(sketch, authored),
     profiles: sketch.profiles.flatMap((profile) => {
       const outerPositions = viewerProfileLoopPositions(profile.outerLoop)
       const holePositions = profile.holeLoops.map(viewerProfileLoopPositions)

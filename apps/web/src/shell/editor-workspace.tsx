@@ -705,7 +705,7 @@ function modelingSketchContextProps(
 > {
   return {
     ...(activeSketchDisplay
-      ? { activeSketchDisplay: viewerSketchDisplay(activeSketchDisplay) }
+      ? { activeSketchDisplay: viewerSketchDisplay(activeSketchDisplay, sketch.draft) }
       : {}),
     ...(sketchContext ? { sketchContext } : {}),
     ...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft

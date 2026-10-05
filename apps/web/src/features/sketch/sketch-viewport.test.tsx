@@ -5665,6 +5665,21 @@ describe("SketchViewport", () => {
     expect(handles[1]?.getAttribute("data-sketch-handle-anchor-id")).toBe(cubic.endPointId)
     expect(handles[1]?.getAttribute("data-sketch-handle-control-id")).toBe(cubic.control2PointId)
     expect(onDraftChange).toHaveBeenCalledOnce()
+    view.rerender(
+      viewportElement({
+        draft: placed,
+        editorTool: "select",
+        interactive: false,
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    expect(document.querySelectorAll('[data-sketch-point-role="bezier-control"]')).toHaveLength(2)
+    expect(
+      document.querySelectorAll(`[data-sketch-bezier-handles="${cubic.id}"] line`),
+    ).toHaveLength(2)
+    expect(onDraftChange).toHaveBeenCalledOnce()
   })
 
   it("cancels a partial cubic preview with Escape without publishing a draft", () => {

@@ -2076,7 +2076,7 @@ function SketchGeometry({
           points={presentation.pointsById}
           preselected={preselectedEntityId === entity.id}
           selected={selectedIds.has(entity.id)}
-          showControls={editable}
+          showControls
           solvedRadius={presentation.solvedCircles.get(entity.id)}
           onPointerDown={geometryPointerDown}
         />

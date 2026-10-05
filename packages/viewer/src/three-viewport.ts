@@ -5,6 +5,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DataTexture,
   DirectionalLight,
   DoubleSide,
   EdgesGeometry,
@@ -133,6 +134,8 @@ export type ViewerSketch = Readonly<{
   constructionCurvePositions: Float32Array
   pointPositions: Float32Array
   constructionPointPositions: Float32Array
+  controlPointPositions?: Float32Array
+  controlHandlePositions?: Float32Array
 }>
 
 /** Durable profile identity; boundary entity ordering is part of the selector contract. */
@@ -955,6 +958,24 @@ function setCameraFrustum(camera: OrthographicCamera, viewHeight: number, aspect
   camera.updateProjectionMatrix()
 }
 
+function sketchPointMask(shape: "circle" | "diamond") {
+  const size = 32
+  const data = new Uint8Array(size * size * 4)
+  for (let row = 0; row < size; row += 1) {
+    for (let column = 0; column < size; column += 1) {
+      const x = (2 * (column + 0.5)) / size - 1
+      const y = (2 * (row + 0.5)) / size - 1
+      const inside = shape === "diamond" ? Math.abs(x) + Math.abs(y) <= 1 : x * x + y * y <= 1
+      const offset = (row * size + column) * 4
+      data.fill(inside ? 255 : 0, offset, offset + 3)
+      data[offset + 3] = 255
+    }
+  }
+  const texture = new DataTexture(data, size, size)
+  texture.needsUpdate = true
+  return texture
+}
+
 function disposeModelGroup(group: Group) {
   for (const child of [...group.children]) {
     group.remove(child)
@@ -1217,17 +1238,41 @@ class ThreeGeometryViewport implements GeometryViewport {
     transparent: true,
     opacity: 0.55,
   })
+  readonly #sketchVertexMask = sketchPointMask("circle")
+  readonly #sketchControlMask = sketchPointMask("diamond")
+  readonly #sketchControlHandleMaterial = new LineDashedMaterial({
+    color: new Color("#65a9ee"),
+    dashSize: 0.7,
+    gapSize: 0.5,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.65,
+  })
+  readonly #sketchControlPointMaterial = new PointsMaterial({
+    color: new Color("#65a9ee"),
+    alphaMap: this.#sketchControlMask,
+    alphaTest: 0.5,
+    depthTest: false,
+    depthWrite: false,
+    size: 10,
+    sizeAttenuation: false,
+  })
   readonly #sketchPointMaterial = new PointsMaterial({
     color: new Color("#d7ebff"),
+    alphaMap: this.#sketchVertexMask,
+    alphaTest: 0.5,
     depthTest: false,
-    size: 3,
+    size: 5,
     sizeAttenuation: false,
   })
   readonly #sketchConstructionPointMaterial = new PointsMaterial({
     color: new Color("#65a9ee"),
+    alphaMap: this.#sketchVertexMask,
+    alphaTest: 0.5,
     depthTest: false,
     opacity: 0.55,
-    size: 2,
+    size: 4,
     sizeAttenuation: false,
     transparent: true,
   })
@@ -1757,6 +1802,7 @@ class ThreeGeometryViewport implements GeometryViewport {
         sketch.constructionPointPositions,
         this.#sketchConstructionPointMaterial,
       )
+      this.#addSketchControls(sketch)
       if (sketch.frame && sketch.profiles) {
         for (const profile of sketch.profiles) {
           const geometry = createViewerSketchProfileGeometry(profile, sketch.frame)
@@ -2201,6 +2247,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchConstructionCurveMaterial.dispose()
     this.#sketchPointMaterial.dispose()
     this.#sketchConstructionPointMaterial.dispose()
+    this.#sketchControlHandleMaterial.dispose()
+    this.#sketchControlPointMaterial.dispose()
+    this.#sketchVertexMask.dispose()
+    this.#sketchControlMask.dispose()
     this.#sketchPointCandidateMaterial.dispose()
     this.#sketchPointPreselectionMaterial.dispose()
     this.#sketchLineCandidateMaterial.dispose()
@@ -2774,6 +2824,27 @@ class ThreeGeometryViewport implements GeometryViewport {
     return material
   }
 
+  #addSketchControls(sketch: ViewerSketch) {
+    if (sketch.controlHandlePositions) {
+      this.#addSketchLines(
+        sketch.sketchId,
+        "control-handles",
+        sketch.controlHandlePositions,
+        this.#sketchControlHandleMaterial,
+        true,
+      )
+    }
+    if (sketch.controlPointPositions) {
+      this.#addSketchPoints(
+        sketch.sketchId,
+        "control-points",
+        sketch.controlPointPositions,
+        this.#sketchControlPointMaterial,
+        6,
+      )
+    }
+  }
+
   #addSketchLines(
     sketchId: string,
     kind: string,
@@ -2794,11 +2865,12 @@ class ThreeGeometryViewport implements GeometryViewport {
     kind: string,
     positions: Float32Array,
     material: PointsMaterial,
+    renderOrder = 5,
   ) {
     if (positions.length === 0) return
     const points = new Points(createViewerSketchGeometry(positions), material)
     points.name = `sketch:${sketchId}:${kind}`
-    points.renderOrder = 5
+    points.renderOrder = renderOrder
     this.#sketchGroup.add(points)
   }
 

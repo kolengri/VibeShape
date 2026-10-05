@@ -95,6 +95,28 @@ async function captureControlThemes(page: Page, drawing: Locator, browserName: s
   }
 }
 
+async function inspectControlNavigation(page: Page, drawing: Locator, curveId: string) {
+  const rotate = page.getByRole("button", { name: "Rotate view", exact: true })
+  await rotate.click()
+  await expect(rotate).toHaveAttribute("aria-pressed", "true")
+  await expect(drawing).not.toBeVisible()
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
+  await page.screenshot({ path: test.info().outputPath("bezier-navigation-planar.png") })
+  const canvas = await viewport.locator("canvas").boundingBox()
+  if (!canvas) throw new Error("The navigation canvas must be visible.")
+  const start = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 }
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 80, start.y + 50, { steps: 8 })
+  await page.mouse.up()
+  await page.screenshot({ path: test.info().outputPath("bezier-navigation-oblique.png") })
+  await rotate.click()
+  await expect(rotate).toHaveAttribute("aria-pressed", "false")
+  await expect(drawing).toBeVisible()
+  await expectControlHandles(drawing, curveId)
+}
+
 test("creates a four-click cubic Spline, cancels previews, drags a control and retains identities through Undo and reopening", async ({
   page,
   browserName,
@@ -194,6 +216,11 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
   })
+  await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
+    "data-rendered-sketch-count",
+    "1",
+  )
+  await page.screenshot({ path: test.info().outputPath("bezier-saved-preview.png") })
   await page.reload()
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
@@ -205,4 +232,6 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
   await expectControlHandles(drawing, capturedCurveId)
   expect(await pointIds(drawing)).toEqual(capturedPointIds)
   await captureControlThemes(page, drawing, browserName)
+  await inspectControlNavigation(page, drawing, capturedCurveId)
+  expect(await pointIds(drawing)).toEqual(capturedPointIds)
 })

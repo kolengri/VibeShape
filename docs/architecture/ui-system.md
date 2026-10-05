@@ -193,6 +193,11 @@ Cubic Bezier control points use diamond markers, while curve endpoints retain ci
 Each control has a thin dashed handle to its corresponding curve endpoint. The handles share the
 analytical curve projection and update with the transient drag overlay; they do not accept pointer
 input or add construction geometry, constraints, or document edits.
+Saved sketch previews and camera navigation retain the same control roles and endpoint handles.
+The web adapter derives their world coordinates from the current display's solved point identities;
+the viewer owns disposable handle buffers and constant-screen-size circle/diamond point sprites.
+Missing solved metadata does not fall back to unsolved authored coordinates. No worker or document
+schema change is needed for this presentation.
 
 Horizontal and vertical dimensions against a fixed construction origin retain their authored formula
 labels and use stable screen-space offsets beside the measured point, with visible direct leaders.

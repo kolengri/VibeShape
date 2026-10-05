@@ -11,6 +11,7 @@ import {
   type SketchProfileSelector,
   sketchEntityIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -1012,6 +1013,70 @@ describe("GeometryViewport", () => {
 
     expect(withActiveSketchDisplay([committedDisplay], activeDisplay)).toEqual([activeDisplay])
     expect(withActiveSketchDisplay([committedDisplay], null)).toEqual([committedDisplay])
+  })
+
+  it("uses solved world coordinates for Bezier handles in saved and active previews", () => {
+    const pointIds = profileBoundaryIds
+    const authored = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchDisplay.sketchId,
+      label: "Spline",
+      plane: "xz",
+      entities: [
+        ...pointIds.map((id, index) => ({
+          schemaVersion: 0,
+          id,
+          type: "point",
+          x: index,
+          y: index,
+        })),
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2615",
+          type: "cubic-bezier",
+          startPointId: pointIds[0],
+          control1PointId: pointIds[1],
+          control2PointId: pointIds[2],
+          endPointId: pointIds[3],
+        },
+      ],
+      constraints: [],
+    })
+    const solved: SketchDisplayRecord = {
+      ...sketchDisplay,
+      solvedPoints: pointIds.map((entityId, index) => ({
+        entityId,
+        position: [10 + index, 20, 30 + index],
+      })),
+    }
+    const expectedControls = new Float32Array([11, 20, 31, 12, 20, 32])
+    const expectedHandles = new Float32Array([10, 20, 30, 11, 20, 31, 13, 20, 33, 12, 20, 32])
+    const active = viewerSketchDisplay(solved, authored)
+    expect(active.controlPointPositions).toEqual(expectedControls)
+    expect(active.controlHandlePositions).toEqual(expectedHandles)
+    expect(active.curvePositions).toBe(solved.curvePositions)
+    expect(active.pointPositions).toBe(solved.pointPositions)
+    const controller = readyController([], [], [solved])
+    if (!controller.report) throw new Error("The saved document must have a report.")
+    const savedController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { ...controller.report.snapshot, sketches: [authored] },
+      },
+    }
+    expect(viewerSketches(savedController)[0]).toEqual(active)
+
+    expect(viewerSketchDisplay(solved).controlHandlePositions).toBeUndefined()
+    expect(viewerSketchDisplay(sketchDisplay, authored).controlHandlePositions).toBeUndefined()
+    expect(
+      viewerSketchDisplay(solved, { ...authored, id: sketchIdSchema.parse(boxId) })
+        .controlHandlePositions,
+    ).toBeUndefined()
+    expect(
+      viewerSketchDisplay({ ...solved, solvedPoints: solved.solvedPoints?.slice(1) }, authored)
+        .controlHandlePositions,
+    ).toBeUndefined()
   })
 
   it("keeps the active 3D sketch display out of the normal 2D editor", () => {
