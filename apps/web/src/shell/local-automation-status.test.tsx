@@ -126,7 +126,9 @@ describe("local AI auto-apply controls", () => {
     expect(screen.getByText(/only for this project and this paired AI session/)).toBeTruthy()
     expect(screen.getByText(/with Undo/)).toBeTruthy()
     expect(
-      screen.getByText(/Destructive and unknown commands still require manual review/),
+      screen.getByText(
+        /Metadata, imports, assembly, history, textures and unsupported commands still require manual review/,
+      ),
     ).toBeTruthy()
     expect(screen.getByText(/grants no additional export, printing, or access/)).toBeTruthy()
     expect(connection.enableAutoApply).not.toHaveBeenCalled()
