@@ -189,6 +189,11 @@ forward transform, and pointer positions use its inverse. The viewer rejects nea
 before accepting drawing input. Orthographic zoom, pan, standard views, resize, and support changes
 all invalidate the projection without mutating the draft or invoking the solver.
 
+Cubic Bezier control points use diamond markers, while curve endpoints retain circular markers.
+Each control has a thin dashed handle to its corresponding curve endpoint. The handles share the
+analytical curve projection and update with the transient drag overlay; they do not accept pointer
+input or add construction geometry, constraints, or document edits.
+
 Horizontal and vertical dimensions against a fixed construction origin retain their authored formula
 labels and use stable screen-space offsets beside the measured point, with visible direct leaders.
 By default, only the hovered or selected point's coordinate dimensions are shown; a sketch-local

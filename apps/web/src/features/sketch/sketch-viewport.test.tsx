@@ -5599,11 +5599,12 @@ describe("SketchViewport", () => {
   it("previews four cubic Bezier clicks and inserts one stable draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "cubic-bezier",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -5640,6 +5641,30 @@ describe("SketchViewport", () => {
     ).toBe(4)
     expect(document.querySelector('[data-sketch-preview-tool="cubic-bezier"]')).toBeNull()
     expect(emptySketch.entities).toEqual([])
+    view.rerender(
+      viewportElement({
+        draft: placed,
+        editorTool: "select",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    const controls = document.querySelectorAll('[data-sketch-point-role="bezier-control"]')
+    expect(controls).toHaveLength(2)
+    expect([...controls].map((marker) => marker.getAttribute("data-sketch-point-id"))).toEqual([
+      cubic.control1PointId,
+      cubic.control2PointId,
+    ])
+    expect(controls[0]?.getAttribute("rx")).toBe("0")
+    expect(controls[0]?.getAttribute("transform")).toMatch(/^rotate\(45 /)
+    const handles = document.querySelectorAll(`[data-sketch-bezier-handles="${cubic.id}"] line`)
+    expect(handles).toHaveLength(2)
+    expect(handles[0]?.getAttribute("data-sketch-handle-anchor-id")).toBe(cubic.startPointId)
+    expect(handles[0]?.getAttribute("data-sketch-handle-control-id")).toBe(cubic.control1PointId)
+    expect(handles[1]?.getAttribute("data-sketch-handle-anchor-id")).toBe(cubic.endPointId)
+    expect(handles[1]?.getAttribute("data-sketch-handle-control-id")).toBe(cubic.control2PointId)
+    expect(onDraftChange).toHaveBeenCalledOnce()
   })
 
   it("cancels a partial cubic preview with Escape without publishing a draft", () => {

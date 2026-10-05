@@ -356,6 +356,7 @@ type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
 type SketchPointLookup = Pick<ReadonlyMap<string, DisplayPoint>, "get">
 type SketchGeometryPresentation = Readonly<{
   centerPointIds: ReadonlySet<SketchEntityId>
+  controlPointIds: ReadonlySet<SketchEntityId>
   curves: readonly SketchCurveEntity[]
   curvesById: ReadonlyMap<string, SketchCurveEntity>
   curvesByPointId: ReadonlyMap<string, readonly SketchCurveEntity[]>
@@ -974,6 +975,11 @@ function createSketchGeometryPresentation(
   }
   return {
     centerPointIds,
+    controlPointIds: new Set(
+      curves.flatMap((curve) =>
+        curve.type === "cubic-bezier" ? [curve.control1PointId, curve.control2PointId] : [],
+      ),
+    ),
     curves,
     curvesById,
     curvesByPointId,
@@ -1418,6 +1424,7 @@ type CurveDrawingProps = Readonly<{
   points: SketchPointLookup
   preselected: boolean
   selected: boolean
+  showControls?: boolean
   solvedRadius: number | undefined
 }>
 
@@ -1658,6 +1665,50 @@ function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | 
   )
 }
 
+function SketchCubicBezierHandles({
+  entity,
+  points: [start, control1, control2, end],
+  selected,
+}: Readonly<{
+  entity: Extract<SketchEntity, { type: "cubic-bezier" }>
+  points: readonly [SketchPoint2, SketchPoint2, SketchPoint2, SketchPoint2]
+  selected: boolean
+}>) {
+  const handles = [
+    {
+      anchor: start,
+      control: control1,
+      anchorId: entity.startPointId,
+      controlId: entity.control1PointId,
+    },
+    {
+      anchor: end,
+      control: control2,
+      anchorId: entity.endPointId,
+      controlId: entity.control2PointId,
+    },
+  ]
+  return (
+    <g className="pointer-events-none" data-sketch-bezier-handles={entity.id}>
+      {handles.map(({ anchor, control, anchorId, controlId }) => (
+        <line
+          key={controlId}
+          data-sketch-handle-anchor-id={anchorId}
+          data-sketch-handle-control-id={controlId}
+          x1={anchor.x}
+          y1={anchor.y}
+          x2={control.x}
+          y2={control.y}
+          className={selected ? "stroke-ring" : "stroke-muted-foreground/70"}
+          strokeWidth={1}
+          strokeDasharray="4 3"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </g>
+  )
+}
+
 function SketchCubicBezier(
   props: CurveDrawingProps & { entity: Extract<SketchEntity, { type: "cubic-bezier" }> },
 ) {
@@ -1669,6 +1720,13 @@ function SketchCubicBezier(
   const path = `M ${start.x} ${start.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${end.x} ${end.y}`
   return (
     <>
+      {props.showControls && !props.hidden ? (
+        <SketchCubicBezierHandles
+          entity={props.entity}
+          points={[start, control1, control2, end]}
+          selected={props.selected}
+        />
+      ) : null}
       {props.interactive && !props.hidden ? (
         <path {...curveHitAreaProps(props.entity.id, props.onPointerDown)} d={path} />
       ) : null}
@@ -1713,6 +1771,7 @@ const SketchCurve = memo(
       previous.interactive !== next.interactive ||
       previous.preselected !== next.preselected ||
       previous.selected !== next.selected ||
+      previous.showControls !== next.showControls ||
       previous.solvedRadius !== next.solvedRadius ||
       previous.onPointerDown !== next.onPointerDown
     ) {
@@ -1726,6 +1785,7 @@ const SketchCurve = memo(
 
 type SketchPointDrawingProps = Readonly<{
   center: boolean
+  control: boolean
   draggable: boolean
   dragging: boolean
   editable: boolean
@@ -1752,59 +1812,84 @@ function sketchPointMarkerClass(
     : "pointer-events-none fill-background stroke-primary"
 }
 
-function SketchPointMarker({
-  center,
+type SketchPointMarkerProps = Pick<
+  SketchPointDrawingProps,
+  "center" | "control" | "dragging" | "markerScale" | "point" | "selected"
+> & { inferenceSource?: boolean }
+
+function SketchCenterPointMarker({
   dragging,
   inferenceSource = false,
   markerScale,
   point,
   selected,
-}: Pick<SketchPointDrawingProps, "center" | "dragging" | "markerScale" | "point" | "selected"> & {
-  inferenceSource?: boolean
-}) {
-  if (center) {
-    const halfExtent = 3.5 * markerScale
-    const centerClass = selected
-      ? "pointer-events-none stroke-ring"
-      : inferenceSource
-        ? "pointer-events-none stroke-preselection"
-        : "pointer-events-none stroke-primary"
+}: SketchPointMarkerProps) {
+  const halfExtent = 3.5 * markerScale
+  const centerClass = selected
+    ? "pointer-events-none stroke-ring"
+    : inferenceSource
+      ? "pointer-events-none stroke-preselection"
+      : "pointer-events-none stroke-primary"
+  return (
+    <g
+      data-sketch-inference-source={inferenceSource ? point.id : undefined}
+      data-sketch-point-role="center"
+      className={centerClass}
+      opacity={dragging ? 0 : undefined}
+    >
+      <line
+        x1={point.x - halfExtent}
+        x2={point.x + halfExtent}
+        y1={point.y}
+        y2={point.y}
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
+      <line
+        x1={point.x}
+        x2={point.x}
+        y1={point.y - halfExtent}
+        y2={point.y + halfExtent}
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
+    </g>
+  )
+}
+
+function SketchPointMarker({
+  center,
+  control,
+  dragging,
+  inferenceSource = false,
+  markerScale,
+  point,
+  selected,
+}: SketchPointMarkerProps) {
+  if (center && !control)
     return (
-      <g
-        data-sketch-inference-source={inferenceSource ? point.id : undefined}
-        data-sketch-point-role="center"
-        className={centerClass}
-        opacity={dragging ? 0 : undefined}
-      >
-        <line
-          x1={point.x - halfExtent}
-          x2={point.x + halfExtent}
-          y1={point.y}
-          y2={point.y}
-          strokeWidth={1.5}
-          vectorEffect="non-scaling-stroke"
-        />
-        <line
-          x1={point.x}
-          x2={point.x}
-          y1={point.y - halfExtent}
-          y2={point.y + halfExtent}
-          strokeWidth={1.5}
-          vectorEffect="non-scaling-stroke"
-        />
-      </g>
+      <SketchCenterPointMarker
+        center={center}
+        control={control}
+        dragging={dragging}
+        inferenceSource={inferenceSource}
+        markerScale={markerScale}
+        point={point}
+        selected={selected}
+      />
     )
-  }
   const size = 6 * markerScale
   return (
     <rect
       data-sketch-inference-source={inferenceSource ? point.id : undefined}
-      data-sketch-point-role="vertex"
+      data-sketch-point-role={control ? "bezier-control" : "vertex"}
+      data-sketch-point-id={point.id}
       x={point.x - size / 2}
       y={point.y - size / 2}
       width={size}
       height={size}
-      rx={size / 2}
+      rx={control ? 0 : size / 2}
+      transform={control ? `rotate(45 ${point.x} ${point.y})` : undefined}
       className={sketchPointMarkerClass(selected, inferenceSource, point.construction)}
       opacity={dragging ? 0 : undefined}
       strokeWidth={2}
@@ -1815,6 +1900,7 @@ function SketchPointMarker({
 
 const SketchPoint = memo(function SketchPoint({
   center,
+  control,
   draggable,
   dragging,
   editable,
@@ -1854,6 +1940,7 @@ const SketchPoint = memo(function SketchPoint({
       />
       <SketchPointMarker
         center={center}
+        control={control}
         dragging={dragging}
         markerScale={markerScale}
         point={point}
@@ -1865,6 +1952,7 @@ const SketchPoint = memo(function SketchPoint({
 
 const stableSketchPointDrawingKeys = [
   "center",
+  "control",
   "draggable",
   "dragging",
   "editable",
@@ -1988,6 +2076,7 @@ function SketchGeometry({
           points={presentation.pointsById}
           preselected={preselectedEntityId === entity.id}
           selected={selectedIds.has(entity.id)}
+          showControls={editable}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
           onPointerDown={geometryPointerDown}
         />
@@ -1996,6 +2085,7 @@ function SketchGeometry({
         <SketchPoint
           key={point.id}
           center={presentation.centerPointIds.has(point.id)}
+          control={presentation.controlPointIds.has(point.id)}
           draggable={tool === "select"}
           dragging={point.id === draggingPointId}
           editable={editable && (!modifiable || mirrorSourceSelection || transformSourceSelection)}
@@ -3104,10 +3194,12 @@ const ignoreCurveAction = () => undefined
 
 function DraggedSketchGeometry({
   dragTarget,
+  markerScale,
   presentation,
   selectedEntityIds,
 }: {
   dragTarget: SketchDragTarget | null
+  markerScale: number
   presentation: SketchGeometryPresentation
   selectedEntityIds: readonly SketchEntityId[]
 }) {
@@ -3138,6 +3230,7 @@ function DraggedSketchGeometry({
           points={points}
           preselected={false}
           selected={selectedIds.has(entity.id)}
+          showControls
           solvedRadius={presentation.solvedCircles.get(entity.id)}
           onPointerDown={ignoreCurveAction}
         />
@@ -3148,15 +3241,16 @@ function DraggedSketchGeometry({
         cx={draggedPoint.x}
         cy={draggedPoint.y}
         r={3}
-        className={
-          selectedIds.has(draggedPoint.id)
-            ? "fill-ring stroke-background"
-            : draggedPoint.construction
-              ? "fill-background stroke-muted-foreground"
-              : "fill-background stroke-primary"
-        }
-        strokeWidth={2}
-        vectorEffect="non-scaling-stroke"
+        fill="transparent"
+        stroke="none"
+      />
+      <SketchPointMarker
+        center={presentation.centerPointIds.has(draggedPoint.id)}
+        control={presentation.controlPointIds.has(draggedPoint.id)}
+        dragging={false}
+        markerScale={markerScale}
+        point={draggedPoint}
+        selected={selectedIds.has(draggedPoint.id)}
       />
     </g>
   )
@@ -5630,6 +5724,7 @@ function SketchInferenceSourceHighlight({
         <SketchPointMarker
           key={point.id}
           center={presentation.centerPointIds.has(point.id)}
+          control={presentation.controlPointIds.has(point.id)}
           dragging={false}
           inferenceSource
           markerScale={markerScale}
@@ -5689,6 +5784,7 @@ function ConstraintRelatedPointHighlight({
     <g data-sketch-constraint-related-entity={point.id}>
       <SketchPointMarker
         center={presentation.centerPointIds.has(point.id)}
+        control={presentation.controlPointIds.has(point.id)}
         dragging={false}
         inferenceSource
         markerScale={markerScale}
@@ -9541,6 +9637,7 @@ function SketchDrawingView({
               />
               <DraggedSketchGeometry
                 dragTarget={state.dragTarget}
+                markerScale={markerScale}
                 presentation={state.geometry}
                 selectedEntityIds={configuration.selectedEntityIds}
               />
