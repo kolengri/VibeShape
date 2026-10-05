@@ -1778,6 +1778,7 @@
         "failed": "Solve failed",
         "degreesOfFreedom": "Degrees of freedom: {count}",
         "profile": "Profile: {area} · {perimeter} perimeter",
+        "showAllPointDimensions": "Show all point dimensions",
         "precisionTools": "Sketch precision tools",
         "contextActions": "Sketch actions",
         "dimensionTool": "Add drawing dimension",

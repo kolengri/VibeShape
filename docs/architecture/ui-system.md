@@ -189,6 +189,14 @@ forward transform, and pointer positions use its inverse. The viewer rejects nea
 before accepting drawing input. Orthographic zoom, pan, standard views, resize, and support changes
 all invalidate the projection without mutating the draft or invoking the solver.
 
+Horizontal and vertical dimensions against a fixed construction origin retain their authored formula
+labels and use stable screen-space offsets beside the measured point, with visible direct leaders.
+By default, only the hovered or selected point's coordinate dimensions are shown; a sketch-local
+Show all point dimensions toggle reveals the full set. Hover remains active while moving into its
+labels, and selected constraints stay available to keyboard and task-panel editing. The preference
+never changes the document or invokes the solver. A manually dragged annotation retains its
+sketch-space position and leader. Ordinary point-pair dimensions retain their midpoint anchors.
+
 OrbitControls temporarily binds to the active sketch SVG, with primary/touch input reserved for
 editing and middle/secondary input reserved for navigation. Viewport controls colocate Rotate view, Section view, standard views, and Fit view; shell-owned
 command projections use the existing registered handler. Section parameters remain viewport-local
