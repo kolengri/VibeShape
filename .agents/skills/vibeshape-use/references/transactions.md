@@ -6,8 +6,8 @@
 2. Call `create_draft` with `{ "baseRevision": committedRevision }`. Retain the returned host-generated `draftId` and draft `revision`.
 3. Issue supported named commands sequentially. For each command, supply the current **draft** revision as `baseRevision`, a fresh lowercase UUIDv7 `commandId`, and the returned draft ID. Advance only to the revision in a successful result.
 4. Updates replace authored records. Read `draft_entity` at the current draft revision, or the original `model_entity` before drafting. Preserve existing IDs and every unaffected parameter, placement, dependency, reference, label, expression, constraint, and suppression value.
-5. Call `preview_draft` with `{ "draftId": draftId }`. Check exact `geometry.status`, `geometry.diagnostics`, bounds, and volume against the requested design. Valid solids do not establish healthy sketch support or external references. Fix invalid intent through a supported update with a new command ID; inspect the updated draft revision before continuing.
-6. Call `commit_draft` with `{ "draftId": draftId }`. The default waits for browser Apply/Discard; an existing explicit session auto-apply grant may apply eligible CAD changes. A successful commit saves once and creates one Undo entry. Verify the returned result and observe the saved revision with `model_info`.
+5. Call `preview_draft` with `{ "draftId": draftId }`. It first simulates retained commands through the current document authority, including ordered History and authored Part rules, without writing storage or opening review. A failed preflight identifies the command index, ID, kind and cause; repair that intent before proceeding. Features cannot depend on an item later in History, even when the disposable geometry graph can evaluate them. Then check exact `geometry.status`, `geometry.diagnostics`, bounds, and volume against the requested design. Valid solids do not establish healthy sketch support or external references. Fix invalid intent through a supported update with a new command ID; inspect the updated draft revision before continuing.
+6. Call `commit_draft` with `{ "draftId": draftId }`. It repeats document-authority validation before exact geometry and review. The default waits for browser Apply/Discard; an existing explicit session auto-apply grant may apply eligible CAD changes. Successful preflight cannot guarantee disk quota, writer access or an unchanged revision at the eventual write. A successful commit saves once and creates one Undo entry. Verify the returned result and observe the saved revision with `model_info`.
 
 An open CAD draft review has no time limit. Its draft's `expiresAt` describes idle expiry, not an
 Apply deadline: the host retains it while review is pending and rechecks access and the committed
@@ -19,6 +19,11 @@ an unconfirmed commit. Inspect the saved revision before requesting fresh review
 `draft_tree`, `draft_entity`, and `draft_variables` read semantic intent without rebuilding. Uncached `draft_edges`, `draft_body_measurements`, and `draft_body_topology` reads may perform a disposable exact geometry rebuild. Body inspection uses the current owned draft revision and returns exact roles or scoped faces/edges; Shell can consume its fresh opening references and source content hash before a save. None of these inspection reads renews draft expiry. Use `preview_draft` to validate the entire draft and obtain its exact measurements. An uncommitted draft cannot be exported by `export_model`.
 
 ## Conflict and interruption
+
+A rejected authority preflight leaves the draft available for inspection. Its retained command
+sequence is immutable: a later update cannot erase an earlier command rejected by History rules.
+For an ordering failure, inspect the identified command, discard the private draft and create a
+fresh draft with dependencies inserted before consumers. Do not retry commit unchanged.
 
 If the committed model changes while drafting, read the updated model and create a new draft, retaining the person's changes. Do not replay a stale full record. Use `discard_draft` to abandon private intent; it does not alter the saved model. MCP cancellation interrupts disposable work and cannot undo a transaction already accepted by persistence. Local pairing can recover automatically without replaying that work; remote access retains its existing revocation rules.
 

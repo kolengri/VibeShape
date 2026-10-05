@@ -84,6 +84,7 @@ function openResult(document: DocumentSnapshot, mode: "read-write" | "read-only"
     close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
     commit: vi.fn(),
     commitDraft: vi.fn(),
+    validateDraft: vi.fn().mockResolvedValue({ ok: true }),
   }
   return {
     ok: true as const,
@@ -195,6 +196,43 @@ async function ready(document = snapshot()) {
 }
 
 describe("in-place automation project management", () => {
+  it("validates captured draft authority without saving or requesting a review", async () => {
+    const { controller, source } = await ready()
+    const factory = controller.createActiveDocumentAutomationSession()
+    expect(factory.ok).toBe(true)
+    const port = ports.createAutomation.mock.lastCall?.[0].documents
+    expect(port).toBeDefined()
+    const message = "Command 2: invalid-event: A History dependency follows its consumer."
+    source.session.validateDraft.mockResolvedValue({
+      ok: false,
+      diagnostic: {
+        code: "invalid-draft-commit",
+        sourceCode: "invalid-event",
+        message,
+        retryable: false,
+      },
+    })
+    const draft = {
+      id: targetId,
+      documentId: initialId,
+      baseRevision: source.session.snapshot.revision,
+      snapshot: source.session.snapshot,
+    }
+    const result = await port.validateDraft(draft, [])
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: "draft-commit-preflight-failed", message },
+    })
+    expect(source.session.validateDraft).toHaveBeenCalledWith({
+      draftId: targetId,
+      commands: [],
+      expectedSnapshot: draft.snapshot,
+    })
+    expect(source.session.commitDraft).not.toHaveBeenCalled()
+    expect(ports.review).not.toHaveBeenCalled()
+    expect(controller.getDocumentControllerState().saveStatus).toBe("saved")
+  })
+
   it("persists the trusted MCP create actor and retains the manual default actor", async () => {
     const { controller, expected } = await ready()
     const actor = commandActorSchema.parse({

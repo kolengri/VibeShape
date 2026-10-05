@@ -21,11 +21,13 @@ import {
 } from "./authority-persistence-operations"
 import { prepareAuthorityTransaction } from "./authority-transaction"
 import { DocumentUndoHistory } from "./document-undo-history"
+import { draftCommandFailure } from "./draft-validation-diagnostics"
 import {
   type DocumentAuthoredMetadataPort,
   type DocumentHistoryPort,
   type DocumentSemanticHistoryPort,
   documentHistoryRequestSchema,
+  type PersistenceDraftValidationInput,
   type PersistentDocumentRepositoryPort,
   type SessionPortResult,
 } from "./persistent-document-session"
@@ -82,6 +84,7 @@ export function createAuthorityPersistenceAdapter(
     authoredMetadata: DocumentAuthoredMetadataPort
     history: DocumentHistoryPort
     semanticHistory: DocumentSemanticHistoryPort
+    validateDraft: NonNullable<PersistentDocumentRepositoryPort["validateDraft"]>
   }> {
   let authority = initialSnapshot && initialSnapshot.schemaVersion !== 1 ? initialSnapshot : null
   let legacy = createVersionedPersistenceAdapter(
@@ -90,6 +93,32 @@ export function createAuthorityPersistenceAdapter(
   )
   const history = new DocumentUndoHistory<AuthoredAuthoritySnapshot>()
   const current = () => authority ?? legacy.currentV1Snapshot
+
+  function prepareDraft(base: AuthoredAuthoritySnapshot, input: PersistenceDraftValidationInput) {
+    const match = matchRuntimeProjection(base, input.baseSnapshot)
+    if (match) return match
+    let next = base
+    const events: DocumentAuthorityEvent[] = []
+    for (const [index, event] of input.events.entries()) {
+      const translated = translateLegacyDocumentEvent(modelProjection(next), event)
+      if ("ok" in translated)
+        return {
+          ok: false as const,
+          diagnostic: draftCommandFailure(index, event, translated.diagnostic),
+        }
+      const result = prepareAuthorityModelEvent(next, translated, createPart)
+      if (!result.ok)
+        return {
+          ok: false as const,
+          diagnostic: draftCommandFailure(index, event, result.diagnostic),
+        }
+      next = result.snapshot
+      events.push(result.event)
+    }
+    const resultMatch = matchRuntimeProjection(next, input.snapshot)
+    if (resultMatch) return resultMatch
+    return { ok: true as const, events, snapshot: next }
+  }
 
   async function persist(
     input: AuthorityCommitInput,
@@ -300,37 +329,30 @@ export function createAuthorityPersistenceAdapter(
         result.snapshot,
       )
     },
+    async validateDraft(input) {
+      if (!authority) return legacy.validateDraft(input)
+      const prepared = prepareDraft(authority, input)
+      return prepared.ok ? { ok: true, value: undefined } : prepared
+    },
     async commitDraft(input) {
       if (!authority) return legacy.commitDraft(input)
       const base = authority
-      const match = matchRuntimeProjection(base, input.baseSnapshot)
-      if (match) return match
-      let next = base
-      const events: DocumentAuthorityEvent[] = []
-      for (const event of input.events) {
-        const translated = translateLegacyDocumentEvent(modelProjection(next), event)
-        if ("ok" in translated) return translated
-        const result = prepareAuthorityModelEvent(next, translated, createPart)
-        if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
-        next = result.snapshot
-        events.push(result.event)
-      }
-      const resultMatch = matchRuntimeProjection(next, input.snapshot)
-      if (resultMatch) return resultMatch
+      const prepared = prepareDraft(base, input)
+      if (!prepared.ok) return prepared
       let saved: SessionPortResult<unknown>
       try {
         saved = await repository.commitAuthorityDraft({
           ...input,
           baseSnapshot: base,
-          events,
-          snapshot: next,
+          events: prepared.events,
+          snapshot: prepared.snapshot,
         })
       } catch {
         return authorityFailure("persistence-failed", "The authored draft was not saved.")
       }
       if (saved.ok) {
-        history.record(base, next)
-        authority = next
+        history.record(base, prepared.snapshot)
+        authority = prepared.snapshot
       }
       return saved
     },

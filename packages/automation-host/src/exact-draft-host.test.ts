@@ -215,6 +215,166 @@ function applyRequest(commandInput: unknown) {
 }
 
 describe("exact automation draft host boundary", () => {
+  it("detaches all validation inputs including nested feature parameters from retained intent", async () => {
+    const initial = featureSnapshot(1)
+    const store = documentStore(initial)
+    const host = automationHost({
+      ...store.port,
+      validateDraft: (draft, commands) => {
+        Reflect.set(draft.actor, "clientId", "org.example.other")
+        if (draft.snapshot) {
+          Reflect.set(draft.snapshot, "name", "Validator mutation")
+          const feature = draft.snapshot.features[0]
+          if (feature) Reflect.set(feature.parameters, "centered", false)
+        }
+        const event = draft.events[0]
+        if (event) Reflect.set(event, "name", "Validator event mutation")
+        const command = commands[0]
+        if (command?.kind === "org.vibeshape.feature.update")
+          Reflect.set(command.payload.feature.parameters, "centered", false)
+        return { ok: true, value: null }
+      },
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    const feature = initial.features[0]
+    if (!feature) throw new Error("Missing feature")
+    const applied = await host.applyCommand(
+      actor,
+      applyRequest({
+        schemaVersion: 1,
+        kind: "org.vibeshape.feature.update",
+        commandId: "0195b5ac-b230-7a2c-8c33-000000000003",
+        documentId,
+        baseRevision: initial.revision,
+        issuedAt: new Date(startedAt).toISOString(),
+        actor,
+        payload: {
+          feature: {
+            ...feature,
+            parameters: { ...feature.parameters, width: createLengthQuantity(21) },
+          },
+        },
+      }),
+    )
+    expect(applied.ok ? null : applied.diagnostic).toBeNull()
+    await expect(host.previewDraft(actor, operationRequest())).resolves.toMatchObject({
+      ok: true,
+      value: { summary: { data: { name: initial.name } } },
+    })
+    const committed = await host.commitDraft(actor, operationRequest())
+    expect(committed.ok ? null : committed.diagnostic).toBeNull()
+    expect(store.lastCommit()?.actor).toEqual(actor)
+    expect(store.snapshot()?.features[0]?.parameters.centered).toBe(true)
+    expect(store.receivedCommands()).toMatchObject([
+      { payload: { feature: { parameters: { centered: true } } } },
+    ])
+  })
+
+  it("rejects invalid document authority before geometry, review or persistence and retains the draft", async () => {
+    const initial = featureSnapshot(1)
+    const store = documentStore(initial)
+    let valid = false
+    let geometryCalls = 0
+    let reviewCalls = 0
+    let validationCalls = 0
+    const message = "Command 1: invalid-event: History dependencies must precede their consumer."
+    const host = automationHost(
+      {
+        ...store.port,
+        validateDraft: (_draft, commands) => {
+          validationCalls++
+          expect(commands).toHaveLength(1)
+          return valid
+            ? { ok: true, value: null }
+            : {
+                ok: false,
+                diagnostic: {
+                  code: "draft-commit-preflight-failed",
+                  message,
+                  retryable: false,
+                  issues: [],
+                },
+              }
+        },
+      },
+      {
+        geometry: {
+          evaluate: (snapshot) => {
+            geometryCalls++
+            return evidence(snapshot)
+          },
+        },
+        review: {
+          confirm: () => {
+            reviewCalls++
+            return "approved"
+          },
+        },
+      },
+    )
+    await host.createDraft(actor, createRequest(initial.revision))
+    await host.applyCommand(
+      actor,
+      applyRequest(
+        command(
+          "org.vibeshape.document.rename",
+          initial.revision,
+          "Updated",
+          "0195b5ac-b230-7a2c-8c33-000000000001",
+        ),
+      ),
+    )
+    for (const operation of [host.previewDraft, host.commitDraft]) {
+      await expect(operation(actor, operationRequest())).resolves.toMatchObject({
+        ok: false,
+        diagnostic: { code: "draft-commit-preflight-failed", message },
+      })
+    }
+    expect(geometryCalls).toBe(0)
+    expect(reviewCalls).toBe(0)
+    expect(store.portCalls()).toBe(0)
+    expect(store.snapshot()).toEqual(initial)
+    valid = true
+    await expect(host.previewDraft(actor, operationRequest())).resolves.toMatchObject({ ok: true })
+    await expect(host.commitDraft(actor, operationRequest())).resolves.toMatchObject({ ok: true })
+    expect(validationCalls).toBe(4)
+    expect(reviewCalls).toBe(1)
+    expect(store.portCalls()).toBe(1)
+  })
+
+  it("rejects a base revision changed while read-only draft validation is pending", async () => {
+    const initial = featureSnapshot(1)
+    const store = documentStore(initial)
+    let finish!: (result: { ok: true; value: null }) => void
+    const host = automationHost({
+      ...store.port,
+      validateDraft: () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    })
+    await host.createDraft(actor, createRequest(initial.revision))
+    const preview = host.previewDraft(actor, operationRequest())
+    while (!finish) await Promise.resolve()
+    const changed = applyDocumentCommand(
+      initial,
+      command(
+        "org.vibeshape.document.rename",
+        initial.revision,
+        "Other edit",
+        "0195b5ac-b230-7a2c-8c33-000000000002",
+      ),
+    )
+    if (!changed.ok) throw new Error(changed.diagnostic.message)
+    store.replace(changed.snapshot)
+    finish({ ok: true, value: null })
+    await expect(preview).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-revision" },
+    })
+    expect(store.portCalls()).toBe(0)
+  })
+
   const image = {
     mimeType: "image/png" as const,
     base64:

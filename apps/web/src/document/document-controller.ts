@@ -535,6 +535,7 @@ function automationCommitFailure(
     | "document-write-unavailable"
     | "document-commit-failed"
     | "draft-commit-intent-mismatch"
+    | "draft-commit-preflight-failed"
     | "stale-revision",
   message: string,
   retryable = false,
@@ -569,16 +570,38 @@ function automationCommitEligibility(active: PersistentDocumentSession, draft: D
   return null
 }
 
-function automationSessionFailure(diagnostic: PersistentDocumentSessionDiagnostic) {
+function automationSessionFailure(
+  diagnostic: PersistentDocumentSessionDiagnostic,
+  preflight = false,
+) {
   const code =
     diagnostic.sourceCode === "stale-revision"
       ? "stale-revision"
       : diagnostic.code === "write-access-unavailable"
         ? "document-write-unavailable"
-        : diagnostic.code === "invalid-draft-commit"
-          ? "draft-commit-intent-mismatch"
-          : "document-commit-failed"
+        : preflight
+          ? "draft-commit-preflight-failed"
+          : diagnostic.code === "invalid-draft-commit"
+            ? "draft-commit-intent-mismatch"
+            : "document-commit-failed"
   return automationCommitFailure(code, diagnostic.message, diagnostic.retryable)
+}
+
+async function validateActiveAutomationDraft(
+  active: PersistentDocumentSession,
+  draft: DocumentDraft,
+  commands: readonly DocumentCommand[],
+): Promise<AutomationHostResult<null>> {
+  const rejected = automationCommitEligibility(active, draft)
+  if (rejected) return rejected
+  const result = await active.validateDraft({
+    draftId: draft.id,
+    commands,
+    expectedSnapshot: draft.snapshot,
+  })
+  const current = automationCommitEligibility(active, draft)
+  if (current) return current
+  return result.ok ? { ok: true, value: null } : automationSessionFailure(result.diagnostic, true)
 }
 
 async function commitActiveAutomationDraft(
@@ -699,6 +722,7 @@ export function createActiveDocumentAutomationSession() {
         session === active && state.status === "ready" && active.snapshot.id === documentId
           ? active.snapshot
           : null,
+      validateDraft: (draft, commands) => validateActiveAutomationDraft(active, draft, commands),
       compareAndCommitDraft: (draft, commands) =>
         commitActiveAutomationDraft(active, draft, commands),
     },

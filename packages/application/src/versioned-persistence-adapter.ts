@@ -12,10 +12,12 @@ import {
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
 import { DocumentUndoHistory } from "./document-undo-history"
+import { draftCommandFailure, draftDiagnosticCause } from "./draft-validation-diagnostics"
 import type {
   DocumentHistoryRequest,
   PersistedRecoveryMigration,
   PersistedRecoveryReport,
+  PersistenceDraftValidationInput,
   PersistentDocumentRepositoryPort,
   SessionPortDiagnostic,
 } from "./persistent-document-session"
@@ -79,7 +81,7 @@ function project(snapshot: DocumentSnapshotV1 | null) {
 export function translateLegacyDocumentEvent(
   snapshot: DocumentSnapshotV1 | null,
   event: DocumentEvent,
-): VersionedDocumentEvent | VersionedPortResult<never> {
+): VersionedDocumentEvent | Extract<VersionedPortResult<never>, { ok: false }> {
   if (
     !snapshot &&
     (event.type === "org.vibeshape.sketch.added" || event.type === "org.vibeshape.feature.added")
@@ -101,7 +103,9 @@ export function translateLegacyDocumentEvent(
       },
       { transactionId: event.transactionId },
     )
-    return result.ok ? result.event : failed("invalid-event", result.diagnostic.message)
+    return result.ok
+      ? result.event
+      : failed("invalid-event", draftDiagnosticCause(result.diagnostic))
   }
   if (event.type === "org.vibeshape.feature.added") {
     const result = applyVersionedDocumentCommand(
@@ -118,7 +122,9 @@ export function translateLegacyDocumentEvent(
       },
       { transactionId: event.transactionId },
     )
-    return result.ok ? result.event : failed("invalid-event", result.diagnostic.message)
+    return result.ok
+      ? result.event
+      : failed("invalid-event", draftDiagnosticCause(result.diagnostic))
   }
   return event as VersionedDocumentEvent
 }
@@ -191,7 +197,10 @@ export function createVersionedPersistenceAdapter(
   repository: VersionedDocumentRepositoryPort,
   initialSnapshot: DocumentSnapshotV1 | null = null,
 ): PersistentDocumentRepositoryPort &
-  Readonly<{ readonly currentV1Snapshot: DocumentSnapshotV1 | null }> {
+  Readonly<{
+    readonly currentV1Snapshot: DocumentSnapshotV1 | null
+    validateDraft: NonNullable<PersistentDocumentRepositoryPort["validateDraft"]>
+  }> {
   let authority = initialSnapshot
   const history = new DocumentUndoHistory()
 
@@ -203,6 +212,34 @@ export function createVersionedPersistenceAdapter(
     return projected.ok && canonicalJson(projected.snapshot) === canonicalJson(expected)
       ? null
       : failed("invalid-input", "The v1 and v0 snapshots do not match canonically.")
+  }
+
+  function prepareDraft(input: PersistenceDraftValidationInput) {
+    const baseMatch = projectInput(authority, input.baseSnapshot)
+    if (baseMatch) return baseMatch
+    let current = authority
+    if (!current) return failed("document-not-found", "The document does not exist.")
+    const base = current
+    const events: VersionedDocumentEvent[] = []
+    for (const [index, event] of input.events.entries()) {
+      const lifted = translateLegacyDocumentEvent(current, event)
+      if (!("type" in lifted))
+        return {
+          ok: false as const,
+          diagnostic: draftCommandFailure(index, event, lifted.diagnostic),
+        }
+      const reduced = reduceVersionedDocumentEvent(current, lifted)
+      if (!reduced.ok)
+        return {
+          ok: false as const,
+          diagnostic: draftCommandFailure(index, event, reduced.diagnostic),
+        }
+      current = reduced.snapshot
+      events.push(lifted)
+    }
+    const resultMatch = projectInput(current, input.snapshot)
+    if (resultMatch) return resultMatch
+    return { ok: true as const, baseSnapshot: base, events, snapshot: current }
   }
 
   return {
@@ -310,37 +347,27 @@ export function createVersionedPersistenceAdapter(
       }
       return persisted
     },
+    async validateDraft(input) {
+      const prepared = prepareDraft(input)
+      return prepared.ok ? { ok: true, value: undefined } : prepared
+    },
     async commitDraft(input) {
-      const baseMatch = projectInput(authority, input.baseSnapshot)
-      if (baseMatch) return baseMatch
-      let current = authority
-      if (!current) return failed("document-not-found", "The document does not exist.")
-      const base = current
-      const translated: VersionedDocumentEvent[] = []
-      for (const event of input.events) {
-        const lifted = translateLegacyDocumentEvent(current, event)
-        if (!("type" in lifted)) return lifted
-        const reduced = reduceVersionedDocumentEvent(current, lifted)
-        if (!reduced.ok) return failed("invalid-event", reduced.diagnostic.message)
-        current = reduced.snapshot
-        translated.push(lifted)
-      }
-      const resultMatch = projectInput(current, input.snapshot)
-      if (resultMatch) return resultMatch
+      const prepared = prepareDraft(input)
+      if (!prepared.ok) return prepared
       let persisted: VersionedPortResult<unknown>
       try {
         persisted = await repository.commitDraft({
           ...input,
-          events: translated,
-          baseSnapshot: base,
-          snapshot: current,
+          events: prepared.events,
+          baseSnapshot: prepared.baseSnapshot,
+          snapshot: prepared.snapshot,
         })
       } catch {
         return failed("persistence-failed", "The versioned draft persistence commit failed.")
       }
       if (persisted.ok) {
-        history.record(authority, current)
-        authority = current
+        history.record(authority, prepared.snapshot)
+        authority = prepared.snapshot
       }
       return persisted
     },

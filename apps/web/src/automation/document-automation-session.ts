@@ -110,6 +110,19 @@ export function createDocumentAutomationSession(
         if (closed) throw new Error("The browser automation session is closed.")
         return input.documents.readSnapshot(documentId)
       },
+      ...(input.documents.validateDraft
+        ? {
+            validateDraft: async (
+              ...args: Parameters<NonNullable<AutomationDocumentPort["validateDraft"]>>
+            ) => {
+              if (closed) throw new Error("The browser automation session is closed.")
+              const result = await input.documents.validateDraft?.(...args)
+              if (closed) throw new Error("The browser automation session is closed.")
+              if (!result) throw new Error("The browser draft validation port is unavailable.")
+              return result
+            },
+          }
+        : {}),
       compareAndCommitDraft: async (draft, commands) => {
         if (closed) throw new Error("The browser automation session is closed.")
         persisting = true

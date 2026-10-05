@@ -243,7 +243,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   update_fillet:
     "Replace an existing draft fillet's parameters, including radiusMm and optional authoritative radiusExpression (omit to use a literal), to repair an invalid preview. To keep a selected treatment, resubmit its complete edges array from draft_entity (or model_entity for committed intent). Omitting edges explicitly changes scope to all edges. Use a new UUIDv7 commandId and the current draft revision.",
   preview_draft:
-    "Evaluate the entire draft using the exact CAD kernel. Returns validity, bounded revision-tagged measurements and geometry.diagnostics for feature failures, blocked dependencies and sketch/datum/external-reference health. Successful solids do not clear invalid support diagnostics. Inspect entity/code/action and repair the cause before commit. This does not persist a model.",
+    "Simulate retained draft commands against current document authority before evaluating exact CAD geometry. Invalid History or authored intent returns a bounded diagnostic naming the failing command and cause, without saving or opening Apply review. Successful geometry returns revision-tagged measurements and geometry.diagnostics for feature, sketch and reference failures. Repair failures before commit. This does not test disk quota or guarantee a later storage write.",
   commit_draft:
     "Revalidate exact geometry, then wait for the person to Apply or Discard in the browser. A successful Apply persists once and creates one Undo entry. Allow up to six minutes; observe progress. Cancellation during persistence cannot undo an already accepted transaction.",
   discard_draft: "Discard an owned disposable draft. This does not change the committed document.",

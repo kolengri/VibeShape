@@ -36,6 +36,7 @@ import {
   commandActorSchema,
   commandActorsEqual,
   type DocumentCommand,
+  documentEventSchema,
   parseDocumentCommand,
 } from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
@@ -80,6 +81,10 @@ type Awaitable<Value> = Value | PromiseLike<Value>
 
 export type AutomationDocumentPort = Readonly<{
   readSnapshot: (documentId: DocumentId) => Awaitable<unknown>
+  validateDraft?: (
+    draft: DocumentDraft,
+    commands: readonly DocumentCommand[],
+  ) => Awaitable<AutomationHostResult<null>>
   compareAndCommitDraft: (
     draft: DocumentDraft,
     commands: readonly DocumentCommand[],
@@ -106,6 +111,7 @@ export type AutomationHostDiagnosticCode =
   | "document-write-unavailable"
   | "document-commit-failed"
   | "draft-commit-intent-mismatch"
+  | "draft-commit-preflight-failed"
   | "draft-geometry-invalid"
   | "draft-review-rejected"
   | "draft-review-cancelled"
@@ -195,7 +201,7 @@ function detachedReviewCommands(
 ): AutomationHostResult<readonly DocumentCommand[]> {
   const commands: DocumentCommand[] = []
   for (const command of record.commands) {
-    const detached = parseDocumentCommand(command)
+    const detached = parseDocumentCommand(JSON.parse(JSON.stringify(command)))
     if (!detached.ok)
       return failure(
         hostDiagnostic(
@@ -748,6 +754,37 @@ export function createAutomationHost(
     return ownedDraft(operation.value.actor, operation.value.request.draftId, operation.value.at)
   }
 
+  async function validateDraftIntent(record: ManagedDraft): Promise<AutomationHostResult<null>> {
+    if (!configuration.documents.validateDraft) return { ok: true, value: null }
+    const base = await readDraftBase(record.draft.documentId, record.draft.baseRevision)
+    if (!base.ok) return base
+    let result: AutomationHostResult<null>
+    try {
+      const commands = detachedReviewCommands(record)
+      if (!commands.ok) return commands
+      const draft: DocumentDraft = {
+        ...record.draft,
+        actor: commandActorSchema.parse(JSON.parse(JSON.stringify(record.draft.actor))),
+        snapshot: record.draft.snapshot
+          ? documentSnapshotSchema.parse(JSON.parse(JSON.stringify(record.draft.snapshot)))
+          : null,
+        events: record.draft.events.map((event) =>
+          documentEventSchema.parse(JSON.parse(JSON.stringify(event))),
+        ),
+      }
+      result = await configuration.documents.validateDraft(draft, commands.value)
+    } catch {
+      return failure(
+        hostDiagnostic(
+          "draft-commit-preflight-failed",
+          "The document authority could not validate this draft.",
+        ),
+      )
+    }
+    const current = await revalidateAfterGeometry(record)
+    return current.ok ? result : current
+  }
+
   async function currentDraftGeometry(
     record: ManagedDraft,
   ): Promise<AutomationHostResult<{ geometry: AutomationDraftPreview["geometry"]; at: number }>> {
@@ -987,6 +1024,8 @@ export function createAutomationHost(
   ): Promise<AutomationHostResult<AutomationDraftPreview>> {
     const owned = ownedOperation(actorInput, input)
     if (!owned.ok) return owned
+    const validated = await validateDraftIntent(owned.value)
+    if (!validated.ok) return validated
     const exact = await currentDraftGeometry(owned.value)
     if (!exact.ok) return exact
     const snapshot = owned.value.draft.snapshot
@@ -1030,6 +1069,8 @@ export function createAutomationHost(
     if (!owned.ok) return owned
     if (!owned.value.commands.length)
       return failure(hostDiagnostic("draft-empty", "The draft has no commands to commit."))
+    const validated = await validateDraftIntent(owned.value)
+    if (!validated.ok) return validated
     const exact = await currentDraftGeometry(owned.value)
     if (!exact.ok) return exact
     if (exact.value.geometry.status !== "valid")

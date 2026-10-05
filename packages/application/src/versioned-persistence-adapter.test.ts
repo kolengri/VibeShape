@@ -416,7 +416,7 @@ it("preserves one transaction identity across translated draft insertions", asyn
     },
   } as VersionedDocumentRepositoryPort
   const adapter = createVersionedPersistenceAdapter(repository, inserted.snapshot)
-  const committed = await adapter.commitDraft({
+  const input = {
     sessionId: "s" as never,
     lease: { epoch: 1, nowMs: 1 },
     storedAt: third.event.issuedAt,
@@ -427,7 +427,18 @@ it("preserves one transaction identity across translated draft insertions", asyn
       legacySketchEvent(third.event as DocumentEvent),
     ],
     snapshot: result.snapshot,
+  }
+  await expect(adapter.validateDraft(input)).resolves.toEqual({ ok: true, value: undefined })
+  expect(received).toHaveLength(0)
+  expect(adapter.currentV1Snapshot).toBe(inserted.snapshot)
+  expect(adapter.history?.availability).toEqual({ canUndo: false, canRedo: false })
+  await expect(
+    adapter.validateDraft({ ...input, baseSnapshot: result.snapshot }),
+  ).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "invalid-input" },
   })
+  const committed = await adapter.commitDraft(input)
   expect(committed.ok).toBe(true)
   expect(received).toHaveLength(2)
   expect(received.every((event) => event.transactionId === transactionId)).toBe(true)

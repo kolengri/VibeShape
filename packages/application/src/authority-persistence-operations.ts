@@ -43,6 +43,7 @@ import {
 import type { FeatureRecordV1 } from "@vibeshape/domain/feature-graph"
 import type { PartAllocation, PartRecord } from "@vibeshape/domain/parts"
 import { z } from "zod"
+import { draftDiagnosticCause } from "./draft-validation-diagnostics"
 import type { DocumentHistoryRequest, SessionPortResult } from "./persistent-document-session"
 
 export type PartAllocationFactory = (
@@ -108,7 +109,7 @@ export function prepareAuthorityModelEvent(
   createPart: PartAllocationFactory,
 ) {
   const model = reduceVersionedDocumentEvent(modelProjection(base), event)
-  if (!model.ok) return authorityFailure("invalid-event", model.diagnostic.message)
+  if (!model.ok) return authorityFailure("invalid-event", draftDiagnosticCause(model.diagnostic))
   const allocations = capturePartAllocations(model.snapshot, base.parts, createPart)
   return base.schemaVersion === 4
     ? applyDocumentV4ModelEvent(base, event, allocations)

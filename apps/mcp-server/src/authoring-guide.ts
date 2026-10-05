@@ -215,7 +215,11 @@ inspect the actual document revision before proposing a new change.
    Inspect unsaved body roles with \`draft_body_measurements\` and Shell opening faces with
    \`draft_body_topology\`, at the current draft revision. Source edits invalidate discovery cursors;
    restart stale discovery and reselect unresolved openings; Shell v2 retains unique durable face identities within the same body. Inspection does not renew draft expiry or save geometry.
-4. Call \`preview_draft\`. Check \`geometry.status\`, \`geometry.diagnostics\`, exact bounds and volume.
+4. Call \`preview_draft\`. It simulates retained commands through current document authority before
+   exact geometry, without storage writes or review. Invalid History or authored Part intent returns
+   a bounded failing command index, ID, kind and cause. Dependencies must precede their consumer
+   in History; a valid disposable geometry graph alone does not establish a saveable draft.
+   Check \`geometry.status\`, \`geometry.diagnostics\`, exact bounds and volume.
    \`model_info.diagnostics\` and preview diagnostics identify feature/sketch errors, blocked
    dependencies and support/reference health with codes and repair actions. Successful solids can
    coexist with unresolved supports; unknown/unavailable diagnostics are not a clean result.
