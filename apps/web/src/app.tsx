@@ -866,6 +866,7 @@ function EditorApplication({
     sketchShortcutToolbarOpen,
     onPaletteOpenChange: commandPaletteFocus.setOpen,
     onSketchShortcutToolbarOpenChange: setSketchShortcutToolbarOpenWithAnchor,
+    onSketchNavigationHoldStart: () => sessionActions.setSketchCameraMode("navigate-held"),
   })
 
   const navigationCommand = commands.find(

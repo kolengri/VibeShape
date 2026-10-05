@@ -143,6 +143,7 @@ function hasShortcutModifier(event: KeyboardEvent) {
 function useSketchNavigationHold(
   commands: RefObject<readonly ResolvedEditorCommand[]>,
   enabled: boolean,
+  onHoldStart: RefObject<(() => void) | undefined>,
 ) {
   useEffect(() => {
     if (!enabled) return
@@ -154,6 +155,16 @@ function useSketchNavigationHold(
         ({ descriptor }) => descriptor.id === editorCommandIds.sketchOrbitView,
       )
       if (editing?.eligibility.enabled) editing.invoke()
+    }
+    const beginNavigation = (event: KeyboardEvent) => {
+      const navigation = commands.current.find(
+        ({ descriptor }) => descriptor.id === editorCommandIds.sketchNavigateView,
+      )
+      if (!navigation?.eligibility.enabled || navigation.active) return
+      event.preventDefault()
+      held = true
+      navigation.invoke()
+      onHoldStart.current?.()
     }
     const keyDown = (event: KeyboardEvent) => {
       if (!isSpaceKey(event)) return
@@ -168,13 +179,7 @@ function useSketchNavigationHold(
         hasShortcutModifier(event)
       )
         return
-      const navigation = commands.current.find(
-        ({ descriptor }) => descriptor.id === editorCommandIds.sketchNavigateView,
-      )
-      if (!navigation?.eligibility.enabled || navigation.active) return
-      event.preventDefault()
-      held = true
-      navigation.invoke()
+      beginNavigation(event)
     }
     const keyUp = (event: KeyboardEvent) => {
       if (!held || !isSpaceKey(event)) return
@@ -195,7 +200,7 @@ function useSketchNavigationHold(
       window.removeEventListener("blur", release)
       release()
     }
-  }, [commands, enabled])
+  }, [commands, enabled, onHoldStart])
 }
 
 export function useEditorCommandShortcuts({
@@ -205,6 +210,7 @@ export function useEditorCommandShortcuts({
   sketchShortcutToolbarOpen,
   onPaletteOpenChange,
   onSketchShortcutToolbarOpenChange,
+  onSketchNavigationHoldStart,
 }: {
   commands: readonly ResolvedEditorCommand[]
   paletteOpen: boolean
@@ -212,9 +218,12 @@ export function useEditorCommandShortcuts({
   sketchShortcutToolbarOpen: boolean
   onPaletteOpenChange: (open: boolean) => void
   onSketchShortcutToolbarOpenChange: (open: boolean) => void
+  onSketchNavigationHoldStart?: () => void
 }) {
   const commandsRef = useRef(commands)
   commandsRef.current = commands
+  const onHoldStartRef = useRef(onSketchNavigationHoldStart)
+  onHoldStartRef.current = onSketchNavigationHoldStart
   const navigationAvailable = commands.some(
     ({ descriptor, eligibility }) =>
       descriptor.id === editorCommandIds.sketchNavigateView && eligibility.enabled,
@@ -222,6 +231,7 @@ export function useEditorCommandShortcuts({
   useSketchNavigationHold(
     commandsRef,
     navigationAvailable && !paletteOpen && !sketchShortcutToolbarOpen,
+    onHoldStartRef,
   )
 
   useEffect(() => {

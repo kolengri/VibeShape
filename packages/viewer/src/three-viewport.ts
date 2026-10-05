@@ -30,6 +30,7 @@ import {
   Scene,
   ShapeUtils,
   Sphere,
+  Spherical,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -486,6 +487,7 @@ export type GeometryViewport = Readonly<{
     onChange?: (projection: ViewerSketchPlaneProjection | null) => void,
   ) => void
   setSketchNavigationElement: (element: HTMLElement | SVGSVGElement | null) => void
+  setPointerOrbit: (enabled: boolean) => void
   setInteractionMode: (mode: ViewerInteractionMode) => void
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
@@ -1470,6 +1472,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchContextMenuControlsEnabled: boolean | null = null
   #sketchNavigationControlsEnabledBeforePointer: boolean | null = null
   #sketchNavigationPointerId: number | null = null
+  #pointerOrbit = false
+  #pointerOrbitPosition: Vector2 | null = null
   #translationGizmoInteracting = false
   #translationGizmoHidePending = false
   #translationGizmoPointerId: number | null = null
@@ -1582,6 +1586,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#raycaster.params.Line.threshold = 2
     canvas.addEventListener("pointerdown", this.#onPointerDown, true)
     canvas.addEventListener("pointermove", this.#onPointerMove)
+    document.addEventListener("pointermove", this.#onPointerOrbitMove)
     window.addEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
@@ -2054,9 +2059,16 @@ class ThreeGeometryViewport implements GeometryViewport {
   setSketchNavigationElement(element: HTMLElement | SVGSVGElement | null) {
     if (this.#disposed || element === this.#sketchNavigationElement) return
     this.#removeSketchNavigationPointerGuard()
-    this.#controls.disconnect()
+    const target = this.#controls.target.clone()
+    const enabled = this.#controls.enabled
+    this.#controls.removeEventListener("change", this.#onControlsChange)
+    this.#controls.removeEventListener("start", this.#onNavigationStart)
+    // Rebinding during a drag must also discard OrbitControls' tracked pointers.
+    this.#controls.dispose()
+    this.#controls = this.#createOrbitControls(target, enabled)
     this.#sketchNavigationElement = element
     if (element) {
+      this.#controls.disconnect()
       this.#controls.connect(element)
       element.addEventListener("pointerdown", this.#onSketchNavigationPointerDown, true)
       element.addEventListener("pointerup", this.#onSketchNavigationPointerEnd, true)
@@ -2064,9 +2076,6 @@ class ThreeGeometryViewport implements GeometryViewport {
       element.addEventListener("lostpointercapture", this.#onSketchNavigationPointerEnd, true)
       element.addEventListener("contextmenu", this.#onSketchContextMenuCapture, true)
       element.addEventListener("contextmenu", this.#onSketchContextMenuBubble)
-    } else {
-      this.#controls.mouseButtons.LEFT = MOUSE.ROTATE
-      this.#controls.connect(this.#canvas)
     }
   }
 
@@ -2089,6 +2098,13 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.update()
     this.#render()
     return true
+  }
+
+  setPointerOrbit(enabled: boolean) {
+    if (this.#disposed || enabled === this.#pointerOrbit) return
+    this.#pointerOrbit = enabled
+    this.#pointerDown = null
+    if (enabled) this.#onNavigationStart()
   }
 
   clearSketchProjection() {
@@ -2196,6 +2212,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#resizeObserver.disconnect()
     this.#canvas.removeEventListener("pointerdown", this.#onPointerDown, true)
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
+    document.removeEventListener("pointermove", this.#onPointerOrbitMove)
     window.removeEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
     this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
@@ -3111,6 +3128,11 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerDown = (event: PointerEvent) => {
+    if (this.#pointerOrbit) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
     if (this.#beginSurfaceTextureStroke(event)) return
     if (this.#translationGizmoInteracting) return
     if (event.isPrimary && event.button === 0) {
@@ -3119,7 +3141,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     }
   }
 
-  #paintSurfaceTextureStroke(event: PointerEvent): boolean {
+  #consumeOwnedPointerMove(event: PointerEvent): boolean {
+    if (this.#pointerOrbit) return true
     if (this.#surfaceTexturePointer === event.pointerId && this.#surfaceTextureBrush) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -3141,7 +3164,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerMove = (event: PointerEvent) => {
-    if (this.#paintSurfaceTextureStroke(event)) return
+    if (this.#consumeOwnedPointerMove(event)) return
     if (!event.isPrimary) return
     if (this.#handleAngularGizmoPointerMove(event)) return
     if (this.#translationGizmoInteracting) return
@@ -3156,6 +3179,38 @@ class ThreeGeometryViewport implements GeometryViewport {
       return
     }
     this.#updateIdleSelectionPreselection(event)
+  }
+
+  #onPointerOrbitMove = (event: PointerEvent) => {
+    if (event.pointerType !== "mouse") return
+    const overDrawing =
+      event.target === this.#canvas ||
+      (event.target instanceof Node && this.#sketchNavigationElement?.contains(event.target))
+    if (!overDrawing) {
+      this.#pointerOrbitPosition = null
+      return
+    }
+    const previous = this.#pointerOrbitPosition
+    this.#pointerOrbitPosition = new Vector2(event.clientX, event.clientY)
+    if (!this.#pointerOrbit || !previous || !this.#controls.enabled) return
+    this.#rotatePointerOrbit(event.clientX - previous.x, event.clientY - previous.y)
+  }
+
+  #rotatePointerOrbit(dx: number, dy: number) {
+    const axis = new Quaternion().setFromUnitVectors(this.#camera.up, new Vector3(0, 1, 0))
+    const offset = this.#camera.position.clone().sub(this.#controls.target).applyQuaternion(axis)
+    const spherical = new Spherical().setFromVector3(offset)
+    const scale =
+      (2 * Math.PI * this.#controls.rotateSpeed) / Math.max(this.#canvas.clientHeight, 1)
+    spherical.theta -= dx * scale
+    spherical.phi = Math.max(
+      this.#controls.minPolarAngle,
+      Math.min(this.#controls.maxPolarAngle, spherical.phi - dy * scale),
+    )
+    spherical.makeSafe()
+    offset.setFromSpherical(spherical).applyQuaternion(axis.invert())
+    this.#camera.position.copy(this.#controls.target).add(offset)
+    this.#controls.update()
   }
 
   #onPointerUp = (event: PointerEvent) => {

@@ -1207,10 +1207,12 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   },
   {
     execute: ({ actions, state }) =>
-      actions.setSketchCameraMode(state.sketchCameraMode === "navigate" ? "orbit" : "navigate"),
+      actions.setSketchCameraMode(
+        state.sketchCameraMode.startsWith("navigate") ? "orbit" : "navigate",
+      ),
     getEligibility: requiresSketch,
     id: editorCommandIds.sketchNavigateView,
-    isActive: ({ state }) => state.sketchCameraMode === "navigate",
+    isActive: ({ state }) => state.sketchCameraMode.startsWith("navigate"),
     isToolbarVisible: () => false,
     ownerModuleId: sketchOwner,
   },

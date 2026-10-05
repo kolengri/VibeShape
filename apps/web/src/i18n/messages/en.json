@@ -530,7 +530,7 @@
         },
         "sketchNavigateView": {
           "label": "Rotate view",
-          "holdHint": "Hold Space to rotate; release to resume editing.",
+          "holdHint": "Hold Space and move the mouse to rotate; release to resume editing.",
           "keywords": "rotate view|navigate sketch|left mouse orbit|resume editing"
         },
         "sketchOrbitView": {

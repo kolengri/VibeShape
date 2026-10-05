@@ -109,43 +109,78 @@ async function inspectControlNavigation(page: Page, drawing: Locator, curveId: s
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
   await page.mouse.move(start.x + 80, start.y + 50, { steps: 8 })
+  // Switching editing mode before pointer-up must not retain a tracked orbit pointer.
+  await page.keyboard.press("Shift+n")
   await page.mouse.up()
   await page.screenshot({ path: test.info().outputPath("bezier-navigation-oblique.png") })
-  await rotate.click()
   await expect(rotate).toHaveAttribute("aria-pressed", "false")
   await expect(drawing).toBeVisible()
   await expectControlHandles(drawing, curveId)
+  const projection = drawing.locator("[data-sketch-plane-projection]")
+  const pose = await projectionMatrix(projection)
+  await rotate.click()
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 25, start.y + 15, { steps: 6 })
+  await page.mouse.up()
+  await rotate.click()
+  await expect(drawing).toBeVisible()
+  await expectProjectionMoved(projection, pose)
 }
 
 async function inspectSpaceNavigation(page: Page, drawing: Locator, curveId: string) {
   const rotate = page.getByRole("button", { name: "Rotate view", exact: true })
-  await drawing.focus()
-  await page.keyboard.down("Space")
-  await expect(rotate).toHaveAttribute("aria-pressed", "true")
-  await expect(drawing).not.toBeVisible()
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
-  await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
   const canvas = await viewport.locator("canvas").boundingBox()
   if (!canvas) throw new Error("The navigation canvas must be visible during a Space hold.")
   const start = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 }
-  await page.mouse.move(start.x, start.y)
-  await page.mouse.down()
-  await page.mouse.move(start.x + 25, start.y + 15, { steps: 6 })
-  // Releasing Space before the pointer must also return input ownership to the sketch.
-  await page.keyboard.up("Space")
-  await page.mouse.up()
-  await expect(rotate).toHaveAttribute("aria-pressed", "false")
-  await expect(drawing).toBeVisible()
+  const projection = drawing.locator("[data-sketch-plane-projection]")
+  await drawing.focus()
+  for (let cycle = 0; cycle < 4; cycle += 1) {
+    await page.mouse.move(start.x, start.y)
+    const before = await projectionMatrix(projection)
+    await page.keyboard.down("Space")
+    await expect(rotate).toHaveAttribute("aria-pressed", "true")
+    await expect(drawing).not.toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
+    // No mouse button is needed, even after repeated transitions and sketch clicks.
+    await page.mouse.move(start.x + 15, start.y + 8, { steps: 6 })
+    await page.keyboard.up("Space")
+    await expect(rotate).toHaveAttribute("aria-pressed", "false")
+    await expect(drawing).toBeVisible()
+    await expectProjectionMoved(projection, before)
+    const after = await projection.getAttribute("transform")
+    await page.mouse.move(start.x + 18, start.y + 9)
+    await expect(projection).toHaveAttribute("transform", after ?? "")
+    await clickPoint(page, drawing, 0, 0)
+  }
   await expectControlHandles(drawing, curveId)
   await page.screenshot({ path: test.info().outputPath("bezier-space-release.png") })
-  const projection = drawing.locator("[data-sketch-plane-projection]")
-  const pose = await projection.getAttribute("transform")
-  await drawing.focus()
+  const pose = await projectionMatrix(projection)
   await page.keyboard.down("Space")
   await expect(rotate).toHaveAttribute("aria-pressed", "true")
   await page.keyboard.up("Space")
   await expect(drawing).toBeVisible()
-  await expect(projection).toHaveAttribute("transform", pose ?? "")
+  const retained = await projectionMatrix(projection)
+  // Reconstructing orbit controls may introduce floating-point roundoff, but no visible motion.
+  for (const [index, value] of pose.entries()) expect(retained[index]).toBeCloseTo(value, 9)
+}
+
+async function projectionMatrix(projection: Locator) {
+  const transform = await projection.getAttribute("transform")
+  if (!transform?.startsWith("matrix(")) {
+    throw new Error("The sketch must expose its current camera projection.")
+  }
+  return transform.slice(7, -1).trim().split(/\s+/).map(Number)
+}
+
+async function expectProjectionMoved(projection: Locator, before: readonly number[]) {
+  await expect
+    .poll(async () => {
+      const after = await projectionMatrix(projection)
+      return Math.max(...after.map((value, index) => Math.abs(value - (before[index] ?? 0))))
+    })
+    .toBeGreaterThan(0.0001)
 }
 
 test("creates a four-click cubic Spline, cancels previews, drags a control and retains identities through Undo and reopening", async ({

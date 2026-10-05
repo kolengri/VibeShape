@@ -1104,6 +1104,7 @@ function useWorkspaceSketchContext(
     if (!active) return undefined
     // Navigation keeps the camera on the canvas and suspends sketch picking.
     if (mode === "navigate") return { frame, mode: "orbit" }
+    if (mode === "navigate-held") return { frame, mode: "orbit", pointerOrbit: true }
     return {
       frame,
       mode,

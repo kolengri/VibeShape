@@ -324,6 +324,7 @@ function renderViewport(
     setSketchProjection: vi.fn(() => true),
     setSketchPlaneProjection: vi.fn(),
     setSketchNavigationElement: vi.fn(),
+    setPointerOrbit: vi.fn(),
     setInteractionMode: vi.fn(),
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
@@ -1288,7 +1289,12 @@ describe("GeometryViewport", () => {
     expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
     expect(port.setSketchPlaneProjection).toHaveBeenCalledTimes(planeProjectionCalls)
 
+    rerenderSketchContext({ frame, mode: "orbit", pointerOrbit: true })
+    expect(port.setPointerOrbit).toHaveBeenLastCalledWith(true)
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+
     rerenderSketchContext({ frame, mode: "normal", projectionStore: store })
+    expect(port.setPointerOrbit).toHaveBeenLastCalledWith(false)
     expect(port.setSketchPlaneProjection).toHaveBeenLastCalledWith(null)
     expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
   })

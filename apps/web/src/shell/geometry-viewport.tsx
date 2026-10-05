@@ -106,6 +106,7 @@ type ViewportMount = {
 export type GeometryViewportSketchContext = Readonly<{
   frame: ViewerFrame | null
   mode: "normal" | "orbit"
+  pointerOrbit?: boolean
   projectionStore?: SketchProjectionStoreApi
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
@@ -513,6 +514,7 @@ function synchronizeViewportSketchContext(
   )
   synchronizeViewportSketchProjection(viewport, context)
   synchronizeViewportSketchNavigation(viewport, context)
+  viewport.setPointerOrbit(context?.pointerOrbit === true)
 }
 
 function synchronizeViewportSelectedFaces(
