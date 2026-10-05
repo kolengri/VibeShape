@@ -528,6 +528,10 @@
           "label": "Offset",
           "keywords": "offset sketch geometry|parallel copy|offset chain|offset loop"
         },
+        "sketchNavigateView": {
+          "label": "Rotate view",
+          "keywords": "rotate view|navigate sketch|left mouse orbit|resume editing"
+        },
         "sketchOrbitView": {
           "label": "Orbit 3D view",
           "keywords": "orbit sketch context|rotate 3d view|inspect support|camera"

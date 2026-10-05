@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
 import type { Locator, Page } from "@playwright/test"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
 
@@ -166,3 +167,75 @@ for (const exit of ["Cancel", "Escape", "Finish sketch"] as const) {
     await expect(page.getByRole("img", { name: "Solved sketch geometry" })).toHaveCount(0)
   })
 }
+
+test("rotates with primary drag during sketch navigation and resumes the same draft", async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto("/")
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
+  await createProfile(page)
+  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+  const entityIds = await drawing
+    .locator("[data-sketch-entity-id]")
+    .evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-sketch-entity-id")),
+    )
+  const rotate = page.getByRole("button", { name: "Rotate view", exact: true })
+  const viewControls = page
+    .getByRole("button", { name: "Standard views", exact: true })
+    .locator("..")
+  await expect(viewControls.getByRole("button", { name: "Rotate view", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Standard views", exact: true })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Fit view", exact: true })).toBeDisabled()
+  for (const width of [1024, 512]) {
+    await page.setViewportSize({ width, height: 900 })
+    const bounds = await rotate.boundingBox()
+    if (!bounds)
+      throw new Error("The navigation switch must remain visible at narrow authoring widths.")
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  for (const theme of ["Light", "Dark"]) {
+    await openApplicationMenuItem(page, "Settings…")
+    const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+    await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
+    await page.getByRole("option", { name: theme, exact: true }).click()
+    await settings.getByRole("button", { name: "Done", exact: true }).click()
+    await expect(rotate).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath(`navigation-${theme.toLowerCase()}.png`) })
+  }
+  const canvas = page.getByRole("region", { name: "3D viewport" }).locator("canvas")
+  await rotate.click()
+  await expect(rotate).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByRole("button", { name: "Standard views", exact: true })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "Fit view", exact: true })).toBeEnabled()
+  await expect(drawing).toHaveCount(0)
+  await expectRotation(page, canvas)
+  await expectRotation(page, canvas, "middle")
+  await rotate.click()
+  await expect(rotate).toHaveAttribute("aria-pressed", "false")
+  await expect(drawing).toBeVisible()
+  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+  expect(
+    await drawing
+      .locator("[data-sketch-entity-id]")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("data-sketch-entity-id")),
+      ),
+  ).toEqual(entityIds)
+  await rotate.click()
+  await page.getByRole("button", { name: "Line", exact: true }).click()
+  await expect(rotate).toHaveAttribute("aria-pressed", "false")
+  await expect(drawing).toBeVisible()
+  await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+  await expectRotation(page, canvas)
+  await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
+  await expect(rotate).toHaveAttribute("aria-pressed", "false")
+  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+})

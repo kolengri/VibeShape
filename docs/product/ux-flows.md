@@ -401,3 +401,16 @@ prove wall thickness, absence of global self-intersections, physical fit, or a s
 
 Browser Apply/reopen/export acceptance is pending at this revision; worker and native-format evidence
 remain separate from that workflow and from physical printing.
+
+### Sketch camera navigation
+
+The visible **Rotate view** toggle beside the viewport’s standard-view selector suspends sketch pointer
+editing and gives primary-button drag to the 3D camera. The current unsaved sketch remains visible. Toggle it off, choose **Orbit 3D view** or
+**Normal to sketch**, or select a sketch tool to resume editing. Navigation creates no document or
+sketch undo entry. In Normal to sketch, Standard views and Fit remain disabled until Rotate view or
+Orbit 3D view activates the 3D camera. Finish, Cancel, and a later sketch session restore ordinary
+editing defaults.
+
+**Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
+control group beside the standard-view selector. Its button highlights an active section; the panel
+closes with Escape and returns focus to its trigger.

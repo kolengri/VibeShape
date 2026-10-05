@@ -38,6 +38,7 @@ import type {
 } from "@vibeshape/viewer/three-viewport"
 import { viewerBodyKey, viewerSketchProfileKey } from "@vibeshape/viewer/three-viewport"
 import {
+  type ComponentProps,
   type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -1010,12 +1011,16 @@ function ViewportMessage({
 }
 
 function ViewportControls({
+  viewControls,
+  cameraLocked = false,
   clearLabel,
   fitLabel,
   selection,
   onBodyClear,
   viewportRef,
 }: {
+  viewControls?: ReactNode
+  cameraLocked?: boolean
   clearLabel: string
   fitLabel: string
   onBodyClear?: (() => void) | undefined
@@ -1035,10 +1040,11 @@ function ViewportControls({
   return (
     <div
       className={cn(
-        "absolute right-3 top-3 z-20 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
+        "pointer-events-auto absolute right-3 top-3 z-20 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
         SAFE_VIEWPORT_RIGHT,
       )}
     >
+      {viewControls}
       {selection ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1062,7 +1068,13 @@ function ViewportControls({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button aria-label={t("standardViews")} size="icon-xs" type="button" variant="ghost">
+              <Button
+                disabled={cameraLocked}
+                aria-label={t("standardViews")}
+                size="icon-xs"
+                type="button"
+                variant="ghost"
+              >
                 <Cuboid aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
@@ -1084,6 +1096,7 @@ function ViewportControls({
         <TooltipTrigger asChild>
           <Button
             aria-label={fitLabel}
+            disabled={cameraLocked}
             onClick={() => viewportRef.current?.fit()}
             size="icon-xs"
             type="button"
@@ -1228,6 +1241,7 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
 }
 
 type GeometryViewportProps = Readonly<{
+  viewControls?: ReactNode
   activeSketchDisplay?: ViewerSketch | null
   axialGizmoPending?: boolean
   controller: DocumentControllerState
@@ -1804,6 +1818,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
 }
 
 function ViewportControlsSlot({
+  viewControls,
   meshes,
   sketches,
   originPlaneSelection,
@@ -1813,6 +1828,7 @@ function ViewportControlsSlot({
   onBodyClear,
   viewportRef,
 }: Readonly<{
+  viewControls?: ReactNode
   meshes: readonly ViewerMesh[]
   sketches: readonly ViewerSketch[]
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
@@ -1831,8 +1847,9 @@ function ViewportControlsSlot({
           visibility={originPlaneVisibility}
         />
       </div>
-      {meshes.length > 0 || sketches.length > 0 || originPlaneSelection ? (
+      {viewControls || meshes.length > 0 || sketches.length > 0 || originPlaneSelection ? (
         <ViewportControls
+          viewControls={viewControls}
           clearLabel={t("clearSelection")}
           fitLabel={t("fit")}
           selection={selection}
@@ -2469,6 +2486,7 @@ function SavedProfileViewportChrome({
 }
 
 function ModelViewportChrome({
+  viewControls,
   displayUnit,
   featurePreview,
   message,
@@ -2485,6 +2503,7 @@ function ModelViewportChrome({
   sketches,
   viewportRef,
 }: Readonly<{
+  viewControls?: ReactNode
   displayUnit: string
   featurePreview: FeaturePreviewState | undefined
   message: ReturnType<typeof translatedViewportMessage>
@@ -2507,6 +2526,7 @@ function ModelViewportChrome({
       <ViewportMessage message={message} title={t("title")} />
       <PreviewStatus preview={featurePreview} />
       <ViewportControlsSlot
+        viewControls={viewControls}
         meshes={meshes}
         sketches={sketches}
         originPlaneSelection={originPlaneSelection}
@@ -2756,24 +2776,37 @@ function SketchReferenceKeyboardPicker({
 }
 
 function SketchContextChrome({
+  viewControls,
   context,
   preselection,
   selectOther,
   viewportRef,
 }: Readonly<{
+  viewControls?: ReactNode
   context: GeometryViewportSketchContext
   preselection: ViewerSketchReferenceCandidate | null
   selectOther: SketchReferenceSelectOtherState
   viewportRef: RefObject<GeometryViewportPort | null>
 }>) {
   const t = useTranslations("app.shell.viewport")
-  if (context.mode !== "orbit") return null
+  if (context.mode !== "orbit")
+    return (
+      <ViewportControls
+        cameraLocked
+        viewControls={viewControls}
+        clearLabel={t("clearSelection")}
+        fitLabel={t("fit")}
+        selection={null}
+        viewportRef={viewportRef}
+      />
+    )
   const referenceSelection = context.referenceSelection
   const referencePurpose = referenceSelection?.purpose ?? "use"
   return (
     <>
       <WorldAxesLegend />
       <ViewportControls
+        viewControls={viewControls}
         clearLabel={t("clearSelection")}
         fitLabel={t("fit")}
         selection={null}
@@ -2822,6 +2855,7 @@ function viewerSketchProfileLabel(
 }
 
 function GeometryViewportContextChrome({
+  viewControls,
   displayUnit,
   model,
   profileSelectOther,
@@ -2829,6 +2863,7 @@ function GeometryViewportContextChrome({
   selectOther,
   supportFaceSelectOther,
 }: Readonly<{
+  viewControls?: ReactNode
   displayUnit: string
   model: ReturnType<typeof useGeometryViewportModel>
   profileSelectOther: SavedProfileSelectOtherState
@@ -2841,6 +2876,7 @@ function GeometryViewportContextChrome({
   if (sketchContext && !originPlaneSelection) {
     return (
       <SketchContextChrome
+        viewControls={viewControls}
         context={sketchContext}
         preselection={model.sketchPointPreselection}
         selectOther={selectOther}
@@ -2850,6 +2886,7 @@ function GeometryViewportContextChrome({
   }
   return (
     <ModelViewportChrome
+      viewControls={viewControls}
       displayUnit={displayUnit}
       featurePreview={featurePreview}
       message={model.message}
@@ -2964,8 +3001,10 @@ function viewportSketchContextData(sketchContext: GeometryViewportSketchContext 
 function viewportRegionClassNames(
   passive: boolean,
   interaction: ReturnType<typeof viewportRegionInteraction>,
+  hasViewControls: boolean,
 ) {
   return {
+    hidden: passive && !hasViewControls ? true : undefined,
     canvas: cn("absolute inset-0 size-full touch-none", passive && "pointer-events-none"),
     region: cn(
       "relative min-h-0 overflow-hidden bg-viewport-background",
@@ -3056,6 +3095,19 @@ function viewportGizmoData(
   }
 }
 
+function viewportAdditionalControls(
+  controls: ReactNode,
+  sectionProps: ComponentProps<typeof SectionViewControls>,
+) {
+  if (!controls && (sectionProps.disabled || sectionProps.meshes.length === 0)) return null
+  return (
+    <>
+      {controls}
+      <SectionViewControls {...sectionProps} />
+    </>
+  )
+}
+
 export function GeometryViewport(props: GeometryViewportProps) {
   const {
     featurePreview,
@@ -3108,12 +3160,16 @@ export function GeometryViewport(props: GeometryViewportProps) {
     supportFaceSelectOther,
     selectOther,
   )
-  const regionClassNames = viewportRegionClassNames(passive, referenceInteraction)
+  const regionClassNames = viewportRegionClassNames(
+    passive,
+    referenceInteraction,
+    Boolean(props.viewControls),
+  )
   return (
     <section
       ref={sketchReferenceRegionRef}
       aria-label={t("ariaLabel")}
-      aria-hidden={passive ? true : undefined}
+      aria-hidden={regionClassNames.hidden}
       className={regionClassNames.region}
       {...viewportOriginPlaneData(originPlaneSelection, idleOriginPlaneSelection, model)}
       {...viewportRenderData(passive, featurePreview, model, props.sketchProfilePreview)}
@@ -3127,12 +3183,10 @@ export function GeometryViewport(props: GeometryViewportProps) {
       onPointerLeave={referenceInteraction.onPointerLeave}
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
-      <canvas ref={canvasRef} className={cn("peer", regionClassNames.canvas)} />
-      <SectionViewControls
-        disabled={passive || activeSection !== section}
-        section={section}
-        onChange={setSection}
-        meshes={model.meshes}
+      <canvas
+        aria-hidden={passive ? true : undefined}
+        ref={canvasRef}
+        className={cn("peer", regionClassNames.canvas)}
       />
       <PrintViewportStatus
         profile={props.printerProfile}
@@ -3147,6 +3201,12 @@ export function GeometryViewport(props: GeometryViewportProps) {
         className="pointer-events-none absolute left-0 top-0 h-0 w-[var(--workspace-chrome-left,0px)]"
       />
       <GeometryViewportContextChrome
+        viewControls={viewportAdditionalControls(props.viewControls, {
+          disabled: passive || activeSection !== section,
+          section,
+          onChange: setSection,
+          meshes: model.meshes,
+        })}
         displayUnit={displayUnits.length}
         model={model}
         profileSelectOther={profileSelectOther}

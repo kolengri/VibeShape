@@ -695,6 +695,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   {
     group: "sketch",
     icon: "orbit-view",
+    id: editorCommandIds.sketchNavigateView,
+    labelKey: "sketchNavigateView",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-view",
+  },
+  {
+    group: "sketch",
+    icon: "orbit-view",
     id: editorCommandIds.sketchOrbitView,
     labelKey: "sketchOrbitView",
     shortcut: { key: "n", modifiers: ["shift"] },
@@ -1194,6 +1202,15 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     id: editorCommandIds.sketchConstruction,
     isActive: ({ state }) => state.sketchConstruction,
     isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
+    ownerModuleId: sketchOwner,
+  },
+  {
+    execute: ({ actions, state }) =>
+      actions.setSketchCameraMode(state.sketchCameraMode === "navigate" ? "orbit" : "navigate"),
+    getEligibility: requiresSketch,
+    id: editorCommandIds.sketchNavigateView,
+    isActive: ({ state }) => state.sketchCameraMode === "navigate",
+    isToolbarVisible: () => false,
     ownerModuleId: sketchOwner,
   },
   {

@@ -194,6 +194,10 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 
 ### Camera and Navigation
 
+**Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
+control group beside the standard-view selector. Its button highlights an active section; the panel
+closes with Escape and returns focus to its trigger.
+
 The alpha default is:
 
 | Input | Behavior |
@@ -220,6 +224,10 @@ Sketch mode switches to an orthographic view normal to the sketch plane by defau
 - Print overhang, wall, and build-volume overlays identify that they are heuristic analyses, not guarantees.
 
 ### Sketch Editor Interaction
+
+The visible **Rotate view** toggle beside the viewport’s standard-view selector suspends pointer editing and lets primary drag rotate the camera
+while the current draft stays visible. Its pressed state identifies navigation mode. Toggling it off
+or selecting a sketch tool resumes editing without changing geometry or local history.
 
 The sketch editor is a transient command surface over one analytical `SketchRecord`. It MUST keep authored geometry, stable IDs, constraints, dimension expressions, selection, and local history separate from solved display state.
 

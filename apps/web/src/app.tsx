@@ -13,6 +13,7 @@ import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
+import { editorCommandIds, type ResolvedEditorCommand } from "./commands/editor-command"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
 import {
   addSketch,
@@ -71,6 +72,7 @@ import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-pa
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
+import { SketchNavigationControl } from "./shell/sketch-navigation-control"
 import {
   SketchShortcutToolbar,
   type SketchShortcutToolbarAnchor,
@@ -701,6 +703,7 @@ function resolveEditorApplicationCommands(
 }
 
 function EditorWorkspaceComposition({
+  navigationCommand,
   controller,
   session,
   sessionActions,
@@ -710,6 +713,7 @@ function EditorWorkspaceComposition({
   session: EditorApplicationSession
   sessionActions: EditorSessionActions
   workspaceActions: EditorWorkspaceActions
+  navigationCommand: ResolvedEditorCommand | undefined
 }>) {
   const autoHideConsumedSketches = useViewerPreferences((state) => state.autoHideConsumedSketches)
   const hiddenSketchIds = effectiveHiddenSketchIds(
@@ -722,6 +726,11 @@ function EditorWorkspaceComposition({
   )
   return (
     <EditorWorkspace
+      viewControls={
+        isActiveSketchEditorTool(session.sketch.activeSketchTool) && navigationCommand ? (
+          <SketchNavigationControl command={navigationCommand} />
+        ) : null
+      }
       actions={workspaceActions}
       activeSketchId={session.sketch.activeSketchId}
       activeSketchTool={session.sketch.activeSketchTool}
@@ -859,8 +868,12 @@ function EditorApplication({
     onSketchShortcutToolbarOpenChange: setSketchShortcutToolbarOpenWithAnchor,
   })
 
+  const navigationCommand = commands.find(
+    ({ descriptor }) => descriptor.id === editorCommandIds.sketchNavigateView,
+  )
   const modelWorkspace = (
     <EditorWorkspaceComposition
+      navigationCommand={navigationCommand}
       controller={controller}
       session={session}
       sessionActions={sessionActions}

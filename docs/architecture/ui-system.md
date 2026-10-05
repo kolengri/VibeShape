@@ -190,7 +190,11 @@ before accepting drawing input. Orthographic zoom, pan, standard views, resize, 
 all invalidate the projection without mutating the draft or invoking the solver.
 
 OrbitControls temporarily binds to the active sketch SVG, with primary/touch input reserved for
-editing and middle/secondary input reserved for navigation. Cleanup restores the canvas binding;
+editing and middle/secondary input reserved for navigation. Viewport controls colocate Rotate view, Section view, standard views, and Fit view; shell-owned
+command projections use the existing registered handler. Section parameters remain viewport-local
+and render in a non-modal popover. The registered Rotate view toggle uses the transient `navigate` camera mode: the analytical overlay
+is inert, the current solved draft renders in the 3D viewer, and the canvas owns navigation without
+sketch reference picking. Selecting a sketch tool returns to orbit editing. Cleanup restores the canvas binding;
 primary pointer cancellation and release outside the canvas cannot leave navigation disabled.
 Explicit camera-up changes recreate OrbitControls to refresh its cached orbit axis, preserving the
 target, enabled state, input bindings, and current view before returning to modeling navigation.

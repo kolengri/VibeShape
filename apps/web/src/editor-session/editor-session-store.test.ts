@@ -630,6 +630,16 @@ describe("editor session store", () => {
       undoStack: [initial],
     })
 
+    store.getState().actions.setSketchCameraMode("navigate")
+    expect(store.getState().sketch).toMatchObject({
+      cameraMode: "navigate",
+      draft: changed,
+      selectedEntityIds: [boundaryEntityId],
+      undoStack: [initial],
+    })
+    store.getState().actions.setSketchEditorTool("line")
+    expect(store.getState().sketch.cameraMode).toBe("orbit")
+
     store.getState().actions.setSketchCameraMode("normal")
     expect(store.getState().sketch.cameraMode).toBe("normal")
     expect(store.getState().sketch.draft).toBe(changed)

@@ -1,5 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import type { ViewerMesh, ViewerSection } from "@vibeshape/viewer/three-viewport"
 import { useId, useState } from "react"
@@ -33,16 +35,20 @@ export function SectionViewControls({
 }) {
   const t = useTranslations("app.sectionView")
   const axisId = useId()
-  const [axis, setAxis] = useState<ViewerSection["axis"]>("z")
-  const [offset, setOffset] = useState("0")
-  const [flipped, setFlipped] = useState(false)
+  const [axis, setAxis] = useState<ViewerSection["axis"]>(section?.axis ?? "z")
+  const [offset, setOffset] = useState(String(section?.offset ?? 0))
+  const [flipped, setFlipped] = useState(section?.flipped ?? false)
   const invalid =
     offset.trim() === "" || !Number.isFinite(Number(offset)) || Math.abs(Number(offset)) > 100_000
   if (disabled || meshes.length === 0) return null
   return (
-    <details className="absolute right-3 top-24 z-10 max-w-56 rounded-md border bg-background/95 p-2 text-xs shadow-sm">
-      <summary className="cursor-pointer font-medium">{t("title")}</summary>
-      <div className="mt-2 grid gap-2">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" size="sm" variant={section ? "secondary" : "ghost"}>
+          {t("title")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="grid w-56 gap-2 p-3 text-xs" aria-label={t("title")}>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -105,7 +111,7 @@ export function SectionViewControls({
           {t("flip")}
         </label>
         <p className="text-muted-foreground">{t("description")}</p>
-      </div>
-    </details>
+      </PopoverContent>
+    </Popover>
   )
 }

@@ -529,6 +529,7 @@ function revolveAngularGizmoProps(
 }
 
 type WorkspaceContentProps = Readonly<{
+  viewControls?: ReactNode
   actions: Readonly<{
     onBodySelectionChange?: (body: ModelBodySelection | null) => void
     onBodyPreselectionChange?: (body: ModelBodySelection | null) => void
@@ -720,6 +721,7 @@ function modelingSketchContextProps(
 }
 
 function ModelingWorkspaceContent({
+  viewControls,
   actions,
   controller,
   externalContextGeometry,
@@ -728,7 +730,7 @@ function ModelingWorkspaceContent({
   sketchContext,
   activeSketchDisplay,
   editVisibility,
-}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
+}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch" | "viewControls"> & {
   activeSketchDisplay?: SketchDisplayRecord | null
   editVisibility: Readonly<{
     featureIds: readonly FeatureId[]
@@ -758,6 +760,7 @@ function ModelingWorkspaceContent({
   )
   return (
     <GeometryViewport
+      viewControls={viewControls}
       controller={controller}
       printerProfile={printPreferences.printerProfile}
       printBedVisible={printPreferences.printBedVisible}
@@ -822,7 +825,7 @@ export function activeSketchDisplayForCamera(
   cameraMode: SketchCameraMode,
   analyticalOrbitOverlayOwnsSketch = false,
 ) {
-  return cameraMode === "orbit" && !analyticalOrbitOverlayOwnsSketch ? display : null
+  return cameraMode !== "normal" && !analyticalOrbitOverlayOwnsSketch ? display : null
 }
 
 function spatialOrbitSketchEditing(sketch: WorkspaceContentProps["sketch"]) {
@@ -1099,6 +1102,8 @@ function useWorkspaceSketchContext(
 ) {
   return useMemo<GeometryViewportSketchContext | undefined>(() => {
     if (!active) return undefined
+    // Navigation keeps the camera on the canvas and suspends sketch picking.
+    if (mode === "navigate") return { frame, mode: "orbit" }
     return {
       frame,
       mode,
@@ -1388,6 +1393,7 @@ function WorkspaceContentView({
     <ModelingSketchViewportStack
       modeling={
         <ModelingWorkspaceContent
+          viewControls={props.viewControls}
           actions={props.actions}
           controller={props.controller}
           externalContextGeometry={externalContextGeometry}
@@ -1849,6 +1855,7 @@ export type EditorWorkspaceActions = Readonly<{
 }>
 
 type EditorWorkspaceProps = Readonly<{
+  viewControls?: ReactNode
   actions: EditorWorkspaceActions
   activeTool: ActivePartDesignTool | null
   activeSketchId: SketchId | null
@@ -2219,6 +2226,7 @@ function EditorContent({
   )
   return (
     <WorkspaceContent
+      viewControls={props.viewControls}
       actions={{
         onExtrusionDistanceChange: actions.setExtrusionDistance,
         onRevolveAngleChange: actions.setRevolveAngle,

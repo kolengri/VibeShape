@@ -68,6 +68,7 @@ export const editorCommandIds = {
   sketchFillet: "org.vibeshape.editor.sketch.modify.fillet",
   sketchChamfer: "org.vibeshape.editor.sketch.modify.chamfer",
   sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
+  sketchNavigateView: "org.vibeshape.editor.sketch.view.navigate",
   sketchOrbitView: "org.vibeshape.editor.sketch.view.orbit",
   sketchFinalContext: "org.vibeshape.editor.sketch.view.final-context",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
@@ -280,6 +281,7 @@ export type EditorCommandLabelKey =
   | "sketchFillet"
   | "sketchChamfer"
   | "sketchOffset"
+  | "sketchNavigateView"
   | "sketchOrbitView"
   | "sketchFinalContext"
   | "sketchInscribedPolygon"

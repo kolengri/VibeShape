@@ -76,7 +76,7 @@ export type SketchEditorSessionState = Readonly<{
   undoStack: readonly SketchRecord[]
 }>
 
-export type SketchCameraMode = "normal" | "orbit"
+export type SketchCameraMode = "normal" | "orbit" | "navigate"
 
 export type EditorSessionState = Readonly<{
   activePartDesignTool: ActivePartDesignTool | null
@@ -675,6 +675,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
         setSketchEditorTool: (tool) =>
           set((state) => {
             state.sketch.editorTool = tool
+            if (state.sketch.cameraMode === "navigate") state.sketch.cameraMode = "orbit"
             state.sketch.repairReferenceId = null
             if (
               (tool === "intersection" || tool === "pierce") &&
