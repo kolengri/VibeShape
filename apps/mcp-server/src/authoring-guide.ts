@@ -217,7 +217,7 @@ inspect the actual document revision before proposing a new change.
 5. Call \`commit_draft\`; by default the person reviews and clicks Apply or Discard in the browser.
    A person may explicitly enable session-only auto-apply for valid allowlisted CAD edits in the
    browser. No tool can enable it; destructive or unsupported drafts still require review.
-   Allow up to six minutes and observe progress. A successful commit saves once with one Undo entry.
+   Allow enough time for manual review and observe progress. A successful commit saves once with one Undo entry.
    Read \`model_info\` again to observe the committed revision. Manual edits use the same saved model.
 6. If a manual edit or another writer changed the committed revision, reread the model and create
    a fresh draft. Do not blindly replay a full replacement over the person's changes.
@@ -656,7 +656,11 @@ Operations are serialized: one pending MCP operation per session. Each serialize
 must fit within 192 KiB. Semantic entity/page responses are bounded to 128 KiB; follow tool
 schemas for per-page limits. Hole/selected-treatment selections allow at most 256 IDs/references.
 Drafts expire five minutes after creation or the last successful command/preview; inspection does
-not renew expiry. The pairing expires after one hour or loss of browser polling.
+not renew expiry. An open CAD draft review has no time limit: its idle expiry is suspended while
+waiting for Apply/Discard, with access and base revision rechecked before saving. Separate import,
+assembly, metadata, history and texture proposals retain their advertised expiry. Client request timeouts can
+still cancel review; inspect the saved revision before requesting another review. The pairing
+expires after one hour or loss of browser polling.
 
 Both transports support \`prepare_model_export\` with exact committed \`revision\` and geometry
 \`format\`, or \`prepare_project_backup\` for an editable \`.vshape\`. Follow \`read_export_chunk\`

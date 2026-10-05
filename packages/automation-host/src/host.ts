@@ -351,6 +351,8 @@ export function createAutomationHost(
 
   const options = parsedOptions.data
   const drafts = new Map<DraftId, ManagedDraft>()
+  // Human review has no deadline; idle drafts still expire outside the review boundary.
+  const reviewingDrafts = new Set<DraftId>()
   const now = configuration.now ?? Date.now
   const clockValueSchema = z
     .number()
@@ -395,7 +397,7 @@ export function createAutomationHost(
 
   function purgeExpired(at: number) {
     for (const [draftId, record] of drafts) {
-      if (record.expiresAt <= at) {
+      if (record.expiresAt <= at && !reviewingDrafts.has(draftId)) {
         forgetDraft(draftId)
       }
     }
@@ -533,7 +535,7 @@ export function createAutomationHost(
       return failure(hostDiagnostic("draft-not-found", "The automation draft was not found."))
     }
 
-    if (record.expiresAt <= at) {
+    if (record.expiresAt <= at && !reviewingDrafts.has(draftId)) {
       forgetDraft(draftId)
       return failure(hostDiagnostic("draft-expired", "The automation draft has expired."))
     }
@@ -957,21 +959,26 @@ export function createAutomationHost(
     const reviewCommands = detachedReviewCommands(record)
     if (!reviewCommands.ok) return reviewCommands
     let reviewResult: unknown
+    reviewingDrafts.add(record.draft.id)
     try {
-      reviewResult = await configuration.review.confirm({
-        actor: commandActorSchema.parse(record.draft.actor),
-        preview,
-        commands: reviewCommands.value,
-      } satisfies DraftReviewInput)
-    } catch {
-      return failure(
-        hostDiagnostic("invalid-review-result", "The draft review could not be completed."),
-      )
+      try {
+        reviewResult = await configuration.review.confirm({
+          actor: commandActorSchema.parse(record.draft.actor),
+          preview,
+          commands: reviewCommands.value,
+        } satisfies DraftReviewInput)
+      } catch {
+        return failure(
+          hostDiagnostic("invalid-review-result", "The draft review could not be completed."),
+        )
+      }
+      const reviewDiagnostic = reviewDecisionDiagnostic(reviewResult)
+      if (reviewDiagnostic) return failure(reviewDiagnostic)
+      const refreshed = await revalidateAfterGeometry(record)
+      return refreshed.ok ? { ok: true, value: null } : refreshed
+    } finally {
+      reviewingDrafts.delete(record.draft.id)
     }
-    const reviewDiagnostic = reviewDecisionDiagnostic(reviewResult)
-    if (reviewDiagnostic) return failure(reviewDiagnostic)
-    const refreshed = await revalidateAfterGeometry(record)
-    return refreshed.ok ? { ok: true, value: null } : refreshed
   }
 
   async function previewDraft(

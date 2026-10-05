@@ -9,6 +9,13 @@
 5. Call `preview_draft` with `{ "draftId": draftId }`. Check exact `geometry.status`, `geometry.diagnostics`, bounds, and volume against the requested design. Valid solids do not establish healthy sketch support or external references. Fix invalid intent through a supported update with a new command ID; inspect the updated draft revision before continuing.
 6. Call `commit_draft` with `{ "draftId": draftId }`. The default waits for browser Apply/Discard; an existing explicit session auto-apply grant may apply eligible CAD changes. A successful commit saves once and creates one Undo entry. Verify the returned result and observe the saved revision with `model_info`.
 
+An open CAD draft review has no time limit. Its draft's `expiresAt` describes idle expiry, not an
+Apply deadline: the host retains it while review is pending and rechecks access and the committed
+base before saving. Cancellation, disconnection and revision changes can still invalidate review.
+Unsubmitted idle drafts and separate import, assembly, metadata, history and texture proposals retain their
+advertised expiry. An MCP client's request timeout can cancel review; do not automatically replay
+an unconfirmed commit. Inspect the saved revision before requesting fresh review.
+
 `draft_tree`, `draft_entity`, and `draft_variables` read semantic intent without rebuilding. Uncached `draft_edges`, `draft_body_measurements`, and `draft_body_topology` reads may perform a disposable exact geometry rebuild. Body inspection uses the current owned draft revision and returns exact roles or scoped faces/edges; Shell can consume its fresh opening references and source content hash before a save. None of these inspection reads renews draft expiry. Use `preview_draft` to validate the entire draft and obtain its exact measurements. An uncommitted draft cannot be exported by `export_model`.
 
 ## Conflict and interruption

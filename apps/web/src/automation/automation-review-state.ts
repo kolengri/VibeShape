@@ -30,6 +30,9 @@ export function isPlanarImportReview(
 function expiresAt(input: AutomationReviewInput) {
   return "kind" in input ? input.draft.expiresAt : input.preview.draft.expiresAt
 }
+function hasReviewDeadline(input: AutomationReviewInput) {
+  return "kind" in input || input.metadata !== undefined
+}
 
 type Decision = "approved" | "rejected" | "cancelled"
 
@@ -82,8 +85,9 @@ export function createAutomationReviewController() {
 
   function request(owner: symbol, input: AutomationReviewInput): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
-    const expiresIn = Date.parse(expiresAt(input)) - Date.now()
-    if (!Number.isFinite(expiresIn) || expiresIn <= 0) return Promise.resolve("cancelled")
+    const expiresIn = hasReviewDeadline(input) ? Date.parse(expiresAt(input)) - Date.now() : null
+    if (expiresIn !== null && (!Number.isFinite(expiresIn) || expiresIn <= 0))
+      return Promise.resolve("cancelled")
     let finish = () => {}
     const completed = new Promise<void>((resolve) => {
       finish = resolve
@@ -97,7 +101,8 @@ export function createAutomationReviewController() {
         finish,
         completed,
         decided: false,
-        timer: setTimeout(() => cancel(owner, "draft-expired"), expiresIn),
+        timer:
+          expiresIn === null ? null : setTimeout(() => cancel(owner, "draft-expired"), expiresIn),
       }
       pending = record
       publish({ id, input: structuredClone(input), status: "ready", diagnostic: null })
@@ -107,7 +112,7 @@ export function createAutomationReviewController() {
   function decide(id: string, decision: "approved" | "rejected"): Promise<void> {
     const record = pending
     if (!record || record.id !== id || !state || state.status !== "ready") return Promise.resolve()
-    if (Date.now() >= Date.parse(expiresAt(state.input))) {
+    if (hasReviewDeadline(state.input) && Date.now() >= Date.parse(expiresAt(state.input))) {
       cancel(record.owner, "draft-expired")
       return Promise.resolve()
     }

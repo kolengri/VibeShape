@@ -1,6 +1,7 @@
 # ADR-0042: Exact Automation Draft Application Path
 
 - Status: Accepted
+- CAD review expiry superseded by: [ADR-0098](0098-cad-review-without-deadline.md)
 - Date: 2026-09-07
 - Related: [ADR-0013](0013-microkernel-modules-and-mcp-automation.md), [ADR-0039](0039-committed-document-undo.md), [ADR-0041](0041-revision-bound-model-measurements.md)
 

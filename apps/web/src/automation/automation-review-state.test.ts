@@ -1,6 +1,6 @@
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
-import { commandActorSchema } from "@vibeshape/domain"
+import { commandActorSchema, commandIdSchema, partIdSchema } from "@vibeshape/domain"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createAutomationReviewController } from "./automation-review-state"
 
@@ -104,16 +104,18 @@ describe("browser automation review ownership", () => {
     expect(controller.getSnapshot()?.status).toBe("error")
   })
 
-  it("expires an unattended review and rejects a late Apply", async () => {
+  it("keeps CAD review available after the draft's idle expiry", async () => {
     vi.useFakeTimers()
     const controller = createAutomationReviewController()
-    const decision = controller.request(Symbol(), reviewInput())
+    const owner = Symbol()
+    const decision = controller.request(owner, reviewInput())
     const id = controller.getSnapshot()?.id ?? "missing"
-    await vi.advanceTimersByTimeAsync(60_000)
-    await expect(decision).resolves.toBe("cancelled")
-    await controller.decide(id, "approved")
-    expect(controller.getSnapshot()).toMatchObject({ status: "error", diagnostic: "draft-expired" })
-    controller.dismiss(id)
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+    expect(controller.getSnapshot()).toMatchObject({ status: "ready", diagnostic: null })
+    const applied = controller.decide(id, "approved")
+    await expect(decision).resolves.toBe("approved")
+    controller.complete(owner, { ok: true, value: {} })
+    await applied
     expect(controller.getSnapshot()).toBeNull()
   })
 
@@ -140,6 +142,79 @@ describe("browser automation review ownership", () => {
     })
     controller.dismiss(id)
     expect(controller.getSnapshot()).toBeNull()
+  })
+
+  it("can cancel CAD review after its idle expiry without approving it", async () => {
+    vi.useFakeTimers()
+    const controller = createAutomationReviewController()
+    const owner = Symbol()
+    const decision = controller.request(owner, reviewInput())
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+    controller.cancel(owner, "draft-review-cancelled")
+    await expect(decision).resolves.toBe("cancelled")
+    expect(controller.getSnapshot()).toMatchObject({ status: "error" })
+  })
+
+  it("still expires separate history proposals", async () => {
+    vi.useFakeTimers()
+    const controller = createAutomationReviewController()
+    const cad = reviewInput()
+    const request = {
+      direction: "undo" as const,
+      commandId: commandIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000004"),
+      documentId: cad.preview.draft.documentId,
+      baseRevision: 1,
+      issuedAt: new Date().toISOString(),
+      actor: cad.actor,
+    }
+    const decision = controller.request(Symbol(), {
+      kind: "history",
+      actor: cad.actor,
+      documentName: "History target",
+      draft: {
+        ...request,
+        draftId: cad.preview.draft.draftId,
+        targetRevision: 0,
+        expiresAt: cad.preview.draft.expiresAt,
+      },
+      request,
+      preview: {
+        valid: true,
+        measurements: {
+          schemaVersion: 1,
+          documentId: cad.preview.draft.documentId,
+          revision: 0,
+          generation: 1,
+          features: [],
+        },
+      },
+      featureCount: 0,
+      partCount: 0,
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    await expect(decision).resolves.toBe("cancelled")
+    expect(controller.getSnapshot()).toMatchObject({ status: "error", diagnostic: "draft-expired" })
+  })
+
+  it("still expires separate metadata proposals", async () => {
+    vi.useFakeTimers()
+    const controller = createAutomationReviewController()
+    const input = reviewInput()
+    const decision = controller.request(Symbol(), {
+      ...input,
+      metadata: {
+        change: {
+          kind: "part.rename",
+          partId: partIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000005"),
+          name: "Cover",
+        },
+        targetName: "Part",
+        range: null,
+      },
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    await expect(decision).resolves.toBe("cancelled")
+    expect(controller.getSnapshot()).toMatchObject({ status: "error", diagnostic: "draft-expired" })
   })
 
   it("detaches displayed intent from the calling port's objects", async () => {

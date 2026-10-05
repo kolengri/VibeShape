@@ -817,7 +817,7 @@ describe("exact automation draft host boundary", () => {
     expect(store.portCalls()).toBe(0)
   })
 
-  it("rejects expiry that occurs while review is pending", async () => {
+  it("allows a reviewed draft to commit after its idle expiry", async () => {
     const store = documentStore(createdSnapshot())
     let now = startedAt
     let enterReview!: () => void
@@ -845,17 +845,17 @@ describe("exact automation draft host boundary", () => {
         command(
           "org.vibeshape.document.rename",
           1,
-          "Pending expiry",
+          "Unhurried review",
           "0195b5ac-b232-7a2c-8c33-67a36a7f21ac",
         ),
       ),
     )
     const commit = host.commitDraft(actor, operationRequest())
     await reviewEntered
-    now += 1_001
+    now += 24 * 60 * 60_000
     approve()
-    expect(await commit).toMatchObject({ ok: false, diagnostic: { code: "draft-expired" } })
-    expect(store.portCalls()).toBe(0)
+    expect(await commit).toMatchObject({ ok: true, value: { revision: 2 } })
+    expect(store.portCalls()).toBe(1)
   })
 
   it("requires a fresh review after a rejected draft changes", async () => {
