@@ -377,7 +377,12 @@ Placeholder text is an example, never the only label or required instruction.
 - A preference change converts displayed canonical results and defaults for new fields. It never rewrites an existing authored expression or changes physical geometry.
 - Show the normalized value after successful commit when it differs from the entered representation.
 - Empty, incomplete, non-finite, dimensionally invalid, and out-of-range values receive different messages.
-- Do not change a focused numeric value on wheel scroll. Arrow stepping requires an explicit field behavior and documented modifier scale.
+- In an editable expression field containing a finite numeric literal, unmodified `ArrowUp` and
+  `ArrowDown` add or subtract one in the authored unit (or one for a bare scalar). Preserve the unit
+  suffix and select the updated number. Formulas and variable references are never rewritten;
+  an open autocomplete list keeps arrow-key navigation. Modified arrows retain native behavior;
+  no modifier scale is applied. Each step uses the ordinary input-change and draft-validation path.
+- Do not change a focused numeric value on wheel scroll.
 - Constraints and feature parameters MUST state whether zero and negative values are meaningful.
 - Validation must not destroy a previously valid committed value.
 
