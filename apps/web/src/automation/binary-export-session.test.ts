@@ -63,6 +63,16 @@ function read(exportId: string, offset = 0, limit = BINARY_EXPORT_CHUNK_MAX_BYTE
   return { tool: "read_export_chunk", arguments: { exportId, offset, limit } } as const
 }
 describe("paired binary export session", () => {
+  it("forwards explicit mesh quality to the revision-bound export source", async () => {
+    const f = fixture()
+    const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
+    const result = await f.session.execute(actor, {
+      tool: "prepare_model_export",
+      arguments: { revision: 4, format: "3mf", meshQuality },
+    })
+    expect(result.ok).toBe(true)
+    expect(f.prepare).toHaveBeenCalledExactlyOnceWith("3mf", 4, meshQuality)
+  })
   it("copies source bytes and preserves immutable export provenance after later document edits", async () => {
     const source = new Uint8Array([1, 2, 3, 4, 5]),
       f = fixture(source)

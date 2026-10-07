@@ -15,9 +15,11 @@ import {
   extrusionFeatureContentParametersV7Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
+  type FdmFeatureContentParameters,
   type FeatureContentEnvironment,
   type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
+  fdmFeatureContentParametersSchema,
   featureContentEnvironmentSchema,
   featureEvaluationInputSchema,
   filletFeatureContentParametersSchema,
@@ -41,9 +43,11 @@ import {
   loftFeatureContentParametersSchema,
   loftFeatureContentParametersV2Schema,
   loftFeatureContentParametersV3Schema,
+  type MeshExportQuality,
   type MirrorFeatureContentParameters,
   type MirrorFeatureContentParametersV2,
   type MirrorFeatureContentParametersV3,
+  meshExportQualitySchema,
   mirrorFeatureContentParametersSchema,
   mirrorFeatureContentParametersV2Schema,
   mirrorFeatureContentParametersV3Schema,
@@ -151,6 +155,7 @@ import {
   terminateExtrusionAtFace,
   terminateExtrusionAtPlane,
 } from "./occt-extrusion-end"
+import { createOcctFdmFeature } from "./occt-fdm"
 import { createOcctCountersink } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
@@ -262,6 +267,7 @@ export type DocumentGeometryExportInput = Readonly<{
   format: Exclude<GeometryExportFormat, "3mf">
   surfaceTextures?: SurfaceTextureExportLayers
   textureQuality?: SurfaceTextureQuality
+  meshQuality?: MeshExportQuality
 }>
 
 export type DocumentGeometryExportResult = Readonly<{
@@ -274,6 +280,7 @@ export type DocumentPrintMeshExportInput = Readonly<{
   features: readonly FeatureEvaluationDependency[]
   surfaceTextures?: SurfaceTextureExportLayers
   textureQuality?: SurfaceTextureQuality
+  meshQuality?: MeshExportQuality
 }>
 
 export type DocumentPrintMeshExportResult = Readonly<{
@@ -916,6 +923,39 @@ function exportTextureLayers(
   )
 }
 
+async function exportNativePrintMesh(
+  opencascade: OpenCascadeInstance,
+  shape: Shape3D,
+  context: {
+    input: DocumentPrintMeshExportInput
+    feature: FeatureEvaluationDependency
+    budget: ReturnType<typeof createTextureExportBudget>
+    quality: MeshExportQuality | null
+  },
+) {
+  const { input, feature, budget, quality } = context
+  try {
+    if (quality) opencascade.BRepTools.Clean(shape.wrapped, true)
+    const source = meshOcctShape(opencascade, shape, {
+      tolerance: quality?.chordTolerance ?? PRINT_MESH_CHORD_TOLERANCE_MM,
+      angularTolerance: quality?.angularTolerance ?? PRINT_MESH_ANGULAR_TOLERANCE_RAD,
+    })
+    const mesh = await texturePrintMesh(
+      source,
+      exportTextureLayers(input, feature),
+      budget.currentQuality(),
+    )
+    budget.consume(mesh.triangles.length / 3)
+    return {
+      featureId: feature.featureId,
+      ...(feature.outputRole ? { outputRole: feature.outputRole } : {}),
+      ...mesh,
+    }
+  } finally {
+    opencascade.BRepTools.Clean(shape.wrapped, true)
+  }
+}
+
 async function texturePrintMesh(
   source: ShapeMesh,
   layers: readonly SurfaceTextureMeshLayer[],
@@ -1200,6 +1240,7 @@ function pyramidFeatureSemanticRole(
 }
 
 type ParsedFeature =
+  | { kind: "fdm"; parameters: FdmFeatureContentParameters }
   | { kind: "boolean"; parameters: BooleanContentParameters }
   | { kind: "fillet"; parameters: FilletContentParameters }
   | { kind: "chamfer"; parameters: ChamferContentParameters }
@@ -2295,7 +2336,44 @@ function parseShellFeature(input: FeatureEvaluationInput, version = 1): FeatureP
   }
 }
 
+function fdmIndependentInputsAreValid(input: FeatureEvaluationInput) {
+  return (
+    input.dependencies.length === 0 &&
+    input.content.feature.references.length === 0 &&
+    input.content.schemaVersion === 0
+  )
+}
+function fdmModifierInputsAreValid(input: FeatureEvaluationInput, p: FdmFeatureContentParameters) {
+  if (input.content.schemaVersion !== 1) return false
+  const expected = p.kind === "web" ? 1 + p.supportInputCount : 1
+  const references = input.content.feature.references.length
+  return (
+    input.dependencies.length === expected &&
+    input.content.feature.inputRoles[0] != null &&
+    input.content.feature.inputRoles.slice(1).every((role) => role === null) &&
+    (p.kind === "web" ? references <= 1 : references === 0)
+  )
+}
+function parseFdmFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parsed = fdmFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  if (!parsed.success)
+    return featureFailure("invalid-feature-parameters", "FDM content parameters are invalid.")
+  const p = parsed.data
+  const independent =
+    p.kind === "calibration-coupon" ||
+    (p.kind === "flexible-sleeve" && input.dependencies.length === 0)
+  const valid = independent
+    ? fdmIndependentInputsAreValid(input)
+    : fdmModifierInputsAreValid(input, p)
+  return valid
+    ? { ok: true, feature: { kind: "fdm", parameters: p } }
+    : invalidInputCardinality(
+        "FDM features require exact named target and whole support inputs, or no inputs for independent geometry.",
+      )
+}
+
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
+  ["org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.fdm#1", parseFdmFeature],
   [COMPOUND_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "compound")],
   [UNION_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "union")],
   [COMPOUND_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "compound", 2)],
@@ -2830,6 +2908,8 @@ function createFeatureShape(
 ) {
   if (isPrimitiveFeature(feature)) return createPrimitiveFeatureShape(opencascade, feature)
   switch (feature.kind) {
+    case "fdm":
+      return createOcctFdmFeature(opencascade, feature.parameters, dependencyShapes[0])
     case "datum-plane":
       return createDatumPlaneFeatureShape(opencascade, feature.parameters)
     case "boolean": {
@@ -4767,7 +4847,14 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const file =
         input.format === "step"
           ? exportOcctStep(opencascade, exportShape.wrapped)
-          : new Uint8Array(await exportMeshedOcctStl(opencascade, exportShape, true).arrayBuffer())
+          : new Uint8Array(
+              await exportMeshedOcctStl(
+                opencascade,
+                exportShape,
+                true,
+                input.meshQuality,
+              ).arrayBuffer(),
+            )
       return { file, bodyCount: sourceShapes.length }
     } finally {
       compound?.delete()
@@ -4785,29 +4872,14 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     if (!sourceShapes)
       throw new Error("One or more exact feature bodies are unavailable for export.")
     const budget = createTextureExportBudget(input)
+    const quality = input.meshQuality ? meshExportQualitySchema.parse(input.meshQuality) : null
     const meshes: Array<DocumentPrintMeshExportResult["meshes"][number]> = []
     for (const [index, shape] of sourceShapes.entries()) {
-      try {
-        const source = meshOcctShape(opencascade, shape, {
-          tolerance: PRINT_MESH_CHORD_TOLERANCE_MM,
-          angularTolerance: PRINT_MESH_ANGULAR_TOLERANCE_RAD,
-        })
-        const feature = input.features[index]
-        if (!feature) throw new Error("Print mesh export lost its selected body identity.")
-        const mesh = await texturePrintMesh(
-          source,
-          exportTextureLayers(input, feature),
-          budget.currentQuality(),
-        )
-        budget.consume(mesh.triangles.length / 3)
-        meshes.push({
-          featureId: feature.featureId,
-          ...(feature.outputRole ? { outputRole: feature.outputRole } : {}),
-          ...mesh,
-        })
-      } finally {
-        opencascade.BRepTools.Clean(shape.wrapped, true)
-      }
+      const feature = input.features[index]
+      if (!feature) throw new Error("Print mesh export lost its selected body identity.")
+      meshes.push(
+        await exportNativePrintMesh(opencascade, shape, { input, feature, budget, quality }),
+      )
     }
     return { meshes }
   }

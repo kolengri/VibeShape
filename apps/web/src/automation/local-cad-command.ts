@@ -18,6 +18,7 @@ import {
   compoundFeatureTypeV2,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { fdmFeatureType } from "@vibeshape/domain/part-design-fdm"
 import {
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
@@ -71,6 +72,8 @@ type CadOperation = Extract<
       | "update_mirror"
       | "create_shell"
       | "update_shell"
+      | "create_fdm"
+      | "update_fdm"
       | "create_thread"
       | "update_thread"
       | "create_body_pattern"
@@ -93,6 +96,8 @@ type CadOperation = Extract<
 >
 
 const directCadFeatureTypes = {
+  create_fdm: fdmFeatureType.type,
+  update_fdm: fdmFeatureType.type,
   create_face_extent_extrude: extrusionFeatureTypeV7.type,
   update_face_extent_extrude: extrusionFeatureTypeV7.type,
   create_body_revolve: revolveFeatureTypeV7.type,

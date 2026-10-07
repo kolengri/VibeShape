@@ -65,6 +65,18 @@ with at most twenty single-start turns in v2 and sixteen turns for multi-start o
 without ISO/DIN fit certification. Use the live schema for
 limits, quantities, dependencies and repair; exact preview remains mandatory.
 
+\`create_fdm\`/\`update_fdm\` author twelve exact editable FDM kinds: Web/Rib, corner relief,
+seam groove, teardrop hole, compliant hex seat, crush ribs, flexible sleeve, nut pocket,
+insert pocket/boss, enclosure lip/groove, sacrificial membrane/bridges and calibration coupon.
+Use exact target roles; coupon is independent and sleeve may be independent. Dimensions and
+origins retain quantities; counts are bounded numeric snapshots. Web/Rib uses saved solved
+nonconstruction line IDs and actual sketch support reference. Dependencies are target first,
+distinct sketch support then distinct stop-plane owner. Web is normal to the sketch; Rib is
+an in-plane triangle with normal thickness. Wall extension requires complete finite rectangular
+planar wall coverage. Web stop planes are parallel reachable origin/datum/explicit planes;
+finite body-face stops fail explicitly. Missed cuts or disconnected results fail. Flat cuts
+reuse Split. Fit and print orientation remain explicit design decisions.
+
 Before writing, read the modeling skill's construction strategy. Prefer dimensioned analytical
 profiles, Extrude/Revolve for straight/rotational regions, and symmetry where the source supports it.
 Before creating sketch points, decide the symmetry axis and which half owns the dimensions.
@@ -656,7 +668,7 @@ Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on 
 Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
 sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
-Split, Sweep, Loft and custom Thread create/update;
+Split, Sweep, Loft, custom Thread and FDM create/update;
 variables; bounded inspection; draft lifecycle and export; feature/sketch removal,
 explicit feature suppression and project rename; Placement and editable sketch text;
 owned native/planar imports, assembly/library authoring, surface textures and saved-change Undo/Redo.
@@ -686,6 +698,12 @@ length and SHA-256, then \`discard_export\`. Keep binary output out of conversat
 retain one actor-owned file up to 6 MiB for five minutes; reads do not renew expiry. Preparing
 another evicts it. Remote reads share ordinary operation/rate budgets. Larger files and part
 selection use the editor. A descriptor alone is not file delivery.
+
+For STL/3MF, both export tools accept optional \`meshQuality: { chordTolerance, angularTolerance }\`.
+Chord tolerance is absolute mm from 0.005 to 1; angular deflection is radians from 0.01 to 0.5.
+Omit quality to preserve STL 0.05 mm / 0.1 rad and 3MF 0.02 mm / 0.1 rad defaults. Finer meshes
+increase file size; existing transfer and print budgets remain. Imported meshes retain source
+resolution. STEP does not accept mesh quality.
 
 Alternatively, local MCP exports the successful committed revision using \`export_model\` with \`format: "step"\`, \`"stl"\`
 or \`"3mf"\`. Read the returned \`resource_link.uri\` through MCP resources/read, decode its base64

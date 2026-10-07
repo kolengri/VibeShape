@@ -25,6 +25,7 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain/part-design"
+import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { readHoleFeatureParameters } from "@vibeshape/domain/part-design-hole"
 import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
 import {
@@ -865,6 +866,13 @@ export function expectedSketchFeatureReferences(
   ]
 }
 
+function savedPointOrLineSketchId(feature: FeatureRecord) {
+  const hole = readHoleFeatureParameters(feature)
+  if (hole) return hole.sketchId
+  const fdm = readFdmFeatureParameters(feature)
+  return fdm?.kind === "web" ? fdm.sketchId : null
+}
+
 function documentSketchSchedulingDependencies(document: DocumentSnapshot, feature: FeatureRecord) {
   const constrainedLoft = readLoftFeatureParametersV3(feature)
   if (constrainedLoft)
@@ -886,8 +894,8 @@ function documentSketchSchedulingDependencies(document: DocumentSnapshot, featur
       [sweep.profile.sketchId, sweep.path.sketchId],
       feature.references.map(({ featureId }) => featureId),
     )
-  const hole = readHoleFeatureParameters(feature)
-  if (hole) return sketchModelFeatureIds(document, hole.sketchId)
+  const savedSketch = savedPointOrLineSketchId(feature)
+  if (savedSketch) return sketchModelFeatureIds(document, savedSketch)
   const extrusion = readExtrusionFeatureParameters(feature)
   const revolve = readRevolveFeatureParameters(feature)
   const parameters = extrusion ?? revolve

@@ -1,6 +1,6 @@
 import { resolveAuthoredParts } from "@vibeshape/application/authored-parts"
 import { useTranslations } from "@vibeshape/i18n"
-import type { GeometryExportFormat } from "@vibeshape/protocol"
+import type { GeometryExportFormat, MeshExportQuality } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -22,6 +22,11 @@ import { SlicerHandoffPanel } from "../printing/slicer-handoff-panel"
 import type { DocumentControllerState } from "./document-controller"
 import { exportActiveDocument } from "./document-controller"
 import { downloadDocumentExport } from "./document-export"
+import {
+  type MeshExportQualityChoice,
+  MeshExportQualityField,
+  meshExportQuality,
+} from "./mesh-export-quality-field"
 
 const formatCopy = {
   "3mf": {
@@ -61,6 +66,7 @@ function useDocumentExportAction(
   partId: string | undefined,
   open: boolean,
   includesMesh = false,
+  quality?: MeshExportQuality,
 ) {
   const [activity, setActivity] = useState<ExportActivity>(idleActivity)
 
@@ -76,7 +82,10 @@ function useDocumentExportAction(
     }
     setActivity({ pendingFormat: format, statusKey: formatCopy[format].pending, failed: false })
     try {
-      const result = await exportActiveDocument(format, partId)
+      const result =
+        quality && format !== "step"
+          ? await exportActiveDocument(format, partId, quality)
+          : await exportActiveDocument(format, partId)
       if (!result.ok) {
         setActivity({ pendingFormat: null, statusKey: "status.failed", failed: true })
         return
@@ -270,11 +279,13 @@ function useExportDialogPresentation(open: boolean) {
   const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
   const [showPreparation, setShowPreparation] = useState(false)
   const [exportPart, setExportPart] = useState("all")
+  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
   useEffect(() => {
     if (!open) return
     setSlicerStatus(null)
     setShowPreparation(false)
     setExportPart("all")
+    setMeshQualityChoice("default")
   }, [open])
   return {
     slicerStatus,
@@ -283,6 +294,8 @@ function useExportDialogPresentation(open: boolean) {
     setShowPreparation,
     exportPart,
     setExportPart,
+    meshQualityChoice,
+    setMeshQualityChoice,
   }
 }
 
@@ -371,6 +384,8 @@ export function DocumentExportDialog({
     setShowPreparation,
     exportPart,
     setExportPart,
+    meshQualityChoice,
+    setMeshQualityChoice,
   } = useExportDialogPresentation(open)
   const selectedPartId = exportPart === "all" ? undefined : exportPart
   const { activity, runExport } = useDocumentExportAction(
@@ -378,6 +393,7 @@ export function DocumentExportDialog({
     selectedPartId,
     open,
     exportSelectionIncludesMesh(controller, selectedPartId),
+    meshExportQuality(meshQualityChoice),
   )
   const hasGeometry = documentHasExportableGeometry(controller)
   const preparationDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
@@ -410,6 +426,11 @@ export function DocumentExportDialog({
           </DialogHeader>
           {!showPreparation ? (
             <>
+              <MeshExportQualityField
+                value={meshQualityChoice}
+                onChange={setMeshQualityChoice}
+                disabled={actionDisabled}
+              />
               <ExportPartSelection
                 controller={controller}
                 value={exportPart}
@@ -423,7 +444,15 @@ export function DocumentExportDialog({
                   setSlicerStatus(message)
                   setOpen(false)
                 }}
-                prepareThreeMf={() => exportActiveDocument("3mf", selectedPartId)}
+                prepareThreeMf={() =>
+                  meshQualityChoice === "default"
+                    ? exportActiveDocument("3mf", selectedPartId)
+                    : exportActiveDocument(
+                        "3mf",
+                        selectedPartId,
+                        meshExportQuality(meshQualityChoice),
+                      )
+                }
               />
               <ExportFormatCards
                 preferredFormat={preferredFormat}

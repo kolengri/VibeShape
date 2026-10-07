@@ -39,6 +39,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
@@ -56,6 +57,8 @@ import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
 
 export type ActivePartDesignTool =
+  | Readonly<{ kind: "create-fdm" }>
+  | Readonly<{ kind: "edit-fdm"; featureId: FeatureId }>
   | Readonly<{ kind: "surface-texture"; featureId?: FeatureId; outputRole?: string }>
   | Readonly<{ kind: "measure" }>
   | Readonly<{ kind: "create-loft" | "create-sweep" }>
@@ -297,6 +300,7 @@ function isUnionFeature(feature: FeatureRecord) {
 }
 
 function isPartDesignSolidFeature(feature: FeatureRecord) {
+  if (readFdmFeatureParameters(feature)) return true
   return [
     isBoxFeature,
     isCylinderFeature,
@@ -466,6 +470,7 @@ const editableFeatureTools: readonly [
   (feature: FeatureRecord) => boolean,
   Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
 ][] = [
+  [(feature) => readFdmFeatureParameters(feature) !== null, "edit-fdm"],
   [
     (feature) =>
       hasFeatureType(feature, compoundFeatureType.type) ||
@@ -505,6 +510,8 @@ export function editPartDesignTool(
 }
 
 const commandByToolKind = {
+  "create-fdm": "fdm",
+  "edit-fdm": "fdm",
   "surface-texture": "surface-texture",
   "create-compound": "compound",
   "edit-compound": "compound",

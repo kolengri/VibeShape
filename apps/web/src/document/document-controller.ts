@@ -133,6 +133,7 @@ import type {
   AssemblyExportSettings,
   AssemblyInspection,
   GeometryExportFormat,
+  MeshExportQuality,
   PrintPreparationResult,
   PrintPreparationSettings,
 } from "@vibeshape/protocol"
@@ -860,14 +861,18 @@ export function createActiveDocumentAutomationSession() {
     }
     return queryDispatcher.dispatcher.dispatch(snapshot, query, edges ? { edges } : undefined)
   }
-  const exportRevisionBound = async (format: GeometryExportFormat, revision: number) => {
+  const exportRevisionBound = async (
+    format: GeometryExportFormat,
+    revision: number,
+    meshQuality?: MeshExportQuality,
+  ) => {
     if (!currentReport() || revision !== active.snapshot.revision)
       return automationCommitFailure(
         "stale-revision",
         "The active project changed before export.",
         true,
       )
-    const result = await exportActiveDocument(format)
+    const result = await exportActiveDocument(format, undefined, meshQuality)
     if (!result.ok) return result
     if (!currentReport() || active.snapshot.revision !== revision)
       return automationCommitFailure(
@@ -1084,9 +1089,9 @@ export function createActiveDocumentAutomationSession() {
     documentId: capturedDocumentId,
     currentRevision: () => active.snapshot.revision,
     isActive: () => currentReport() !== null,
-    async prepare(format, revision) {
+    async prepare(format, revision, meshQuality) {
       if (format !== "vshape") {
-        const result = await exportRevisionBound(format, revision)
+        const result = await exportRevisionBound(format, revision, meshQuality)
         return result.ok
           ? {
               ok: true as const,
@@ -2242,6 +2247,7 @@ export async function solveActiveSketch(
 export async function exportActiveDocument(
   format: GeometryExportFormat,
   partId?: string,
+  meshQuality?: MeshExportQuality,
 ): Promise<ActiveDocumentExportResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
@@ -2261,6 +2267,7 @@ export async function exportActiveDocument(
     state.report,
     format,
     partId,
+    meshQuality,
   )
   if (!prepared.ok) return prepared
   const result = await active.exportDocument(format, prepared.options)
@@ -2307,6 +2314,7 @@ export async function materializeActiveDocumentSourceAssets(input: unknown) {
 export async function prepareActiveDocumentPrint(
   settings: PrintPreparationSettings,
   signal: AbortSignal,
+  meshQuality?: MeshExportQuality,
 ): Promise<ActiveDocumentExportResult> {
   const active = session
   if (!active || state.status !== "ready" || !state.report || signal.aborted) {
@@ -2321,7 +2329,13 @@ export async function prepareActiveDocumentPrint(
     }
   }
   const snapshot = active.snapshot
-  const plan = prepareDocumentGeometryExport(active.authoredSnapshot, state.report, "3mf")
+  const plan = prepareDocumentGeometryExport(
+    active.authoredSnapshot,
+    state.report,
+    "3mf",
+    undefined,
+    meshQuality,
+  )
   if (!plan.ok) return plan
   return prepareDocumentPrint(
     snapshot,

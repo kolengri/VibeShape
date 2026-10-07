@@ -18,6 +18,7 @@ import {
   importedSourceContentSchema,
   sourceAssetMaterializationsSchema,
 } from "./import-content"
+import { type MeshExportQuality, meshExportQualitySchema } from "./mesh-export-quality"
 import { inspectMeshImportInputSchema, meshImportInspectionSchema } from "./mesh-import"
 import { printPreparationResultSchema, printPreparationSettingsSchema } from "./print-preparation"
 import {
@@ -34,7 +35,7 @@ import {
   surfaceTextureQualitySchema,
 } from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 25 as const
+export const DOCUMENT_PROTOCOL_VERSION = 26 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -190,6 +191,7 @@ export type DocumentExportOptions = Readonly<{
   bodies?: DocumentExportBodies
   surfaceTextures?: SurfaceTextureExportLayers
   textureQuality?: SurfaceTextureQuality
+  meshQuality?: MeshExportQuality
 }>
 
 const exportDocumentRequestSchema = requestEnvelopeSchema
@@ -200,9 +202,13 @@ const exportDocumentRequestSchema = requestEnvelopeSchema
     printPreparation: printPreparationSettingsSchema.optional(),
     surfaceTextures: surfaceTextureExportLayersSchema.optional(),
     textureQuality: surfaceTextureQualitySchema.optional(),
+    meshQuality: meshExportQualitySchema.optional(),
   })
   .refine((request) => !request.printPreparation || request.format === "3mf", {
     message: "Print preparation is available only for 3MF export.",
+  })
+  .refine((request) => !request.meshQuality || request.format !== "step", {
+    message: "Mesh quality is available only for STL and 3MF export.",
   })
 
 const solveSketchRequestSchema = requestEnvelopeSchema

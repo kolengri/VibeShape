@@ -38,6 +38,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { fdmFeatureType, readFdmFeatureParameters } from "./part-design-fdm"
 import {
   holeFeatureType,
   holeFeatureTypeV2,
@@ -188,6 +189,37 @@ function sketchSolidSemanticInputs(
       }
 }
 
+function holeSketchSemanticInputs(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+): FirstPartySemanticInputProjection {
+  const parameters = readHoleFeatureParameters(feature)
+  return parameters
+    ? { recognized: true, ok: true, inputs: [{ kind: "sketch", id: parameters.sketchId }] }
+    : { recognized: true, ok: false, message: "A hole must contain valid sketch point intent." }
+}
+function fdmSketchSemanticInputs(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+): FirstPartySemanticInputProjection {
+  const fdm = readFdmFeatureParameters(feature)
+  if (!fdm)
+    return {
+      recognized: true,
+      ok: false,
+      message: "An FDM feature must contain valid authored parameters.",
+    }
+  return {
+    recognized: true,
+    ok: true,
+    inputs: fdm.kind === "web" ? [{ kind: "sketch", id: fdm.sketchId }] : [],
+  }
+}
+const pointOrLineProjections = new Map([
+  [featureTypeKey(holeFeatureType.type), holeSketchSemanticInputs],
+  [featureTypeKey(holeFeatureTypeV2.type), holeSketchSemanticInputs],
+  [featureTypeKey(holeFeatureTypeV3.type), holeSketchSemanticInputs],
+  [featureTypeKey(fdmFeatureType.type), fdmSketchSemanticInputs],
+])
+
 export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
 ): FirstPartySemanticInputProjection {
@@ -199,16 +231,8 @@ export function projectFirstPartyFeatureSemanticInputs(
   if (readSketchSolidInputs) {
     return sketchSolidSemanticInputs(feature, readSketchSolidInputs)
   }
-  if (
-    typeKey === featureTypeKey(holeFeatureType.type) ||
-    typeKey === featureTypeKey(holeFeatureTypeV2.type) ||
-    typeKey === featureTypeKey(holeFeatureTypeV3.type)
-  ) {
-    const parameters = readHoleFeatureParameters(feature)
-    return parameters
-      ? { recognized: true, ok: true, inputs: [{ kind: "sketch", id: parameters.sketchId }] }
-      : { recognized: true, ok: false, message: "A hole must contain valid sketch point intent." }
-  }
+  const pointOrLineProjection = pointOrLineProjections.get(typeKey)
+  if (pointOrLineProjection) return pointOrLineProjection(feature)
   if (emptySemanticInputTypeKeys.has(typeKey)) return { recognized: true, ok: true, inputs: [] }
   if (extrusionTypeKeys.has(typeKey)) {
     const parameters = readExtrusionFeatureParameters(feature as FeatureRecord)

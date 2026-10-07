@@ -12,7 +12,9 @@ function key(body: { featureId: string; outputRole?: string | undefined }) {
 }
 function validateTextureTargets(
   exact: readonly FeatureEvaluationDependency[],
-  options: Pick<DocumentPrintMeshExportInput, "surfaceTextures" | "textureQuality"> | undefined,
+  options:
+    | Pick<DocumentPrintMeshExportInput, "surfaceTextures" | "textureQuality" | "meshQuality">
+    | undefined,
 ) {
   const exactKeys = new Set(exact.map(key))
   if (
@@ -41,7 +43,10 @@ export async function collectDocumentPrintMeshes(
   documentId: string,
   state: FeatureRebuildState,
   features: readonly FeatureEvaluationDependency[],
-  textureOptions?: Pick<DocumentPrintMeshExportInput, "surfaceTextures" | "textureQuality">,
+  textureOptions?: Pick<
+    DocumentPrintMeshExportInput,
+    "surfaceTextures" | "textureQuality" | "meshQuality"
+  >,
 ) {
   const bodies = terminalBodyGeometry(state)
   if (!bodies) throw new Error("Current terminal body geometry is unavailable.")
@@ -86,7 +91,10 @@ export async function exportDocumentMeshStl(
   documentId: string,
   state: FeatureRebuildState,
   features: readonly FeatureEvaluationDependency[],
-  textureOptions?: Pick<DocumentPrintMeshExportInput, "surfaceTextures" | "textureQuality">,
+  textureOptions?: Pick<
+    DocumentPrintMeshExportInput,
+    "surfaceTextures" | "textureQuality" | "meshQuality"
+  >,
 ) {
   const collected = await collectDocumentPrintMeshes(
     engine,

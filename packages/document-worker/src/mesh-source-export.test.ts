@@ -108,7 +108,10 @@ describe("mixed exact and imported mesh export", () => {
     const exported = vi
       .spyOn(engine, "exportPrintMeshes")
       .mockResolvedValue({ meshes: [nativeMesh] })
-    const options = textureOptions(exact)
+    const options = {
+      ...textureOptions(exact),
+      meshQuality: { chordTolerance: 0.01, angularTolerance: 0.05 },
+    }
     const result = await collectDocumentPrintMeshes(
       engine,
       state.documentId,

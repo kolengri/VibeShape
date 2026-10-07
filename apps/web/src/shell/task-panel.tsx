@@ -129,6 +129,7 @@ import {
 import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-texture-task-panel"
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
+import { FdmTaskPanel } from "./fdm-task-panel"
 import { MirrorTaskPanel } from "./mirror-task-panel"
 import { PatternTaskPanel } from "./pattern-task-panel"
 import { PlacementTaskPanel } from "./placement-task-panel"
@@ -2205,6 +2206,9 @@ function SweepLoftToolTaskPanel(props: ActiveTaskPanelProps) {
 function ThreadToolTaskPanel(props: ActiveTaskPanelProps) {
   return <ThreadTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
 }
+function FdmToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <FdmTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
 function PatternToolTaskPanel(props: ActiveTaskPanelProps) {
   return <PatternTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
 }
@@ -2219,6 +2223,8 @@ function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
 }
 
 const activeTaskPanelByKind = {
+  "create-fdm": FdmToolTaskPanel,
+  "edit-fdm": FdmToolTaskPanel,
   "create-compound": CombinationToolTaskPanel,
   "edit-compound": CombinationToolTaskPanel,
   "create-union": CombinationToolTaskPanel,

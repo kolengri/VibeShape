@@ -345,6 +345,15 @@ describe("DocumentWorkerSession", () => {
     })
   })
 
+  it("retains export tessellation quality without changing the rebuilt viewport mesh policy", async () => {
+    const { clients, session } = createHarness()
+    await session.rebuild({ document: document(4), mesh })
+    const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
+    await session.exportDocument("3mf", { meshQuality })
+    expect(clients[0]?.requests.at(-1)).toMatchObject({ type: "exportDocument", meshQuality })
+    expect(clients[0]?.requests[0]).toMatchObject({ type: "rebuildDocument", mesh })
+  })
+
   it("rebuilds the committed snapshot before retrying export after a worker crash", async () => {
     const crashingExport: RequestHandler = async (request) => {
       if (request.type === "exportDocument") {

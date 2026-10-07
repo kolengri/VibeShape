@@ -40,6 +40,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { fdmFeatureType } from "./part-design-fdm"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
@@ -469,6 +470,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     compoundFeatureTypeV2,
     unionFeatureType,
     unionFeatureTypeV2,
+    fdmFeatureType,
     holeFeatureType,
     holeFeatureTypeV2,
     holeFeatureTypeV3,

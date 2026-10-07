@@ -227,9 +227,7 @@ export const localToolInputs = {
   preview_draft: draft,
   commit_draft: draft,
   discard_draft: draft,
-  export_model: z
-    .object({ revision: revisionSchema, format: z.enum(["step", "stl", "3mf"]) })
-    .strict(),
+  export_model: localBinaryExportInputs.prepare_model_export,
 } as const
 export const localModelInfoSchema = z
   .object({
@@ -392,6 +390,8 @@ export const localToolOutputs = {
   create_shell: resultOf(automationDraftStateSchema),
   update_mirror: resultOf(automationDraftStateSchema),
   update_shell: resultOf(automationDraftStateSchema),
+  create_fdm: resultOf(automationDraftStateSchema),
+  update_fdm: resultOf(automationDraftStateSchema),
   create_thread: resultOf(automationDraftStateSchema),
   update_thread: resultOf(automationDraftStateSchema),
   create_body_pattern: resultOf(automationDraftStateSchema),
@@ -508,6 +508,8 @@ export const localToolNameSchema = z.enum([
   "create_shell",
   "update_mirror",
   "update_shell",
+  "create_fdm",
+  "update_fdm",
   "create_thread",
   "update_thread",
   "create_body_pattern",

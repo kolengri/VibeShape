@@ -47,6 +47,7 @@ import {
 import { isSurfaceTextureToolName } from "@vibeshape/automation-api/surface-texture-tools"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
+import type { MeshExportQuality } from "@vibeshape/protocol"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
@@ -99,6 +100,7 @@ type LocalSessionPort = Readonly<{
   exportRevisionBound: (
     format: "step" | "stl" | "3mf",
     revision: number,
+    meshQuality?: MeshExportQuality,
   ) => Promise<LocalExportResult>
 }>
 
@@ -129,34 +131,35 @@ function encodeExport(
   session: LocalSessionPort,
   operation: Extract<LocalOperation, { tool: "export_model" }>,
 ) {
-  return session
-    .exportRevisionBound(operation.arguments.format, operation.arguments.revision)
-    .then((exported) => {
-      if (!exported.ok)
-        return localFailure("export-failed", "The model could not be exported.", true)
-      if (exported.file.byteLength > LOCAL_EXPORT_MAX_BYTES)
-        return localFailure("export-too-large", "The exported model exceeds the size limit.")
-      let binary = ""
-      for (let index = 0; index < exported.file.length; index += 0x8000)
-        binary += String.fromCharCode(...exported.file.subarray(index, index + 0x8000))
-      const mimeType =
-        exported.format === "step"
-          ? "model/step"
-          : exported.format === "stl"
-            ? "model/stl"
-            : "model/3mf"
-      return {
-        ok: true as const,
-        value: {
-          documentId: session.documentId,
-          revision: operation.arguments.revision,
-          format: exported.format,
-          filename: `model.${exported.format}`,
-          mimeType,
-          base64: btoa(binary),
-        },
-      }
-    })
+  const { format, revision, meshQuality } = operation.arguments
+  const result = meshQuality
+    ? session.exportRevisionBound(format, revision, meshQuality)
+    : session.exportRevisionBound(format, revision)
+  return result.then((exported) => {
+    if (!exported.ok) return localFailure("export-failed", "The model could not be exported.", true)
+    if (exported.file.byteLength > LOCAL_EXPORT_MAX_BYTES)
+      return localFailure("export-too-large", "The exported model exceeds the size limit.")
+    let binary = ""
+    for (let index = 0; index < exported.file.length; index += 0x8000)
+      binary += String.fromCharCode(...exported.file.subarray(index, index + 0x8000))
+    const mimeType =
+      exported.format === "step"
+        ? "model/step"
+        : exported.format === "stl"
+          ? "model/stl"
+          : "model/3mf"
+    return {
+      ok: true as const,
+      value: {
+        documentId: session.documentId,
+        revision: operation.arguments.revision,
+        format: exported.format,
+        filename: `model.${exported.format}`,
+        mimeType,
+        base64: btoa(binary),
+      },
+    }
+  })
 }
 
 async function dispatchDraftLifecycle(

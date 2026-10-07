@@ -414,3 +414,7 @@ editing defaults.
 **Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
 control group beside the standard-view selector. Its button highlights an active section; the panel
 closes with Escape and returns focus to its trigger.
+
+## FDM tools
+
+Choose **FDM tools** in Model, select a kind, and supply its exact target or independent-body dimensions. Web/Rib additionally selects saved sketch lines. The panel uses normal exact Preview/Apply and restores the same parameters when editing History. Calibration coupons and independent sleeves remain available without an existing solid. See [Editable FDM features](fdm-tools.md). Thread exposes metric diameter/pitch presets; ordinary, assembly, and print-copy STL/3MF export surfaces expose Default/Coarse/Fine mesh quality.

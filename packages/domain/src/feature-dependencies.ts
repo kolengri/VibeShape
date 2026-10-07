@@ -15,6 +15,7 @@ import {
   readCompoundFeatureParameters,
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
+import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { readImportedFeatureParameters } from "./part-design-import"
 import { readLoftFeatureParameters } from "./part-design-loft"
@@ -48,6 +49,10 @@ const edgeModifierTypes = new Set(
   ),
 )
 const exactTargetReaders = [
+  (feature: FeatureRecord) => {
+    const parameters = readFdmFeatureParameters(feature)
+    return parameters && "targetBody" in parameters ? parameters.targetBody : undefined
+  },
   (feature: FeatureRecord) => readExtrusionFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readRevolveFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readThreadFeatureParameters(feature)?.targetBody,
@@ -80,23 +85,34 @@ function consumedSubtractBodies(
     ? [parameters.targetBody]
     : [parameters.targetBody, parameters.toolBody]
 }
-export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
+function declaredBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] | null {
+  const fdm = readFdmFeatureParameters(feature)
+  if (fdm) return fdmTargetDependencyIds(fdm)
   const boolean = readBooleanFeatureParametersV2(feature)
   if (boolean) return booleanBodyDependencyIds(consumedSubtractBodies(boolean))
   if (mirrorPreservesSource(feature)) return []
   if (independentBodyReaders.some((read) => read(feature) !== null)) return []
+  return null
+}
+function fdmTargetDependencyIds(fdm: NonNullable<ReturnType<typeof readFdmFeatureParameters>>) {
+  return "targetBody" in fdm && fdm.targetBody ? [fdm.targetBody.featureId] : []
+}
+function firstInputIsConsumed(feature: FeatureRecord) {
+  return (
+    readHoleFeatureParameters(feature) ||
+    readThreadFeatureParameters(feature) ||
+    edgeModifierTypes.has(featureTypeKey(feature.type)) ||
+    supportAwareTargetReaders.some((read) => read(feature) !== null)
+  )
+}
+export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
+  const declared = declaredBodyDependencyIds(feature)
+  if (declared) return declared
   if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type))
     return booleanFeatureParametersSchema.safeParse(feature.parameters).data?.keepTools
       ? feature.dependencies.slice(0, 1)
       : feature.dependencies
-  if (
-    readHoleFeatureParameters(feature) ||
-    readThreadFeatureParameters(feature) ||
-    edgeModifierTypes.has(featureTypeKey(feature.type))
-  )
-    return feature.dependencies.slice(0, 1)
-  if (supportAwareTargetReaders.some((read) => read(feature) !== null))
-    return feature.dependencies.slice(0, 1)
+  if (firstInputIsConsumed(feature)) return feature.dependencies.slice(0, 1)
   const profile = readRevolveFeatureParameters(feature) ?? readExtrusionFeatureParameters(feature)
   if (!profile) return feature.dependencies
   return profile.operation === "new" ? [] : feature.dependencies.slice(0, 1)

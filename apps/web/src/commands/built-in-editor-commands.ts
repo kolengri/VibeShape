@@ -40,6 +40,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     patternPart?: ((partId: PartId) => void) | undefined
     threadPart?: ((partId: PartId) => void) | undefined
     combineParts?: ((operation: "compound" | "union") => void) | undefined
+    createFdm?: (() => void) | undefined
     createHole: () => void
     createFillet: () => void
     createChamfer: () => void
@@ -154,6 +155,14 @@ const contextualPartDescriptors: readonly EditorCommandDescriptor[] = [
 
 const descriptors: readonly EditorCommandDescriptor[] = [
   ...contextualPartDescriptors,
+  {
+    group: "modeling",
+    icon: "shell",
+    id: editorCommandIds.createFdm,
+    labelKey: "createFdm",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primary",
+  },
   {
     group: "modeling",
     icon: "surface-texture",
@@ -1044,6 +1053,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: canCreateSavedSketchFeature,
     id: editorCommandIds.createSweep,
     isActive: ({ state }) => state.activePartDesignCommand === "sweep",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createFdm?.(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createFdm,
+    isActive: ({ state }) => state.activePartDesignCommand === "fdm",
     isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: partDesignOwner,
   },
