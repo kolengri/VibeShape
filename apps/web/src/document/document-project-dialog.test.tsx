@@ -128,6 +128,24 @@ afterEach(() => {
 })
 
 describe("DocumentProjectDialog", () => {
+  it("displays binary PNG previews without decoding them as text", async () => {
+    const user = userEvent.setup()
+    const result = await controllerMocks.listLocalProjects()
+    result.projects[1].thumbnail = {
+      revision: 2,
+      mediaType: "image/png",
+      bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      generatedAt: "2026-08-08T00:02:00Z",
+    }
+    controllerMocks.listLocalProjects.mockResolvedValue(result)
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "File" }))
+    expect(await screen.findByRole("img", { name: "3D preview of Fixture" })).toHaveProperty(
+      "src",
+      "data:image/png;base64,iVBORw0KGgo=",
+    )
+  })
+
   it("guards an asynchronous backup against double activation and exposes loading", async () => {
     const user = userEvent.setup()
     let finish: ((value: unknown) => void) | undefined

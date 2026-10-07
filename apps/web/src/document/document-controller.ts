@@ -2475,7 +2475,7 @@ export async function listLocalProjects(): Promise<LocalProjectListResult> {
 export async function saveActiveProjectThumbnail(
   documentIdInput: unknown,
   revision: number,
-  thumbnail: Readonly<{ mediaType: "image/svg+xml"; bytes: Uint8Array }>,
+  thumbnail: Readonly<{ mediaType: "image/svg+xml" | "image/png"; bytes: Uint8Array }>,
 ): Promise<ProjectThumbnailWriteResult> {
   if (!activeRepository || state.status !== "ready" || !state.report) {
     return unavailableProjectFileResult()
