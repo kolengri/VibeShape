@@ -23,6 +23,11 @@ import {
   type LocalImportOperation,
 } from "@vibeshape/automation-api/imports"
 import {
+  LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS,
+  LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
+  lightweightingResultContextMatches,
+} from "@vibeshape/automation-api/lightweighting-tools"
+import {
   createLocalAutomationActor,
   LOCAL_AUTOMATION_PATH,
   type LocalConnection,
@@ -113,6 +118,12 @@ const MAX_BODY = 1 * 1024 * 1024
 const MAX_EXPORT_BODY = 8 * 1024 * 1024 + 64 * 1024
 const TTL = 60 * 60 * 1000
 const OPERATION_TTL = 6 * 60 * 1000
+function operationTimeout(tool: LocalOperation["tool"]) {
+  if (tool === "commit_draft") return null
+  if (tool === "analyze_lightweighting") return LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS
+  if (tool === "request_lightweighting") return LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
+  return OPERATION_TTL
+}
 const LIVENESS = 15 * 1000
 
 function response(status: number, body: unknown) {
@@ -352,6 +363,7 @@ function resultContextMatches(
     historyResultContextMatches(operation, result, documentId),
     assemblyResultContextMatches(operation, result, documentId),
     surfaceTextureResultContextMatches(operation, result, documentId),
+    lightweightingResultContextMatches(operation, result, documentId),
   ].find((matched) => matched !== null)
   if (context !== undefined) return context
   if (!result.ok) return true
@@ -932,12 +944,13 @@ export function createBrowserBroker({
     return new Promise<LocalToolResult>((resolve) => {
       const id = randomUUID()
       // CAD review has no wall-clock deadline; disconnect and revocation still cancel it.
+      const timeout = operationTimeout(operation.tool)
       const timer =
-        operation.tool === "commit_draft"
+        timeout === null
           ? null
           : setTimeout(() => {
               if (pair?.pending?.id === id) suspendBackground(pair)
-            }, OPERATION_TTL)
+            }, timeout)
       if (options.signal?.aborted) {
         if (timer !== null) clearTimeout(timer)
         resolve(failure("session-revoked", "The local automation session was revoked."))

@@ -141,6 +141,15 @@ the source and requests manual browser preview/Apply before one atomic source/fe
 Caller hashes, pins, provenance, paths and generic command payloads are unavailable. Read the
 modeling native-import reference for ownership, five-minute idle expiry and remote pacing/budgets.
 
+Structural lightweighting uses \`analyze_lightweighting\` (compute-only) and \`request_lightweighting\`
+(independent mesh snapshot) on both paired transports. Retain exact committed Part/body identity,
+content hash and revision; supply material properties, world-mm support/load/preservation regions,
+stress safety and displacement constraints. Both call the editor's bounded preliminary FEM worker.
+An improved snapshot requires native mesh preview and manual browser Apply even in Auto-apply
+sessions, then one atomic immutable STL import retaining the original. No improvement mutates nothing.
+Only bounded metrics and snapshot identifiers cross MCP. Read the modeling lightweighting reference
+for resource limits, cancellation, source discretization loss and engineering limitations.
+
 Surface texture create/update/remove use named owned proposals with native relief preview and
 mandatory manual Apply. Read the modeling skill's surface-textures reference for packed custom
 maps, exact face scope and bounded mask append. STEP retains untextured exact geometry;

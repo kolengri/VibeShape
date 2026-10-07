@@ -29,7 +29,8 @@
     "./assembly-result-context": "./src/assembly-result-context.ts",
     "./history-tools": "./src/history-tools.ts",
     "./surface-texture-tools": "./src/surface-texture-tools.ts",
-    "./surface-texture-result-context": "./src/surface-texture-result-context.ts"
+    "./surface-texture-result-context": "./src/surface-texture-result-context.ts",
+    "./lightweighting-tools": "./src/lightweighting-tools.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

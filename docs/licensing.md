@@ -31,6 +31,9 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Bundled Noto Sans Regular 2.008 | SIL Open Font License 1.1 | Preserve the complete OFL, Reserved Font Name terms, pinned provenance and digest; distribution includes `sources/Noto-Sans-OFL.txt` and `sources/Noto-Sans-provenance.md` |
 | OpenType.js 2.0.0 sketch-text reader | MIT | Preserve `sources/opentype-js-MIT.txt`; the font and reader are separately licensed |
 | SolveSpace | GPL-3.0-or-later | Publish sources, patches, and build scripts; keep the combined work GPL-compatible |
+| Pyodide 314.0.7 and Python 3.14.2 structural runtime | MPL-2.0 and Python Software Foundation terms, respectively | Retain exact runtime license texts and upstream provenance |
+| NumPy 2.4.6 and SciPy 1.18.0 structural wheels | BSD-3-Clause plus bundled third-party terms | Retain all wheel license/notice entries, including compiled numerical dependencies |
+| scikit-fem 12.0.2 and trimesh 4.12.2 | BSD-3-Clause; MIT, respectively | Retain exact wheel notices and upstream version links |
 | React | MIT | Include a third-party notice |
 | React DOM | MIT | Include a third-party notice |
 | Three.js | MIT | Include a third-party notice |
@@ -115,6 +118,12 @@ SPK-002 pins the complete SolveSpace v3.2 source archive at `27b6a080c8b669421bd
 The production browser build now ships the exact reviewed ES module (`60c8714fbd5d94a50bdfcde7bd1658cfb2a180ad44be124997905ece7be545c7`) and WASM (`c9e3e35084b3812e9eae7bdff8fd3290394918c88ba38504e58a9a9d4a2bd978`) outputs. Repository distribution accompanies them with `third_party/solvespace/solvespace-corresponding-source.tar.gz` (`297f843724a48893737ae451616c70875ee8ec22c26d6dd91fcaca8b72db144b`), which contains the complete pinned source archives, modifications, build recipe, license texts, and evidence. `bun run solvespace:verify:runtime` verifies the runtime and source bundle together. This is a technical integrity and repository source-availability gate, not a substitute for distribution-specific notices or the required release review. Any public hosted or downloadable application build that distributes these bytes must offer the same exact corresponding source alongside that build.
 
 ## Documentation and Contributions
+
+The structural runtime preparation script verifies pinned SHA-256 bytes and extracts the exact
+wheel license/notice files into `structural-runtime/THIRD-PARTY-NOTICES.txt`. The build emits these
+notices, runtime/Python licenses, and `provenance.json` beside the same-origin runtime assets.
+Preparation fails if an input checksum or a wheel's retained license is missing. See
+[Structural lightweighting](product/lightweighting.md) for package and runtime ownership.
 
 Contributions are accepted under GPL-3.0-or-later by default. `CONTRIBUTING.md` must state the inbound-equals-outbound policy. A Developer Certificate of Origin using `Signed-off-by` is preferable to a heavyweight contributor license agreement until dual licensing becomes a real requirement.
 

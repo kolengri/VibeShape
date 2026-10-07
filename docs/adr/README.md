@@ -106,6 +106,7 @@
 | [0098](0098-cad-review-without-deadline.md) | Accepted | CAD review without a deadline |
 
 | [0099](0099-complete-session-cad-auto-apply.md) | Accepted | Complete session CAD auto-apply and live local commits |
+| [0100](0100-browser-structural-lightweighting.md) | Accepted with reduced scope | Browser structural lightweighting snapshots |
 
 Statuses:
 

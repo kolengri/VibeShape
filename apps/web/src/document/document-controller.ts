@@ -152,6 +152,7 @@ import { createDocumentAutomationSession } from "../automation/document-automati
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import { createImportAutomationSession } from "../automation/import-automation-session"
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
+import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
 import { createPlanarImportAutomationSession } from "../automation/planar-import-automation-session"
 import type {
@@ -164,6 +165,7 @@ import {
 } from "../automation/surface-texture-automation-preview"
 import { createBrowserSurfaceTextureAutomationSession } from "../automation/surface-texture-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
+import { lightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
@@ -917,6 +919,21 @@ export function createActiveDocumentAutomationSession() {
       return commitReviewedImport(active, input)
     },
   })
+  const lightweighting = createBrowserLightweightingAutomationSession({
+    documentId: capturedDocumentId,
+    isActive: sourceSessionAvailable,
+    createId: browserUuidV7,
+    readContext: readSourceContext,
+    readSource: (partId) => lightweightingSource(state, partId),
+    async commit(input) {
+      if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
+        return localFailure(
+          "import-review-mismatch",
+          "The captured lightweighting review no longer matches.",
+        )
+      return commitReviewedImport(active, input)
+    },
+  })
   const planarImports = createPlanarImportAutomationSession({
     documentId: capturedDocumentId,
     isActive: sourceSessionAvailable,
@@ -1143,6 +1160,7 @@ export function createActiveDocumentAutomationSession() {
       assembly.cancel("stale-revision")
       history.cancel("stale-revision")
       surfaceTextures.cancel("stale-revision")
+      lightweighting.cancel()
     }
   })
   function dispose() {
@@ -1156,6 +1174,7 @@ export function createActiveDocumentAutomationSession() {
     assembly.dispose()
     history.dispose()
     surfaceTextures.dispose()
+    lightweighting.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -1172,6 +1191,7 @@ export function createActiveDocumentAutomationSession() {
     assembly,
     history,
     surfaceTextures,
+    lightweighting,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     disableAutoApply: factory.disableAutoApply,
@@ -1189,6 +1209,7 @@ export function createActiveDocumentAutomationSession() {
       assembly.cancel(reason)
       history.cancel(reason)
       surfaceTextures.cancel(reason)
+      lightweighting.cancel()
       exports.cancel()
     },
     dispose,
@@ -1400,6 +1421,7 @@ function importReviewIdentity(input: ImportReviewInput) {
     draft: input.draft,
     source: input.source,
     label: input.label,
+    lightweighting: input.lightweighting ?? null,
     transaction: input.transaction,
   })
 }

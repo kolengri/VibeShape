@@ -1,5 +1,11 @@
 # Risk Register
 
+Structural lightweighting only establishes feasibility on its bounded conservative voxel model.
+Thin/curved interfaces, grid-dependent stress concentrations, material anisotropy, buckling,
+fatigue, and physical load performance remain outside the current guarantee. Snapshot meshes
+do not regenerate or preserve exact CAD mating faces. See the explicit
+[accuracy boundaries](product/lightweighting.md#accuracy-boundaries).
+
 ## Highest-Risk Items
 
 | ID | Risk | Likelihood | Impact | Mitigation or gate |

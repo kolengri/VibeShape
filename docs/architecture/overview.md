@@ -284,3 +284,9 @@ The private `@vibeshape/extension-spike` package records SPK-006 evidence withou
 The initial AI automation path is a local MCP bridge over those same query and command contracts. Its implemented stdio/browser pairing subset and limits are accepted by [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md). The bridge never owns document state or bypasses draft, preview, confirmation, commit, undo, and persistence behavior. See [Automation and MCP architecture](automation-and-mcp.md).
 
 Committed Undo/Redo uses verified historical revision references, serialized lease-checked persistence, and the ordinary saved-state rebuild. Navigation is session-scoped and transaction-granular; see [ADR-0039](../adr/0039-committed-document-undo.md).
+
+Structural lightweighting uses a separate disposable numerical worker, pure domain settings/summary
+schemas, and the existing mesh-import transaction. UI and MCP share one browser calculation;
+the CAD source remains editable and results are independent snapshots. See
+[ADR-0100](../adr/0100-browser-structural-lightweighting.md) and
+[Structural lightweighting](../product/lightweighting.md).
