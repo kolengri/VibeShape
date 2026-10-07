@@ -16,7 +16,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { FolderPlus } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { browserAuthoredUuid } from "../document/authored-document-session"
@@ -220,19 +222,28 @@ export function HistoryFolderDialog(props: FolderDialogProps) {
       }}
     >
       {props.showTrigger !== false && (
-        <DialogTrigger asChild>
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={props.disabled || !initialFolderItem(props.authority, props.folder)}
-            aria-label={
-              props.folder ? t("editFolderItems", { name: props.folder.name }) : t("createFolder")
-            }
-          >
-            {t(props.folder ? "items" : "createFolder")}
-          </Button>
-        </DialogTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                size={props.folder ? "xs" : "icon-xs"}
+                variant="ghost"
+                disabled={props.disabled || !initialFolderItem(props.authority, props.folder)}
+                aria-label={
+                  props.folder
+                    ? t("editFolderItems", { name: props.folder.name })
+                    : t("createFolder")
+                }
+              >
+                {props.folder ? t("items") : <FolderPlus aria-hidden="true" />}
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            {props.folder ? t("editFolderItems", { name: props.folder.name }) : t("createFolder")}
+          </TooltipContent>
+        </Tooltip>
       )}
       <DialogContent
         closeLabel={t("closeFolder")}
