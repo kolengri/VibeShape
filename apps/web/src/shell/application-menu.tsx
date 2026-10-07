@@ -21,6 +21,7 @@ import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { ImportDialog } from "../features/import/import-dialog"
 import { LibraryDialog } from "../features/library/library-dialog"
+import { LightweightingDialog } from "../features/lightweighting/lightweighting-dialog"
 import { PlanarImportDialog } from "../features/planar-import/import-dialog"
 import { FaqDialog } from "./faq-dialog"
 import { SettingsDialog } from "./settings-dialog"
@@ -34,6 +35,7 @@ type MenuDialog =
   | "source-import"
   | "planar-import"
   | "library"
+  | "lightweighting"
 
 export function ApplicationMenu({
   controller,
@@ -135,6 +137,17 @@ export function ApplicationMenu({
                 {t("export")}
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem
+              aria-haspopup="dialog"
+              disabled={
+                unitChangesBlocked ||
+                controller.status !== "ready" ||
+                controller.report?.mode !== "read-write"
+              }
+              onSelect={() => launchDialog("lightweighting")}
+            >
+              {t("lightweighting")}
+            </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuGroup aria-label={t("workspace")} className="mt-1 border-t pt-1">
             <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
@@ -203,6 +216,13 @@ export function ApplicationMenu({
         blocked={unitChangesBlocked}
         showTrigger={false}
         open={dialog === "source-import"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <LightweightingDialog
+        controller={controller}
+        blocked={unitChangesBlocked}
+        open={dialog === "lightweighting"}
         onOpenChange={dialogOpenChange}
         onCloseAutoFocus={closeDialogMenu}
       />

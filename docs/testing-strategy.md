@@ -6,6 +6,15 @@ CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison al
 
 ## Test pyramid
 
+Structural lightweighting runs analytical elasticity, constrained removal, multi-case scaling,
+infeasible baseline, and missing-support fixtures against the exact browser Pyodide runtime in
+`packages/structural-optimization/tests/wasm-solver.test.ts`. The test prepares pinned assets before
+loading local wheels. Independent signed output volume and strict manufacturing serialization
+check that reported material matches the exported solid. Additional native pytest fixtures cover
+topology, conservative containment, preservation, resource bounds, and numerical failures; these
+are supplementary local evidence, not substitutes for the WASM suite. UI/worker/MCP tests cover
+cancel, stale source/revision, review rejection, and one append-only atomic import transaction.
+
 | Level | Coverage | Tool or approach |
 |---|---|---|
 | Pure unit | Units, expressions, DAG, commands, migrations | Vitest through `bun run test` |

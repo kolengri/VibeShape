@@ -16,6 +16,12 @@ import {
   remoteServerMessageSchema,
 } from "@vibeshape/automation-api/remote-session"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  lightweightingId,
+  lightweightingOperation,
+  lightweightingSnapshot,
+  lightweightingSummary,
+} from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import type { RemoteEnv } from "./environment"
 import worker from "./index"
@@ -559,6 +565,57 @@ describe("remote MCP in workerd", () => {
     })
     expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
   })
+  it.each([false, true])(
+    "routes bounded lightweighting evidence and revokes a forged source (request=%s)",
+    async (request) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const command = lightweightingOperation(request)
+      const value = {
+        documentId: lightweightingId(3),
+        baseRevision: 4,
+        source: command.arguments.source,
+        summary: lightweightingSummary(),
+        ...(request ? { snapshot: lightweightingSnapshot() } : {}),
+      }
+      const send = async (id: number, output: unknown) => {
+        const work = nextMessage(tab.socket)
+        const pending = mcp(authenticated.token, id, "tools/call", {
+          name: command.tool,
+          arguments: command.arguments,
+        })
+        const operation = await work
+        if (operation.type !== "work") throw new Error("Expected paired lightweighting work.")
+        expect(operation.operation).toEqual(command)
+        tab.socket.send(
+          JSON.stringify({
+            type: "result",
+            protocolVersion: 1,
+            requestId: operation.requestId,
+            tool: command.tool,
+            result: { ok: true, value: output },
+          }),
+        )
+        return (await pending).json()
+      }
+      expect(await send(1, value)).toMatchObject({
+        result: { structuredContent: { result: { ok: true, value } } },
+      })
+      expect(
+        await send(2, { ...value, source: { ...value.source, contentHash: "b".repeat(64) } }),
+      ).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+      expect(
+        await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(false)
+    },
+  )
   it("rejects oversized browser results after serving the larger static schema catalog", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
@@ -1189,6 +1246,8 @@ describe("remote MCP in workerd", () => {
     expect(catalog.result.tools.map((tool) => tool.name)).toContain("change_metadata")
     expect(catalog.result.tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        "analyze_lightweighting",
+        "request_lightweighting",
         "create_datum_plane",
         "update_datum_plane",
         "create_boolean",

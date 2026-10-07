@@ -7,6 +7,9 @@ description: Create or edit parametric models in VibeShape using named MCP sketc
 
 Establish the session with [vibeshape-use](../vibeshape-use/SKILL.md) and follow [draft transactions](../vibeshape-use/references/transactions.md). Read [modeling contracts and recipes](references/modeling.md) for the requested feature family. For assemblies and reusable components, read [assembly and library transactions](references/assembly-and-library.md). Live schemas determine the exact input shape.
 For editable printable relief, read [surface texture proposals](references/surface-textures.md). Their native preview and manual review are separate from a CAD draft.
+For material reduction under explicit stress and displacement limits, read
+[structural lightweighting](references/lightweighting.md). Both local and paired remote MCP use
+the browser numerical worker; a result is a separate mesh snapshot with mandatory manual review.
 
 ## Author or revise intent
 

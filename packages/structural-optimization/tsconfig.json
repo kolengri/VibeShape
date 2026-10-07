@@ -1,0 +1,5 @@
+{
+  "extends": "@vibeshape/typescript-config/browser.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/worker.ts", "src/**/*.test.ts"]
+}

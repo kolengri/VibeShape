@@ -1,0 +1,25 @@
+{
+  "name": "@vibeshape/structural-optimization",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bounded local voxel FEM lightweighting with numerical feasibility checks.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    "./contract": "./src/contract.ts",
+    "./client": "./src/client.ts",
+    "./mesh": "./src/mesh.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json"
+  },
+  "dependencies": {
+    "@vibeshape/formats": "workspace:*",
+    "zod": "catalog:",
+    "@vibeshape/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*",
+    "pyodide": "314.0.7"
+  }
+}

@@ -65,6 +65,13 @@ import {
   libraryToolInputs,
   libraryVersionViewSchema,
 } from "./library-tools"
+import {
+  lightweightingAnalysisSchema,
+  lightweightingOperations,
+  lightweightingRequestSchema,
+  lightweightingToolInputs,
+  lightweightingToolNames,
+} from "./lightweighting-tools"
 import { localCadInputs, localCadOperations } from "./local-cad-tools"
 import {
   localDraftInspectionInputs,
@@ -175,6 +182,7 @@ const chamfer = z
   .strict()
 export const localToolInputs = {
   ...projectToolInputs,
+  ...lightweightingToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...localPlanarImportInputs,
@@ -268,6 +276,8 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
+  request_lightweighting: resultOf(lightweightingRequestSchema),
   list_projects: resultOf(projectListSchema),
   create_project: resultOf(projectViewSchema),
   open_project: resultOf(projectViewSchema),
@@ -422,6 +432,7 @@ export const localToolOutputs = {
 } as const
 export const localToolNameSchema = z.enum([
   ...projectToolNames,
+  ...lightweightingToolNames,
   "render_preview",
   "model_history_state",
   "undo_model",
@@ -541,6 +552,7 @@ export const localToolNameSchema = z.enum([
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 const untargetedOperationSchema = z.discriminatedUnion("tool", [
   ...projectOperations,
+  ...lightweightingOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,

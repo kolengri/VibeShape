@@ -5,6 +5,7 @@ import { ImportPreview } from "../features/import/import-preview"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
 import type { ImportReviewInput } from "./import-upload-session"
+import { LightweightingReviewDetails } from "./lightweighting-review-details"
 
 export function ImportReviewPanel({
   review,
@@ -27,6 +28,7 @@ export function ImportReviewPanel({
       </header>
       <div className="grid min-h-0 gap-3 overflow-auto p-4">
         <p className="text-sm">{t("description")}</p>
+        {input.lightweighting && <LightweightingReviewDetails evidence={input.lightweighting} />}
         <dl className="grid gap-1 text-xs">
           <div>
             <dt className="font-medium">{t("file")}</dt>

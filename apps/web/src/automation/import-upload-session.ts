@@ -10,6 +10,7 @@ import {
   type LocalImportOperation,
   localImportInputs,
 } from "@vibeshape/automation-api/imports"
+import type { LightweightingSourceIdentity } from "@vibeshape/automation-api/lightweighting-tools"
 import { type LocalFailure, localFailure } from "@vibeshape/automation-api/local-tools"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import {
@@ -18,6 +19,10 @@ import {
   commandActorsEqual,
 } from "@vibeshape/domain/commands"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
+import type {
+  StructuralOptimizationSettings,
+  StructuralOptimizationSummary,
+} from "@vibeshape/domain/lightweighting"
 import { importedBodyOutputRole } from "@vibeshape/domain/part-design-import"
 import { meshImportOutputRole } from "@vibeshape/domain/part-design-mesh-import"
 import {
@@ -49,6 +54,12 @@ export type ImportReviewInput = Readonly<{
   }
   source: ImportUploadInspection
   label: string
+  lightweighting?: Readonly<{
+    sourceName: string
+    source: LightweightingSourceIdentity
+    settings: StructuralOptimizationSettings
+    summary: StructuralOptimizationSummary
+  }>
   inspection: Inspection
   transaction: Pick<Transaction, "transactionId" | "commands">
 }>
@@ -61,6 +72,7 @@ export type ImportSessionConfiguration = Readonly<{
   inspect: (prepared: PreparedImportSource) => Promise<Inspection>
   review: (input: ImportReviewInput) => Promise<"approved" | "rejected" | "cancelled">
   commit: (input: ImportReviewedCommit) => Promise<Result<{ revision: number }>>
+  reviewContext?: () => ImportReviewInput["lightweighting"]
   now?: () => number
 }>
 type Captured = {
@@ -273,7 +285,9 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
         "The reviewed import inspection is no longer current.",
         true,
       )
+    const lightweighting = configuration.reviewContext?.()
     const review: ImportReviewInput = {
+      ...(lightweighting ? { lightweighting } : {}),
       kind: "import",
       actor: record.actor,
       draft: {

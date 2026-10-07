@@ -8,6 +8,10 @@ import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/d
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
 import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/imports"
+import {
+  LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
+  lightweightingResultContextMatches,
+} from "@vibeshape/automation-api/lightweighting-tools"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
   isLocalDraftInspection,
@@ -78,7 +82,8 @@ function authoredResultContextMatches(
     renderPreviewResultContextMatches(operation, result) !== false &&
     historyResultContextMatches(operation, result) !== false &&
     assemblyResultContextMatches(operation, result) !== false &&
-    surfaceTextureResultContextMatches(operation, result) !== false
+    surfaceTextureResultContextMatches(operation, result) !== false &&
+    lightweightingResultContextMatches(operation, result) !== false
   )
 }
 
@@ -211,9 +216,14 @@ export class TabSession extends DurableObject<RemoteEnv> {
     if (!this.live() || !this.browser())
       return localFailure("session-revoked", "The browser session closed.")
     return new Promise<unknown>((resolve) => {
-      const timer = setTimeout(() => {
-        if (this.pending?.id === id) void this.revoke()
-      }, REMOTE_REQUEST_TIMEOUT_MS)
+      const timer = setTimeout(
+        () => {
+          if (this.pending?.id === id) void this.revoke()
+        },
+        operation.tool === "request_lightweighting"
+          ? LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
+          : REMOTE_REQUEST_TIMEOUT_MS,
+      )
       this.pending = { id, operation, resolve, timer }
       this.send({ type: "work", requestId: id, operation })
     })
