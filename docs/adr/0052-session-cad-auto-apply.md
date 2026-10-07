@@ -3,6 +3,7 @@
 - Status: Accepted
 - CAD eligibility restrictions superseded by [ADR-0099](0099-complete-session-cad-auto-apply.md).
 - Local recovery grant reset superseded by [ADR-0095](0095-local-mcp-continuous-recovery.md); remote consent rules are unchanged.
+- Local browser preference scope superseded by [ADR-0100](0100-remembered-local-mcp-preferences.md).
 - Date: 2026-10-03
 - Extends: [ADR-0042](0042-exact-automation-draft-application-path.md), [ADR-0043](0043-local-stdio-mcp-browser-session.md)
 

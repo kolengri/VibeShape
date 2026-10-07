@@ -8,7 +8,7 @@ settings. Shared local/remote tools list_projects (bounded pages), create_projec
 then preserve pairing without reloading. Create/open require expectedProjectId and expectedRevision
 from model_info; open also takes the destination projectId, create takes a normalized name.
 The editor must be saved and idle. A different project disposes private drafts and transfers and
-resets auto-apply. Read model_info and start a fresh draft after switching. CAD tools accept optional
+restores the remembered local CAD approval mode; remote auto-apply resets. Read model_info and start a fresh draft after switching. CAD tools accept optional
 projectId to reject a wrong active target. Never retry uncertain project creation blindly; inspect
 the active project and catalog. Project management permission is not restored after recovery.
 The browser retains the document authority; there is no embedded chat and no headless modeling mode.
@@ -238,7 +238,7 @@ inspect the actual document revision before proposing a new change.
    coexist with unresolved supports; unknown/unavailable diagnostics are not a clean result.
    Repair invalid intent with a new command ID and the returned current draft revision.
 5. Call \`commit_draft\`; by default the person reviews and clicks Apply or Discard in the browser.
-   A person may explicitly enable session-only auto-apply for valid supported first-party CAD edits
+   A person may explicitly enable auto-apply for valid supported first-party CAD edits
    in the browser, including lifecycle removal and suppression. No tool can enable it; metadata,
    separate review services and unsupported drafts still require review.
    Allow enough time for manual review and observe progress. A successful commit saves once with one Undo entry.
@@ -254,7 +254,10 @@ automatically without replaying that request; inspect the saved revision before 
 persistence begins cannot roll back an accepted transaction. For committed Undo/Redo, use the
 document/revision-bound saved-change tools above and wait for manual browser review. A same-document
 reload, transient disconnect or bridge restart restores an unexpired approved pairing and its
-explicit auto-apply choice. An active tab renews its lease; Stop AI prevents restoration.
+explicit auto-apply choice. The local browser remembers access and approval mode across projects
+and fresh browser sessions for that client. Without a usable tab credential, it establishes fresh
+authority without displacing an active owner. A different client requires approval. An active tab
+renews its lease; Stop AI clears remembered access and prevents restoration.
 
 ## Units and IDs
 

@@ -44,7 +44,8 @@ separate browser-owned project-management grant. Shared local/remote tools list 
 pages and create/open projects through the ordinary controller and persistence paths. Expected
 source identity/revision guards reject stale navigation; optional CAD `projectId` guards reject
 wrong active targets. Authorized transitions replace the document handle without reloading or
-reconnecting, dispose private work and reset auto-apply on a different project. Manual navigation,
+reconnecting and dispose private work. Local connections restore the remembered CAD approval mode
+on the destination handle; remote connections reset auto-apply on a different project. Manual navigation,
 Stop and recovery do not carry this additional catalog/create/open grant.
 
 ## Recommendation
@@ -318,7 +319,10 @@ edits and removal, supported schema upgrades and all shipped CAD feature version
 metadata and separate review services retain their existing manual-review contracts. The browser
 then approves qualifying valid drafts through the same review port, with a persistent Auto-apply on
 indicator and Stop AI control. An existing review cannot acquire this grant retroactively. All
-other drafts keep the review surface above; explicit Stop AI, project/client replacement or lease expiry resets the local grant. Temporary local interruption and reload preserve the latest explicitly chosen approval mode. Remote disconnect recovery retains its separate consent rules. The
+other drafts keep the review surface above; explicit Stop AI clears local access and its remembered preference. Local access and the latest
+explicitly chosen approval mode survive project changes and fresh browser sessions for the
+remembered client, as described in [ADR-0100](../adr/0100-remembered-local-mcp-preferences.md).
+Recovery credentials remain tab-scoped. Remote disconnect recovery retains its separate consent rules. The
 bottom status bar exposes neutral connection and Stop AI controls plus an approval-mode menu.
 Returning an idle session to manual review clears its browser-owned grant without revoking pairing;
 active operations or reviews block that change. No MCP tool can change either approval mode.
@@ -367,11 +371,15 @@ The loopback origin has these requirements:
 
 - bind only to `127.0.0.1`; a stable per-profile origin preserves browser storage identity;
 - validate the exact `Host` and `Origin`, reject absent or unexpected origins, and provide no wildcard CORS;
-- require a host-owned **Enable AI session** user action before exposing any document;
+- require an initial host-owned **Enable AI session** user action; remember local access and approval
+  mode for the approved client and browser origin under [ADR-0100](../adr/0100-remembered-local-mcp-preferences.md);
 - authenticate every browser request with a session-bound, same-origin credential that is never placed in a URL;
 - bind one bridge session to an explicit set of shared documents and capabilities;
 - enforce sequence, size, frequency, lifetime, and concurrent-request limits;
-- revoke immediately on explicit Stop AI and project/client replacement; temporary local interruption suspends access for authenticated same-origin, same-document and same-client recovery under [ADR-0095](../adr/0095-local-mcp-continuous-recovery.md);
+- revoke immediately on explicit Stop AI and dispose replaced document/client authority; temporary
+  local interruption suspends access for authenticated same-origin, same-document and same-client
+  recovery under [ADR-0095](../adr/0095-local-mcp-continuous-recovery.md). Remembered local access
+  permits fresh pairing after project changes or stale credentials without displacing an active owner;
 - fail startup rather than selecting a different storage origin silently when the configured local origin is unavailable;
 - never assume that loopback or same-origin delivery implies user consent.
 

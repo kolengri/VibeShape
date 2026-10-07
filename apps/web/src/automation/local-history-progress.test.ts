@@ -17,6 +17,7 @@ import {
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurements"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
 import { createLocalAutomationConnection } from "./local-automation-connection"
@@ -93,6 +94,7 @@ function historyReview(direction: "undo" | "redo"): AutomationReviewState {
 
 beforeEach(() => {
   sessionStorage.clear()
+  vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.useFakeTimers()
   vi.clearAllMocks()
   review = null
@@ -123,6 +125,7 @@ afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 async function startPending(operation: unknown) {

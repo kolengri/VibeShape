@@ -123,7 +123,7 @@ describe("local AI auto-apply controls", () => {
     expect(screen.getByRole("button", { name: "Stop AI" })).toBeTruthy()
     await openSetup()
     expect(screen.getByRole("dialog", { name: "Set up auto-apply" })).toBeTruthy()
-    expect(screen.getByText(/only for this project and this paired AI session/)).toBeTruthy()
+    expect(screen.getByText(/remembered for this local AI client in this browser/)).toBeTruthy()
     expect(screen.getByText(/with Undo/)).toBeTruthy()
     expect(
       screen.getByText(
