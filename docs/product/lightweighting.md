@@ -153,7 +153,10 @@ See [the architecture decision](../adr/0101-browser-structural-lightweighting.md
 exact source solid and previews a periodic lattice without requesting structural supports or loads.
 A switch selects **Keep exterior** or **Open organic**. Choose **Gyroid**, **Schwarz P**, or
 **Schwarz D** cells, using trigonometric nodal sheet approximations of TPMS geometry. Sliders control requested removal, physical cell size, sampling detail, and
-(when retaining the exterior) skin thickness. Generation is debounced and cancelable; source
+(when retaining the exterior) skin thickness. Generation waits until a slider pointer or keyboard
+gesture ends, then debounces the final settings for 650 ms. Pauses during a held gesture do not
+start a worker. Starting another adjustment cancels obsolete work and disables Apply immediately.
+Pointer cancellation, capture loss, and blur release the gesture. Generation is cancelable; source
 changes and input changes invalidate obsolete results. Apply adds a separate mesh Part with one
 Undo entry through the ordinary validated import transaction.
 

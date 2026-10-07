@@ -282,6 +282,8 @@ export function useQuickLightweightingTask({
   onApplyingChange?: ((applying: boolean) => void) | undefined
 }) {
   const [partId, setPartId] = useState(initialPartId)
+  const [editing, setEditing] = useState(false)
+  const editingControls = useRef(new Set<string>())
   const [settings, setSettings] = useState<Settings>({
     mode: "open-organic",
     removalPercent: 50,
@@ -314,7 +316,7 @@ export function useQuickLightweightingTask({
   )
   const input = useMemo(() => quickGenerationInput(source, settings), [source, settings])
   const generate = useCallback(async () => {
-    if (!source || !input) return
+    if (!source || !input || editingControls.current.size > 0) return
     if (!canStartOperation(disabled, applying.current, operation.current)) return
     const captured = source
     const abort = new AbortController()
@@ -348,7 +350,7 @@ export function useQuickLightweightingTask({
   }, [copy, disabled, input, source])
   useEffect(() => {
     cancel()
-    if (disabled || !source) return
+    if (disabled || !source || editing) return
     const timer = window.setTimeout(() => {
       void generate()
     }, 650)
@@ -358,7 +360,14 @@ export function useQuickLightweightingTask({
       operation.current?.abort()
       operation.current = null
     }
-  }, [cancel, disabled, generate, source])
+  }, [cancel, disabled, editing, generate, source])
+  const changeEditing = (control: string, active: boolean) => {
+    if (active) {
+      if (!editingControls.current.has(control)) cancel()
+      editingControls.current.add(control)
+    } else editingControls.current.delete(control)
+    setEditing(editingControls.current.size > 0)
+  }
   const changeSettings = (next: Settings) => {
     if (!applying.current) {
       cancel()
@@ -387,6 +396,8 @@ export function useQuickLightweightingTask({
     partId,
     source,
     settings,
+    editing,
+    changeEditing,
     input,
     ready: currentReady,
     previewReady,

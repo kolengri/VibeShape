@@ -3155,6 +3155,7 @@
       "preview": "Organic mesh preview",
       "previewFailed": "The mesh preview failed. Regenerate before applying.",
       "regenerate": "Regenerate preview",
+      "editing": "Finish adjusting the slider to generate a preview.",
       "apply": "Apply lightweighting",
       "cancel": "Close",
       "actions": "Quick lightweighting actions",

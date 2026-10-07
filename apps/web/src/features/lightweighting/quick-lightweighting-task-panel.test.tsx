@@ -161,6 +161,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal("crypto", webcrypto)
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.setPointerCapture = vi.fn()
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -196,6 +197,117 @@ afterEach(() => {
 })
 
 describe("quick lightweighting task panel", () => {
+  it("keeps the current pointer gesture locked when another slider loses focus", async () => {
+    setup()
+    const previous = screen.getByRole("slider", { name: /Requested removal/ })
+    const current = screen.getByRole("slider", { name: "Sampling detail" })
+    fireEvent.focus(previous)
+    fireEvent(current, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+    fireEvent.blur(previous)
+    fireEvent.lostPointerCapture(previous)
+    fireEvent.keyUp(previous, { key: "ArrowRight" })
+    fireEvent.change(current, { target: { value: "40" } })
+    await advance(1200)
+    expect(ports.generate).not.toHaveBeenCalled()
+    fireEvent.pointerUp(current)
+    await advance(650)
+    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ cellSizeMm: 0.15 })
+  })
+
+  it("waits for all pointer and keyboard gestures on one slider to end", async () => {
+    setup()
+    const slider = screen.getByRole("slider", { name: /Requested removal/ })
+    fireEvent(slider, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+    fireEvent.keyDown(slider, { key: "ArrowRight" })
+    fireEvent.keyDown(slider, { key: "ArrowUp" })
+    fireEvent.change(slider, { target: { value: "70" } })
+    fireEvent.keyUp(slider, { key: "ArrowRight" })
+    await advance(1200)
+    expect(ports.generate).not.toHaveBeenCalled()
+    fireEvent.pointerUp(slider)
+    fireEvent.lostPointerCapture(slider)
+    await advance(1200)
+    expect(ports.generate).not.toHaveBeenCalled()
+    fireEvent.keyUp(slider, { key: "ArrowUp" })
+    await advance(650)
+    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ removalPercent: 70 })
+  })
+
+  it.each([
+    ["quick-removal", "60", "70", { removalPercent: 70 }],
+    ["quick-cell-size", "0.25", "0.375", { latticeCellSizeMm: 2.25 }],
+    ["quick-detail", "24", "40", { cellSizeMm: 0.15 }],
+    ["quick-skin", "3", "4", { skinThicknessMm: 0.75 }],
+  ])(
+    "waits for the pointer gesture to end on %s, including pauses longer than debounce",
+    async (id, first, final, expected) => {
+      setup()
+      if (id === "quick-skin")
+        fireEvent.click(screen.getByRole("button", { name: "Keep exterior" }))
+      const slider = document.getElementById(id)
+      if (!slider) throw new Error("The slider must be mounted.")
+      fireEvent(slider, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+      fireEvent.change(slider, { target: { value: first } })
+      await advance(1200)
+      expect(ports.generate).not.toHaveBeenCalled()
+      fireEvent.change(slider, { target: { value: final } })
+      await advance(1200)
+      expect(ports.generate).not.toHaveBeenCalled()
+      expect(applyButton().disabled).toBe(true)
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", { name: "Regenerate preview" }).disabled,
+      ).toBe(true)
+      fireEvent.pointerUp(slider)
+      fireEvent.lostPointerCapture(slider)
+      await advance(649)
+      expect(ports.generate).not.toHaveBeenCalled()
+      await advance(1)
+      expect(ports.generate).toHaveBeenCalledOnce()
+      expect(ports.generate.mock.calls[0]?.[0]).toMatchObject(expected)
+    },
+  )
+
+  it.each(["pointerCancel", "lostPointerCapture", "blur"] as const)(
+    "releases the gesture on %s and resumes the final preview",
+    async (event) => {
+      setup()
+      const slider = screen.getByRole("slider", { name: /Requested removal/ })
+      fireEvent(slider, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+      fireEvent.change(slider, { target: { value: "65" } })
+      await advance(1200)
+      expect(ports.generate).not.toHaveBeenCalled()
+      fireEvent[event](slider)
+      await advance(650)
+      expect(ports.generate).toHaveBeenCalledOnce()
+      expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ removalPercent: 65 })
+    },
+  )
+
+  it("cancels old work immediately and waits until a held slider key is released", async () => {
+    const pending = deferred<QuickLightweightingResult>()
+    ports.generate.mockReturnValueOnce(pending.promise)
+    setup()
+    await advance(650)
+    const signal: AbortSignal = ports.generate.mock.calls[0]?.[1].signal
+    const slider = screen.getByRole("slider", { name: /Requested removal/ })
+    fireEvent.keyDown(slider, { key: "ArrowRight" })
+    expect(signal.aborted).toBe(true)
+    fireEvent.change(slider, { target: { value: "60" } })
+    await advance(1200)
+    fireEvent.keyDown(slider, { key: "ArrowRight", repeat: true })
+    fireEvent.change(slider, { target: { value: "70" } })
+    await advance(1200)
+    expect(ports.generate).toHaveBeenCalledOnce()
+    fireEvent.keyUp(slider, { key: "ArrowRight" })
+    await advance(650)
+    expect(ports.generate).toHaveBeenCalledTimes(2)
+    expect(ports.generate.mock.calls[1]?.[0]).toMatchObject({ removalPercent: 70 })
+    await act(async () => pending.resolve({ ...result, removedPercent: 99 }))
+    expect(screen.getByText("Material removed: 50%")).toBeTruthy()
+  })
+
   it("explains a geometry capacity failure and permits regeneration", async () => {
     ports.generate.mockRejectedValueOnce(new QuickLightweightingError("resource-limit", "capacity"))
     setup()

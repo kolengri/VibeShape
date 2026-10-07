@@ -1,7 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { useMemo } from "react"
+import { useMemo, useRef } from "react"
 import { ActionAvailability } from "../../components/action-availability"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -21,6 +21,7 @@ function RangeControl({
   step,
   disabled,
   onChange,
+  onEditingChange,
   description,
 }: {
   id: string
@@ -31,8 +32,15 @@ function RangeControl({
   step: number
   disabled: boolean
   onChange: (value: number) => void
+  onEditingChange: (control: string, editing: boolean) => void
   description: string
 }) {
+  const gestures = useRef(new Set<string>())
+  const changeGesture = (gesture: string, active: boolean) => {
+    if (active) gestures.current.add(gesture)
+    else gestures.current.delete(gesture)
+    onEditingChange(id, gestures.current.size > 0)
+  }
   return (
     <div className="grid gap-2">
       <label htmlFor={id} className="text-sm font-medium">
@@ -48,6 +56,24 @@ function RangeControl({
         disabled={disabled}
         aria-describedby={`${id}-description`}
         onChange={(event) => onChange(Number(event.target.value))}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return
+          event.currentTarget.setPointerCapture(event.pointerId)
+          changeGesture("pointer", true)
+        }}
+        onPointerUp={() => changeGesture("pointer", false)}
+        onPointerCancel={() => changeGesture("pointer", false)}
+        onLostPointerCapture={() => changeGesture("pointer", false)}
+        onKeyDown={(event) => {
+          if (rangeKeys.has(event.key)) changeGesture(event.key, true)
+        }}
+        onKeyUp={(event) => {
+          if (rangeKeys.has(event.key)) changeGesture(event.key, false)
+        }}
+        onBlur={() => {
+          gestures.current.clear()
+          onEditingChange(id, false)
+        }}
         className="h-6 w-full cursor-pointer accent-primary disabled:cursor-default disabled:opacity-50"
       />
       <p id={`${id}-description`} className="text-xs text-muted-foreground">
@@ -56,6 +82,17 @@ function RangeControl({
     </div>
   )
 }
+
+const rangeKeys = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+])
 
 export function QuickLightweightingTaskPanel({
   controller,
@@ -201,6 +238,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
         step={1 / state.settings.detail}
         disabled={disabled}
         onChange={(periodFraction) => change({ periodFraction })}
+        onEditingChange={state.changeEditing}
         description={t("cellSizeDescription")}
       />
       <RangeControl
@@ -212,6 +250,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
         step={5}
         disabled={disabled}
         onChange={(removalPercent) => change({ removalPercent })}
+        onEditingChange={state.changeEditing}
         description={t("removalDescription")}
       />
       <RangeControl
@@ -223,6 +262,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
         step={8}
         disabled={disabled}
         onChange={(detail) => change({ detail })}
+        onEditingChange={state.changeEditing}
         description={
           state.input ? t("cellScale", { value: state.input.cellSizeMm }) : t("detailDescription")
         }
@@ -237,6 +277,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
           step={0.5}
           disabled={disabled}
           onChange={(skinCells) => change({ skinCells })}
+          onEditingChange={state.changeEditing}
           description={t("skinDescription")}
         />
       )}
@@ -289,9 +330,11 @@ function quickActionReasons(
     ? t("blocked")
     : !state.source
       ? t("chooseSource")
-      : state.activity !== "idle"
-        ? t("busy")
-        : null
+      : state.editing
+        ? t("editing")
+        : state.activity !== "idle"
+          ? t("busy")
+          : null
   const apply =
     generate ?? (!state.ready ? t("needPreview") : !state.previewReady ? t("inspecting") : null)
   return { generate, apply }
