@@ -2,6 +2,7 @@
 import { act, cleanup, render } from "@testing-library/react"
 import { createElement, StrictMode, useEffect } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { createLocalAutomationConnection } from "./local-automation-connection"
 import { LocalAutomationTransportError } from "./local-automation-http"
 import type { createProjectToolPort } from "./project-tool-port"
@@ -64,6 +65,7 @@ const optOut = vi.fn()
 const enableAutoApply = vi.fn()
 beforeEach(() => {
   sessionStorage.clear()
+  vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.useFakeTimers()
   vi.clearAllMocks()
   mocks.review.mockReturnValue(null)
@@ -97,6 +99,7 @@ afterEach(() => {
   cleanup()
   connection.dispose()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 async function ready() {
@@ -222,7 +225,7 @@ describe("local AI project management consent", () => {
     expect(connection.getSnapshot()).toMatchObject({
       connected: true,
       busy: true,
-      autoApply: false,
+      autoApply: true,
       projectManagement: true,
     })
     expect(connection.setProjectManagement(false)).toBe(false)
@@ -467,7 +470,7 @@ describe("local AI project management consent", () => {
     expect(dispose).not.toHaveBeenCalled()
   })
 
-  it("refreshes a reopened source handle after rollback and resets its auto-apply grant", async () => {
+  it("refreshes a reopened source handle after rollback with the remembered auto-apply mode", async () => {
     await ready()
     await connection.enable()
     connection.setProjectManagement(true)
@@ -486,7 +489,7 @@ describe("local AI project management consent", () => {
     expect(connection.getSnapshot()).toMatchObject({
       connected: true,
       busy: false,
-      autoApply: false,
+      autoApply: true,
       projectManagement: true,
     })
     expect(mocks.createExecutor).toHaveBeenLastCalledWith(
@@ -1000,7 +1003,7 @@ describe("local AI reload recovery", () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot().connected).toBe(true)
   })
-  it("does not grant access to a different project", async () => {
+  it("reconnects a different project with fresh authority and the remembered mode", async () => {
     await ready()
     await connection.enable()
     window.dispatchEvent(new Event("pagehide"))
@@ -1018,6 +1021,10 @@ describe("local AI reload recovery", () => {
     expect(connection.getSnapshot().connected).toBe(false)
     expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
     expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(mocks.request).toHaveBeenLastCalledWith("/poll", expect.anything(), credential.token)
   })
   it("does not resume after Stop AI or a rejected resume", async () => {
     await ready()
@@ -1041,19 +1048,27 @@ describe("local AI reload recovery", () => {
     expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
     expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
   })
-  it("expires the reload allowance and ignores malformed storage", async () => {
+  it("replaces an expired or malformed reload credential using the remembered preference", async () => {
     await ready()
     await connection.enable()
     window.dispatchEvent(new Event("pagehide"))
-    await vi.advanceTimersByTimeAsync(3_600_001)
+    vi.setSystemTime(Date.now() + 3_600_001)
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect"
+        ? ok({ ...credential, expiresAt: Date.now() + 3_600_000 })
+        : original?.(path, ...args),
+    )
     await connection.status()
     await vi.advanceTimersByTimeAsync(1000)
-    expect(connection.getSnapshot().connected).toBe(false)
-    expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
+    expect(connection.getSnapshot().connected).toBe(true)
+    expect(mocks.request).toHaveBeenCalledWith("/connect", expect.anything(), undefined)
+    connection.dispose()
+    connection = createLocalAutomationConnection()
     sessionStorage.setItem("vibeshape-local-ai-resume", "{invalid")
-    await connection.status()
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(connection.getSnapshot().connected).toBe(false)
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().connected).toBe(true)
   })
 })
 
@@ -1109,3 +1124,153 @@ it("retains recovery through a temporary bridge outage and clears it on changed 
   expect(connection.getSnapshot().connected).toBe(false)
   expect(sessionStorage.getItem("vibeshape-local-ai-resume")).toBeNull()
 })
+
+describe("remembered local MCP preferences", () => {
+  async function restartBrowserSession() {
+    connection.dispose()
+    sessionStorage.clear()
+    connection = createLocalAutomationConnection()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+  }
+  it("reconnects with auto-apply after browser session storage is lost", async () => {
+    await ready()
+    await connection.enable()
+    expect(connection.enableAutoApply()).toBe(true)
+    await restartBrowserSession()
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: true,
+      projectManagement: false,
+    })
+    expect(
+      JSON.parse(window.localStorage.getItem("vibeshape-local-ai-preferences") ?? "null"),
+    ).toEqual({ client, autoApply: true })
+    expect(mocks.request).not.toHaveBeenCalledWith("/resume", expect.anything(), expect.anything())
+  })
+  it("remembers a return to manual approval across fresh sessions", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    expect(connection.disableAutoApply()).toBe(true)
+    enableAutoApply.mockClear()
+    await restartBrowserSession()
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(enableAutoApply).not.toHaveBeenCalled()
+  })
+  it("does not reconnect after Stop AI even when auto-apply was enabled", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    await connection.disable()
+    mocks.request.mockClear()
+    await restartBrowserSession()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    expect(window.localStorage.getItem("vibeshape-local-ai-preferences")).toBeNull()
+    expect(mocks.request).not.toHaveBeenCalledWith("/connect", expect.anything(), expect.anything())
+  })
+  it("waits for the remembered client and does not approve a different one", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/status"
+        ? ok({ protocolVersion: 1, client: { name: "Other", version: "1" }, paired: false })
+        : original?.(path, ...args),
+    )
+    await restartBrowserSession()
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
+    mocks.request.mockImplementation((...args) => original?.(...args))
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+  })
+  it("rejects a client replacement between discovery and automatic pairing", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect"
+        ? ok({ ...credential, client: { name: "Other", version: "1" } })
+        : original?.(path, ...args),
+    )
+    await restartBrowserSession()
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      autoApply: false,
+      error: true,
+    })
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+  })
+  it("does not recreate preferences when Stop AI races automatic pairing", async () => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    const pending = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect" ? pending.promise : original?.(path, ...args),
+    )
+    await restartBrowserSession()
+    await connection.disable()
+    pending.resolve(ok(credential))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(window.localStorage.getItem("vibeshape-local-ai-preferences")).toBeNull()
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+  })
+  it("ignores malformed preferences and refuses auto-apply when storage is unavailable", async () => {
+    window.localStorage.setItem("vibeshape-local-ai-preferences", "{invalid")
+    await ready()
+    expect(connection.getSnapshot().connected).toBe(false)
+    await connection.enable()
+    const storage = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable")
+    })
+    try {
+      expect(connection.enableAutoApply()).toBe(false)
+      expect(connection.getSnapshot().autoApply).toBe(false)
+      expect(optOut).toHaveBeenCalled()
+    } finally {
+      storage.mockRestore()
+    }
+  })
+})
+
+it.each(["/poll", "/resume", "/renew"])(
+  "reconnects the remembered client after %s loses its credential",
+  async (route) => {
+    await ready()
+    await connection.enable()
+    connection.enableAutoApply()
+    if (route === "/resume") window.dispatchEvent(new Event("pagehide"))
+    if (route === "/renew") vi.setSystemTime(credential.expiresAt - 60_000)
+    const original = mocks.request.getMockImplementation()
+    let lost = true
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === route && lost) {
+        lost = false
+        return { ok: false, status: 401, data: { diagnostic: { code: "unauthorized" } } }
+      }
+      if (path === "/connect")
+        return ok({ ...credential, token: "C".repeat(43), expiresAt: Date.now() + 3_600_000 })
+      return original?.(path, ...args)
+    })
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(1000)
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: true,
+      error: false,
+    })
+    expect(mocks.request).toHaveBeenCalledWith("/connect", expect.anything(), undefined)
+    expect(JSON.parse(sessionStorage.getItem("vibeshape-local-ai-resume") ?? "null").token).toBe(
+      "C".repeat(43),
+    )
+    expect(mocks.execute).not.toHaveBeenCalled()
+  },
+)

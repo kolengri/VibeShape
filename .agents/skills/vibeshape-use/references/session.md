@@ -18,13 +18,14 @@ editor URL and have the person choose **AI access** (accessible name **Enable AI
 rules are identical. GET `/mcp` returns 405; use POST, including its SSE progress responses.
 
 An unpaired editor refreshes client discovery automatically. If the MCP client starts after the tab
-opens, **AI access** becomes enabled without a page reload. This only discovers the client; the person
-must still enable access to the intended project. Client disconnection disables the unpaired control.
+opens, **AI access** becomes enabled without a page reload. Without a remembered approval, the person
+must enable access. A remembered local client reconnects automatically. Client disconnection disables the unpaired control.
 
 One initialized HTTP client owns this development bridge. HTTP 409 on a new initialization means
 the existing client must terminate its session with DELETE, or the developer must restart `dev`.
 HTTP session termination revokes browser authority. A development server restart requires new MCP
-initialization and approval; the stdio bridge's persisted restart recovery does not apply.
+initialization; the browser restores access and approval mode for the remembered local client.
+The stdio bridge's authenticated process-restart recovery does not apply.
 
 ## Remote HTTPS
 
@@ -38,14 +39,15 @@ Remote uses stateless Streamable HTTP with JSON POST responses. `405 Method Not 
 
 After tool discovery and pairing, call `model_info` with `{}`. Check the actual project and `summary.revision`, and retain any measurement diagnostic. A failed invocation is a connectivity/access failure, not an empty model. Distinguish configuration, protocol initialization, tool discovery, pairing, and a successful invocation when reporting setup.
 
-Manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits in this project/session. It covers current feature versions, supported same-type upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Metadata and separate import, assembly, history and texture reviews remain manual. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
+Manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers current feature versions, supported same-type upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Metadata and separate import, assembly, history and texture reviews remain manual. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
 
 Keep the paired tab open. Local stdio automatically restores the same approved client and project
-following transient transport errors, reload, background pauses or bridge restart. The original
-browser auto-apply choice is restored only if it was explicitly enabled for that pairing. Recovery
+following transient transport errors, reload, background pauses or bridge restart. The browser retains the latest explicitly chosen approval mode, including manual mode. Recovery
 credentials remain tab-scoped and the bridge stores them privately under the current OS user; they
-never enter project backups. An active tab renews its one-hour lease; an expired, revoked, changed
-client or changed-document grant requires new consent. Stop AI clears recovery authority.
+never enter project backups. An active tab renews its one-hour lease. After lease expiry, loss of tab storage, or a project
+change, the remembered local client can establish fresh authority. A different client requires
+new approval. An active owner is never displaced by fresh pairing. Stop AI clears both recovery
+authority and the browser preference, preventing automatic reconnection.
 
 Recovery does not replay interrupted commands, drafts, reviews or exports. After a timeout or
 uncertain write, wait for pairing recovery, call `model_info`, and inspect saved revision/records
@@ -63,8 +65,8 @@ not restored after reload or recovery. Stop AI or manual navigation revokes it.
 Use the [project workflow](../../vibeshape-organization/SKILL.md) for pagination,
 source revision checks, explicit CAD targeting and uncertain outcomes. An authorized tool transition
 preserves the transport pairing and replaces document authority without reloading. A different
-project discards private drafts/uploads/exports and resets CAD auto-apply; enable that separately in
-the destination only when the person wants it. Existing geometry still requires the ordinary
+project discards private drafts/uploads/exports. Local connections restore the remembered CAD
+approval mode; remote connections reset auto-apply and require a separate opt-in in the destination. Existing geometry still requires the ordinary
 preview/review/commit path.
 
 ## Limits and errors

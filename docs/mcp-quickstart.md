@@ -79,16 +79,18 @@ the new revision and export STEP/STL/3MF. The export response contains a resourc
 decode the returned base64 blob and save it with the client's file tools. Ordinary saved state,
 manual editing and Undo use the same document session.
 
-For this project and paired session only, **AI connection and approval mode → Apply automatically** opens **Set up auto-apply** for an explicit opt-in for valid
+For this local client and browser origin, **AI connection and approval mode → Apply automatically** opens **Set up auto-apply** for an explicit opt-in for valid
 CAD creation and parameter edits. The neutral status-bar **Auto-apply on** indicator always includes **Stop AI**. **Approve each change** returns an idle session to manual review without ending pairing.
-Stop AI ends the pairing immediately. Destructive or unsupported drafts still require review; an
+Stop AI ends the pairing immediately and clears automatic reconnection. Destructive or unsupported drafts still require review; an
 already pending review cannot be auto-approved. Invalid geometry and stale revisions are rejected.
 Local MCP restores the same approved project/client and its explicit auto-apply choice after a
 transient disconnect, reload, background pause or local bridge restart. An active tab renews its
-one-hour lease. Stop AI, project/client changes and lease expiry prevent restoration. Interrupted
+one-hour lease. Browser-local access and approval mode persist across projects and browser restarts.
+Without a usable recovery token, the remembered client establishes fresh authority; active
+connections are never displaced. Stop AI clears the preference; a different client requires approval. Interrupted
 commands and drafts are never replayed: call `model_info` and inspect the saved revision before
 continuing. The launcher retains credentials in a private user-owned recovery file, separate from
-project backups. See [ADR-0095](adr/0095-local-mcp-continuous-recovery.md). Remote OAuth grants retain
+project backups. See [ADR-0100](adr/0100-remembered-local-mcp-preferences.md). Remote OAuth grants retain
 their existing reload/consent boundaries. An edit already saving may finish after Stop; inspect the
 result and use Undo if needed.
 
@@ -151,7 +153,8 @@ require `expectedProjectId` and `expectedRevision` from a fresh `model_info`. Cr
 `{ projectId, name, revision }`. The editor must be saved and idle with no editor draft or pending review.
 
 Authorized transitions preserve the transport and replace document authority without reloading.
-Different-project transitions dispose private drafts/uploads/exports and reset CAD auto-apply.
+Different-project transitions dispose private drafts/uploads/exports and restore the remembered
+local CAD approval mode. Remote auto-apply resets.
 Same-project open is a no-op. CAD tools accept an optional `projectId` guard and reject a different
 active project before dispatching. Read `model_info` and start a new draft after switching. If an
 outcome is uncertain, inspect the active project and catalog before retrying a creation.
