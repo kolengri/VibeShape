@@ -1,5 +1,29 @@
 import { expect, test } from "./fixtures"
 
+test("steps focused dimensions with arrows and retains authored units", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await page
+    .getByRole("toolbar", { name: "Model commands" })
+    .getByRole("button", { name: "Box", exact: true })
+    .click()
+  const form = page.getByRole("form", { name: "Create box" })
+  const width = form.getByRole("combobox", { name: "Width", exact: true })
+  await width.fill("0.1 cm")
+  await width.press("ArrowUp")
+  await expect(width).toHaveValue("1.1 cm")
+  await width.press("ArrowUp")
+  await expect(width).toHaveValue("2.1 cm")
+  await width.press("ArrowDown")
+  await expect(width).toHaveValue("1.1 cm")
+  await expect(width).toBeFocused()
+  await width.press("Shift+ArrowUp")
+  await expect(width).toHaveValue("1.1 cm")
+  await width.fill("2 * 10 mm")
+  await width.press("ArrowUp")
+  await expect(width).toHaveValue("2 * 10 mm")
+})
+
 test("replaces the number on first click and Tab while retaining units", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

@@ -17,7 +17,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { useNumericValueSelection } from "./use-numeric-value-selection"
+import { useNumericValueInteraction } from "./use-numeric-value-interaction"
 
 const MAX_VISIBLE_SUGGESTIONS = 8
 const variableTokenPattern = /#([A-Za-z_][A-Za-z0-9_]*)?$/
@@ -382,12 +382,11 @@ export function VariableExpressionInput({
   const t = useTranslations("app.variableSuggestions")
   const { activeOptionId, inputRef, listboxId, refresh, selectSuggestion, setState, state } =
     useVariableSuggestionState({ excludedSuggestionId, onValueChange, suggestions })
-  const selectionHandlers = useNumericValueSelection({ onBlur, onClick, onKeyUp, onPointerDown })
   const inputBindings = variableExpressionInputBindings({
     inputRef,
-    onBlur: selectionHandlers.onBlur,
+    onBlur,
     onChange,
-    onClick: selectionHandlers.onClick,
+    onClick,
     onFocus,
     onKeyDown,
     onSelect,
@@ -398,6 +397,11 @@ export function VariableExpressionInput({
     setState,
     state,
   })
+  const interactionHandlers = useNumericValueInteraction({
+    ...inputBindings,
+    onKeyUp,
+    onPointerDown,
+  })
 
   return (
     <Popover open={state !== null} onOpenChange={(open) => !open && setState(null)}>
@@ -405,8 +409,7 @@ export function VariableExpressionInput({
         <Input
           {...inputProps}
           {...inputBindings}
-          onPointerDown={selectionHandlers.onPointerDown}
-          onKeyUp={selectionHandlers.onKeyUp}
+          {...interactionHandlers}
           role="combobox"
           aria-autocomplete="list"
           aria-controls={state ? listboxId : undefined}

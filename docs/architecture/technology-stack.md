@@ -71,7 +71,10 @@ Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate`
 | `jsdom` | 30.0.1 | MIT |
 | `fallow` | 3.14.0 | MIT |
 
-The locally reviewed Bun build is `1.3.14` (`1.3.14+0d9b296af`). The scaffold pins the exact Bun version in `packageManager` and `oven-sh/setup-bun`; Bun upgrades use explicit PRs together with `bun.lock` changes.
+The exact Bun toolchain version is pinned in `packageManager`. CI and Cloudflare Pages workflows
+read that pin through `oven-sh/setup-bun` with `bun-version-file: package.json`, so runtime setup and
+the install-time version check share one source. Bun upgrades include the corresponding `bun.lock`
+changes.
 
 Before adding or updating a dependency:
 
