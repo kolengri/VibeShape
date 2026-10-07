@@ -2295,7 +2295,8 @@
       "update": "Update shell",
       "cancel": "Cancel",
       "staleRevision": "The document changed. Reopen Shell and select the current opening faces.",
-      "saveFailed": "Shell could not be saved."
+      "saveFailed": "Shell could not be saved.",
+      "previewFailed": "Shell could not be built with the current thickness and opening faces. Try a smaller thickness, change the thickness direction, or select different openings. Apply requires a successful preview."
     },
     "topologyMeasurements": {
       "title": "Topology measurements",

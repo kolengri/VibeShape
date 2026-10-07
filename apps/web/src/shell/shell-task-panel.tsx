@@ -70,6 +70,7 @@ function useShellCopy(editing: boolean): ShellFormCopy {
     face: (values) => t("face", values),
     staleRevision: t("staleRevision"),
     saveFailed: t("saveFailed"),
+    previewFailed: t("previewFailed"),
   }
 }
 export function ShellTaskPanel(props: ShellPanelProps) {
