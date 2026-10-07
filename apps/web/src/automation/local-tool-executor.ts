@@ -48,6 +48,7 @@ import {
 import { isSurfaceTextureToolName } from "@vibeshape/automation-api/surface-texture-tools"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
+import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import type { MeshExportQuality } from "@vibeshape/protocol"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
@@ -287,6 +288,8 @@ async function dispatchBasicOperation(
   operation: LocalOperation,
 ) {
   switch (operation.tool) {
+    case "list_lightweighting_materials":
+      return { ok: true, value: structuredClone(structuralMaterialCatalog) }
     case "model_info":
       return readModelInfo(session)
     case "export_model":

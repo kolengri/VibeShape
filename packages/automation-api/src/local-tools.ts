@@ -6,6 +6,7 @@ import {
   featureIdSchema,
   revisionSchema,
 } from "@vibeshape/domain/identifiers"
+import { structuralMaterialCatalogSchema } from "@vibeshape/domain/lightweighting-materials"
 import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
@@ -181,6 +182,7 @@ const chamfer = z
   })
   .strict()
 export const localToolInputs = {
+  list_lightweighting_materials: z.object({}).strict(),
   ...projectToolInputs,
   ...lightweightingToolInputs,
   render_preview: renderPreviewArgumentsSchema,
@@ -276,6 +278,7 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  list_lightweighting_materials: resultOf(structuralMaterialCatalogSchema),
   analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
   request_lightweighting: resultOf(lightweightingRequestSchema),
   list_projects: resultOf(projectListSchema),
@@ -431,6 +434,7 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "list_lightweighting_materials",
   ...projectToolNames,
   ...lightweightingToolNames,
   "render_preview",
@@ -551,6 +555,12 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 const untargetedOperationSchema = z.discriminatedUnion("tool", [
+  z
+    .object({
+      tool: z.literal("list_lightweighting_materials"),
+      arguments: localToolInputs.list_lightweighting_materials,
+    })
+    .strict(),
   ...projectOperations,
   ...lightweightingOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),

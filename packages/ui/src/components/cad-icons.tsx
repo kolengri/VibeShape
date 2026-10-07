@@ -20,6 +20,22 @@ function CadGlyph({
   )
 }
 
+export function LightweightingIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <CadGlyph {...props}>
+      <path d="m12 3 9 5v9l-9 5-9-5V8l9-5Zm0 10v9M3 8l9 5 9-5" />
+      <path
+        d="M9 7.8c-1.5.8-1.5 1.1 0 1.9l1.8 1c.8.4 1.6.4 2.4 0l1.8-1c1.5-.8 1.5-1.1 0-1.9l-1.8-1c-.8-.4-1.6-.4-2.4 0l-1.8 1Z"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M6 12.2c-.5-.3-1-.1-1 .7v2.2c0 .7.3 1.1.9 1.5l2.2 1.3c.6.4 1 .1 1-.6v-2.2c0-.7-.3-1.1-.9-1.5L6 12.2Zm12 0c.5-.3 1-.1 1 .7v2.2c0 .7-.3 1.1-.9 1.5l-2.2 1.3c-.6.4-1 .1-1-.6v-2.2c0-.7.3-1.1.9-1.5l2.2-1.4Z"
+        strokeWidth="1.5"
+      />
+    </CadGlyph>
+  )
+}
+
 export function CylinderIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <CadGlyph {...props}>

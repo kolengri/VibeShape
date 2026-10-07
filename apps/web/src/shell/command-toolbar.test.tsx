@@ -27,6 +27,7 @@ const controller = {
 } as unknown as DocumentControllerState
 
 const actions = {
+  lightweighting: vi.fn(),
   placePart: vi.fn(),
   mirrorPart: vi.fn(),
   shellPart: vi.fn(),
@@ -110,6 +111,15 @@ afterEach(() => {
 })
 
 describe("CommandToolbar", () => {
+  it("opens Lightweighting directly from the modeling toolbar with a vector icon", async () => {
+    renderToolbar()
+    const group = screen.getByRole("group", { name: "Modeling actions" })
+    const button = within(group).getByRole("button", { name: "Lightweighting" })
+    expect(button.querySelector("svg")).toBeTruthy()
+    expect(button.querySelector("img")).toBeNull()
+    await userEvent.click(button)
+    expect(actions.lightweighting).toHaveBeenCalledOnce()
+  })
   it("presents registry-backed sketch-first model commands", async () => {
     const user = userEvent.setup()
     renderToolbar()

@@ -1,17 +1,61 @@
 # Structural lightweighting
 
-The **Lightweighting** application-menu workflow reduces occupied material while satisfying supplied
+The **Lightweighting** button in the main modeling toolbar reduces occupied material while satisfying supplied
 von Mises stress, safety-factor, and displacement limits in every load case. It uses energy-guided
 cell removal with feasibility backtracking, not a global optimum or physical strength certification.
 `analyze_lightweighting` and `request_lightweighting` expose the same browser calculation through
 paired local and remote MCP. See the [operator reference](../../.agents/skills/vibeshape-modeling/references/lightweighting.md).
 
+The toolbar button uses the same registered command as the command palette and a native SVG icon.
+Opening the dialog captures one unambiguous selected exact Part (from the tree or a viewport body/face)
+and fills its source and initial region bounds. Missing, unavailable, hidden, mesh, or ambiguous targets
+remain unselected. A later viewport selection does not replace the source being edited in the dialog.
+
 ## Inputs and numerical model
 
-Choose one available, valid exact single-solid Part explicitly. Analysis uses its pristine display
+Choose one available, valid exact single-solid Part, or keep the valid selected Part prefilled on opening. Analysis uses its pristine display
 tessellation, excluding surface textures. Enter Young's modulus and yield strength in MPa, density
 in kg/m3, Poisson ratio, required safety factor, maximum displacement in mm, cell size in mm, and
-total forces in N. There are no inferred material grades or print-process presets.
+total forces in N. Choose **Custom material** or an editable named material example. The application
+does not infer a material grade or print process from geometry. Changing a preset cancels pending
+analysis and invalidates its result; manually editing a material value labels it Custom without
+discarding the other values. Loads, supports and constraints are not changed by a material preset.
+
+### Material examples
+
+The shared `@vibeshape/domain/lightweighting-materials` catalog supplies both the selector and the
+read-only paired MCP tool `list_lightweighting_materials` (empty arguments). Copy a catalog entry's
+`material` into the existing analysis/request `settings.material`; no preset ID replaces those
+explicit numeric inputs. The catalog is shipped locally and does not fetch data at runtime.
+
+Values below are published sample means for polymers and stated minimum 0.2% proof stress for
+metals. Source revisions and URLs are shown for the selected example and returned by MCP.
+
+| Example / source | Tensile E (MPa) | Yield (MPa) | Density (kg/m³) | Specimen / product condition |
+| --- | ---: | ---: | ---: | --- |
+| [PLA — Prusament](https://prusament.com/wp-content/uploads/2022/10/PLA_Prusament_TDS_2021_10_EN.pdf) | 2300 | 51 | 1240 | Horizontal printed, v1.1, 2022-02-16 |
+| [PETG — UltiMaker](https://um-support-files.ultimaker.com/materials/2.85mm/tds/PETG/Ultimaker-PETG-TDS-v1.00.pdf) | 1939 | 46.2 | 1270 | XY flat printed, v1.00, 2022-04-29 |
+| [ABS — UltiMaker](https://um-support-files.ultimaker.com/materials/2.85mm/tds/ABS/Ultimaker-ABS-TDS-v5.00.pdf) | 1962 | 38.1 | 1100 | XY flat printed, v5.00, 2022-04-20 |
+| [ASA — Prusament](https://prusament.com/wp-content/uploads/2022/10/ASA_Prusament_TDS_2022_16_EN.pdf) | 1600 | 42 | 1070 | Horizontal printed, v1.1, 2022-02-16 |
+| [PC Blend — Prusament](https://prusament.com/wp-content/uploads/2022/10/PCBlend_Prusament_TDS_2022_16_EN.pdf) | 1900 | 63 | 1220 | Horizontal printed, v1.1, 2022-02-16 |
+| [Nylon PA6/66 — UltiMaker](https://um-support-files.ultimaker.com/materials/2.85mm/tds/NYLON/Ultimaker-Nylon-TDS-v5.00.pdf) | 2331 | 63.1 | 1140 | XY flat printed, footer v2.00, 2022-04-20 |
+| [Aluminum 6061-T6 — Hydro](https://www.hydro.com/globalassets/01-products--services/extruded-profiles/americas/ena-resources/alloy-data-sheets/hydro_2019_data_sheet_6061.pdf) | 69000 | 240 | 2700 | Unwelded extruded T6/T6511, revision 2019/01 |
+| [Stainless steel 304 — Outokumpu](https://www.outokumpu.com/en/products/product-ranges/-/media/files/products/core/outokumpu-core-range-datasheet.pdf?modified=20251117111909&revision=025e9931-a1d5-4c8f-8ff5-f881d38916da) | 200000 | 230 | 7900 | Core 304/4301 cold-rolled coil/sheet at 20°C, 1560EN:4, November 2022 |
+
+Hydro E and density come from its [pipe/tube catalogue](https://www.hydro.com/globalassets/01-products--services/extruded-profiles/americas/ena-resources/sales-literature/pipe_tube_combined_july_2023_gelato.pdf),
+revision August 2023, p.8: typical E = 10 million psi (rounded to 69000 MPa), specific gravity 2.70.
+The 6061 datasheet supplies minimum yield 240 MPa for both listed wall-thickness ranges. Polymer
+E is tensile modulus, not flexural modulus; yield is measured on printed samples, not filament.
+The six polymer specimens use 100% infill. Prusa uses two perimeters, 0.20 mm layers, and rectilinear infill;
+UltiMaker uses S5 Pro Bundle, AA0.4, 0.15 mm, Cura 4.9 and at least 24 hours room-temperature
+conditioning. These conditions are examples, not a matching process prescription.
+
+**Every Poisson ratio is an explicit unmeasured assumption:** 0.35 for these polymers, 0.33 for
+aluminum and 0.30 for steel. Presets are starting assumptions, not universal properties or certified
+design allowables. Printed XY/horizontal yield must not be applied as measured Z-layer yield.
+Infill, adhesion, orientation, moisture, temperature and grade can change performance; the solver
+remains isotropic. TPU/elastomers are omitted because their nonlinear behavior is outside the
+linear-elastic yield-limited model. Use custom values when the example does not represent the part.
 
 Axis-aligned boxes in model coordinates select fully fixed support nodes, loaded exterior facets,
 and preserved cells. Each load case distributes its total force uniformly over baseline exterior

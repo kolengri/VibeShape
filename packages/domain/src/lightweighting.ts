@@ -50,6 +50,8 @@ export const structuralOptimizationSettingsSchema = z
     maxIterations: z.number().int().min(0).max(40),
   })
   .strict()
+export const structuralMaterialSchema = structuralOptimizationSettingsSchema.shape.material
+export type StructuralMaterial = z.infer<typeof structuralMaterialSchema>
 const nonnegative = z.number().finite().nonnegative()
 const positive = z.number().finite().positive()
 const caseMetrics = z

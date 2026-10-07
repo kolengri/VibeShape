@@ -1,5 +1,9 @@
 import { resolveAuthoredParts } from "@vibeshape/application/authored-parts"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
+import {
+  type StructuralMaterialPresetId,
+  structuralMaterialCatalog,
+} from "@vibeshape/domain/lightweighting-materials"
 import type { StructuralOptimizationInput } from "@vibeshape/structural-optimization/contract"
 import type { DocumentControllerState } from "../../document/document-controller"
 import type { ImportDocumentContext } from "../import/import-model"
@@ -12,6 +16,7 @@ export type LoadCaseFields = {
   force: [string, string, string]
 }
 export type LightweightingFields = {
+  materialPresetId: StructuralMaterialPresetId | "custom"
   youngModulusMpa: string
   poissonRatio: string
   yieldStrengthMpa: string
@@ -101,6 +106,7 @@ export function initialLightweightingFields(
   const cell = Math.max(...max.map((value, index) => value - (min[index] ?? 0))) / 10
   const slab = Math.max(cell / 2, 0.000001)
   return {
+    materialPresetId: "custom",
     youngModulusMpa: "",
     poissonRatio: "",
     yieldStrengthMpa: "",
@@ -119,6 +125,20 @@ export function initialLightweightingFields(
       },
     ],
     preserveRegions: [],
+  }
+}
+export function applyLightweightingMaterialPreset(fields: LightweightingFields, id: string) {
+  if (id === "custom") return { ...fields, materialPresetId: "custom" as const }
+  const preset = structuralMaterialCatalog.presets.find((item) => item.id === id)
+  if (!preset) return fields
+  const { material } = preset
+  return {
+    ...fields,
+    materialPresetId: preset.id,
+    youngModulusMpa: String(material.youngModulusMpa),
+    poissonRatio: String(material.poissonRatio),
+    yieldStrengthMpa: String(material.yieldStrengthMpa),
+    densityKgM3: String(material.densityKgM3),
   }
 }
 function number(value: string) {

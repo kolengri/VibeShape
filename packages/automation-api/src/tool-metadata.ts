@@ -2,6 +2,8 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  list_lightweighting_materials:
+    "Read the same eight editable material examples as the Lightweighting UI: PLA, PETG, ABS, ASA, PC Blend, Nylon, aluminum 6061-T6 and stainless steel 304. Returns named manufacturer grades, tensile specimen/product conditions, source revisions and URLs, material values (MPa, kg/m3), and explicit assumed Poisson ratios. Copy a preset's material into analyze_lightweighting/request_lightweighting settings.material and adjust for the actual grade/process. Printed examples use 100% infill in one test orientation; the solver remains isotropic. No document or geometry mutation, network fetch, or material-strength certification.",
   analyze_lightweighting:
     "Compute bounded preliminary linear-elastic FEM material-removal analysis on one exact committed solid part. Supply baseRevision and stable partId/featureId/outputRole/contentHash, material properties, support/load/preservation regions in world millimeters, safety and displacement limits, cell size and iterations (0 for baseline only). Returns bounded baseline/feasible-candidate stress, displacement, safety, mass and volume evidence; no geometry mutation. Uses the same browser worker as UI. Up to 20,000 source triangles, 10,000 source vertices, 3,000 cells, 5,000 nodes, 8 load cases and 40 iterations. Conservative cell mesh; no global optimum, fatigue, buckling, contact or physical-strength guarantee.",
   request_lightweighting:
@@ -262,6 +264,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "list_lightweighting_materials",
       "analyze_lightweighting",
       "list_projects",
       "render_preview",
@@ -321,6 +324,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "list_lightweighting_materials",
       "analyze_lightweighting",
       "list_projects",
       "open_project",

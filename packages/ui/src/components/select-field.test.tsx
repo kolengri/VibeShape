@@ -23,6 +23,19 @@ function options() {
 }
 
 describe("SelectField", () => {
+  it("associates parameter guidance with the native focusable trigger", () => {
+    render(
+      <>
+        <SelectField label="Material" defaultValue="new" aria-describedby="material-guidance">
+          {options()}
+        </SelectField>
+        <p id="material-guidance">Values are editable examples.</p>
+      </>,
+    )
+    expect(
+      screen.getByRole("combobox", { name: "Material" }).getAttribute("aria-describedby"),
+    ).toBe("material-guidance")
+  })
   it("supports an uncontrolled labeled field and skips disabled options with the keyboard", async () => {
     const user = userEvent.setup()
     const change = vi.fn()

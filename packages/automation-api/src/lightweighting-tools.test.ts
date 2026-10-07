@@ -1,3 +1,4 @@
+import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import { describe, expect, it } from "vitest"
 import {
   lightweightingId,
@@ -21,6 +22,26 @@ import { remoteOperationSchema } from "./remote-session"
 import { localToolAnnotations } from "./tool-metadata"
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it("advertises a strict read-only shared material catalog on both transports", () => {
+    const operation = { tool: "list_lightweighting_materials", arguments: {} }
+    expect(localOperationSchema.safeParse(operation).success).toBe(true)
+    expect(remoteOperationSchema.safeParse(operation).success).toBe(true)
+    expect(localToolAnnotations("list_lightweighting_materials")).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    })
+    expect(
+      localToolOutputs.list_lightweighting_materials.safeParse({
+        ok: true,
+        value: structuralMaterialCatalog,
+      }).success,
+    ).toBe(true)
+    expect(
+      localOperationSchema.safeParse({ ...operation, arguments: { script: "ignored" } }).success,
+    ).toBe(false)
+  })
   it("publishes strict local and remote tools with manual mutation annotations", () => {
     for (const request of [false, true]) {
       const operation = lightweightingOperation(request)

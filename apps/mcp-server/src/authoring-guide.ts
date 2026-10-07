@@ -141,6 +141,9 @@ the source and requests manual browser preview/Apply before one atomic source/fe
 Caller hashes, pins, provenance, paths and generic command payloads are unavailable. Read the
 modeling native-import reference for ownership, five-minute idle expiry and remote pacing/budgets.
 
+Structural lightweighting's read-only \`list_lightweighting_materials\` catalog returns the same
+editable named examples, source conditions and assumed Poisson ratios as the UI. Inspect its limits
+and copy explicit numeric \`material\` values into settings; no preset ID replaces material inputs.
 Structural lightweighting uses \`analyze_lightweighting\` (compute-only) and \`request_lightweighting\`
 (independent mesh snapshot) on both paired transports. Retain exact committed Part/body identity,
 content hash and revision; supply material properties, world-mm support/load/preservation regions,

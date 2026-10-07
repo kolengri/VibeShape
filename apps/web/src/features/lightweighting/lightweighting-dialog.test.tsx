@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
 import { webcrypto } from "node:crypto"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -13,6 +22,7 @@ import messages from "../../i18n/messages/en.json"
 import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
 import { meshInspection } from "../import/import-test-fixtures"
 import { LightweightingDialog } from "./lightweighting-dialog"
+import { useLightweightingCommand } from "./use-lightweighting-command"
 
 const ports = vi.hoisted(() => ({
   optimize: vi.fn(),
@@ -32,6 +42,7 @@ vi.mock("@vibeshape/structural-optimization/client", () => ({
 }))
 vi.mock("@vibeshape/structural-optimization/mesh", () => ({ encodeStructuralStl: ports.encode }))
 vi.mock("../../document/document-controller", () => ({
+  getProjectActiveWorkBlock: () => null,
   inspectTriangleMeshSource: ports.inspect,
   commitAuthoredTransaction: ports.apply,
 }))
@@ -118,7 +129,7 @@ const controller = {
 } as unknown as DocumentControllerState
 const report = controller.report
 if (!report) throw new Error("The fixture requires a report.")
-function setup(initial = controller, blocked = false) {
+function setup(initial = controller, blocked = false, initialPartId = "") {
   const View = ({ state }: { state: DocumentControllerState }) => {
     const [open, setOpen] = useState(true)
     return (
@@ -128,6 +139,7 @@ function setup(initial = controller, blocked = false) {
         </button>
         <LightweightingDialog
           controller={state}
+          initialPartId={initialPartId}
           blocked={blocked}
           open={open}
           onOpenChange={setOpen}
@@ -205,6 +217,86 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Lightweighting workflow", () => {
+  it("captures mouse body selection only when opening, and refuses ambiguous body ownership", () => {
+    const { result, rerender } = renderHook(
+      ({ selectedBody }) =>
+        useLightweightingCommand({ controller, selectedPartId: null, selectedBody }),
+      { initialProps: { selectedBody: { featureId: body.featureId, outputRole: "result" } } },
+    )
+    act(() => result.current.show())
+    expect(result.current.initialPartId).toBe(firstPart.id)
+    rerender({ selectedBody: { featureId: body.featureId, outputRole: "another-output" } })
+    expect(result.current.initialPartId).toBe(firstPart.id)
+    act(() => result.current.setOpen(false))
+    act(() => result.current.show())
+    expect(result.current.initialPartId).toBe("")
+    ports.parts.mockReturnValue([
+      { part: firstPart, status: "available", body },
+      { part: { ...firstPart, id: "another-part" }, status: "available", body },
+    ])
+    rerender({ selectedBody: { featureId: body.featureId, outputRole: "result" } })
+    act(() => result.current.show())
+    expect(result.current.initialPartId).toBe("")
+  })
+  it("prefills a selected exact Part and its bounds, while unavailable targets stay explicit", () => {
+    const view = setup(controller, false, firstPart.id)
+    expect(screen.getByRole("combobox", { name: "Source Part" }).textContent).toBe(sourcePartName)
+    expect((screen.getByLabelText("Voxel cell size (mm)") as HTMLInputElement).value).toBe("4")
+    expect((screen.getByLabelText("Young’s modulus (MPa)") as HTMLInputElement).value).toBe("")
+    view.unmount()
+    setup(controller, false, "missing-part")
+    expect(screen.getByRole("combobox", { name: "Source Part" }).textContent).toBe(
+      "Choose an exact solid Part",
+    )
+    expect(ports.optimize).not.toHaveBeenCalled()
+  })
+
+  it("fills editable preset values, preserves constraints, and labels manual edits as custom", async () => {
+    setup(controller, false, firstPart.id)
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Material preset" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "PETG — UltiMaker" }))
+    expect((screen.getByLabelText("Young’s modulus (MPa)") as HTMLInputElement).value).toBe("1939")
+    expect((screen.getByLabelText("Poisson’s ratio") as HTMLInputElement).value).toBe("0.35")
+    expect((screen.getByLabelText("Yield strength (MPa)") as HTMLInputElement).value).toBe("46.2")
+    expect((screen.getByLabelText("Density (kg/m³)") as HTMLInputElement).value).toBe("1270")
+    expect((screen.getByLabelText("Required safety factor") as HTMLInputElement).value).toBe("2")
+    expect(
+      screen.getByRole("link", { name: "Manufacturer data sheet 1" }).getAttribute("href"),
+    ).toContain("Ultimaker-PETG-TDS-v1.00.pdf")
+    change("Total force Z (N)", "-10")
+    change("Required safety factor", "3")
+    expect(screen.getByRole("combobox", { name: "Material preset" }).textContent).toBe(
+      "PETG — UltiMaker",
+    )
+    change("Young’s modulus (MPa)", "1800")
+    expect(screen.getByRole("combobox", { name: "Material preset" }).textContent).toBe(
+      "Custom material",
+    )
+    expect((screen.getByLabelText("Density (kg/m³)") as HTMLInputElement).value).toBe("1270")
+    expect(screen.queryByRole("link", { name: "Manufacturer data sheet 1" })).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Analyze and optimize" }))
+    await waitFor(() => expect(ports.optimize).toHaveBeenCalledOnce())
+    expect(ports.optimize.mock.calls[0]?.[0].material).toEqual({
+      youngModulusMpa: 1800,
+      poissonRatio: 0.35,
+      yieldStrengthMpa: 46.2,
+      densityKgM3: 1270,
+    })
+  })
+
+  it("invalidates a completed result when a different material preset is chosen", async () => {
+    setup()
+    await fill()
+    await analyze()
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Material preset" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "PLA — Prusament" }))
+    expect(
+      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
+
   it("requires explicit exact Part, material values, and a nonzero force before analysis", async () => {
     setup()
     expect(

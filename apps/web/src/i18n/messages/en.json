@@ -688,6 +688,10 @@
         "createFdm": {
           "label": "FDM tools",
           "keywords": "web|rib|gusset|teardrop|crush ribs|nut pocket|insert|membrane|calibration|print design"
+        },
+        "lightweighting": {
+          "label": "Lightweighting",
+          "keywords": "lightweighting|topology|optimization|material|strength"
         }
       }
     },
@@ -1767,8 +1771,7 @@
         "faq": "FAQ and MCP setup…",
         "importGeometry": "Import geometry…",
         "importSketch": "Import sketch…",
-        "library": "Library…",
-        "lightweighting": "Lightweighting"
+        "library": "Library…"
       }
     },
     "sketch": {
@@ -2976,7 +2979,7 @@
       "noParts": "No available exact solid Parts. Create or import a valid single solid first.",
       "partUnavailable": "The chosen Part is no longer available. Select an available Part explicitly.",
       "material": "Material assumptions",
-      "materialDescription": "Enter values for your material. These inputs are assumptions; the application does not verify a material grade, print process, anisotropy, or physical strength.",
+      "materialDescription": "Choose a published material example or enter custom values. All values remain editable; the solver does not verify a material grade, print process, anisotropy, or physical strength.",
       "youngModulusMpa": "Young’s modulus (MPa)",
       "poissonRatio": "Poisson’s ratio",
       "yieldStrengthMpa": "Yield strength (MPa)",
@@ -3042,7 +3045,32 @@
       "resultLimitations": "Isotropic linear elasticity and voxel discretization do not establish manufacturing readiness, physical strength, fatigue behavior, exact mating surfaces, or an optimum. The result is a static mesh snapshot: it does not regenerate from CAD edits and cannot be exported as exact STEP.",
       "preview": "Read-only lightweighting mesh preview",
       "previewFailed": "The mesh preview could not be created. Apply is unavailable.",
-      "downloadReport": "Download analysis report (JSON)"
+      "downloadReport": "Download analysis report (JSON)",
+      "materialPreset": "Material preset",
+      "customMaterial": "Custom material",
+      "presetAssumptions": "Presets are editable examples. Poisson’s ratio is an assumed isotropic value. Printed samples use 100% infill; layer direction, adhesion, moisture and print settings can change strength. Adjust values for your material and process.",
+      "presetReference": "{reference}: {basis}. Source revision: {revision}.",
+      "materialSource": "Manufacturer data sheet {index}",
+      "presets": {
+        "pla": "PLA — Prusament",
+        "petg": "PETG — UltiMaker",
+        "abs": "ABS — UltiMaker",
+        "asa": "ASA — Prusament",
+        "pc-blend": "PC Blend — Prusament",
+        "nylon": "Nylon (PA6/66) — UltiMaker",
+        "aluminum-6061-t6": "Aluminum 6061-T6 — Hydro",
+        "steel-304": "Stainless steel 304 — Outokumpu"
+      },
+      "presetBasis": {
+        "printed-horizontal": "horizontal printed tensile specimens",
+        "printed-xy": "XY flat printed tensile specimens",
+        "extruded-t6": "unwelded extruded T6 / T6511",
+        "cold-rolled-sheet": "cold-rolled coil / sheet at 20 °C"
+      },
+      "presetYieldBasis": {
+        "sample-mean": "Yield strength is a measured sample mean, not a certified design allowable.",
+        "minimum-rp02": "Yield strength is the source’s stated minimum 0.2% proof stress for this product condition."
+      }
     }
   }
 }

@@ -404,6 +404,8 @@ function documentResultMatches(
   documentId: string,
 ) {
   switch (operation.tool) {
+    case "list_lightweighting_materials":
+      return true
     case "render_preview":
       return renderPreviewResultContextMatches(operation, result, documentId) === true
     case "model_info":

@@ -7,6 +7,7 @@ import {
 } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { lightweightingMaterialCatalogResult } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import { createBrowserBroker } from "./browser-broker"
 
@@ -50,6 +51,43 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("accepts a validated material catalog without requiring a draft or document receipt", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const { value: catalog } = lightweightingMaterialCatalogResult()
+    const operation = localOperationSchema.parse({
+      tool: "list_lightweighting_materials",
+      arguments: {},
+    })
+    const pending = broker.invoke(operation)
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = localPollResponseSchema.parse(await poll.json())
+    if (!work) throw new Error("Expected a material catalog operation.")
+    const respond = (value: unknown) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: operation.tool,
+            result: { ok: true, value },
+          },
+          token,
+        ),
+      )
+    expect((await respond({ ...catalog, presets: [] })).status).toBe(400)
+    expect((await respond(catalog)).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value: catalog })
+    expect(broker.isPaired()).toBe(true)
+    const next = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 2, document, progress: null }, token),
+    )
+    expect(next.status).toBe(200)
+  })
+
   it("moves pairing only after an exact project transition receipt and rejects old target guards", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)
