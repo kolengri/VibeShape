@@ -1,4 +1,13 @@
 import { strToU8, type Zippable, zipSync } from "fflate"
+import {
+  BufferAttribute,
+  BufferGeometry,
+  DoubleSide,
+  Matrix4,
+  Ray,
+  Vector3 as ThreeVector3,
+} from "three"
+import { ExtendedTriangle, MeshBVH } from "three-mesh-bvh"
 import { z } from "zod"
 
 export const THREE_MF_MEDIA_TYPE = "model/3mf" as const
@@ -342,7 +351,13 @@ function collectTriangleComponents(mesh: MeshValues) {
   return components
 }
 
-function validatePositiveComponentVolumes(mesh: MeshValues, context: z.RefinementCtx) {
+interface MeshShell {
+  triangleIndices: number[]
+  volume: number
+}
+
+function collectMeshShells(mesh: MeshValues, context: z.RefinementCtx) {
+  const shells: MeshShell[] = []
   for (const [componentIndex, triangleIndices] of collectTriangleComponents(mesh).entries()) {
     const firstTriangle = mesh.triangles[triangleIndices[0] as number] as Triangle
     const origin = triangleVertices(mesh, firstTriangle)[0]
@@ -350,12 +365,210 @@ function validatePositiveComponentVolumes(mesh: MeshValues, context: z.Refinemen
       (sum, triangleIndex) => sum + signedTriangleVolume(mesh, triangleIndex, origin),
       0,
     )
-    if (volume > GEOMETRY_EPSILON) continue
+    if (!Number.isFinite(volume) || Math.abs(volume) <= GEOMETRY_EPSILON) {
+      context.addIssue({
+        code: "custom",
+        message: `Model mesh component ${componentIndex} must have finite non-zero volume.`,
+        path: ["triangles"],
+      })
+      return undefined
+    }
+    shells.push({ triangleIndices, volume })
+  }
+  return shells
+}
+
+function shellGeometry(mesh: MeshValues) {
+  const origin = mesh.vertices[0] as Vector3
+  const positions = new Float64Array(mesh.vertices.length * 3)
+  for (const [index, vertex] of mesh.vertices.entries()) {
+    positions.set(vectorSubtract(vertex, origin), index * 3)
+  }
+  const geometry = new BufferGeometry()
+  // Double precision and a local origin preserve the validated coordinates during spatial queries.
+  geometry.setAttribute("position", new BufferAttribute(positions, 3))
+  geometry.setIndex(mesh.triangles.flat())
+  return geometry
+}
+
+function rangeShell(
+  bvh: MeshBVH,
+  shellByTriangle: Uint32Array,
+  offset: number,
+  count: number,
+  cache: Map<number, number>,
+) {
+  const cached = cache.get(offset)
+  if (cached !== undefined) return cached
+  const shell = shellByTriangle[bvh.resolveTriangleIndex(offset)] as number
+  for (let index = offset + 1; index < offset + count; index++) {
+    if (shellByTriangle[bvh.resolveTriangleIndex(index)] !== shell) {
+      cache.set(offset, -1)
+      return -1
+    }
+  }
+  cache.set(offset, shell)
+  return shell
+}
+
+function setBvhTriangle(bvh: MeshBVH, index: number, target: ExtendedTriangle) {
+  const indices = bvh.geometry.index as BufferAttribute
+  const positions = bvh.geometry.getAttribute("position")
+  target.a.fromBufferAttribute(positions, indices.getX(index * 3))
+  target.b.fromBufferAttribute(positions, indices.getX(index * 3 + 1))
+  target.c.fromBufferAttribute(positions, indices.getX(index * 3 + 2))
+  target.needsUpdate = true
+}
+
+function validateDisjointShells(bvh: MeshBVH, shellByTriangle: Uint32Array) {
+  const cache = new Map<number, number>()
+  const first = new ExtendedTriangle()
+  const second = new ExtendedTriangle()
+  let work = 0
+  const budget = Math.min(32_000_000, Math.max(100_000, shellByTriangle.length * 128))
+  const intersecting = bvh.bvhcast(bvh, new Matrix4(), {
+    intersectsRanges: (offset1, count1, offset2, count2) => {
+      if (++work > budget) return true
+      const shell1 = rangeShell(bvh, shellByTriangle, offset1, count1, cache)
+      const shell2 = rangeShell(bvh, shellByTriangle, offset2, count2, cache)
+      // Most candidate leaves belong to the same surface; skip their whole Cartesian product.
+      if (shell1 >= 0 && shell1 === shell2) return false
+      for (let index1 = offset1; index1 < offset1 + count1; index1++) {
+        const triangle1 = bvh.resolveTriangleIndex(index1)
+        setBvhTriangle(bvh, triangle1, first)
+        for (let index2 = offset2; index2 < offset2 + count2; index2++) {
+          if (++work > budget) return true
+          const triangle2 = bvh.resolveTriangleIndex(index2)
+          if (shellByTriangle[triangle1] === shellByTriangle[triangle2]) continue
+          setBvhTriangle(bvh, triangle2, second)
+          if (first.intersectsTriangle(second)) return true
+        }
+      }
+      return false
+    },
+  })
+  if (work > budget) return "Model mesh shell validation exceeds the spatial-query work budget."
+  if (intersecting) return "Model mesh shell surfaces must not touch or intersect."
+  return undefined
+}
+
+const CONTAINMENT_DIRECTIONS = [
+  new ThreeVector3(1, 0.371, 0.529).normalize(),
+  new ThreeVector3(-0.419, 1, 0.233).normalize(),
+  new ThreeVector3(0.283, -0.617, 1).normalize(),
+]
+
+type ShellRayHit = ReturnType<MeshBVH["raycast"]>[number]
+
+function closestOtherShellHits(
+  hits: readonly ShellRayHit[],
+  shellByTriangle: Uint32Array,
+  shellIndex: number,
+) {
+  const closest = new Map<number, ShellRayHit>()
+  for (const hit of hits) {
+    const otherShell = shellByTriangle[hit.faceIndex as number] as number
+    if (otherShell === shellIndex) continue
+    const previous = closest.get(otherShell)
+    if (!previous || hit.distance < previous.distance) closest.set(otherShell, hit)
+  }
+  return closest
+}
+
+function containmentDepthFromHits(
+  closest: ReadonlyMap<number, ShellRayHit>,
+  shells: readonly MeshShell[],
+  direction: ThreeVector3,
+) {
+  let depth = 0
+  for (const [otherShell, hit] of closest) {
+    const directionDotNormal = hit.face?.normal.dot(direction) ?? 0
+    const barycentric = hit.barycoord
+    if (
+      Math.abs(directionDotNormal) <= GEOMETRY_EPSILON ||
+      !barycentric ||
+      Math.min(barycentric.x, barycentric.y, barycentric.z) <= GEOMETRY_EPSILON
+    )
+      return undefined
+    // A nearest exit means the point is inside this shell, independent of its winding.
+    if (directionDotNormal * Math.sign(shells[otherShell]?.volume as number) > 0) depth++
+  }
+  return depth
+}
+
+function shellContainmentDepth(
+  bvh: MeshBVH,
+  shells: readonly MeshShell[],
+  shellByTriangle: Uint32Array,
+  shellIndex: number,
+  work: { hits: number; limit: number },
+) {
+  const firstTriangle = shells[shellIndex]?.triangleIndices[0] as number
+  const indices = bvh.geometry.index as BufferAttribute
+  const positions = bvh.geometry.getAttribute("position")
+  const point = new ThreeVector3()
+  for (let corner = 0; corner < 3; corner++) {
+    point.add(
+      new ThreeVector3().fromBufferAttribute(positions, indices.getX(firstTriangle * 3 + corner)),
+    )
+  }
+  point.multiplyScalar(1 / 3)
+  for (const direction of CONTAINMENT_DIRECTIONS) {
+    const hits = bvh.raycast(new Ray(point, direction), DoubleSide)
+    work.hits += hits.length
+    if (work.hits > work.limit) return undefined
+    const closest = closestOtherShellHits(hits, shellByTriangle, shellIndex)
+    const depth = containmentDepthFromHits(closest, shells, direction)
+    if (depth !== undefined) return depth
+  }
+  return undefined
+}
+
+function validateShellNesting(
+  bvh: MeshBVH,
+  shells: readonly MeshShell[],
+  shellByTriangle: Uint32Array,
+) {
+  const intersectionIssue = validateDisjointShells(bvh, shellByTriangle)
+  if (intersectionIssue) return intersectionIssue
+  const work = {
+    hits: 0,
+    limit: Math.min(4_000_000, Math.max(100_000, shellByTriangle.length * 16)),
+  }
+  for (const [shellIndex, shell] of shells.entries()) {
+    const depth = shellContainmentDepth(bvh, shells, shellByTriangle, shellIndex, work)
+    if (depth === undefined)
+      return "Model mesh shell containment is ambiguous or exceeds the spatial-query work budget."
+    if (shell.volume > 0 !== (depth % 2 === 0))
+      return `Model mesh component ${shellIndex} must face away from material: outward at even nesting depth and inward at odd depth.`
+  }
+  return undefined
+}
+
+function validateShellOrientation(mesh: MeshValues, context: z.RefinementCtx) {
+  const shells = collectMeshShells(mesh, context)
+  if (!shells) return
+  const totalVolume = shells.reduce((sum, shell) => sum + shell.volume, 0)
+  if (!Number.isFinite(totalVolume) || totalVolume <= GEOMETRY_EPSILON) {
     context.addIssue({
       code: "custom",
-      message: `Model mesh component ${componentIndex} must have outward orientation and positive volume.`,
+      message: "Model mesh must have positive material volume.",
       path: ["triangles"],
     })
+    return
+  }
+  if (shells.length === 1) return
+  const shellByTriangle = new Uint32Array(mesh.triangles.length)
+  for (const [shellIndex, shell] of shells.entries()) {
+    for (const triangleIndex of shell.triangleIndices) shellByTriangle[triangleIndex] = shellIndex
+  }
+  const geometry = shellGeometry(mesh)
+  try {
+    const bvh = new MeshBVH(geometry, { indirect: true, verbose: false })
+    const issue = validateShellNesting(bvh, shells, shellByTriangle)
+    if (issue) context.addIssue({ code: "custom", message: issue, path: ["triangles"] })
+  } finally {
+    geometry.dispose()
   }
 }
 
@@ -365,7 +578,7 @@ function validateMesh(mesh: MeshValues, context: z.RefinementCtx) {
   )
   if (validTriangles.includes(false)) return
   if (!validateManifoldEdges(mesh, context)) return
-  validatePositiveComponentVolumes(mesh, context)
+  validateShellOrientation(mesh, context)
 }
 
 function hasBytes(data: Uint8Array, expected: readonly number[]) {

@@ -21,7 +21,12 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
    Printed examples are horizontal/XY 100%-infill samples, not Z-direction strength or print
    certification. All listed Poisson ratios are explicitly assumed. Do not invent physical
    properties, treat sample means as certified design allowables, or use TPU as a supported preset.
-4. Define axis-aligned support, load and preservation boxes with world-mm `min`/`max` triples.
+4. Define axis-aligned support, load and preservation boxes with world-mm `min`/`max` triples,
+   or current source surface regions `{kind: "surface", triangleIndices, depthMm}`. Surface
+   indices refer only to the exact captured source tessellation at this body/hash/revision and
+   `depthMm` defines the inward preservation depth. They are not persistent face identities,
+   `TopoRef` IDs or triangle IDs from an imported result. Do not guess indices from render images
+   or face order; use explicit current source indices when available, otherwise use physical boxes.
    Supports clamp selected exterior FEM nodes in all directions. Each uniquely named load case
    supplies a nonzero total `forceN` vector in newtons, distributed over complete exterior facets
    inside its region. Loaded facets must not touch support nodes. Verify the regions against the
@@ -31,6 +36,13 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
    authoritative. Analysis is limited to 20,000 source triangles, 10,000 source vertices,
    3,000 FEM cells, 5,000 nodes and 8 load cases.
 
+6. `objective` is optional. Omission or `{kind: "minimize-mass"}` retains the existing
+   mass-reduction search. `{kind: "maximize-stiffness", retainedMassFraction}` uses a retained
+   mass fraction of 0.1–1 relative to the conservative FEM baseline, not the original exact solid.
+   It guides removal by increasing maximum cell strain energy across load cases until the rounded mass
+   target or another stop condition. This is an approximate stiffness-guided removal heuristic;
+   it does not solve a globally optimal minimum-compliance or generative-design problem.
+
 ## Analyze and request a snapshot
 
 `analyze_lightweighting` computes bounded baseline and feasible-candidate evidence without editing
@@ -38,7 +50,17 @@ the model or requesting Apply. `maxIterations: 0` evaluates the baseline without
 the baseline and optimized volume/mass, worst stress, displacement, achieved safety factor and
 every named case. The feasible baseline must already satisfy all requested stress/safety and
 displacement constraints; an infeasible or underconstrained model fails instead of returning an
-accepted candidate. Compliance is reported as analysis evidence, not as the optimization objective.
+accepted candidate. Compliance is reported per case as analysis evidence. The search ranks cells
+by the maximum strain energy across cases, rechecks physical feasibility after accepted removal,
+and reduces infeasible removal batches; it does not compare full candidate compliance to establish
+maximum stiffness.
+
+For a stiffness-guided objective, inspect `summary.objective`: requested `retainedMassFraction`,
+`targetMassKg`, `targetCellCount`, `achievedRetainedMassFraction` and `targetStatus`. The target
+cell count rounds upward from the baseline fraction. `reached` means the rounded cell target was
+reached and uses `target-mass-reached` termination; `not-reached` reports a remaining target gap
+with a warning. Do not describe a partial target as attained. A baseline-only run with a retained
+fraction of 1 can already be `reached` without material removal or a new snapshot.
 
 Inspect `sourceVolumeMm3` and `sourceVolumeLossFraction`: conservative interior cells already omit
 some original material before optimization. Baseline-to-candidate saving is separate from that
@@ -79,3 +101,7 @@ global minimum. Results use preliminary isotropic small-deformation linear elast
 specified loads/constraints; they do not establish physical strength, fatigue, buckling, contact,
 manufacturability or print performance. Keep those limits visible when presenting the metrics.
 Export or back up the committed snapshot only when requested, through `vibeshape-export`.
+
+Apply keeps the editable source in the Parts tree and hides it in the same atomic transaction
+as the new mesh, preventing it from covering the result. One Undo removes the mesh and restores
+the source visibility. Show the source again through its normal visibility control when needed.

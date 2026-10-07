@@ -9,7 +9,14 @@ import {
   type ParsedGeometryImport,
   requireImport,
 } from "./contracts"
-import { type ImportXmlNode, parseImportXml, xmlChild, xmlChildren, xmlNumber } from "./xml"
+import {
+  type ImportXmlGeometryBudget,
+  type ImportXmlNode,
+  parseImportXml,
+  xmlChild,
+  xmlChildren,
+  xmlNumber,
+} from "./xml"
 
 const MODEL_RELATIONSHIP = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
 const RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -91,6 +98,39 @@ function allowedArchivePath(path: string, model: string) {
     /^Metadata\/[A-Za-z0-9_.-]+\.(?:png|jpg|jpeg|xml|json|config|txt)$/.test(path) ||
     /^3D\/_rels\/[A-Za-z0-9_.-]+\.model\.rels$/.test(path)
   )
+}
+
+const CORE_MESH_PATH = ["model", "resources", "object", "mesh"] as const
+
+function hasCoreMeshAncestors(ancestors: readonly Pick<ImportXmlNode, "local" | "namespace">[]) {
+  return (
+    ancestors.length === 5 &&
+    ancestors.every((ancestor) => ancestor.namespace === THREE_MF_CORE_NAMESPACE) &&
+    CORE_MESH_PATH.every((local, index) => ancestors[index]?.local === local)
+  )
+}
+
+function coreMeshElementKind(
+  element: Pick<ImportXmlNode, "local" | "namespace">,
+  ancestors: readonly Pick<ImportXmlNode, "local" | "namespace">[],
+) {
+  if (element.namespace !== THREE_MF_CORE_NAMESPACE || !hasCoreMeshAncestors(ancestors))
+    return undefined
+  const parent = ancestors[4]?.local
+  if (element.local === "vertex" && parent === "vertices") return "vertices"
+  if (element.local === "triangle" && parent === "triangles") return "triangles"
+  return undefined
+}
+
+function coreMeshGeometryBudget(limits: ImportLimits): ImportXmlGeometryBudget {
+  const counts = { vertices: 0, triangles: 0 }
+  return (element, ancestors) => {
+    const kind = coreMeshElementKind(element, ancestors)
+    if (!kind) return false
+    counts[kind]++
+    requireImport(counts[kind] <= limits[kind], "resource-limit", `3MF exceeds its ${kind} budget.`)
+    return true
+  }
 }
 function validateContentTypes(bytes: Uint8Array, limits: ImportLimits, budget: { nodes: number }) {
   const types = parseImportXml(bytes, limits, budget)
@@ -413,7 +453,13 @@ export async function parseThreeMfGeometry(
   const budget = { nodes: 0 }
   const part = modelPart(files, limits, budget)
   validateArchiveEntries(files, part, limits, budget)
-  const model = parseImportXml(files[part] as Uint8Array, limits, budget)
+  // Geometry leaves use the aggregate mesh budgets; all wrappers and other parts retain XML limits.
+  const model = parseImportXml(
+    files[part] as Uint8Array,
+    limits,
+    budget,
+    coreMeshGeometryBudget(limits),
+  )
   requireImport(
     model.local === "model" && model.namespace === THREE_MF_CORE_NAMESPACE,
     "invalid-format",

@@ -1,67 +1,37 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@vibeshape/ui/components/dialog"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { useState } from "react"
+import type { ViewerAnalysisOverlay, ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { ActionAvailability } from "../../components/action-availability"
 import type { DocumentControllerState } from "../../document/document-controller"
+import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
 import { ImportPreview } from "../import/import-preview"
-import { LightweightingParameters } from "./lightweighting-fields"
-import { availableLightweightingParts } from "./lightweighting-model"
+import { LightweightingParameters, type LightweightingPickTarget } from "./lightweighting-fields"
+import {
+  type LightweightingFields,
+  type LightweightingSource,
+  type LightweightingSurfaceFields,
+  sameLightweightingSource,
+} from "./lightweighting-model"
 import { LightweightingResults } from "./lightweighting-results"
+import { LightweightingSourceSelector } from "./lightweighting-source-selector"
+import {
+  faceForce,
+  faceTriangleIndices,
+  lightweightingOverlays,
+} from "./lightweighting-surface-selection"
 import { useLightweightingTask } from "./use-lightweighting-task"
+import { useLightweightingViewportPreview } from "./use-lightweighting-viewport-preview"
 
 type TaskState = ReturnType<typeof useLightweightingTask>
-function SourceSelector({
-  controller,
-  state,
-  disabled,
-}: {
-  controller: DocumentControllerState
-  state: TaskState
-  disabled: boolean
-}) {
-  const t = useTranslations("app.lightweighting")
-  const parts = availableLightweightingParts(controller)
-  return (
-    <>
-      <SelectField
-        id="lightweighting-part"
-        label={t("part")}
-        required
-        value={state.partId || "unselected"}
-        disabled={disabled}
-        onValueChange={state.choosePart}
-      >
-        <SelectOption value="unselected" disabled>
-          {t("choosePart")}
-        </SelectOption>
-        {parts.map(({ part }) => (
-          <SelectOption key={part.id} value={part.id}>
-            {part.name}
-          </SelectOption>
-        ))}
-      </SelectField>
-      {parts.length === 0 && (
-        <p role="status" className="text-sm">
-          {t("noParts")}
-        </p>
-      )}
-      {state.partId && !state.source && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("partUnavailable")}
-        </p>
-      )}
-      <p className="text-xs text-muted-foreground">{t("partDescription")}</p>
-    </>
-  )
-}
+
+export type LightweightingViewportInteraction = Readonly<{
+  source: LightweightingSource
+  onFacePick: (selection: ViewerSelection | null) => boolean
+  overlays: readonly ViewerAnalysisOverlay[]
+  picking: boolean
+}>
+
 function TaskStatus({ state }: { state: TaskState }) {
   const t = useTranslations("app.lightweighting")
   const stages = { loading: "loading", solving: "solving", inspecting: "inspecting" } as const
@@ -69,7 +39,6 @@ function TaskStatus({ state }: { state: TaskState }) {
     state.activity === "idle" || state.activity === "applying" ? null : stages[state.activity]
   return (
     <>
-      {state.invalid && <p className="text-xs text-muted-foreground">{t("invalidInputs")}</p>}
       {stage && (
         <p role="status" className="text-sm">
           {t(stage)}
@@ -83,44 +52,379 @@ function TaskStatus({ state }: { state: TaskState }) {
     </>
   )
 }
-function ResultPreview({ state }: { state: TaskState }) {
+
+function ResultPreview({ state, mainViewport }: { state: TaskState; mainViewport: boolean }) {
   const t = useTranslations("app.lightweighting")
   if (!state.ready) return null
   return (
     <>
       <LightweightingResults result={state.ready.result} />
-      <ImportPreview
-        inspection={state.ready.inspection}
-        label={t("preview")}
-        failedMessage={t("previewFailed")}
-        onReady={state.setPreviewReady}
-      />
-      <Button type="button" variant="outline" onClick={state.downloadReport}>
+      {mainViewport ? (
+        <p className="text-xs text-muted-foreground">{t("mainPreview")}</p>
+      ) : (
+        <ImportPreview
+          inspection={state.ready.inspection}
+          label={t("preview")}
+          failedMessage={t("previewFailed")}
+          onReady={state.setPreviewReady}
+        />
+      )}
+      <Button type="button" variant="outline" size="sm" onClick={state.downloadReport}>
         {t("downloadReport")}
       </Button>
     </>
   )
 }
-function LightweightingTask({
+
+function samePickTarget(first: LightweightingPickTarget | null, second: LightweightingPickTarget) {
+  return (
+    first?.kind === second.kind &&
+    (first.kind !== "load" || (second.kind === "load" && first.caseId === second.caseId))
+  )
+}
+
+function sourceOwnsFace(source: LightweightingSource, selection: ViewerSelection) {
+  return (
+    selection.featureId === source.featureId &&
+    (selection.outputRole ?? "result") === source.outputRole &&
+    faceTriangleIndices(source, [selection.faceId]).length > 0
+  )
+}
+function toggleFace(faces: number[], face: number) {
+  return faces.includes(face) ? faces.filter((item) => item !== face) : [...faces, face]
+}
+function withPickedFace(
+  fields: LightweightingFields,
+  surface: LightweightingSurfaceFields,
+  target: LightweightingPickTarget,
+  face: number,
+): LightweightingFields {
+  switch (target.kind) {
+    case "support":
+      return {
+        ...fields,
+        surfaceSelection: { ...surface, supportFaces: toggleFace(surface.supportFaces, face) },
+      }
+    case "preserve":
+      return {
+        ...fields,
+        surfaceSelection: { ...surface, preserveFaces: toggleFace(surface.preserveFaces, face) },
+      }
+    case "load":
+      return {
+        ...fields,
+        surfaceSelection: {
+          ...surface,
+          loadFaces: {
+            ...surface.loadFaces,
+            [target.caseId]: toggleFace(surface.loadFaces[target.caseId] ?? [], face),
+          },
+        },
+      }
+  }
+}
+
+function useFaceInteraction(
+  state: TaskState,
+  disabled: boolean,
+  onInteractionChange: (interaction: LightweightingViewportInteraction | null) => void,
+) {
+  const t = useTranslations("app.lightweighting")
+  const [picking, setPicking] = useState<LightweightingPickTarget | null>(null)
+  const [pickMessage, setPickMessage] = useState<string | null>(null)
+  const surface = state.fields.surfaceSelection
+  const current =
+    !!state.source && !!surface?.source && sameLightweightingSource(state.source, surface.source)
+  const interactive = current && !disabled && state.activity === "idle"
+  const latest = useRef({ state, picking, interactive, wrongBody: t("wrongBody") })
+  useLayoutEffect(() => {
+    latest.current = { state, picking, interactive, wrongBody: t("wrongBody") }
+  })
+
+  useEffect(() => {
+    if (!state.source || !surface?.source || current) return
+    setPicking(null)
+    setPickMessage(t("facesReset"))
+    state.changeFields({
+      ...state.fields,
+      surfaceSelection: {
+        ...surface,
+        source: state.source,
+        supportFaces: [],
+        loadFaces: {},
+        preserveFaces: [],
+      },
+    })
+  }, [current, state, surface, t])
+
+  useEffect(() => {
+    if (!picking) return
+    const cancelPicking = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      event.stopPropagation()
+      setPicking(null)
+    }
+    window.addEventListener("keydown", cancelPicking, true)
+    return () => window.removeEventListener("keydown", cancelPicking, true)
+  }, [picking])
+
+  const onFacePick = useCallback((selection: ViewerSelection | null) => {
+    const { state: task, picking: target, interactive: enabled, wrongBody } = latest.current
+    const captured = task.fields.surfaceSelection
+    const source = captured?.source
+    if (!enabled || !target || !selection || !captured || !source) return false
+    if (!sourceOwnsFace(source, selection)) {
+      setPickMessage(wrongBody)
+      return true
+    }
+    setPickMessage(null)
+    task.changeFields(withPickedFace(task.fields, captured, target, selection.faceId))
+    setPicking(null)
+    return true
+  }, [])
+
+  const interaction = useMemo<LightweightingViewportInteraction | null>(() => {
+    if (!current || !surface?.source) return null
+    return {
+      source: surface.source,
+      onFacePick,
+      overlays: lightweightingOverlays(surface.source, state.fields),
+      picking: interactive && picking !== null,
+    }
+  }, [current, interactive, picking, surface, state.fields, onFacePick])
+  useEffect(() => {
+    onInteractionChange(interaction)
+    return () => onInteractionChange(null)
+  }, [interaction, onInteractionChange])
+  return {
+    picking,
+    pickMessage,
+    interactive,
+    onPick: (target: LightweightingPickTarget) => {
+      if (!interactive) return
+      setPickMessage(null)
+      setPicking((previous) => (samePickTarget(previous, target) ? null : target))
+    },
+    stopPicking: () => setPicking(null),
+  }
+}
+
+type LightweightingCopy = ReturnType<typeof useTranslations<"app.lightweighting">>
+function loadSetupReason(fields: LightweightingFields, t: LightweightingCopy) {
+  const surface = fields.surfaceSelection
+  const missingLoad = fields.loadCases.findIndex(
+    (load) =>
+      !surface?.loadFaces[load.id]?.length ||
+      !load.surfaceForce ||
+      !(Number(load.surfaceForce.magnitudeN) > 0),
+  )
+  if (missingLoad >= 0) return t("loadRequired", { index: missingLoad + 1 })
+  if (!surface?.source) return null
+  const source = surface.source
+  const missingNormal = fields.loadCases.findIndex(
+    (load) =>
+      load.surfaceForce?.direction === "normal" &&
+      Math.hypot(...faceForce(source, surface.loadFaces[load.id] ?? [], load.surfaceForce)) === 0,
+  )
+  return missingNormal >= 0 ? t("normalDirectionUnavailable", { index: missingNormal + 1 }) : null
+}
+function analysisSetupReason(state: TaskState, t: LightweightingCopy) {
+  if (!state.source) return t("choosePart")
+  const fields = state.fields
+  if (
+    [fields.youngModulusMpa, fields.poissonRatio, fields.yieldStrengthMpa, fields.densityKgM3].some(
+      (value) => value.trim() === "",
+    )
+  )
+    return t("materialRequired")
+  if (!fields.surfaceSelection?.supportFaces.length) return t("supportRequired")
+  const loadReason = loadSetupReason(fields, t)
+  if (loadReason) return loadReason
+  return state.canAnalyze ? null : t("invalidInputs")
+}
+function applyResultReason(state: TaskState, t: LightweightingCopy) {
+  if (!state.ready) return t("resultRequired")
+  if (state.ready.result.status !== "improved") return t("improvementRequired")
+  return state.previewReady ? null : t("previewPending")
+}
+function activityReason(state: TaskState, t: LightweightingCopy) {
+  if (state.activity === "idle") return null
+  return t(state.activity === "applying" ? "applyBusy" : "analysisBusy")
+}
+function actionReasons(state: TaskState, blockedReason: string | null, t: LightweightingCopy) {
+  const common = blockedReason ?? activityReason(state, t)
+  return {
+    analyze: common ?? analysisSetupReason(state, t),
+    apply: common ?? applyResultReason(state, t),
+  }
+}
+function documentBlockedReason(
+  controller: DocumentControllerState,
+  blocked: boolean,
+  t: LightweightingCopy,
+) {
+  if (blocked) return t("blocked")
+  if (controller.status !== "ready") return t("notReady")
+  if (controller.saveStatus === "saving") return t("saveBusy")
+  return controller.report?.mode === "read-write" ? null : t("readOnly")
+}
+
+export function LightweightingTaskPanel({
   controller,
-  initialPartId,
-  disabled,
+  initialPartId = "",
+  blocked,
   onClose,
+  onInteractionChange,
   onApplyingChange,
+  onApplied,
+  onPreviewChange,
 }: {
+  onApplyingChange?: (applying: boolean) => void
+  onApplied?: () => void
+  onPreviewChange?: (preview: WorkspaceTaskPreview | null) => void
   controller: DocumentControllerState
-  initialPartId: string
-  disabled: boolean
+  initialPartId?: string
+  blocked: boolean
   onClose: () => void
-  onApplyingChange: (applying: boolean) => void
+  onInteractionChange: (interaction: LightweightingViewportInteraction | null) => void
 }) {
   const t = useTranslations("app.lightweighting")
+  const { state, disabled, blockedReason } = useLightweightingPanelState(
+    {
+      controller,
+      initialPartId,
+      blocked,
+      onClose,
+      onApplied,
+      onApplyingChange,
+    },
+    t,
+  )
+  const face = useFaceInteraction(state, disabled, onInteractionChange)
+  useLightweightingViewportPreview(state.ready, onPreviewChange, state.setPreviewReady)
+  const pending = state.activity !== "idle" && state.activity !== "applying"
+  const reasons = actionReasons(state, blockedReason, t)
+  return (
+    <section
+      aria-label={t("title")}
+      className="grid h-full min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-3"
+    >
+      <header className="grid gap-2">
+        <h2 className="font-semibold">{t("title")}</h2>
+        <p className="text-xs text-muted-foreground">{t("description")}</p>
+      </header>
+      <fieldset
+        disabled={disabled || state.activity === "applying"}
+        className="grid min-w-0 gap-4"
+        aria-busy={pending}
+      >
+        <legend className="sr-only">{t("settings")}</legend>
+        <LightweightingSourceSelector
+          controller={controller}
+          state={state}
+          disabled={disabled || state.activity === "applying"}
+        />
+        <LightweightingParameters
+          fields={state.fields}
+          onChange={state.changeFields}
+          picking={face.picking}
+          onPick={face.onPick}
+          pickingDisabled={!face.interactive}
+        />
+      </fieldset>
+      {face.pickMessage && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {face.pickMessage}
+        </p>
+      )}
+      <div className="grid gap-2">
+        <ActionAvailability disabledReason={reasons.analyze} presentation="persistent">
+          {({ describedBy }) => (
+            <Button
+              type="button"
+              aria-describedby={describedBy}
+              isLoading={pending}
+              disabled={!state.canAnalyze}
+              onClick={() => {
+                face.stopPicking()
+                void state.analyze()
+              }}
+            >
+              {t("analyze")}
+            </Button>
+          )}
+        </ActionAvailability>
+        {pending && (
+          <Button type="button" variant="outline" onClick={state.cancel}>
+            {t("cancelAnalysis")}
+          </Button>
+        )}
+      </div>
+      <TaskStatus state={state} />
+      <ResultPreview state={state} mainViewport={onPreviewChange !== undefined} />
+      <footer className="grid gap-2 border-t pt-3">
+        <ActionAvailability disabledReason={reasons.apply} presentation="persistent">
+          {({ describedBy }) => (
+            <Button
+              type="button"
+              aria-describedby={describedBy}
+              isLoading={state.activity === "applying"}
+              disabled={!state.canApply}
+              onClick={state.apply}
+            >
+              {t("apply")}
+            </Button>
+          )}
+        </ActionAvailability>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={state.activity === "applying"}
+          onClick={onClose}
+        >
+          {t("close")}
+        </Button>
+      </footer>
+    </section>
+  )
+}
+
+function useLightweightingPanelState(
+  {
+    controller,
+    initialPartId,
+    blocked,
+    onClose,
+    onApplied,
+    onApplyingChange,
+  }: {
+    controller: DocumentControllerState
+    initialPartId: string
+    blocked: boolean
+    onClose: () => void
+    onApplied: (() => void) | undefined
+    onApplyingChange: ((applying: boolean) => void) | undefined
+  },
+  t: ReturnType<typeof useTranslations<"app.lightweighting">>,
+) {
+  const [applying, setApplying] = useState(false)
+  const blockedReason = documentBlockedReason(controller, blocked, t)
+  const notifyApplying = useCallback(
+    (next: boolean) => {
+      setApplying(next)
+      onApplyingChange?.(next)
+    },
+    [onApplyingChange],
+  )
+  const disabled = blockedReason !== null
   const state = useLightweightingTask({
     controller,
     initialPartId,
-    disabled,
-    onApplied: onClose,
-    onApplyingChange,
+    disabled: disabled && !applying,
+    graphical: true,
+    onApplied: onApplied ?? onClose,
+    onApplyingChange: notifyApplying,
     copy: {
       initialCaseName: t("defaultCaseName", { index: 1 }),
       failed: t("failed"),
@@ -130,111 +434,5 @@ function LightweightingTask({
       featureLabel: (part) => t("featureLabel", { part }),
     },
   })
-  const pending = state.activity !== "idle" && state.activity !== "applying"
-  return (
-    <>
-      <fieldset
-        disabled={disabled || state.activity === "applying"}
-        className="grid gap-5"
-        aria-busy={pending}
-      >
-        <legend className="sr-only">{t("settings")}</legend>
-        <SourceSelector
-          controller={controller}
-          state={state}
-          disabled={disabled || state.activity === "applying"}
-        />
-        <LightweightingParameters fields={state.fields} onChange={state.changeFields} />
-      </fieldset>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          isLoading={pending}
-          disabled={!state.canAnalyze}
-          onClick={() => void state.analyze()}
-        >
-          {t("analyze")}
-        </Button>
-        {pending && (
-          <Button type="button" variant="outline" onClick={state.cancel}>
-            {t("cancelAnalysis")}
-          </Button>
-        )}
-      </div>
-      <TaskStatus state={state} />
-      <ResultPreview state={state} />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={state.activity === "applying"}
-          onClick={onClose}
-        >
-          {t("close")}
-        </Button>
-        <Button
-          type="button"
-          isLoading={state.activity === "applying"}
-          disabled={!state.canApply}
-          onClick={() => void state.apply()}
-        >
-          {t("apply")}
-        </Button>
-      </DialogFooter>
-    </>
-  )
-}
-export function LightweightingDialog({
-  controller,
-  initialPartId = "",
-  blocked,
-  open,
-  onOpenChange,
-  onCloseAutoFocus,
-}: {
-  controller: DocumentControllerState
-  initialPartId?: string
-  blocked: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onCloseAutoFocus?: (event: Event) => void
-}) {
-  const t = useTranslations("app.lightweighting")
-  const [applying, setApplying] = useState(false)
-  const disabled =
-    blocked ||
-    controller.status !== "ready" ||
-    controller.saveStatus === "saving" ||
-    controller.report?.mode !== "read-write"
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!applying) onOpenChange(next)
-      }}
-    >
-      <DialogContent
-        className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-3xl"
-        closeLabel={t("close")}
-        showCloseButton={!applying}
-        onCloseAutoFocus={onCloseAutoFocus}
-        aria-busy={applying}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
-        </DialogHeader>
-        {open && (
-          <LightweightingTask
-            key={controller.report?.snapshot.id ?? "unavailable"}
-            controller={controller}
-            initialPartId={initialPartId}
-            disabled={disabled && !applying}
-            onClose={() => onOpenChange(false)}
-            onApplyingChange={setApplying}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  )
+  return { state, disabled, blockedReason }
 }

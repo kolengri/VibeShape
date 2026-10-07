@@ -243,6 +243,62 @@ describe("bounded mesh import", () => {
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "resource-limit" } })
   })
+  it.each(["vertices", "triangles"] as const)(
+    "bounds canonical 3MF %s independently of generic XML nodes",
+    async (kind) => {
+      expect(
+        await parseGeometryImport({ format: "3mf", bytes: nativeArchive(), limits: { [kind]: 3 } }),
+      ).toMatchObject({ ok: false, diagnostic: { code: "resource-limit" } })
+      const bytes = changeModel((xml) => {
+        const mesh = xml.match(/<mesh>[\s\S]*?<\/mesh>/)?.[0]
+        if (!mesh) throw new Error("Expected fixture mesh")
+        return xml.replace(
+          "</resources>",
+          `<object id="4" type="model">${mesh}</object></resources>`,
+        )
+      })
+      expect(
+        await parseGeometryImport({ format: "3mf", bytes, limits: { [kind]: 7 } }),
+      ).toMatchObject({ ok: false, diagnostic: { code: "resource-limit" } })
+    },
+  )
+  it.each([
+    [
+      "foreign namespace",
+      (xml: string) => xml.replace("<vertices>", '<vertices xmlns="urn:foreign">'),
+    ],
+    [
+      "extra wrapper",
+      (xml: string) =>
+        xml
+          .replace("<vertices>", "<wrapper><vertices>")
+          .replace("</vertices>", "</vertices></wrapper>"),
+    ],
+    [
+      "wrong root path",
+      (xml: string) => xml.replace("<model ", "<other ").replace("</model>", "</other>"),
+    ],
+  ] as const)("retains the generic XML budget for geometry under %s", async (_name, mutate) => {
+    const bytes = changeModel((xml) =>
+      mutate(
+        xml.replace("</vertices>", `${'<vertex x="0" y="0" z="0" />'.repeat(100)}</vertices>`),
+      ),
+    )
+    expect(
+      await parseGeometryImport({ format: "3mf", bytes, limits: { xmlNodes: 40 } }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "resource-limit" } })
+  })
+  it("does not exempt a mesh-shaped tree in an additional metadata XML part", async () => {
+    const model = strFromU8(unzipSync(nativeArchive())["3D/3dmodel.model"] as Uint8Array)
+    const metadata = model.replace(
+      "</vertices>",
+      `${'<vertex x="0" y="0" z="0" />'.repeat(100)}</vertices>`,
+    )
+    const bytes = changeModel((xml) => xml, { "Metadata/fake-model.xml": strToU8(metadata) })
+    expect(
+      await parseGeometryImport({ format: "3mf", bytes, limits: { xmlNodes: 40 } }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "resource-limit" } })
+  })
   it("shares the XML-node budget across all package parts and rejects ZIP symlinks", async () => {
     expect(
       await parseGeometryImport({

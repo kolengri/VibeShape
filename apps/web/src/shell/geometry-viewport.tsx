@@ -91,6 +91,8 @@ import {
   SAFE_VIEWPORT_RIGHT,
 } from "./viewport-chrome-styles"
 
+import { useWorkspaceTask } from "./workspace-task-context"
+
 const EMPTY_IDS = [] as const
 
 type ViewportFactory = (
@@ -1614,7 +1616,18 @@ function useViewportMeshPresentation({
     sourceMesh,
   ])
   const texturedMeshes = useTexturedMeshes(controller, meshes)
-  return { allCommittedMeshes, allHiddenFeatureIds, meshes: texturedMeshes }
+  const presentedMeshes = useTaskMeshes(texturedMeshes)
+  return { allCommittedMeshes, allHiddenFeatureIds, meshes: presentedMeshes }
+}
+
+function useTaskMeshes(meshes: readonly ViewerMesh[]) {
+  const task = useWorkspaceTask()
+  const source = task?.interaction?.sourceMesh
+  const preview = task?.interaction?.picking ? null : task?.preview
+  return useMemo(
+    () => preview?.meshes ?? withFacePickingSource(meshes, source, EMPTY_IDS, false),
+    [meshes, source, preview],
+  )
 }
 
 function useViewportSketchPresentation({
@@ -1847,6 +1860,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   )
   return {
     ...viewportHighlightIdentity(scene),
+    rendererFailed: interaction.rendererFailed,
     printReport: interaction.printReport,
     canvasRef: interaction.canvasRef,
     meshes: scene.meshes,
@@ -3160,7 +3174,65 @@ function viewportAdditionalControls(
   )
 }
 
-export function GeometryViewport(props: GeometryViewportProps) {
+function TaskGeometryViewport(props: GeometryViewportProps) {
+  const task = useWorkspaceTask()
+  const interaction = task?.interaction
+  const selectFace = useCallback(
+    (selection: ViewerSelection | null) => {
+      if (interaction?.picking && interaction.onFacePick(selection)) return
+      props.onSelectionChange(selection)
+    },
+    [interaction, props.onSelectionChange],
+  )
+  return <GeometryViewport {...props} onSelectionChange={selectFace} />
+}
+
+function useAnalysisOverlays(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  overlays: readonly import("@vibeshape/viewer/three-viewport").ViewerAnalysisOverlay[] | undefined,
+  rendererFailed: boolean,
+) {
+  useEffect(() => {
+    if (rendererFailed) return
+    viewportRef.current?.setAnalysisOverlays(overlays ?? null)
+    return () => viewportRef.current?.setAnalysisOverlays(null)
+  }, [overlays, viewportRef, rendererFailed])
+}
+
+function useTaskAnalysisOverlays(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  rendererFailed: boolean,
+) {
+  const task = useWorkspaceTask()
+  useAnalysisOverlays(viewportRef, task?.interaction?.overlays, rendererFailed)
+  useTaskPreviewReadiness(viewportRef, rendererFailed)
+}
+
+function useTaskPreviewReadiness(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  rendererFailed: boolean,
+) {
+  const task = useWorkspaceTask()
+  const preview = task?.interaction?.picking ? null : task?.preview
+  useEffect(() => {
+    if (!preview?.onReady) return
+    const onReady = preview.onReady
+    onReady(false)
+    let frame: number | undefined
+    const check = () => {
+      if (rendererFailed) return
+      if (viewportRef.current) onReady(true)
+      else frame = requestAnimationFrame(check)
+    }
+    check()
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      onReady(false)
+    }
+  }, [preview, viewportRef, rendererFailed])
+}
+
+function GeometryViewport(props: GeometryViewportProps) {
   const {
     featurePreview,
     idleOriginPlaneSelection,
@@ -3182,6 +3254,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
   }
   const model = useGeometryViewportModel(viewportProps)
   const { canvasRef, sketchReferenceCandidateStack, sketchPointPreselection, viewportRef } = model
+  useTaskAnalysisOverlays(viewportRef, model.rendererFailed)
   const selectOther = useSketchReferenceSelectOther({
     candidateStack: sketchReferenceCandidateStack,
     context: sketchContext,
@@ -3298,3 +3371,5 @@ function ViewportAxialControls({
     </>
   )
 }
+
+export { TaskGeometryViewport as GeometryViewport }

@@ -56,14 +56,33 @@ export function LightweightingResults({ result }: { result: StructuralOptimizati
           percent: rounded((1 - result.optimized.volumeMm3 / result.baseline.volumeMm3) * 100),
         })}
       </p>
+      {result.objective?.kind === "maximize-stiffness" && (
+        <div className="grid gap-1 text-sm">
+          <p>{t("targetMass", { value: rounded(result.objective.targetMassKg) })}</p>
+          <p>
+            {t("retainedMassAchieved", {
+              value: rounded(result.objective.achievedRetainedMassFraction * 100),
+            })}
+          </p>
+          <p>
+            {t(
+              result.objective.targetStatus === "reached"
+                ? "targetMassReached"
+                : "targetMassNotReached",
+            )}
+          </p>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
         {t("termination", {
           reason: t(
-            result.termination === "iteration-limit"
-              ? "iterationLimit"
-              : result.termination === "no-removable-cells"
-                ? "noRemovableCells"
-                : "constraintsOrTopology",
+            result.termination === "target-mass-reached"
+              ? "targetMassReachedTermination"
+              : result.termination === "iteration-limit"
+                ? "iterationLimit"
+                : result.termination === "no-removable-cells"
+                  ? "noRemovableCells"
+                  : "constraintsOrTopology",
           ),
           iterations: result.iterations,
           evaluations: result.evaluations,

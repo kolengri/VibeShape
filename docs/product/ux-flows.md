@@ -418,3 +418,11 @@ closes with Escape and returns focus to its trigger.
 ## FDM tools
 
 Choose **FDM tools** in Model, select a kind, and supply its exact target or independent-body dimensions. Web/Rib additionally selects saved sketch lines. The panel uses normal exact Preview/Apply and restores the same parameters when editing History. Calibration coupons and independent sleeves remain available without an existing solid. See [Editable FDM features](fdm-tools.md). Thread exposes metric diameter/pitch presets; ordinary, assembly, and print-copy STL/3MF export surfaces expose Default/Coarse/Fine mesh quality.
+
+## Lightweighting tasks
+
+Structural and quick lightweighting use direct toolbar commands and the responsive right task
+panel. The selected exact solid is prefilled. Structural inputs select support, load, and optional
+preserved faces in the canvas; quick inputs select lattice cells and slider values. Required action
+reasons remain visible in task forms, with accessible disclosure on compact toolbar controls.
+See [the canonical workflows](lightweighting.md) for preview, Apply, cancellation, and limitations.

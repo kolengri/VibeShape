@@ -35,6 +35,9 @@ import {
   viewerSketches,
   withActiveSketchDisplay,
 } from "./geometry-viewport"
+import { WorkspaceTaskProvider } from "./workspace-task-context"
+
+type WorkspaceTask = Parameters<typeof WorkspaceTaskProvider>[0]["value"]
 
 const { saveActiveProjectThumbnailMock } = vi.hoisted(() => ({
   saveActiveProjectThumbnailMock: vi.fn(),
@@ -61,6 +64,12 @@ const mesh = {
   normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
   indices: new Uint32Array([0, 1, 2]),
   triangleFaceIds: new Uint32Array([1]),
+}
+const taskPreviewMesh = {
+  featureId: "task-preview",
+  appearance: "preview" as const,
+  ...mesh,
+  positions: new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]),
 }
 const sketchDisplay: SketchDisplayRecord = {
   sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f2605",
@@ -316,6 +325,8 @@ function renderViewport(
   sketchProfilePreview?: SketchProfileSelector | null,
   hiddenSketchIds: readonly string[] = [],
   axialGizmoPending = false,
+  workspaceTask: WorkspaceTask = null,
+  pendingViewport?: Promise<GeometryViewportPort>,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -340,6 +351,7 @@ function renderViewport(
     setSelectionCandidateStackPreserved: vi.fn(),
     setSelectionPreselection: vi.fn(),
     setFaceSelections: vi.fn(),
+    setAnalysisOverlays: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
@@ -355,7 +367,7 @@ function renderViewport(
   }
   const onSelectionChange = vi.fn()
   const createViewport = vi.fn(
-    (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
+    (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => pendingViewport ?? port,
   )
   const element = (
     nextController: DocumentControllerState,
@@ -364,28 +376,31 @@ function renderViewport(
     nextHiddenSketchIds = hiddenSketchIds,
     nextAxialGizmo: typeof axialGizmo | null = axialGizmo,
     nextAxialGizmoPending = axialGizmoPending,
+    nextWorkspaceTask: WorkspaceTask = workspaceTask,
   ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
-        <GeometryViewport
-          controller={nextController}
-          createViewport={createViewport}
-          selection={selection}
-          onSelectionChange={onSelectionChange}
-          {...optionalProp("sketchContext", nextSketchContext)}
-          {...featureHighlight}
-          {...optionalProp("featurePreview", featurePreview)}
-          {...optionalProp("originPlaneSelection", originPlaneSelection)}
-          {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
-          {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
-          {...optionalProp("sketchProfileSelection", sketchProfileSelection)}
-          {...optionalProp("sketchProfilePreview", nextSketchProfilePreview)}
-          hiddenSketchIds={nextHiddenSketchIds}
-          {...optionalProp("translationGizmo", translationGizmo)}
-          {...optionalProp("axialGizmo", nextAxialGizmo ?? undefined)}
-          axialGizmoPending={nextAxialGizmoPending}
-          {...optionalProp("angularGizmo", angularGizmo)}
-        />
+        <WorkspaceTaskProvider value={nextWorkspaceTask}>
+          <GeometryViewport
+            controller={nextController}
+            createViewport={createViewport}
+            selection={selection}
+            onSelectionChange={onSelectionChange}
+            {...optionalProp("sketchContext", nextSketchContext)}
+            {...featureHighlight}
+            {...optionalProp("featurePreview", featurePreview)}
+            {...optionalProp("originPlaneSelection", originPlaneSelection)}
+            {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
+            {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
+            {...optionalProp("sketchProfileSelection", sketchProfileSelection)}
+            {...optionalProp("sketchProfilePreview", nextSketchProfilePreview)}
+            hiddenSketchIds={nextHiddenSketchIds}
+            {...optionalProp("translationGizmo", translationGizmo)}
+            {...optionalProp("axialGizmo", nextAxialGizmo ?? undefined)}
+            axialGizmoPending={nextAxialGizmoPending}
+            {...optionalProp("angularGizmo", angularGizmo)}
+          />
+        </WorkspaceTaskProvider>
       </TooltipProvider>
     </I18nProvider>
   )
@@ -395,6 +410,18 @@ function renderViewport(
     createViewport,
     onSelectionChange,
     port,
+    rerenderWorkspaceTask: (nextTask: WorkspaceTask) =>
+      result.rerender(
+        element(
+          controller,
+          sketchContext,
+          sketchProfilePreview,
+          hiddenSketchIds,
+          axialGizmo,
+          axialGizmoPending,
+          nextTask,
+        ),
+      ),
     rerenderController: (nextController: DocumentControllerState) =>
       result.rerender(element(nextController)),
     rerenderSketchProfilePreview: (
@@ -415,6 +442,32 @@ function renderViewport(
         ),
       ),
   }
+}
+
+function renderTaskViewport(
+  controller: DocumentControllerState,
+  task: WorkspaceTask,
+  pendingViewport?: Promise<GeometryViewportPort>,
+) {
+  return renderViewport(
+    controller,
+    null,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    [],
+    false,
+    task,
+    pendingViewport,
+  )
 }
 
 afterEach(() => {
@@ -1509,6 +1562,132 @@ describe("GeometryViewport", () => {
     expect(viewport.getAttribute("data-preview-status")).toBe("ready")
     expect(viewport.getAttribute("data-preview-feature-count")).toBe("1")
     expect(screen.getByRole("status").textContent).toBe("Unsaved feature preview")
+  })
+
+  it("displays only disposable task meshes and marks them ready after the viewer receives them", async () => {
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const previewMeshes = [taskPreviewMesh]
+    const onReady = vi.fn()
+    let resolveViewport: (viewport: GeometryViewportPort) => void = () => {
+      throw new Error("The deferred viewer is not initialized.")
+    }
+    const pendingViewport = new Promise<GeometryViewportPort>((resolve) => {
+      resolveViewport = resolve
+    })
+    const { createViewport, port, unmount } = renderTaskViewport(
+      controller,
+      {
+        activityKey: "lightweighting",
+        panel: null,
+        interaction: null,
+        preview: { meshes: previewMeshes, onReady },
+      },
+      pendingViewport,
+    )
+    expect(createViewport).toHaveBeenCalledOnce()
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    })
+    expect(onReady).toHaveBeenLastCalledWith(false)
+    expect(onReady).not.toHaveBeenCalledWith(true)
+    expect(port.setMeshes).not.toHaveBeenCalled()
+    await act(async () => resolveViewport(port))
+    await waitFor(() => expect(onReady).toHaveBeenLastCalledWith(true))
+    expect(port.setMeshes).toHaveBeenLastCalledWith(previewMeshes)
+    expect(
+      vi
+        .mocked(port.setMeshes)
+        .mock.calls.every(([meshes]) =>
+          meshes.every(({ featureId }) => featureId === "task-preview"),
+        ),
+    ).toBe(true)
+    const firstReadyIndex = onReady.mock.calls.findIndex(([ready]) => ready === true)
+    const readyOrder = onReady.mock.invocationCallOrder[firstReadyIndex]
+    const meshesOrder = vi.mocked(port.setMeshes).mock.invocationCallOrder[0]
+    if (readyOrder === undefined || meshesOrder === undefined)
+      throw new Error("Both presentation and readiness callbacks are required.")
+    expect(readyOrder).toBeGreaterThan(meshesOrder)
+    unmount()
+    expect(onReady).toHaveBeenLastCalledWith(false)
+    expect(port.dispose).toHaveBeenCalledOnce()
+  })
+
+  it.each(["cancel", "invalidate"])(
+    "restores committed meshes and releases preview readiness on task %s",
+    async (reason) => {
+      const controller = readyController(
+        [{ id: boxId, dependencies: [] }],
+        [{ featureId: boxId, geometry: { mesh } }],
+      )
+      const onReady = vi.fn()
+      const task = {
+        activityKey: "lightweighting",
+        panel: null,
+        interaction: null,
+        preview: {
+          meshes: [taskPreviewMesh],
+          onReady,
+        },
+      }
+      const { port, rerenderWorkspaceTask } = renderTaskViewport(controller, task)
+      await waitFor(() => expect(onReady).toHaveBeenLastCalledWith(true))
+      rerenderWorkspaceTask(reason === "cancel" ? null : { ...task, preview: null })
+      await waitFor(() =>
+        expect(port.setMeshes).toHaveBeenLastCalledWith([{ featureId: boxId, ...mesh }]),
+      )
+      expect(onReady).toHaveBeenLastCalledWith(false)
+      expect(port.dispose).not.toHaveBeenCalled()
+    },
+  )
+
+  it("uses the pristine source for task face picking and hides the disposable preview", async () => {
+    const controller = readyController(
+      [
+        { id: boxId, dependencies: [] },
+        { id: booleanId, dependencies: [boxId] },
+      ],
+      [
+        { featureId: boxId, geometry: { mesh } },
+        { featureId: booleanId, geometry: { mesh } },
+      ],
+    )
+    const onReady = vi.fn()
+    const onFacePick = vi.fn(() => true)
+    const sourceMesh = { featureId: boxId, ...mesh }
+    const task = {
+      activityKey: "lightweighting",
+      panel: null,
+      interaction: { sourceMesh, picking: false, onFacePick, overlays: [] },
+      preview: {
+        meshes: [taskPreviewMesh],
+        onReady,
+      },
+    }
+    const { port, createViewport, onSelectionChange, rerenderWorkspaceTask } = renderTaskViewport(
+      controller,
+      task,
+    )
+    await waitFor(() => expect(onReady).toHaveBeenLastCalledWith(true))
+    rerenderWorkspaceTask({ ...task, interaction: { ...task.interaction, picking: true } })
+    await waitFor(() =>
+      expect(port.setMeshes).toHaveBeenLastCalledWith([
+        { featureId: booleanId, ...mesh },
+        { ...sourceMesh, appearance: "model" },
+      ]),
+    )
+    expect(onReady).toHaveBeenLastCalledWith(false)
+    const selection = { featureId: boxId, faceId: 1, faceOrdinal: 1 }
+    act(() => createViewport.mock.calls[0]?.[1].onSelectionChange?.(selection))
+    expect(onFacePick).toHaveBeenCalledWith(selection)
+    expect(onSelectionChange).not.toHaveBeenCalled()
+    const presentedSource = vi
+      .mocked(port.setMeshes)
+      .mock.lastCall?.[0].find(({ featureId }) => featureId === boxId)
+    expect(presentedSource?.positions).toBe(mesh.positions)
+    expect(presentedSource?.positions).not.toBe(taskPreviewMesh.positions)
   })
 
   it.each([

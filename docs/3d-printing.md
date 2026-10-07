@@ -150,6 +150,12 @@ The writer must:
 - pass official conformance samples or validation where available;
 - open in at least two independent slicers in release smoke tests.
 
+Valid enclosed cavities use inward-oriented nested shells. Export checks real containment,
+intersection, alternating winding, and positive total material volume rather than requiring each
+surface shell to have positive volume. Public import counts canonical Core vertex/triangle leaves
+against existing aggregate geometry limits; other XML nodes retain their separate 100,000-node
+limit. See [lightweighting exchange bounds](product/lightweighting.md#quick-runtime-and-exchange-bounds).
+
 Do not promise portability of slicer profiles between vendors; metadata and extensions differ.
 
 SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its local-only gate verifies the same two-mesh component fixture through PrusaSlicer and the Orca/Bambu family and requires matching facet, manifold, and volume metrics. See [SPK-004 evidence](spikes/spk-004-3mf.md).

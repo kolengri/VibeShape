@@ -4,8 +4,12 @@ import type { LocalToolName } from "./local-tools"
 export const localToolDescriptions: Record<LocalToolName, string> = {
   list_lightweighting_materials:
     "Read the same eight editable material examples as the Lightweighting UI: PLA, PETG, ABS, ASA, PC Blend, Nylon, aluminum 6061-T6 and stainless steel 304. Returns named manufacturer grades, tensile specimen/product conditions, source revisions and URLs, material values (MPa, kg/m3), and explicit assumed Poisson ratios. Copy a preset's material into analyze_lightweighting/request_lightweighting settings.material and adjust for the actual grade/process. Printed examples use 100% infill in one test orientation; the solver remains isotropic. No document or geometry mutation, network fetch, or material-strength certification.",
+  analyze_quick_lightweighting:
+    "Compute a load-free lattice lightweighting candidate from the current committed exact solid, without model mutation or Apply review. Bind source partId/featureId/outputRole/contentHash and baseRevision. Settings use mode preserve-exterior or open-organic, requested removalPercent (5–80), cellSizeMm and skinThicknessMm; a preserved skin must be at least two sampling cells thick. Optional cellType selects gyroid (default), schwarz-p or schwarz-d. Optional latticeCellSizeMm sets the independent physical period (default six sampling cells for Gyroid/Schwarz P or twelve for Schwarz D, accepted six to twelve). Returns bounded measured source/result volumes, actual removedPercent, cellType, latticeCellSizeMm and limitations; no mesh, load analysis, stiffness or strength claim. Resolution and skin can prevent the requested saving.",
+  request_quick_lightweighting:
+    "Compute a load-free lattice candidate against the captured exact source and request its ordinary immutable STL import snapshot. Requires the complete analyze_quick_lightweighting inputs and an English label. Browser manual Apply/Discard is always required, including Auto-apply sessions. Apply retains the source Part and creates one atomic import transaction and Undo entry. Returns bounded measured volume evidence and committed snapshot identity; mesh data remains private to the browser. Cancellation, stale source/revision, rejected or expired review prevents mutation. This is geometry generation, without structural certification.",
   analyze_lightweighting:
-    "Compute bounded preliminary linear-elastic FEM material-removal analysis on one exact committed solid part. Supply baseRevision and stable partId/featureId/outputRole/contentHash, material properties, support/load/preservation regions in world millimeters, safety and displacement limits, cell size and iterations (0 for baseline only). Returns bounded baseline/feasible-candidate stress, displacement, safety, mass and volume evidence; no geometry mutation. Uses the same browser worker as UI. Up to 20,000 source triangles, 10,000 source vertices, 3,000 cells, 5,000 nodes, 8 load cases and 40 iterations. Conservative cell mesh; no global optimum, fatigue, buckling, contact or physical-strength guarantee.",
+    "Compute bounded preliminary linear-elastic FEM material-removal analysis on one exact committed solid part. Supply baseRevision and stable partId/featureId/outputRole/contentHash, material properties, support/load/preservation regions (world-mm min/max boxes or captured source surface kind/triangleIndices/depthMm), safety and displacement limits, cell size and iterations (0 for baseline only). Optional objective selects minimize-mass (default) or maximize-stiffness with retainedMassFraction 0.1–1 of the conservative FEM baseline. Stiffness-guided removal ranks cell strain energy and stops at a rounded mass target; no globally optimal stiffness claim. Returns bounded baseline/feasible-candidate stress, displacement, safety, mass, volume and objective target/achievement evidence; no geometry mutation. Uses the same browser worker as UI. Up to 20,000 source triangles, 10,000 source vertices, 3,000 cells, 5,000 nodes, 8 load cases and 40 iterations. Conservative cell mesh; no global optimum, fatigue, buckling, contact or physical-strength guarantee.",
   request_lightweighting:
     "Compute the same constrained material-removal analysis, then capture an independent unsmoothed STL mesh snapshot when material is removed. Requires exact committed source identity, complete settings and label. A private native mesh preview and manual browser Apply/Reject are always required, including Auto-apply sessions. Apply creates one ordinary atomic import transaction and Undo entry; the original source is retained. Returns bounded evidence and saved snapshot identity, never mesh arrays. No improvement returns snapshot:null without review or mutation. Cancellation, changed revision/source, rejection or expired consent prevent Apply; no live regeneration or exact CAD surfaces.",
   list_projects:
@@ -266,6 +270,7 @@ export function localToolAnnotations(name: LocalToolName) {
     readOnlyHint: [
       "list_lightweighting_materials",
       "analyze_lightweighting",
+      "analyze_quick_lightweighting",
       "list_projects",
       "render_preview",
       "begin_planar_import_upload",
@@ -307,6 +312,7 @@ export function localToolAnnotations(name: LocalToolName) {
     ].includes(name),
     destructiveHint: [
       "request_lightweighting",
+      "request_quick_lightweighting",
       "undo_model",
       "redo_model",
       "commit_draft",
@@ -326,6 +332,7 @@ export function localToolAnnotations(name: LocalToolName) {
     idempotentHint: [
       "list_lightweighting_materials",
       "analyze_lightweighting",
+      "analyze_quick_lightweighting",
       "list_projects",
       "open_project",
       "render_preview",

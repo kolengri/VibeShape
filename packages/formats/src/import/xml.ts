@@ -9,6 +9,11 @@ export type ImportXmlNode = Readonly<{
   children: ImportXmlNode[]
   text: string
 }>
+type ImportXmlElement = Pick<ImportXmlNode, "local" | "namespace">
+export type ImportXmlGeometryBudget = (
+  element: ImportXmlElement,
+  ancestors: readonly ImportXmlElement[],
+) => boolean
 export function decodeImportText(bytes: Uint8Array) {
   const text = strFromU8(bytes)
   const encoded = strToU8(text)
@@ -23,6 +28,7 @@ export function parseImportXml(
   bytes: Uint8Array,
   limits: ImportLimits,
   budget = { nodes: 0 },
+  consumeGeometryElement?: ImportXmlGeometryBudget,
 ): ImportXmlNode {
   const text = decodeImportText(bytes)
   requireImport(
@@ -46,7 +52,11 @@ export function parseImportXml(
     requireImport(false, "unsafe-reference", "XML processing instructions are unsupported."),
   )
   parser.on("opentag", (tag) => {
-    budget.nodes++
+    const geometryElement = consumeGeometryElement?.(
+      { local: tag.local, namespace: tag.uri },
+      stack,
+    )
+    if (!geometryElement) budget.nodes++
     requireImport(
       budget.nodes <= limits.xmlNodes && stack.length < limits.xmlDepth,
       "resource-limit",

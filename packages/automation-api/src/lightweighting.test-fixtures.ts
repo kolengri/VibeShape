@@ -71,6 +71,21 @@ export function lightweightingSummary(improved = true) {
     warnings: ["Preliminary linear-elastic cell analysis."],
   })
 }
+export function lightweightingStiffnessSummary(reached = true) {
+  const summary = lightweightingSummary()
+  return structuralOptimizationSummarySchema.parse({
+    ...summary,
+    termination: reached ? "target-mass-reached" : "constraints-or-topology",
+    objective: {
+      kind: "maximize-stiffness",
+      retainedMassFraction: reached ? 0.8 : 0.6,
+      targetMassKg: reached ? 0.000032 : 0.000024,
+      targetCellCount: reached ? 32 : 24,
+      achievedRetainedMassFraction: 0.8,
+      targetStatus: reached ? "reached" : "not-reached",
+    },
+  })
+}
 export function lightweightingSnapshot() {
   return importUploadCommitSchema.parse({
     uploadId: lightweightingId(5),

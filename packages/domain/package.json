@@ -96,7 +96,8 @@
     "./assembly-pinned-insertion": "./src/assembly-pinned-insertion.ts",
     "./part-design-subtract": "./src/part-design-subtract.ts",
     "./lightweighting": "./src/lightweighting.ts",
-    "./lightweighting-materials": "./src/lightweighting-materials.ts"
+    "./lightweighting-materials": "./src/lightweighting-materials.ts",
+    "./quick-lightweighting": "./src/quick-lightweighting.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

@@ -1,4 +1,4 @@
-import { meshImportInspectionSchema } from "@vibeshape/protocol"
+import type { meshImportInspectionSchema } from "@vibeshape/protocol"
 import {
   optimizeStructuralModel,
   StructuralOptimizationError,
@@ -8,19 +8,13 @@ import {
   type StructuralOptimizationResult,
   structuralOptimizationInputSchema,
 } from "@vibeshape/structural-optimization/contract"
-import { encodeStructuralStl } from "@vibeshape/structural-optimization/mesh"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   commitAuthoredTransaction,
   type DocumentControllerState,
-  inspectTriangleMeshSource,
 } from "../../document/document-controller"
 import { portableDocumentStem } from "../../document/document-export"
-import {
-  createImportTransaction,
-  type PreparedImportSource,
-  readImportSource,
-} from "../import/import-model"
+import { createImportTransaction, type PreparedImportSource } from "../import/import-model"
 import {
   initialLightweightingFields,
   type LightweightingFields,
@@ -29,6 +23,7 @@ import {
   lightweightingSource,
   sameLightweightingSource,
 } from "./lightweighting-model"
+import { prepareLightweightingSnapshot } from "./prepare-lightweighting-snapshot"
 
 type ReadyResult = {
   source: LightweightingSource
@@ -65,24 +60,6 @@ function analysisIsCurrent(
 function analysisError(error: unknown, copy: TaskCopy) {
   return error instanceof StructuralOptimizationError ? copy.solverFailed(error.code) : copy.failed
 }
-async function inspectResult(
-  result: StructuralOptimizationResult,
-  source: LightweightingSource,
-  current: () => boolean,
-) {
-  const bytes = encodeStructuralStl(result.mesh, result.cellSizeMm)
-  const file = new File(
-    [Uint8Array.from(bytes).buffer],
-    `${portableDocumentStem(source.partName)}-lightweight.stl`,
-    { type: "model/stl" },
-  )
-  const prepared = await readImportSource(file, "millimeter")
-  if (!current() || prepared.representation !== "triangle-mesh") return null
-  const inspection = meshImportInspectionSchema.parse(
-    await inspectTriangleMeshSource(prepared.input),
-  )
-  return { prepared, inspection }
-}
 async function runAnalysis(
   input: StructuralOptimizationInput,
   source: LightweightingSource,
@@ -100,7 +77,12 @@ async function runAnalysis(
   })
   if (!current()) return null
   setStage("inspecting")
-  const inspected = await inspectResult(result, source, current)
+  const inspected = await prepareLightweightingSnapshot(
+    result.mesh,
+    result.cellSizeMm,
+    source,
+    current,
+  )
   return inspected ? { source, input, result, ...inspected } : null
 }
 type CurrentSource = { source: LightweightingSource | null; disabled: boolean }
@@ -110,6 +92,16 @@ function sourceIdentity(source: LightweightingSource | null) {
 }
 function analysisCandidate(source: LightweightingSource | null, fields: LightweightingFields) {
   if (!source) return null
+  const surface = fields.surfaceSelection
+  if (
+    surface &&
+    (!surface.source ||
+      !sameLightweightingSource(source, surface.source) ||
+      fields.loadCases.some(
+        (load) => !load.surfaceForce || Number(load.surfaceForce.magnitudeN) <= 0,
+      ))
+  )
+    return null
   const parsed = structuralOptimizationInputSchema.safeParse(lightweightingInput(source, fields))
   return parsed.success ? { source, input: parsed.data } : null
 }
@@ -163,6 +155,9 @@ async function commitResult(ready: ReadyResult, label: string) {
     ready.prepared,
     ready.inspection,
     label,
+    undefined,
+    undefined,
+    ready.source.partId,
   )
   return commitAuthoredTransaction(ready.source.context.revision, transaction)
 }
@@ -267,7 +262,9 @@ export function useLightweightingTask({
   copy,
   onApplied,
   onApplyingChange,
+  graphical = false,
 }: {
+  graphical?: boolean
   controller: DocumentControllerState
   initialPartId?: string
   disabled: boolean
@@ -279,7 +276,11 @@ export function useLightweightingTask({
     lightweightingSource(controller, initialPartId) ? initialPartId : "",
   )
   const [fields, setFields] = useState(() =>
-    initialLightweightingFields(lightweightingSource(controller, partId), copy.initialCaseName),
+    initialLightweightingFields(
+      lightweightingSource(controller, partId),
+      copy.initialCaseName,
+      graphical,
+    ),
   )
   const [ready, setReady] = useState<ReadyResult | null>(null)
   const [previewReady, setPreviewReady] = useState(false)
@@ -301,7 +302,11 @@ export function useLightweightingTask({
     changeInputs(applying.current, cancel, () => {
       setPartId(id)
       setFields(
-        initialLightweightingFields(lightweightingSource(controller, id), copy.initialCaseName),
+        initialLightweightingFields(
+          lightweightingSource(controller, id),
+          copy.initialCaseName,
+          graphical,
+        ),
       )
     })
   }

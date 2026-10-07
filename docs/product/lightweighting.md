@@ -7,9 +7,9 @@ cell removal with feasibility backtracking, not a global optimum or physical str
 paired local and remote MCP. See the [operator reference](../../.agents/skills/vibeshape-modeling/references/lightweighting.md).
 
 The toolbar button uses the same registered command as the command palette and a native SVG icon.
-Opening the dialog captures one unambiguous selected exact Part (from the tree or a viewport body/face)
-and fills its source and initial region bounds. Missing, unavailable, hidden, mesh, or ambiguous targets
-remain unselected. A later viewport selection does not replace the source being edited in the dialog.
+Opening the responsive right task panel captures one unambiguous selected exact Part (from the tree or a viewport body/face)
+and prefills its source. Missing, unavailable, hidden, mesh, or ambiguous targets
+remain unselected. A later viewport selection does not replace the source being edited in the panel.
 
 ## Inputs and numerical model
 
@@ -57,12 +57,24 @@ Infill, adhesion, orientation, moisture, temperature and grade can change perfor
 remains isotropic. TPU/elastomers are omitted because their nonlinear behavior is outside the
 linear-elastic yield-limited model. Use custom values when the example does not represent the part.
 
-Axis-aligned boxes in model coordinates select fully fixed support nodes, loaded exterior facets,
-and preserved cells. Each load case distributes its total force uniformly over baseline exterior
-quad facets wholly inside its box. Support nodes must lie inside their authored boxes. Selection
-never snaps or moves to a nearby surface; empty selection, overlapping fixed/load nodes, and
-unrestrained modes fail. Load facet and support coordinate identities remain frozen through
-optimization; all incident cells and cells intersecting preservation boxes are retained.
+The editor selects support, loaded, and preserved faces on the model. Picked faces are colored by
+role and loads display signed force arrows. Choose total force magnitude and a normal or axis
+direction; no hidden load is assumed. A normal-directed selection with cancelling normals asks
+for an axis or different faces. Face picking uses the captured pristine mesh, even when surface
+textures change the ordinary displayed mesh. On narrow displays the task sheet collapses during
+picking and returns after a face is selected. Blocked Analyze and Apply actions show persistent,
+accessible reasons next to the action.
+
+Surface regions use `{kind: "surface", triangleIndices, depthMm}` over the immutable captured source
+tessellation. MCP retains strict legacy `{min,max}` axis-aligned boxes. Indices are disposable and
+bound to the source hash and document revision; they are not persistent CAD face identities.
+The FEM mapper resolves each baseline exterior facet against the full source mesh, checks outward
+normal alignment, bounds distance by one cell diagonal, and excludes ambiguous ties across another
+aligned surface. Supports fully fix selected facet nodes; each load case distributes its total
+force over complete selected baseline facets. Support/load facets and preservation bands retain
+their incident cells. Preservation rounds depth by half a cell diagonal and stops at another
+nearest surface. Empty or undersized mappings fail explicitly. Legacy box selections keep their
+original strict node/facet/cell semantics and never snap to a nearby surface.
 
 The solver certifies cubic cells inside the source, checks connected manifold boundaries, assembles
 full-solid linear isotropic Hex1 elasticity through scikit-fem, and solves with SciPy. Each candidate
@@ -82,9 +94,13 @@ mass, iterations, termination, and assumptions. Removal percentage uses the voxe
 source-to-voxel loss is reported separately. Zero iterations performs baseline-only evaluation.
 An infeasible baseline publishes no result; a feasible unchanged result cannot be applied.
 
-Preview is independent and disposable. Applying an improved result appends one imported mesh Part
-through the normal atomic transaction, persistence, and Undo path while retaining the editable CAD
-source. A document revision, source producer, or feature-hash change invalidates the result. Closing
+Preview temporarily isolates the inspected candidate in the main viewport so the original solid cannot
+occlude it. Cancellation and invalidation restore the committed scene; face picking restores the pristine
+source. Apply remains unavailable until the main renderer is ready. Both task panels own a bounded,
+scrollable content region, including the narrow-screen sheet. Applying an improved result appends one
+imported mesh Part and hides the editable CAD source in the same atomic transaction, persistence, and
+Undo path. The source stays in the Parts tree and can be shown again; one Undo restores its visibility
+and removes the result. A document revision, source producer, or feature-hash change invalidates the result. Closing
 or canceling terminates the worker; input changes invalidate pending and completed results.
 Download report preserves settings and source identity with the metrics.
 
@@ -127,3 +143,59 @@ analysis remain necessary before relying on a load-bearing part.
 
 See [the architecture decision](../adr/0101-browser-structural-lightweighting.md),
 [testing strategy](../testing-strategy.md), and [licensing](../licensing.md).
+
+## Quick lightweighting
+
+**Quick lightweighting** is a separate registered toolbar and palette command. It assumes a filled
+exact source solid and previews a periodic lattice without requesting structural supports or loads.
+A switch selects **Keep exterior** or **Open organic**. Choose **Gyroid**, **Schwarz P**, or
+**Schwarz D** cells, using trigonometric nodal sheet approximations of TPMS geometry. Sliders control requested removal, physical cell size, sampling detail, and
+(when retaining the exterior) skin thickness. Generation is debounced and cancelable; source
+changes and input changes invalidate obsolete results. Apply adds a separate mesh Part with one
+Undo entry through the ordinary validated import transaction.
+
+Keep exterior preserves the captured outer triangles and creates inward-oriented, enclosed cavity
+shells behind a continuous skin. Open organic generates an isosurface inside the source envelope.
+The default cell period is six sampling cells for Gyroid and Schwarz P, or twelve for Schwarz D
+to resolve its finer nodal pattern. The selector starts Schwarz D at this safer size. Explicit coarse
+Schwarz D settings can fail connected-material validation. An explicit period must be 6–12 sampling cells;
+the physical period is preserved when detail changes within this range and clamped otherwise.
+A preserved skin requires at least two sampling cells,
+plus conservative geometric margins. These margins and connected-material validation can limit
+actual removal. Results report source/result volume, requested/achieved removal, cell period, and
+warnings. They do not report stress, displacement, or a maximum-stiffness score. Use the structural
+workflow for explicit isotropic numerical load assumptions. Neither workflow certifies printability
+or physical strength.
+
+Paired local and remote MCP expose `analyze_quick_lightweighting` (compute only) and
+`request_quick_lightweighting` (reviewed ordinary mesh snapshot). They reuse source identity,
+actor ownership, revision checks, cancellation, private staged import, Apply and Undo. Mesh data
+stays browser-private; MCP receives bounded geometric summaries and snapshot identifiers.
+See the [quick operator reference](../../.agents/skills/vibeshape-modeling/references/quick-lightweighting.md)
+and [interaction research](lightweighting-ux-research.md).
+
+
+### Optimization objectives
+
+The structural workflow supports **Minimize mass** (the default) and **Maximize stiffness at target
+mass**. The latter uses a retained fraction of the analyzed baseline mass, rounded upward to a whole
+voxel count. Low-energy feasible removal stops at that count; it never silently removes below the
+mass target. Results distinguish a reached target from a target prevented by constraints, protected
+regions, topology, or the iteration budget. Both objectives use a greedy heuristic and do not claim
+a global minimum mass or maximum stiffness. This is not a full generative-design search over
+manufacturing methods or multiple alternative designs.
+
+### Quick runtime and exchange bounds
+
+Quick generation accepts 10,000 source vertices and 20,000 source triangles, at most 56³ samples,
+12 million proximity candidates, and 120,000 generated triangles. The complete result is bounded
+by 80,000 vertices and 140,000 triangles. At most three connectivity candidates reuse the same
+source distance grid. Compute and worker timeouts are 60 and 90 seconds. Resource limits fail
+explicitly; changing detail or cell size does not guarantee a feasible result.
+
+Preserved exterior results may contain inward cavity shells. 3MF export uses actual shell
+containment, intersection checks, alternating orientation, and positive total material volume.
+Public 3MF import accounts canonical geometry leaves against its existing aggregate vertex and
+triangle budgets, separately from the 100,000 generic XML-node budget. Namespace, depth, bytes,
+archive expansion, and metadata limits remain enforced. Internal round trips establish format
+behavior; they do not establish slicer compatibility or physical printability.

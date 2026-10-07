@@ -11,6 +11,7 @@ import {
 import { ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useEffect, useState } from "react"
 import {
   type EditorCommandId,
@@ -23,6 +24,7 @@ import {
   editorCommandShortcutLabel,
   useEditorCommandCopy,
 } from "../commands/editor-command-presentation"
+import { ActionAvailability } from "../components/action-availability"
 import { SketchConstraintManagerToolbarSlot } from "../features/sketch/sketch-toolbar-portals"
 
 function ToolbarAction({
@@ -41,24 +43,35 @@ function ToolbarAction({
     : null
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <ToolbarButton asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant={command.active ? "secondary" : "ghost"}
-              aria-label={label}
-              aria-pressed={command.active}
-              className={buttonClassName}
-              disabled={!command.eligibility.enabled}
-              onClick={command.invoke}
-            >
-              <EditorCommandIconView icon={command.descriptor.icon} />
-            </Button>
-          </ToolbarButton>
-        </span>
-      </TooltipTrigger>
+      <ActionAvailability
+        disabledReason={disabledReason}
+        disclosureLabel={label}
+        presentation="disclosure"
+      >
+        {({ describedBy, blockActivation }) => (
+          <TooltipTrigger asChild>
+            <ToolbarButton asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant={command.active ? "secondary" : "ghost"}
+                aria-label={label}
+                aria-describedby={describedBy}
+                aria-pressed={command.active}
+                aria-disabled={!command.eligibility.enabled || undefined}
+                className={cn("aria-disabled:pointer-events-auto", buttonClassName)}
+                onClick={(event) => {
+                  if (blockActivation(event)) return
+                  if (!command.eligibility.enabled) return
+                  return command.invoke()
+                }}
+              >
+                <EditorCommandIconView icon={command.descriptor.icon} />
+              </Button>
+            </ToolbarButton>
+          </TooltipTrigger>
+        )}
+      </ActionAvailability>
       <TooltipContent className="grid gap-1">
         <span className="flex items-center justify-between gap-3">
           <span>{label}</span>

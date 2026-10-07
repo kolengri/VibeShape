@@ -144,11 +144,11 @@ import {
   viewerSketchDisplay,
 } from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
-import { ResponsiveTaskPanel } from "./responsive-task-panel"
 import { TaskPanel } from "./task-panel"
 import { useViewerPreferences } from "./viewer-preferences"
 import type { EditorWorkspaceName } from "./workspace"
 import { WorkspacePanels } from "./workspace-panels"
+import { WorkspaceTaskPanel } from "./workspace-task-context"
 
 const EMPTY_GEOMETRY = [] as const
 type RevolveAxis = ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]
@@ -2593,7 +2593,7 @@ function EditorWorkspaceContent(props: EditorWorkspaceProps) {
           />
         }
         taskPanel={
-          <ResponsiveTaskPanel
+          <WorkspaceTaskPanel
             activeTaskKey={taskPanelActivityKey(props, review)}
             autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
             collapseLabel={taskPanelT("collapsePanel")}
@@ -2617,7 +2617,7 @@ function EditorWorkspaceContent(props: EditorWorkspaceProps) {
               revolveSelectionPurpose={revolveSelectionPurpose.value}
               review={review}
             />
-          </ResponsiveTaskPanel>
+          </WorkspaceTaskPanel>
         }
       >
         <EditorContent
