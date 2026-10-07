@@ -1,11 +1,18 @@
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react"
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from "react"
 import { useStore } from "zustand"
 import {
   createEditorSessionStore,
   type EditorSessionStore,
   type EditorSessionStoreApi,
 } from "./editor-session-store"
-
+import { createHistoryNavigation } from "./history-navigation"
 import { loadSketchVisibility, saveSketchVisibility } from "./sketch-visibility"
 
 function browserStorage() {
@@ -17,6 +24,9 @@ function browserStorage() {
 }
 
 const EditorSessionContext = createContext<EditorSessionStoreApi | null>(null)
+const HistoryNavigationContext = createContext<ReturnType<typeof createHistoryNavigation> | null>(
+  null,
+)
 
 export function EditorSessionProvider({
   children,
@@ -25,6 +35,7 @@ export function EditorSessionProvider({
   const [store] = useState(() =>
     createEditorSessionStore(documentId ? loadSketchVisibility(browserStorage(), documentId) : {}),
   )
+  const [navigation] = useState(() => createHistoryNavigation(store))
   useEffect(() => {
     if (!documentId) return
     return store.subscribe((state, previous) => {
@@ -32,7 +43,24 @@ export function EditorSessionProvider({
         saveSketchVisibility(browserStorage(), documentId, state.sketchVisibilityOverrides)
     })
   }, [store, documentId])
-  return <EditorSessionContext.Provider value={store}>{children}</EditorSessionContext.Provider>
+  return (
+    <EditorSessionContext.Provider value={store}>
+      <HistoryNavigationContext.Provider value={navigation}>
+        {children}
+      </HistoryNavigationContext.Provider>
+    </EditorSessionContext.Provider>
+  )
+}
+
+export function useHistoryNavigation() {
+  const navigation = useContext(HistoryNavigationContext)
+  if (!navigation) throw new Error("History navigation requires EditorSessionProvider.")
+  return navigation
+}
+
+export function useRegisterTaskSubmission(submit: () => Promise<unknown>) {
+  const navigation = useContext(HistoryNavigationContext)
+  useLayoutEffect(() => navigation?.register(submit), [navigation, submit])
 }
 
 export function useEditorSession<Result>(selector: (state: EditorSessionStore) => Result) {

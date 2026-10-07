@@ -136,6 +136,9 @@ export function HistoryFolderGroup({
           />
           <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
           <span className="truncate">{folder.name}</span>
+          <span className="ml-auto text-xs text-muted-foreground" aria-hidden="true">
+            {folder.items.length}
+          </span>
         </Button>
         <AuthoredItemRename
           item={folder}

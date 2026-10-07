@@ -133,6 +133,22 @@ function rebuiltResponse(
 }
 
 describe("feature preview worker lifetime", () => {
+  it("does not start kernel workers while untouched History forms debounce between items", () => {
+    const response = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
+      { featureId: independentId, contentHash: hash("independent"), geometry: { mesh } },
+    ])
+    const { rerender } = renderHook(
+      ({ candidate }: { candidate: FeatureRecord | null }) =>
+        useFeaturePreview(snapshot, candidate, response.geometry, true, response),
+      { initialProps: { candidate: null as FeatureRecord | null } },
+    )
+    for (let index = 0; index < 20; index += 1) {
+      rerender({ candidate: snapshot.features[index % 2]! })
+      rerender({ candidate: null })
+    }
+    expect(createSession).not.toHaveBeenCalled()
+  })
   it("uses correlated committed geometry for untouched History edits and rebuilds actual changes", () => {
     const response = rebuiltResponse([
       { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
@@ -203,17 +219,55 @@ describe("feature preview worker lifetime", () => {
     expect(result.current.status).toBe("idle")
     rerender({ active: true, candidate })
     expect(createSession).toHaveBeenCalledOnce()
-    expect(firstSession.rebuild).toHaveBeenCalledTimes(2)
+    expect(firstSession.rebuild).toHaveBeenCalledOnce()
     rerender({ active: false, candidate: null })
     expect(firstSession.terminate).toHaveBeenCalledOnce()
     rerender({ active: true, candidate })
     expect(secondSession.rebuild).toHaveBeenCalledOnce()
     await act(async () => rejectFirst(new Error("The previous worker was terminated.")))
     expect(result.current.status).toBe("loading")
+    expect(firstSession.rebuild).toHaveBeenCalledOnce()
 
     unmount()
     expect(secondSession.terminate).toHaveBeenCalledOnce()
     await act(async () => rejectSecond(new Error("The preview was unmounted.")))
+  })
+
+  it("keeps only the latest pending rebuild while the kernel evaluates a previous candidate", async () => {
+    let complete!: (response: DocumentWorkerResponse) => void
+    const response = rebuiltResponse([
+      { featureId: candidateId, contentHash: hash("candidate"), geometry: { mesh } },
+    ])
+    const session = {
+      rebuild: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<DocumentWorkerResponse>((resolve) => {
+              complete = resolve
+            }),
+        )
+        .mockResolvedValue(response),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const geometry: readonly { featureId: string; contentHash: string }[] = []
+    const candidate = feature(candidateId)
+    const { result, rerender } = renderHook(
+      ({ width }) =>
+        useFeaturePreview(snapshot, { ...candidate, parameters: { width } }, geometry, true),
+      { initialProps: { width: 10 } },
+    )
+    rerender({ width: 20 })
+    rerender({ width: 30 })
+    rerender({ width: 40 })
+    expect(session.rebuild).toHaveBeenCalledOnce()
+    await act(async () => complete(response))
+    expect(session.rebuild).toHaveBeenCalledTimes(2)
+    expect(session.rebuild.mock.calls[1]?.[0].document.features.at(-1).parameters).toEqual({
+      width: 40,
+    })
+    expect(result.current.status).toBe("ready")
   })
 })
 

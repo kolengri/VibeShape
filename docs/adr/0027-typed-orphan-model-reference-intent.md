@@ -1,5 +1,8 @@
 # ADR-0027: Typed orphan model-reference intent
 
+Deletion restrictions are superseded for the explicit V5 retained-History command by
+[ADR-0102](0102-retained-history-repair-authority.md); this orphan-reference command retains its contract.
+
 - Status: **Accepted**
 - Date: 2026-08-28
 - Extends: [ADR-0026](0026-document-dependency-graph-and-interleaved-history.md)

@@ -13,8 +13,10 @@ import {
 } from "@vibeshape/domain"
 import { DocumentUndoHistory } from "./document-undo-history"
 import { draftCommandFailure, draftDiagnosticCause } from "./draft-validation-diagnostics"
+import { matchesHistoryOperation } from "./history-mutation"
 import type {
   DocumentHistoryRequest,
+  DocumentSemanticHistoryPort,
   PersistedRecoveryMigration,
   PersistedRecoveryReport,
   PersistenceDraftValidationInput,
@@ -242,6 +244,39 @@ export function createVersionedPersistenceAdapter(
     return { ok: true as const, baseSnapshot: base, events, snapshot: current }
   }
 
+  async function mutateHistory(
+    input: Parameters<DocumentSemanticHistoryPort["move"]>[0],
+    operation: "move" | "insert",
+  ) {
+    const baseMatch = projectInput(authority, input.baseSnapshot)
+    if (baseMatch) return baseMatch
+    const reduced = applyVersionedDocumentCommand(authority, input.command)
+    if (!reduced.ok || !matchesHistoryOperation(reduced.event.type, operation))
+      return failed(
+        "invalid-event",
+        reduced.ok ? "The command is not a History move." : reduced.diagnostic.message,
+      )
+    const projected = projectDocumentSnapshotV1ToV0(reduced.snapshot)
+    if (!projected.ok) return failed("invalid-event", projected.diagnostic.message)
+    let persisted: VersionedPortResult<unknown>
+    try {
+      persisted = await repository.commit({
+        sessionId: input.sessionId,
+        lease: input.lease,
+        storedAt: reduced.event.issuedAt,
+        baseSnapshot: authority,
+        event: reduced.event,
+        snapshot: reduced.snapshot,
+      })
+    } catch {
+      return failed("persistence-failed", "The History move was not saved.")
+    }
+    if (!persisted.ok) return persisted
+    history.record(authority, reduced.snapshot)
+    authority = reduced.snapshot
+    return { ok: true as const, value: projected.snapshot }
+  }
+
   return {
     history: {
       get availability() {
@@ -288,35 +323,8 @@ export function createVersionedPersistenceAdapter(
       get items() {
         return authority?.history ?? []
       },
-      async move(input) {
-        const baseMatch = projectInput(authority, input.baseSnapshot)
-        if (baseMatch) return baseMatch
-        const reduced = applyVersionedDocumentCommand(authority, input.command)
-        if (!reduced.ok || reduced.event.type !== "org.vibeshape.history.item-moved")
-          return failed(
-            "invalid-event",
-            reduced.ok ? "The command is not a History move." : reduced.diagnostic.message,
-          )
-        const projected = projectDocumentSnapshotV1ToV0(reduced.snapshot)
-        if (!projected.ok) return failed("invalid-event", projected.diagnostic.message)
-        let persisted: VersionedPortResult<unknown>
-        try {
-          persisted = await repository.commit({
-            sessionId: input.sessionId,
-            lease: input.lease,
-            storedAt: reduced.event.issuedAt,
-            baseSnapshot: authority,
-            event: reduced.event,
-            snapshot: reduced.snapshot,
-          })
-        } catch {
-          return failed("persistence-failed", "The History move was not saved.")
-        }
-        if (!persisted.ok) return persisted
-        history.record(authority, reduced.snapshot)
-        authority = reduced.snapshot
-        return { ok: true, value: projected.snapshot }
-      },
+      move: (input) => mutateHistory(input, "move"),
+      insert: (input) => mutateHistory(input, "insert"),
     },
     get currentV1Snapshot() {
       return authority

@@ -9,6 +9,7 @@ import {
 } from "@vibeshape/domain"
 import type { TopologyCandidate } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import { historySketchForEditing } from "../../shell/history-repair-context"
 import {
   applyExternalModelCandidate,
   applyExternalModelCandidateSelection,
@@ -979,70 +980,97 @@ describe("apply external model candidate", () => {
     })
   })
 
-  it("offers compatible geometry from a new feature when repairing an orphaned reference", () => {
-    const original = lineCandidate("deleted-edge", [0, 0, 0], [10, 0, 0])
-    const replacement = lineCandidate("replacement-edge", [0, 5, 0], [10, 5, 0])
-    const referenceId = "0195b5ac-b220-7a2c-8c33-000000005047"
-    const sketch = draft([
-      {
-        schemaVersion: 1,
+  it.each(["orphan", "retained-live"] as const)(
+    "offers replacement geometry for a %s reference without changing the retained recipe",
+    (mode) => {
+      const original = lineCandidate("deleted-edge", [0, 0, 0], [10, 0, 0])
+      const replacement = lineCandidate("replacement-edge", [0, 5, 0], [10, 5, 0])
+      const referenceId = "0195b5ac-b220-7a2c-8c33-000000005047"
+      const originalSketch = draft([
+        {
+          schemaVersion: mode === "orphan" ? 1 : 0,
+          id: referenceId,
+          kind: "model-line",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: original.semanticRole,
+            signature: original.signature,
+          },
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005048",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005049",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005050",
+          ...(mode === "orphan" ? { orphanedSource: { kind: "deleted-feature", featureId } } : {}),
+        },
+      ])
+      const sketch =
+        mode === "orphan"
+          ? originalSketch
+          : historySketchForEditing(
+              {
+                authoredSnapshot: {
+                  schemaVersion: 5,
+                  features: [{ id: hiddenFeatureId }],
+                  sketches: [
+                    { ...originalSketch, entities: [], constraints: [], externalReferences: [] },
+                  ],
+                  repairIntents: [
+                    {
+                      kind: "sketch",
+                      authored: originalSketch,
+                      missingInputs: [{ kind: "feature", id: featureId }],
+                    },
+                  ],
+                },
+              } as never,
+              originalSketch.id,
+            )
+      if (!sketch) throw new Error("The retained sketch editing recipe is required.")
+      expect(originalSketch.externalReferences?.[0]?.schemaVersion).toBe(mode === "orphan" ? 1 : 0)
+      const candidates = externalModelGeometryCandidates(
+        [
+          geometryRecord(hiddenFeatureId, [
+            replacement,
+            pointCandidate("incompatible-vertex", [0, 0, 0]),
+            circleCandidate("incompatible-circle"),
+          ]),
+        ],
+        features as never,
+        [hiddenFeatureId],
+        draft(),
+        targetFrame,
+        labels,
+      )
+
+      const repairCandidates = repairExternalModelGeometryCandidates(
+        candidates,
+        sketch,
+        referenceId as never,
+      )
+
+      expect(repairCandidates).toHaveLength(1)
+      const repairCandidate = repairCandidates[0]
+      if (!repairCandidate) throw new Error("A compatible replacement candidate is required.")
+      expect(repairCandidate).toMatchObject({ featureId: hiddenFeatureId, kind: "model-line" })
+
+      const repaired = applyExternalModelCandidateSelection(
+        sketch,
+        repairCandidate,
+        [],
+        referenceId as never,
+      )
+      expect(repaired.externalReferences?.[0]).toEqual({
+        schemaVersion: 0,
         id: referenceId,
         kind: "model-line",
-        reference: {
-          schemaVersion: 0,
-          featureId,
-          kind: "edge",
-          semanticRole: original.semanticRole,
-          signature: original.signature,
-        },
+        reference: repairCandidate.reference,
         projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005048",
         projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005049",
         projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005050",
-        orphanedSource: { kind: "deleted-feature", featureId },
-      },
-    ])
-    const candidates = externalModelGeometryCandidates(
-      [
-        geometryRecord(hiddenFeatureId, [
-          replacement,
-          pointCandidate("incompatible-vertex", [0, 0, 0]),
-          circleCandidate("incompatible-circle"),
-        ]),
-      ],
-      features as never,
-      [hiddenFeatureId],
-      draft(),
-      targetFrame,
-      labels,
-    )
-
-    const repairCandidates = repairExternalModelGeometryCandidates(
-      candidates,
-      sketch,
-      referenceId as never,
-    )
-
-    expect(repairCandidates).toHaveLength(1)
-    const repairCandidate = repairCandidates[0]
-    if (!repairCandidate) throw new Error("A compatible replacement candidate is required.")
-    expect(repairCandidate).toMatchObject({ featureId: hiddenFeatureId, kind: "model-line" })
-
-    const repaired = applyExternalModelCandidateSelection(
-      sketch,
-      repairCandidate,
-      [],
-      referenceId as never,
-    )
-    expect(repaired.externalReferences?.[0]).toEqual({
-      schemaVersion: 0,
-      id: referenceId,
-      kind: "model-line",
-      reference: repairCandidate.reference,
-      projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005048",
-      projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005049",
-      projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005050",
-    })
-  })
+      })
+    },
+  )
 
   it("rejects planar faces parallel to the sketch before persisting an intersection", () => {
     const reference: PlanarFaceTopoRef = {

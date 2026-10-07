@@ -4,7 +4,7 @@ import type { BodyReference } from "@vibeshape/domain/body-reference"
 import {
   addFeature,
   type DocumentControllerState,
-  updateFeature,
+  saveFeatureEdits,
 } from "../document/document-controller"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 
@@ -37,7 +37,7 @@ export function featureTaskFormProps(
     disabled: props.documentBusy || props.report.mode === "read-only",
     onCancel: props.onCloseTool,
     onSaved: props.onCompleteTool,
-    onSave: mode.kind === "edit" ? updateFeature : addFeature,
+    onSave: mode.kind === "edit" ? saveFeatureEdits : addFeature,
     onPreviewChange: props.onFeaturePreviewChange,
     previewStatus: props.featurePreviewStatus,
   }

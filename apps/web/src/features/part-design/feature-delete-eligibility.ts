@@ -1,4 +1,5 @@
 import {
+  createDocumentDependencyGraph,
   createDocumentDependencyGraphFromSnapshot,
   type DocumentGraphDependencyBlocker,
   type DocumentSnapshot,
@@ -9,6 +10,7 @@ import {
   type SketchExternalReferenceId,
   type SketchId,
 } from "@vibeshape/domain"
+import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 
 export const FEATURE_DELETE_BLOCKER_PREVIEW_LIMIT = 8
 
@@ -28,8 +30,12 @@ export type FeatureDeleteEligibility = Readonly<{
 export function featureDeleteEligibility(
   snapshot: DocumentSnapshot,
   featureId: FeatureRecord["id"],
+  authority?: DocumentAuthoritySnapshot | null,
 ): FeatureDeleteEligibility {
-  const result = createDocumentDependencyGraphFromSnapshot(snapshot)
+  const result =
+    authority && authority.id === snapshot.id && authority.revision === snapshot.revision
+      ? createDocumentDependencyGraph(authority)
+      : createDocumentDependencyGraphFromSnapshot(snapshot)
   if (!result.ok || result.graph.dependencyModelIssues.length > 0) {
     return {
       blockers: [],

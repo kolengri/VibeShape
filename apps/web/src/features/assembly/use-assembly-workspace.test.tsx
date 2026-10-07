@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { webcrypto } from "node:crypto"
 import { act, cleanup, renderHook } from "@testing-library/react"
+import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
+import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -43,6 +45,27 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly Apply publication", () => {
+  it("keeps assembly inspection available on V5 authority", async () => {
+    const f = fixture()
+    const authority = f.controller.authoredSnapshot
+    if (!authority || authority.schemaVersion === 1)
+      throw new Error("Missing authored assembly fixture.")
+    const authoredSnapshot = documentSnapshotV5Schema.parse({
+      ...promoteDocumentSnapshotV4(authority),
+      schemaVersion: 5,
+      repairIntents: [],
+      suspendedParts: [],
+    })
+    const hook = renderHook(() => useAssemblyWorkspace({ ...f.controller, authoredSnapshot }), {
+      wrapper,
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(ports.inspect).toHaveBeenCalledWith([])
+    expect(hook.result.current.disabled).toBe(false)
+  })
+
   it("publishes one whole upgrade/assembly transaction and releases a rejected save for retry", async () => {
     const f = fixture()
     let reject!: (error: Error) => void

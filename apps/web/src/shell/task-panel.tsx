@@ -21,12 +21,14 @@ import {
   addSketch,
   createBrowserFeatureId,
   type DocumentControllerState,
+  getDocumentControllerState,
   removeFeature,
   removeFeaturePreservingModelReferenceIntent,
   resolveDocumentFeatureParameters,
-  updateFeature,
-  updateSketch,
+  saveFeatureEdits,
+  saveSketchEdits,
 } from "../document/document-controller"
+import { useRegisterTaskSubmission } from "../editor-session/editor-session-provider"
 import {
   BooleanForm,
   type BooleanFormMode,
@@ -130,6 +132,7 @@ import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-tex
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
 import { FdmTaskPanel } from "./fdm-task-panel"
+import { HistoryFeatureRepair } from "./history-feature-repair"
 import { MirrorTaskPanel } from "./mirror-task-panel"
 import { PatternTaskPanel } from "./pattern-task-panel"
 import { PlacementTaskPanel } from "./placement-task-panel"
@@ -570,40 +573,15 @@ function featureTaskContext(
   revision: number,
 ) {
   return mode.kind === "edit"
-    ? { key: `edit:${mode.feature.id}:${revision}`, onSave: updateFeature }
+    ? { key: `edit:${mode.feature.id}:${revision}`, onSave: saveFeatureEdits }
     : { key: `create:${revision}`, onSave: addFeature }
 }
 
 type FeatureDeleteReport = NonNullable<DocumentControllerState["report"]>
 
-function useFeatureDeleteBlockedReason(
-  report: FeatureDeleteReport,
-  eligibility: FeatureDeleteEligibility,
-) {
+function useFeatureDeleteBlockedReason(eligibility: FeatureDeleteEligibility) {
   const t = useTranslations("app.shell.taskPanel.featureDelete")
-  const modelTreeT = useTranslations("app.shell.modelTree")
-  const relationT = useTranslations("app.shell.taskPanel.featureDelete.relations")
-  if (eligibility.unavailable) return t("unavailable")
-  const labels = new Map<string, string>([
-    ...report.snapshot.features.map(
-      ({ id, label }) => [`feature:${id}`, label ?? modelTreeT("unnamedFeature")] as const,
-    ),
-    ...report.snapshot.sketches.map(
-      ({ id, label }) => [`sketch:${id}`, label ?? modelTreeT("unnamedSketch")] as const,
-    ),
-  ])
-  const blockers = eligibility.blockers.map((blocker) => {
-    const fallback =
-      blocker.dependent.kind === "feature"
-        ? modelTreeT("unnamedFeature")
-        : modelTreeT("unnamedSketch")
-    return `${labels.get(`${blocker.dependent.kind}:${blocker.dependent.id}`) ?? fallback} (${relationT(blocker.relation)})`
-  })
-  if (blockers.length === 0) return null
-  const remaining = eligibility.blockerCount - eligibility.blockers.length
-  return remaining > 0
-    ? t("blockedByMore", { blockers: blockers.join(", "), count: remaining })
-    : t("blockedBy", { blockers: blockers.join(", ") })
+  return eligibility.unavailable ? t("unavailable") : null
 }
 
 function useAffectedFeatureReferences(
@@ -668,8 +646,15 @@ function ActiveFeatureDeleteAction({
   const t = useTranslations("app.shell.taskPanel.featureDelete")
   const modelTreeT = useTranslations("app.shell.modelTree")
   const featureLabel = feature.label ?? modelTreeT("unnamedFeature")
-  const eligibility = featureDeleteEligibility(report.snapshot, feature.id)
-  const blockedReason = useFeatureDeleteBlockedReason(report, eligibility)
+  const savedController = getDocumentControllerState()
+  const saved = savedController.report
+  const snapshot = saved?.snapshot.id === report.snapshot.id ? saved.snapshot : report.snapshot
+  const eligibility = featureDeleteEligibility(
+    snapshot,
+    feature.id,
+    savedController.authoredSnapshot,
+  )
+  const blockedReason = useFeatureDeleteBlockedReason(eligibility)
   const affectedItems = useAffectedFeatureReferences(report, eligibility)
   const remainingAffectedItems =
     eligibility.preservableReferenceCount - eligibility.preservableReferences.length
@@ -2554,7 +2539,7 @@ function ActiveSketchTaskPanel({
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
     setMessage(null)
-    const save = activeSketchTool.kind === "edit-sketch" ? updateSketch : addSketch
+    const save = activeSketchTool.kind === "edit-sketch" ? saveSketchEdits : addSketch
     const result = await save(report.snapshot.revision, draft)
     if (!result.ok) {
       setMessage(
@@ -2568,6 +2553,9 @@ function ActiveSketchTaskPanel({
     }
     onSketchSaved(draft, { profiles, selectedProfile })
   }
+  useRegisterTaskSubmission(async () => {
+    if (report.mode !== "read-only") await finish()
+  })
   const panelState: SketchEditorPanelState = {
     disabled: report.mode === "read-only",
     draft,
@@ -2820,7 +2808,25 @@ export function TaskPanel(props: TaskPanelProps) {
     )
   }
   const Panel = taskPanelByWorkspace[props.workspace]
-  return <Panel {...props} />
+  return (
+    <HistoryFeatureRepair
+      key={`${props.controller.report?.snapshot.id}:${props.controller.report?.snapshot.revision}:${props.activeTool && "featureId" in props.activeTool ? props.activeTool.featureId : props.activeTool?.kind}`}
+      controller={props.controller}
+      tool={props.activeTool}
+      onClose={props.onCloseTool}
+      renderDelete={(feature) =>
+        props.controller.report && (
+          <ActiveFeatureDeleteAction
+            feature={feature}
+            report={props.controller.report}
+            onDeleted={props.onCompleteTool}
+          />
+        )
+      }
+    >
+      {(controller) => <Panel {...props} controller={controller} />}
+    </HistoryFeatureRepair>
+  )
 }
 
 function ModelSurfaceTextureTaskPanel({ props }: { props: TaskPanelProps }) {

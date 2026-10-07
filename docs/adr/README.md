@@ -108,6 +108,7 @@
 | [0099](0099-complete-session-cad-auto-apply.md) | Accepted | Complete session CAD auto-apply and live local commits |
 | [0100](0100-remembered-local-mcp-preferences.md) | Accepted | Remembered browser-local MCP access and approval mode |
 | [0101](0101-browser-structural-lightweighting.md) | Accepted with reduced scope | Browser structural lightweighting snapshots |
+| [0102](0102-retained-history-repair-authority.md) | Accepted | Retained History repair authority and native format 6 |
 
 Statuses:
 

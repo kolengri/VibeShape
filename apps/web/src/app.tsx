@@ -7,6 +7,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
+import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
@@ -19,9 +20,11 @@ import {
   addSketch,
   createBrowserSketchConstraintId,
   createBrowserSketchId,
+  getDocumentControllerState,
   redoDocument,
+  saveSketchEdits,
+  setHistoryInsertionPoint,
   undoDocument,
-  updateSketch,
   useDocumentController,
 } from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
@@ -29,6 +32,7 @@ import {
   EditorSessionProvider,
   useEditorSession,
   useEditorSessionStoreApi,
+  useHistoryNavigation,
 } from "./editor-session/editor-session-provider"
 import type {
   EditorSessionActions,
@@ -73,6 +77,8 @@ import { AutomationConnectionsProvider, AutomationEditorScope } from "./shell/au
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
+import { historyInsertionAnchor, historyInsertionContext } from "./shell/history-insertion-context"
+import { historyFeatureForEditing, historySketchForEditing } from "./shell/history-repair-context"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import { SketchNavigationControl } from "./shell/sketch-navigation-control"
 import {
@@ -97,7 +103,7 @@ type OpenSketchSaveRequest =
 
 const sketchSaveByToolKind: Partial<Record<ActiveSketchTool["kind"], typeof addSketch>> = {
   "create-sketch": addSketch,
-  "edit-sketch": updateSketch,
+  "edit-sketch": saveSketchEdits,
 }
 
 function sketchSaveForTool(activeSketchTool: ActiveSketchTool | null) {
@@ -240,6 +246,8 @@ function useFeatureActivationActions(
   controller: ReturnType<typeof useDocumentController>,
   sessionActions: EditorSessionActions,
 ) {
+  const navigation = useHistoryNavigation()
+  const sessionStore = useEditorSessionStoreApi()
   const startBodyOperation = useCallback(
     (
       partId: PartId,
@@ -251,7 +259,9 @@ function useFeatureActivationActions(
         | "create-pattern"
         | "create-thread",
     ) => {
-      const resolved = currentAuthoredParts(controller).find(({ part }) => part.id === partId)
+      const resolved = currentAuthoredParts(historyInsertionContext(controller)).find(
+        ({ part }) => part.id === partId,
+      )
       const targetBody = authoredPlacementTarget(resolved)
       if (targetBody) sessionActions.startPartDesignTool({ kind, partId, targetBody })
     },
@@ -287,21 +297,28 @@ function useFeatureActivationActions(
 
   const editFeature = useCallback(
     (featureId: FeatureId) => {
-      const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
-      const editTool = editPartDesignTool(feature)
-      if (editTool) sessionActions.startPartDesignTool(editTool)
+      const active = sessionStore.getState().activePartDesignTool
+      const alreadyActive = Boolean(
+        active?.kind.startsWith("edit-") && "featureId" in active && active.featureId === featureId,
+      )
+      void navigation.navigate(() => {
+        setHistoryInsertionPoint(undefined)
+        const feature = historyFeatureForEditing(getDocumentControllerState(), featureId)
+        const editTool = editPartDesignTool(feature)
+        if (editTool) sessionActions.startPartDesignTool(editTool)
+      }, alreadyActive)
     },
-    [controller.report?.snapshot.features, sessionActions],
+    [navigation, sessionActions, sessionStore],
   )
   return { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature }
 }
 
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
+  const historyInsertionActions = useHistoryInsertionActions()
   const toggleAllSketchVisibility = useToggleAllSketchVisibility(controller)
   const hasSavedSketches = Boolean(controller.report?.snapshot.sketches.length)
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
-  const sessionStore = useEditorSessionStoreApi()
   const {
     activeSketchId,
     activeSketchTool,
@@ -358,15 +375,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     [activeSketchTool?.kind, controller, sessionActions],
   )
 
-  const editSketch = useCallback(
-    (sketchId: SketchId) => {
-      const currentDraft = sessionStore.getState().sketch.draft
-      if (currentDraft) return currentDraft.id === sketchId
-      const source = controller.report?.snapshot.sketches.find(({ id }) => id === sketchId)
-      if (source) sessionActions.beginSketchEdit(source)
-    },
-    [controller.report?.snapshot.sketches, sessionStore, sessionActions],
-  )
+  const editSketch = useSketchHistoryActivation(sessionActions)
 
   const createExtrusion = useCallback(async () => {
     const initialProfiles = profileFeatureSelectionForCommand(
@@ -423,24 +432,12 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
 
   const { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature } =
     useFeatureActivationActions(controller, sessionActions)
-  const setSketchEditorTool = useCallback(
-    (tool: SketchEditorTool) => {
-      const currentSketch = sessionStore.getState().sketch
-      const definition = preselectedConstraintForTool(tool, currentSketch)
-      if (definition && currentSketch.draft) {
-        sessionActions.setSketchDraft(
-          appendSketchConstraint(currentSketch.draft, definition, createBrowserSketchConstraintId),
-        )
-        sessionActions.setSketchSelectedEntityIds([])
-      }
-      sessionActions.setSketchEditorTool(tool)
-    },
-    [sessionActions, sessionStore],
-  )
+  const setSketchEditorTool = useSketchEditorToolActivation(sessionActions)
 
   return useMemo(
     () =>
       ({
+        ...historyInsertionActions,
         acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
         acknowledgeRevolveAngle: sessionActions.acknowledgeRevolveAngle,
         closeTool: sessionActions.closeActiveTool,
@@ -513,6 +510,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         undoSketchDraft: sessionActions.undoSketchDraft,
       }) satisfies EditorWorkspaceActions,
     [
+      historyInsertionActions,
       createDatumPlane,
       createExtrusion,
       createRevolve,
@@ -531,6 +529,70 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       setSketchEditorTool,
       toggleAllSketchVisibility,
     ],
+  )
+}
+
+function useSketchEditorToolActivation(sessionActions: EditorSessionActions) {
+  const sessionStore = useEditorSessionStoreApi()
+  const setSketchEditorTool = useCallback(
+    (tool: SketchEditorTool) => {
+      const currentSketch = sessionStore.getState().sketch
+      const definition = preselectedConstraintForTool(tool, currentSketch)
+      if (definition && currentSketch.draft) {
+        sessionActions.setSketchDraft(
+          appendSketchConstraint(currentSketch.draft, definition, createBrowserSketchConstraintId),
+        )
+        sessionActions.setSketchSelectedEntityIds([])
+      }
+      sessionActions.setSketchEditorTool(tool)
+    },
+    [sessionActions, sessionStore],
+  )
+
+  return setSketchEditorTool
+}
+
+function useSketchHistoryActivation(sessionActions: EditorSessionActions) {
+  const sessionStore = useEditorSessionStoreApi()
+  const navigation = useHistoryNavigation()
+  const editSketch = useCallback(
+    async (sketchId: SketchId) => {
+      const currentDraft = sessionStore.getState().sketch.draft
+      return navigation.navigate(() => {
+        setHistoryInsertionPoint(undefined)
+        const source = historySketchForEditing(getDocumentControllerState(), sketchId)
+        if (source) sessionActions.beginSketchEdit(source)
+      }, currentDraft?.id === sketchId)
+    },
+    [navigation, sessionStore, sessionActions],
+  )
+
+  return editSketch
+}
+
+function useHistoryInsertionActions() {
+  const navigation = useHistoryNavigation()
+  const actions = useEditorSession((state) => state.actions)
+  const insertHistoryAt = useCallback(
+    (item: HistoryItemRef, side: "above" | "below") =>
+      navigation.navigate(() => {
+        const insertion = historyInsertionAnchor(getDocumentControllerState(), item, side)
+        if (!insertion.found) return
+        actions.switchWorkspace("model")
+        actions.setSelection(null)
+        actions.setSelectedBody(null)
+        actions.setSelectedPart(null)
+        setHistoryInsertionPoint(insertion.anchor)
+      }),
+    [navigation, actions],
+  )
+  const returnHistoryToEnd = useCallback(
+    () => navigation.navigate(() => setHistoryInsertionPoint(undefined)),
+    [navigation],
+  )
+  return useMemo(
+    () => ({ insertHistoryAt, returnHistoryToEnd }),
+    [insertHistoryAt, returnHistoryToEnd],
   )
 }
 
@@ -630,7 +692,7 @@ function resolveEditorApplicationCommands(
     }
     return result
   }
-  const parts = currentAuthoredParts(controller)
+  const parts = currentAuthoredParts(historyInsertionContext(controller))
   const selectedPart = selectedPlacementPart(
     parts,
     session.selectedPartId,
@@ -783,8 +845,8 @@ function sketchShortcutAnchorAtPointer(event: PointerEvent): SketchShortcutToolb
 function useAuthoredEditorSession(controller: ReturnType<typeof useDocumentController>) {
   const storedSession = useEditorApplicationSession()
   const authoredParts = useMemo(
-    () => currentAuthoredParts(controller),
-    [controller.authoredSnapshot, controller.report],
+    () => currentAuthoredParts(historyInsertionContext(controller)),
+    [controller.authoredSnapshot, controller.report, controller.historyInsertion],
   )
   return storedSession.selectedPartId
     ? {

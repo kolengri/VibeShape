@@ -31,6 +31,8 @@ import {
   portableProjectV4CopySchema,
   portableProjectV5CopySchema,
   portableProjectV5ImportSchema,
+  portableProjectV6CopySchema,
+  portableProjectV6ImportSchema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -932,7 +934,7 @@ export class VersionedLocalDocumentRepository {
   async exportPortableProjectV5(input: unknown) {
     const exported = await exportDocumentAuthority(this.database, input)
     if (!exported.ok) return exported
-    return "sourceUpgradeRevision" in exported.value
+    return "sourceUpgradeRevision" in exported.value && !("repairUpgradeRevision" in exported.value)
       ? { ok: true as const, value: exported.value }
       : {
           ok: false as const,
@@ -967,11 +969,41 @@ export class VersionedLocalDocumentRepository {
         }
   }
 
+  async exportPortableProjectV6(input: unknown) {
+    const exported = await exportDocumentAuthority(this.database, input)
+    if (!exported.ok) return exported
+    return "repairUpgradeRevision" in exported.value
+      ? { ok: true as const, value: exported.value }
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "V6 export requires V5 repair authority.",
+          ),
+        }
+  }
+  async copyPortableProjectV6(input: unknown) {
+    const parsed = portableProjectV6CopySchema.safeParse(input)
+    return parsed.success
+      ? this.copyPortableProjectV3(parsed.data)
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "The V6 portable copy is invalid.",
+          ),
+        }
+  }
+
   async importPortableProjectV3(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
     const input = z
-      .union([portableProjectV3ImportSchema, portableProjectV5ImportSchema])
+      .union([
+        portableProjectV3ImportSchema,
+        portableProjectV5ImportSchema,
+        portableProjectV6ImportSchema,
+      ])
       .safeParse(inputValue)
     if (!input.success)
       return {
@@ -1000,7 +1032,11 @@ export class VersionedLocalDocumentRepository {
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
     const input = z
-      .union([portableProjectV3CopySchema, portableProjectV5CopySchema])
+      .union([
+        portableProjectV3CopySchema,
+        portableProjectV5CopySchema,
+        portableProjectV6CopySchema,
+      ])
       .safeParse(inputValue)
     if (!input.success)
       return {

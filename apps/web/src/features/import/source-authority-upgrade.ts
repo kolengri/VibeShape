@@ -9,7 +9,7 @@ type UpgradeEnvelope = Omit<
 
 /** Capture both durable upgrades in the same authored transaction before adding source-backed state. */
 export function sourceAuthorityUpgradeCommands(
-  version: 2 | 3 | 4,
+  version: 2 | 3 | 4 | 5,
   envelope: () => UpgradeEnvelope,
 ) {
   const commands = []
@@ -22,7 +22,7 @@ export function sourceAuthorityUpgradeCommands(
         payload: { change: null },
       }),
     )
-  if (version !== 4)
+  if (version < 4)
     commands.push(
       documentUpgradeV4CommandSchema.parse({
         ...envelope(),

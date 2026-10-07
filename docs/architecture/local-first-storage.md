@@ -49,7 +49,8 @@ complete texture intent; recovery refuses a result before that recorded upgrade 
 compatibility projection remains disposable and cannot replace V3 authority.
 
 Native saves use format 3 for V2 parts/folders and format 4 for V3 texture authority, retaining verified
-mixed history and original actors. The authored reader accepts formats 0–4. Opening a complete
+mixed history and original actors. V4 uses format 5 and V5 repair authority uses format 6; the authored
+reader accepts formats 0–6. Opening a complete
 archive creates fresh document, command, and transaction identities while preserving document-local
 feature, part, folder, and texture-layer identities. Read-only checkpoints cannot become writable
 copies. Older builds reject unsupported authority before recovery fallback; rolling back the
@@ -67,6 +68,15 @@ as events, snapshot, project head and recovery marker. Undo retains bytes, and f
 the full historical asset closure needed by Redo. Source corruption fails closed. Product import
 parsers and authoring adapters must use these ports before claiming a complete import workflow.
 See [ADR-0062](../adr/0062-durable-source-assets-and-portable-closure.md).
+
+V5 repair authority uses the same IndexedDB stores with strict V5 head, event, snapshot, and recovery
+record variants. Explicit retained-History removal atomically adopts older authored authority and
+records `repairUpgradeRevision`; texture/source adoption boundaries may share that revision when
+their empty collections are introduced in the same event. Recovery cannot fall back before a recorded
+adoption boundary. Normal repair and Undo/Redo persist complete repair intent and suspended part
+identities, and confirmed authority projections include automatically restored descendants. Format-6
+export/import/copy preserves replay proof and the full source closure. See
+[ADR-0102](../adr/0102-retained-history-repair-authority.md).
 
 A user command becomes committed only after:
 

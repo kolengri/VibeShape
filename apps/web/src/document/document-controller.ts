@@ -111,6 +111,11 @@ import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import { documentSnapshotV4Schema, promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
+import {
+  historyRemoveRetainingDependentsCommandSchema,
+  historyRepairCommandSchema,
+} from "@vibeshape/domain/document-v5-command-schemas"
+import { applyDocumentV5AuthoredCommand } from "@vibeshape/domain/document-v5-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
@@ -122,6 +127,7 @@ import {
   writeVShapeV3,
   writeVShapeV4,
   writeVShapeV5,
+  writeVShapeV6,
 } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
@@ -173,6 +179,7 @@ import { createAutomationLibraryPort } from "./browser-library-repository"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { prepareDocumentGeometryExport } from "./document-geometry-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
+import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
 import { createProjectActionGuard } from "./project-action-guard"
 import { materializeDocumentSourceAssets } from "./source-assets-rebuild"
@@ -191,7 +198,29 @@ export type DocumentControllerState = Readonly<{
   saveStatus: SaveStatus
   diagnostic: PersistentDocumentSessionDiagnostic | null
   history?: Readonly<{ canUndo: boolean; canRedo: boolean }>
+  historyInsertion?: Readonly<{
+    documentId: DocumentSnapshot["id"]
+    baseRevision: number
+    historyAfter: HistoryItemRef | null
+  }> | null
 }>
+
+export function setHistoryInsertionPoint(historyAfter: HistoryItemRef | null | undefined) {
+  const report = state.report
+  if (historyAfter === undefined) {
+    publish({ ...state, historyInsertion: null })
+    return
+  }
+  if (report?.mode !== "read-write" || state.saveStatus === "saving") return
+  publish({
+    ...state,
+    historyInsertion: {
+      documentId: report.snapshot.id,
+      baseRevision: report.snapshot.revision,
+      historyAfter,
+    },
+  })
+}
 
 export type ApplyVariableTableResult =
   | { ok: true }
@@ -316,6 +345,7 @@ function projectActionUnavailable() {
 function publish(next: DocumentControllerState) {
   state = {
     ...next,
+    historyInsertion: reconcileHistoryInsertion(state, next),
     authoredSnapshot: session?.authoredSnapshot ?? null,
     history: session?.history ?? { canUndo: false, canRedo: false },
   }
@@ -702,7 +732,12 @@ export function createActiveDocumentAutomationSession() {
     unsupportedPreviewRepresentation(target) {
       const authority = active.authoredSnapshot
       if (!authority || authority.schemaVersion === 1) return null
-      if (!target && authority.schemaVersion === 4 && authority.assembly.instances.length)
+      if (
+        !target &&
+        authority.schemaVersion >= 4 &&
+        "assembly" in authority &&
+        authority.assembly.instances.length
+      )
         return "Preview rendering does not support assembly occurrence placement. Request an exact local CAD body instead."
       if (
         authority.schemaVersion !== 2 &&
@@ -1039,9 +1074,10 @@ export function createActiveDocumentAutomationSession() {
     async previewAssembly(target, baseRevision) {
       if (!sourceSessionAvailable() || active.snapshot.revision !== baseRevision)
         throw new Error("The paired history base changed during preview.")
-      if (target.authority.schemaVersion !== 4) return undefined
+      if (target.authority.schemaVersion !== 4 && target.authority.schemaVersion !== 5)
+        return undefined
       const result = await inspectCapturedAssembly(
-        { active, repository, authority: target.authority },
+        { active, repository, authority: promoteDocumentSnapshotV4(target.authority) },
         [],
         [],
         baseRevision,
@@ -1468,11 +1504,13 @@ async function commitReviewedMetadata(
       },
     }
   const replayed =
-    base.schemaVersion === 4
-      ? applyDocumentV4AuthoredCommand(base, { ...command, schemaVersion: 3 })
-      : base.schemaVersion === 3
-        ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
-        : applyDocumentV2Command(base, command)
+    base.schemaVersion === 5
+      ? applyDocumentV5AuthoredCommand(base, { ...command, schemaVersion: 3 })
+      : base.schemaVersion === 4
+        ? applyDocumentV4AuthoredCommand(base, { ...command, schemaVersion: 3 })
+        : base.schemaVersion === 3
+          ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
+          : applyDocumentV2Command(base, command)
   if (!replayed.ok || canonicalJson(replayed.snapshot) !== canonicalJson(expected))
     return {
       ok: false as const,
@@ -1705,10 +1743,10 @@ async function verifyCapturedFrozenDefinition(
   const definition = pinnedAssemblyDefinitionSchema.parse(input)
   const { active, repository, authority } = context
   const frozen = documentSnapshotV4Schema.parse({
-    ...authority,
+    ...promoteDocumentSnapshotV4(authority),
     schemaVersion: 4,
     surfaceTextures: authority.schemaVersion === 2 ? [] : authority.surfaceTextures,
-    assets: authority.schemaVersion === 4 ? authority.assets : [],
+    assets: "assets" in authority ? authority.assets : [],
     assembly: {
       ...emptyAssemblyAuthority(),
       definitions: [definition],
@@ -1877,9 +1915,11 @@ async function commitReviewedSurfaceTexture(
   if (!base)
     return localFailure("stale-revision", "The reviewed texture base is no longer writable.", true)
   const checked =
-    base.schemaVersion === 4
-      ? applyDocumentV4AuthoredCommand(base, input.command)
-      : applyDocumentV3Command(base, input.command)
+    base.schemaVersion === 5
+      ? applyDocumentV5AuthoredCommand(base, input.command)
+      : base.schemaVersion === 4
+        ? applyDocumentV4AuthoredCommand(base, input.command)
+        : applyDocumentV3Command(base, input.command)
   if (!checked.ok)
     return localFailure(
       "surface-texture-command-rejected",
@@ -1916,7 +1956,7 @@ export async function commitAuthoredTransaction(
     }
   publish({ ...state, saveStatus: "saving", diagnostic: null })
   const result = await active.commitAuthoredTransaction(input)
-  publishAuthoredResult(active, result)
+  publishAuthoredResult(active, result, true)
   return result.ok ? { ok: true } : result
 }
 
@@ -1999,10 +2039,13 @@ export async function replaceSurfaceTextureLayers(
 
 async function commitActiveAuthoredCommand(
   active: PersistentDocumentSession,
-  command: Extract<
-    DocumentV2Command | DocumentV3Command,
-    { kind: "org.vibeshape.document.metadata-command" }
-  >,
+  command:
+    | Extract<
+        DocumentV2Command | DocumentV3Command,
+        { kind: "org.vibeshape.document.metadata-command" }
+      >
+    | ReturnType<typeof historyRemoveRetainingDependentsCommandSchema.parse>
+    | ReturnType<typeof historyRepairCommandSchema.parse>,
 ) {
   publish({ ...state, saveStatus: "saving", diagnostic: null })
   const result = await active.commitAuthored(command)
@@ -2013,13 +2056,14 @@ async function commitActiveAuthoredCommand(
 function publishAuthoredResult(
   active: PersistentDocumentSession,
   result: Awaited<ReturnType<PersistentDocumentSession["commitAuthored"]>>,
+  advanceInsertion = false,
 ) {
   if (session !== active) return
   if (!result.ok) {
     publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
     return
   }
-  publish({
+  const next: DocumentControllerState = {
     ...state,
     report: state.report
       ? {
@@ -2031,7 +2075,8 @@ function publishAuthoredResult(
       : null,
     saveStatus: "saved",
     diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
-  })
+  }
+  publish({ ...next, historyInsertion: reconcileHistoryInsertion(state, next, advanceInsertion) })
 }
 
 async function commitDocumentCommand(
@@ -2092,11 +2137,72 @@ async function commitFeatureMutation(
 }
 
 export function addFeature(baseRevision: number, feature: FeatureRecord) {
+  if (state.historyInsertion) return insertHistoryRecord(baseRevision, { kind: "feature", feature })
   return commitFeatureMutation("org.vibeshape.feature.add", baseRevision, feature)
 }
 
 export function updateFeature(baseRevision: number, feature: FeatureRecord) {
   return commitFeatureMutation("org.vibeshape.feature.update", baseRevision, feature)
+}
+
+/** Editing can explicitly repair an item; metadata-only updates preserve its retained recipe. */
+export function saveFeatureEdits(baseRevision: number, feature: FeatureRecord) {
+  return saveHistoryEdits(baseRevision, { kind: "feature", feature })
+}
+
+export function saveSketchEdits(baseRevision: number, sketch: SketchRecord) {
+  return saveHistoryEdits(baseRevision, { kind: "sketch", sketch })
+}
+
+function historyItemNeedsRepair(
+  item: ReturnType<typeof historyRepairCommandSchema.parse>["payload"]["item"],
+) {
+  const id = item.kind === "feature" ? item.feature.id : item.sketch.id
+  const authority = state.authoredSnapshot
+  return (
+    authority?.schemaVersion === 5 &&
+    authority.repairIntents.some((intent) => intent.kind === item.kind && intent.authored.id === id)
+  )
+}
+
+function editorCanWriteAuthored(active: PersistentDocumentSession | null) {
+  const work = getProjectActiveWorkBlock()
+  return canWriteAuthoredState(active) && (work === null || work === "editor-draft")
+}
+
+async function saveHistoryEdits(
+  baseRevision: number,
+  item: ReturnType<typeof historyRepairCommandSchema.parse>["payload"]["item"],
+): Promise<DocumentMutationResult> {
+  if (!historyItemNeedsRepair(item))
+    return item.kind === "feature"
+      ? updateFeature(baseRevision, item.feature)
+      : updateSketch(baseRevision, item.sketch)
+  const active = session
+  if (!active || !editorCanWriteAuthored(active))
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "Wait for the active document operation before repairing History.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  const result = await commitActiveAuthoredCommand(
+    active,
+    historyRepairCommandSchema.parse({
+      kind: "org.vibeshape.history.repair",
+      schemaVersion: 5,
+      commandId: browserUuidV7(),
+      documentId: active.snapshot.id,
+      baseRevision,
+      issuedAt: new Date().toISOString(),
+      actor: { type: "user", userId: null },
+      payload: { item },
+    }),
+  )
+  return result.ok ? { ok: true } : result
 }
 
 export function setFeatureSuppressed(
@@ -2166,33 +2272,133 @@ export async function moveHistoryItem(
   return { ok: true }
 }
 
-export function removeFeature(baseRevision: number, featureId: FeatureRecord["id"]) {
-  return commitDocumentCommand((documentId) => ({
-    kind: "org.vibeshape.feature.remove",
+function captureHistoryInsertion(baseRevision: number) {
+  const cursor = state.historyInsertion
+  const active = session
+  if (
+    !active ||
+    !cursor ||
+    !state.report ||
+    state.status !== "ready" ||
+    state.saveStatus === "saving"
+  )
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "command-rejected" as const,
+        message: "History insertion is unavailable.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  if (
+    cursor.documentId !== active.snapshot.id ||
+    cursor.baseRevision !== baseRevision ||
+    active.snapshot.revision !== baseRevision
+  )
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "command-rejected" as const,
+        message: "The History insertion point is stale. Select it again.",
+        retryable: false,
+        sourceCode: "stale-revision",
+      },
+    }
+  return { ok: true as const, active, cursor, report: state.report }
+}
+
+async function insertHistoryRecord(
+  baseRevision: number,
+  record: { kind: "feature"; feature: FeatureRecord } | { kind: "sketch"; sketch: SketchRecord },
+): Promise<DocumentMutationResult> {
+  const boundary = captureHistoryInsertion(baseRevision)
+  if (!boundary.ok) return boundary
+  const { active, cursor, report } = boundary
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active.insertHistoryItem({
+    kind:
+      record.kind === "feature"
+        ? "org.vibeshape.history.insert-feature"
+        : "org.vibeshape.history.insert-sketch",
     schemaVersion: 1,
     commandId: browserUuidV7(),
-    documentId,
+    documentId: active.snapshot.id,
     baseRevision,
     issuedAt: new Date().toISOString(),
     actor: { type: "user", userId: null },
-    payload: { featureId },
-  }))
+    payload: {
+      ...(record.kind === "feature" ? { feature: record.feature } : { sketch: record.sketch }),
+      historyAfter: cursor.historyAfter,
+    },
+  })
+  if (!result.ok) {
+    publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
+    return result
+  }
+  publish({
+    ...state,
+    report: {
+      ...report,
+      snapshot: result.snapshot,
+      historyItems: active.historyItems,
+      rebuild: result.rebuild,
+    },
+    historyInsertion: {
+      documentId: result.snapshot.id,
+      baseRevision: result.snapshot.revision,
+      historyAfter:
+        record.kind === "feature"
+          ? { kind: "feature", id: record.feature.id }
+          : { kind: "sketch", id: record.sketch.id },
+    },
+    saveStatus: "saved",
+    diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+  })
+  return { ok: true }
+}
+
+async function removeHistoryRecord(
+  baseRevision: number,
+  target: HistoryItemRef,
+): Promise<DocumentMutationResult> {
+  const active = session
+  const work = getProjectActiveWorkBlock()
+  if (!active || !canWriteAuthoredState(active) || (work !== null && work !== "editor-draft"))
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "Finish the active edit before removing History items.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  const result = await commitActiveAuthoredCommand(
+    active,
+    historyRemoveRetainingDependentsCommandSchema.parse({
+      kind: "org.vibeshape.history.remove-retaining-dependents",
+      schemaVersion: 5,
+      commandId: browserUuidV7(),
+      documentId: active.snapshot.id,
+      baseRevision,
+      issuedAt: new Date().toISOString(),
+      actor: { type: "user", userId: null },
+      payload: { target },
+    }),
+  )
+  return result.ok ? { ok: true } : result
+}
+
+export function removeFeature(baseRevision: number, featureId: FeatureRecord["id"]) {
+  return removeHistoryRecord(baseRevision, { kind: "feature", id: featureId })
 }
 
 export function removeFeaturePreservingModelReferenceIntent(
   baseRevision: number,
   featureId: FeatureRecord["id"],
 ) {
-  return commitDocumentCommand((documentId) => ({
-    kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
-    schemaVersion: 1,
-    commandId: browserUuidV7(),
-    documentId,
-    baseRevision,
-    issuedAt: new Date().toISOString(),
-    actor: { type: "user", userId: null },
-    payload: { featureId },
-  }))
+  return removeHistoryRecord(baseRevision, { kind: "feature", id: featureId })
 }
 
 function commitSketchMutation(
@@ -2213,6 +2419,7 @@ function commitSketchMutation(
 }
 
 export function addSketch(baseRevision: number, sketch: SketchRecord) {
+  if (state.historyInsertion) return insertHistoryRecord(baseRevision, { kind: "sketch", sketch })
   return commitSketchMutation("org.vibeshape.sketch.add", baseRevision, sketch)
 }
 
@@ -2221,16 +2428,7 @@ export function updateSketch(baseRevision: number, sketch: SketchRecord) {
 }
 
 export function removeSketch(baseRevision: number, sketchId: SketchId) {
-  return commitDocumentCommand((documentId) => ({
-    kind: "org.vibeshape.sketch.remove",
-    schemaVersion: 1,
-    commandId: browserUuidV7(),
-    documentId,
-    baseRevision,
-    issuedAt: new Date().toISOString(),
-    actor: { type: "user", userId: null },
-    payload: { sketchId },
-  }))
+  return removeHistoryRecord(baseRevision, { kind: "sketch", id: sketchId })
 }
 
 export async function solveActiveSketch(
@@ -2412,8 +2610,10 @@ async function exportCapturedProjectBackup(
     : archived
 }
 
-function projectBackupWriter(version: 2 | 3 | 4 | 5) {
+function projectBackupWriter(version: 2 | 3 | 4 | 5 | 6) {
   switch (version) {
+    case 6:
+      return writeVShapeV6
     case 5:
       return writeVShapeV5
     case 4:

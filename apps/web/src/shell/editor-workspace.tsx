@@ -26,6 +26,7 @@ import {
   sphereFeatureParametersSchema,
   torusFeatureParametersSchema,
 } from "@vibeshape/domain"
+import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import { useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
@@ -143,6 +144,8 @@ import {
   viewerMeshes,
   viewerSketchDisplay,
 } from "./geometry-viewport"
+import { historyInsertionContext } from "./history-insertion-context"
+import { HistoryInsertionPoint } from "./history-insertion-point"
 import { ModelTree } from "./model-tree"
 import { ResponsiveTaskPanel } from "./responsive-task-panel"
 import { TaskPanel } from "./task-panel"
@@ -1785,6 +1788,8 @@ function WorkspaceContent(props: WorkspaceContentProps) {
 }
 
 export type EditorWorkspaceActions = Readonly<{
+  insertHistoryAt?: (item: HistoryItemRef, side: "above" | "below") => Promise<boolean>
+  returnHistoryToEnd?: () => Promise<boolean>
   acknowledgeExtrusionDistance: (featureId: FeatureId) => void
   acknowledgeRevolveAngle: (featureId: FeatureId) => void
   beginSketchSupportReplacement: () => void
@@ -1810,7 +1815,7 @@ export type EditorWorkspaceActions = Readonly<{
   measure: () => void
   surfaceTexture: (featureId?: FeatureId, outputRole?: string) => void
   editFeature: (featureId: FeatureId) => void
-  editSketch: (sketchId: SketchId) => void | boolean
+  editSketch: (sketchId: SketchId) => void | boolean | Promise<boolean>
   preselectBody?: (body: ModelBodySelection | null) => void
   selectBody?: (body: ModelBodySelection | null) => void
   selectPart?: (partId: PartId | null) => void
@@ -1897,10 +1902,17 @@ function useEditorFeaturePreview(
   controller: DocumentControllerState,
   activeTool: ActivePartDesignTool | null,
 ) {
-  const [previewFeature, setPreviewFeature] = useState<FeatureRecord | null>(null)
+  const [candidate, setCandidate] = useState<{
+    tool: ActivePartDesignTool | null
+    feature: FeatureRecord | null
+  } | null>(null)
+  const setPreviewFeature = useCallback(
+    (feature: FeatureRecord | null) => setCandidate({ tool: activeTool, feature }),
+    [activeTool],
+  )
   const featurePreview = useFeaturePreview(
     controller.report?.snapshot ?? null,
-    featurePreviewCandidate(activeTool, previewFeature),
+    featurePreviewCandidate(activeTool, candidate?.tool === activeTool ? candidate.feature : null),
     committedGeometry(controller),
     isPreviewedFeatureToolActive(activeTool),
     controller.report?.rebuild.ok ? controller.report.rebuild.response : null,
@@ -2102,8 +2114,8 @@ function EditorModelTree({
   onProfilePreview: ((profile: SketchProfileSelector | null) => void) | undefined
 }) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
-  const repairSketchSupport = (sketchId: SketchId) => {
-    if (actions.editSketch(sketchId) === false) return
+  const repairSketchSupport = async (sketchId: SketchId) => {
+    if ((await actions.editSketch(sketchId)) === false) return
     actions.beginSketchSupportReplacement()
   }
   return (
@@ -2130,6 +2142,7 @@ function EditorModelTree({
       onFeatureSuppressionChange={setFeatureSuppressed}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
       onHistoryMove={moveHistoryItem}
+      onHistoryInsert={actions.insertHistoryAt}
       onSketchActivate={actions.editSketch}
       onSketchSupportRepair={repairSketchSupport}
       onSketchDeleted={actions.closeTool}
@@ -2521,7 +2534,63 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   )
 }
 
-function EditorWorkspaceContent(props: EditorWorkspaceProps) {
+function useHistoryInsertionWorkspaceProps(fullProps: EditorWorkspaceProps) {
+  const insertionReport = useMemo(
+    () => historyInsertionContext(fullProps.controller).report,
+    [fullProps.controller.report, fullProps.controller.historyInsertion],
+  )
+  return {
+    ...fullProps,
+    controller:
+      insertionReport === fullProps.controller.report
+        ? fullProps.controller
+        : { ...fullProps.controller, report: insertionReport },
+  }
+}
+
+function useWorkspaceProfileActions(
+  activeTool: EditorWorkspaceProps["activeTool"],
+  featureProfileSelection: ReturnType<typeof useProfileFeatureSelection>,
+  revolveAxisSelection: ReturnType<typeof useRevolveAxisSelection>,
+  revolveSelectionPurpose: ReturnType<typeof useRevolveSelectionPurpose>,
+) {
+  const selectFeatureProfile = useCallback(
+    (profile: SketchProfileSelector, intent: ViewerSketchProfileSelectionIntent) => {
+      const previousProfile = featureProfileSelection.value[0] ?? null
+      const nextProfiles = nextProfileFeatureSelection(
+        featureProfileSelection.value,
+        profile,
+        intent,
+      )
+      featureProfileSelection.setValue(nextProfiles)
+      if (activeTool?.kind !== "create-revolve" && activeTool?.kind !== "edit-revolve") return
+      const nextAxis = revolveAxisAfterProfileSelection(
+        revolveAxisSelection.value,
+        previousProfile,
+        nextProfiles[0] ?? profile,
+      )
+      if (nextAxis) revolveAxisSelection.setValue(nextAxis)
+      revolveSelectionPurpose.setValue("axis")
+    },
+    [featureProfileSelection, activeTool, revolveAxisSelection, revolveSelectionPurpose],
+  )
+  const removeFeatureProfile = useCallback(
+    (profile: SketchProfileSelector) => {
+      featureProfileSelection.setValue(
+        nextProfileFeatureSelection(featureProfileSelection.value, profile, "toggle"),
+      )
+    },
+    [featureProfileSelection],
+  )
+  const clearFeatureProfiles = useCallback(
+    () => featureProfileSelection.setValue([]),
+    [featureProfileSelection],
+  )
+  return { selectFeatureProfile, removeFeatureProfile, clearFeatureProfiles }
+}
+
+function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
+  const props = useHistoryInsertionWorkspaceProps(fullProps)
   const review = useSyncExternalStore(
     automationReviews.subscribe,
     automationReviews.getSnapshot,
@@ -2548,49 +2617,29 @@ function EditorWorkspaceContent(props: EditorWorkspaceProps) {
     () => (snapshot ? ineligibleProfileSketchIds(snapshot, props.activeTool) : []),
     [props.activeTool, snapshot],
   )
-  const selectFeatureProfile = useCallback(
-    (profile: SketchProfileSelector, intent: ViewerSketchProfileSelectionIntent) => {
-      const previousProfile = featureProfileSelection.value[0] ?? null
-      const nextProfiles = nextProfileFeatureSelection(
-        featureProfileSelection.value,
-        profile,
-        intent,
-      )
-      featureProfileSelection.setValue(nextProfiles)
-      if (props.activeTool?.kind !== "create-revolve" && props.activeTool?.kind !== "edit-revolve")
-        return
-      const nextAxis = revolveAxisAfterProfileSelection(
-        revolveAxisSelection.value,
-        previousProfile,
-        nextProfiles[0] ?? profile,
-      )
-      if (nextAxis) revolveAxisSelection.setValue(nextAxis)
-      revolveSelectionPurpose.setValue("axis")
-    },
-    [featureProfileSelection, props.activeTool, revolveAxisSelection, revolveSelectionPurpose],
-  )
-  const removeFeatureProfile = useCallback(
-    (profile: SketchProfileSelector) => {
-      featureProfileSelection.setValue(
-        nextProfileFeatureSelection(featureProfileSelection.value, profile, "toggle"),
-      )
-    },
-    [featureProfileSelection],
-  )
-  const clearFeatureProfiles = useCallback(
-    () => featureProfileSelection.setValue([]),
-    [featureProfileSelection],
-  )
+  const { selectFeatureProfile, removeFeatureProfile, clearFeatureProfiles } =
+    useWorkspaceProfileActions(
+      props.activeTool,
+      featureProfileSelection,
+      revolveAxisSelection,
+      revolveSelectionPurpose,
+    )
   return (
     <SketchProjectionProvider>
       <WorkspacePanels
         allowTransparency={props.workspace !== "variables"}
         modelTree={
-          <EditorModelTree
-            props={props}
-            profilePreview={historySourcePreview.profile}
-            onProfilePreview={historySourcePreview.onPreview}
-          />
+          <>
+            <HistoryInsertionPoint
+              controller={fullProps.controller}
+              onReturnToEnd={props.actions.returnHistoryToEnd}
+            />
+            <EditorModelTree
+              props={fullProps}
+              profilePreview={historySourcePreview.profile}
+              onProfilePreview={historySourcePreview.onPreview}
+            />
+          </>
         }
         taskPanel={
           <ResponsiveTaskPanel

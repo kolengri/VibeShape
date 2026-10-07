@@ -7,6 +7,7 @@ import {
 } from "./assembly-authority"
 import { type DocumentSnapshotV2, documentSnapshotV2Schema } from "./document-v2-schema"
 import { type DocumentSnapshotV3, documentSnapshotV3Schema } from "./document-v3-schema"
+import type { DocumentSnapshotV5 } from "./document-v5"
 import { validateImportedFeatureAssets } from "./part-design-import"
 import { validateSketchSourceImportAssets } from "./sketch-source-import"
 import { type SourceAsset, sourceAssetsSchema } from "./source-assets"
@@ -45,8 +46,12 @@ export type DocumentSnapshotV4 = Readonly<
 
 /** Disposable previews may promote older authority; persistence still requires ordinary upgrade events. */
 export function promoteDocumentSnapshotV4(
-  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4 | DocumentSnapshotV5,
 ): DocumentSnapshotV4 {
+  if (snapshot.schemaVersion === 5) {
+    const { repairIntents: _repairIntents, suspendedParts: _suspendedParts, ...active } = snapshot
+    return documentSnapshotV4Schema.parse({ ...active, schemaVersion: 4 })
+  }
   return documentSnapshotV4Schema.parse({
     ...snapshot,
     schemaVersion: 4,

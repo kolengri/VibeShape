@@ -10,6 +10,7 @@ import {
 } from "./feature-graph"
 import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
 import { featureTypeKey } from "./feature-type-contracts"
+import { isMissingInputFeature, missingInputFeatureParametersSchema } from "./history-repair"
 import type { FeatureId } from "./identifiers"
 import {
   booleanFeatureType,
@@ -340,6 +341,8 @@ function hasCompleteBodySelectionDependencies(
 }
 
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
+  if (isMissingInputFeature(feature))
+    return missingInputFeatureParametersSchema.safeParse(feature.parameters).success
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
   const typeKey = featureTypeKey(feature.type)
   const readBodySelectionParameters = bodySelectionParameterReaders.get(typeKey)

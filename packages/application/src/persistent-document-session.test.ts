@@ -1,11 +1,19 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
+import { documentSnapshotV2Schema } from "@vibeshape/domain/document-v2"
+import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
 import type { DocumentId, SessionId, SketchEntityId, SketchId } from "@vibeshape/domain/identifiers"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it, vi } from "vitest"
+import {
+  historyRepairFixture,
+  repairId,
+  repairRemovalCommand,
+} from "../../domain/src/history-repair.test-fixture"
+import { runtimeProjection } from "./authority-persistence-operations"
 import {
   createPersistentDocumentSession,
   type DocumentLeasePort,
@@ -460,6 +468,62 @@ describe("persistent document session", () => {
     })
     expect(state.rebuildPorts[0]?.solvedSketchIds).toEqual([sketchId])
     expect(state.rebuildPorts[0]?.solvedSketchDrafts).toEqual([null])
+  })
+
+  it("refuses to solve a disconnected committed sketch before reaching the worker", async () => {
+    const fixture = historyRepairFixture()
+    const source = fixture.sketches[0]
+    const target = fixture.sketches[1]
+    if (!source || !target) throw new Error("Missing sketch repair fixture.")
+    const before = documentSnapshotV2Schema.parse({
+      ...fixture,
+      sketches: [
+        {
+          ...source,
+          entities: [
+            { schemaVersion: 0, id: repairId(41), type: "point", construction: false, x: 1, y: 0 },
+          ],
+        },
+        {
+          ...target,
+          externalReferences: [
+            {
+              schemaVersion: 0,
+              id: repairId(42),
+              sourceSketchId: source.id,
+              sourcePointId: repairId(41),
+              projectedPointId: repairId(43),
+            },
+          ],
+        },
+      ],
+    })
+    const removed = applyHistoryRemoveRetainingDependentsCommand(
+      before,
+      repairRemovalCommand(before.revision),
+    )
+    if (!removed.ok) throw new Error(removed.diagnostic.message)
+    const projected = runtimeProjection(removed.snapshot)
+    if (!projected.ok) throw new Error(projected.diagnostic.message)
+    const state = harness()
+    state.repository.snapshot = projected.snapshot
+    Object.assign(state.repository, {
+      authoredMetadata: {
+        snapshot: removed.snapshot,
+        apply: async () => portFailure("invalid-input", "This fixture does not write metadata."),
+      },
+    })
+    const reopened = await openPersistentDocumentSession(state.dependencies, {
+      documentId: before.id,
+      sessionId: sessionA,
+      mesh,
+    })
+    if (!reopened.ok) throw new Error(reopened.diagnostic.message)
+    await expect(reopened.session.solveSketch(target.id)).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "sketch-solve-failed" },
+    })
+    expect(state.rebuildPorts[0]?.solvedSketchIds).toEqual([])
   })
 
   it("forwards a transient sketch draft without committing a semantic revision", async () => {

@@ -40,6 +40,19 @@ import {
   applyDocumentV4ModelEvent,
   reduceDocumentV4Event,
 } from "@vibeshape/domain/document-v4-commands"
+import {
+  documentRestoredV5EventSchema,
+  historyRemoveRetainingDependentsCommandSchema,
+  historyRepairCommandSchema,
+} from "@vibeshape/domain/document-v5-command-schemas"
+import {
+  applyDocumentV5AuthoredCommand,
+  applyDocumentV5ModelEvent,
+  applyHistoryRemoveRetainingDependentsCommand,
+  applyHistoryRepairCommand,
+  prepareHistoryRepairModel,
+  reduceDocumentV5Event,
+} from "@vibeshape/domain/document-v5-commands"
 import type { FeatureRecordV1 } from "@vibeshape/domain/feature-graph"
 import type { PartAllocation, PartRecord } from "@vibeshape/domain/parts"
 import { z } from "zod"
@@ -57,6 +70,8 @@ export const documentAuthoredCommandRequestSchema = z.union([
   documentV3MetadataCommandSchema,
   documentUpgradeV3CommandSchema,
   documentV4CommandSchema,
+  historyRemoveRetainingDependentsCommandSchema,
+  historyRepairCommandSchema,
   documentV2CommandEnvelopeSchema.extend({
     kind: z.literal("org.vibeshape.document.upgrade-v2"),
     payload: z.object({}).strict(),
@@ -110,12 +125,32 @@ export function prepareAuthorityModelEvent(
 ) {
   const model = reduceVersionedDocumentEvent(modelProjection(base), event)
   if (!model.ok) return authorityFailure("invalid-event", draftDiagnosticCause(model.diagnostic))
-  const allocations = capturePartAllocations(model.snapshot, base.parts, createPart)
-  return base.schemaVersion === 4
-    ? applyDocumentV4ModelEvent(base, event, allocations)
-    : base.schemaVersion === 3
-      ? applyDocumentV3ModelEvent(base, event, allocations)
-      : applyDocumentV2ModelEvent(base, event, allocations)
+  const allocationFactory: PartAllocationFactory =
+    base.schemaVersion === 5
+      ? (requirement, feature, ordinal) => {
+          const suspended = base.suspendedParts.find(
+            (part) =>
+              canonicalJson(part.bodyHistory[0]) === canonicalJson(requirement.body) &&
+              part.origin === requirement.origin,
+          )
+          return suspended
+            ? {
+                id: suspended.id,
+                name: suspended.name,
+                body: requirement.body,
+                origin: requirement.origin,
+              }
+            : createPart(requirement, feature, ordinal)
+        }
+      : createPart
+  const allocations = capturePartAllocations(model.snapshot, base.parts, allocationFactory)
+  return base.schemaVersion === 5
+    ? applyDocumentV5ModelEvent(base, event, allocations)
+    : base.schemaVersion === 4
+      ? applyDocumentV4ModelEvent(base, event, allocations)
+      : base.schemaVersion === 3
+        ? applyDocumentV3ModelEvent(base, event, allocations)
+        : applyDocumentV2ModelEvent(base, event, allocations)
 }
 
 export function prepareAuthorityRestore(
@@ -126,11 +161,13 @@ export function prepareAuthorityRestore(
   if (!target)
     return authorityFailure("history-unavailable", "There is no saved change in this direction.")
   const schema =
-    base.schemaVersion === 4
-      ? documentRestoredV4EventSchema
-      : base.schemaVersion === 3
-        ? documentRestoredV3EventSchema
-        : documentRestoredV2EventSchema
+    base.schemaVersion === 5
+      ? documentRestoredV5EventSchema
+      : base.schemaVersion === 4
+        ? documentRestoredV4EventSchema
+        : base.schemaVersion === 3
+          ? documentRestoredV3EventSchema
+          : documentRestoredV2EventSchema
   const event = schema.safeParse({
     ...request,
     schemaVersion: base.schemaVersion,
@@ -142,37 +179,70 @@ export function prepareAuthorityRestore(
   if (!event.success)
     return authorityFailure("invalid-event", "The authored history request is invalid.")
   const restored =
-    base.schemaVersion === 4
-      ? reduceDocumentV4Event(base, event.data, target)
-      : base.schemaVersion === 3
-        ? reduceDocumentV3Event(base, event.data, target)
-        : reduceDocumentV2Event(base, event.data, target)
+    base.schemaVersion === 5
+      ? reduceDocumentV5Event(base, event.data, target)
+      : base.schemaVersion === 4
+        ? reduceDocumentV4Event(base, event.data, target)
+        : base.schemaVersion === 3
+          ? reduceDocumentV3Event(base, event.data, target)
+          : reduceDocumentV2Event(base, event.data, target)
   if (!restored.ok) return authorityFailure("invalid-event", restored.diagnostic.message)
   return { ok: true as const, event: event.data, snapshot: restored.snapshot }
 }
 
 export type AuthoredAuthoritySnapshot = AuthoredDocumentSnapshot
+function promoteAuthoredCommand(command: unknown) {
+  const versioned = z.object({ schemaVersion: z.number() }).passthrough().safeParse(command)
+  return versioned.success && versioned.data.schemaVersion === 2
+    ? { ...versioned.data, schemaVersion: 3 }
+    : command
+}
+function prepareHistoryCommand(
+  base: DocumentAuthoritySnapshot,
+  command: unknown,
+  options: { transactionId?: string | null },
+  createPart: PartAllocationFactory | undefined,
+) {
+  const remove = historyRemoveRetainingDependentsCommandSchema.safeParse(command)
+  if (remove.success)
+    return applyHistoryRemoveRetainingDependentsCommand(base, remove.data, options)
+  const repair = historyRepairCommandSchema.safeParse(command)
+  if (!repair.success) return null
+  if (base.schemaVersion !== 5)
+    return authorityFailure("invalid-command", "History repair requires V5 authority.")
+  const prepared = prepareHistoryRepairModel(base, repair.data.payload.item)
+  if (!prepared.ok) return prepared
+  const parts = [...base.parts, ...base.suspendedParts]
+  const partAllocations = createPart
+    ? capturePartAllocations(prepared.model, parts, createPart)
+    : []
+  return applyHistoryRepairCommand(base, repair.data, { ...options, partAllocations })
+}
 export function prepareAuthorityMetadataCommand(
   base: DocumentAuthoritySnapshot,
   command: unknown,
   options: { transactionId?: string | null } = {},
+  createPart?: PartAllocationFactory,
 ) {
-  const v4 = documentV4CommandSchema.safeParse(command)
-  if (v4.success) return applyDocumentV4Command(base, v4.data, options)
-  const versioned = z.object({ schemaVersion: z.number() }).passthrough().safeParse(command)
-  if (base.schemaVersion === 4) {
-    const promoted =
-      versioned.success && versioned.data.schemaVersion === 2
-        ? { ...versioned.data, schemaVersion: 3 }
-        : command
-    return applyDocumentV4AuthoredCommand(base, promoted, options)
+  const history = prepareHistoryCommand(base, command, options, createPart)
+  if (history) return history
+  const sourceCommand = documentV4CommandSchema.safeParse(command)
+  if (sourceCommand.success)
+    return base.schemaVersion === 5
+      ? applyDocumentV5AuthoredCommand(base, sourceCommand.data, options)
+      : applyDocumentV4Command(base, sourceCommand.data, options)
+  switch (base.schemaVersion) {
+    case 5:
+      return applyDocumentV5AuthoredCommand(base, promoteAuthoredCommand(command), options)
+    case 4:
+      return applyDocumentV4AuthoredCommand(base, promoteAuthoredCommand(command), options)
+    case 3:
+      return applyDocumentV3Command(base, promoteAuthoredCommand(command), options)
+    default: {
+      const header = z.object({ schemaVersion: z.number() }).passthrough().safeParse(command)
+      return header.success && header.data.schemaVersion === 3
+        ? applyDocumentV3Command(base, command, options)
+        : applyDocumentV2Command(base, command, options)
+    }
   }
-  if (base.schemaVersion === 3 || (versioned.success && versioned.data.schemaVersion === 3)) {
-    const promoted =
-      versioned.success && versioned.data.schemaVersion === 2
-        ? { ...versioned.data, schemaVersion: 3 }
-        : command
-    return applyDocumentV3Command(base, promoted, options)
-  }
-  return applyDocumentV2Command(base, command, options)
 }

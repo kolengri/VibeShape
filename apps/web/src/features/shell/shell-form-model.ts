@@ -32,7 +32,7 @@ export type ShellFormMode =
       createFeatureId: () => FeatureId
       featureLabel: string
     }
-  | { kind: "edit"; feature: FeatureRecord }
+  | { kind: "edit"; feature: FeatureRecord; repairClosed?: boolean }
 export type ShellFormValues = {
   closed: boolean
   thickness: string
@@ -50,6 +50,7 @@ export function shellInitialSelection(
   allowSemanticRebinding = true,
 ) {
   if (mode.kind === "create") return { repair: false, openingIds: [] as string[] }
+  if (mode.repairClosed === false) return { repair: true, openingIds: [] as string[] }
   const parameters = shellFeatureParametersV2Schema.parse(mode.feature.parameters)
   if (
     !evidence ||
@@ -81,7 +82,10 @@ export function shellInitialValues(
 ): ShellFormValues {
   const parameters = mode.kind === "edit" ? readShellFeatureParameters(mode.feature) : null
   return {
-    closed: parameters?.openings.length === 0,
+    closed:
+      mode.kind === "edit" && mode.repairClosed !== undefined
+        ? mode.repairClosed
+        : parameters?.openings.length === 0,
     thickness: parameters
       ? quantityExpression(parameters.thickness)
       : defaultLengthExpression(1, units.length),
