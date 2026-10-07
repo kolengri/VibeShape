@@ -232,6 +232,43 @@ describe("persistence contracts", () => {
     ).toBe(false)
   })
 
+  it("accepts bounded PNG thumbnails with exact dimensions and rejects mismatched or malformed image payloads", () => {
+    const bytes = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAPAAAACgCAYAAAAy2+FlAAAB7UlEQVR4nO3TMQ0AIADAMKQjAQk4BQ88ZEmP/ns25toHaBq/A4B3BoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhBkYwgwMYQaGMANDmIEhzMAQZmAIMzCEGRjCDAxhBoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhBkYwgwMYQaGMANDmIEhzMAQZmAIMzCEGRjCDAxhBoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhBkYwgwMYQaGMANDmIEhzMAQZmAIMzCEGRjCDAxhBoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhBkYwgwMYQaGMANDmIEhzMAQZmAIMzCEGRjCDAxhBoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhBkYwgwMYQaGMANDmIEhzMAQZmAIMzCEGRjCDAxhBoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhBkYwgwMYQaGMANDmIEhzMAQZmAIMzCEGRjCDAxhBoYwA0OYgSHMwBBmYAgzMIQZGMIMDGEGhjADQ5iBIczAEGZgCDMwhF0CwqGPy0ebnAAAAABJRU5ErkJggg==",
+      ),
+      (character) => character.charCodeAt(0),
+    )
+    const record = {
+      schemaVersion: 0,
+      documentId,
+      revision: 3,
+      mediaType: "image/png",
+      bytes,
+      generatedAt: timestamp,
+    }
+    expect(projectThumbnailRecordSchema.safeParse(record).success).toBe(true)
+    expect(
+      projectThumbnailRecordSchema.safeParse({ ...record, mediaType: "image/svg+xml" }).success,
+    ).toBe(false)
+    expect(
+      projectThumbnailRecordSchema.safeParse({ ...record, bytes: bytes.subarray(0, 33) }).success,
+    ).toBe(false)
+    expect(
+      projectThumbnailRecordSchema.safeParse({ ...record, bytes: new Uint8Array(131_073) }).success,
+    ).toBe(false)
+    const wrongDimensions = bytes.slice()
+    new DataView(wrongDimensions.buffer).setUint32(16, 241)
+    expect(
+      projectThumbnailRecordSchema.safeParse({ ...record, bytes: wrongDimensions }).success,
+    ).toBe(false)
+    const trailingBytes = new Uint8Array(bytes.length + 1)
+    trailingBytes.set(bytes)
+    expect(
+      projectThumbnailRecordSchema.safeParse({ ...record, bytes: trailingBytes }).success,
+    ).toBe(false)
+  })
+
   it("requires an exact project revision and bounded clock for deletion", () => {
     expect(
       projectDeleteInputSchema.safeParse({

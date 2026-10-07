@@ -1,6 +1,7 @@
 import { Box3, Mesh, type OrthographicCamera, type Scene, Vector3 } from "three"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { type ModelPreviewCamera, renderModelPreview } from "./model-preview"
+import { renderProjectThumbnail } from "./project-thumbnail"
 import type { ViewerMesh, ViewerStandardView } from "./three-viewport"
 
 const rendererState = vi.hoisted(() => ({
@@ -304,6 +305,55 @@ describe("model preview", () => {
       expect(Math.abs(vertex.x)).toBeLessThan(1)
       expect(Math.abs(vertex.y)).toBeLessThan(1)
       expect(Math.abs(vertex.z)).toBeLessThan(1)
+    }
+  })
+})
+
+describe("project thumbnail", () => {
+  it("renders all dense surface triangles in one unlabeled isometric image and releases resources", async () => {
+    const { labels, encodedWidths } = browserStub()
+    const indices = Uint32Array.from({ length: 12_000 }, (_, index) => index % 3)
+    const mesh = { ...triangle, indices, triangleFaceIds: new Uint32Array(4_000) }
+    const result = await renderProjectThumbnail([mesh])
+    expect(result?.mediaType).toBe("image/png")
+    expect(result?.bytes.byteLength).toBe(1_000)
+    expect(encodedWidths).toEqual([240])
+    expect(labels).toEqual([])
+    expect(rendererState.draws).toHaveLength(1)
+    expect(rendererState.draws[0]?.indexLengths).toEqual([12_000])
+    const camera = rendererState.draws[0]?.camera as OrthographicCamera
+    expect((camera.right - camera.left) / (camera.top - camera.bottom)).toBeCloseTo(1.5)
+    const positions = rendererState.draws[0]?.positions[0] ?? []
+    for (let index = 0; index < positions.length; index += 3) {
+      const vertex = new Vector3().fromArray(positions, index).project(camera)
+      expect(Math.abs(vertex.x)).toBeLessThan(1)
+      expect(Math.abs(vertex.y)).toBeLessThan(1)
+      expect(Math.abs(vertex.z)).toBeLessThan(1)
+    }
+    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledOnce()
+    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledOnce()
+    expect(mesh.indices).toEqual(indices)
+  })
+
+  it("omits empty geometry and rejects malformed meshes before creating GPU resources", async () => {
+    await expect(renderProjectThumbnail([])).resolves.toBeNull()
+    await expect(
+      renderProjectThumbnail([{ ...triangle, indices: new Uint32Array([0, 1, 99]) }]),
+    ).rejects.toThrow("missing vertex")
+    expect(rendererState.instances).toHaveLength(0)
+  })
+
+  it("releases the shared rendering queue after oversized images and context loss", async () => {
+    browserStub([131_073, 1_000])
+    await expect(renderProjectThumbnail([triangle])).rejects.toThrow("128 KiB")
+    rendererState.loseDuringRender = true
+    await expect(renderProjectThumbnail([triangle])).rejects.toThrow("context was lost")
+    await expect(renderModelPreview([triangle], { views: ["front"] })).resolves.toMatchObject({
+      mimeType: "image/png",
+    })
+    for (const renderer of rendererState.instances) {
+      expect(renderer.dispose).toHaveBeenCalledOnce()
+      expect(renderer.forceContextLoss).toHaveBeenCalledOnce()
     }
   })
 })

@@ -55,6 +55,11 @@ export type ModelPreview = Readonly<{
   views: readonly ModelPreviewView[]
 }>
 
+export type ProjectThumbnail = Readonly<{
+  mediaType: "image/png"
+  bytes: Uint8Array
+}>
+
 type PreviewCamera = Readonly<{
   direction: Vector3
   target: Vector3
@@ -488,7 +493,16 @@ async function boundedImage(
   throw previewError("the PNG exceeds the 88 KiB image limit at the minimum resolution.")
 }
 
-async function renderRequest(request: PreviewRequest): Promise<ModelPreview> {
+async function withPreviewRenderer<T>(
+  request: PreviewRequest,
+  render: (
+    renderer: WebGLRenderer,
+    scene: Scene,
+    output: HTMLCanvasElement,
+    context: CanvasRenderingContext2D,
+    assertContext: () => void,
+  ) => Promise<T>,
+): Promise<T> {
   if (typeof document === "undefined") throw previewError("a browser with WebGL2 is required.")
   const canvas = document.createElement("canvas")
   const output = document.createElement("canvas")
@@ -517,7 +531,7 @@ async function renderRequest(request: PreviewRequest): Promise<ModelPreview> {
     renderer.setPixelRatio(1)
     renderer.setClearColor("#f3f5f8", 1)
     populateScene(scene, request.meshes, resources)
-    return await boundedImage(renderer, scene, output, context, request, assertContext)
+    return await render(renderer, scene, output, context, assertContext)
   } finally {
     for (const geometry of resources.geometries) geometry.dispose()
     for (const material of resources.materials) material.dispose()
@@ -535,14 +549,47 @@ async function renderRequest(request: PreviewRequest): Promise<ModelPreview> {
 
 let previewQueue: Promise<unknown> = Promise.resolve()
 
+function enqueuePreview<T>(render: () => Promise<T>) {
+  const result = previewQueue.then(render)
+  // A failed render must release the queue for later requests.
+  previewQueue = result.catch(() => undefined)
+  return result
+}
+
 /** Renders all supplied triangles in an isolated, disposable WebGL2 context without a live viewport. */
 export async function renderModelPreview(
   meshes: readonly ViewerMesh[],
   options: ModelPreviewOptions = {},
 ): Promise<ModelPreview> {
   const request = snapshotRequest(meshes, options)
-  const result = previewQueue.then(() => renderRequest(request))
-  // A failed render must release the queue for later requests.
-  previewQueue = result.catch(() => undefined)
-  return result
+  return enqueuePreview(() =>
+    withPreviewRenderer(request, (renderer, scene, output, context, assertContext) =>
+      boundedImage(renderer, scene, output, context, request, assertContext),
+    ),
+  )
+}
+
+/** Keeps every surface triangle; image size is bounded by resolution rather than missing geometry. */
+export async function renderProjectThumbnail(
+  meshes: readonly ViewerMesh[],
+): Promise<ProjectThumbnail | null> {
+  if (meshes.length === 0) return null
+  const request = snapshotRequest(meshes, { views: ["isometric"] })
+  return enqueuePreview(() =>
+    withPreviewRenderer(request, async (renderer, scene, output, context, assertContext) => {
+      output.width = 240
+      output.height = 160
+      renderer.setSize(output.width, output.height, false)
+      assertContext()
+      renderer.render(scene, previewCamera("isometric", request, output.width / output.height))
+      assertContext()
+      context.drawImage(renderer.domElement, 0, 0)
+      const png = await encodePng(output)
+      assertContext()
+      if (png.size > 128 * 1_024) throw previewError("the project thumbnail exceeds 128 KiB.")
+      const bytes = new Uint8Array(await png.arrayBuffer())
+      assertContext()
+      return { mediaType: "image/png", bytes }
+    }),
+  )
 }
