@@ -8,7 +8,9 @@
   "exports": {
     "./contract": "./src/contract.ts",
     "./client": "./src/client.ts",
-    "./mesh": "./src/mesh.ts"
+    "./mesh": "./src/mesh.ts",
+    "./quick-contract": "./src/quick-contract.ts",
+    "./quick-client": "./src/quick-client.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json"
@@ -16,10 +18,12 @@
   "dependencies": {
     "@vibeshape/formats": "workspace:*",
     "zod": "catalog:",
-    "@vibeshape/domain": "workspace:*"
+    "@vibeshape/domain": "workspace:*",
+    "three": "catalog:"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*",
-    "pyodide": "314.0.7"
+    "pyodide": "314.0.7",
+    "@types/three": "catalog:"
   }
 }

@@ -5,6 +5,7 @@ import {
   lightweightingOperation,
   lightweightingSettings,
   lightweightingSnapshot,
+  lightweightingStiffnessSummary,
   lightweightingSummary,
 } from "./lightweighting.test-fixtures"
 import {
@@ -86,6 +87,84 @@ describe("bounded paired-browser lightweighting contracts", () => {
           arguments: { ...operation.arguments, settings },
         }).success,
       ).toBe(false)
+  })
+  it.each([false, true])(
+    "binds the structural retained-mass objective and target status (reached=%s)",
+    (reached) => {
+      const base = lightweightingOperation()
+      const summary = lightweightingStiffnessSummary(reached)
+      const operation = {
+        ...base,
+        arguments: {
+          ...base.arguments,
+          settings: {
+            ...base.arguments.settings,
+            objective: { kind: "maximize-stiffness", retainedMassFraction: reached ? 0.8 : 0.6 },
+          },
+        },
+      }
+      expect(localOperationSchema.safeParse(operation).success).toBe(true)
+      expect(remoteOperationSchema.safeParse(operation).success).toBe(true)
+      const value = {
+        documentId: lightweightingId(3),
+        baseRevision: 4,
+        source: base.arguments.source,
+        summary,
+      }
+      expect(lightweightingResultContextMatches(operation, { ok: true, value })).toBe(true)
+      for (const patch of [
+        { kind: "minimize-mass" },
+        { ...summary.objective, retainedMassFraction: 0.5 },
+        { ...summary.objective, targetMassKg: 0.00001 },
+        { ...summary.objective, targetCellCount: 10 },
+        { ...summary.objective, achievedRetainedMassFraction: 0.5 },
+        { ...summary.objective, targetStatus: reached ? "not-reached" : "reached" },
+      ])
+        expect(
+          lightweightingResultContextMatches(operation, {
+            ok: true,
+            value: { ...value, summary: { ...summary, objective: patch } },
+          }),
+        ).toBe(false)
+      expect(
+        lightweightingResultContextMatches(operation, {
+          ok: true,
+          value: { ...value, summary: { ...summary, objective: undefined } },
+        }),
+      ).toBe(false)
+      expect(lightweightingResultContextMatches(base, { ok: true, value })).toBe(false)
+      expect(
+        lightweightingResultContextMatches(operation, {
+          ok: true,
+          value: {
+            ...value,
+            summary: {
+              ...summary,
+              optimized: { ...summary.optimized, massKg: 0.00002 },
+              objective: { ...summary.objective, achievedRetainedMassFraction: 0.5 },
+            },
+          },
+        }),
+      ).toBe(false)
+    },
+  )
+  it("accepts explicit minimum-mass intent and rejects invalid objective budgets", () => {
+    const base = lightweightingOperation()
+    const withObjective = (objective: unknown) => ({
+      ...base,
+      arguments: { ...base.arguments, settings: { ...base.arguments.settings, objective } },
+    })
+    expect(localOperationSchema.safeParse(withObjective({ kind: "minimize-mass" })).success).toBe(
+      true,
+    )
+    for (const objective of [
+      { kind: "maximize-stiffness", retainedMassFraction: 0.09 },
+      { kind: "maximize-stiffness", retainedMassFraction: 1.01 },
+      { kind: "maximize-stiffness", retainedMassFraction: Number.NaN },
+      { kind: "maximize-stiffness" },
+      { kind: "minimize-mass", retainedMassFraction: 0.5 },
+    ])
+      expect(localOperationSchema.safeParse(withObjective(objective)).success).toBe(false)
   })
   it("accepts bounded summaries and rejects body/revision/constraint/snapshot mismatches", () => {
     const operation = lightweightingOperation()

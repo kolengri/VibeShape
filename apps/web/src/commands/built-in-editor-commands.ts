@@ -29,6 +29,7 @@ type PartDesignCommand = NonNullable<ReturnType<typeof activePartDesignCommand>>
 export type BuiltInEditorCommandContext = Readonly<{
   actions: Readonly<{
     lightweighting?: () => void
+    quickLightweighting?: () => void
     openShortcutHelp?: () => void
     openSketchText?: () => void
     cancelActive: () => void
@@ -156,6 +157,14 @@ const contextualPartDescriptors: readonly EditorCommandDescriptor[] = [
 
 const descriptors: readonly EditorCommandDescriptor[] = [
   ...contextualPartDescriptors,
+  {
+    group: "modeling",
+    icon: "lightweighting",
+    id: editorCommandIds.quickLightweighting,
+    labelKey: "quickLightweighting",
+    ownerModuleId: editorOwner,
+    toolbarGroup: "model-primary",
+  },
   {
     group: "modeling",
     icon: "lightweighting",
@@ -922,6 +931,16 @@ const contextualPartHandlers: readonly EditorCommandHandler<BuiltInEditorCommand
 ]
 
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  {
+    execute: ({ actions }) => actions.quickLightweighting?.(),
+    getEligibility: (context) =>
+      context.actions.quickLightweighting
+        ? writableDocumentEligibility(context)
+        : editorCommandDisabled("documentUnavailable"),
+    id: editorCommandIds.quickLightweighting,
+    isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
+    ownerModuleId: editorOwner,
+  },
   {
     execute: ({ actions }) => actions.lightweighting?.(),
     getEligibility: (context) =>

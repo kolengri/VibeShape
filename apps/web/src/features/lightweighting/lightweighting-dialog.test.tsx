@@ -14,14 +14,17 @@ import userEvent from "@testing-library/user-event"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
 import { meshInspection } from "../import/import-test-fixtures"
-import { LightweightingDialog } from "./lightweighting-dialog"
+import {
+  LightweightingTaskPanel,
+  type LightweightingViewportInteraction,
+} from "./lightweighting-dialog"
 import { useLightweightingCommand } from "./use-lightweighting-command"
 
 const ports = vi.hoisted(() => ({
@@ -59,9 +62,11 @@ vi.mock("../import/import-preview", async () => {
   }
 })
 const fixture = authoredTreeFixture()
-const firstPart = fixture.authority.parts[0]
-const bodyBinding = firstPart?.bodyHistory[0]
-if (!firstPart || !bodyBinding) throw new Error("The fixture requires a Part and a body binding.")
+const firstPartCandidate = fixture.authority.parts[0]
+const bodyBinding = firstPartCandidate?.bodyHistory[0]
+if (!firstPartCandidate || !bodyBinding)
+  throw new Error("The fixture requires a Part and a body binding.")
+const firstPart = firstPartCandidate
 const sourcePartName = firstPart.name
 const body: ModelBodyGeometry = {
   featureId: bodyBinding.featureId,
@@ -81,7 +86,7 @@ const body: ModelBodyGeometry = {
     positions: new Float32Array([0, 0, 0, 20, 0, 0, 0, 30, 0, 0, 0, 40]),
     normals: new Float32Array(12),
     indices: new Uint32Array([0, 1, 2, 0, 3, 1, 0, 2, 3, 1, 3, 2]),
-    triangleFaceIds: new Uint32Array(4),
+    triangleFaceIds: new Uint32Array([1, 2, 3, 4]),
   },
   topologyCandidates: [],
 }
@@ -129,7 +134,19 @@ const controller = {
 } as unknown as DocumentControllerState
 const report = controller.report
 if (!report) throw new Error("The fixture requires a report.")
-function setup(initial = controller, blocked = false, initialPartId = "") {
+let viewportInteraction: LightweightingViewportInteraction | null = null
+function receiveInteraction(next: LightweightingViewportInteraction | null) {
+  viewportInteraction = next
+}
+function setup(
+  initial = controller,
+  blocked = false,
+  initialPartId = "",
+  callbacks: {
+    onApplied?: () => void
+    onApplyingChange?: (applying: boolean) => void
+  } = {},
+) {
   const View = ({ state }: { state: DocumentControllerState }) => {
     const [open, setOpen] = useState(true)
     return (
@@ -137,13 +154,16 @@ function setup(initial = controller, blocked = false, initialPartId = "") {
         <button type="button" onClick={() => setOpen(true)}>
           Open lightweighting
         </button>
-        <LightweightingDialog
-          controller={state}
-          initialPartId={initialPartId}
-          blocked={blocked}
-          open={open}
-          onOpenChange={setOpen}
-        />
+        {open && (
+          <LightweightingTaskPanel
+            controller={state}
+            initialPartId={initialPartId}
+            blocked={blocked}
+            onClose={() => setOpen(false)}
+            onInteractionChange={receiveInteraction}
+            {...callbacks}
+          />
+        )}
       </I18nProvider>
     )
   }
@@ -156,6 +176,26 @@ function setup(initial = controller, blocked = false, initialPartId = "") {
 function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
+async function pickFaces() {
+  await userEvent.click(screen.getByRole("button", { name: "Pick support faces" }))
+  act(() =>
+    viewportInteraction?.onFacePick({
+      featureId: body.featureId,
+      outputRole: "result",
+      faceId: 1,
+      faceOrdinal: 1,
+    }),
+  )
+  await userEvent.click(screen.getByRole("button", { name: "Pick load faces for case 1" }))
+  act(() =>
+    viewportInteraction?.onFacePick({
+      featureId: body.featureId,
+      outputRole: "result",
+      faceId: 2,
+      faceOrdinal: 2,
+    }),
+  )
+}
 async function fill() {
   fireEvent.keyDown(screen.getByRole("combobox", { name: "Source Part" }), { key: "Enter" })
   await userEvent.click(screen.getByRole("option", { name: sourcePartName }))
@@ -163,7 +203,13 @@ async function fill() {
   change("Poisson’s ratio", "0.3")
   change("Yield strength (MPa)", "40")
   change("Density (kg/m³)", "1200")
-  change("Total force Z (N)", "-10")
+  change("Total force for case 1 (N)", "10")
+  fireEvent.keyDown(screen.getByRole("combobox", { name: "Direction for case 1" }), {
+    key: "Enter",
+  })
+  await userEvent.click(screen.getByRole("option", { name: "Positive Z axis" }))
+  await userEvent.click(screen.getByRole("button", { name: "Reverse direction for case 1" }))
+  await pickFaces()
 }
 async function analyze() {
   await userEvent.click(screen.getByRole("button", { name: "Analyze and optimize" }))
@@ -217,6 +263,127 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Lightweighting workflow", () => {
+  it("publishes a stable interaction when the owning workspace stores it in state", async () => {
+    const delivered = vi.fn()
+    function Workspace() {
+      const [interaction, setInteraction] = useState<LightweightingViewportInteraction | null>(null)
+      const receive = useCallback((next: LightweightingViewportInteraction | null) => {
+        delivered(next)
+        setInteraction(next)
+      }, [])
+      return (
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <output>{interaction?.source.contentHash}</output>
+          <LightweightingTaskPanel
+            controller={controller}
+            initialPartId={firstPart.id}
+            blocked={false}
+            onClose={vi.fn()}
+            onInteractionChange={receive}
+          />
+        </I18nProvider>
+      )
+    }
+    render(<Workspace />)
+    await waitFor(() => expect(screen.getByText("pristine-cad-hash")).toBeTruthy())
+    expect(delivered).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("consumes only active picks, rejects other bodies visibly, and ends one face pick at a time", async () => {
+    setup(controller, false, firstPart.id)
+    let consumed: boolean | undefined
+    act(() => {
+      consumed = viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        faceId: 1,
+        faceOrdinal: 1,
+      })
+    })
+    expect(consumed).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Pick support faces" }))
+    expect(viewportInteraction?.picking).toBe(true)
+    act(() => {
+      consumed = viewportInteraction?.onFacePick({
+        featureId: "another-body",
+        faceId: 1,
+        faceOrdinal: 1,
+      })
+    })
+    expect(consumed).toBe(true)
+    expect(screen.getByText(messages.app.lightweighting.wrongBody)).toBeTruthy()
+    expect(viewportInteraction?.picking).toBe(true)
+    act(() => {
+      consumed = viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        faceId: 1,
+        faceOrdinal: 1,
+      })
+    })
+    expect(consumed).toBe(true)
+    expect(viewportInteraction?.picking).toBe(false)
+    expect(
+      viewportInteraction?.overlays.find(
+        (overlay) => overlay.kind === "face" && overlay.role === "support",
+      ),
+    ).toMatchObject({ faceIds: [1] })
+    expect(screen.getByText("1 face selected")).toBeTruthy()
+    expect(screen.queryByLabelText("Minimum X (mm)")).toBeNull()
+  })
+
+  it("cancels face picking with Escape while leaving the task panel open", async () => {
+    setup(controller, false, firstPart.id)
+    await userEvent.click(screen.getByRole("button", { name: "Pick support faces" }))
+    await userEvent.keyboard("{Escape}")
+    expect(viewportInteraction?.picking).toBe(false)
+    expect(screen.getByRole("region", { name: "Lightweighting" })).toBeTruthy()
+    expect(ports.optimize).not.toHaveBeenCalled()
+  })
+
+  it("explains a cancelling face normal and keeps an explicitly chosen axis force visible", async () => {
+    ports.parts.mockReturnValue([
+      {
+        part: firstPart,
+        status: "available",
+        body: {
+          ...body,
+          mesh: { ...body.mesh, indices: new Uint32Array([0, 1, 2, 0, 2, 1, 0, 3, 1, 1, 3, 2]) },
+        },
+      },
+    ])
+    setup()
+    await fill()
+    await userEvent.click(screen.getByRole("button", { name: "Pick load faces for case 1" }))
+    act(() =>
+      viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        outputRole: "result",
+        faceId: 1,
+        faceOrdinal: 1,
+      }),
+    )
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Direction for case 1" }), {
+      key: "Enter",
+    })
+    await userEvent.click(screen.getByRole("option", { name: "Face normal (outward)" }))
+    const analyze = screen.getByRole("button", { name: "Analyze and optimize" })
+    expect(analyze).toHaveProperty("disabled", true)
+    expect(
+      document.getElementById(analyze.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toBe(
+      "The selected faces for case 1 have no combined normal. Choose an axis direction or change the picked faces.",
+    )
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Direction for case 1" }), {
+      key: "Enter",
+    })
+    await userEvent.click(screen.getByRole("option", { name: "Positive X axis" }))
+    expect(analyze).toHaveProperty("disabled", false)
+    expect(
+      viewportInteraction?.overlays.find((overlay) => overlay.kind === "force-arrow"),
+    ).toMatchObject({ vector: [-10, -0, -0] })
+    expect(ports.optimize).not.toHaveBeenCalled()
+  })
+
   it("captures mouse body selection only when opening, and refuses ambiguous body ownership", () => {
     const { result, rerender } = renderHook(
       ({ selectedBody }) =>
@@ -263,7 +430,8 @@ describe("Lightweighting workflow", () => {
     expect(
       screen.getByRole("link", { name: "Manufacturer data sheet 1" }).getAttribute("href"),
     ).toContain("Ultimaker-PETG-TDS-v1.00.pdf")
-    change("Total force Z (N)", "-10")
+    change("Total force for case 1 (N)", "10")
+    await pickFaces()
     change("Required safety factor", "3")
     expect(screen.getByRole("combobox", { name: "Material preset" }).textContent).toBe(
       "PETG — UltiMaker",
@@ -307,13 +475,13 @@ describe("Lightweighting workflow", () => {
     expect(
       (screen.getByRole("button", { name: "Analyze and optimize" }) as HTMLButtonElement).disabled,
     ).toBe(false)
-    change("Total force Z (N)", "0")
+    change("Total force for case 1 (N)", "0")
     expect(
       (screen.getByRole("button", { name: "Analyze and optimize" }) as HTMLButtonElement).disabled,
     ).toBe(true)
     expect(ports.optimize).not.toHaveBeenCalled()
   })
-  it("uses pristine source mesh and editable exact slab coordinates; Apply only appends a mesh feature", async () => {
+  it("maps picked source faces to exact triangle targets; Apply only appends a mesh feature", async () => {
     setup()
     await fill()
     await analyze()
@@ -322,11 +490,16 @@ describe("Lightweighting workflow", () => {
       vertices: Array.from(body.mesh.positions),
       indices: Array.from(body.mesh.indices),
     })
-    expect(input.supports).toEqual([{ min: [0, 0, 0], max: [2, 30, 40] }])
+    expect(input.supports).toEqual([{ kind: "surface", triangleIndices: [0], depthMm: 4 }])
     expect(input.loadCases).toEqual([
-      { name: "Load case 1", region: { min: [18, 0, 0], max: [20, 30, 40] }, forceN: [0, 0, -10] },
+      {
+        name: "Load case 1",
+        region: { kind: "surface", triangleIndices: [1], depthMm: 4 },
+        forceN: [-0, -0, -10],
+      },
     ])
     expect(input.maxIterations).toBe(12)
+    expect(input.objective).toEqual({ kind: "minimize-mass" })
     expect(ports.inspect.mock.calls[0]?.[0]).toMatchObject({ format: "stl", units: "mm" })
     expect(ports.apply).not.toHaveBeenCalled()
     await userEvent.dblClick(screen.getByRole("button", { name: "Apply as new mesh Part" }))
@@ -344,7 +517,28 @@ describe("Lightweighting workflow", () => {
       ),
     ).toBe(true)
     expect(fixture.authority.parts).toHaveLength(3)
-    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.queryByRole("region", { name: "Lightweighting" })).toBeNull()
+  })
+  it("selects a target retained mass objective and invalidates the previous analysis", async () => {
+    setup()
+    await fill()
+    await analyze()
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Optimization objective" }), {
+      key: "Enter",
+    })
+    await userEvent.click(screen.getByRole("option", { name: "Maximize stiffness at target mass" }))
+    expect(screen.queryByRole("img")).toBeNull()
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Apply as new mesh Part" }).disabled,
+    ).toBe(true)
+    fireEvent.change(screen.getByRole("slider", { name: /Target retained mass/ }), {
+      target: { value: "60" },
+    })
+    await analyze()
+    expect(ports.optimize.mock.calls[1]?.[0].objective).toEqual({
+      kind: "maximize-stiffness",
+      retainedMassFraction: 0.6,
+    })
   })
   it("cancels a single-flight solve on Close and ignores a late response after reopening", async () => {
     const work = deferred<StructuralOptimizationResult>()
@@ -354,7 +548,9 @@ describe("Lightweighting workflow", () => {
     await userEvent.dblClick(screen.getByRole("button", { name: "Analyze and optimize" }))
     expect(ports.optimize).toHaveBeenCalledOnce()
     const signal = ports.optimize.mock.calls[0]?.[1].signal as AbortSignal
-    await userEvent.click(within(screen.getByRole("dialog")).getByText("Close"))
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "Lightweighting" })).getByText("Close"),
+    )
     expect(signal.aborted).toBe(true)
     work.resolve(result)
     await userEvent.click(screen.getByRole("button", { name: "Open lightweighting" }))
@@ -386,7 +582,8 @@ describe("Lightweighting workflow", () => {
     "Voxel cell size (mm)",
     "Maximum iterations",
     "Case name",
-    "Total force X (N)",
+    "Total force for case 1 (N)",
+    "Region depth (mm)",
   ])("clears ready analysis when %s changes", async (label) => {
     setup()
     await fill()
@@ -402,15 +599,18 @@ describe("Lightweighting workflow", () => {
     setup()
     await fill()
     await analyze()
-    fireEvent.change(
-      within(screen.getByRole("group", { name: "Fully fixed support region (mm)" })).getByLabelText(
-        "Minimum X (mm)",
-      ),
-      { target: { value: "0.2" } },
-    )
+    change("Region depth (mm)", "3")
     expect(screen.queryByRole("img")).toBeNull()
     await analyze()
-    await userEvent.click(screen.getByRole("button", { name: "Add preservation region" }))
+    await userEvent.click(screen.getByRole("button", { name: "Pick preserved faces" }))
+    act(() =>
+      viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        outputRole: "result",
+        faceId: 3,
+        faceOrdinal: 3,
+      }),
+    )
     expect(screen.queryByRole("img")).toBeNull()
   })
   it("rejects changed document revision and body content without silently selecting another Part", async () => {
@@ -449,11 +649,15 @@ describe("Lightweighting workflow", () => {
     view.update({ ...controller })
     work.resolve(result)
     await waitFor(() =>
-      expect(
-        (screen.getByRole("button", { name: "Analyze and optimize" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
+      expect(screen.getByText(messages.app.lightweighting.facesReset)).toBeTruthy(),
     )
+    expect(
+      (screen.getByRole("button", { name: "Analyze and optimize" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    await pickFaces()
+    expect(
+      (screen.getByRole("button", { name: "Analyze and optimize" }) as HTMLButtonElement).disabled,
+    ).toBe(false)
     expect(screen.queryByRole("img")).toBeNull()
     expect(ports.inspect).not.toHaveBeenCalled()
   })
@@ -511,6 +715,23 @@ describe("Lightweighting workflow", () => {
     await userEvent.click(screen.getByRole("button", { name: "Apply as new mesh Part" }))
     expect(ports.apply).toHaveBeenCalledTimes(2)
     expect(ports.optimize).toHaveBeenCalledOnce()
+  })
+  it("forwards atomic Apply state and success separately from a locked user close", async () => {
+    const commit = deferred<{ ok: true }>()
+    ports.apply.mockReturnValueOnce(commit.promise)
+    const onApplied = vi.fn()
+    const onApplyingChange = vi.fn()
+    setup(controller, false, "", { onApplied, onApplyingChange })
+    await fill()
+    await analyze()
+    await userEvent.click(screen.getByRole("button", { name: "Apply as new mesh Part" }))
+    expect(onApplyingChange).toHaveBeenLastCalledWith(true)
+    expect(screen.getByRole("button", { name: "Close" })).toHaveProperty("disabled", true)
+    await userEvent.click(screen.getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("region", { name: "Lightweighting" })).toBeTruthy()
+    commit.resolve({ ok: true })
+    await waitFor(() => expect(onApplied).toHaveBeenCalledOnce())
+    expect(onApplyingChange.mock.calls).toEqual([[true], [false]])
   })
   it("downloads settings, numerical metrics, and captured source identity", async () => {
     const createObjectURL = vi.fn((_blob: Blob) => "blob:lightweighting-report")

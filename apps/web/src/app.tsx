@@ -45,7 +45,7 @@ import {
   assemblyModeCommands,
   useAssemblyMode,
 } from "./features/assembly/assembly-mode"
-import { LightweightingDialog } from "./features/lightweighting/lightweighting-dialog"
+import { LightweightingWorkspace } from "./features/lightweighting/lightweighting-workspace"
 import { useLightweightingCommand } from "./features/lightweighting/use-lightweighting-command"
 import {
   authoredPlacementTarget,
@@ -670,6 +670,7 @@ function resolveEditorApplicationCommands(
     openShortcutHelp: () => void
     openSketchText: () => void
     lightweighting: () => void
+    quickLightweighting: () => void
   },
 ) {
   const profileCommandAvailable = sketchProfileCommandAvailable(
@@ -901,6 +902,14 @@ function useSketchShortcutToolbar(sketchShortcutToolbarAvailable: boolean) {
   }
 }
 
+function lightweightingWorkspaceActive(session: EditorApplicationSession) {
+  return (
+    session.workspace === "model" &&
+    !session.activePartDesignTool &&
+    !session.sketch.activeSketchTool
+  )
+}
+
 function EditorApplication({
   controller,
 }: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
@@ -933,7 +942,14 @@ function EditorApplication({
     {
       openShortcutHelp: shortcutHelp.show,
       openSketchText: textDialog.actions.create,
-      lightweighting: lightweighting.show,
+      lightweighting: () => {
+        workspaceActions.closeTool()
+        lightweighting.show()
+      },
+      quickLightweighting: () => {
+        workspaceActions.closeTool()
+        lightweighting.show("quick")
+      },
     },
   )
   const commands = assemblyModeCommands(modelCommands, assemblyMode.active)
@@ -951,13 +967,19 @@ function EditorApplication({
     ({ descriptor }) => descriptor.id === editorCommandIds.sketchNavigateView,
   )
   const modelWorkspace = (
-    <EditorWorkspaceComposition
-      navigationCommand={navigationCommand}
-      controller={controller}
-      session={session}
-      sessionActions={sessionActions}
-      workspaceActions={workspaceActions}
-    />
+    <LightweightingWorkspace
+      workflow={lightweighting}
+      controller={historyInsertionContext(controller)}
+      active={lightweightingWorkspaceActive(session)}
+    >
+      <EditorWorkspaceComposition
+        navigationCommand={navigationCommand}
+        controller={controller}
+        session={session}
+        sessionActions={sessionActions}
+        workspaceActions={workspaceActions}
+      />
+    </LightweightingWorkspace>
   )
   return (
     <main className="cad-shell bg-background text-[13px] text-foreground">
@@ -979,13 +1001,6 @@ function EditorApplication({
           onChange={assemblyMode.onChange}
         />
       </ApplicationBar>
-      <LightweightingDialog
-        controller={controller}
-        blocked={lightweighting.blocked}
-        initialPartId={lightweighting.initialPartId}
-        open={lightweighting.open}
-        onOpenChange={lightweighting.setOpen}
-      />
       <ShortcutHelpDialog
         commands={commands}
         open={shortcutHelp.open}

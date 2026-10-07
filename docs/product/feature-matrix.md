@@ -5,6 +5,9 @@
 Structural lightweighting is implemented as preliminary numerical feasibility and separate mesh
 snapshots in the editor and paired local/remote MCP. It does not certify physical strength or
 create parametric organic B-Rep geometry. See [Structural lightweighting](lightweighting.md).
+The separate quick workflow provides selectable periodic lattice cells, exterior preservation,
+and load-free geometry previews. Both workflows use responsive task panels and reviewed mesh
+snapshots; see the same canonical contract for objectives, MCP support, and resource limits.
 
 - **P0 / alpha:** required to prove the core workflow.
 - **P1 / v1:** required for regular practical use.

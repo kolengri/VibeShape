@@ -1,7 +1,7 @@
 import {
   BoxGeometry,
   BufferGeometry,
-  Color,
+  type Color,
   DoubleSide,
   EdgesGeometry,
   Float32BufferAttribute,
@@ -12,6 +12,7 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
 } from "three"
+import { viewerSemanticColor } from "./viewer-semantic-color"
 
 export type ViewerPrintBed = Readonly<{
   width: number
@@ -41,9 +42,9 @@ export class PrintBedDecoration {
   }
 
   private refreshColors() {
-    const bed = presentationColor(this.#exceeded ? "--diagnostic-error" : "--axis-z")
+    const bed = viewerSemanticColor(this.#exceeded ? "--diagnostic-error" : "--axis-z")
     recolor(this.bed, bed)
-    recolor(this.ground, presentationColor("--axis-z"))
+    recolor(this.ground, viewerSemanticColor("--axis-z"))
   }
 
   setBed(volume: ViewerPrintBed | null) {
@@ -59,7 +60,7 @@ export class PrintBedDecoration {
       throw new Error("Invalid viewer print envelope.")
     }
     this.#exceeded = volume.exceeded ?? false
-    const color = presentationColor(this.#exceeded ? "--diagnostic-error" : "--axis-z")
+    const color = viewerSemanticColor(this.#exceeded ? "--diagnostic-error" : "--axis-z")
     const surface = new Mesh(
       new PlaneGeometry(width, depth),
       new MeshBasicMaterial({
@@ -105,7 +106,7 @@ export class PrintBedDecoration {
 
   setGround(enabled: boolean, size = 300) {
     this.clear(this.ground)
-    if (enabled) this.addGrid(this.ground, size, size, presentationColor("--axis-z"), 0.2)
+    if (enabled) this.addGrid(this.ground, size, size, viewerSemanticColor("--axis-z"), 0.2)
   }
 
   dispose() {
@@ -154,19 +155,6 @@ export class PrintBedDecoration {
       }
     }
   }
-}
-
-function presentationColor(token: "--axis-z" | "--diagnostic-error") {
-  const fallback = new Color(token === "--axis-z" ? 0x4c8dff : 0xe15b64)
-  if (typeof document === "undefined") return fallback
-  const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim()
-  if (!value) return fallback
-  const context = document.createElement("canvas").getContext("2d")
-  if (!context) return fallback
-  context.fillStyle = value
-  context.fillRect(0, 0, 1, 1)
-  const [r, g, b] = context.getImageData(0, 0, 1, 1).data
-  return new Color(`rgb(${r},${g},${b})`)
 }
 
 function recolor(group: Group, color: Color) {

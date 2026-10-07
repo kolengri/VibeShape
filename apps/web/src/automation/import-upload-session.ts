@@ -25,6 +25,10 @@ import type {
 } from "@vibeshape/domain/lightweighting"
 import { importedBodyOutputRole } from "@vibeshape/domain/part-design-import"
 import { meshImportOutputRole } from "@vibeshape/domain/part-design-mesh-import"
+import type {
+  QuickLightweightingSettings,
+  QuickLightweightingSummary,
+} from "@vibeshape/domain/quick-lightweighting"
 import {
   type MeshImportInspection,
   meshImportInspectionSchema,
@@ -60,6 +64,12 @@ export type ImportReviewInput = Readonly<{
     settings: StructuralOptimizationSettings
     summary: StructuralOptimizationSummary
   }>
+  quickLightweighting?: Readonly<{
+    sourceName: string
+    source: LightweightingSourceIdentity
+    settings: QuickLightweightingSettings
+    summary: QuickLightweightingSummary
+  }>
   inspection: Inspection
   transaction: Pick<Transaction, "transactionId" | "commands">
 }>
@@ -72,7 +82,9 @@ export type ImportSessionConfiguration = Readonly<{
   inspect: (prepared: PreparedImportSource) => Promise<Inspection>
   review: (input: ImportReviewInput) => Promise<"approved" | "rejected" | "cancelled">
   commit: (input: ImportReviewedCommit) => Promise<Result<{ revision: number }>>
-  reviewContext?: () => ImportReviewInput["lightweighting"]
+  reviewContext?: () =>
+    | Pick<ImportReviewInput, "lightweighting" | "quickLightweighting">
+    | undefined
   now?: () => number
 }>
 type Captured = {
@@ -241,6 +253,7 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
       )
     const context = configuration.readContext()
     if (!context) return failure("stale-revision", "The import base is unavailable.", true)
+    const reviewContext = configuration.reviewContext?.()
     const transaction = createImportTransaction(
       context,
       prepared,
@@ -248,6 +261,7 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
       record.label,
       configuration.createId,
       record.actor,
+      lightweightingSourcePartId(reviewContext),
     )
     transaction.transactionId = draftIdSchema.parse(record.descriptor.uploadId)
     const digest =
@@ -285,9 +299,9 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
         "The reviewed import inspection is no longer current.",
         true,
       )
-    const lightweighting = configuration.reviewContext?.()
+    const reviewContext = configuration.reviewContext?.()
     const review: ImportReviewInput = {
-      ...(lightweighting ? { lightweighting } : {}),
+      ...reviewContext,
       kind: "import",
       actor: record.actor,
       draft: {
@@ -456,4 +470,10 @@ function inspectionView(
       }
     }),
   })
+}
+
+function lightweightingSourcePartId(
+  context: Pick<ImportReviewInput, "lightweighting" | "quickLightweighting"> | undefined,
+) {
+  return (context?.lightweighting ?? context?.quickLightweighting)?.source.partId
 }

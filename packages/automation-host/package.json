@@ -14,7 +14,8 @@
     "./history-session": "./src/history-session.ts",
     "./surface-texture-proposal": "./src/surface-texture-proposal.ts",
     "./surface-texture-proposal-contract": "./src/surface-texture-proposal-contract.ts",
-    "./lightweighting-proposal": "./src/lightweighting-proposal.ts"
+    "./lightweighting-proposal": "./src/lightweighting-proposal.ts",
+    "./quick-lightweighting-proposal": "./src/quick-lightweighting-proposal.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

@@ -87,6 +87,15 @@ beforeAll(async () => {
   await runtime.runPythonAsync(
     readFileSync(resolve(root, "packages/structural-optimization/src/solver.py"), "utf8"),
   )
+  await runtime.runPythonAsync(
+    "from types import SimpleNamespace; _surface_test_solver = SimpleNamespace(**globals())",
+  )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/surface_target_fixtures.py"),
+      "utf8",
+    ),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -101,6 +110,50 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it.each([
+    ["rotated-face membership", "verify_rotated_surface_membership"],
+    [
+      "curved-face membership and preservation depth",
+      "verify_curved_surface_membership_and_preservation",
+    ],
+    [
+      "trimmed-face ties and empty-target diagnostics",
+      "verify_trimmed_surface_ties_and_missing_facets",
+    ],
+    [
+      "cube surface boundary retention, force, volume, and determinism",
+      "verify_surface_boundary_freeze",
+    ],
+  ])(
+    "verifies %s against the browser runtime",
+    async (_, verification) => {
+      await runtime.runPythonAsync(`${verification}(_surface_test_solver)`)
+    },
+    timeout,
+  )
+
+  it.each([
+    { triangleIndices: [12], depthMm: 1 },
+    { triangleIndices: [0, 0], depthMm: 1 },
+    { triangleIndices: [-1], depthMm: 1 },
+    { triangleIndices: [0.5], depthMm: 1 },
+    { triangleIndices: [], depthMm: 1 },
+    { triangleIndices: [0], depthMm: 0 },
+    { triangleIndices: [0], depthMm: Number.POSITIVE_INFINITY },
+  ])(
+    "rejects malformed surface input %j at the Python boundary",
+    async (region) => {
+      const input = axialBar()
+      input.supports = [{ kind: "surface", ...region }]
+      const response = await run(input)
+      expect(response.ok).toBe(false)
+      if (response.ok) throw new Error("Malformed surface input must not return geometry.")
+      expect(response.error.code).toBe("invalid-input")
+      expect(response).not.toHaveProperty("result")
+    },
+    timeout,
+  )
+
   it(
     "matches independent axial elasticity and mass calculations",
     async () => {
@@ -139,6 +192,113 @@ describe("pinned Pyodide full-solid structural solver", () => {
       expect(signedSurfaceVolume(result.mesh)).toBeCloseTo(result.optimized.volumeMm3, 9)
       expect(() => encodeStructuralStl(result.mesh, result.cellSizeMm)).not.toThrow()
       expect(result.evaluations).toBeGreaterThan(2)
+    },
+    timeout,
+  )
+
+  it.each([
+    [0.96, 39],
+    [0.9, 36],
+    [1, 40],
+  ])(
+    "stops stiffness-guided removal at fraction %s with %s conservative cells",
+    async (retainedMassFraction, targetCellCount) => {
+      const input = axialBar(retainedMassFraction === 1 ? 0 : 4)
+      input.objective = { kind: "maximize-stiffness", retainedMassFraction }
+      const response = await run(structuralOptimizationInputSchema.parse(input))
+      if (!response.ok) throw new Error(response.error.message)
+      const result = response.result
+      expect(result.initialCellCount).toBe(40)
+      expect(result.finalCellCount).toBe(targetCellCount)
+      expect(result.termination).toBe("target-mass-reached")
+      expect(result.objective).toMatchObject({
+        kind: "maximize-stiffness",
+        retainedMassFraction,
+        targetCellCount,
+        targetStatus: "reached",
+      })
+      if (result.objective?.kind !== "maximize-stiffness")
+        throw new Error("The stiffness result requires measured mass-target metadata.")
+      expect(result.objective.targetMassKg).toBeCloseTo(0.00004 * retainedMassFraction, 12)
+      expect(result.objective.achievedRetainedMassFraction).toBeCloseTo(targetCellCount / 40, 12)
+      expect(result.optimized.massKg).toBeGreaterThanOrEqual(result.objective.targetMassKg)
+      expect(result.optimized.safetyFactor).toBeGreaterThanOrEqual(2)
+      expect(result.optimized.maxDisplacementMm).toBeLessThanOrEqual(1)
+      expect(result.optimized.cases[0]?.complianceNmm).toBeGreaterThan(0)
+      expect(signedSurfaceVolume(result.mesh)).toBeCloseTo(targetCellCount, 9)
+      expect(result.sourceVolumeMm3).toBeCloseTo(40, 9)
+      expect(result.sourceVolumeLossFraction).toBe(0)
+      expect(() => encodeStructuralStl(result.mesh, result.cellSizeMm)).not.toThrow()
+    },
+    timeout,
+  )
+
+  it.each([
+    ["iterations", "iteration-limit"],
+    ["preserved", "no-removable-cells"],
+    ["constraints", "constraints-or-topology"],
+  ])(
+    "reports an unreachable stiffness target blocked by %s",
+    async (blocker, termination) => {
+      const input = axialBar(blocker === "iterations" ? 1 : 4)
+      input.objective = { kind: "maximize-stiffness", retainedMassFraction: 0.1 }
+      if (blocker === "preserved") input.preserveRegions = [{ min: [-5, -1, -1], max: [5, 1, 1] }]
+      if (blocker === "constraints") input.maxDisplacementMm = 0.0250000001
+      const response = await run(structuralOptimizationInputSchema.parse(input))
+      if (!response.ok) throw new Error(response.error.message)
+      const result = response.result
+      expect(result.termination).toBe(termination)
+      expect(result.finalCellCount).toBeGreaterThan(4)
+      expect(result.objective).toMatchObject({
+        kind: "maximize-stiffness",
+        targetCellCount: 4,
+        targetStatus: "not-reached",
+      })
+      expect(result.warnings.some((warning) => warning.includes("target not reached"))).toBe(true)
+      expect(result.optimized.safetyFactor).toBeGreaterThanOrEqual(input.safetyFactor)
+      expect(result.optimized.maxDisplacementMm).toBeLessThanOrEqual(input.maxDisplacementMm)
+      expect(result.optimized.cases[0]?.complianceNmm).toBeGreaterThan(0)
+      expect(signedSurfaceVolume(result.mesh)).toBeCloseTo(result.optimized.volumeMm3, 9)
+    },
+    timeout,
+  )
+
+  it(
+    "preserves default minimum-mass behavior for an explicit objective",
+    async () => {
+      const input = axialBar(1)
+      const legacy = await run(input)
+      input.objective = { kind: "minimize-mass" }
+      const explicit = await run(input)
+      if (!legacy.ok || !explicit.ok) throw new Error("Both minimum-mass requests must succeed.")
+      expect(legacy.result).not.toHaveProperty("objective")
+      const { objective, ...result } = explicit.result
+      expect(objective).toEqual({ kind: "minimize-mass" })
+      expect(result).toEqual(legacy.result)
+    },
+    timeout,
+  )
+
+  it.each([
+    null,
+    { kind: "minimize-mass", retainedMassFraction: 0.5 },
+    { kind: "maximize-stiffness" },
+    { kind: "maximize-stiffness", retainedMassFraction: 0.099 },
+    { kind: "maximize-stiffness", retainedMassFraction: 1.001 },
+    { kind: "maximize-stiffness", retainedMassFraction: Number.POSITIVE_INFINITY },
+    { kind: "maximize-stiffness", retainedMassFraction: true },
+  ])(
+    "rejects invalid objective %j at the WASM Python boundary",
+    async (objective) => {
+      // Deliberately bypass the TypeScript input schema to exercise Python's trust boundary.
+      runtime.globals.set("_structural_request_json", JSON.stringify({ ...axialBar(), objective }))
+      const raw: unknown = await runtime.runPythonAsync("solve_json(_structural_request_json)")
+      if (typeof raw !== "string") throw new Error("The WASM solver must return a JSON string.")
+      const response = structuralSolverResponseSchema.parse(JSON.parse(raw))
+      expect(response.ok).toBe(false)
+      if (response.ok) throw new Error("Malformed objectives must not return geometry.")
+      expect(response.error.code).toBe("invalid-input")
+      expect(response).not.toHaveProperty("result")
     },
     timeout,
   )

@@ -84,6 +84,75 @@ describe("History navigation", () => {
     expect(currentRow).toHaveBeenCalledOnce()
     expect(store.getState().sketch.draft?.id).toBe(sketch.id)
   })
+  it.each([false, true])(
+    "retains workspace tasks until their save explicitly succeeds (%s)",
+    async (saved) => {
+      const store = createEditorSessionStore()
+      const navigation = createHistoryNavigation(store)
+      const save = vi.fn(async () => saved)
+      navigation.register(save, "lightweighting:quick")
+      const activate = vi.fn()
+      expect(await navigation.navigate(activate)).toBe(saved)
+      expect(save).toHaveBeenCalledOnce()
+      expect(activate).toHaveBeenCalledTimes(saved ? 1 : 0)
+      if (!saved) {
+        expect(await navigation.navigate(activate)).toBe(false)
+        expect(save).toHaveBeenCalledTimes(2)
+      }
+    },
+  )
+  it("saves a workspace task once and activates only the latest History row", async () => {
+    const navigation = createHistoryNavigation(createEditorSessionStore())
+    let complete!: (saved: boolean) => void
+    const save = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          complete = resolve
+        }),
+    )
+    navigation.register(save, "lightweighting:structural")
+    const firstRow = vi.fn()
+    const lastRow = vi.fn()
+    const first = navigation.navigate(firstRow)
+    const last = navigation.navigate(lastRow)
+    complete(true)
+    expect(await first).toBe(false)
+    expect(await last).toBe(true)
+    expect(save).toHaveBeenCalledOnce()
+    expect(firstRow).not.toHaveBeenCalled()
+    expect(lastRow).toHaveBeenCalledOnce()
+  })
+  it.each(["same", "replacement"])(
+    "preserves the mounted owner across a pending workspace save: %s",
+    async (owner) => {
+      const navigation = createHistoryNavigation(createEditorSessionStore())
+      let complete!: (saved: boolean) => void
+      navigation.register(
+        () =>
+          new Promise<boolean>((resolve) => {
+            complete = resolve
+          }),
+        "lightweighting:quick",
+        "original",
+      )
+      const activate = vi.fn()
+      const saving = navigation.navigate(activate)
+      const replacementSave = vi.fn(async () => false)
+      navigation.register(
+        replacementSave,
+        "lightweighting:quick",
+        owner === "same" ? "original" : "replacement",
+      )
+      complete(true)
+      expect(await saving).toBe(owner === "same")
+      expect(activate).toHaveBeenCalledTimes(owner === "same" ? 1 : 0)
+      expect(replacementSave).not.toHaveBeenCalled()
+      if (owner === "replacement") {
+        expect(await navigation.navigate(activate)).toBe(false)
+        expect(replacementSave).toHaveBeenCalledOnce()
+      }
+    },
+  )
   it("allows History activation from the non-editing measurement tool", async () => {
     const store = createEditorSessionStore()
     store.getState().actions.startPartDesignTool({ kind: "measure" })

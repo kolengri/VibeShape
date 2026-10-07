@@ -14,7 +14,24 @@ export function LightweightingReviewDetails({
     <section className="grid gap-3">
       <p className="text-sm">{review("description")}</p>
       <p className="text-sm">{review("source", { name: evidence.sourceName })}</p>
+      {evidence.settings.objective?.kind === "maximize-stiffness" && (
+        <p className="text-xs">
+          {t("retainedMassPercent", {
+            value: 100 * evidence.settings.objective.retainedMassFraction,
+          })}
+        </p>
+      )}
       <dl className="grid gap-1 text-xs">
+        <div>
+          <dt className="font-medium">{t("objective")}</dt>
+          <dd>
+            {t(
+              evidence.settings.objective?.kind === "maximize-stiffness"
+                ? "maximizeStiffness"
+                : "minimizeMass",
+            )}
+          </dd>
+        </div>
         <div>
           <dt className="font-medium">{t("safetyFactor")}</dt>
           <dd>{t("number", { value: evidence.settings.safetyFactor })}</dd>
@@ -84,6 +101,18 @@ function ReviewRegion({ region }: { region: StructuralOptimizationSettings["supp
   const t = useTranslations("app.lightweighting")
   const vector = (values: readonly number[]) =>
     values.map((value) => t("number", { value })).join(", ")
+  if ("kind" in region)
+    return (
+      <div>
+        <p>{t("surfaceTriangleCount", { count: region.triangleIndices.length })}</p>
+        <dl>
+          <div>
+            <dt>{t("surfaceDepth")}</dt>
+            <dd>{t("number", { value: region.depthMm })}</dd>
+          </div>
+        </dl>
+      </div>
+    )
   return (
     <dl>
       <div>

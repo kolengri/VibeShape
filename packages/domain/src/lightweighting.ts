@@ -2,14 +2,45 @@ import { z } from "zod"
 
 const coordinate = z.number().finite().min(-100_000).max(100_000)
 const vector = z.tuple([coordinate, coordinate, coordinate])
-export const structuralRegionSchema = z
+const structuralBoxRegionSchema = z
   .object({ min: vector, max: vector })
   .strict()
   .refine(({ min, max }) => min.every((value, axis) => value <= (max[axis] ?? value - 1)), {
     message: "Region minima must not exceed maxima.",
   })
+export const structuralSurfaceRegionSchema = z
+  .object({
+    kind: z.literal("surface"),
+    triangleIndices: z
+      .array(z.number().int().min(0).max(19_999))
+      .min(1)
+      .max(20_000)
+      .refine((indices) => new Set(indices).size === indices.length, {
+        message: "Surface triangle indices must be unique.",
+      }),
+    depthMm: z.number().finite().positive().max(100_000),
+  })
+  .strict()
+export const structuralRegionSchema = z.union([
+  structuralBoxRegionSchema,
+  structuralSurfaceRegionSchema,
+])
+export type StructuralRegion = z.infer<typeof structuralRegionSchema>
+export type StructuralSurfaceRegion = z.infer<typeof structuralSurfaceRegionSchema>
+const minimumMassObjectiveSchema = z.object({ kind: z.literal("minimize-mass") }).strict()
+const stiffnessObjectiveSchema = z
+  .object({
+    kind: z.literal("maximize-stiffness"),
+    retainedMassFraction: z.number().finite().min(0.1).max(1),
+  })
+  .strict()
+const structuralObjectiveSchema = z.discriminatedUnion("kind", [
+  minimumMassObjectiveSchema,
+  stiffnessObjectiveSchema,
+])
 export const structuralOptimizationSettingsSchema = z
   .object({
+    objective: structuralObjectiveSchema.optional(),
     material: z
       .object({
         youngModulusMpa: z.number().finite().min(0.001).max(1_000_000),
@@ -86,7 +117,23 @@ export const structuralOptimizationSummarySchema = z
     finalCellCount: z.number().int().min(1).max(3_000),
     iterations: z.number().int().min(0).max(40),
     evaluations: z.number().int().min(2).max(1_000),
-    termination: z.enum(["iteration-limit", "constraints-or-topology", "no-removable-cells"]),
+    objective: z
+      .discriminatedUnion("kind", [
+        minimumMassObjectiveSchema,
+        stiffnessObjectiveSchema.extend({
+          targetMassKg: positive,
+          targetCellCount: z.number().int().min(1).max(3_000),
+          achievedRetainedMassFraction: z.number().finite().min(0.1).max(1),
+          targetStatus: z.enum(["reached", "not-reached"]),
+        }),
+      ])
+      .optional(),
+    termination: z.enum([
+      "iteration-limit",
+      "constraints-or-topology",
+      "no-removable-cells",
+      "target-mass-reached",
+    ]),
     warnings: z.array(z.string().max(1_024)).max(16),
   })
   .strict()

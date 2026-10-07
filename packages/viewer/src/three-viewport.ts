@@ -37,6 +37,7 @@ import {
 } from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 import { TransformControls } from "three/addons/controls/TransformControls.js"
+import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysis-overlays"
 import { orientationInsetPlacement } from "./orientation-inset"
 import {
   defaultViewerOriginPlaneVisibility,
@@ -49,6 +50,8 @@ import { sectionClipPlanes, sectionPointVisible, type ViewerSection } from "./se
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import { viewerBodyColor } from "./viewer-appearance"
 
+export type { ViewerAnalysisOverlay } from "./analysis-overlays"
+export { viewerFaceSurfaceGeometry } from "./face-surface-geometry"
 export {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -509,6 +512,7 @@ export type GeometryViewport = Readonly<{
   setSelectionCandidateStackPreserved: (preserved: boolean) => void
   setSelectionPreselection: (selection: ViewerSelection | null) => void
   setFaceSelections: (selections: readonly ViewerSelection[]) => void
+  setAnalysisOverlays: (overlays: readonly ViewerAnalysisOverlay[] | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   showTranslationGizmo: (position: ViewerVector3) => void
   showAxialTranslationGizmo: (gizmo: ViewerAxialGizmo) => void
@@ -1197,6 +1201,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   })
   #sectionPlanes: Plane[] | null = null
   readonly #printDecoration = new PrintBedDecoration(() => this.#render())
+  readonly #analysisDecoration = new AnalysisOverlayDecoration(createFaceHighlightGeometry, () =>
+    this.#render(),
+  )
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
   readonly #sketchProfileGroup = new Group()
@@ -1538,6 +1545,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setClearAlpha(0)
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
     this.#scene.add(this.#printDecoration.bed, this.#printDecoration.ground)
+    this.#scene.add(this.#analysisDecoration.group)
     this.#scene.add(this.#modelGroup)
     this.#scene.add(this.#sketchGroup)
     this.#scene.add(this.#sketchProfileGroup)
@@ -2193,6 +2201,13 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  setAnalysisOverlays(overlays: readonly ViewerAnalysisOverlay[] | null) {
+    if (this.#disposed) return
+    this.#analysisDecoration.setOverlays(overlays)
+    this.#analysisDecoration.setClipping(this.#sectionPlanes)
+    this.#render()
+  }
+
   setSelectionCandidateStackPreserved(preserved: boolean) {
     if (this.#disposed) return
     this.#selectionCandidateStackPreserved = preserved
@@ -2200,6 +2215,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   dispose() {
     this.#printDecoration.dispose()
+    this.#analysisDecoration.dispose()
     if (this.#disposed) return
     this.#disposed = true
     this.#renderFrames.cancel()
@@ -3337,6 +3353,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #applySectionClipping() {
+    this.#analysisDecoration.setClipping(this.#sectionPlanes)
     const groups = [
       this.#modelGroup,
       this.#featurePreselectionGroup,

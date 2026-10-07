@@ -126,8 +126,8 @@ describe("CommandToolbar", () => {
 
     expect(screen.getByRole("toolbar", { name: "Model commands" })).toBeTruthy()
     expect(screen.getByText("Primitives", { exact: true })).toBeTruthy()
-    expect((screen.getByRole("button", { name: "Extrude" }) as HTMLButtonElement).disabled).toBe(
-      true,
+    expect(screen.getByRole("button", { name: "Extrude" }).getAttribute("aria-disabled")).toBe(
+      "true",
     )
 
     const createSketch = screen.getByRole("button", { name: "Create sketch" })
@@ -295,6 +295,81 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Model" }))
     await user.keyboard("{ArrowRight}")
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
+  })
+
+  it("includes blocked commands in roving focus and describes their prerequisite on focus", async () => {
+    const user = userEvent.setup()
+    renderToolbar()
+    const createSketch = screen.getByRole("button", { name: "Create sketch" })
+    createSketch.focus()
+
+    await user.keyboard("{ArrowRight}")
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Datum plane" }))
+    await user.keyboard("{ArrowRight}")
+    const extrude = screen.getByRole("button", { name: "Extrude" })
+    expect(document.activeElement).toBe(extrude)
+    expect(extrude).toHaveProperty("disabled", false)
+    const descriptionId = extrude.getAttribute("aria-describedby")
+    expect(descriptionId).toBeTruthy()
+    expect(document.getElementById(descriptionId ?? "")?.textContent).toBe(
+      "Select a closed sketch profile first.",
+    )
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Select a closed sketch profile first.",
+    )
+    expect(actions.createExtrusion).not.toHaveBeenCalled()
+  })
+
+  it.each(["{Enter}", " "])(
+    "opens a blocked reason with %s and restores toolbar focus on Escape without invoking the command",
+    async (key) => {
+      const user = userEvent.setup()
+      const invoke = vi.fn()
+      renderToolbar(
+        commands().map((command) =>
+          command.descriptor.id === editorCommandIds.createExtrusion
+            ? { ...command, invoke }
+            : command,
+        ),
+      )
+      const extrude = screen.getByRole("button", { name: "Extrude" })
+      extrude.focus()
+
+      await user.keyboard(key)
+      const disclosure = await screen.findByRole("dialog", { name: "Extrude" })
+      expect(disclosure.textContent).toBe("Select a closed sketch profile first.")
+      expect(invoke).not.toHaveBeenCalled()
+      expect(actions.createExtrusion).not.toHaveBeenCalled()
+      await user.keyboard("{Escape}")
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Extrude" })).toBeNull())
+      expect(document.activeElement).toBe(extrude)
+      await user.keyboard("{ArrowRight}")
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Revolve" }))
+    },
+  )
+
+  it("reveals a blocked command's reason on a touch tap without invoking it", async () => {
+    const user = userEvent.setup()
+    const invoke = vi.fn()
+    renderToolbar(
+      commands().map((command) =>
+        command.descriptor.id === editorCommandIds.createExtrusion
+          ? { ...command, invoke }
+          : command,
+      ),
+    )
+    const extrude = screen.getByRole("button", { name: "Extrude" })
+
+    await user.pointer([
+      { keys: "[TouchA>]", target: extrude },
+      { keys: "[/TouchA]", target: extrude },
+    ])
+
+    expect((await screen.findByRole("dialog", { name: "Extrude" })).textContent).toBe(
+      "Select a closed sketch profile first.",
+    )
+    expect(actions.createExtrusion).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
   })
 
   it("keeps primitive creation, modeling operations, inspection, and history in distinct groups", () => {

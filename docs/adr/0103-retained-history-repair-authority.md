@@ -1,4 +1,4 @@
-# ADR-0102: Retained History repair authority
+# ADR-0103: Retained History repair authority
 
 - Status: Accepted
 - Date: 2026-10-07

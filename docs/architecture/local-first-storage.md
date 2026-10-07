@@ -76,7 +76,7 @@ their empty collections are introduced in the same event. Recovery cannot fall b
 adoption boundary. Normal repair and Undo/Redo persist complete repair intent and suspended part
 identities, and confirmed authority projections include automatically restored descendants. Format-6
 export/import/copy preserves replay proof and the full source closure. See
-[ADR-0102](../adr/0102-retained-history-repair-authority.md).
+[ADR-0103](../adr/0103-retained-history-repair-authority.md).
 
 A user command becomes committed only after:
 

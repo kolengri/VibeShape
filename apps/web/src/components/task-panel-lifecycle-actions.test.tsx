@@ -93,6 +93,47 @@ describe("TaskPanelLifecycleActions", () => {
     expect(screen.getByRole("button", { name: "Cancel feature" })).toHaveProperty("disabled", false)
   })
 
+  it("locks cancellation while an atomic apply is in progress", async () => {
+    const onCancel = vi.fn()
+    renderActions({ cancelDisabled: true, onCancel })
+    const cancel = screen.getByRole("button", { name: "Cancel feature" })
+    expect(cancel).toHaveProperty("disabled", true)
+    await userEvent.click(cancel)
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it("keeps the supplied blocked reason visible and linked to disabled accept", async () => {
+    const user = userEvent.setup()
+    const onAccept = vi.fn()
+    const { rerender } = renderActions({
+      acceptDisabled: true,
+      acceptDisabledReason: "Select two faces first.",
+      onAccept,
+    })
+    const accept = screen.getByRole("button", { name: "Accept feature" })
+    const reason = screen.getByText("Select two faces first.")
+    expect(accept.getAttribute("aria-describedby")).toBe(reason.id)
+    expect(reason.classList.contains("sr-only")).toBe(false)
+    expect(reason.closest('[role="tooltip"]')).toBeNull()
+
+    await user.click(accept)
+    expect(onAccept).not.toHaveBeenCalled()
+    rerender(
+      <TaskPanelLifecycleActions
+        acceptDisabled={false}
+        acceptDisabledReason="Select two faces first."
+        acceptLabel="Accept feature"
+        ariaLabel="Feature actions"
+        cancelLabel="Cancel feature"
+        onAccept={onAccept}
+        onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText("Select two faces first.")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Accept feature" }))
+    expect(onAccept).toHaveBeenCalledOnce()
+  })
+
   it("supports a cancel-only selection task without rendering a fake accept action", () => {
     render(
       <TooltipProvider delayDuration={0}>

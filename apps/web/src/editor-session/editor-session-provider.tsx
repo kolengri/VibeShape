@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useState,
 } from "react"
@@ -58,9 +59,16 @@ export function useHistoryNavigation() {
   return navigation
 }
 
-export function useRegisterTaskSubmission(submit: () => Promise<unknown>) {
+export function useRegisterTaskSubmission(
+  submit: () => Promise<unknown>,
+  workspaceTaskKey?: string,
+) {
   const navigation = useContext(HistoryNavigationContext)
-  useLayoutEffect(() => navigation?.register(submit), [navigation, submit])
+  const owner = useId()
+  useLayoutEffect(
+    () => navigation?.register(submit, workspaceTaskKey, owner),
+    [navigation, submit, workspaceTaskKey, owner],
+  )
 }
 
 export function useEditorSession<Result>(selector: (state: EditorSessionStore) => Result) {

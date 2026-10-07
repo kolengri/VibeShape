@@ -6,6 +6,7 @@ import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
 import type { ImportReviewInput } from "./import-upload-session"
 import { LightweightingReviewDetails } from "./lightweighting-review-details"
+import { QuickLightweightingReviewDetails } from "./quick-lightweighting-review-details"
 
 export function ImportReviewPanel({
   review,
@@ -29,6 +30,9 @@ export function ImportReviewPanel({
       <div className="grid min-h-0 gap-3 overflow-auto p-4">
         <p className="text-sm">{t("description")}</p>
         {input.lightweighting && <LightweightingReviewDetails evidence={input.lightweighting} />}
+        {input.quickLightweighting && (
+          <QuickLightweightingReviewDetails evidence={input.quickLightweighting} />
+        )}
         <dl className="grid gap-1 text-xs">
           <div>
             <dt className="font-medium">{t("file")}</dt>

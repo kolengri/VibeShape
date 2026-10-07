@@ -125,7 +125,7 @@ detached sketches cannot solve as committed origin-plane geometry. Explicit type
 eligible descendants in dependency order and reuse their original part identities. Native format 6
 preserves the full journal, adoption provenance, repair intent, and historical asset closure;
 older readers reject it. Historical schemas and formats remain unchanged. See
-[ADR-0102](../adr/0102-retained-history-repair-authority.md) for the deletion and repair contract.
+[ADR-0103](../adr/0103-retained-history-repair-authority.md) for the deletion and repair contract.
 
 A command contains:
 

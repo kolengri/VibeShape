@@ -121,6 +121,13 @@ import {
   variableListQuerySchema,
   variableListViewSchema,
 } from "./queries"
+import {
+  quickLightweightingAnalysisSchema,
+  quickLightweightingOperations,
+  quickLightweightingRequestSchema,
+  quickLightweightingToolInputs,
+  quickLightweightingToolNames,
+} from "./quick-lightweighting-tools"
 import { renderPreviewArgumentsSchema, renderPreviewResultSchema } from "./render-preview"
 import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
 import {
@@ -185,6 +192,7 @@ export const localToolInputs = {
   list_lightweighting_materials: z.object({}).strict(),
   ...projectToolInputs,
   ...lightweightingToolInputs,
+  ...quickLightweightingToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...localPlanarImportInputs,
@@ -281,6 +289,8 @@ export const localToolOutputs = {
   list_lightweighting_materials: resultOf(structuralMaterialCatalogSchema),
   analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
   request_lightweighting: resultOf(lightweightingRequestSchema),
+  analyze_quick_lightweighting: resultOf(quickLightweightingAnalysisSchema),
+  request_quick_lightweighting: resultOf(quickLightweightingRequestSchema),
   list_projects: resultOf(projectListSchema),
   create_project: resultOf(projectViewSchema),
   open_project: resultOf(projectViewSchema),
@@ -437,6 +447,7 @@ export const localToolNameSchema = z.enum([
   "list_lightweighting_materials",
   ...projectToolNames,
   ...lightweightingToolNames,
+  ...quickLightweightingToolNames,
   "render_preview",
   "model_history_state",
   "undo_model",
@@ -563,6 +574,7 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
     .strict(),
   ...projectOperations,
   ...lightweightingOperations,
+  ...quickLightweightingOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,

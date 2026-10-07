@@ -147,11 +147,29 @@ and copy explicit numeric \`material\` values into settings; no preset ID replac
 Structural lightweighting uses \`analyze_lightweighting\` (compute-only) and \`request_lightweighting\`
 (independent mesh snapshot) on both paired transports. Retain exact committed Part/body identity,
 content hash and revision; supply material properties, world-mm support/load/preservation regions,
-stress safety and displacement constraints. Both call the editor's bounded preliminary FEM worker.
+stress safety and displacement constraints. Optional \`objective\` selects minimum mass (default)
+or stiffness-guided removal with \`retainedMassFraction\` 0.1–1 of the FEM baseline mass. Inspect
+objective target mass, achieved fraction and reached/not-reached status; the energy-ranked heuristic
+makes no globally optimal stiffness claim. Both call the editor's bounded preliminary FEM worker.
 An improved snapshot requires native mesh preview and manual browser Apply even in Auto-apply
 sessions, then one atomic immutable STL import retaining the original. No improvement mutates nothing.
 Only bounded metrics and snapshot identifiers cross MCP. Read the modeling lightweighting reference
 for resource limits, cancellation, source discretization loss and engineering limitations.
+Current source surface regions may use \`kind: "surface"\`, \`triangleIndices\` and \`depthMm\`;
+indices are captured tessellation data, never persistent face identities or guesses from images.
+
+Quick load-free lightweighting uses \`analyze_quick_lightweighting\` (compute-only) and
+\`request_quick_lightweighting\` (reviewed mesh snapshot) on both paired transports. Capture
+exact source identity and revision; supply mode (preserve-exterior/open-organic), requested removal,
+sampling detail, independent physical \`latticeCellSizeMm\` and skin thickness. Optional
+\`cellType\` selects Gyroid (default), Schwarz P or Schwarz D. The physical period defaults to
+six sampling cells for Gyroid/Schwarz P or twelve for Schwarz D, and must be six to twelve sampling cells. A preserved skin is at least two
+sampling cells thick.
+Inspect measured source/result volumes, actual removal, cell type, physical period and warnings; target removal
+can be limited by source shape, skin and sampling. Manual browser Apply remains required in
+Auto-apply sessions; one atomic immutable STL import retains the source and creates one Undo entry.
+No mesh crosses MCP, and no stiffness, strength or load certification is implied. Read the modeling
+quick-lightweighting reference for resource limits, closed-cavity manufacturing limits and recovery.
 
 Surface texture create/update/remove use named owned proposals with native relief preview and
 mandatory manual Apply. Read the modeling skill's surface-textures reference for packed custom

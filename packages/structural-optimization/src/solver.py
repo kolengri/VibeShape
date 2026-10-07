@@ -58,8 +58,34 @@ def _vector(value, name, bound=100000):
     return np.array([_number(x, name, -bound, bound) for x in value])
 
 
-def _region(value):
-    _require(isinstance(value, dict), "invalid-input", "A region must contain min and max coordinates.")
+def _objective(request):
+    if "objective" not in request:
+        return None
+    objective = request["objective"]
+    _require(isinstance(objective, dict), "invalid-input", "objective must be a supported objective object.")
+    if objective.get("kind") == "minimize-mass":
+        _require(set(objective) == {"kind"}, "invalid-input", "The minimum-mass objective requires only kind.")
+        return {"kind": "minimize-mass"}
+    _require(objective.get("kind") == "maximize-stiffness" and set(objective) == {"kind", "retainedMassFraction"},
+             "invalid-input", "The stiffness objective requires kind and retainedMassFraction.")
+    return {"kind": "maximize-stiffness", "retainedMassFraction":
+            _number(objective["retainedMassFraction"], "retainedMassFraction", 0.1, 1)}
+
+
+def _region(value, triangle_count):
+    _require(isinstance(value, dict), "invalid-input", "A region must be a box or captured surface selection.")
+    if value.get("kind") == "surface":
+        _require(set(value) == {"kind", "triangleIndices", "depthMm"}, "invalid-input", "Surface regions require only kind, triangleIndices, and depthMm.")
+        indices = value["triangleIndices"]
+        _require(isinstance(indices, list) and 0 < len(indices) <= MAX_TRIANGLES,
+                 "invalid-input", "Surface selections require 1 to 20000 captured source triangles.")
+        _require(all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < triangle_count for i in indices),
+                 "invalid-input", "Surface triangle indices must reference the captured source mesh.")
+        _require(len(set(indices)) == len(indices), "invalid-input", "Surface triangle indices must be unique.")
+        depth = _number(value["depthMm"], "depthMm", 0, 100000)
+        _require(depth > 0, "invalid-input", "Surface depthMm must be positive.")
+        return {"triangles": frozenset(indices), "depth": depth}
+    _require(set(value) == {"min", "max"}, "invalid-input", "Box regions require only min and max coordinates.")
     lo = _vector(value.get("min"), "region.min")
     hi = _vector(value.get("max"), "region.max")
     _require(np.all(lo <= hi), "invalid-input", "Region minimum must not exceed maximum.")
@@ -72,7 +98,7 @@ def _within(points, region, tolerance):
 
 
 class _TriangleIndex:
-    """Small local AABB index implementing the interface required by trimesh rays.
+    """Small local AABB index implementing trimesh rays and proximity queries.
 
     The triangle intersection and point-in-solid algorithms remain in trimesh;
     this bounded broad phase avoids the native rtree dependency in Pyodide.
@@ -175,6 +201,8 @@ def _source(request, cell_size):
     # Cell-scale coordinates keep trimesh's geometric tolerance independent of
     # document scale.  Welding changes adjacency only within 1e-10 cell.
     normalized = trimesh.Trimesh((vertices - origin) / cell_size, np.array(raw_indices).reshape(-1, 3), process=False)
+    # Vertex welding preserves face order: captured triangle selections keep
+    # addressing the original immutable input rather than transient topology.
     normalized.merge_vertices(digits_vertex=10)
     _check_surface(normalized, "Source mesh")
     return normalized, origin, float(normalized.volume * cell_size ** 3)
@@ -244,16 +272,76 @@ def _surface(mesh):
     return output
 
 
-def _conditions(request, mesh, nodes, cells, cell_size):
+def _nearest_surface(source, points, deadline, normals=None):
+    """Resolve all nearest ties using trimesh's triangle-distance implementation.
+
+    A tie across aligned source faces remains ambiguous instead of choosing a
+    triangle ordinal.  Queries are bounded to one source-triangle array at a
+    time; the existing local index replaces trimesh's native rtree broad phase.
+    """
+    source._cache["triangles_tree"] = _TriangleIndex(source.triangles)
+    matches = []
+    for start in range(0, len(points), 32):
+        _require(time.monotonic() < deadline, "resource-limit", "Surface mapping exceeded its time budget.")
+        batch = points[start:start + 32]
+        candidates = trimesh.proximity.nearby_faces(source, batch)
+        for offset, (point, candidate) in enumerate(zip(batch, candidates)):
+            candidate = np.asarray(candidate, dtype=int)
+            closest = trimesh.triangles.closest_point(source.triangles[candidate], np.tile(point, (len(candidate), 1)))
+            distance = np.linalg.norm(closest - point, axis=1)
+            nearest = float(distance.min())
+            tied = candidate[distance <= nearest + 1e-9]
+            if normals is not None:
+                aligned = source.face_normals[tied] @ normals[start + offset] > 1e-9
+                tied = tied[aligned]
+            matches.append((frozenset(tied.tolist()), nearest))
+    return matches
+
+
+def _surface_mask(matches, region, distance_limit):
+    return np.array([bool(tied) and tied <= region["triangles"] and distance <= distance_limit + 1e-9
+                     for tied, distance in matches], dtype=bool)
+
+
+def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
     tolerance = cell_size * 1e-9
     origin = mesh.p[:, 0] - nodes[0] * cell_size
     boundary_nodes = np.unique(mesh.facets[:, mesh.boundary_facets()])
     supports = request.get("supports")
-    _require(isinstance(supports, list) and 0 < len(supports) <= 16, "no-support-nodes", "At least one support region is required.")
+    _require(isinstance(supports, list) and 0 < len(supports) <= 8, "no-support-nodes", "One to eight support regions are required.")
+    supports = [_region(region, len(source.faces)) for region in supports]
+    cases = request.get("loadCases")
+    _require(isinstance(cases, list) and 0 < len(cases) <= 8, "invalid-input", "One to eight load cases are required.")
+    case_regions = []
+    for case in cases:
+        _require(isinstance(case, dict), "invalid-input", "Each load case must be an object.")
+        case_regions.append(_region(case.get("region"), len(source.faces)))
+    regions = request.get("preserveRegions", [])
+    _require(isinstance(regions, list) and len(regions) <= 16, "invalid-input", "At most 16 preserve regions are supported.")
+    preserve = [_region(region, len(source.faces)) for region in regions]
+    surfaces = [region for region in supports + case_regions + preserve if isinstance(region, dict)]
+    facets = mesh.boundary_facets()
+    facet_nodes = mesh.facets[:, facets].T
+    facet_matches = []
+    cell_matches = []
+    if surfaces:
+        centers = mesh.p.T[facet_nodes].mean(axis=1)
+        owners = mesh.f2t[0, facets]
+        cell_centers = mesh.p.T[mesh.t[:, owners].T].mean(axis=1)
+        normals = centers - cell_centers
+        normals /= np.linalg.norm(normals, axis=1)[:, None]
+        facet_matches = _nearest_surface(source, (centers - origin) / cell_size, deadline, normals)
+        cell_matches = _nearest_surface(source, cells + 0.5, deadline)
+    # Every exterior cell has an excluded neighboring grid cell.  A source
+    # boundary farther than this diagonal is not that exterior's target.
+    surface_band = math.sqrt(3)
     fixed = set()
     for region in supports:
-        selected = boundary_nodes[_within(mesh.p.T[boundary_nodes], _region(region), tolerance)]
-        _require(len(selected), "no-support-nodes", "A support region selects no actual exterior FEM nodes; adjust its bounds or resolution.")
+        if isinstance(region, dict):
+            selected = np.unique(facet_nodes[_surface_mask(facet_matches, region, surface_band)])
+        else:
+            selected = boundary_nodes[_within(mesh.p.T[boundary_nodes], region, tolerance)]
+        _require(len(selected), "no-support-nodes", "A support region selects no actual exterior FEM nodes; adjust its surface selection, bounds, or resolution.")
         fixed.update(selected.tolist())
     fixed = np.array(sorted(fixed), dtype=int)
     positions = mesh.p.T[fixed]
@@ -264,38 +352,44 @@ def _conditions(request, mesh, nodes, cells, cell_size):
         rigid[3 * i:3 * i + 3, 3:] = [[0, z, -y], [-z, 0, x], [y, -x, 0]]
     _require(np.linalg.matrix_rank(rigid) == 6, "underconstrained", "Supports do not constrain all six rigid-body modes.")
     fixed_keys = {tuple(node) for node in nodes[fixed]}
-    cases = request.get("loadCases")
-    _require(isinstance(cases, list) and 0 < len(cases) <= 8, "invalid-input", "One to eight load cases are required.")
     loads = []
     protected_keys = set(fixed_keys)
-    facets = mesh.boundary_facets()
-    facet_nodes = mesh.facets[:, facets].T
     names = set()
-    for case in cases:
-        _require(isinstance(case, dict), "invalid-input", "Each load case must be an object.")
+    for case, region in zip(cases, case_regions):
         name = case.get("name")
         _require(isinstance(name, str) and 0 < len(name.strip()) <= 80 and name not in names,
                  "invalid-input", "Load cases require unique nonempty names up to 80 characters.")
         names.add(name)
-        force = _vector(case.get("forceN"), "forceN", 1e9)
+        force = _vector(case.get("forceN"), "forceN", 1e6)
         _require(np.linalg.norm(force) > 0, "invalid-input", "Each load case requires a nonzero resultant force.")
-        mask = _within(mesh.p.T[facet_nodes], _region(case.get("region")), tolerance).all(axis=1)
-        _require(np.any(mask), "no-load-facets", "A load region selects no complete exterior FEM facet; adjust its bounds or resolution.")
+        if isinstance(region, dict):
+            mask = _surface_mask(facet_matches, region, surface_band)
+        else:
+            mask = _within(mesh.p.T[facet_nodes], region, tolerance).all(axis=1)
+        _require(np.any(mask), "no-load-facets", "A load region selects no complete exterior FEM facet; adjust its surface selection, bounds, or resolution.")
         selected_nodes = facet_nodes[mask]
         _require(not set(np.unique(selected_nodes)).intersection(fixed.tolist()), "load-support-overlap", "Load facets must not touch clamped support nodes.")
         keys = [frozenset(tuple(p) for p in nodes[quad]) for quad in selected_nodes]
         protected_keys.update(p for key in keys for p in key)
         loads.append({"name": name, "force": force, "facets": keys})
-    regions = request.get("preserveRegions", [])
-    _require(isinstance(regions, list) and len(regions) <= 32, "invalid-input", "At most 32 preserve regions are supported.")
-    preserve = [_region(region) for region in regions]
     protected = set()
-    for cell in cells:
+    surface_protected = np.zeros(len(cells), dtype=bool)
+    for region in surfaces:
+        selected_facets = _surface_mask(facet_matches, region, surface_band)
+        if any(region is preserved for preserved in preserve):
+            _require(np.any(selected_facets), "no-preserve-cells", "A preserved surface selects no actual exterior FEM facet; adjust its surface selection or resolution.")
+        surface_protected[owners[selected_facets]] = True
+        # The nearest full-source surface defines membership, including curved
+        # and trimmed faces.  A half-cell diagonal conservatively rounds depth
+        # to whole cells; depth does not cross another surface's nearest region.
+        surface_protected |= _surface_mask(cell_matches, region, region["depth"] / cell_size + math.sqrt(3) / 2)
+    boxes = [region for region in preserve if not isinstance(region, dict)]
+    for index, cell in enumerate(cells):
         corners = cell + HEX_CORNERS
         if any(tuple(p) in protected_keys for p in corners):
             protected.add(tuple(cell))
         lo, hi = origin + cell * cell_size, origin + (cell + 1) * cell_size
-        if any(np.all((lo <= rhi + tolerance) & (hi >= rlo - tolerance)) for rlo, rhi in preserve):
+        if surface_protected[index] or any(np.all((lo <= rhi + tolerance) & (hi >= rlo - tolerance)) for rlo, rhi in boxes):
             protected.add(tuple(cell))
     return fixed_keys, loads, protected
 
@@ -381,6 +475,7 @@ def solve(request):
              "invalid-input", "Only structural request schemaVersion 1 is supported.")
     started = time.monotonic()
     deadline = started + MAX_SECONDS
+    objective = _objective(request)
     cell_size = _number(request.get("cellSizeMm"), "cellSizeMm", 1e-4, 100000)
     max_displacement = _number(request.get("maxDisplacementMm"), "maxDisplacementMm", 1e-9, 100000)
     safety_factor = _number(request.get("safetyFactor"), "safetyFactor", 1, 100)
@@ -396,8 +491,10 @@ def solve(request):
     source, origin, source_volume = _source(request, cell_size)
     cells = _voxelize(source, deadline)
     initial_count = len(cells)
+    target_count = (math.ceil(initial_count * objective["retainedMassFraction"])
+                    if objective and objective["kind"] == "maximize-stiffness" else None)
     initial_mesh, nodes = _hex_mesh(cells, origin, cell_size)
-    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size)
+    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size, source, deadline)
 
     def feasible(metrics):
         return metrics["safetyFactor"] >= safety_factor and metrics["maxDisplacementMm"] <= max_displacement
@@ -407,6 +504,9 @@ def solve(request):
     evaluations, iterations = 1, 0
     termination = "iteration-limit"
     for iteration in range(max_iterations):
+        if target_count is not None and len(cells) == target_count:
+            termination = "target-mass-reached"
+            break
         iterations = iteration + 1
         occupied = {tuple(cell) for cell in cells}
         eligible = np.array([i for i, cell in enumerate(cells) if tuple(cell) not in protected
@@ -416,6 +516,8 @@ def solve(request):
             break
         ranked = eligible[np.argsort(energy[eligible], kind="stable")]
         remove_count = min(len(ranked), max(1, math.ceil(len(cells) * 0.04)))
+        if target_count is not None:
+            remove_count = min(remove_count, len(cells) - target_count)
         accepted = False
         while remove_count:
             mask = np.ones(len(cells), dtype=bool)
@@ -435,23 +537,39 @@ def solve(request):
         if not accepted:
             termination = "constraints-or-topology"
             break
+    if target_count is not None and len(cells) == target_count:
+        termination = "target-mass-reached"
     # Never attach a previous candidate's metrics to a newly emitted surface.
     optimized, _, output = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline)
     evaluations += 1
     _require(feasible(optimized), "final-verification-failed", "Repeated final full-solid analysis violates a constraint.")
     _require(optimized["volumeMm3"] <= baseline["volumeMm3"] + 1e-8,
              "final-verification-failed", "The final volume exceeds the baseline.")
-    return {"schemaVersion": 1, "status": "improved" if len(cells) < initial_count else "no-improvement",
+    result = {"schemaVersion": 1, "status": "improved" if len(cells) < initial_count else "no-improvement",
             "mesh": {"vertices": output.vertices.ravel().tolist(), "indices": output.faces.ravel().tolist()},
             "baseline": baseline, "optimized": optimized, "sourceVolumeMm3": source_volume,
             "sourceVolumeLossFraction": max(0.0, 1 - baseline["volumeMm3"] / source_volume),
             "cellSizeMm": cell_size, "initialCellCount": initial_count, "finalCellCount": len(cells),
             "iterations": iterations, "evaluations": evaluations, "termination": termination,
             "warnings": ["Conservative voxel approximation; boundary details smaller than the cell size may be lost.",
-                         "Heuristic feasible material removal, without a global-minimum guarantee.",
+                         ("Heuristic energy-ranked feasible removal at a retained baseline-mass target, without a global stiffness-optimum guarantee."
+                          if target_count is not None else "Heuristic feasible material removal, without a global-minimum guarantee."),
                          "Linear isotropic small-strain FEM; unaveraged element-corner and quadrature stress is resolution dependent and is not a physical strength certification.",
                          "Sharp voxel and clamped-boundary corners can create continuum stress singularities; finite FEM peaks do not establish converged continuum maxima.",
-                         "Loads are uniform tractions on selected baseline facets; all load, support, and preservation cells remain fixed."]}
+                         "Loads are uniform tractions on selected baseline facets; all load, support, and preservation cells remain fixed."] +
+                        (["Surface selections use nearest captured-source triangles and aligned voxel exterior facets within one cell diagonal; ambiguous edges are excluded. Preservation depth is rounded by half a cell diagonal and stops at another nearest source surface."]
+                         if any(region.get("kind") == "surface" for region in request["supports"] + [case["region"] for case in request["loadCases"]] + request.get("preserveRegions", [])) else [])}
+    if objective is not None:
+        result["objective"] = objective
+        if target_count is not None:
+            _require(len(cells) >= target_count, "final-verification-failed", "The final mass is below the retained-mass target.")
+            objective.update(targetMassKg=baseline["massKg"] * objective["retainedMassFraction"],
+                             targetCellCount=target_count,
+                             achievedRetainedMassFraction=optimized["massKg"] / baseline["massKg"],
+                             targetStatus="reached" if len(cells) == target_count else "not-reached")
+            if objective["targetStatus"] == "not-reached":
+                result["warnings"].append("Retained-mass target not reached: constraints, protected cells, topology, or the iteration limit prevented further feasible removal.")
+    return result
 
 
 def solve_json(request_json):

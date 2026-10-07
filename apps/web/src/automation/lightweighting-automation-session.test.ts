@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { lightweightingOperationSchema } from "@vibeshape/automation-api/lightweighting-tools"
 import { commandActorSchema, commandActorsEqual } from "@vibeshape/domain/commands"
 import { StructuralOptimizationError } from "@vibeshape/structural-optimization/client"
 import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
@@ -8,6 +9,7 @@ import {
   lightweightingId,
   lightweightingIdentity,
   lightweightingOperation,
+  lightweightingStiffnessSummary,
   lightweightingSummary,
 } from "../../../../packages/automation-api/src/lightweighting.test-fixtures"
 import { meshInspection } from "../features/import/import-test-fixtures"
@@ -133,11 +135,21 @@ describe("browser lightweighting snapshot authority", () => {
     await automationReviews.decide(review.id, "approved")
     expect(await pending).toMatchObject({
       ok: true,
-      value: { snapshot: { baseRevision: 4, revision: 6 } },
+      value: { snapshot: { baseRevision: 4, revision: 7 } },
     })
     expect(test.commit).toHaveBeenCalledTimes(1)
     const committed = test.commit.mock.calls[0]?.[0]
-    expect(committed?.transaction.commands).toHaveLength(2)
+    expect(committed?.transaction.commands).toHaveLength(3)
+    expect(committed?.transaction.commands).toContainEqual(
+      expect.objectContaining({
+        kind: "org.vibeshape.document.metadata-command",
+        payload: {
+          kind: "part.set-visibility",
+          partId: lightweightingIdentity.partId,
+          visible: false,
+        },
+      }),
+    )
     expect(
       committed?.transaction.commands.every((command) => commandActorsEqual(command.actor, actor)),
     ).toBe(true)
@@ -147,6 +159,38 @@ describe("browser lightweighting snapshot authority", () => {
       false,
     )
     expect(automationReviews.getSnapshot()).toBeNull()
+  })
+  it("captures the stiffness-guided mass budget in worker inputs and manual review", async () => {
+    const test = setup()
+    const objective = { kind: "maximize-stiffness", retainedMassFraction: 0.8 }
+    mocks.optimize.mockResolvedValueOnce({ ...lightweightingStiffnessSummary(), mesh })
+    const base = lightweightingOperation(true)
+    const operation = lightweightingOperationSchema.parse({
+      ...base,
+      arguments: { ...base.arguments, settings: { ...base.arguments.settings, objective } },
+    })
+    const pending = test.session.execute(actor, operation)
+    const review = await reviewReady()
+    expect(mocks.optimize.mock.calls[0]?.[0]).toMatchObject({ objective })
+    expect(review.input).toMatchObject({
+      lightweighting: {
+        settings: { objective },
+        summary: {
+          objective: {
+            kind: "maximize-stiffness",
+            retainedMassFraction: 0.8,
+            targetMassKg: 0.000032,
+            targetStatus: "reached",
+          },
+        },
+      },
+    })
+    await automationReviews.decide(review.id, "rejected")
+    expect(await pending).toMatchObject({
+      ok: false,
+      diagnostic: { code: "import-review-cancelled" },
+    })
+    expect(test.commit).not.toHaveBeenCalled()
   })
   it("rejects browser refusal without persisting any candidate bytes", async () => {
     const test = setup()
