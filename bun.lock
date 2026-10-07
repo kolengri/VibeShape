@@ -302,6 +302,7 @@
       "name": "@vibeshape/structural-optimization",
       "version": "0.0.0",
       "dependencies": {
+        "@vibeshape/domain": "workspace:*",
         "@vibeshape/formats": "workspace:*",
         "zod": "catalog:",
       },
