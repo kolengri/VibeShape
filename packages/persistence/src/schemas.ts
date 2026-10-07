@@ -27,23 +27,64 @@ function isSafeProjectThumbnailSvg(bytes: Uint8Array) {
   }
 }
 
+function hasCompletePngImage(view: DataView) {
+  let hasImageData = false
+  for (let offset = 33; offset + 12 <= view.byteLength; ) {
+    const length = view.getUint32(offset)
+    const end = offset + length + 12
+    if (end > view.byteLength) return false
+    const type = view.getUint32(offset + 4)
+    if (type === 0x49484452) return false
+    if (type === 0x49444154) hasImageData = true
+    if (type === 0x49454e44) return length === 0 && end === view.byteLength && hasImageData
+    offset = end
+  }
+  return false
+}
+
+function isProjectThumbnailPng(bytes: Uint8Array) {
+  if (bytes.length < 57 || bytes.length > PROJECT_THUMBNAIL_MAX_BYTES) return false
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10]
+  if (!signature.every((value, index) => bytes[index] === value)) return false
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  // Require the fixed thumbnail dimensions before handing bytes to an image decoder.
+  const header = [
+    [8, 13],
+    [12, 0x49484452],
+    [16, 240],
+    [20, 160],
+  ] as const
+  if (!header.every(([offset, value]) => view.getUint32(offset) === value)) return false
+  return hasCompletePngImage(view)
+}
+
 const projectThumbnailPayloadSchema = z
   .object({
     revision: revisionSchema,
-    mediaType: z.literal("image/svg+xml"),
+    mediaType: z.enum(["image/svg+xml", "image/png"]),
     bytes: z
       .instanceof(Uint8Array)
       .refine((value) => value.byteLength > 0, "Project thumbnail is empty.")
       .refine(
         (value) => value.byteLength <= PROJECT_THUMBNAIL_MAX_BYTES,
         "Project thumbnail is too large.",
-      )
-      .refine(isSafeProjectThumbnailSvg, "Project thumbnail SVG is invalid."),
+      ),
     generatedAt: timestampSchema,
   })
   .strict()
+  .superRefine(({ mediaType, bytes }, context) => {
+    const valid =
+      mediaType === "image/png" ? isProjectThumbnailPng(bytes) : isSafeProjectThumbnailSvg(bytes)
+    if (!valid) {
+      context.addIssue({
+        code: "custom",
+        path: ["bytes"],
+        message: "Project thumbnail image is invalid.",
+      })
+    }
+  })
 
-export const projectThumbnailRecordSchema = projectThumbnailPayloadSchema.extend({
+export const projectThumbnailRecordSchema = projectThumbnailPayloadSchema.safeExtend({
   schemaVersion: z.literal(0),
   documentId: documentIdSchema,
 })
@@ -410,8 +451,8 @@ export const portableProjectV2CopySchema = portableProjectV2PayloadSchema
   .extend({ copiedAt: timestampSchema })
   .superRefine(requireWritablePortableV2History)
 
-export const projectThumbnailWriteInputSchema = projectThumbnailRecordSchema.omit({
-  schemaVersion: true,
+export const projectThumbnailWriteInputSchema = projectThumbnailPayloadSchema.safeExtend({
+  documentId: documentIdSchema,
 })
 
 export const projectThumbnailCopyInputSchema = z

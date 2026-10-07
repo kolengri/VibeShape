@@ -31,7 +31,7 @@ import { sourceAuthorityUpgradeCommands } from "../import/source-authority-upgra
 export type AssemblyDocumentContext = Readonly<{
   documentId: string
   revision: number
-  authorityVersion: 2 | 3 | 4
+  authorityVersion: 2 | 3 | 4 | 5
 }>
 export const identityAssemblyPose: AssemblyRigidPose = {
   translation: [0, 0, 0],
@@ -56,7 +56,9 @@ export function assemblyDocumentContext(controller: DocumentControllerState) {
 }
 export function activeAssembly(controller: DocumentControllerState): AssemblyAuthority {
   const authority = controller.authoredSnapshot
-  return authority?.schemaVersion === 4 ? authority.assembly : emptyAssemblyAuthority()
+  return authority && (authority.schemaVersion === 4 || authority.schemaVersion === 5)
+    ? authority.assembly
+    : emptyAssemblyAuthority()
 }
 export function assemblyPartSources(controller: DocumentControllerState) {
   const authority = controller.authoredSnapshot

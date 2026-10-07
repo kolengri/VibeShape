@@ -119,7 +119,7 @@ function selectionRecords(
   return { instance, definition, activeId: instance ? instance.id : null }
 }
 function inspectionContext(context: AssemblyDocumentContext | null) {
-  return context?.authorityVersion === 4 ? context : null
+  return context?.authorityVersion === 4 || context?.authorityVersion === 5 ? context : null
 }
 export function useAssemblyWorkspace(controller: DocumentControllerState) {
   const context = assemblyDocumentContext(controller)

@@ -1,3 +1,4 @@
+import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentV2MetadataChange } from "@vibeshape/domain/document-v2-command-schemas"
 import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-folders"
@@ -15,12 +16,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { FolderPlus } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { browserAuthoredUuid } from "../document/authored-document-session"
 import type { AuthoredMetadataCommit } from "./authored-item-rename"
-import { folderRangeItems } from "./authored-tree-state"
+import { folderRangeItems, selectedFolderItems } from "./authored-tree-state"
 import type { HistoryViewRow } from "./model-tree-history"
 
 type FolderDialogProps = {
@@ -29,6 +32,11 @@ type FolderDialogProps = {
   rows: readonly HistoryViewRow[]
   disabled: boolean
   onCommit: AuthoredMetadataCommit
+  initialItems?: readonly HistoryItemRef[] | undefined
+  open?: boolean | undefined
+  onOpenChange?: ((open: boolean) => void) | undefined
+  showTrigger?: boolean | undefined
+  onCloseAutoFocus?: ((event: Event) => void) | undefined
 }
 
 function initialFolderItem(authority: AuthoredDocumentSnapshot, folder?: HistoryFolder) {
@@ -42,10 +50,13 @@ function folderFormChange(
   base: AuthoredDocumentSnapshot,
   folder: HistoryFolder | undefined,
   values: { name: string; first: string; last: string },
+  initialItems?: readonly HistoryItemRef[],
 ):
   | { ok: true; change: DocumentV2MetadataChange }
   | { ok: false; reason: "invalidName" | "invalidRange" } {
-  const items = folderRangeItems(base, values.first, values.last, folder?.id)
+  const items = initialItems
+    ? selectedFolderItems(base, initialItems.map(historyItemKey))
+    : folderRangeItems(base, values.first, values.last, folder?.id)
   if (!items) return { ok: false, reason: "invalidRange" }
   if (folder)
     return {
@@ -76,6 +87,8 @@ function FolderForm({
   onDone,
   pending,
   setPending,
+  initialItems,
+  disabled,
 }: FolderDialogProps & {
   onDone: () => void
   pending: boolean
@@ -89,12 +102,13 @@ function FolderForm({
   const form = useAppForm({
     defaultValues: { name: "", first, last: last ? historyItemKey(last) : first },
     onSubmit: async ({ value }) => {
-      const parsed = folderFormChange(base, folder, value)
+      if (pending || disabled) return
+      const parsed = folderFormChange(base, folder, value, initialItems)
       if (!parsed.ok) {
         setError(t(parsed.reason))
         return
       }
-      if (base.revision !== authority.revision) {
+      if (base.id !== authority.id || base.revision !== authority.revision) {
         setError(t("staleRevision"))
         return
       }
@@ -119,6 +133,7 @@ function FolderForm({
       .filter((item) => item.id !== folder?.id)
       .flatMap((item) => item.items.map(historyItemKey)),
   )
+  const initialKeys = new Set(initialItems?.map(historyItemKey))
   return (
     <Form form={form} aria-label={t(folder ? "editMembership" : "createFolder")}>
       {!folder && (
@@ -128,39 +143,52 @@ function FolderForm({
               autoFocus
               required
               autoComplete="off"
-              disabled={pending}
+              disabled={pending || disabled}
               label={t("folderName")}
               description={t("nameDescription")}
             />
           )}
         </form.AppField>
       )}
-      {(["first", "last"] as const).map((key) => (
-        <form.Field key={key} name={key}>
-          {(field) => (
-            <SelectField
-              label={t(key === "first" ? "firstItem" : "lastItem")}
-              value={field.state.value}
-              onValueChange={field.handleChange}
-              onBlur={field.handleBlur}
-              disabled={pending}
-            >
-              {rows.map((row, index) => (
-                <SelectOption
-                  key={historyItemKey(row.ref)}
-                  value={historyItemKey(row.ref)}
-                  disabled={occupied.has(historyItemKey(row.ref))}
-                >
-                  {t("historyOption", {
-                    position: index + 1,
-                    name: row.record.label || t("unnamedItem"),
-                  })}
-                </SelectOption>
+      {initialItems ? (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>{t("selectedItems", { count: initialItems.length })}</p>
+          <ul className="max-h-40 overflow-y-auto">
+            {rows
+              .filter((row) => initialKeys.has(historyItemKey(row.ref)))
+              .map((row) => (
+                <li key={historyItemKey(row.ref)}>{row.record.label || t("unnamedItem")}</li>
               ))}
-            </SelectField>
-          )}
-        </form.Field>
-      ))}
+          </ul>
+        </div>
+      ) : (
+        (["first", "last"] as const).map((key) => (
+          <form.Field key={key} name={key}>
+            {(field) => (
+              <SelectField
+                label={t(key === "first" ? "firstItem" : "lastItem")}
+                value={field.state.value}
+                onValueChange={field.handleChange}
+                onBlur={field.handleBlur}
+                disabled={pending || disabled}
+              >
+                {rows.map((row, index) => (
+                  <SelectOption
+                    key={historyItemKey(row.ref)}
+                    value={historyItemKey(row.ref)}
+                    disabled={occupied.has(historyItemKey(row.ref))}
+                  >
+                    {t("historyOption", {
+                      position: index + 1,
+                      name: row.record.label || t("unnamedItem"),
+                    })}
+                  </SelectOption>
+                ))}
+              </SelectField>
+            )}
+          </form.Field>
+        ))
+      )}
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}
@@ -172,7 +200,9 @@ function FolderForm({
             {t("cancel")}
           </Button>
         </DialogClose>
-        <form.SubmitButton>{t(folder ? "saveMembership" : "createFolder")}</form.SubmitButton>
+        <form.SubmitButton disabled={disabled}>
+          {t(folder ? "saveMembership" : "createFolder")}
+        </form.SubmitButton>
       </DialogFooter>
     </Form>
   )
@@ -180,7 +210,9 @@ function FolderForm({
 
 export function HistoryFolderDialog(props: FolderDialogProps) {
   const t = useTranslations("app.authoredTree")
-  const [open, setOpen] = useState(false)
+  const [localOpen, setLocalOpen] = useState(false)
+  const open = props.open ?? localOpen
+  const setOpen = props.onOpenChange ?? setLocalOpen
   const [pending, setPending] = useState(false)
   return (
     <Dialog
@@ -189,20 +221,35 @@ export function HistoryFolderDialog(props: FolderDialogProps) {
         if (!pending) setOpen(value)
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          disabled={props.disabled || !initialFolderItem(props.authority, props.folder)}
-          aria-label={
-            props.folder ? t("editFolderItems", { name: props.folder.name }) : t("createFolder")
-          }
-        >
-          {t(props.folder ? "items" : "createFolder")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent closeLabel={t("closeFolder")} showCloseButton={!pending}>
+      {props.showTrigger !== false && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                size={props.folder ? "xs" : "icon-xs"}
+                variant="ghost"
+                disabled={props.disabled || !initialFolderItem(props.authority, props.folder)}
+                aria-label={
+                  props.folder
+                    ? t("editFolderItems", { name: props.folder.name })
+                    : t("createFolder")
+                }
+              >
+                {props.folder ? t("items") : <FolderPlus aria-hidden="true" />}
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            {props.folder ? t("editFolderItems", { name: props.folder.name }) : t("createFolder")}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      <DialogContent
+        closeLabel={t("closeFolder")}
+        showCloseButton={!pending}
+        onCloseAutoFocus={props.onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle>
             {props.folder ? t("folderItemsTitle", { name: props.folder.name }) : t("createFolder")}

@@ -115,7 +115,7 @@ export async function readImportSource(file: ImportFile, unit: ImportSourceUnit 
 export type ImportDocumentContext = Readonly<{
   documentId: string
   revision: number
-  authorityVersion: 2 | 3 | 4
+  authorityVersion: 2 | 3 | 4 | 5
   historyAfter: HistoryItemRef | null
 }>
 export function importContextIsStale(

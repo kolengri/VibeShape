@@ -5,6 +5,10 @@ import {
   documentV3CommandSchema,
 } from "@vibeshape/domain/document-v2-command-schemas"
 import { documentV4CommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
+import {
+  historyRemoveRetainingDependentsCommandSchema,
+  historyRepairCommandSchema,
+} from "@vibeshape/domain/document-v5-command-schemas"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import { sourceAssetBlobSchema } from "@vibeshape/domain/source-assets"
 import { z } from "zod"
@@ -24,6 +28,8 @@ export const authorityTransactionSchema = z
       .array(
         z.union([
           documentV4CommandSchema,
+          historyRemoveRetainingDependentsCommandSchema,
+          historyRepairCommandSchema,
           documentV3CommandSchema,
           documentV2MetadataCommandSchema,
           versionedDocumentCommandSchema,
@@ -62,7 +68,7 @@ export function prepareAuthorityTransaction(
     const applied =
       command.schemaVersion === 1
         ? applyVersionedDocumentCommand(modelProjection(next), command, options)
-        : prepareAuthorityMetadataCommand(next, command, options)
+        : prepareAuthorityMetadataCommand(next, command, options, createPart)
     if (!applied.ok) return authorityFailure(applied.diagnostic.code, applied.diagnostic.message)
     const result =
       applied.event.schemaVersion === 1
@@ -76,7 +82,8 @@ export function prepareAuthorityTransaction(
       )
     next = result.snapshot
     events.push(result.event)
-    if (historyBase.schemaVersion !== next.schemaVersion) historyBase = next
+    if (historyBase.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5)
+      historyBase = next
   }
   return {
     ok: true as const,

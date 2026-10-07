@@ -123,7 +123,10 @@ export type AssemblySessionConfiguration = Readonly<{
 }>
 
 export function assemblyModelView(snapshot: DocumentAuthoritySnapshot) {
-  const assembly = snapshot.schemaVersion === 4 ? snapshot.assembly : emptyAssemblyAuthority()
+  const assembly =
+    snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5
+      ? snapshot.assembly
+      : emptyAssemblyAuthority()
   return assemblyModelViewSchema.parse({
     schemaVersion: 1,
     documentId: snapshot.id,

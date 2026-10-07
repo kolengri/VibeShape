@@ -4,6 +4,7 @@ import {
   type DocumentSnapshotV2,
   type DocumentSnapshotV3,
   type DocumentSnapshotV4,
+  type DocumentSnapshotV5,
   documentIdSchema,
   documentSourceAssetClosure,
   migrateDocumentSnapshot,
@@ -24,15 +25,19 @@ import {
   type PortableProjectV3,
   type PortableProjectV4,
   type PortableProjectV5,
+  type PortableProjectV6,
   type ProjectRecordV2,
   type ProjectRecordV3,
   type ProjectRecordV4,
+  type ProjectRecordV5,
   portableProjectV3PayloadSchema,
   portableProjectV4PayloadSchema,
   portableProjectV5PayloadSchema,
+  portableProjectV6PayloadSchema,
   projectRecordV2Schema,
   projectRecordV3Schema,
   projectRecordV4Schema,
+  projectRecordV5Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -55,22 +60,32 @@ import {
 
 async function parsePortablePayload(
   database: VibeShapeDatabase,
-  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4 | ProjectRecordV5,
   input: unknown,
-): Promise<PortableProjectV3 | PortableProjectV4 | PortableProjectV5> {
+): Promise<PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6> {
   if (project.schemaVersion === 2) return portableProjectV3PayloadSchema.parse(input)
   if (project.schemaVersion === 3)
     return portableProjectV4PayloadSchema.parse({
       ...z.record(z.string(), z.unknown()).parse(input),
       textureUpgradeRevision: project.textureUpgradeRevision,
     })
+  const schema =
+    project.schemaVersion === 5 ? portableProjectV6PayloadSchema : portableProjectV5PayloadSchema
   const partial = z
     .object({
-      ...portableProjectV5PayloadSchema.shape,
+      ...schema.shape,
       assetBlobs: z.array(sourceAssetBlobSchema).default([]),
       textureUpgradeRevision: portableProjectV5PayloadSchema.shape.textureUpgradeRevision.default(
         project.textureUpgradeRevision,
       ),
+      ...(project.schemaVersion === 5
+        ? {
+            repairUpgradeRevision:
+              portableProjectV6PayloadSchema.shape.repairUpgradeRevision.default(
+                project.repairUpgradeRevision,
+              ),
+          }
+        : {}),
       sourceUpgradeRevision: portableProjectV5PayloadSchema.shape.sourceUpgradeRevision.default(
         project.sourceUpgradeRevision,
       ),
@@ -95,11 +110,11 @@ async function parsePortablePayload(
     assetBlobs.push({ digest: asset.digest, bytes: Uint8Array.from(read.value) })
     digests.add(asset.digest)
   }
-  return portableProjectV5PayloadSchema.parse({ ...partial, assetBlobs })
+  return schema.parse({ ...partial, assetBlobs })
 }
 
 function validatePortableAuthority(
-  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6,
 ) {
   let legacySnapshot = null
   if (project.historyMode === "complete" && project.seed) {
@@ -141,8 +156,8 @@ async function exactSnapshot(
 
 async function checkpoint(
   database: VibeShapeDatabase,
-  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
-  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4 | DocumentSnapshotV5,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4 | ProjectRecordV5,
   evidence: string[],
 ) {
   return parsePortablePayload(database, project, {
@@ -165,10 +180,10 @@ async function checkpoint(
 async function validatedCompleteOrCheckpoint(
   database: VibeShapeDatabase,
   input: unknown,
-  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
-  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4 | DocumentSnapshotV5,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4 | ProjectRecordV5,
 ) {
-  let parsed: PortableProjectV3 | PortableProjectV4 | PortableProjectV5
+  let parsed: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6
   try {
     parsed = await parsePortablePayload(database, project, input)
   } catch (error) {
@@ -186,7 +201,7 @@ async function validatedCompleteOrCheckpoint(
 
 async function readLegacyBoundary(
   database: VibeShapeDatabase,
-  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4 | ProjectRecordV5,
 ) {
   const record = await database.projects.get(project.documentId)
   if (!record) return { seed: null, events: [], evidence: [] }
@@ -206,8 +221,8 @@ async function readLegacyBoundary(
 
 async function assembleComplete(
   database: VibeShapeDatabase,
-  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4,
-  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4,
+  project: ProjectRecordV2 | ProjectRecordV3 | ProjectRecordV4 | ProjectRecordV5,
+  snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4 | DocumentSnapshotV5,
 ) {
   const boundary = await readLegacyBoundary(database, project)
   if (boundary.evidence.length) return checkpoint(database, snapshot, project, boundary.evidence)
@@ -241,7 +256,9 @@ async function assembleComplete(
 export async function exportDocumentAuthority(
   database: VibeShapeDatabase,
   input: unknown,
-): Promise<PersistenceResult<PortableProjectV3 | PortableProjectV4 | PortableProjectV5>> {
+): Promise<
+  PersistenceResult<PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6>
+> {
   const documentId = documentIdSchema.safeParse(input)
   if (!documentId.success)
     return {
@@ -268,7 +285,7 @@ export async function exportDocumentAuthority(
 }
 
 async function preparePortableAuthority(
-  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6,
   storedAt: string,
   backupAt: string | null,
 ) {
@@ -292,7 +309,7 @@ async function preparePortableAuthority(
 
 export async function publishPortableAuthority(
   database: VibeShapeDatabase,
-  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6,
   storedAt: string,
   backupAt: string | null,
 ): Promise<PortableProjectImportReport> {
@@ -355,19 +372,25 @@ export async function publishPortableAuthority(
 }
 
 function portableAuthorityHead(
-  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5,
+  project: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6,
   storedAt: string,
   backupAt: string | null,
 ) {
-  return { 2: projectRecordV2Schema, 3: projectRecordV3Schema, 4: projectRecordV4Schema }[
-    project.snapshot.schemaVersion
-  ].parse({
+  return {
+    2: projectRecordV2Schema,
+    3: projectRecordV3Schema,
+    4: projectRecordV4Schema,
+    5: projectRecordV5Schema,
+  }[project.snapshot.schemaVersion].parse({
     schemaVersion: project.snapshot.schemaVersion,
     ...("textureUpgradeRevision" in project
       ? { textureUpgradeRevision: project.textureUpgradeRevision }
       : {}),
     ...("sourceUpgradeRevision" in project
       ? { sourceUpgradeRevision: project.sourceUpgradeRevision }
+      : {}),
+    ...("repairUpgradeRevision" in project
+      ? { repairUpgradeRevision: project.repairUpgradeRevision }
       : {}),
     documentId: project.snapshot.id,
     name: project.snapshot.name,

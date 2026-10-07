@@ -5,6 +5,7 @@ import { useMemo, useRef } from "react"
 import { ActionAvailability } from "../../components/action-availability"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
 import { ImportPreview } from "../import/import-preview"
 import { LightweightingSourceSelector } from "./lightweighting-source-selector"
@@ -144,6 +145,7 @@ export function QuickLightweightingTaskPanel({
     onApplied: onApplied ?? onClose,
     onApplyingChange,
   })
+  useRegisterTaskSubmission(state.apply, "lightweighting:quick")
   const applying = state.activity === "applying"
   useLightweightingViewportPreview(state.ready, onPreviewChange, state.setPreviewReady)
   return (

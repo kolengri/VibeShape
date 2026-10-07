@@ -14,6 +14,7 @@ import type { ShellFormMode } from "../features/shell/shell-form-model"
 import { shellTargetBody } from "../features/shell/shell-form-model"
 import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
 import { featureTaskFormProps } from "./feature-task-form-props"
+import { useHistoryFeatureBodyReplacement } from "./history-feature-repair"
 
 type ShellPanelProps = {
   activeTool: ActivePartDesignTool
@@ -79,10 +80,15 @@ export function ShellTaskPanel(props: ShellPanelProps) {
   const features = report.snapshot.features
   const count = features.filter((feature) => readShellFeatureParameters(feature)).length
   const label = t("featureLabel", { number: count + 1 })
-  const mode = useMemo(
-    () => shellMode(props.activeTool, features, label),
-    [props.activeTool, features, label],
+  const replacement = useHistoryFeatureBodyReplacement(
+    "featureId" in props.activeTool ? props.activeTool.featureId : undefined,
   )
+  const mode = useMemo(() => {
+    const mode = shellMode(props.activeTool, features, label)
+    return mode?.kind === "edit" && replacement?.shellClosed !== undefined
+      ? { ...mode, repairClosed: replacement.shellClosed }
+      : mode
+  }, [props.activeTool, features, label, replacement])
   const copy = useShellCopy(mode?.kind === "edit")
   const result = useMemo(
     () =>

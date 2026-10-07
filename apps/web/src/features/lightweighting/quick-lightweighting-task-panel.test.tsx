@@ -25,6 +25,11 @@ const ports = vi.hoisted(() => ({
   parts: vi.fn(),
   previewReady: vi.fn(),
   close: vi.fn(),
+  registerSubmission: vi.fn(),
+}))
+vi.mock("../../editor-session/editor-session-provider", async (original) => ({
+  ...(await original<typeof import("../../editor-session/editor-session-provider")>()),
+  useRegisterTaskSubmission: ports.registerSubmission,
 }))
 vi.mock("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
 vi.mock("@vibeshape/structural-optimization/quick-client", () => ({
@@ -197,6 +202,19 @@ afterEach(() => {
 })
 
 describe("quick lightweighting task panel", () => {
+  it("reports task submission success only after a validated save", async () => {
+    setup()
+    const submit = () => ports.registerSubmission.mock.lastCall?.[0]()
+    await act(async () => expect(await submit()).toBe(false))
+    expect(ports.apply).not.toHaveBeenCalled()
+    await preparedPreview()
+    ports.apply.mockResolvedValueOnce({ ok: false, diagnostic: { message: "Save failed." } })
+    await act(async () => expect(await submit()).toBe(false))
+    expect(ports.close).not.toHaveBeenCalled()
+    await act(async () => expect(await submit()).toBe(true))
+    expect(ports.close).toHaveBeenCalledOnce()
+  })
+
   it("keeps the current pointer gesture locked when another slider loses focus", async () => {
     setup()
     const previous = screen.getByRole("slider", { name: /Requested removal/ })

@@ -221,17 +221,19 @@ async function applyQuickPreview(
   const { applying, latest, mounted } = lifecycle
   const { copy, onApplied, onApplyingChange, setActivity, setMessage } = publication
   const captured = readyToApply(ready, enabled, applying.current, latest.current)
-  if (!captured) return
+  if (!captured) return false
   applying.current = true
   onApplyingChange?.(true)
   setActivity("applying")
   setMessage(null)
   try {
     const result = await commitQuickPreview(captured, copy.label(captured.source.partName))
-    if (!mounted.current) return
+    if (!mounted.current) return false
     publishQuickCommit(result, onApplied, setMessage)
+    return result.ok
   } catch {
     if (mounted.current) setMessage(copy.saveFailed)
+    return false
   } finally {
     applying.current = false
     onApplyingChange?.(false)

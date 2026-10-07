@@ -25,6 +25,8 @@ import { replayDocumentAuthorityEvents } from "./document-v2-replay"
 import { applyDocumentV3Command } from "./document-v3-commands"
 import { type DocumentSnapshotV4, documentSnapshotV4Schema } from "./document-v4"
 import { applyDocumentV4AuthoredCommand } from "./document-v4-commands"
+import { type DocumentSnapshotV5, documentSnapshotV5Schema } from "./document-v5"
+import { applyDocumentV5AuthoredCommand } from "./document-v5-commands"
 import { commandIdSchema, documentIdSchema, draftIdSchema, timestampSchema } from "./identifiers"
 
 const copyInputObjectSchema = z
@@ -35,6 +37,7 @@ const copyInputObjectSchema = z
       documentSnapshotV2Schema,
       documentSnapshotV3Schema,
       documentSnapshotV4Schema,
+      documentSnapshotV5Schema,
     ]),
     sourceEvents: z.array(documentAuthorityEventSchema).max(99_999),
     documentId: documentIdSchema,
@@ -103,7 +106,7 @@ export type CompleteDocumentAuthorityCopyResult =
       ok: true
       legacyEvents: readonly DocumentEvent[]
       seed: DocumentSnapshotV1 | null
-      snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4
+      snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4 | DocumentSnapshotV5
       versionedEvents: readonly DocumentAuthorityEvent[]
     }>
   | Readonly<{ ok: false; diagnostic: DomainDiagnostic }>
@@ -198,6 +201,7 @@ function renameCopiedAuthority(snapshot: DocumentAuthoritySnapshot, input: CopyI
     schemaVersion: snapshot.schemaVersion === 2 ? 2 : 3,
     payload: { command, partAllocations: [] },
   }
+  if (snapshot.schemaVersion === 5) return applyDocumentV5AuthoredCommand(snapshot, authored)
   if (snapshot.schemaVersion === 4) return applyDocumentV4AuthoredCommand(snapshot, authored)
   return snapshot.schemaVersion === 3
     ? applyDocumentV3Command(snapshot, authored)

@@ -15,6 +15,7 @@ import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field
 import { useState } from "react"
 import { type DialogOpenProps, useDialogOpen } from "../../components/use-dialog-open"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { historyCreationAfter } from "../../document/history-insertion"
 import {
   type ImportDocumentContext,
   importSourceUnitSchema,
@@ -26,12 +27,12 @@ import { type ImportTaskState, type ReadyImport, useImportTask } from "./use-imp
 function importContext(controller: DocumentControllerState): ImportDocumentContext | null {
   const version = controller.authoredSnapshot?.schemaVersion
   const snapshot = controller.report?.snapshot
-  if (!snapshot || (version !== 2 && version !== 3 && version !== 4)) return null
+  if (!snapshot || (version !== 2 && version !== 3 && version !== 4 && version !== 5)) return null
   return {
     documentId: snapshot.id,
     revision: snapshot.revision,
     authorityVersion: version,
-    historyAfter: controller.report?.historyItems?.at(-1) ?? null,
+    historyAfter: historyCreationAfter(controller),
   }
 }
 function ImportSourceFields({ state }: { state: ImportTaskState }) {

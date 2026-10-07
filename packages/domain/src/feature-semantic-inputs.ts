@@ -1,6 +1,7 @@
 import type { DocumentNodeRef } from "./document-node"
 import type { FeatureRecord, FeatureRecordV1 } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
+import { isMissingInputFeature, missingInputFeatureParametersSchema } from "./history-repair"
 import type { SketchId } from "./identifiers"
 import {
   booleanFeatureType,
@@ -223,6 +224,14 @@ const pointOrLineProjections = new Map([
 export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
 ): FirstPartySemanticInputProjection {
+  if (isMissingInputFeature(feature))
+    return missingInputFeatureParametersSchema.safeParse(feature.parameters).success
+      ? { recognized: true, ok: true, inputs: [] }
+      : {
+          recognized: true,
+          ok: false,
+          message: "A disconnected feature requires typed missing inputs.",
+        }
   const typeKey = featureTypeKey(feature.type)
   if (typeKey === featureTypeKey(loftFeatureTypeV3.type))
     return constrainedLoftSemanticInputs(feature)

@@ -24,6 +24,7 @@ export {
   EyeOff,
   FlipHorizontal2,
   FolderOpen,
+  FolderPlus,
   Grid2X2,
   GripVertical,
   Keyboard,

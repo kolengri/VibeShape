@@ -109,7 +109,7 @@ Document V4 adds strict source-asset descriptors through an explicit upgrade eve
 content digests plus captured UUIDv7 output identities. Immutable source bytes reside in IndexedDB
 outside snapshots. Native format 5 declares exact digest-addressed byte entries for the full journal
 closure, including assets required only by historical Undo/Redo targets. Published V3 texture authority and native format 4 remain unchanged, as do historical V2 schemas
-and format-3 files. V4 extends V3 and preserves surface texture layers on every edit; V5 native
+and format-3 files. V4 extends V3 and preserves surface texture layers on every edit; format-5 native
 archives retain both texture and source upgrade boundaries. See [ADR-0062](../adr/0062-durable-source-assets-and-portable-closure.md).
 
 Alpha uses a hybrid model:
@@ -118,6 +118,14 @@ Alpha uses a hybrid model:
 - An append-only command/event journal supports autosave, undo, and crash recovery.
 - Periodic snapshots bound replay time.
 - Geometry caches never enter the semantic event stream.
+
+V5 authority adds typed disconnected History repair intent and suspended part identities. Its active
+compatibility model remains a strict graph: missing-input features fail before geometry work, and
+detached sketches cannot solve as committed origin-plane geometry. Explicit typed repair commands and genuinely changed validated recipes restore
+eligible descendants in dependency order and reuse their original part identities. Native format 6
+preserves the full journal, adoption provenance, repair intent, and historical asset closure;
+older readers reject it. Historical schemas and formats remain unchanged. See
+[ADR-0103](../adr/0103-retained-history-repair-authority.md) for the deletion and repair contract.
 
 A command contains:
 
@@ -244,7 +252,7 @@ revision, persistence, and Undo boundaries. Worker compatibility projections can
 Archive format 3 retains the five-entry layout, the original legacy prefix and migration seed, and a mixed
 versioned suffix containing the explicit upgrade and subsequent authored events. Checksums, bounded expansion,
 complete replay equality, and aggregate event limits apply to the whole history. `readAuthoredVShape` dispatches
-formats 0–4; version-specific 0–3 readers and writers preserve their contracts. Complete writable copies remap document,
+formats 0–6; version-specific 0–5 readers and writers preserve their contracts. Complete writable copies remap document,
 command, and transaction IDs while preserving local feature, part, folder, and actor identities. Checkpoints
 remain read-only. See [ADR-0054](../adr/0054-authored-parts-and-organizational-history-folders.md) and
 [local-first storage](local-first-storage.md) for persistence and older-runtime refusal.

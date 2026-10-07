@@ -24,6 +24,8 @@ import {
 } from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
+import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
+import { applyDocumentV5AuthoredCommand } from "@vibeshape/domain/document-v5-commands"
 import { type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 import type { DraftReviewInput } from "./draft-review"
@@ -145,10 +147,7 @@ export async function prepareMetadataProposal(
       "duplicate-command-id",
       "The command identifier already exists in the journal.",
     )
-  const prepared =
-    before.data.schemaVersion === 3
-      ? applyDocumentV3Command(before.data, { ...input.command, schemaVersion: 3 })
-      : applyDocumentV2Command(before.data, input.command)
+  const prepared = applyAuthoredMetadata(before.data, input.command)
   if (!prepared.ok) return { ok: false, diagnostic: { ...prepared.diagnostic, issues: [] } }
   const value = metadataCommitViewSchema.parse({
     documentId: input.command.documentId,
@@ -163,6 +162,20 @@ export async function prepareMetadataProposal(
       "The metadata change exceeds the bounded response budget.",
     )
   return { ok: true, value: { ...input, base: before.data, snapshot: prepared.snapshot, value } }
+}
+
+function applyAuthoredMetadata(snapshot: AuthoredDocumentSnapshot, command: MetadataCommand) {
+  const textureCommand = { ...command, schemaVersion: 3 }
+  switch (snapshot.schemaVersion) {
+    case 5:
+      return applyDocumentV5AuthoredCommand(snapshot, textureCommand)
+    case 4:
+      return applyDocumentV4AuthoredCommand(snapshot, textureCommand)
+    case 3:
+      return applyDocumentV3Command(snapshot, textureCommand)
+    case 2:
+      return applyDocumentV2Command(snapshot, command)
+  }
 }
 
 function historyRange(

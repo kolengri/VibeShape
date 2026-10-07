@@ -242,7 +242,7 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
       })),
     })
     if (!receipt.ok) return receipt
-    const revisionIncrements = { 2: 3, 3: 2, 4: 1 }
+    const revisionIncrements = { 2: 3, 3: 2, 4: 1, 5: 1 }
     if (
       receipt.value.revision !==
       record.state.baseRevision + revisionIncrements[record.snapshot.schemaVersion]
