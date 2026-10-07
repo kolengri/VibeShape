@@ -5,6 +5,7 @@ import {
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import type { ComponentProps } from "react"
 import { z } from "zod"
 import {
   SemanticRenameDialog,
@@ -28,6 +29,8 @@ export function ModelTreeRenameDialog({
   onSketchRename,
   open,
   target,
+  showTrigger = true,
+  onCloseAutoFocus,
 }: {
   blocked?: boolean
   controller: DocumentControllerState
@@ -37,6 +40,8 @@ export function ModelTreeRenameDialog({
   onSketchRename: (baseRevision: number, sketch: SketchRecord) => Promise<SemanticRenameResult>
   open: boolean
   target: ModelTreeRenameTarget
+  showTrigger?: boolean
+  onCloseAutoFocus?: ComponentProps<typeof SemanticRenameDialog>["onCloseAutoFocus"]
 }) {
   const commonT = useTranslations("app.modelRename")
   const featureT = useTranslations("app.modelRename.feature")
@@ -67,6 +72,8 @@ export function ModelTreeRenameDialog({
 
   return (
     <SemanticRenameDialog
+      showTrigger={showTrigger}
+      onCloseAutoFocus={onCloseAutoFocus}
       copy={copy}
       currentName={currentName}
       disabled={!writable || blocked}

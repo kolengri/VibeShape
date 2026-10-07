@@ -65,7 +65,8 @@ test("previews a hidden source region and opens its sketch from History", async 
   await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
   await expect(source).toHaveText("Sketch 1")
   await page.setViewportSize({ width: 1024, height: 768 })
-  await page.getByRole("button", { name: "Rename Sketch 1", exact: true }).click()
+  await page.getByRole("button", { name: "Actions for Sketch 1", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Rename Sketch 1…", exact: true }).click()
   const rename = page.getByRole("dialog", { name: "Rename sketch", exact: true })
   const longName = "Mounting bracket base with four clearance holes and alignment references"
   await rename.getByRole("textbox", { name: "Sketch name", exact: true }).fill(longName)

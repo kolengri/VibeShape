@@ -227,21 +227,20 @@ target, enabled state, input bindings, and current view before returning to mode
 Graphical Use, Pierce, and Intersection retain their separate 3D picking ownership. This bridge is
 viewer/UI state only and introduces no document schema, worker protocol, or persistence changes.
 
-History reorder uses `@dnd-kit/react` and `@dnd-kit/dom` for pointer, touch, keyboard sensors,
-collision feedback, and accessible drag interaction. The application translates a drop into the
-existing revisioned `org.vibeshape.history.move-item` command. Preview is disposable; neither the
-library's optimistic order nor a DOM index becomes persisted identity. A Move position menu provides
-a non-dragging single-pointer alternative. Incomplete dependencies, editing, rollback, read-only
-state, and stale revisions remain blocked by the owning command boundary.
+History reorder uses `@dnd-kit/react` and `@dnd-kit/dom` for pointer and touch sensors,
+collision feedback, and drag interaction. The application translates a drop into the existing
+revisioned `org.vibeshape.history.move-item` command. Preview is disposable; neither the library's
+optimistic order nor a DOM index becomes persisted identity. Incomplete dependencies, editing,
+rollback, read-only state, and stale revisions remain blocked by the owning command boundary.
 
 The whole History row is the pointer activation surface; nested action controls are excluded by the
-sensor's interactive-element policy, while the treeitem label is explicitly eligible. Keyboard sorting
-starts with Space on the existing treeitem rather than another focusable grip. Enter retains item
-activation, and the tree navigation handler honors sensor-prevented arrow events. See the
+sensor's interactive-element policy, while the treeitem label is explicitly eligible. Reordering has
+no keyboard adapter or position menu. Arrow keys navigate the tree, Enter activates an item, and F2
+renames it. Each row exposes one actions menu for its semantic operations. See the
 [interaction contract](../product/direct-manipulation-and-shortcuts.md) for thresholds and gestures.
 The tree owns localized drag instructions and live announcements instead of the generic accessibility
 plugin, whose disabled activator attributes would incorrectly disable the whole row's other actions.
-The sortable wrapper is not a Tab stop; keyboard-drop focus returns to its existing treeitem.
+The sortable wrapper is not a Tab stop.
 
 The Projects dialog uses `react-dropzone` for native file dragging and file selection. Both routes
 enter the same bounded `.vshape` import pipeline. Accepting a file extension is not format validation.

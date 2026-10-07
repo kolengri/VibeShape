@@ -101,7 +101,8 @@ async function createUnion(page: Page) {
 }
 
 async function repairSuppressedUnionSource(page: Page, unionId: string) {
-  await page.getByRole("button", { name: "Suppress Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Actions for Box 1", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Suppress Box 1", exact: true }).click()
   await saved(page)
   await page.getByRole("treeitem", { name: "Union 1", exact: true }).click()
   const form = page.getByRole("form", { name: "Edit Union", exact: true })

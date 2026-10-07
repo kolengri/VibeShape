@@ -16,10 +16,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
-import { Ellipsis, Trash2 } from "@vibeshape/ui/components/icons"
+import { Ellipsis, PenLine, Trash2 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { useId, useRef, useState } from "react"
+import { type RefObject, useId, useRef, useState } from "react"
 import type { DocumentMutationResult } from "../../document/document-controller"
+
+type SketchRenameAction = Readonly<{
+  onSelect: () => void
+  disabled: boolean
+  open: boolean
+  triggerRef: RefObject<HTMLButtonElement | null>
+}>
 
 type SketchDeleteActionProps = Readonly<{
   baseRevision: number
@@ -29,7 +36,76 @@ type SketchDeleteActionProps = Readonly<{
   onRemove: (baseRevision: number, sketchId: SketchId) => Promise<DocumentMutationResult>
   sketch: SketchRecord
   sketchName: string
+  renameAction?: SketchRenameAction
 }>
+
+function SketchActionsMenu(props: {
+  triggerRef: RefObject<HTMLButtonElement | null>
+  renameAction: SketchRenameAction | undefined
+  onDelete: () => void
+  open: boolean
+  unavailable: boolean
+  disabledLabel: string
+  sketchName: string
+  t: ReturnType<typeof useTranslations>
+}) {
+  const disabledDescriptionId = useId()
+  const t = props.t
+  const triggerLabel = t("sketchActions", { sketch: props.sketchName })
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={props.triggerRef}
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              aria-label={triggerLabel}
+            >
+              <Ellipsis aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{triggerLabel}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        onCloseAutoFocus={(event) => {
+          if (props.open || props.renameAction?.open) event.preventDefault()
+        }}
+      >
+        {props.renameAction ? (
+          <DropdownMenuItem
+            disabled={props.renameAction?.disabled}
+            onSelect={props.renameAction?.onSelect}
+          >
+            <PenLine aria-hidden="true" />
+            {t("renameHistoryItem", { item: props.sketchName })}
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          disabled={props.unavailable}
+          aria-describedby={props.unavailable ? disabledDescriptionId : undefined}
+          onSelect={props.onDelete}
+        >
+          <Trash2 aria-hidden="true" />
+          {t("deleteSketch", { sketch: props.sketchName })}
+        </DropdownMenuItem>
+        {props.unavailable ? (
+          <p
+            id={disabledDescriptionId}
+            className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground"
+          >
+            {props.disabledLabel}
+          </p>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export function SketchDeleteAction({
   baseRevision,
@@ -39,15 +115,15 @@ export function SketchDeleteAction({
   onRemove,
   sketch,
   sketchName,
+  renameAction,
 }: SketchDeleteActionProps) {
   const t = useTranslations("app.shell.modelTree")
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [failed, setFailed] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const disabledDescriptionId = useId()
+  const ownTriggerRef = useRef<HTMLButtonElement>(null)
+  const triggerRef = renameAction?.triggerRef ?? ownTriggerRef
   const unavailable = disabled || blocked
-  const triggerLabel = t("sketchActions", { sketch: sketchName })
   const disabledLabel = blocked ? t("deleteSketchInUse") : t("deleteSketchReadOnly")
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -76,48 +152,16 @@ export function SketchDeleteAction({
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                ref={triggerRef}
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                aria-label={triggerLabel}
-              >
-                <Ellipsis aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{triggerLabel}</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent
-          align="end"
-          onCloseAutoFocus={(event) => {
-            if (open) event.preventDefault()
-          }}
-        >
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            disabled={unavailable}
-            aria-describedby={unavailable ? disabledDescriptionId : undefined}
-            onSelect={() => handleOpenChange(true)}
-          >
-            <Trash2 aria-hidden="true" />
-            {t("deleteSketch", { sketch: sketchName })}
-          </DropdownMenuItem>
-          {unavailable ? (
-            <p
-              id={disabledDescriptionId}
-              className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground"
-            >
-              {disabledLabel}
-            </p>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <SketchActionsMenu
+        triggerRef={triggerRef}
+        renameAction={renameAction}
+        onDelete={() => handleOpenChange(true)}
+        open={open}
+        unavailable={unavailable}
+        disabledLabel={disabledLabel}
+        sketchName={sketchName}
+        t={t}
+      />
       <AlertDialogContent
         onCloseAutoFocus={(event) => {
           event.preventDefault()

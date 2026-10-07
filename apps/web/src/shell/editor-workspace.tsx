@@ -54,6 +54,7 @@ import {
   commitAuthoredMetadata,
   type DocumentControllerState,
   moveHistoryItem,
+  removeFeature,
   removeSketch,
   resolveDocumentFeatureParameters,
   setFeatureSuppressed,
@@ -2125,6 +2126,8 @@ function EditorModelTree({
       onBodyPreselectionChange={actions.preselectBody}
       onFeatureActivate={actions.editFeature}
       onFeatureRename={updateFeature}
+      onFeatureDeleted={actions.closeTool}
+      onFeatureRemove={removeFeature}
       onFeaturePreselectionChange={actions.preselectFeature}
       onFeatureSuppressionChange={setFeatureSuppressed}
       onFeatureVisibilityChange={actions.setFeatureVisibility}

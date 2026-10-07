@@ -63,7 +63,7 @@ test("checks current CAD placement and a rotated print copy against a persistent
   ).toBeVisible()
 
   await exportDialog.getByRole("button", { name: "Close", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Suppress Box 1" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Actions for Box 1" })).toBeVisible()
   await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()

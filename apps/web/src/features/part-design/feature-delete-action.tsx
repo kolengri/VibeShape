@@ -10,6 +10,7 @@ import {
   AlertDialogTrigger,
 } from "@vibeshape/ui/components/alert-dialog"
 import { Button } from "@vibeshape/ui/components/button"
+import type { ComponentProps } from "react"
 import { useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 
@@ -49,21 +50,25 @@ type FeatureDeleteActionProps = Readonly<{
   preserveIntent?: FeaturePreserveIntentCopy
 }>
 
+type FeatureDeleteDialogCopy = FeatureDeleteCopy &
+  Partial<
+    Pick<
+      FeaturePreserveIntentCopy,
+      "affectedItems" | "affectedReferences" | "remainingAffectedItems"
+    >
+  >
+
 type FeatureDeleteDialogProps = Readonly<{
-  action: string
-  affectedItems?: readonly Readonly<{ id: string; label: string }>[]
-  affectedReferences?: string
+  copy: Omit<FeatureDeleteDialogCopy, "readOnly">
   baseRevision: number
-  cancel: string
-  confirm: string
-  description: string
   disabled: boolean
-  failed: string
   feature: FeatureRecord
   onDeleted: () => void
   onRemove: (baseRevision: number, featureId: FeatureRecord["id"]) => Promise<FeatureMutationResult>
-  remainingAffectedItems?: string | null
-  title: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onCloseAutoFocus?: ComponentProps<typeof AlertDialogContent>["onCloseAutoFocus"]
+  showTrigger?: boolean
 }>
 
 function useFeatureDeleteOperation(
@@ -71,8 +76,15 @@ function useFeatureDeleteOperation(
   feature: FeatureRecord,
   onDeleted: () => void,
   onRemove: FeatureDeleteDialogProps["onRemove"],
+  controlledOpen?: boolean,
+  onOpenChange?: (open: boolean) => void,
 ) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (nextOpen: boolean) => {
+    setInternalOpen(nextOpen)
+    onOpenChange?.(nextOpen)
+  }
   const [pending, setPending] = useState(false)
   const [failed, setFailed] = useState(false)
   const handleOpenChange = (nextOpen: boolean) => {
@@ -105,7 +117,7 @@ function AffectedReferenceList({
   affectedReferences,
   remainingAffectedItems,
 }: Pick<
-  FeatureDeleteDialogProps,
+  FeatureDeleteDialogCopy,
   "affectedItems" | "affectedReferences" | "remainingAffectedItems"
 >) {
   if (!affectedItems || affectedItems.length === 0) return null
@@ -124,59 +136,61 @@ function AffectedReferenceList({
   )
 }
 
-function FeatureDeleteDialog({
-  action,
-  affectedItems = [],
-  affectedReferences = "",
+export function FeatureDeleteDialog({
+  copy,
   baseRevision,
-  cancel,
-  confirm,
-  description,
   disabled,
-  failed: failedCopy,
   feature,
   onDeleted,
   onRemove,
-  remainingAffectedItems = null,
-  title,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
+  showTrigger = true,
 }: FeatureDeleteDialogProps) {
   const { failed, handleOpenChange, handleRemove, open, pending } = useFeatureDeleteOperation(
     baseRevision,
     feature,
     onDeleted,
     onRemove,
+    controlledOpen,
+    onOpenChange,
   )
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogTrigger asChild>
-        <Button type="button" variant="destructive" disabled={disabled}>
-          {action}
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
+      {showTrigger ? (
+        <AlertDialogTrigger asChild>
+          <Button type="button" variant="destructive" disabled={disabled}>
+            {copy.action}
+          </Button>
+        </AlertDialogTrigger>
+      ) : null}
+      <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
+          <AlertDialogDescription>{copy.description}</AlertDialogDescription>
         </AlertDialogHeader>
-        <AffectedReferenceList
-          affectedItems={affectedItems}
-          affectedReferences={affectedReferences}
-          remainingAffectedItems={remainingAffectedItems}
-        />
+        <AffectedReferenceList {...copy} />
         {failed ? (
           <p className="text-sm text-destructive" role="alert">
-            {failedCopy}
+            {copy.failed}
           </p>
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>
-              {cancel}
+              {copy.cancel}
             </Button>
           </AlertDialogCancel>
-          <Button type="button" variant="destructive" isLoading={pending} onClick={handleRemove}>
-            {confirm}
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={disabled}
+            isLoading={pending}
+            onClick={handleRemove}
+          >
+            {copy.confirm}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -199,35 +213,22 @@ export function FeatureDeleteAction({
   return (
     <section className="mt-4 grid gap-2 border-t pt-4" aria-label={copy.action}>
       <FeatureDeleteDialog
-        action={copy.action}
+        copy={copy}
         baseRevision={baseRevision}
-        cancel={copy.cancel}
-        confirm={copy.confirm}
-        description={copy.description}
         disabled={disabled || blocked}
-        failed={copy.failed}
         feature={feature}
         onDeleted={onDeleted}
         onRemove={onRemove}
-        title={copy.title}
       />
       {blocked ? <p className="text-xs text-muted-foreground">{blockedReason}</p> : null}
       {preserveIntent && onRemovePreservingIntent ? (
         <FeatureDeleteDialog
-          action={preserveIntent.action}
-          affectedItems={preserveIntent.affectedItems}
-          affectedReferences={preserveIntent.affectedReferences}
+          copy={{ ...preserveIntent, cancel: copy.cancel }}
           baseRevision={baseRevision}
-          cancel={copy.cancel}
-          confirm={preserveIntent.confirm}
-          description={preserveIntent.description}
           disabled={disabled}
-          failed={preserveIntent.failed}
           feature={feature}
           onDeleted={onDeleted}
           onRemove={onRemovePreservingIntent}
-          remainingAffectedItems={preserveIntent.remainingAffectedItems}
-          title={preserveIntent.title}
         />
       ) : null}
       {disabled ? <p className="text-xs text-muted-foreground">{copy.readOnly}</p> : null}
