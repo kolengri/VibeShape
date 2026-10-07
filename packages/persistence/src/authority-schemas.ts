@@ -1,4 +1,5 @@
 import {
+  canonicalJson,
   documentAuthorityEventSchema,
   documentAuthoritySnapshotSchema,
   documentAuthorityV2EventSchema,
@@ -8,12 +9,15 @@ import {
   documentSnapshotV2Schema,
   documentSnapshotV3Schema,
   documentSnapshotV4Schema,
+  documentSnapshotV5Schema,
   draftIdSchema,
   projectDocumentSnapshotV4ToV3,
+  replayDocumentAuthorityEvents,
   revisionSchema,
   sessionIdSchema,
   sourceAssetBlobSchema,
   timestampSchema,
+  validateRepairAuthorityBoundaries,
 } from "@vibeshape/domain"
 import { z } from "zod"
 import {
@@ -101,29 +105,73 @@ export const snapshotRecordV4Schema = snapshotRecordV1Schema.extend({ schemaVers
 export const eventRecordV4Schema = eventRecordV1Schema.extend({ schemaVersion: z.literal(4) })
 export const recoveryRecordV4Schema = recoveryRecordV1Schema.extend({ schemaVersion: z.literal(4) })
 export type ProjectRecordV4 = z.infer<typeof projectRecordV4Schema>
+export const projectRecordV5Schema = z
+  .object({
+    ...projectRecordV1Schema.shape,
+    schemaVersion: z.literal(5),
+    upgradeRevision: revisionSchema,
+    textureUpgradeRevision: revisionSchema,
+    sourceUpgradeRevision: revisionSchema,
+    repairUpgradeRevision: revisionSchema,
+  })
+  .strict()
+  .superRefine((project, context) => {
+    const {
+      upgradeRevision,
+      textureUpgradeRevision,
+      sourceUpgradeRevision,
+      repairUpgradeRevision,
+      ...head
+    } = project
+    const validHead = projectRecordV1Schema.safeParse({ ...head, schemaVersion: 1 })
+    if (!validHead.success)
+      for (const issue of validHead.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+    if (
+      !(
+        1 <= upgradeRevision &&
+        upgradeRevision <= textureUpgradeRevision &&
+        textureUpgradeRevision <= sourceUpgradeRevision &&
+        sourceUpgradeRevision <= repairUpgradeRevision &&
+        repairUpgradeRevision <= project.latestSnapshotRevision
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        message: "V5 adoption boundaries must be ordered and have a committed snapshot.",
+      })
+  })
+export const snapshotRecordV5Schema = snapshotRecordV1Schema.extend({ schemaVersion: z.literal(5) })
+export const eventRecordV5Schema = eventRecordV1Schema.extend({ schemaVersion: z.literal(5) })
+export const recoveryRecordV5Schema = recoveryRecordV1Schema.extend({ schemaVersion: z.literal(5) })
+export type ProjectRecordV5 = z.infer<typeof projectRecordV5Schema>
 export const projectAuthorityRecordSchema = z.union([
   projectRecordV1Schema,
   projectRecordV2Schema,
   projectRecordV3Schema,
   projectRecordV4Schema,
+  projectRecordV5Schema,
 ])
 export const snapshotAuthorityRecordSchema = z.union([
   snapshotRecordV1Schema,
   snapshotRecordV2Schema,
   snapshotRecordV3Schema,
   snapshotRecordV4Schema,
+  snapshotRecordV5Schema,
 ])
 export const eventAuthorityRecordSchema = z.union([
   eventRecordV1Schema,
   eventRecordV2Schema,
   eventRecordV3Schema,
   eventRecordV4Schema,
+  eventRecordV5Schema,
 ])
 export const recoveryAuthorityRecordSchema = z.union([
   recoveryRecordV1Schema,
   recoveryRecordV2Schema,
   recoveryRecordV3Schema,
   recoveryRecordV4Schema,
+  recoveryRecordV5Schema,
 ])
 export type ProjectRecordV2 = z.infer<typeof projectRecordV2Schema>
 export type ProjectAuthorityRecord = z.infer<typeof projectAuthorityRecordSchema>
@@ -206,7 +254,6 @@ function upgradeBoundary(input: PortableBoundary): boolean {
 }
 export const portableProjectV3PayloadSchema = portableProjectV3ObjectSchema.superRefine(
   (input, context) => {
-    const events = [...input.legacyEvents, ...input.versionedEvents]
     const modeValid =
       input.historyMode === "complete" ? completeBoundary(input) : checkpointBoundary(input)
     if (!modeValid || !upgradeBoundary(input))
@@ -214,14 +261,7 @@ export const portableProjectV3PayloadSchema = portableProjectV3ObjectSchema.supe
         code: "custom",
         message: "The V3 history boundary and upgrade provenance are inconsistent.",
       })
-    if (
-      events.length > 100_000 ||
-      new Set(events.map((event) => event.commandId)).size !== events.length
-    )
-      context.addIssue({
-        code: "custom",
-        message: "The complete history exceeds its event budget or repeats a command identity.",
-      })
+    validatePortableEventBudget(input, context)
   },
 )
 export type PortableProjectV3 = Readonly<z.infer<typeof portableProjectV3PayloadSchema>>
@@ -250,15 +290,7 @@ export const portableProjectV4PayloadSchema = portableProjectV4ObjectSchema.supe
         code: "custom",
         message: "The V4 history and texture upgrade boundaries are inconsistent.",
       })
-    const events = [...input.legacyEvents, ...input.versionedEvents]
-    if (
-      events.length > 100_000 ||
-      new Set(events.map((event) => event.commandId)).size !== events.length
-    )
-      context.addIssue({
-        code: "custom",
-        message: "The complete history exceeds its event budget or repeats a command identity.",
-      })
+    validatePortableEventBudget(input, context)
   },
 )
 export type PortableProjectV4 = Readonly<z.infer<typeof portableProjectV4PayloadSchema>>
@@ -379,10 +411,57 @@ export const portableProjectV5CopySchema = portableProjectV5PayloadSchema
       })
   })
 
+export type ProjectRecordV3 = z.infer<typeof projectRecordV3Schema>
+
+export const portableProjectV6PayloadSchema = z
+  .object({
+    ...portableProjectV5ObjectSchema.shape,
+    snapshot: documentSnapshotV5Schema,
+    repairUpgradeRevision: revisionSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const modeValid =
+      input.historyMode === "complete" ? completeBoundary(input) : checkpointBoundary(input)
+    const boundaryIssue = validateRepairAuthorityBoundaries(input)
+    const replayed = replayDocumentAuthorityEvents(input.seed, input.versionedEvents)
+    if (
+      !modeValid ||
+      boundaryIssue !== null ||
+      !replayed.ok ||
+      canonicalJson(replayed.snapshot) !== canonicalJson(input.snapshot)
+    )
+      context.addIssue({
+        code: "custom",
+        message: "The V6 history must reproduce its V5 authority and adoption boundaries.",
+      })
+    validatePortableEventBudget(input, context)
+  })
+export type PortableProjectV6 = Readonly<z.infer<typeof portableProjectV6PayloadSchema>>
+export const portableProjectV6ImportSchema = portableProjectV6PayloadSchema
+  .safeExtend({ importedAt: timestampSchema, exportedAt: timestampSchema })
+  .superRefine(requireCompleteHistory)
+export const portableProjectV6CopySchema = portableProjectV6PayloadSchema
+  .safeExtend({ copiedAt: timestampSchema })
+  .superRefine(requireCompleteHistory)
 export const authoredPortableProjectPayloadSchema = z.union([
   portableProjectV3PayloadSchema,
   portableProjectV4PayloadSchema,
   portableProjectV5PayloadSchema,
+  portableProjectV6PayloadSchema,
 ])
 
-export type ProjectRecordV3 = z.infer<typeof projectRecordV3Schema>
+function validatePortableEventBudget(
+  input: Pick<PortableBoundary, "legacyEvents" | "versionedEvents">,
+  context: z.RefinementCtx,
+) {
+  const events = [...input.legacyEvents, ...input.versionedEvents]
+  if (
+    events.length > 100_000 ||
+    new Set(events.map((event) => event.commandId)).size !== events.length
+  )
+    context.addIssue({
+      code: "custom",
+      message: "The complete history exceeds its event budget or repeats a command identity.",
+    })
+}

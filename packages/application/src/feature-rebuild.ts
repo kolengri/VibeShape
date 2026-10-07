@@ -20,6 +20,7 @@ import {
   serializeFeatureRecord,
 } from "@vibeshape/domain/feature-graph"
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
+import { isMissingInputFeature } from "@vibeshape/domain/history-repair"
 import { type FeatureId, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
 import {
   readExtrusionFeatureParameters,
@@ -775,6 +776,10 @@ function resolveDocumentFeatures(
 ) {
   const preflightFailures = new Map<FeatureId, FeatureDiagnostic>()
   const features = document.features.map((feature) => {
+    if (isMissingInputFeature(feature)) {
+      preflightFailures.set(feature.id, { code: "org.vibeshape.feature.missing-input", values: {} })
+      return feature
+    }
     const resolved = registry.resolveFeatureParameters(feature, variables.valuesByName)
     if (resolved.ok) return resolved.feature
     preflightFailures.set(feature.id, {

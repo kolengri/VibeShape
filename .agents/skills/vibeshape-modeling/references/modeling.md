@@ -47,7 +47,7 @@ remain outside the grant.
 `remove_feature` and `remove_sketch` stage ordinary destructive removal by stable ID.
 Dependencies block removal with `feature-in-use` or `sketch-in-use`; the rejected command does
 not advance the draft revision. Inspect the owning records and explicitly remove or retarget
-their consumers first. These tools never cascade or discard model-reference intent.
+their consumers first. These tools never cascade or discard model-reference intent. The editor's History Delete can disconnect affected inputs and retain downstream repair recipes, but this is not the removal contract of these MCP tools. Do not infer MCP support from the visible editor action.
 
 `set_feature_suppressed` takes an explicit boolean, preserving the remaining authored record.
 Suppression can block downstream geometry; exact preview exposes that failure and must be repaired

@@ -344,10 +344,10 @@ export function useLightweightingTask({
   }
   const canApply = applyEligible(disabled, activity, currentReady, previewReady)
   const apply = async () => {
-    if (!currentReady || !actionCanBegin(analysis.current, applying.current, canApply)) return
+    if (!currentReady || !actionCanBegin(analysis.current, applying.current, canApply)) return false
     if (!sourceIsWritable(latest.current, currentReady.source)) {
       setMessage(copy.stale)
-      return
+      return false
     }
     applying.current = true
     setActivity("applying")
@@ -359,8 +359,10 @@ export function useLightweightingTask({
         copy.featureLabel(currentReady.source.partName),
       )
       publishCommitResult(result, { mounted, onApplied, setMessage })
+      return result.ok && mounted.current
     } catch {
       if (mounted.current) setMessage(copy.saveFailed)
+      return false
     } finally {
       applying.current = false
       onApplyingChange(false)

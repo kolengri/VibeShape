@@ -419,7 +419,8 @@ export function DocumentExportDialog({
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
             {(controller.authoredSnapshot?.schemaVersion === 3 ||
-              controller.authoredSnapshot?.schemaVersion === 4) &&
+              controller.authoredSnapshot?.schemaVersion === 4 ||
+              controller.authoredSnapshot?.schemaVersion === 5) &&
               controller.authoredSnapshot.surfaceTextures.some(({ enabled }) => enabled) && (
                 <p className="text-xs text-muted-foreground">{t("textureExportHint")}</p>
               )}

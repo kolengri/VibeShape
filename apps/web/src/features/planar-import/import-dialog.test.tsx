@@ -2,6 +2,7 @@
 import { webcrypto } from "node:crypto"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -103,6 +104,20 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+})
+
+it("keeps sketch import available on V5 authority", async () => {
+  const authority = documentSnapshotV5Schema.parse({
+    ...fixture.authority,
+    schemaVersion: 5,
+    surfaceTextures: [],
+    assets: [],
+    repairIntents: [],
+    suspendedParts: [],
+  })
+  setup({ ...controller, authoredSnapshot: authority })
+  await userEvent.click(screen.getByRole("button", { name: "Import sketch…" }))
+  expect(screen.getByRole("dialog", { name: "Import sketch curves" })).toBeDefined()
 })
 
 it("inspects exact curves, cancels without authority writes, and retains the ordinary preview", async () => {

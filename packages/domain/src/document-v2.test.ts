@@ -795,6 +795,33 @@ it("keeps Boolean fork parts aligned with terminal outputs across source suppres
 })
 
 describe("V2 organizational folders", () => {
+  it("extends folder membership atomically when inserting after an interior or final member", () => {
+    const base = addBox(addBox().snapshot, id(202), id(102)).snapshot
+    const grouped = requireSuccess(
+      metadata(base, {
+        kind: "folder.create",
+        folder: { schemaVersion: 0, id: id(300), name: "Bodies", items: base.history },
+      }),
+    ).snapshot
+    for (const historyAfter of grouped.history) {
+      const inserted = requireSuccess(
+        model(grouped, "org.vibeshape.history.insert-sketch", {
+          sketch: createEmptySketch({
+            id: sketchIdSchema.parse(id(303)),
+            label: "Inserted",
+            plane: "xy",
+          }),
+          historyAfter,
+        }),
+      )
+      expect(inserted.snapshot.folders[0]?.items).toEqual(inserted.snapshot.history)
+      expect(inserted.snapshot.revision).toBe(grouped.revision + 1)
+      expect(
+        requireSuccess(replayDocumentAuthorityEvents(grouped, [inserted.event])).snapshot,
+      ).toEqual(inserted.snapshot)
+    }
+  })
+
   it("creates, renames and ungroups a contiguous folder without changing model History", () => {
     const base = addBox(addBox().snapshot, id(202), id(102)).snapshot
     const grouped = requireSuccess(

@@ -2,6 +2,7 @@
 import { webcrypto } from "node:crypto"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -103,6 +104,20 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("exact source Import workflow", () => {
+  it("keeps source import available on V5 authority", async () => {
+    const authority = documentSnapshotV5Schema.parse({
+      ...fixture.authority,
+      schemaVersion: 5,
+      surfaceTextures: [],
+      assets: [],
+      repairIntents: [],
+      suspendedParts: [],
+    })
+    setup({ ...controller, authoredSnapshot: authority })
+    await userEvent.click(screen.getByRole("button", { name: "Import…" }))
+    expect(screen.getByRole("dialog", { name: "Import geometry" })).toBeDefined()
+  })
+
   it("locks inspection against duplicate activation and discards a late result after Cancel", async () => {
     let finish: ((value: typeof inspection) => void) | undefined
     ports.inspect.mockImplementation(

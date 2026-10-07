@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import { TaskPanelFormActions } from "./task-panel-form-actions"
 
 class ResizeObserverMock {
@@ -44,6 +45,10 @@ function FormActionsHarness({
   )
 }
 
+vi.mock("../../editor-session/editor-session-provider", () => ({
+  useRegisterTaskSubmission: vi.fn(),
+}))
+
 vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 
 afterEach(cleanup)
@@ -59,6 +64,9 @@ describe("TaskPanelFormActions", () => {
       const accept = screen.getByRole("button", { name: "Create feature" }) as HTMLButtonElement
       expect(accept.disabled).toBe(true)
       await user.click(accept)
+      const submitFromHistory = vi.mocked(useRegisterTaskSubmission).mock.calls.at(-1)?.[0]
+      if (!submitFromHistory) throw new Error("History submission must be registered.")
+      await submitFromHistory()
       expect(onSubmit).not.toHaveBeenCalled()
     },
   )
@@ -69,6 +77,15 @@ describe("TaskPanelFormActions", () => {
     render(<FormActionsHarness onSubmit={onSubmit} previewStatus="ready" />)
 
     await user.click(screen.getByRole("button", { name: "Create feature" }))
+    expect(onSubmit).toHaveBeenCalledOnce()
+  })
+
+  it("uses the same ready-preview gate when History requests saving", async () => {
+    const onSubmit = vi.fn(async () => undefined)
+    render(<FormActionsHarness onSubmit={onSubmit} previewStatus="ready" />)
+    const submitFromHistory = vi.mocked(useRegisterTaskSubmission).mock.calls.at(-1)?.[0]
+    if (!submitFromHistory) throw new Error("History submission must be registered.")
+    await submitFromHistory()
     expect(onSubmit).toHaveBeenCalledOnce()
   })
 

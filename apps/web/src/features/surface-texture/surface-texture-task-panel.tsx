@@ -5,6 +5,7 @@ import { Trash2 } from "@vibeshape/ui/components/icons"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import { SurfaceTextureControls } from "./surface-texture-controls"
 import { useSurfaceTexturePreviewContext } from "./surface-texture-preview-context"
 import { TextureGallery } from "./texture-gallery"
@@ -44,6 +45,10 @@ export function SurfaceTextureTaskPanel({
     state,
     onComplete,
   )
+  useRegisterTaskSubmission(async () => {
+    if (!draft && !uploading && !saving) onClose()
+    else await apply()
+  })
   useTexturePanelKeyboard(gallery, setGallery, state)
   if (gallery && layer)
     return (

@@ -98,11 +98,7 @@ function reduceModel(
   if (!planned.ok) return invalidV2(planned.message)
   if (canonicalJson(planned.effects) !== canonicalJson(event.partEffects))
     return invalidV2("The captured part effects do not match the trusted model operation.")
-  const retained = new Set(reduced.snapshot.history.map(historyItemKey))
-  const folders = snapshot.folders.flatMap((folder) => {
-    const items = folder.items.filter((item) => retained.has(historyItemKey(item)))
-    return items.length ? [{ ...folder, items }] : []
-  })
+  const folders = foldersAfterModelChange(snapshot, event, reduced.snapshot)
   return {
     ok: true,
     snapshot: { ...reduced.snapshot, schemaVersion: 2, parts: planned.parts, folders },
@@ -307,3 +303,32 @@ export function applyDocumentV2Command(
 }
 
 export type { DocumentV2CommandResult, DocumentV2Result } from "./document-v2-support"
+
+function foldersAfterModelChange(
+  snapshot: DocumentSnapshotV2,
+  event: Extract<DocumentV2Event, { type: "org.vibeshape.document.model-changed" }>,
+  after: import("./document").DocumentSnapshotV1,
+) {
+  const retained = new Set(after.history.map(historyItemKey))
+  const insertion =
+    event.modelEvent.type === "org.vibeshape.history.feature-inserted"
+      ? {
+          item: { kind: "feature" as const, id: event.modelEvent.feature.id },
+          after: event.modelEvent.historyAfter,
+        }
+      : event.modelEvent.type === "org.vibeshape.history.sketch-inserted"
+        ? {
+            item: { kind: "sketch" as const, id: event.modelEvent.sketch.id },
+            after: event.modelEvent.historyAfter,
+          }
+        : null
+  return snapshot.folders.flatMap((folder) => {
+    const items = folder.items.filter((item) => retained.has(historyItemKey(item)))
+    const afterItem = insertion?.after
+    const insertionIndex = afterItem
+      ? items.findIndex((item) => historyItemKey(item) === historyItemKey(afterItem))
+      : -1
+    if (insertion && insertionIndex >= 0) items.splice(insertionIndex + 1, 0, insertion.item)
+    return items.length ? [{ ...folder, items }] : []
+  })
+}

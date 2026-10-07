@@ -1,4 +1,4 @@
-import { applyVersionedDocumentCommand } from "@vibeshape/domain"
+import { applyVersionedDocumentCommand, reduceDocumentEvent } from "@vibeshape/domain"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import {
   type DocumentAuthoritySnapshot,
@@ -22,6 +22,7 @@ import {
 import { prepareAuthorityTransaction } from "./authority-transaction"
 import { DocumentUndoHistory } from "./document-undo-history"
 import { draftCommandFailure } from "./draft-validation-diagnostics"
+import { matchesHistoryOperation } from "./history-mutation"
 import {
   type DocumentAuthoredMetadataPort,
   type DocumentHistoryPort,
@@ -115,7 +116,10 @@ export function createAuthorityPersistenceAdapter(
       next = result.snapshot
       events.push(result.event)
     }
-    const resultMatch = matchRuntimeProjection(next, input.snapshot)
+    const resultMatch =
+      base.schemaVersion === 5
+        ? matchLegacyCommitResult(input.baseSnapshot, input.events, input.snapshot)
+        : matchRuntimeProjection(next, input.snapshot)
     if (resultMatch) return resultMatch
     return { ok: true as const, events, snapshot: next }
   }
@@ -139,13 +143,43 @@ export function createAuthorityPersistenceAdapter(
       return authorityFailure("persistence-failed", "The authored document change was not saved.")
     }
     if (!result.ok) return result
-    if (authority?.schemaVersion !== next.schemaVersion) history.clear()
+    if (authority?.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5) history.clear()
     if (record && authority) history.record(authority, next)
     authority = next
     const projected = runtimeProjection(next)
     return projected.ok
       ? { ok: true as const, value: projected.snapshot }
       : authorityFailure("invalid-event", projected.diagnostic.message)
+  }
+
+  async function mutateHistory(
+    input: Parameters<DocumentSemanticHistoryPort["move"]>[0],
+    operation: "move" | "insert",
+  ) {
+    if (!authority) {
+      const apply = legacy.semanticHistory?.[operation]
+      return apply
+        ? apply(input)
+        : authorityFailure("history-unavailable", "History mutation is unavailable.")
+    }
+    const base = authority
+    const match = matchRuntimeProjection(base, input.baseSnapshot)
+    if (match) return match
+    const moved = applyVersionedDocumentCommand(modelProjection(base), input.command)
+    if (!moved.ok || !matchesHistoryOperation(moved.event.type, operation))
+      return authorityFailure("invalid-command", "The command is not a valid History move.")
+    const result = prepareAuthorityModelEvent(base, moved.event, createPart)
+    if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
+    return persist(
+      {
+        ...input,
+        storedAt: result.event.issuedAt,
+        baseSnapshot: base,
+        event: result.event,
+        snapshot: result.snapshot,
+      },
+      result.snapshot,
+    )
   }
 
   return {
@@ -183,7 +217,11 @@ export function createAuthorityPersistenceAdapter(
           return authorityFailure("persistence-failed", "The authored transaction was not saved.")
         }
         if (!saved.ok) return saved
-        if (base.schemaVersion !== prepared.snapshot.schemaVersion) history.clear()
+        if (
+          base.schemaVersion !== prepared.snapshot.schemaVersion &&
+          prepared.snapshot.schemaVersion !== 5
+        )
+          history.clear()
         history.record(prepared.historyBase, prepared.snapshot)
         authority = prepared.snapshot
         const projected = runtimeProjection(prepared.snapshot)
@@ -213,7 +251,7 @@ export function createAuthorityPersistenceAdapter(
                 },
               }
             : parsed.data
-        const result = prepareAuthorityMetadataCommand(base, command)
+        const result = prepareAuthorityMetadataCommand(base, command, {}, createPart)
         if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
         return persist(
           {
@@ -283,30 +321,13 @@ export function createAuthorityPersistenceAdapter(
       get items() {
         return current()?.history ?? []
       },
-      async move(input) {
-        if (!authority)
-          return legacy.semanticHistory
-            ? legacy.semanticHistory.move(input)
-            : authorityFailure("history-unavailable", "History is unavailable.")
-        const base = authority
-        const match = matchRuntimeProjection(base, input.baseSnapshot)
-        if (match) return match
-        const moved = applyVersionedDocumentCommand(modelProjection(base), input.command)
-        if (!moved.ok || moved.event.type !== "org.vibeshape.history.item-moved")
-          return authorityFailure("invalid-command", "The command is not a valid History move.")
-        const result = prepareAuthorityModelEvent(base, moved.event, createPart)
-        if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
-        return persist(
-          {
-            ...input,
-            storedAt: result.event.issuedAt,
-            baseSnapshot: base,
-            event: result.event,
-            snapshot: result.snapshot,
-          },
-          result.snapshot,
-        )
-      },
+      move: (input) => mutateHistory(input, "move"),
+      insert: (input) => mutateHistory(input, "insert"),
+    },
+    get committedSnapshot() {
+      const source = current()
+      const projected = source ? runtimeProjection(source) : null
+      return projected?.ok ? projected.snapshot : null
     },
     async commit(input) {
       if (!authority) return legacy.commit(input)
@@ -322,7 +343,10 @@ export function createAuthorityPersistenceAdapter(
       if ("ok" in translated) return translated
       const result = prepareAuthorityModelEvent(base, translated, createPart)
       if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
-      const resultMatch = matchRuntimeProjection(result.snapshot, input.snapshot)
+      const resultMatch =
+        base.schemaVersion === 5
+          ? matchLegacyCommitResult(input.baseSnapshot, [input.event], input.snapshot)
+          : matchRuntimeProjection(result.snapshot, input.snapshot)
       if (resultMatch) return resultMatch
       return persist(
         { ...input, baseSnapshot: base, event: result.event, snapshot: result.snapshot },
@@ -404,4 +428,24 @@ export function createAuthorityPersistenceAdapter(
       }
     },
   }
+}
+
+function matchLegacyCommitResult(
+  base: import("@vibeshape/domain/document").DocumentSnapshot,
+  events: readonly import("@vibeshape/domain/commands").DocumentEvent[],
+  expected: import("@vibeshape/domain/document").DocumentSnapshot,
+) {
+  let snapshot = base
+  for (const event of events) {
+    const reduced = reduceDocumentEvent(snapshot, event)
+    if (!reduced.ok)
+      return authorityFailure(
+        "invalid-event",
+        "The committed runtime event does not reproduce its requested revision.",
+      )
+    snapshot = reduced.snapshot
+  }
+  return canonicalJson(snapshot) === canonicalJson(expected)
+    ? null
+    : authorityFailure("invalid-input", "The requested runtime snapshot does not match its events.")
 }

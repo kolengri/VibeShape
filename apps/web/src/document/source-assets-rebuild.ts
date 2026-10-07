@@ -1,6 +1,7 @@
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
+import type { DocumentSnapshotV5 } from "@vibeshape/domain/document-v5"
 import {
   type SourceAsset,
   type SourceAssetBlob,
@@ -33,7 +34,7 @@ export async function materializeDocumentSourceAssets(
   )
   if (required.size === 0) return []
   const authority = await readAuthority()
-  if (authority.schemaVersion !== 4)
+  if (authority.schemaVersion !== 4 && authority.schemaVersion !== 5)
     throw new Error("Imported geometry requires source asset authority.")
   const assets = [...required].map((id) => {
     const asset = authority.assets.find((candidate) => candidate.id === id)
@@ -73,7 +74,7 @@ async function readMaterializations(
   return sourceAssetMaterializationsSchema.parse(materials)
 }
 
-function assemblySourceDescriptors(authority: DocumentSnapshotV4) {
+function assemblySourceDescriptors(authority: DocumentSnapshotV4 | DocumentSnapshotV5) {
   const assets = authority.assembly.definitions.flatMap((definition) =>
     definition.pinnedModels.flatMap((model) => model.assets),
   )
@@ -90,7 +91,7 @@ function assemblySourceDescriptors(authority: DocumentSnapshotV4) {
 /** Frozen assembly dependencies survive deletion of their original authored Parts. */
 export async function materializeAssemblySourceAssets(
   database: VibeShapeDatabase,
-  authority: DocumentSnapshotV4,
+  authority: DocumentSnapshotV4 | DocumentSnapshotV5,
   ownedBlobs: readonly SourceAssetBlob[] = [],
 ): Promise<readonly SourceAssetMaterialization[]> {
   return readMaterializations(database, assemblySourceDescriptors(authority), ownedBlobs)

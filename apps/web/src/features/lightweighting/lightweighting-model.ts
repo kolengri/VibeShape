@@ -1,4 +1,7 @@
-import { resolveAuthoredParts } from "@vibeshape/application/authored-parts"
+import {
+  type ResolvedAuthoredPart,
+  resolveAuthoredParts,
+} from "@vibeshape/application/authored-parts"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import {
   type StructuralMaterialPresetId,
@@ -6,6 +9,8 @@ import {
 } from "@vibeshape/domain/lightweighting-materials"
 import type { StructuralOptimizationInput } from "@vibeshape/structural-optimization/contract"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { historyCreationAfter } from "../../document/history-insertion"
+import { historyInsertionContext } from "../../shell/history-insertion-context"
 import type { ImportDocumentContext } from "../import/import-model"
 import { faceForce, faceTriangleIndices } from "./lightweighting-surface-selection"
 
@@ -56,35 +61,83 @@ export type LightweightingSource = {
   body: ModelBodyGeometry
 }
 
-export function availableLightweightingParts(controller: DocumentControllerState) {
+type LightweightingSourceScope = "insertion" | "full"
+
+function exactLightweightingBody(body: ModelBodyGeometry | null) {
+  return (
+    body !== null &&
+    body.representation !== "triangle-mesh" &&
+    body.shape.valid &&
+    body.shape.solidCount === 1 &&
+    body.shape.volume > 0
+  )
+}
+
+function isCurrentPrefixBinding(
+  { part, body }: ResolvedAuthoredPart,
+  successfulFeatures: ReadonlySet<string>,
+  prefixFeatures: ReadonlySet<string>,
+) {
+  if (!body) return false
+  const binding = part.bodyHistory.filter(({ featureId }) => prefixFeatures.has(featureId)).at(-1)
+  return (
+    binding !== undefined &&
+    successfulFeatures.has(binding.featureId) &&
+    body.featureId === binding.featureId &&
+    (body.outputRole ?? "result") === binding.outputRole
+  )
+}
+
+function lightweightingParts(controller: DocumentControllerState, atInsertionPoint: boolean) {
   const authority = controller.authoredSnapshot
   const report = controller.report
   if (!authority || authority.schemaVersion === 1 || !report) return []
+  const prefixFeatures = new Set(report.snapshot.features.map(({ id }) => id))
+  const successfulFeatures = new Set(
+    atInsertionPoint && report.rebuild.ok
+      ? report.rebuild.response.evaluation.records
+          .filter(({ status }) => status === "succeeded")
+          .map(({ featureId }) => featureId)
+      : [],
+  )
   return (resolveAuthoredParts(authority, report) ?? []).filter(
-    ({ status, body }) =>
-      status === "available" &&
-      body !== null &&
-      body.representation !== "triangle-mesh" &&
-      body.shape.valid &&
-      body.shape.solidCount === 1 &&
-      body.shape.volume > 0,
+    (resolved) =>
+      exactLightweightingBody(resolved.body) &&
+      (resolved.status === "available" ||
+        (atInsertionPoint && isCurrentPrefixBinding(resolved, successfulFeatures, prefixFeatures))),
   )
 }
+
+export function availableLightweightingParts(
+  controller: DocumentControllerState,
+  scope: LightweightingSourceScope = "insertion",
+) {
+  const scoped = scope === "full" ? controller : historyInsertionContext(controller)
+  return lightweightingParts(scoped, scoped !== controller)
+}
+
 export function lightweightingSource(
   controller: DocumentControllerState,
   partId: string,
+  scope: LightweightingSourceScope = "insertion",
 ): LightweightingSource | null {
-  const authority = controller.authoredSnapshot
-  const report = controller.report
+  const scoped = scope === "full" ? controller : historyInsertionContext(controller)
+  const authority = scoped.authoredSnapshot
+  const report = scoped.report
   if (!authority || authority.schemaVersion === 1 || !report) return null
-  const selected = availableLightweightingParts(controller).find(({ part }) => part.id === partId)
+  const selected = lightweightingParts(scoped, scoped !== controller).find(
+    ({ part }) => part.id === partId,
+  )
   if (!selected?.body) return null
   return {
     context: {
       documentId: report.snapshot.id,
       revision: report.snapshot.revision,
       authorityVersion: authority.schemaVersion,
-      historyAfter: report.historyItems?.at(-1) ?? null,
+      historyAfter:
+        scoped !== controller
+          ? historyCreationAfter(scoped)
+          : (report.historyItems?.at(-1) ?? null),
     },
     partId,
     partName: selected.part.name,
@@ -102,6 +155,8 @@ export function sameLightweightingSource(
     current !== null &&
     current.context.documentId === captured.context.documentId &&
     current.context.revision === captured.context.revision &&
+    current.context.historyAfter?.kind === captured.context.historyAfter?.kind &&
+    current.context.historyAfter?.id === captured.context.historyAfter?.id &&
     current.partId === captured.partId &&
     current.featureId === captured.featureId &&
     current.outputRole === captured.outputRole &&

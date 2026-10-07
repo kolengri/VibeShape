@@ -1,5 +1,8 @@
 # ADR-0026: Document Dependency Graph and Interleaved History
 
+Deletion restrictions are superseded for the explicit V5 retained-History command by
+[ADR-0103](0103-retained-history-repair-authority.md); historical schemas and commands remain strict.
+
 - Status: Accepted
 - Date: 2026-08-21
 - Extends: [ADR-0003](0003-parametric-dag-and-toporef.md),

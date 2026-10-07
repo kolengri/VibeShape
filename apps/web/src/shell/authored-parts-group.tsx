@@ -21,6 +21,7 @@ type PartsProps = {
   revision: number
   selectedPartId: PartId | null
   disabled: boolean
+  selectionRequiresBody?: boolean | undefined
   onSelect: (partId: PartId) => void
   onPreselect?: ((body: ModelBodySelection | null) => void) | undefined
   onSurfaceTexture?: ((featureId: FeatureId, outputRole: string) => void) | undefined
@@ -38,6 +39,33 @@ function MeshOperationNotice({
   if (!selected || resolved.body?.representation !== "triangle-mesh") return null
   return <p className="ml-8 px-2 text-xs text-muted-foreground">{t("meshOperationsUnavailable")}</p>
 }
+
+function AuthoredPartStatus({
+  partId,
+  status,
+  atInsertionPoint,
+}: {
+  partId: PartId
+  status: ResolvedAuthoredPart["status"]
+  atInsertionPoint: boolean
+}) {
+  const t = useTranslations("app.authoredTree")
+  const warning = status === "unavailable" || (status === "upstream" && !atInsertionPoint)
+  const label = status === "upstream" && atInsertionPoint ? "insertionUpstream" : status
+  return (
+    <p
+      id={`part-status-${partId}`}
+      className={cn(
+        "ml-8 flex items-center gap-1 px-2 text-[10px] text-muted-foreground",
+        status === "available" && "sr-only",
+      )}
+    >
+      {warning && <CircleAlert className="size-3 shrink-0" aria-hidden="true" />}
+      {t(label)}
+    </p>
+  )
+}
+
 function AuthoredPartRow({
   resolved,
   ...props
@@ -92,6 +120,7 @@ function AuthoredPartRow({
             aria-selected={selected}
             aria-label={t("partLabel", { name: part.name })}
             aria-describedby={`part-status-${part.id}`}
+            disabled={props.selectionRequiresBody && !highlight}
             className={cn(
               "min-w-0 flex-1 justify-start pl-6 font-normal",
               selected && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
@@ -127,18 +156,11 @@ function AuthoredPartRow({
             <TooltipContent>{visibilityLabel}</TooltipContent>
           </Tooltip>
         </div>
-        <p
-          id={`part-status-${part.id}`}
-          className={cn(
-            "ml-8 flex items-center gap-1 px-2 text-[10px] text-muted-foreground",
-            status === "available" && "sr-only",
-          )}
-        >
-          {(status === "unavailable" || status === "upstream") && (
-            <CircleAlert className="size-3 shrink-0" aria-hidden="true" />
-          )}
-          {t(status)}
-        </p>
+        <AuthoredPartStatus
+          partId={part.id}
+          status={status}
+          atInsertionPoint={Boolean(props.selectionRequiresBody)}
+        />
         <MeshOperationNotice selected={selected} resolved={resolved} />
         {error && (
           <p role="alert" className="px-2 text-xs text-destructive">

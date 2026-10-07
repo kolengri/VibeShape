@@ -2,9 +2,18 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
+import {
+  createDefaultSurfaceTextureLayer,
+  surfaceTextureLayerIdSchema,
+} from "@vibeshape/domain/surface-textures"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import {
+  historyRepairFixture,
+  repairId,
+} from "../../../../packages/domain/src/history-repair.test-fixture"
 import { i18n } from "../i18n"
 import type { DocumentControllerState } from "./document-controller"
 import { DocumentExportDialog } from "./document-export-dialog"
@@ -63,6 +72,35 @@ function dialog(controller: DocumentControllerState) {
 }
 
 describe("document export availability", () => {
+  it("shows the surface relief export hint on V5 authority", async () => {
+    const fixture = historyRepairFixture()
+    const feature = fixture.features[3]
+    if (!feature) throw new Error("Missing independent feature fixture.")
+    const authority = documentSnapshotV5Schema.parse({
+      ...fixture,
+      schemaVersion: 5,
+      assets: [],
+      repairIntents: [],
+      suspendedParts: [],
+      surfaceTextures: [
+        createDefaultSurfaceTextureLayer(
+          feature.id,
+          "result",
+          surfaceTextureLayerIdSchema.parse(repairId(550)),
+        ),
+      ],
+    })
+    render(
+      dialog({ ...loading, status: "ready", report: readyWithSolid, authoredSnapshot: authority }),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Export…" }))
+    expect(
+      screen.getByText(
+        "STL and 3MF include surface relief. STEP exports the original CAD geometry.",
+      ),
+    ).toBeDefined()
+  })
+
   it("forwards selected mesh quality to document export", async () => {
     mocks.exportActiveDocument.mockResolvedValueOnce({
       ok: true,

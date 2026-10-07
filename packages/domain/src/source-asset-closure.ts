@@ -5,7 +5,7 @@ import { validateSketchSourceImportAssets } from "./sketch-source-import"
 import { type SourceAsset, sourceAssetsSchema } from "./source-assets"
 
 function snapshotAssets(source: DocumentAuthoritySnapshot): readonly SourceAsset[] {
-  if (source.schemaVersion !== 4) return []
+  if (source.schemaVersion !== 4 && source.schemaVersion !== 5) return []
   const sourceIssue = validateSketchSourceImportAssets(source)
   if (sourceIssue) throw new Error(sourceIssue)
   const pinned =
@@ -15,6 +15,10 @@ function snapshotAssets(source: DocumentAuthoritySnapshot): readonly SourceAsset
   return [...source.assets, ...pinned]
 }
 export function documentEventSourceAssets(event: DocumentAuthorityEvent): readonly SourceAsset[] {
+  if (event.schemaVersion === 5)
+    return event.type === "org.vibeshape.document.authored-changed"
+      ? documentEventSourceAssets(event.authoredEvent)
+      : []
   if (event.schemaVersion !== 4) return []
   if (event.type === "org.vibeshape.document.source-assets-added") return event.assets
   if (event.type !== "org.vibeshape.document.assembly-changed") return []

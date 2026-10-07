@@ -1,5 +1,15 @@
 {
   "app": {
+    "historyFeatureRepair": {
+      "title": "Replace missing input",
+      "description": "Choose an earlier body to replace the missing input. Your saved parameters are retained. Save the feature to apply the repair.",
+      "replacementBody": "Replacement body",
+      "chooseBody": "Choose a replacement body…",
+      "unnamedBody": "Unnamed body",
+      "noBodies": "No earlier exact solid bodies are available. Create or restore an earlier body first.",
+      "reselectOpenings": "Select the openings again on the replacement body. Previous face selections are cleared.",
+      "cancel": "Cancel"
+    },
     "variableSuggestions": {
       "label": "Available variables"
     },
@@ -833,7 +843,7 @@
         "sketchActions": "Actions for {sketch}",
         "deleteSketch": "Delete {sketch}…",
         "deleteSketchTitle": "Delete {sketch}?",
-        "deleteSketchDescription": "This removes the sketch from model history.",
+        "deleteSketchDescription": "This removes the sketch from History. Later operations are kept; references to this sketch are disconnected and must be repaired. Undo restores the sketch and its references.",
         "deleteSketchConfirm": "Delete sketch",
         "deleteSketchCancel": "Keep sketch",
         "deleteSketchFailed": "The sketch could not be deleted. The model history was not changed.",
@@ -855,13 +865,14 @@
         "unknownSketchSupportSummary": "Support status is unavailable while its source feature is unavailable.",
         "sourceProfile": "Source region {number} from {sketch}",
         "sourceProfileHint": "Hover or focus to highlight the source. Click to open its sketch from History.",
-        "sourceProfileEditBlocked": "Finish or cancel the current sketch before opening another source sketch.",
+        "sourceProfileEditBlocked": "The current edit could not be saved. Resolve its errors before opening this source sketch.",
         "sourceProfileLocateHint": "Click to open the source sketch from History.",
         "missingSourceSketch": "Missing sketch",
         "sourceProfileUnavailable": "The source sketch is unavailable. Edit the feature to choose an existing source.",
         "supportedByFeature": "Supported by {feature}",
         "supportedByPlane": "Supported by {plane} plane",
-        "rollbackMarker": "Edit point in History: later items are rolled back. Use Show final result for display-only context."
+        "rollbackMarker": "Edit point in History: later items are rolled back. Use Show final result for display-only context.",
+        "repairRequired": "Missing references — open this item to select replacement inputs."
       },
       "statusBar": {
         "filter": "Filter: {filter}",
@@ -1098,7 +1109,7 @@
         "featureDelete": {
           "action": "Delete feature",
           "title": "Delete {feature}?",
-          "description": "This removes the feature from model history.",
+          "description": "This removes the feature from History. Later sketches and features are kept; affected references are disconnected and must be repaired. Undo restores the feature and its references.",
           "confirm": "Delete feature",
           "cancel": "Keep feature",
           "failed": "The feature could not be deleted. The model history was not changed.",
@@ -2045,6 +2056,7 @@
       "emptyParts": "Create a solid to add an editable part.",
       "available": "Available part",
       "upstream": "Earlier result shown; inspect the failed feature.",
+      "insertionUpstream": "Earlier result at the insertion point.",
       "consumed": "Consumed by a later operation",
       "unavailable": "No current body; inspect History.",
       "hidePart": "Hide part {name}",
@@ -2064,6 +2076,20 @@
       "staleRevision": "The document changed. Close this dialog and reopen it before saving.",
       "editingBlocked": "Finish the active edit and wait for saving before changing parts or folders.",
       "createFolder": "New folder",
+      "addSelectionToFolder": "Add selection to folder",
+      "insertAbove": "Insert above",
+      "insertBelow": "Insert below",
+      "insertPending": "Preparing insertion…",
+      "insertFailed": "Could not set the insertion point. Try again.",
+      "folderMembershipFailed": "Could not update the folder. Your selection is preserved; try again.",
+      "folderMembershipStale": "The document changed. Open the context menu again before adding items.",
+      "addToExistingFolder": "Add to existing folder",
+      "addToFolder": "Add to {name}",
+      "clearSelection": "Clear selection",
+      "selectHistoryItem": "Select {name} for a folder",
+      "folderSelectionInstructions": "Use the selection boxes, Ctrl/Cmd-click, or Shift-click to select History items for a folder.",
+      "selectedItems": "{count, plural, one {# History item selected} other {# History items selected}}",
+      "invalidSelection": "Select a contiguous range outside existing folders. Ungroup a folder before grouping its items again.",
       "folderName": "Folder name",
       "folderDescription": "Choose a contiguous History range. Folders organize items without changing their order or dependencies.",
       "firstItem": "First History item",
@@ -3181,6 +3207,13 @@
       "disconnected": "These settings leave disconnected material. Reduce removal or increase cell size or sampling detail, then regenerate.",
       "noRemovable": "No usable material removal was found. Try a thinner skin, smaller removal target, or different cell size.",
       "mainPreview": "The candidate is shown in the main viewport. Use Section view to inspect enclosed cells. Apply saves a mesh Part and hides the editable source; Undo restores it."
+    },
+    "historyInsertion": {
+      "after": "Insert after {item}",
+      "start": "Insert at the start of History",
+      "description": "New sketches and features are added here. Later items are excluded from input selection and preview.",
+      "returnToEnd": "Return to end",
+      "unnamed": "unnamed item"
     }
   }
 }
