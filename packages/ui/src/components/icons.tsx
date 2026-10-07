@@ -80,6 +80,7 @@ export {
   NormalViewIcon,
   OffsetIcon,
   PointIcon,
+  QuickLightweightingIcon,
   RevolveIcon,
   SlotAroundLineIcon,
   SlotIcon,

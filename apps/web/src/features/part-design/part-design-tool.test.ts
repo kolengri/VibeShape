@@ -26,6 +26,8 @@ import {
   compoundFeatureType,
   unionFeatureType,
 } from "@vibeshape/domain/part-design-body-combination"
+import { importedFeatureType } from "@vibeshape/domain/part-design-import"
+import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { describe, expect, it } from "vitest"
 import {
@@ -344,6 +346,19 @@ describe("part-design tool routing", () => {
 })
 
 describe("authored part operation routing", () => {
+  it.each([importedFeatureType, meshImportFeatureType])(
+    "opens captured source History entries for inspection and ordinary deletion: $type.typeId",
+    (descriptor) => {
+      const feature = featureRecordSchema.parse({ ...box, type: descriptor.type })
+      const tool = editPartDesignTool(feature)
+      expect(tool).toEqual({ kind: "inspect-imported", featureId: feature.id })
+      expect(activeFeatureId(tool)).toBe(feature.id)
+      expect(activePartDesignCommand(tool)).toBe("inspect-imported")
+      expect(
+        editPartDesignTool({ ...feature, type: { ...feature.type, schemaVersion: 999 } }),
+      ).toBeNull()
+    },
+  )
   it("reopens exact trusted Placement, Compound, and Union versions", () => {
     for (const [descriptor, kind] of [
       [placementFeatureType, "edit-placement"],

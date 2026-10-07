@@ -2207,7 +2207,41 @@ function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
   return <BodyCombinationTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
 }
 
+function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
+  const t = useTranslations("app.shell.taskPanel")
+  const treeT = useTranslations("app.shell.modelTree")
+  useRegisterTaskSubmission(async () => {
+    props.onCloseTool()
+    return true
+  })
+  const feature = props.report.snapshot.features.find(
+    ({ id }) => "featureId" in props.activeTool && id === props.activeTool.featureId,
+  )
+  if (!feature) return null
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="min-w-0 truncate text-sm font-medium">
+          {feature.label ?? treeT("unnamedFeature")}
+        </h2>
+        <TaskPanelLifecycleActions
+          ariaLabel={t("capturedSource.actions")}
+          cancelLabel={t("capturedSource.close")}
+          onCancel={props.onCloseTool}
+        />
+      </div>
+      <p className="mt-2 text-sm text-muted-foreground">{t("capturedSource.description")}</p>
+      <ActiveFeatureDeleteAction
+        feature={feature}
+        onDeleted={props.onCompleteTool}
+        report={props.report}
+      />
+    </aside>
+  )
+}
+
 const activeTaskPanelByKind = {
+  "inspect-imported": ImportedSourceTaskPanel,
   "create-fdm": FdmToolTaskPanel,
   "edit-fdm": FdmToolTaskPanel,
   "create-compound": CombinationToolTaskPanel,

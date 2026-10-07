@@ -43,6 +43,7 @@ import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
+import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import {
   mirrorFeatureType,
   mirrorFeatureTypeV2,
@@ -57,6 +58,7 @@ import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
 
 export type ActivePartDesignTool =
+  | Readonly<{ kind: "inspect-imported"; featureId: FeatureId }>
   | Readonly<{ kind: "create-fdm" }>
   | Readonly<{ kind: "edit-fdm"; featureId: FeatureId }>
   | Readonly<{ kind: "surface-texture"; featureId?: FeatureId; outputRole?: string }>
@@ -470,6 +472,12 @@ const editableFeatureTools: readonly [
   (feature: FeatureRecord) => boolean,
   Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
 ][] = [
+  [
+    (feature) =>
+      hasFeatureType(feature, importedFeatureType.type) ||
+      hasFeatureType(feature, meshImportFeatureType.type),
+    "inspect-imported",
+  ],
   [(feature) => readFdmFeatureParameters(feature) !== null, "edit-fdm"],
   [
     (feature) =>
@@ -510,6 +518,7 @@ export function editPartDesignTool(
 }
 
 const commandByToolKind = {
+  "inspect-imported": "inspect-imported",
   "create-fdm": "fdm",
   "edit-fdm": "fdm",
   "surface-texture": "surface-texture",

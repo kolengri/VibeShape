@@ -9,7 +9,11 @@ import {
   documentSnapshotV4Schema,
   projectDocumentSnapshotV4ToV2,
 } from "./document-v4"
-import { applyDocumentV4Command, reduceDocumentV4Event } from "./document-v4-commands"
+import {
+  applyDocumentV4AuthoredCommand,
+  applyDocumentV4Command,
+  reduceDocumentV4Event,
+} from "./document-v4-commands"
 import { createFeatureContentIdentity } from "./feature-content-identity"
 import { featureBodyDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
@@ -29,6 +33,7 @@ import {
   readImportedFeatureParameters,
   validateImportedFeatureAssets,
 } from "./part-design-import"
+import { meshImportFeatureType, meshImportOutputRole } from "./part-design-mesh-import"
 import { sourceAssetSchema } from "./source-assets"
 import { applyVersionedDocumentCommand } from "./versioned-document-commands"
 
@@ -165,6 +170,129 @@ function registry() {
 }
 
 describe("captured exact source body features", () => {
+  it("removes a captured lightweighting mesh and replays deletion, Undo and Redo without losing its source", () => {
+    const f = fixture()
+    const meshAsset = sourceAssetSchema.parse({
+      ...asset,
+      id: id(40),
+      digest: "b".repeat(64),
+      filename: "Lightweighting.stl",
+      format: "stl",
+      representation: "triangle-mesh",
+      outputs: [id(41)],
+    })
+    const sourced = value(
+      applyDocumentV4Command(f.snapshot, {
+        ...envelope(f.snapshot.revision),
+        schemaVersion: 4,
+        kind: "org.vibeshape.document.add-source-assets",
+        payload: { assets: [meshAsset] },
+      }),
+    )
+    const meshFeature = featureRecordSchema.parse({
+      ...feature(),
+      id: id(42),
+      type: meshImportFeatureType.type,
+      parameters: {
+        sourceAssetId: meshAsset.id,
+        source: {
+          digest: meshAsset.digest,
+          byteLength: meshAsset.byteLength,
+          format: "stl",
+          normalization: meshAsset.normalization,
+          parserPolicyVersion: 1,
+        },
+        outputs: [{ outputId: id(41), nodeKey: "mesh-1" }],
+      },
+      label: "Organic lightweighting",
+    })
+    const inserted = value(
+      applyDocumentV4AuthoredCommand(sourced.snapshot, {
+        ...envelope(sourced.snapshot.revision),
+        schemaVersion: 3,
+        kind: "org.vibeshape.document.model-command",
+        payload: {
+          command: {
+            ...envelope(sourced.snapshot.revision),
+            schemaVersion: 1,
+            kind: "org.vibeshape.history.insert-feature",
+            payload: { feature: meshFeature, historyAfter: null },
+          },
+          partAllocations: [
+            {
+              id: id(43),
+              name: "Organic lightweighting",
+              body: {
+                schemaVersion: 0,
+                featureId: meshFeature.id,
+                outputRole: meshImportOutputRole(id(41)),
+              },
+              origin: "independent",
+            },
+          ],
+        },
+      }),
+    )
+    const removed = value(
+      applyDocumentV4AuthoredCommand(inserted.snapshot, {
+        ...envelope(inserted.snapshot.revision),
+        schemaVersion: 3,
+        kind: "org.vibeshape.document.model-command",
+        payload: {
+          command: {
+            ...envelope(inserted.snapshot.revision),
+            schemaVersion: 1,
+            kind: "org.vibeshape.feature.remove",
+            payload: { featureId: meshFeature.id },
+          },
+          partAllocations: [],
+        },
+      }),
+    )
+    expect(removed.snapshot.features).toEqual([])
+    expect(removed.snapshot.history).toEqual([])
+    expect(removed.snapshot.parts).toEqual([])
+    expect(removed.snapshot.assets).toEqual(inserted.snapshot.assets)
+    const undo = {
+      ...envelope(removed.snapshot.revision),
+      schemaVersion: 4,
+      type: "org.vibeshape.document.restored",
+      transactionId: null,
+      revision: removed.snapshot.revision + 1,
+      direction: "undo",
+      targetRevision: inserted.snapshot.revision,
+    }
+    const restored = value(
+      reduceDocumentV4Event(removed.snapshot, undo, inserted.snapshot),
+    ).snapshot
+    expect(restored.features).toEqual(inserted.snapshot.features)
+    expect(restored.parts).toEqual(inserted.snapshot.parts)
+    const redo = {
+      ...envelope(restored.revision),
+      schemaVersion: 4,
+      type: "org.vibeshape.document.restored",
+      transactionId: null,
+      revision: restored.revision + 1,
+      direction: "redo",
+      targetRevision: removed.snapshot.revision,
+    }
+    const redone = value(reduceDocumentV4Event(restored, redo, removed.snapshot)).snapshot
+    expect(redone.features).toEqual([])
+    expect(redone.parts).toEqual([])
+    expect(redone.assets).toEqual(inserted.snapshot.assets)
+    expect(
+      value(
+        replayDocumentAuthorityEvents(null, [
+          ...f.events,
+          sourced.event,
+          inserted.event,
+          removed.event,
+          undo,
+          redo,
+        ]),
+      ).snapshot,
+    ).toEqual(redone)
+  })
   it("registers dependency-free immutable content and excludes only the source asset record identity", () => {
     const original = feature()
     expect(registry().validateFeature(original)).toMatchObject({

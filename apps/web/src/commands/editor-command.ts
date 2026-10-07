@@ -139,6 +139,7 @@ export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBas
 
 export type EditorCommandIcon =
   | "lightweighting"
+  | "quick-lightweighting"
   | "shell"
   | "thread"
   | "compound"

@@ -1106,6 +1106,11 @@
         "workflowRefineDescription": "Add more sketches and ordered features without losing design intent.",
         "workflowSketch": "Define a profile",
         "workflowSketchDescription": "Create constrained 2D geometry on an origin plane.",
+        "capturedSource": {
+          "actions": "Captured source actions",
+          "close": "Close",
+          "description": "Captured source geometry cannot be edited parametrically. You can delete this feature from History."
+        },
         "featureDelete": {
           "action": "Delete feature",
           "title": "Delete {feature}?",
@@ -3176,6 +3181,7 @@
       "preview": "Organic mesh preview",
       "previewFailed": "The mesh preview failed. Regenerate before applying.",
       "regenerate": "Regenerate preview",
+      "editing": "Finish adjusting the slider to generate a preview.",
       "apply": "Apply lightweighting",
       "cancel": "Close",
       "actions": "Quick lightweighting actions",
@@ -3203,7 +3209,10 @@
       "cellSizeDescription": "Adjust the repeating lattice independently of sampling detail. Cell size is kept within 6–12 sampling spacings; changing detail may clamp it to this range.",
       "length": "{value, number} mm",
       "schwarzDSampling": "Schwarz D starts at 12 sampling spacings per cell to resolve its finer pattern. Smaller cells may produce disconnected material; increase cell size or detail if generation fails.",
-      "resourceLimit": "Generation exceeded the local computation limit. Reduce sampling detail or choose a simpler source Part, then regenerate.",
+      "resourceLimit": "The source and sampling settings exceed the local geometry budget. Reduce sampling detail and regenerate.",
+      "samplingProgress": "Sampling the source surface: {completed, number} / {total, number}",
+      "validationProgress": "Checking mesh surface samples: {completed, number} / {total, number}",
+      "cancelGeneration": "Cancel generation",
       "disconnected": "These settings leave disconnected material. Reduce removal or increase cell size or sampling detail, then regenerate.",
       "noRemovable": "No usable material removal was found. Try a thinner skin, smaller removal target, or different cell size.",
       "mainPreview": "The candidate is shown in the main viewport. Use Section view to inspect enclosed cells. Apply saves a mesh Part and hides the editable source; Undo restores it."

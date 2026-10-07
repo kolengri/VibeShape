@@ -159,7 +159,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   ...contextualPartDescriptors,
   {
     group: "modeling",
-    icon: "lightweighting",
+    icon: "quick-lightweighting",
     id: editorCommandIds.quickLightweighting,
     labelKey: "quickLightweighting",
     ownerModuleId: editorOwner,

@@ -432,4 +432,8 @@ Structural and quick lightweighting use direct toolbar commands and the responsi
 panel. The selected exact solid is prefilled. Structural inputs select support, load, and optional
 preserved faces in the canvas; quick inputs select lattice cells and slider values. Required action
 reasons remain visible in task forms, with accessible disclosure on compact toolbar controls.
+The commands use distinct organic-branch and lattice-cell SVG icons. Quick generation displays
+current sampling or validation-pass progress and offers **Cancel generation**. Selecting a saved
+mesh result in History opens its captured-source panel with ordinary **Delete feature** confirmation,
+dependency checks and Undo/Redo.
 See [the canonical workflows](lightweighting.md) for preview, Apply, cancellation, and limitations.

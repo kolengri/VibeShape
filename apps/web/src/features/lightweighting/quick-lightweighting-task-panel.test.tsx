@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { QuickLightweightingError } from "@vibeshape/structural-optimization/quick-client"
 import type {
   QuickLightweightingInput,
   QuickLightweightingResult,
@@ -24,6 +25,11 @@ const ports = vi.hoisted(() => ({
   parts: vi.fn(),
   previewReady: vi.fn(),
   close: vi.fn(),
+  registerSubmission: vi.fn(),
+}))
+vi.mock("../../editor-session/editor-session-provider", async (original) => ({
+  ...(await original<typeof import("../../editor-session/editor-session-provider")>()),
+  useRegisterTaskSubmission: ports.registerSubmission,
 }))
 vi.mock("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
 vi.mock("@vibeshape/structural-optimization/quick-client", () => ({
@@ -160,6 +166,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal("crypto", webcrypto)
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.setPointerCapture = vi.fn()
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -195,6 +202,161 @@ afterEach(() => {
 })
 
 describe("quick lightweighting task panel", () => {
+  it("reports task submission success only after a validated save", async () => {
+    setup()
+    const submit = () => ports.registerSubmission.mock.lastCall?.[0]()
+    await act(async () => expect(await submit()).toBe(false))
+    expect(ports.apply).not.toHaveBeenCalled()
+    await preparedPreview()
+    ports.apply.mockResolvedValueOnce({ ok: false, diagnostic: { message: "Save failed." } })
+    await act(async () => expect(await submit()).toBe(false))
+    expect(ports.close).not.toHaveBeenCalled()
+    await act(async () => expect(await submit()).toBe(true))
+    expect(ports.close).toHaveBeenCalledOnce()
+  })
+
+  it("keeps the current pointer gesture locked when another slider loses focus", async () => {
+    setup()
+    const previous = screen.getByRole("slider", { name: /Requested removal/ })
+    const current = screen.getByRole("slider", { name: "Sampling detail" })
+    fireEvent.focus(previous)
+    fireEvent(current, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+    fireEvent.blur(previous)
+    fireEvent.lostPointerCapture(previous)
+    fireEvent.keyUp(previous, { key: "ArrowRight" })
+    fireEvent.change(current, { target: { value: "40" } })
+    await advance(1200)
+    expect(ports.generate).not.toHaveBeenCalled()
+    fireEvent.pointerUp(current)
+    await advance(650)
+    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ cellSizeMm: 0.15 })
+  })
+
+  it("waits for all pointer and keyboard gestures on one slider to end", async () => {
+    setup()
+    const slider = screen.getByRole("slider", { name: /Requested removal/ })
+    fireEvent(slider, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+    fireEvent.keyDown(slider, { key: "ArrowRight" })
+    fireEvent.keyDown(slider, { key: "ArrowUp" })
+    fireEvent.change(slider, { target: { value: "70" } })
+    fireEvent.keyUp(slider, { key: "ArrowRight" })
+    await advance(1200)
+    expect(ports.generate).not.toHaveBeenCalled()
+    fireEvent.pointerUp(slider)
+    fireEvent.lostPointerCapture(slider)
+    await advance(1200)
+    expect(ports.generate).not.toHaveBeenCalled()
+    fireEvent.keyUp(slider, { key: "ArrowUp" })
+    await advance(650)
+    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ removalPercent: 70 })
+  })
+
+  it.each([
+    ["quick-removal", "60", "70", { removalPercent: 70 }],
+    ["quick-cell-size", "0.25", "0.375", { latticeCellSizeMm: 2.25 }],
+    ["quick-detail", "24", "40", { cellSizeMm: 0.15 }],
+    ["quick-skin", "3", "4", { skinThicknessMm: 0.75 }],
+  ])(
+    "waits for the pointer gesture to end on %s, including pauses longer than debounce",
+    async (id, first, final, expected) => {
+      setup()
+      if (id === "quick-skin")
+        fireEvent.click(screen.getByRole("button", { name: "Keep exterior" }))
+      const slider = document.getElementById(id)
+      if (!slider) throw new Error("The slider must be mounted.")
+      fireEvent(slider, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+      fireEvent.change(slider, { target: { value: first } })
+      await advance(1200)
+      expect(ports.generate).not.toHaveBeenCalled()
+      fireEvent.change(slider, { target: { value: final } })
+      await advance(1200)
+      expect(ports.generate).not.toHaveBeenCalled()
+      expect(applyButton().disabled).toBe(true)
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", { name: "Regenerate preview" }).disabled,
+      ).toBe(true)
+      fireEvent.pointerUp(slider)
+      fireEvent.lostPointerCapture(slider)
+      await advance(649)
+      expect(ports.generate).not.toHaveBeenCalled()
+      await advance(1)
+      expect(ports.generate).toHaveBeenCalledOnce()
+      expect(ports.generate.mock.calls[0]?.[0]).toMatchObject(expected)
+    },
+  )
+
+  it.each(["pointerCancel", "lostPointerCapture", "blur"] as const)(
+    "releases the gesture on %s and resumes the final preview",
+    async (event) => {
+      setup()
+      const slider = screen.getByRole("slider", { name: /Requested removal/ })
+      fireEvent(slider, new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+      fireEvent.change(slider, { target: { value: "65" } })
+      await advance(1200)
+      expect(ports.generate).not.toHaveBeenCalled()
+      fireEvent[event](slider)
+      await advance(650)
+      expect(ports.generate).toHaveBeenCalledOnce()
+      expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ removalPercent: 65 })
+    },
+  )
+
+  it("cancels old work immediately and waits until a held slider key is released", async () => {
+    const pending = deferred<QuickLightweightingResult>()
+    ports.generate.mockReturnValueOnce(pending.promise)
+    setup()
+    await advance(650)
+    const signal: AbortSignal = ports.generate.mock.calls[0]?.[1].signal
+    const slider = screen.getByRole("slider", { name: /Requested removal/ })
+    fireEvent.keyDown(slider, { key: "ArrowRight" })
+    expect(signal.aborted).toBe(true)
+    fireEvent.change(slider, { target: { value: "60" } })
+    await advance(1200)
+    fireEvent.keyDown(slider, { key: "ArrowRight", repeat: true })
+    fireEvent.change(slider, { target: { value: "70" } })
+    await advance(1200)
+    expect(ports.generate).toHaveBeenCalledOnce()
+    fireEvent.keyUp(slider, { key: "ArrowRight" })
+    await advance(650)
+    expect(ports.generate).toHaveBeenCalledTimes(2)
+    expect(ports.generate.mock.calls[1]?.[0]).toMatchObject({ removalPercent: 70 })
+    await act(async () => pending.resolve({ ...result, removedPercent: 99 }))
+    expect(screen.getByText("Material removed: 50%")).toBeTruthy()
+  })
+
+  it("explains a geometry capacity failure and permits regeneration", async () => {
+    ports.generate.mockRejectedValueOnce(new QuickLightweightingError("resource-limit", "capacity"))
+    setup()
+    await advance(650)
+    expect(screen.getByText(messages.app.quickLightweighting.resourceLimit)).toBeTruthy()
+    expect(applyButton().disabled).toBe(true)
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Regenerate preview" }).disabled,
+    ).toBe(false)
+  })
+
+  it("shows current batch progress, keeps cancellation available, and ignores stale progress", async () => {
+    ports.generate.mockReturnValueOnce(deferred<QuickLightweightingResult>().promise)
+    setup()
+    await advance(650)
+    const onProgress = ports.generate.mock.calls[0]?.[1].onProgress
+    if (!onProgress) throw new Error("Expected generation progress callback.")
+    act(() => onProgress("generating", { phase: "sampling", completed: 128, total: 256 }))
+    expect(screen.getByRole("status").textContent).toBe("Sampling the source surface: 128 / 256")
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Cancel generation" }).disabled,
+    ).toBe(false)
+    act(() => onProgress("generating", { phase: "validation", completed: 64, total: 128 }))
+    expect(screen.getByRole("status").textContent).toBe("Checking mesh surface samples: 64 / 128")
+    fireEvent.change(screen.getByRole("slider", { name: /Requested removal/ }), {
+      target: { value: "70" },
+    })
+    act(() => onProgress("generating", { phase: "sampling", completed: 256, total: 256 }))
+    expect(screen.queryByRole("status")).toBeNull()
+  })
+
   it("automatically generates the preselected cube after 650 ms and gates Apply on preview readiness", async () => {
     setup()
     expect(screen.getByRole("combobox", { name: "Source Part" }).textContent).toContain(

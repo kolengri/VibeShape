@@ -24,10 +24,7 @@ import {
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
-import {
-  QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
-  quickLightweightingResultContextMatches,
-} from "@vibeshape/automation-api/quick-lightweighting-tools"
+import { quickLightweightingResultContextMatches } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_REQUEST_TIMEOUT_MS,
@@ -67,7 +64,7 @@ type Pending = {
   id: string
   operation: LocalOperation
   resolve: (result: unknown) => void
-  timer: ReturnType<typeof setTimeout>
+  timer: ReturnType<typeof setTimeout> | null
 }
 type Consent = {
   id: string
@@ -221,16 +218,18 @@ export class TabSession extends DurableObject<RemoteEnv> {
     if (!this.live() || !this.browser())
       return localFailure("session-revoked", "The browser session closed.")
     return new Promise<unknown>((resolve) => {
-      const timer = setTimeout(
-        () => {
-          if (this.pending?.id === id) void this.revoke()
-        },
+      const timer =
+        operation.tool === "analyze_quick_lightweighting" ||
         operation.tool === "request_quick_lightweighting"
-          ? QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
-          : operation.tool === "request_lightweighting"
-            ? LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
-            : REMOTE_REQUEST_TIMEOUT_MS,
-      )
+          ? null
+          : setTimeout(
+              () => {
+                if (this.pending?.id === id) void this.revoke()
+              },
+              operation.tool === "request_lightweighting"
+                ? LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
+                : REMOTE_REQUEST_TIMEOUT_MS,
+            )
       this.pending = { id, operation, resolve, timer }
       this.send({ type: "work", requestId: id, operation })
     })
@@ -280,7 +279,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     this.metadata.active = null
     this.metadata.activeKey = null
     if (this.pending) {
-      clearTimeout(this.pending.timer)
+      if (this.pending.timer !== null) clearTimeout(this.pending.timer)
       this.pending.resolve(
         localFailure(
           "outcome-unknown",
@@ -386,7 +385,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     this.pending = null
     this.metadata.active = null
     this.metadata.activeKey = null
-    clearTimeout(pending.timer)
+    if (pending.timer !== null) clearTimeout(pending.timer)
     return this.confirmResult(pending, result)
   }
   private operationResultMatches(

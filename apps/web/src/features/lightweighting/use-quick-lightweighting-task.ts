@@ -4,7 +4,10 @@ import {
   generateQuickLightweighting,
   QuickLightweightingError,
 } from "@vibeshape/structural-optimization/quick-client"
-import type { QuickLightweightingResult } from "@vibeshape/structural-optimization/quick-contract"
+import type {
+  QuickLightweightingProgress,
+  QuickLightweightingResult,
+} from "@vibeshape/structural-optimization/quick-contract"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   commitAuthoredTransaction,
@@ -57,23 +60,46 @@ function quickFailure(error: unknown, copy: Copy) {
   return error instanceof QuickLightweightingError ? copy.error(error.code) : copy.failed
 }
 
+function quickGenerationInput(source: LightweightingSource | null, settings: Settings) {
+  if (!source) return null
+  const cellSizeMm = samplingSize(source, settings.detail)
+  return {
+    schemaVersion: 1 as const,
+    mesh: {
+      vertices: Array.from(source.body.mesh.positions),
+      indices: Array.from(source.body.mesh.indices),
+    },
+    mode: settings.mode,
+    removalPercent: settings.removalPercent,
+    cellType: settings.cellType,
+    latticeCellSizeMm: cellSizeMm * settings.detail * settings.periodFraction,
+    cellSizeMm,
+    skinThicknessMm: cellSizeMm * settings.skinCells,
+  }
+}
+
 async function prepareQuickPreview(
   input: import("@vibeshape/structural-optimization/quick-contract").QuickLightweightingInput,
   source: LightweightingSource,
   signal: AbortSignal,
   current: () => boolean,
   setActivity: (stage: Activity) => void,
+  setProgress: (progress: QuickLightweightingProgress | null) => void,
 ): Promise<Ready | null> {
   const result = await generateQuickLightweighting(input, {
     signal,
     runtimeBaseUrl: new URL(`${import.meta.env.BASE_URL}structural-runtime/`, window.location.href)
       .href,
-    onProgress: (stage) => {
-      if (current()) setActivity(stage)
+    onProgress: (stage, progress) => {
+      if (current()) {
+        setActivity(stage)
+        setProgress(progress ?? null)
+      }
     },
   })
   if (!current()) return null
   setActivity("inspecting")
+  setProgress(null)
   const prepared = await prepareLightweightingSnapshot(
     result.mesh,
     result.cellSizeMm,
@@ -120,11 +146,15 @@ function finishGeneration(
     operation: { current: AbortController | null }
     mounted: { current: boolean }
     setActivity: (stage: Activity) => void
+    setProgress: (progress: QuickLightweightingProgress | null) => void
   },
 ) {
   if (lifecycle.generation.current !== id) return
   lifecycle.operation.current = null
-  if (lifecycle.mounted.current) lifecycle.setActivity("idle")
+  if (lifecycle.mounted.current) {
+    lifecycle.setActivity("idle")
+    lifecycle.setProgress(null)
+  }
 }
 
 function useQuickLifecycle(
@@ -176,6 +206,68 @@ function readyToApply(
   return sourceWritable(latest, ready.source) ? ready : null
 }
 
+async function applyQuickPreview(
+  ready: Ready | null,
+  enabled: boolean,
+  lifecycle: Pick<ReturnType<typeof useQuickLifecycle>, "applying" | "latest" | "mounted">,
+  publication: {
+    copy: Copy
+    onApplied: () => void
+    onApplyingChange?: ((applying: boolean) => void) | undefined
+    setActivity: (stage: Activity) => void
+    setMessage: (message: string | null) => void
+  },
+) {
+  const { applying, latest, mounted } = lifecycle
+  const { copy, onApplied, onApplyingChange, setActivity, setMessage } = publication
+  const captured = readyToApply(ready, enabled, applying.current, latest.current)
+  if (!captured) return false
+  applying.current = true
+  onApplyingChange?.(true)
+  setActivity("applying")
+  setMessage(null)
+  try {
+    const result = await commitQuickPreview(captured, copy.label(captured.source.partName))
+    if (!mounted.current) return false
+    publishQuickCommit(result, onApplied, setMessage)
+    return result.ok
+  } catch {
+    if (mounted.current) setMessage(copy.saveFailed)
+    return false
+  } finally {
+    applying.current = false
+    onApplyingChange?.(false)
+    if (mounted.current) setActivity("idle")
+  }
+}
+
+function useQuickPreviewState() {
+  const [ready, setReady] = useState<Ready | null>(null)
+  const [previewReady, setPreviewReady] = useState(false)
+  const [activity, setActivity] = useState<Activity>("idle")
+  const [progress, setProgress] = useState<QuickLightweightingProgress | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const clear = useCallback(() => {
+    setReady(null)
+    setPreviewReady(false)
+    setActivity("idle")
+    setProgress(null)
+  }, [])
+  return {
+    ready,
+    setReady,
+    previewReady,
+    setPreviewReady,
+    activity,
+    setActivity,
+    progress,
+    setProgress,
+    message,
+    setMessage,
+    clear,
+  }
+}
+
 export function useQuickLightweightingTask({
   controller,
   initialPartId,
@@ -192,6 +284,8 @@ export function useQuickLightweightingTask({
   onApplyingChange?: ((applying: boolean) => void) | undefined
 }) {
   const [partId, setPartId] = useState(initialPartId)
+  const [editing, setEditing] = useState(false)
+  const editingControls = useRef(new Set<string>())
   const [settings, setSettings] = useState<Settings>({
     mode: "open-organic",
     removalPercent: 50,
@@ -200,43 +294,31 @@ export function useQuickLightweightingTask({
     cellType: "gyroid",
     periodFraction: 6 / 32,
   })
-  const [ready, setReady] = useState<Ready | null>(null)
-  const [previewReady, setPreviewReady] = useState(false)
-  const [activity, setActivity] = useState<Activity>("idle")
-  const [message, setMessage] = useState<string | null>(null)
+  const {
+    ready,
+    setReady,
+    previewReady,
+    setPreviewReady,
+    activity,
+    setActivity,
+    progress,
+    setProgress,
+    message,
+    setMessage,
+    clear,
+  } = useQuickPreviewState()
   const source = useMemo(
     () => lightweightingSource(controller, partId),
     [controller.authoredSnapshot, controller.report, partId],
   )
-  const clear = useCallback(() => {
-    setReady(null)
-    setPreviewReady(false)
-    setActivity("idle")
-  }, [])
   const { mounted, generation, operation, applying, latest, cancel } = useQuickLifecycle(
     source,
     disabled,
     clear,
   )
-  const input = useMemo(() => {
-    if (!source) return null
-    const cellSizeMm = samplingSize(source, settings.detail)
-    return {
-      schemaVersion: 1 as const,
-      mesh: {
-        vertices: Array.from(source.body.mesh.positions),
-        indices: Array.from(source.body.mesh.indices),
-      },
-      mode: settings.mode,
-      removalPercent: settings.removalPercent,
-      cellType: settings.cellType,
-      latticeCellSizeMm: cellSizeMm * settings.detail * settings.periodFraction,
-      cellSizeMm,
-      skinThicknessMm: cellSizeMm * settings.skinCells,
-    }
-  }, [source, settings])
+  const input = useMemo(() => quickGenerationInput(source, settings), [source, settings])
   const generate = useCallback(async () => {
-    if (!source || !input) return
+    if (!source || !input || editingControls.current.size > 0) return
     if (!canStartOperation(disabled, applying.current, operation.current)) return
     const captured = source
     const abort = new AbortController()
@@ -251,6 +333,7 @@ export function useQuickLightweightingTask({
     setPreviewReady(false)
     setMessage(null)
     setActivity("loading")
+    setProgress(null)
     try {
       const completed = await prepareQuickPreview(
         input,
@@ -258,17 +341,18 @@ export function useQuickLightweightingTask({
         abort.signal,
         current,
         setActivity,
+        setProgress,
       )
       if (completed) setReady(completed)
     } catch (error) {
       if (current()) setMessage(quickFailure(error, copy))
     } finally {
-      finishGeneration(id, { generation, operation, mounted, setActivity })
+      finishGeneration(id, { generation, operation, mounted, setActivity, setProgress })
     }
   }, [copy, disabled, input, source])
   useEffect(() => {
     cancel()
-    if (disabled || !source) return
+    if (disabled || !source || editing) return
     const timer = window.setTimeout(() => {
       void generate()
     }, 650)
@@ -278,7 +362,14 @@ export function useQuickLightweightingTask({
       operation.current?.abort()
       operation.current = null
     }
-  }, [cancel, disabled, generate, source])
+  }, [cancel, disabled, editing, generate, source])
+  const changeEditing = (control: string, active: boolean) => {
+    if (active) {
+      if (!editingControls.current.has(control)) cancel()
+      editingControls.current.add(control)
+    } else editingControls.current.delete(control)
+    setEditing(editingControls.current.size > 0)
+  }
   const changeSettings = (next: Settings) => {
     if (!applying.current) {
       cancel()
@@ -296,36 +387,25 @@ export function useQuickLightweightingTask({
   }
   const currentReady = ready && sameLightweightingSource(source, ready.source) ? ready : null
   const canApply = !disabled && activity === "idle" && currentReady !== null && previewReady
-  const apply = async () => {
-    const captured = readyToApply(currentReady, canApply, applying.current, latest.current)
-    if (!captured) return false
-    applying.current = true
-    onApplyingChange?.(true)
-    setActivity("applying")
-    setMessage(null)
-    try {
-      const result = await commitQuickPreview(captured, copy.label(captured.source.partName))
-      if (!mounted.current) return false
-      publishQuickCommit(result, onApplied, setMessage)
-      return result.ok
-    } catch {
-      if (mounted.current) setMessage(copy.saveFailed)
-      return false
-    } finally {
-      applying.current = false
-      onApplyingChange?.(false)
-      if (mounted.current) setActivity("idle")
-    }
-  }
+  const apply = () =>
+    applyQuickPreview(
+      currentReady,
+      canApply,
+      { applying, latest, mounted },
+      { copy, onApplied, onApplyingChange, setActivity, setMessage },
+    )
   return {
     partId,
     source,
     settings,
+    editing,
+    changeEditing,
     input,
     ready: currentReady,
     previewReady,
     setPreviewReady,
     activity,
+    progress,
     message,
     changeSettings,
     choosePart,

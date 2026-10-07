@@ -1,8 +1,10 @@
 import { z } from "zod"
 import {
   type QuickLightweightingInput,
+  type QuickLightweightingProgress,
   type QuickLightweightingResult,
   quickLightweightingInputSchema,
+  quickLightweightingProgressSchema,
   quickLightweightingResponseSchema,
 } from "./quick-contract"
 import { QuickLightweightingError } from "./quick-errors"
@@ -12,7 +14,11 @@ export { QuickLightweightingError } from "./quick-errors"
 export { encodeQuickLightweightingStl } from "./quick-mesh"
 
 const progressSchema = z
-  .object({ type: z.literal("progress"), stage: z.enum(["loading", "generating"]) })
+  .object({
+    type: z.literal("progress"),
+    stage: z.enum(["loading", "generating"]),
+    progress: quickLightweightingProgressSchema.optional(),
+  })
   .strict()
 const responseSchema = z
   .object({ type: z.literal("complete"), response: quickLightweightingResponseSchema })
@@ -56,7 +62,7 @@ export function generateQuickLightweighting(
   options: {
     signal?: AbortSignal
     runtimeBaseUrl?: string
-    onProgress?: (stage: "loading" | "generating") => void
+    onProgress?: (stage: "loading" | "generating", progress?: QuickLightweightingProgress) => void
   } = {},
 ): Promise<QuickLightweightingResult> {
   const parsed = quickLightweightingInputSchema.safeParse(input)
@@ -72,25 +78,12 @@ export function generateQuickLightweighting(
     const finish = (operation: () => void) => {
       if (settled) return
       settled = true
-      clearTimeout(timeout)
       options.signal?.removeEventListener("abort", abort)
       worker.terminate()
       operation()
     }
     const abort = () =>
       finish(() => reject(new DOMException("Lightweighting canceled.", "AbortError")))
-    const timeout = setTimeout(
-      () =>
-        finish(() =>
-          reject(
-            new QuickLightweightingError(
-              "timeout",
-              "Generation exceeded its 90-second budget. Increase the detail cell size.",
-            ),
-          ),
-        ),
-      90_000,
-    )
     options.signal?.addEventListener("abort", abort, { once: true })
     worker.onerror = () =>
       finish(() =>
@@ -112,7 +105,7 @@ export function generateQuickLightweighting(
       const progress = progressSchema.safeParse(event.data)
       if (progress.success) {
         try {
-          options.onProgress?.(progress.data.stage)
+          options.onProgress?.(progress.data.stage, progress.data.progress)
         } catch (error) {
           finish(() => reject(error))
         }
