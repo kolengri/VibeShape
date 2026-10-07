@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { inspectAssemblyInputSchema } from "./assembly-inspection"
 import { geometryExportFormatSchema } from "./geometry-worker"
+import { meshExportQualitySchema } from "./mesh-export-quality"
 import { printPreparationSettingsSchema } from "./print-preparation"
 
 const instanceId = z
@@ -16,10 +17,14 @@ export const assemblyExportSettingsSchema = z
       .refine((ids) => new Set(ids).size === ids.length)
       .optional(),
     printPreparation: printPreparationSettingsSchema.optional(),
+    meshQuality: meshExportQualitySchema.optional(),
   })
   .strict()
   .refine((settings) => settings.printPreparation === undefined || settings.format === "3mf", {
     message: "Assembly print preparation requires 3MF export.",
+  })
+  .refine((settings) => !settings.meshQuality || settings.format !== "step", {
+    message: "Mesh quality is available only for STL and 3MF export.",
   })
 export type AssemblyExportSettings = z.infer<typeof assemblyExportSettingsSchema>
 export const exportAssemblyInputSchema = z

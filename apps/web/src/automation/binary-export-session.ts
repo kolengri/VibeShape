@@ -10,6 +10,7 @@ import {
 } from "@vibeshape/automation-api/binary-exports"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
+import type { MeshExportQuality } from "@vibeshape/protocol"
 
 type Format = BinaryExportDescriptor["format"]
 type PreparedFile =
@@ -19,8 +20,30 @@ export type BinaryExportSourcePort = Readonly<{
   documentId: string
   currentRevision: () => number
   isActive: () => boolean
-  prepare: (format: Format, revision: number) => Promise<PreparedFile>
+  prepare: (
+    format: Format,
+    revision: number,
+    meshQuality?: MeshExportQuality,
+  ) => Promise<PreparedFile>
 }>
+type PrepareOperation = Extract<
+  LocalBinaryExportOperation,
+  { tool: "prepare_model_export" | "prepare_project_backup" }
+>
+async function prepareExportSource(source: BinaryExportSourcePort, operation: PrepareOperation) {
+  if (operation.tool === "prepare_project_backup")
+    return {
+      format: "vshape" as const,
+      prepared: await source.prepare("vshape", operation.arguments.revision),
+    }
+  const { format, revision, meshQuality } = operation.arguments
+  return {
+    format,
+    prepared: meshQuality
+      ? await source.prepare(format, revision, meshQuality)
+      : await source.prepare(format, revision),
+  }
+}
 /** Retains one detached file for the paired actor; native export remains the document's responsibility. */
 export function createBinaryExportSession(
   options: BinaryExportSourcePort & {
@@ -50,13 +73,7 @@ export function createBinaryExportSession(
   function expire() {
     if (retained && Date.parse(retained.descriptor.expiresAt) <= now()) retained = null
   }
-  async function prepare(
-    operation: Extract<
-      LocalBinaryExportOperation,
-      { tool: "prepare_model_export" | "prepare_project_backup" }
-    >,
-    signal?: AbortSignal,
-  ) {
+  async function prepare(operation: PrepareOperation, signal?: AbortSignal) {
     if (busy) return localFailure("export-busy", "Another export is being prepared.", true)
     const revision = operation.arguments.revision
     if (options.currentRevision() !== revision)
@@ -70,9 +87,7 @@ export function createBinaryExportSession(
     }
     signal?.addEventListener("abort", onAbort, { once: true })
     try {
-      const format =
-        operation.tool === "prepare_project_backup" ? "vshape" : operation.arguments.format
-      const prepared = await options.prepare(format, revision)
+      const { format, prepared } = await prepareExportSource(options, operation)
       if (!stillCurrent(operationEpoch, revision, signal)) return cancelled()
       const sourceFailure = validateSource(prepared, format, revision)
       if (sourceFailure) return sourceFailure

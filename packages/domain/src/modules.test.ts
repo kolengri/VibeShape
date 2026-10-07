@@ -11,6 +11,7 @@ import {
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
 } from "./part-design"
+import { fdmFeatureType } from "./part-design-fdm"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { threadFeatureTypeV2 } from "./part-design-thread"
@@ -126,6 +127,7 @@ describe("module registry", () => {
       expect(result.registry.getModule(partDesignModule.id)).toEqual(partDesignModule)
       expect(result.registry.getFeatureType(boxFeatureType.type)).toEqual(boxFeatureType)
       expect(result.registry.getFeatureType(booleanFeatureType.type)).toEqual(booleanFeatureType)
+      expect(result.registry.getFeatureType(fdmFeatureType.type)).toEqual(fdmFeatureType)
       expect(result.registry.getFeatureType(holeFeatureType.type)).toEqual(holeFeatureType)
       expect(result.registry.getFeatureType(holeFeatureTypeV2.type)).toEqual(holeFeatureTypeV2)
       expect(result.registry.getFeatureType(mirrorFeatureType.type)).toEqual(mirrorFeatureType)
@@ -161,6 +163,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
+        "org.vibeshape.feature.part-design.fdm",
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.hole",

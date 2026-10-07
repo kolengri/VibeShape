@@ -22,6 +22,7 @@ import {
   readCompoundFeatureParameters,
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
+import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
@@ -206,6 +207,8 @@ export function classifyPartOperation(
         outputRole: importedBodyOutputRole(outputId),
       })),
     }
+  const fdm = classifyFdmOperation(feature)
+  if (fdm) return fdm
   const typeKey = featureTypeKey(feature.type)
   const fanOut = classifyFanOutOperation(feature, resolvedPatternCount)
   if (fanOut) return fanOut
@@ -213,6 +216,12 @@ export function classifyPartOperation(
   if (bodySelection) return bodySelection
   if (newTypes.has(typeKey)) return { kind: "new" }
   return classifyLegacyModifier(feature, typeKey)
+}
+function classifyFdmOperation(feature: FeatureRecordV1): PartOperation | null {
+  const parameters = readFdmFeatureParameters(feature)
+  if (!parameters) return null
+  const target = "targetBody" in parameters ? parameters.targetBody : undefined
+  return target ? { kind: "modify", target, consumed: [] } : { kind: "new" }
 }
 function classifyNewProfile(
   profile:

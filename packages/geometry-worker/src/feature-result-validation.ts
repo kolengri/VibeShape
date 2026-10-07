@@ -1,4 +1,5 @@
 export type GeometryFeatureKind =
+  | "fdm"
   | "boolean"
   | "fillet"
   | "chamfer"

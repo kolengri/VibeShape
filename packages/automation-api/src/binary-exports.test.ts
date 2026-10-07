@@ -5,6 +5,7 @@ import {
   binaryExportChunkSchema,
   binaryExportDescriptorSchema,
   binaryExportResultMatches,
+  localBinaryExportInputs,
 } from "./binary-exports"
 import { localOperationSchema, localToolOutputs } from "./local-tools"
 import {
@@ -15,6 +16,31 @@ import {
 } from "./remote-session"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
+describe("MCP export tessellation quality", () => {
+  it.each(["stl", "3mf", "step"] as const)(
+    "advertises bounded %s quality on both transports",
+    (format) => {
+      const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
+      const arguments_ = { revision: 4, format, meshQuality }
+      expect(localBinaryExportInputs.prepare_model_export.safeParse(arguments_).success).toBe(
+        format !== "step",
+      )
+      expect(
+        remoteOperationSchema.safeParse({ tool: "prepare_model_export", arguments: arguments_ })
+          .success,
+      ).toBe(format !== "step")
+      expect(
+        localOperationSchema.safeParse({ tool: "export_model", arguments: arguments_ }).success,
+      ).toBe(format !== "step")
+      expect(
+        remoteOperationSchema.safeParse({
+          tool: "prepare_model_export",
+          arguments: { ...arguments_, meshQuality: { ...meshQuality, chordTolerance: 0 } },
+        }).success,
+      ).toBe(false)
+    },
+  )
+})
 const descriptor = {
   exportId: id(1),
   documentId: id(2),

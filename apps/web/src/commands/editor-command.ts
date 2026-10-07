@@ -1,4 +1,5 @@
 export const editorCommandIds = {
+  createFdm: "org.vibeshape.editor.part-design.create-fdm",
   placePart: "org.vibeshape.editor.part-design.place-part",
   mirrorPart: "org.vibeshape.editor.part-design.mirror-part",
   shellPart: "org.vibeshape.editor.part-design.shell-part",
@@ -214,6 +215,7 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "createFdm"
   | "placePart"
   | "mirrorPart"
   | "shellPart"

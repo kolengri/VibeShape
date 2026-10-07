@@ -6,6 +6,25 @@ VibeShape owns **modeling, validation, and high-quality exchange**. A slicer own
 
 A built-in slicer is outside the MVP. PrusaSlicer/libslic3r and CuraEngine are large standalone AGPL C++ projects with complex printer-profile systems. Porting and maintaining them in a browser must not block CAD development.
 
+## Export mesh quality
+
+The model export dialog, assembly export and **Prepare print** provide **Default**, **Coarse**
+and **Fine** tessellation choices. Coarse uses `0.2 mm` absolute chord tolerance and `0.3 rad`
+angular deflection; Fine uses `0.01 mm` and `0.05 rad`. Default preserves existing behavior:
+ordinary STL uses `0.05 mm / 0.1 rad`, document 3MF/print copies use `0.02 mm / 0.1 rad`,
+and assembly exports use their captured mesh policy. Quality controls exact-solid triangulation,
+including mixed exact/mesh selections; imported meshes retain their original triangles.
+Smaller tolerances increase mesh detail and file size. Existing export and print budgets still
+apply. STEP preserves exact geometry and does not accept tessellation quality.
+
+The Thread panel includes coarse metric nominal diameter/pitch presets from M2 to M24, based on
+[published fastener diameter/pitch data](https://www.advancedynamicsolution.com/resources/metric-thread-data.html).
+Selecting a preset sets only nominal diameter and pitch. Groove depth, radial clearance, length,
+starts, axis, handedness and allowances remain authored values and keep ordinary validation.
+Editing either dimension returns the selector to **Custom dimensions** without altering the
+other fields. The existing 60-degree V-groove geometry is a custom thread; a preset does not
+establish an ISO profile, gauge tolerance class or certified standard fit.
+
 ## Printer profile
 
 The implemented local profile contains a name, version, rectangular width/depth/height in

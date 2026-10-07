@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -29,7 +29,10 @@ class ResizeObserverMock {
   disconnect() {}
 }
 
-beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
+beforeAll(() => {
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock)
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+})
 afterAll(() => vi.unstubAllGlobals())
 afterEach(cleanup)
 
@@ -60,6 +63,27 @@ function dialog(controller: DocumentControllerState) {
 }
 
 describe("document export availability", () => {
+  it("forwards selected mesh quality to document export", async () => {
+    mocks.exportActiveDocument.mockResolvedValueOnce({
+      ok: true,
+      format: "stl",
+      documentName: "Bracket",
+      file: new Uint8Array([1]),
+      bodyCount: 1,
+    })
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await user.click(screen.getByRole("option", { name: "Fine" }))
+    await user.click(screen.getByRole("button", { name: "Export STL" }))
+    await waitFor(() =>
+      expect(mocks.exportActiveDocument).toHaveBeenLastCalledWith("stl", undefined, {
+        chordTolerance: 0.01,
+        angularTolerance: 0.05,
+      }),
+    )
+  })
   it("shows a recoverable error when slicer preparation unexpectedly rejects", async () => {
     mocks.exportActiveDocument.mockRejectedValueOnce(new Error("Worker unavailable"))
     const user = userEvent.setup()

@@ -7,6 +7,10 @@ export const BINARY_EXPORT_CHUNK_MAX_BYTES = 90 * 1024
 export const BINARY_EXPORT_TTL_MS = 5 * 60 * 1000
 const exportId = z.uuid()
 const byteOffset = z.number().int().min(0).max(BINARY_EXPORT_MAX_BYTES)
+const meshExportQualitySchema = z.strictObject({
+  chordTolerance: z.number().finite().min(0.005).max(1),
+  angularTolerance: z.number().finite().min(0.01).max(0.5),
+})
 export const binaryExportFormatSchema = z.enum(["step", "stl", "3mf", "vshape"])
 const descriptorFields = {
   exportId,
@@ -49,8 +53,15 @@ export const binaryExportChunkSchema = z
 export const binaryExportDiscardSchema = z.object({ exportId, discarded: z.literal(true) }).strict()
 export const localBinaryExportInputs = {
   prepare_model_export: z
-    .object({ revision: revisionSchema, format: binaryExportFormatSchema.exclude(["vshape"]) })
-    .strict(),
+    .object({
+      revision: revisionSchema,
+      format: binaryExportFormatSchema.exclude(["vshape"]),
+      meshQuality: meshExportQualitySchema.optional(),
+    })
+    .strict()
+    .refine((input) => !input.meshQuality || input.format !== "step", {
+      message: "Mesh quality is available only for STL and 3MF export.",
+    }),
   prepare_project_backup: z.object({ revision: revisionSchema }).strict(),
   read_export_chunk: z
     .object({

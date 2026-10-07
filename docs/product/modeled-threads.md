@@ -8,7 +8,7 @@ role is captured once; the result continues the same part identity, name, visibi
 The task starts with an explicit Z axis at the origin, diameter 10 mm, pitch 2 mm, length 6 mm,
 depth 0.8 mm, and radial clearance 0.1 mm. These are editable defaults, not inferred dimensions.
 Open **Axis, origin and thread options** to set the frame, handedness, starts, phase, and allowances.
-Lengths and angles use document display units when bare values are entered. Starts stays scalar.
+The metric size selector offers M2–M24 nominal diameter/pitch presets; changing another dimension or entering a custom pitch keeps all other authored values. Presets do not certify an ISO thread profile or fit. Lengths and angles use document display units when bare values are entered. Starts stays scalar.
 
 Apply requires one successful exact native preview; invalid fields, unavailable source bodies,
 missed bands, and kernel failures block it with readable diagnostics. Cancel disposes the preview

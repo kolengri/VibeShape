@@ -8,6 +8,7 @@ import {
 } from "@vibeshape/domain"
 import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { readRevolveFeatureParameters } from "@vibeshape/domain/part-design"
+import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { readBooleanFeatureParametersV2 } from "@vibeshape/domain/part-design-subtract"
 import type { FeatureEvaluatedResponse } from "@vibeshape/protocol"
 import { terminalModelBodies } from "./model-bodies"
@@ -18,6 +19,8 @@ export function exactBodyOptionId(body: BodyReference) {
 }
 function savedBodies(feature: FeatureRecord | undefined): readonly BodyReference[] {
   if (!feature) return []
+  const fdm = readFdmFeatureParameters(feature)
+  if (fdm && "targetBody" in fdm && fdm.targetBody) return [fdm.targetBody]
   const boolean = readBooleanFeatureParametersV2(feature)
   if (boolean) return [boolean.targetBody, boolean.toolBody]
   const revolve = readRevolveFeatureParameters(feature)

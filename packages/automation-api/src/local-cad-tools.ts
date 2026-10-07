@@ -29,6 +29,7 @@ import {
   compoundFeatureParametersV2Schema,
   unionFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-body-combination"
+import { fdmDependencyIds, fdmFeatureParametersSchema } from "@vibeshape/domain/part-design-fdm"
 import {
   holeFeatureParametersV3Schema,
   holeTreatmentSchema,
@@ -86,6 +87,28 @@ const feature = {
   suppressed: z.boolean(),
 }
 const sketch = z.object({ ...command, sketch: sketchRecordSchema }).strict()
+const fdm = z
+  .object({ ...feature, parameters: fdmFeatureParametersSchema })
+  .strict()
+  .superRefine((input, context) => {
+    const expected = fdmDependencyIds(input.parameters, input.references[0]?.featureId ?? null)
+    if (
+      canonicalJson(input.dependencies) !== canonicalJson(expected) ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "FDM dependencies must match the target, sketch support and stop-plane owner without self-reference.",
+      })
+    if (input.parameters.kind !== "web" && input.references.length > 0)
+      context.addIssue({
+        code: "custom",
+        path: ["references"],
+        message: "Only a saved-sketch Web or Rib accepts a sketch support reference.",
+      })
+  })
 function extrusionEndpointBody(parameters: ExtrusionFeatureParametersV6) {
   return parameters.endCondition.kind === "distance" ? null : parameters.endCondition.targetBody
 }
@@ -529,6 +552,8 @@ const bodySubtract = z
   )
 
 export const localCadInputs = {
+  create_fdm: fdm,
+  update_fdm: fdm,
   create_body_revolve: bodyRevolve,
   update_body_revolve: bodyRevolve,
   create_body_subtract: bodySubtract,
@@ -576,6 +601,8 @@ export const localCadInputs = {
 } as const
 
 export const localCadOperations = [
+  z.object({ tool: z.literal("create_fdm"), arguments: fdm }).strict(),
+  z.object({ tool: z.literal("update_fdm"), arguments: fdm }).strict(),
   z.object({ tool: z.literal("create_body_revolve"), arguments: bodyRevolve }).strict(),
   z.object({ tool: z.literal("update_body_revolve"), arguments: bodyRevolve }).strict(),
   z.object({ tool: z.literal("create_body_subtract"), arguments: bodySubtract }).strict(),

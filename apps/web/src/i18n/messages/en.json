@@ -270,7 +270,15 @@
         "description": "Exports include hidden parts. 3MF keeps the relative positions and names of the exported bodies."
       },
       "textureExportHint": "STL and 3MF include surface relief. STEP exports the original CAD geometry.",
-      "meshStepError": "STEP export requires exact solids. Export mesh parts as STL or 3MF."
+      "meshStepError": "STEP export requires exact solids. Export mesh parts as STL or 3MF.",
+      "meshQuality": {
+        "label": "Mesh quality",
+        "default": "Default",
+        "coarse": "Coarse",
+        "fine": "Fine",
+        "description": "Controls curved-surface tessellation for STL, 3MF, and print copies. Finer meshes increase file size. Imported meshes retain their source resolution.",
+        "tolerance": "Chord tolerance: {chord} mm; angular tolerance: {angle} rad."
+      }
     },
     "commands": {
       "shortcutHelp": {
@@ -676,6 +684,10 @@
         "unionParts": {
           "label": "Union",
           "keywords": "join|fuse|union|parts"
+        },
+        "createFdm": {
+          "label": "FDM tools",
+          "keywords": "web|rib|gusset|teardrop|crush ribs|nut pocket|insert|membrane|calibration|print design"
         }
       }
     },
@@ -2485,7 +2497,10 @@
       "invalidDepth": "Reduce groove depth to at most 0.75 times the pitch.",
       "invalidRootRadius": "Increase diameter or reduce depth/clearance so the external root radius stays positive.",
       "staleRevision": "The document changed. Reopen this thread using the current revision.",
-      "saveFailed": "The thread could not be saved. Your parameters are preserved; try again."
+      "saveFailed": "The thread could not be saved. Your parameters are preserved; try again.",
+      "metricSize": "Metric size",
+      "customSize": "Custom dimensions",
+      "metricSizeDescription": "Presets set nominal diameter and pitch only. The modeled V groove remains custom; standard fit is not certified."
     },
     "assembly": {
       "mode": "Geometry workspace",
@@ -2849,6 +2864,102 @@
       "draftDescription": "The shifted sketch plane is the neutral plane. Enter an angle within ±45 degrees.",
       "bodyLabel": "{label} · {role}",
       "legacyBodyLabel": "{label} · all bodies (legacy scope)"
+    },
+    "fdm": {
+      "title": "FDM tools",
+      "editTitle": "Edit FDM feature",
+      "description": "Create editable geometry for printed parts. Choose the exact target and author dimensions; fit and printability depend on your material and process.",
+      "parameters": "Parameters",
+      "kind": "Tool",
+      "target": "Target body",
+      "noTarget": "Independent body",
+      "chooseTarget": "Choose a target body",
+      "axis": "Extrusion axis",
+      "position": "Position",
+      "sketch": "Saved sketch",
+      "chooseSketch": "Choose a saved sketch",
+      "lines": "Sketch lines",
+      "lineLabel": "Line {number}",
+      "missingLine": "Unavailable line: {id}",
+      "style": "Reinforcement type",
+      "web": "Web",
+      "rib": "Rib / gusset",
+      "direction": "Direction",
+      "forward": "Forward",
+      "reverse": "Reverse",
+      "extendToWalls": "Extend lines to cavity walls",
+      "planeTermination": "Stop at a plane",
+      "flatTop": "Flat top bridge",
+      "mode": "Mode",
+      "lip": "Lip",
+      "groove": "Groove",
+      "sheet": "Full membrane",
+      "bridges": "Segmented bridges",
+      "create": "Create",
+      "update": "Update",
+      "cancel": "Cancel",
+      "featureLabel": "FDM feature {number}",
+      "dimensionDescription": "Enter a value with units or a #variable.",
+      "countDescription": "Enter a positive integer.",
+      "originDescription": "World coordinates of the local profile origin.",
+      "roofDescription": "Angle of each roof flank above horizontal; the apex angle is 180 degrees minus twice this value.",
+      "invalidExpression": "Enter a valid expression with the required units.",
+      "invalidRange": "Review the dimension and geometry limits.",
+      "validationSummary": "Review the highlighted fields and target before applying.",
+      "previewFailed": "The exact preview failed. Adjust the geometry or target.",
+      "staleRevision": "The project changed. Reopen this task and try again.",
+      "saveFailed": "The feature could not be saved. Try again.",
+      "unavailable": "The saved target or sketch is unavailable. Repair the selection.",
+      "flatCut": "Flat cut / split",
+      "flatCutDescription": "Use Split on the selected part and retain the desired output.",
+      "tools": {
+        "web": "Web / Rib",
+        "corner-relief": "Corner relief",
+        "seam-groove": "Seam trap groove",
+        "teardrop-hole": "Teardrop hole",
+        "hex-seat": "Compliant hex seat",
+        "crush-ribs": "Crush ribs",
+        "flexible-sleeve": "Flexible sleeve",
+        "nut-pocket": "Nut pocket",
+        "insert-pocket": "Insert pocket / boss",
+        "enclosure-joint": "Enclosure lip / groove",
+        "membrane": "Sacrificial membrane / bridges",
+        "calibration-coupon": "Calibration coupon"
+      },
+      "fields": {
+        "radius": "Radius",
+        "depth": "Depth",
+        "width": "Width",
+        "length": "Length",
+        "diameter": "Diameter",
+        "roofAngle": "Roof flank angle",
+        "acrossFlats": "Across flats",
+        "compliance": "Slot reach",
+        "slotWidth": "Slot width",
+        "holeDiameter": "Hole diameter",
+        "ribHeight": "Rib protrusion",
+        "ribWidth": "Rib width",
+        "count": "Count",
+        "outerDiameter": "Outer diameter",
+        "innerDiameter": "Inner diameter",
+        "slotLength": "Slot length",
+        "clearance": "Radial clearance",
+        "bossDiameter": "Boss diameter (0 to omit)",
+        "bossHeight": "Boss height (0 to omit)",
+        "wall": "Wall thickness",
+        "height": "Height",
+        "thickness": "Thickness",
+        "bridgeCount": "Bridge count",
+        "bridgeWidth": "Bridge width",
+        "diameterStart": "First hole diameter",
+        "diameterStep": "Diameter step",
+        "holeCount": "Hole count",
+        "spacing": "Center spacing",
+        "margin": "Edge margin",
+        "originX": "Origin X",
+        "originY": "Origin Y",
+        "originZ": "Origin Z"
+      }
     }
   }
 }

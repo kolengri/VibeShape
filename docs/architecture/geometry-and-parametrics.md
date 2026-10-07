@@ -390,3 +390,9 @@ schemas, and worker protocols remain unchanged by this read-only increment.
 Body-bound Fillet/Chamfer execution still requires per-output native topology snapshots and explicit
 feature versions. Sketch supports, persistent repair, and a real native multi-copy producer remain
 open gates; synthetic coincident-body tests are isolation evidence, not native pattern delivery.
+
+## FDM feature family and export mesh quality
+
+Part Design owns FDM feature v1 validation, dependencies, semantic inputs, and quantity resolution. The document worker resolves saved sketch lines/support and reference planes into bounded content; the geometry worker owns exact OCCT construction and disposal. All kinds return one exact connected solid or a diagnostic, copying borrowed target geometry before Boolean operations. See [Editable FDM features](../product/fdm-tools.md) for the supported constructions and explicit limitations.
+
+Document worker protocol v26 adds optional bounded mesh quality to geometry export, assembly export, and print-copy preparation. Omission preserves each path's previous tessellation tolerances. Display meshes and authored feature hashes do not acquire export-quality state. Native export tests verify changed tessellation and serialized STL/3MF results.

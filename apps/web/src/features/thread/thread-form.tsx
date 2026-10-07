@@ -1,5 +1,7 @@
 import type { FeatureRecord } from "@vibeshape/domain"
+import { metricThreadPresets } from "@vibeshape/domain/part-design-thread"
 import { referenceAxisSchema } from "@vibeshape/domain/reference-frame"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -27,6 +29,9 @@ import {
 export type ThreadFormCopy = ParameterPanelCopy &
   ThreadValidationCopy & {
     parameters: string
+    metricSize: string
+    customSize: string
+    metricSizeDescription: string
     advanced: string
     kind: string
     external: string
@@ -123,6 +128,7 @@ export function ThreadForm({
   variables,
 }: Props) {
   const [advancedExpanded, setAdvancedExpanded] = useState(false)
+  const [metricSize, setMetricSize] = useState("custom")
   const state = useParameterFormState(variables)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
@@ -170,6 +176,7 @@ export function ThreadForm({
                   onBlur={field.handleBlur}
                   onValueChange={(value) => {
                     state.clearSubmissionErrors()
+                    if (name === "nominalDiameter" || name === "pitch") setMetricSize("custom")
                     field.handleChange(value)
                   }}
                 />
@@ -200,6 +207,24 @@ export function ThreadForm({
                   />
                 }
               >
+                <SelectField
+                  label={copy.metricSize}
+                  value={metricSize}
+                  onValueChange={(value) => {
+                    setMetricSize(value)
+                    const preset = metricThreadPresets.find(({ id }) => id === value)
+                    if (!preset) return
+                    state.clearSubmissionErrors()
+                    form.setFieldValue("nominalDiameter", `${preset.nominalDiameter} mm`)
+                    form.setFieldValue("pitch", `${preset.pitch} mm`)
+                  }}
+                >
+                  <SelectOption value="custom">{copy.customSize}</SelectOption>
+                  {metricThreadPresets.map(({ id, pitch }) => (
+                    <SelectOption key={id} value={id}>{`${id} × ${pitch}`}</SelectOption>
+                  ))}
+                </SelectField>
+                <p className="text-xs text-muted-foreground">{copy.metricSizeDescription}</p>
                 <form.Field name="kind">
                   {(field) => (
                     <fieldset className="grid gap-2">

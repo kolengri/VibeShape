@@ -194,18 +194,19 @@ function transferablesFor(response: DocumentWorkerResponse) {
 
 type TextureExportRequestOptions = Pick<
   DocumentPrintMeshExportInput,
-  "surfaceTextures" | "textureQuality"
+  "surfaceTextures" | "textureQuality" | "meshQuality"
 >
 
 function textureExportOptions(
   request: Pick<
     Extract<DocumentWorkerRequest, { type: "exportDocument" }>,
-    "surfaceTextures" | "textureQuality"
+    "surfaceTextures" | "textureQuality" | "meshQuality"
   >,
 ): TextureExportRequestOptions {
   return {
     ...(request.surfaceTextures ? { surfaceTextures: request.surfaceTextures } : {}),
     ...(request.textureQuality ? { textureQuality: request.textureQuality } : {}),
+    ...(request.meshQuality ? { meshQuality: request.meshQuality } : {}),
   }
 }
 
