@@ -10,18 +10,29 @@ import {
   datumPlaneFeatureType,
   featureIdSchema,
   featureRecordSchema,
+  filletFeatureType,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureType,
+  projectDocumentSnapshotV1ToV0,
   sketchEntityIdSchema,
   sketchIdSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import { projectDocumentSnapshotV2ToV1 } from "@vibeshape/domain/document-v2"
+import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type { ComponentProps } from "react"
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
+import {
+  authoredTestBody,
+  authoredTestId,
+  authoredTreeFixture,
+  requireAuthoredFixture,
+} from "../test-support/authored-tree-fixture"
 import { HistoryProfileSources } from "./history-profile-sources"
 import { ModelTree } from "./model-tree"
 
@@ -361,8 +372,137 @@ type RenderTreeOptions = Partial<
     | "hiddenSketchIds"
     | "onSourceProfilePreview"
     | "sourcePreviewSketchId"
+    | "onPartSelect"
+    | "selectedPartId"
+    | "onAuthoredMetadata"
+    | "onBodyPreselectionChange"
+    | "onBodyActivate"
   >
 >
+
+function authoredInsertionController() {
+  const base = authoredTreeFixture().authority
+  const sourceId = requireAuthoredFixture(base.features[0]).id
+  const transformerId = featureIdSchema.parse(authoredTestId(910))
+  const envelope = {
+    schemaVersion: 2,
+    commandId: authoredTestId(900),
+    documentId: base.id,
+    baseRevision: base.revision,
+    issuedAt: "2026-10-03T00:00:00Z",
+    actor: { type: "user", userId: null },
+  }
+  const inserted = applyDocumentV2Command(base, {
+    ...envelope,
+    kind: "org.vibeshape.document.model-command",
+    payload: {
+      command: {
+        ...envelope,
+        schemaVersion: 1,
+        kind: "org.vibeshape.history.insert-feature",
+        payload: {
+          historyAfter: base.history[0],
+          feature: {
+            schemaVersion: 0,
+            id: transformerId,
+            type: filletFeatureType.type,
+            parameters: { radius: createLengthQuantity(2) },
+            dependencies: [sourceId],
+            references: [],
+            suppressed: false,
+            label: "Later fillet",
+          },
+        },
+      },
+      partAllocations: [],
+    },
+  })
+  if (!inserted.ok) throw new Error(JSON.stringify(inserted.diagnostic))
+  const authority = inserted.snapshot
+  const part = requireAuthoredFixture(authority.parts[0])
+  const sample = authoredTestBody(part)
+  const projected = projectDocumentSnapshotV1ToV0(projectDocumentSnapshotV2ToV1(authority))
+  if (!projected.ok) throw new Error(JSON.stringify(projected.diagnostic))
+  const response = documentWorkerResponseSchema.parse({
+    type: "documentRebuilt",
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+    requestId: "history-parts-test",
+    documentId: authority.id,
+    revision: authority.revision,
+    generation: 1,
+    evaluation: {
+      records: authority.features.map(({ id }) => ({
+        featureId: id,
+        status: "succeeded",
+        contentHash: sample.contentHash,
+      })),
+      dirtyFeatureIds: [],
+      evaluatedFeatureIds: authority.features.map(({ id }) => id),
+      reusedFeatureIds: [],
+    },
+    geometry: authority.features.map(({ id }) => ({
+      featureId: id,
+      contentHash: sample.contentHash,
+      meshPolicy: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      geometry: {
+        engine: {
+          adapter: "replicad",
+          adapterVersion: "test",
+          replicadVersion: "0.23.1",
+          opencascadePackageVersion: "0.23.0",
+          opencascadeSourceRevision: null,
+          wasmBytes: 1,
+          initializedInMs: 1,
+          featureContentEnvironment: {
+            schemaVersion: 0,
+            hostApiVersion: "0.1.0",
+            geometry: {
+              adapterId: "org.vibeshape.geometry.replicad",
+              adapterVersion: "test",
+              kernelId: "org.opencascade.occt",
+              kernelVersion: "0.23.0",
+              kernelSourceRevision: null,
+            },
+            modelingTolerancePolicyVersion: 1,
+            provider: { kind: "built-in" },
+          },
+        },
+        shape: sample.shape,
+        mesh: sample.mesh,
+        topologyCandidates: [],
+        cache: { brepHit: false },
+        timings: { evaluationMs: 1, tessellationMs: 1, totalMs: 2 },
+      },
+    })),
+    sketches: [],
+    modelReferenceEvidence: [],
+  })
+  if (response.type !== "documentRebuilt") throw new Error("The fixture requires rebuild evidence.")
+  const report: NonNullable<DocumentControllerState["report"]> = {
+    status: "created",
+    mode: "read-write",
+    snapshot: projected.snapshot,
+    historyItems: authority.history,
+    rebuild: { ok: true, response },
+    lostRevisionCount: 0,
+    corruptRecords: [],
+    migration: null,
+    writeAccessDiagnostic: null,
+  }
+  const controller: DocumentControllerState = {
+    status: "ready",
+    saveStatus: "saved",
+    diagnostic: null,
+    report,
+    authoredSnapshot: authority,
+    historyInsertion: {
+      documentId: authority.id,
+      baseRevision: authority.revision,
+      historyAfter: requireAuthoredFixture(authority.history[0]),
+    },
+  }
+  return { controller, sourceId, transformerId, part }
+}
 
 function renderTree(options: RenderTreeOptions = {}) {
   const props: ModelTreeProps = {
@@ -399,6 +539,53 @@ function renderTree(options: RenderTreeOptions = {}) {
     </I18nProvider>,
   )
 }
+
+describe("ModelTree insertion body boundary", () => {
+  it("keeps full History while disabling later Parts and resolving an upstream body before its transformer", async () => {
+    const { controller, sourceId, part } = authoredInsertionController()
+    const onPartSelect = vi.fn()
+    const onBodyPreselectionChange = vi.fn()
+    renderTree({
+      controller,
+      activeFeatureId: null,
+      onPartSelect,
+      onBodyPreselectionChange,
+      onAuthoredMetadata: vi.fn().mockResolvedValue({ ok: true }),
+    })
+    expect(screen.getByRole("treeitem", { name: "Box 3" })).toBeTruthy()
+    expect(screen.getByRole("treeitem", { name: "Later fillet" })).toBeTruthy()
+    for (const name of ["Part Part 2", "Part Part 3"]) {
+      const later = screen.getByRole("treeitem", { name }) as HTMLButtonElement
+      expect(later.disabled).toBe(true)
+      expect(later.closest("[data-part-status]")?.getAttribute("data-part-status")).toBe(
+        "unavailable",
+      )
+      await userEvent.click(later)
+    }
+    expect(onPartSelect).not.toHaveBeenCalled()
+    const current = screen.getByRole("treeitem", { name: "Part Part 1" }) as HTMLButtonElement
+    expect(current.disabled).toBe(false)
+    expect(screen.getByText("Earlier result at the insertion point.")).toBeTruthy()
+    await userEvent.hover(current)
+    expect(onBodyPreselectionChange).toHaveBeenLastCalledWith({ featureId: sourceId })
+    await userEvent.click(current)
+    expect(onPartSelect).toHaveBeenCalledExactlyOnceWith(part.id)
+  })
+
+  it("scopes unmanaged body rows to the insertion prefix while retaining later History", async () => {
+    const { controller, sourceId } = authoredInsertionController()
+    const onFeatureActivate = vi.fn()
+    renderTree({
+      controller: { ...controller, authoredSnapshot: null },
+      activeFeatureId: null,
+      onFeatureActivate,
+    })
+    expect(screen.getByRole("treeitem", { name: "Box 3" })).toBeTruthy()
+    expect(screen.queryByRole("treeitem", { name: "Body 2" })).toBeNull()
+    await userEvent.click(screen.getByRole("treeitem", { name: "Body 1" }))
+    expect(onFeatureActivate).toHaveBeenCalledExactlyOnceWith(sourceId)
+  })
+})
 
 describe("ModelTree History presentation", () => {
   it.each([false, true])(
@@ -968,14 +1155,14 @@ describe("ModelTree visibility and deletion", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull()
   })
 
-  it("blocks feature deletion when its dependency graph contains a dependent feature", async () => {
+  it("uses the retained-dependent removal command when a feature has dependents", async () => {
     const dependent = featureRecordSchema.parse({
       ...feature,
       id: datumFeature.id,
       label: "Dependent box",
       dependencies: [featureId],
     })
-    const onFeatureRemove = vi.fn()
+    const onFeatureRemove = vi.fn().mockResolvedValue({ ok: true })
     renderTree({
       activeFeatureId: null,
       onFeatureRemove,
@@ -990,10 +1177,11 @@ describe("ModelTree visibility and deletion", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Actions for Box 1" }))
     const deletion = screen.getByRole("menuitem", { name: "Delete Box 1…" })
-    expect(deletion.getAttribute("aria-disabled")).toBe("true")
+    expect(deletion.getAttribute("aria-disabled")).not.toBe("true")
     await user.click(deletion)
     expect(onFeatureRemove).not.toHaveBeenCalled()
-    expect(screen.queryByRole("alertdialog")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Delete feature" }))
+    await waitFor(() => expect(onFeatureRemove).toHaveBeenCalledWith(7, featureId))
   })
 
   it.each(["read-only", "active-tool", "saving"] as const)(
@@ -1150,7 +1338,7 @@ describe("ModelTree visibility and deletion", () => {
   })
 
   it.each(["legacy", "multi"] as const)(
-    "disables deletion of a sketch used by multiple %s extrusions",
+    "confirms deletion of a sketch used by multiple %s extrusions",
     async (kind) => {
       const user = userEvent.setup()
       const onSketchRemove = vi.fn()
@@ -1195,13 +1383,12 @@ describe("ModelTree visibility and deletion", () => {
       renderTree({ controller: source, onSketchRemove })
       await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
       const deletion = screen.getByRole("menuitem", { name: "Delete Profile…" })
-      expect(deletion.getAttribute("aria-disabled")).toBe("true")
-      expect(
-        screen.getByText(/Remove dependent features or external sketch references/),
-      ).toBeTruthy()
+      expect(deletion.getAttribute("aria-disabled")).not.toBe("true")
       await user.click(deletion)
-      expect(screen.queryByRole("alertdialog")).toBeNull()
-      expect(onSketchRemove).not.toHaveBeenCalled()
+      expect(screen.getByRole("alertdialog", { name: "Delete Profile?" })).toBeTruthy()
+      await user.click(screen.getByRole("button", { name: "Delete sketch" }))
+      expect(onSketchRemove).toHaveBeenCalledOnce()
+      expect(onSketchRemove).toHaveBeenCalledWith(7, sketchId)
     },
   )
 })

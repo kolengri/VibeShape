@@ -2,8 +2,15 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react"
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
+import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
+import type { DocumentSnapshotV5 } from "@vibeshape/domain/document-v5"
+import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
 import { writeVShapeV2 } from "@vibeshape/formats/vshape"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  historyRepairFixture,
+  repairRemovalCommand,
+} from "../../../../packages/domain/src/history-repair.test-fixture"
 import { createTestBrowserStorage } from "../test-support/browser-storage"
 
 const mocks = vi.hoisted(() => ({
@@ -98,10 +105,15 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function ready() {
+async function ready(authoredSnapshot?: DocumentSnapshotV5) {
   const source = sourceProject()
   const session = {
-    snapshot: source.snapshot,
+    snapshot: authoredSnapshot
+      ? projectAuthoredDocumentSnapshotToV1(authoredSnapshot)
+      : source.snapshot,
+    authoredSnapshot,
+    mode: undefined as "read-write" | undefined,
+    commitAuthored: vi.fn(),
     history: { canUndo: false, canRedo: false },
     close: mocks.close,
     commitDraft: vi.fn(),
@@ -109,7 +121,7 @@ async function ready() {
   mocks.open.mockResolvedValue({
     ok: true,
     session,
-    report: { snapshot: source.snapshot, mode: "read-write", writeAccessDiagnostic: null },
+    report: { snapshot: session.snapshot, mode: "read-write", writeAccessDiagnostic: null },
   })
   mocks.exportProject.mockResolvedValue({ ok: true, value: { version: 2, project: source } })
   const controller = await import("./document-controller")
@@ -250,5 +262,75 @@ describe("project file identity and active-work guards", () => {
     expect(controller.getProjectActiveWorkBlock()).toBe("editor-draft")
     release()
     expect(await controller.exportActiveProjectBackup()).toMatchObject({ ok: false })
+  })
+})
+
+describe("History removal during an owning editor task", () => {
+  it("allows the confirmed removal through an editor draft while retaining failures", async () => {
+    const { controller, session } = await ready()
+    session.mode = "read-write"
+    const diagnostic = {
+      code: "command-rejected",
+      message: "Validation failed",
+      retryable: false,
+      sourceCode: "invalid-input",
+    }
+    session.commitAuthored.mockResolvedValue({ ok: false, diagnostic })
+    const release = controller.registerProjectActionGuard(() => "editor-draft")
+    const target = "0195b5ac-b250-7a2c-8c33-000000000110" as import("@vibeshape/domain").FeatureId
+    expect(await controller.removeFeature(session.snapshot.revision, target)).toEqual({
+      ok: false,
+      diagnostic,
+    })
+    expect(session.commitAuthored).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "org.vibeshape.history.remove-retaining-dependents",
+        payload: { target: { kind: "feature", id: target } },
+      }),
+    )
+    release()
+  })
+  it("routes editor repair through its explicit command and retains a failed save", async () => {
+    const base = historyRepairFixture()
+    const removed = applyHistoryRemoveRetainingDependentsCommand(
+      base,
+      repairRemovalCommand(base.revision),
+    )
+    if (!removed.ok) throw new Error(removed.diagnostic.message)
+    const { controller, session } = await ready(removed.snapshot)
+    session.mode = "read-write"
+    const intent = removed.snapshot.repairIntents.find((item) => item.kind === "feature")
+    if (intent?.kind !== "feature") throw new Error("A retained feature recipe is required.")
+    const { semanticInputs: _inputs, ...authored } = intent.authored
+    const feature = { ...authored, schemaVersion: 0 as const }
+    const diagnostic = {
+      code: "command-rejected",
+      message: "Missing input",
+      retryable: false,
+      sourceCode: "invalid-input",
+    }
+    session.commitAuthored.mockResolvedValue({ ok: false, diagnostic })
+    const release = controller.registerProjectActionGuard(() => "editor-draft")
+    expect(await controller.saveFeatureEdits(session.snapshot.revision, feature)).toEqual({
+      ok: false,
+      diagnostic,
+    })
+    expect(session.commitAuthored).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "org.vibeshape.history.repair",
+        schemaVersion: 5,
+        payload: { item: { kind: "feature", feature } },
+      }),
+    )
+    release()
+  })
+  it("blocks removal while automation owns the document", async () => {
+    const { controller, session } = await ready()
+    session.mode = "read-write"
+    const release = controller.registerProjectActionGuard(() => "automation-busy")
+    const target = "0195b5ac-b250-7a2c-8c33-000000000110" as import("@vibeshape/domain").FeatureId
+    expect((await controller.removeFeature(session.snapshot.revision, target)).ok).toBe(false)
+    expect(session.commitAuthored).not.toHaveBeenCalled()
+    release()
   })
 })

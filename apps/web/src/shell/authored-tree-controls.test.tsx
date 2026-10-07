@@ -190,6 +190,43 @@ describe("authored tree controls", () => {
       folderId: folder.id,
     })
   })
+  it("renames a History folder through metadata while preserving its members", async () => {
+    const { authority, rows } = authoredTreeFixture()
+    const folder = {
+      schemaVersion: 0 as const,
+      id: historyFolderIdSchema.parse(authoredTestId(300)),
+      name: "Housing",
+      items: authority.history.slice(0, 2),
+    }
+    const onCommit = commit()
+    render(
+      providers(
+        <HistoryFolderGroup
+          authority={{ ...authority, folders: [folder] }}
+          folder={folder}
+          rows={rows}
+          disabled={false}
+          onCommit={onCommit}
+        >
+          <span>Original history children</span>
+        </HistoryFolderGroup>,
+      ),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Rename folder Housing" }))
+    const dialog = screen.getByRole("dialog", { name: "Rename item" })
+    await userEvent.clear(within(dialog).getByRole("textbox", { name: "Name" }))
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Name" }), "Outer shell")
+    await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }))
+    await waitFor(() =>
+      expect(onCommit).toHaveBeenCalledExactlyOnceWith(authority.revision, {
+        kind: "folder.rename",
+        folderId: folder.id,
+        name: "Outer shell",
+      }),
+    )
+    expect(screen.getByText("Original history children")).toBeTruthy()
+    expect(folder.items).toEqual(authority.history.slice(0, 2))
+  })
 })
 
 it("keeps selected Part rows focused on selection and metadata", () => {

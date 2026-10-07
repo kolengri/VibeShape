@@ -211,12 +211,22 @@ export async function recoverAuthoritySnapshot(
       "corrupt-history",
       "Recovery cannot cross the committed texture authority boundary.",
     )
-  if (project.schemaVersion === 4 && snapshot.revision < project.sourceUpgradeRevision)
+  if (
+    project.schemaVersion >= 4 &&
+    "sourceUpgradeRevision" in project &&
+    snapshot.revision < project.sourceUpgradeRevision
+  )
     throw persistenceInvariantError(
       "corrupt-history",
       "No valid V3 revision remains at its source upgrade boundary.",
     )
-  if (snapshot.schemaVersion === 4) await requireSourceAssetBytes(database, snapshot.assets)
+  if (project.schemaVersion === 5 && snapshot.revision < project.repairUpgradeRevision)
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "Recovery cannot cross committed repair authority.",
+    )
+  if (snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5)
+    await requireSourceAssetBytes(database, snapshot.assets)
   return { snapshot, corruptRecords }
 }
 

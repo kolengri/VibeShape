@@ -4,6 +4,7 @@ import type { ViewerAnalysisOverlay, ViewerSelection } from "@vibeshape/viewer/t
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ActionAvailability } from "../../components/action-availability"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
 import { ImportPreview } from "../import/import-preview"
 import { LightweightingParameters, type LightweightingPickTarget } from "./lightweighting-fields"
@@ -434,5 +435,6 @@ function useLightweightingPanelState(
       featureLabel: (part) => t("featureLabel", { part }),
     },
   })
+  useRegisterTaskSubmission(state.apply, "lightweighting:structural")
   return { state, disabled, blockedReason }
 }

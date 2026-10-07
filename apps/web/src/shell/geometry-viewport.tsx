@@ -976,61 +976,46 @@ function useSelectionCandidateEvents(active: boolean) {
 
 function useProjectThumbnail(controller: DocumentControllerState, meshes: readonly ViewerMesh[]) {
   const completedRevisionRef = useRef<string | null>(null)
-  const inFlightRevisionRef = useRef<string | null>(null)
   const retryCountRef = useRef(new Map<string, number>())
   const [retryAttempt, requestRetry] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    let retryTimer: number | undefined
     const snapshot = controller.report?.snapshot
     if (controller.status !== "ready" || !snapshot || meshes.length === 0) return
     const revisionKey = `${snapshot.id}:${snapshot.revision}`
-    if (
-      completedRevisionRef.current === revisionKey ||
-      inFlightRevisionRef.current === revisionKey
-    ) {
-      return
-    }
+    if (completedRevisionRef.current === revisionKey) return
 
     const retry = () => {
       const retryCount = retryCountRef.current.get(revisionKey) ?? 0
       if (cancelled || retryCount >= 1) return
       retryCountRef.current.set(revisionKey, retryCount + 1)
-      window.setTimeout(() => {
-        if (!cancelled) requestRetry((attempt) => attempt + 1)
-      }, 250)
+      retryTimer = window.setTimeout(() => requestRetry((attempt) => attempt + 1), 250)
     }
 
-    let thumbnail: ReturnType<typeof renderProjectThumbnail>
-    try {
-      thumbnail = renderProjectThumbnail(meshes)
-    } catch {
-      // A derived preview must never block the authoritative geometry viewport.
-      return
-    }
-
-    if (!thumbnail) {
-      completedRevisionRef.current = revisionKey
-      return
-    }
-
-    inFlightRevisionRef.current = revisionKey
-    void saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
-      .then((result) => {
+    void renderProjectThumbnail(meshes)
+      .then(async (thumbnail) => {
+        if (cancelled) return
+        if (!thumbnail) {
+          completedRevisionRef.current = revisionKey
+          return
+        }
+        const result = await saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
+        if (cancelled) return
         if (result.ok) {
           completedRevisionRef.current = revisionKey
           retryCountRef.current.delete(revisionKey)
-          return
+        } else {
+          retry()
         }
-        retry()
       })
+      // A derived preview must never block the authoritative geometry viewport.
       .catch(retry)
-      .finally(() => {
-        if (inFlightRevisionRef.current === revisionKey) inFlightRevisionRef.current = null
-      })
 
     return () => {
       cancelled = true
+      window.clearTimeout(retryTimer)
     }
   }, [controller.report?.snapshot, controller.status, meshes, retryAttempt])
 }

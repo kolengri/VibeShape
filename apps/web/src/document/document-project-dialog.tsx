@@ -174,6 +174,13 @@ function resetProjectFileInput(input: HTMLInputElement | undefined) {
 
 function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"]>) {
   try {
+    if (thumbnail.mediaType === "image/png") {
+      let binary = ""
+      for (let index = 0; index < thumbnail.bytes.length; index += 8_192) {
+        binary += String.fromCharCode(...thumbnail.bytes.subarray(index, index + 8_192))
+      }
+      return `data:image/png;base64,${btoa(binary)}`
+    }
     const svg = new TextDecoder("utf-8", { fatal: true }).decode(thumbnail.bytes)
     return `data:${thumbnail.mediaType};charset=utf-8,${encodeURIComponent(svg)}`
   } catch {

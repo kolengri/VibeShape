@@ -9,9 +9,11 @@ import {
 } from "../test-support/authored-tree-fixture"
 import {
   authoredBodyKeys,
+  folderItemsWithSelection,
   folderRangeItems,
   groupFolderHistory,
   selectedAuthoredBody,
+  selectedFolderItems,
 } from "./authored-tree-state"
 
 function fixture() {
@@ -26,6 +28,41 @@ function fixture() {
 }
 
 describe("authored tree projection", () => {
+  it("validates selection in canonical order without filling gaps or accepting occupied members", () => {
+    const { authority, folder } = fixture()
+    const keys = authority.history.map(historyItemKey)
+    const first = requireAuthoredFixture(keys[0])
+    const second = requireAuthoredFixture(keys[1])
+    const third = requireAuthoredFixture(keys[2])
+    const ungrouped = { ...authority, folders: [] }
+    expect(selectedFolderItems(ungrouped, [second, first])).toEqual(authority.history.slice(0, 2))
+    expect(selectedFolderItems(ungrouped, [first, third])).toBeNull()
+    expect(selectedFolderItems(ungrouped, [first, "missing"])).toBeNull()
+    expect(selectedFolderItems(ungrouped, [])).toBeNull()
+    expect(selectedFolderItems(authority, [first, second])).toBeNull()
+    expect(selectedFolderItems(authority, [first, second], folder.id)).toEqual(folder.items)
+    expect(selectedFolderItems(authority, [third])).toEqual(authority.history.slice(2))
+  })
+  it("adds only adjacent ungrouped members to an existing folder without changing History", () => {
+    const { authority, folder } = fixture()
+    const keys = authority.history.map(historyItemKey)
+    const third = requireAuthoredFixture(keys[2])
+    expect(folderItemsWithSelection(authority, folder, [third])).toEqual(authority.history)
+    expect(folderItemsWithSelection(authority, folder, folder.items.map(historyItemKey))).toBeNull()
+    const single = { ...folder, items: authority.history.slice(0, 1) }
+    expect(
+      folderItemsWithSelection({ ...authority, folders: [single] }, single, [third]),
+    ).toBeNull()
+    const other = {
+      ...folder,
+      id: historyFolderIdSchema.parse(authoredTestId(301)),
+      items: authority.history.slice(2),
+    }
+    expect(
+      folderItemsWithSelection({ ...authority, folders: [folder, other] }, folder, [third]),
+    ).toBeNull()
+    expect(authority.history.map(historyItemKey)).toEqual(keys)
+  })
   it("groups only canonical adjacent history and retains original reorder indices", () => {
     const { authority, rows, folder } = fixture()
     const grouped = groupFolderHistory(rows, authority.folders)

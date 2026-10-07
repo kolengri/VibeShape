@@ -39,6 +39,16 @@ export function currentAuthoredParts(
   )
 }
 
+function authoredHistoryRepairKeys(
+  authority: AuthoredDocumentSnapshot | null,
+): ReadonlySet<string> {
+  return new Set(
+    authority?.schemaVersion === 5
+      ? authority.repairIntents.map((intent) => `${intent.kind}:${intent.authored.id}`)
+      : [],
+  )
+}
+
 export function selectedAuthoredBody(
   parts: readonly ResolvedAuthoredPart[],
   partId: PartId | null,
@@ -91,6 +101,19 @@ export function groupFolderHistory(
   return groups
 }
 
+export function authoredHistoryTreeState(
+  controller: DocumentControllerState,
+  rows: readonly HistoryViewRow[],
+) {
+  const authority = currentAuthoredSnapshot(controller)
+  return {
+    authority,
+    folderGroups: groupFolderHistory(rows, authority?.folders ?? []),
+    repairIds: authoredHistoryRepairKeys(authority),
+    insertionDisabled: controller.status !== "ready" || controller.report?.mode !== "read-write",
+  }
+}
+
 export function folderRangeItems(
   authority: AuthoredDocumentSnapshot,
   first: string,
@@ -107,4 +130,29 @@ export function folderRangeItems(
       .flatMap((folder) => folder.items.map(historyItemKey)),
   )
   return items.some((item) => occupied.has(historyItemKey(item))) ? null : items
+}
+
+export function selectedFolderItems(
+  authority: AuthoredDocumentSnapshot,
+  keys: readonly string[],
+  editingId?: string,
+): readonly HistoryItemRef[] | null {
+  const selected = new Set(keys)
+  const items = authority.history.filter((item) => selected.has(historyItemKey(item)))
+  const first = items[0]
+  const last = items.at(-1)
+  if (!first || !last || items.length !== selected.size) return null
+  const range = folderRangeItems(authority, historyItemKey(first), historyItemKey(last), editingId)
+  return range?.length === items.length ? range : null
+}
+
+export function folderItemsWithSelection(
+  authority: AuthoredDocumentSnapshot,
+  folder: HistoryFolder,
+  keys: readonly string[],
+): readonly HistoryItemRef[] | null {
+  if (!authority.folders.some((candidate) => candidate.id === folder.id)) return null
+  const combined = [...new Set([...folder.items.map(historyItemKey), ...keys])]
+  if (combined.length === folder.items.length) return null
+  return selectedFolderItems(authority, combined, folder.id)
 }

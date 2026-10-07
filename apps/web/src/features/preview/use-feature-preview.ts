@@ -33,6 +33,25 @@ import {
 
 type PreviewSession = Pick<ReturnType<typeof createDocumentWorkerSession>, "rebuild" | "terminate">
 
+type PreviewQueue = { running: boolean; pending: (() => Promise<void>) | null }
+
+function enqueuePreview(queue: PreviewQueue, task: () => Promise<void>) {
+  queue.pending = task
+  if (queue.running) return
+  queue.running = true
+  void (async () => {
+    try {
+      while (queue.pending) {
+        const next = queue.pending
+        queue.pending = null
+        await next()
+      }
+    } finally {
+      queue.running = false
+    }
+  })()
+}
+
 type PreviewGeometryIdentity = Readonly<{
   contentHash: string
   featureId: string
@@ -217,7 +236,7 @@ export function useFeaturePreview(
 ) {
   const [state, setState] = useState<FeaturePreviewState>({ status: "idle", meshes: [] })
   const sequenceRef = useRef(0)
-  const sessionRef = useRef<PreviewSession | null>(null)
+  const sessionRef = useRef<{ worker: PreviewSession; queue: PreviewQueue } | null>(null)
   const previewDocumentId = useMemo(
     () => (snapshot ? createBrowserDocumentId() : null),
     [snapshot?.id],
@@ -227,57 +246,72 @@ export function useFeaturePreview(
     () => committedPreview(snapshot, candidate, committedResponse),
     [snapshot, candidateKey, committedResponse],
   )
-  const previewSessionActive = snapshot !== null && sessionActive && cached === null
-
   useEffect(() => {
-    if (!previewDocumentId || !previewSessionActive) return
-    const session = createDocumentWorkerSession(previewDocumentId, {
-      retryRecoverableFailure: false,
-      materializeSourceAssets: materializeActiveDocumentSourceAssets,
-    })
-    sessionRef.current = session
+    if (!previewDocumentId || !sessionActive) return
     return () => {
-      if (sessionRef.current === session) sessionRef.current = null
-      session.terminate()
+      const session = sessionRef.current
+      sessionRef.current = null
+      if (session) {
+        session.queue.pending = null
+        session.worker.terminate()
+      }
     }
-  }, [previewDocumentId, previewSessionActive])
+  }, [previewDocumentId, sessionActive])
 
   useEffect(() => {
     const sequence = sequenceRef.current + 1
     sequenceRef.current = sequence
-    const session = sessionRef.current
+    if (sessionRef.current) sessionRef.current.queue.pending = null
     if (cached) {
       setState(cached)
       return
     }
-    if (!snapshot || !candidate || !previewDocumentId || !session) {
+    if (!snapshot || !candidate || !previewDocumentId || !sessionActive) {
       setState({ status: "idle", meshes: [] })
       return
     }
+    // An untouched History edit or a debouncing form needs no extra kernel worker.
+    const session = sessionRef.current ?? {
+      worker: createDocumentWorkerSession(previewDocumentId, {
+        retryRecoverableFailure: false,
+        materializeSourceAssets: materializeActiveDocumentSourceAssets,
+      }),
+      queue: { running: false, pending: null },
+    }
+    sessionRef.current = session
     const kind = featurePreviewKind(candidate)
     setState({ status: "loading", meshes: [], kind })
-    void rebuildPreview(session, snapshot, candidate, previewDocumentId, committedGeometry).then(
-      ({ candidateMesh, meshes }) => {
-        if (sequenceRef.current === sequence) {
-          setState({ status: "ready", meshes, kind, ...(candidateMesh ? { candidateMesh } : {}) })
-        }
-      },
-      (error: unknown) => {
-        if (sequenceRef.current === sequence)
-          setState({
-            status: "error",
-            meshes: [],
-            kind,
-            ...(readLoftFeatureParametersV3(candidate) && isError(error)
-              ? { diagnostic: error.message }
-              : {}),
-          })
-      },
+    enqueuePreview(session.queue, () =>
+      rebuildPreview(
+        session.worker,
+        snapshot,
+        candidate,
+        previewDocumentId,
+        committedGeometry,
+      ).then(
+        ({ candidateMesh, meshes }) => {
+          if (sequenceRef.current === sequence) {
+            setState({ status: "ready", meshes, kind, ...(candidateMesh ? { candidateMesh } : {}) })
+          }
+        },
+        (error: unknown) => {
+          if (sequenceRef.current === sequence)
+            setState({
+              status: "error",
+              meshes: [],
+              kind,
+              ...(readLoftFeatureParametersV3(candidate) && isError(error)
+                ? { diagnostic: error.message }
+                : {}),
+            })
+        },
+      ),
     )
     return () => {
       sequenceRef.current += 1
+      session.queue.pending = null
     }
-  }, [candidateKey, cached, committedGeometry, previewDocumentId, snapshot])
+  }, [candidateKey, cached, committedGeometry, previewDocumentId, snapshot, sessionActive])
 
   return state
 }

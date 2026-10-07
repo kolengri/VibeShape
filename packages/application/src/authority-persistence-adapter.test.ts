@@ -21,6 +21,11 @@ import {
 import { sourceAssetSchema } from "@vibeshape/domain/source-assets"
 import { describe, expect, it } from "vitest"
 import {
+  historyRepairFixture,
+  repairId,
+  repairRemovalCommand,
+} from "../../domain/src/history-repair.test-fixture"
+import {
   type AuthorityCommitInput,
   type AuthorityDocumentRepositoryPort,
   type AuthorityDraftInput,
@@ -918,5 +923,228 @@ describe("surface texture persistence and undo", () => {
     expect(renamed.parts[0]?.name).toBe("Textured base")
     success(await f.adapter.recover(base.id))
     expect(f.current()).toEqual(renamed)
+  })
+})
+
+describe("V5 retained History persistence", () => {
+  it("persists disconnected feature metadata without losing its repair recipe through Undo and Redo", async () => {
+    const before = historyRepairFixture()
+    const f = fixture(before)
+    success(
+      await f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: repairRemovalCommand(before.revision),
+      }),
+    )
+    const base = f.runtime()
+    const feature = base.features[0]
+    if (!feature) throw new Error("Missing disconnected feature fixture.")
+    const renamed = success(
+      applyDocumentCommand(base, {
+        ...f.envelope(510),
+        schemaVersion: 1,
+        kind: "org.vibeshape.feature.update",
+        payload: { feature: { ...feature, label: "Renamed missing extrusion" } },
+      }),
+    )
+    success(
+      await f.adapter.commit({
+        sessionId,
+        lease,
+        storedAt: issuedAt,
+        baseSnapshot: base,
+        event: renamed.event,
+        snapshot: renamed.snapshot,
+      }),
+    )
+    const renamedAuthority = f.current()
+    if (renamedAuthority.schemaVersion !== 5) throw new Error("Missing V5 authority")
+    expect(renamedAuthority.repairIntents[0]?.authored).toEqual({
+      ...before.features[0],
+      label: "Renamed missing extrusion",
+    })
+    expect(f.adapter.committedSnapshot?.features[0]?.label).toBe("Renamed missing extrusion")
+    success(await f.navigate(511, "undo"))
+    expect(f.current()).toMatchObject({ repairIntents: [{ authored: before.features[0] }, {}, {}] })
+    success(await f.navigate(512, "redo"))
+    expect(f.current()).toMatchObject({
+      repairIntents: renamedAuthority.repairIntents,
+      suspendedParts: renamedAuthority.suspendedParts,
+    })
+    expect(
+      success(
+        replayDocumentAuthorityEvents(
+          before,
+          f.writes.map((write) => write.event),
+        ),
+      ).snapshot,
+    ).toEqual(f.current())
+  })
+  it("saves deletion as one undoable revision and repairs through the authored History repair port", async () => {
+    const before = historyRepairFixture()
+    const f = fixture(before)
+    success(
+      await f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: repairRemovalCommand(before.revision),
+      }),
+    )
+    expect(f.current().schemaVersion).toBe(5)
+    expect(f.adapter.history.availability.canUndo).toBe(true)
+    expect(f.writes).toHaveLength(1)
+    const root = before.features[0]
+    const suspendedPart = before.parts[0]
+    if (!root || !suspendedPart) throw new Error("Missing repair feature or part fixture.")
+    const { semanticInputs: _semanticInputs, ...legacy } = root
+    success(
+      await f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: {
+          ...f.envelope(501),
+          schemaVersion: 5,
+          kind: "org.vibeshape.history.repair",
+          payload: {
+            item: {
+              kind: "feature",
+              feature: {
+                ...legacy,
+                schemaVersion: 0,
+                parameters: {
+                  ...root.parameters,
+                  profiles: {
+                    schemaVersion: 0,
+                    profiles: [
+                      {
+                        schemaVersion: 0,
+                        sketchId: repairId(2),
+                        outerBoundaryEntityIds: [repairId(40)],
+                        holeBoundaryEntityIds: [],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    )
+    const repaired = f.current()
+    if (repaired.schemaVersion !== 5) throw new Error("Missing V5 authority")
+    expect(repaired.repairIntents).toEqual([])
+    expect(repaired.suspendedParts).toEqual([])
+    expect(repaired.parts.find((part) => part.id === suspendedPart.id)).toEqual(suspendedPart)
+    expect(f.adapter.committedSnapshot?.features.map((feature) => feature.type)).toEqual(
+      before.features.map((feature) => feature.type),
+    )
+    success(await f.navigate(502, "undo"))
+    expect(f.current().schemaVersion).toBe(5)
+    success(await f.navigate(503, "redo"))
+    expect(f.current()).toMatchObject({ repairIntents: [], parts: repaired.parts })
+  })
+  it("keeps authority and Undo unchanged when retained deletion cannot be saved", async () => {
+    const before = historyRepairFixture()
+    const f = fixture(before)
+    f.fail(true)
+    const result = await f.adapter.authoredMetadata.apply({
+      sessionId,
+      lease,
+      baseSnapshot: f.runtime(),
+      command: repairRemovalCommand(before.revision),
+    })
+    expect(result.ok).toBe(false)
+    expect(f.current()).toEqual(before)
+    expect(f.adapter.history.availability).toEqual({ canUndo: false, canRedo: false })
+  })
+  it("captures a fresh Part only when repairing a modifier into a new independent root", async () => {
+    const before = historyRepairFixture()
+    const f = fixture(before)
+    success(
+      await f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: repairRemovalCommand(before.revision),
+      }),
+    )
+    const box = f.runtime().features[3]
+    if (!box) throw new Error("Missing independent feature fixture.")
+    success(
+      await f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: {
+          ...f.envelope(520),
+          schemaVersion: 5,
+          kind: "org.vibeshape.history.repair",
+          payload: {
+            item: { kind: "feature", feature: { ...box, id: repairId(4), label: "New body" } },
+          },
+        },
+      }),
+    )
+    const repaired = f.current()
+    if (repaired.schemaVersion !== 5) throw new Error("Missing V5 authority")
+    const newPart = repaired.parts.find((part) => part.bodyHistory[0]?.featureId === repairId(4))
+    expect(newPart).toMatchObject({ id: id(200), name: "New body" })
+    expect(newPart?.bodyHistory.map((body) => body.featureId)).toEqual([repairId(4), repairId(5)])
+    expect(repaired.repairIntents.map((intent) => intent.authored.id)).toEqual([repairId(3)])
+    expect(repaired.suspendedParts).toEqual([before.parts[0]])
+    expect(
+      success(
+        replayDocumentAuthorityEvents(
+          before,
+          f.writes.map((write) => write.event),
+        ),
+      ).snapshot,
+    ).toEqual(repaired)
+  })
+})
+
+describe("History insertion persistence", () => {
+  it("inserts before the first item in one commit and restores order through Undo/Redo", async () => {
+    const f = fixture()
+    const original = f.current()
+    const insert = f.adapter.semanticHistory.insert
+    if (!insert) throw new Error("Missing History insertion port")
+    const feature = featureRecordSchema.parse({
+      ...f.runtime().features[0],
+      id: id(610),
+      label: "Earlier block",
+    })
+    const insertion = {
+      sessionId,
+      lease,
+      baseSnapshot: f.runtime(),
+      command: {
+        ...f.envelope(611),
+        schemaVersion: 1,
+        kind: "org.vibeshape.history.insert-feature",
+        payload: { feature, historyAfter: null },
+      },
+    }
+    success(await insert(insertion))
+    expect(f.writes).toHaveLength(1)
+    expect(f.current().history.map((item) => item.id)).toEqual([
+      feature.id,
+      original.history[0]?.id,
+    ])
+    expect(f.current().revision).toBe(original.revision + 1)
+    success(await f.navigate(612, "undo"))
+    expect(f.current().history).toEqual(original.history)
+    success(await f.navigate(613, "redo"))
+    expect(f.current().history.map((item) => item.id)).toEqual([
+      feature.id,
+      original.history[0]?.id,
+    ])
+    expect((await insert(insertion)).ok).toBe(false)
+    expect(f.writes).toHaveLength(3)
   })
 })

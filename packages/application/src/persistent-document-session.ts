@@ -191,6 +191,7 @@ type PersistenceHistoryMoveInput = Readonly<{
 export type DocumentSemanticHistoryPort = Readonly<{
   readonly items: readonly HistoryItemRef[]
   move: (input: PersistenceHistoryMoveInput) => Promise<SessionPortResult<DocumentSnapshot>>
+  insert?: (input: PersistenceHistoryMoveInput) => Promise<SessionPortResult<DocumentSnapshot>>
 }>
 
 export type DocumentAuthoredMetadataPort = Readonly<{
@@ -203,6 +204,8 @@ export type PersistentDocumentRepositoryPort = Readonly<{
   authoredMetadata?: DocumentAuthoredMetadataPort
   history?: DocumentHistoryPort
   semanticHistory?: DocumentSemanticHistoryPort
+  /** A confirmed semantic projection may include authority-owned repair restoration. */
+  committedSnapshot?: DocumentSnapshot | null
   commit: (input: PersistenceCommitInput) => Promise<SessionPortResult<unknown>>
   commitDraft: (input: PersistenceDraftCommitInput) => Promise<SessionPortResult<unknown>>
   validateDraft?: (input: PersistenceDraftValidationInput) => Promise<SessionPortResult<unknown>>
@@ -591,6 +594,17 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#moveHistoryItem(input))
   }
 
+  insertHistoryItem(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    return this.#enqueue(() =>
+      this.#commitPortMutation(
+        input,
+        this.#dependencies.repository.semanticHistory?.insert,
+        "The document does not expose History insertion.",
+        "The History item was not saved.",
+      ),
+    )
+  }
+
   get authoredSnapshot() {
     return this.#dependencies.repository.authoredMetadata?.snapshot ?? null
   }
@@ -897,10 +911,12 @@ export class PersistentDocumentSession {
         ),
       }
     }
-    this.#snapshot = command.snapshot
+    const confirmed = confirmedCommitSnapshot(this.#dependencies.repository, command.snapshot)
+    if (!confirmed.ok) return confirmed
+    this.#snapshot = confirmed.snapshot
     return {
       ok: true,
-      snapshot: command.snapshot,
+      snapshot: confirmed.snapshot,
       event: command.event,
       rebuild: await this.#rebuild(),
     }
@@ -965,10 +981,12 @@ export class PersistentDocumentSession {
         ),
       }
     }
-    this.#snapshot = dispatched.snapshot
+    const confirmed = confirmedCommitSnapshot(this.#dependencies.repository, dispatched.snapshot)
+    if (!confirmed.ok) return confirmed
+    this.#snapshot = confirmed.snapshot
     return {
       ok: true,
-      snapshot: dispatched.snapshot,
+      snapshot: confirmed.snapshot,
       events: dispatched.events,
       rebuild: await this.#rebuild(),
     }
@@ -1043,6 +1061,21 @@ export class PersistentDocumentSession {
         diagnostic: diagnostic("session-closed", "The document session is closed."),
       }
     }
+    const authority = this.authoredSnapshot
+    if (
+      !draftSketch &&
+      authority?.schemaVersion === 5 &&
+      authority.repairIntents.some(
+        (intent) => intent.kind === "sketch" && intent.authored.id === sketchId,
+      )
+    )
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "sketch-solve-failed",
+          "The sketch has disconnected inputs. Repair its support or external references before solving.",
+        ),
+      }
     try {
       const input: DocumentSketchSolveInput = {
         sketchId,
@@ -1244,4 +1277,23 @@ export async function createPersistentDocumentSession(
       writeAccessDiagnostic: opened.writeAccessDiagnostic,
     },
   }
+}
+
+function confirmedCommitSnapshot(
+  repository: PersistentDocumentRepositoryPort,
+  requested: DocumentSnapshot,
+) {
+  if (!repository.committedSnapshot) return { ok: true as const, snapshot: requested }
+  const confirmed = documentSnapshotSchema.safeParse(repository.committedSnapshot)
+  return confirmed.success &&
+    confirmed.data.id === requested.id &&
+    confirmed.data.revision === requested.revision
+    ? { ok: true as const, snapshot: confirmed.data }
+    : {
+        ok: false as const,
+        diagnostic: diagnostic(
+          "persistence-failed",
+          "The confirmed semantic projection does not match the committed revision.",
+        ),
+      }
 }

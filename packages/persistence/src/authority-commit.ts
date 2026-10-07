@@ -24,10 +24,12 @@ import {
   projectRecordV2Schema,
   projectRecordV3Schema,
   projectRecordV4Schema,
+  projectRecordV5Schema,
   recoveryAuthorityRecordSchema,
   recoveryRecordV2Schema,
   recoveryRecordV3Schema,
   recoveryRecordV4Schema,
+  recoveryRecordV5Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -97,9 +99,12 @@ async function verifyStoredBase(database: VibeShapeDatabase, input: AuthorityWri
 }
 
 function nextProject(current: ProjectAuthorityRecord, input: AuthorityWrite) {
-  const schema = { 2: projectRecordV2Schema, 3: projectRecordV3Schema, 4: projectRecordV4Schema }[
-    input.snapshot.schemaVersion
-  ]
+  const schema = {
+    2: projectRecordV2Schema,
+    3: projectRecordV3Schema,
+    4: projectRecordV4Schema,
+    5: projectRecordV5Schema,
+  }[input.snapshot.schemaVersion]
   return schema.parse({
     ...current,
     schemaVersion: input.snapshot.schemaVersion,
@@ -177,11 +182,13 @@ async function writeAuthorityRecords(database: VibeShapeDatabase, input: Authori
     await database.snapshotsV1.add(records.snapshot)
     await database.projectsV1.put(project)
     await database.recoveryV1.put(
-      (input.snapshot.schemaVersion === 4
-        ? recoveryRecordV4Schema
-        : input.snapshot.schemaVersion === 3
-          ? recoveryRecordV3Schema
-          : recoveryRecordV2Schema
+      (input.snapshot.schemaVersion === 5
+        ? recoveryRecordV5Schema
+        : input.snapshot.schemaVersion === 4
+          ? recoveryRecordV4Schema
+          : input.snapshot.schemaVersion === 3
+            ? recoveryRecordV3Schema
+            : recoveryRecordV2Schema
       ).parse({
         schemaVersion: input.snapshot.schemaVersion,
         documentId: input.snapshot.id,
@@ -293,22 +300,51 @@ export async function commitDocumentAuthorityDraft(
   }
 }
 
+type AdoptionBoundaries = {
+  upgradeRevision: number
+  textureUpgradeRevision: number
+  sourceUpgradeRevision: number
+  repairUpgradeRevision: number
+}
+function adoptionRevision(
+  current: { schemaVersion: number } & Partial<AdoptionBoundaries>,
+  input: AuthorityWrite,
+  key: keyof AdoptionBoundaries,
+  type: DocumentAuthorityEvent["type"],
+) {
+  const existing = current[key]
+  if (existing !== undefined) return existing
+  const captured = input.events.find((event) => event.type === type)?.revision
+  return captured ?? (input.snapshot.schemaVersion === 5 ? input.events[0]?.revision : undefined)
+}
 function authorityUpgradeBoundaries(current: ProjectAuthorityRecord, input: AuthorityWrite) {
-  const revision = (type: DocumentAuthorityEvent["type"]) =>
-    input.events.find((event) => event.type === type)?.revision
-  const upgradeRevision =
-    "upgradeRevision" in current
-      ? current.upgradeRevision
-      : revision("org.vibeshape.document.upgraded-v2")
+  const upgradeRevision = adoptionRevision(
+    current,
+    input,
+    "upgradeRevision",
+    "org.vibeshape.document.upgraded-v2",
+  )
   if (input.snapshot.schemaVersion === 2) return { upgradeRevision }
-  const textureUpgradeRevision =
-    "textureUpgradeRevision" in current
-      ? current.textureUpgradeRevision
-      : revision("org.vibeshape.document.upgraded-v3")
+  const textureUpgradeRevision = adoptionRevision(
+    current,
+    input,
+    "textureUpgradeRevision",
+    "org.vibeshape.document.upgraded-v3",
+  )
   if (input.snapshot.schemaVersion === 3) return { upgradeRevision, textureUpgradeRevision }
-  const sourceUpgradeRevision =
-    current.schemaVersion === 4
-      ? current.sourceUpgradeRevision
-      : revision("org.vibeshape.document.upgraded-v4")
-  return { upgradeRevision, textureUpgradeRevision, sourceUpgradeRevision }
+  const sourceUpgradeRevision = adoptionRevision(
+    current,
+    input,
+    "sourceUpgradeRevision",
+    "org.vibeshape.document.upgraded-v4",
+  )
+  if (input.snapshot.schemaVersion === 4)
+    return { upgradeRevision, textureUpgradeRevision, sourceUpgradeRevision }
+  const repairUpgradeRevision = adoptionRevision(
+    current,
+    input,
+    "repairUpgradeRevision",
+    "org.vibeshape.history.removed-retaining-dependents",
+  )
+  return { upgradeRevision, textureUpgradeRevision, sourceUpgradeRevision, repairUpgradeRevision }
 }

@@ -16,6 +16,8 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for session setup. Establish the 
 | Unit-aware mesh interchange for slicing | 3MF |
 | Mesh compatibility with an STL-only consumer | STL; explicitly state coordinates are mm |
 
+Native backups of projects with disconnected History inputs use `.vshape` V6 and retain the original repair recipes, downstream items, and suspended Part identities. Open them in a V6-capable editor; older readers reject this authority rather than silently dropping repair state. Geometry exports require a successfully rebuilt model.
+
 STEP/STL/3MF are geometry exports, not native editable backups. Browser autosave remains tied to that browser origin/profile. Native **Open project (.vshape)** imports a separate copy; use it for restoring/transferring authored intent, and inspect the resulting copy before editing. Do not substitute a mesh export for a requested editable project.
 
 ## Shared MCP file transfer

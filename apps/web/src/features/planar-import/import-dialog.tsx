@@ -15,6 +15,7 @@ import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field
 import { useState } from "react"
 import { type DialogOpenProps, useDialogOpen } from "../../components/use-dialog-open"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { historyCreationAfter } from "../../document/history-insertion"
 import type { ImportDocumentContext } from "../import/import-model"
 import { planarPlaneSchema, planarUnitSchema, planarUnits } from "./import-model"
 import { PlanarImportPreview } from "./import-preview"
@@ -203,12 +204,12 @@ export function PlanarImportDialog({
   const snapshot = controller.report?.snapshot
   const version = controller.authoredSnapshot?.schemaVersion
   const context =
-    snapshot && (version === 2 || version === 3 || version === 4)
+    snapshot && (version === 2 || version === 3 || version === 4 || version === 5)
       ? {
           documentId: snapshot.id,
           revision: snapshot.revision,
           authorityVersion: version,
-          historyAfter: controller.report?.historyItems?.at(-1) ?? null,
+          historyAfter: historyCreationAfter(controller),
         }
       : null
   const disabled =

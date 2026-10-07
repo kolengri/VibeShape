@@ -39,14 +39,19 @@ import { WorkspaceTaskProvider } from "./workspace-task-context"
 
 type WorkspaceTask = Parameters<typeof WorkspaceTaskProvider>[0]["value"]
 
-const { saveActiveProjectThumbnailMock } = vi.hoisted(() => ({
+const { saveActiveProjectThumbnailMock, renderProjectThumbnailMock } = vi.hoisted(() => ({
   saveActiveProjectThumbnailMock: vi.fn(),
+  renderProjectThumbnailMock: vi.fn(),
 }))
 
 vi.mock("../document/document-controller", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../document/document-controller")>()
   return { ...actual, saveActiveProjectThumbnail: saveActiveProjectThumbnailMock }
 })
+
+vi.mock("@vibeshape/viewer/project-thumbnail", () => ({
+  renderProjectThumbnail: renderProjectThumbnailMock,
+}))
 
 class ResizeObserverMock {
   observe() {}
@@ -476,6 +481,11 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  renderProjectThumbnailMock.mockReset()
+  renderProjectThumbnailMock.mockResolvedValue({
+    mediaType: "image/png",
+    bytes: new Uint8Array([137, 80, 78, 71]),
+  })
   saveActiveProjectThumbnailMock.mockReset()
   saveActiveProjectThumbnailMock.mockResolvedValue({ ok: true })
 })
@@ -2208,6 +2218,39 @@ describe("GeometryViewport", () => {
         )
       ).textContent,
     ).toBe("WebGL2 is unavailable in this browser or device. Modeling data remains saved.")
+  })
+
+  it("discards a thumbnail render that finishes after its viewport was unmounted", async () => {
+    let finish: ((value: { mediaType: "image/png"; bytes: Uint8Array }) => void) | undefined
+    renderProjectThumbnailMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const viewport = renderViewport(controller)
+    expect(renderProjectThumbnailMock).toHaveBeenCalledOnce()
+    viewport.unmount()
+    await act(async () => finish?.({ mediaType: "image/png", bytes: new Uint8Array([1]) }))
+    expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
+  })
+
+  it("retries a rejected thumbnail render without blocking the viewport", async () => {
+    vi.useFakeTimers()
+    renderProjectThumbnailMock.mockRejectedValueOnce(new Error("WebGL2 context was lost"))
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    renderViewport(controller)
+    await vi.waitFor(() => expect(renderProjectThumbnailMock).toHaveBeenCalledOnce())
+    await vi.advanceTimersByTimeAsync(250)
+    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledOnce())
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 
   it("retries one failed derived thumbnail write before marking the revision complete", async () => {

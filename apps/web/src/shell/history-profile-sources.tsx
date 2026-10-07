@@ -15,7 +15,7 @@ export function HistoryProfileSources({
   profiles: readonly SketchProfileSelector[]
   labelsByRef: ReadonlyMap<string, string>
   onPreview?: ((profile: SketchProfileSelector | null) => void) | undefined
-  onOpen: (sketchId: SketchProfileSelector["sketchId"]) => void | boolean
+  onOpen: (sketchId: SketchProfileSelector["sketchId"]) => void | boolean | Promise<boolean>
   dependencyDescription: string
 }) {
   const t = useTranslations("app.shell.modelTree")
@@ -64,7 +64,7 @@ export function HistoryProfileSources({
                     ?.querySelector<HTMLElement>('[role="treeitem"]')
                     ?.focus()
                 }}
-                onClick={(event) => {
+                onClick={async (event) => {
                   onPreview?.(null)
                   const source = event.currentTarget
                     .closest('[role="tree"]')
@@ -73,7 +73,7 @@ export function HistoryProfileSources({
                     )
                   source?.scrollIntoView({ block: "nearest" })
                   source?.focus()
-                  setOpeningBlocked(onOpen(profile.sketchId) === false)
+                  setOpeningBlocked((await onOpen(profile.sketchId)) === false)
                 }}
               >
                 <PenLine aria-hidden="true" className="size-3 shrink-0" />

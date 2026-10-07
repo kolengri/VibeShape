@@ -1,4 +1,5 @@
 import { captureAssemblyDefinition } from "@vibeshape/domain/assembly-authority"
+import { projectDocumentSnapshotV5ToV4 } from "@vibeshape/domain/document-v5"
 import {
   activeAssembly,
   assemblyPartSources,
@@ -23,12 +24,14 @@ export function captureLibrarySource(
     ({ source }) => source.partId === request.source.id,
   )
   if (!part) throw new Error("The selected Part has no available body.")
+  const source =
+    authority.schemaVersion === 5 ? projectDocumentSnapshotV5ToV4(authority) : authority
   return captureAssemblyDefinition(
     {
-      ...authority,
+      ...source,
       schemaVersion: 4,
-      surfaceTextures: authority.schemaVersion === 2 ? [] : authority.surfaceTextures,
-      assets: authority.schemaVersion === 4 ? authority.assets : [],
+      surfaceTextures: source.schemaVersion === 2 ? [] : source.surfaceTextures,
+      assets: source.schemaVersion === 4 ? source.assets : [],
     },
     {
       schemaVersion: 1,

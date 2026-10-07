@@ -21,12 +21,19 @@ import {
   patternFeatureType,
   unionFeatureTypeV2,
 } from "@vibeshape/domain"
+import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
 import {
   extrusionFeatureContentParametersSchema,
   type FeatureContentEnvironment,
   featureEvaluationEngineResultSchema,
 } from "@vibeshape/protocol"
 import { describe, expect, it, vi } from "vitest"
+import {
+  historyRepairFixture,
+  repairId,
+  repairRemovalCommand,
+} from "../../domain/src/history-repair.test-fixture"
+import { runtimeProjection } from "./authority-persistence-operations"
 import {
   type FeatureGeometryEvaluationPort,
   type FeatureGeometryEvaluationRequest,
@@ -1505,4 +1512,45 @@ describe("ordered body-slot rebuild preparation", () => {
     expect(changed.evaluation.reusedFeatureIds).toEqual([featureIds.box, producer.id])
     expect(changed.geometry.some(({ featureId }) => featureId === combination.id)).toBe(false)
   })
+})
+
+it("fails a detached input before handler/content/kernel work while blocking descendants and evaluating independent work", async () => {
+  const before = historyRepairFixture()
+  const removed = applyHistoryRemoveRetainingDependentsCommand(
+    before,
+    repairRemovalCommand(before.revision),
+  )
+  if (!removed.ok) throw new Error(removed.diagnostic.message)
+  const projected = runtimeProjection(removed.snapshot)
+  if (!projected.ok) throw new Error(projected.diagnostic.message)
+  const evaluateGeometry = vi.fn(() => ({ ok: true as const, geometry: geometry() }))
+  const prepareFeatureContent = vi.fn(() => null)
+  const featureRegistry = registry()
+  const resolve = vi.spyOn(featureRegistry, "resolveFeatureParameters")
+  const result = await rebuildDocumentFeatures({
+    document: projected.snapshot,
+    generation: 1,
+    registry: featureRegistry,
+    environment,
+    mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    hash: contentHasher(),
+    evaluateGeometry,
+    prepareFeatureContent,
+  })
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  expect(result.evaluation.records).toEqual([
+    {
+      featureId: repairId(3),
+      status: "failed",
+      diagnostics: [{ code: "org.vibeshape.feature.missing-input", values: {} }],
+    },
+    { featureId: repairId(4), status: "blocked", blockedBy: [repairId(3)] },
+    { featureId: repairId(5), status: "blocked", blockedBy: [repairId(3)] },
+    { featureId: repairId(6), status: "succeeded", contentHash: expect.any(String) },
+  ])
+  expect(resolve).toHaveBeenCalledOnce()
+  expect(resolve).toHaveBeenCalledWith(expect.objectContaining({ id: repairId(6) }), new Map())
+  expect(prepareFeatureContent.mock.calls).toHaveLength(1)
+  expect(evaluateGeometry.mock.calls).toHaveLength(1)
+  expect(result.geometry.map((record) => record.featureId)).toEqual([repairId(6)])
 })

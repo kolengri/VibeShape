@@ -2,25 +2,41 @@ import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/aut
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
-import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
+import {
+  type AuthoredDocumentSnapshot,
+  documentSnapshotV2Schema,
+} from "@vibeshape/domain/document-v2"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentUpgradeV2Command } from "@vibeshape/domain/document-v2-migration"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
+import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
+import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
+import {
+  applyDocumentV5AuthoredCommand,
+  applyHistoryRemoveRetainingDependentsCommand,
+} from "@vibeshape/domain/document-v5-commands"
+import { sketchIdSchema } from "@vibeshape/domain/identifiers"
 import {
   createModuleRegistry,
   documentCoreModule,
   featureCoreModule,
 } from "@vibeshape/domain/modules"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
+import { createEmptySketch } from "@vibeshape/domain/sketch-edit"
 import {
   createDefaultSurfaceTextureLayer,
   surfaceTextureLayerIdSchema,
 } from "@vibeshape/domain/surface-textures"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { describe, expect, it, vi } from "vitest"
+import {
+  historyRepairFixture,
+  repairRemovalCommand,
+} from "../../domain/src/history-repair.test-fixture"
 import type { DraftReviewInput } from "./draft-review"
 import type { MetadataCommand } from "./metadata-proposal"
 import { createMetadataProposalCoordinator } from "./metadata-proposal"
+import { parseMetadataProposalInput, prepareMetadataProposal } from "./metadata-proposal-support"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${n.toString(16).padStart(12, "0")}`
 const actor = commandActorSchema.parse({
@@ -105,9 +121,13 @@ function setup() {
   const hasCommandId = vi.fn(async () => false)
   const commit = vi.fn(async (command: MetadataCommand, expected: AuthoredDocumentSnapshot) => {
     snapshot = requireSuccess(
-      snapshot.schemaVersion === 3
-        ? applyDocumentV3Command(snapshot, { ...command, schemaVersion: 3 })
-        : applyDocumentV2Command(snapshot, command),
+      snapshot.schemaVersion === 5
+        ? applyDocumentV5AuthoredCommand(snapshot, { ...command, schemaVersion: 3 })
+        : snapshot.schemaVersion === 4
+          ? applyDocumentV4AuthoredCommand(snapshot, { ...command, schemaVersion: 3 })
+          : snapshot.schemaVersion === 3
+            ? applyDocumentV3Command(snapshot, { ...command, schemaVersion: 3 })
+            : applyDocumentV2Command(snapshot, command),
     ).snapshot
     expect(snapshot).toEqual(expected)
     return {
@@ -140,7 +160,7 @@ function setup() {
       })),
     })),
   }
-  const host = createMetadataProposalCoordinator({
+  const configuration = {
     documentId: snapshot.id,
     actor,
     readSnapshot: () => snapshot,
@@ -152,9 +172,11 @@ function setup() {
     createDraftId: () => id(8),
     isActive: () => active,
     now: () => at,
-  })
+  }
+  const host = createMetadataProposalCoordinator(configuration)
   return {
     host,
+    configuration,
     confirm,
     commit,
     geometry,
@@ -310,6 +332,78 @@ describe("typed metadata proposal coordination", () => {
 })
 
 describe("metadata proposals on texture authority", () => {
+  it.each([4, 5])("retains V%i authority when committing reviewed metadata", async (version) => {
+    const f = setup()
+    const base = f.snapshot()
+    const sketch = createEmptySketch({
+      id: sketchIdSchema.parse(id(20)),
+      label: "Temporary sketch",
+      plane: "xy",
+    })
+    const withSketch = promoteDocumentSnapshotV4(
+      documentSnapshotV2Schema.parse({
+        ...base,
+        sketches: [sketch],
+        history: [...base.history, { kind: "sketch", id: sketch.id }],
+      }),
+    )
+    const authority =
+      version === 4
+        ? withSketch
+        : requireSuccess(
+            applyHistoryRemoveRetainingDependentsCommand(withSketch, {
+              schemaVersion: 5,
+              kind: "org.vibeshape.history.remove-retaining-dependents",
+              commandId: id(21),
+              documentId: base.id,
+              baseRevision: base.revision,
+              issuedAt: new Date(started).toISOString(),
+              actor,
+              payload: { target: { kind: "sketch", id: sketch.id } },
+            }),
+          ).snapshot
+    f.replace(authority)
+    expect(
+      await f.host.change(actor, { ...f.request, baseRevision: authority.revision }),
+    ).toMatchObject({ ok: true })
+    expect(f.snapshot().schemaVersion).toBe(version)
+    expect(f.snapshot().parts[0]?.name).toBe("Renamed housing")
+  })
+
+  it("prepares metadata on V5 without discarding disconnected authored intent or suspended identities", async () => {
+    const f = setup()
+    const fixture = historyRepairFixture()
+    const detached = requireSuccess(
+      applyHistoryRemoveRetainingDependentsCommand(fixture, repairRemovalCommand(fixture.revision)),
+    ).snapshot
+    f.replace(detached)
+    const configuration = { ...f.configuration, documentId: detached.id }
+    const input = requireSuccess(
+      parseMetadataProposalInput(
+        configuration,
+        actor,
+        {
+          commandId: id(500),
+          baseRevision: detached.revision,
+          change: {
+            kind: "folder.rename",
+            folderId: detached.folders[0]?.id,
+            name: "Pending operations",
+          },
+        },
+        started,
+      ),
+    ).value
+    const proposal = requireSuccess(await prepareMetadataProposal(configuration, input)).value
+    expect(proposal.snapshot.schemaVersion).toBe(5)
+    if (proposal.snapshot.schemaVersion !== 5)
+      throw new Error("Metadata downgraded repair authority.")
+    expect(proposal.snapshot.repairIntents).toEqual(detached.repairIntents)
+    expect(proposal.snapshot.suspendedParts).toEqual(detached.suspendedParts)
+    expect(proposal.snapshot.folders[0]?.name).toBe("Pending operations")
+    expect(f.geometry.evaluate).not.toHaveBeenCalled()
+  })
+
   it("keeps existing paired metadata edits available without discarding texture layers", async () => {
     const f = setup()
     const before = f.snapshot()

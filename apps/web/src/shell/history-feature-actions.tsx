@@ -37,7 +37,7 @@ type HistoryFeatureActionsProps = {
 }
 
 function featureDeletionIsBlocked(eligibility: ReturnType<typeof featureDeleteEligibility> | null) {
-  return !eligibility || eligibility.unavailable || eligibility.blockerCount > 0
+  return !eligibility || eligibility.unavailable
 }
 
 function useHistoryFeatureMenu(props: HistoryFeatureActionsProps) {
@@ -48,7 +48,11 @@ function useHistoryFeatureMenu(props: HistoryFeatureActionsProps) {
   const report = props.controller.report
   const eligibility =
     (menuOpen || deleteOpen) && report
-      ? featureDeleteEligibility(report.snapshot, props.feature.id)
+      ? featureDeleteEligibility(
+          report.snapshot,
+          props.feature.id,
+          props.controller.authoredSnapshot,
+        )
       : null
   const blocked =
     props.deleteDisabled || suppressionPending || featureDeletionIsBlocked(eligibility)
@@ -104,11 +108,7 @@ function FeatureHistoryMenu({
   const suppressionLabel = t(props.feature.suppressed ? "unsuppressFeature" : "suppressFeature", {
     feature: props.label,
   })
-  const blockedReason = props.deleteDisabled
-    ? t("historyWriteUnavailable")
-    : model.eligibility?.unavailable
-      ? deleteT("unavailable")
-      : t("deleteFeatureInUse")
+  const blockedReason = props.deleteDisabled ? t("historyWriteUnavailable") : deleteT("unavailable")
   return (
     <DropdownMenu open={model.menuOpen} onOpenChange={model.onMenuOpenChange}>
       <Tooltip>

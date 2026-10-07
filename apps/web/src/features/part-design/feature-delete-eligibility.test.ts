@@ -5,9 +5,16 @@ import {
   type DocumentSnapshot,
   featureIdSchema,
   legacyRevolveFeatureTypeV2,
+  projectDocumentSnapshotV1ToV0,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
+import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
 import { describe, expect, it } from "vitest"
+import {
+  historyRepairFixture,
+  repairRemovalCommand,
+} from "../../../../../packages/domain/src/history-repair.test-fixture"
 import {
   FEATURE_DELETE_BLOCKER_PREVIEW_LIMIT,
   featureDeleteEligibility,
@@ -37,6 +44,24 @@ function boxFeature(featureId: string, dependencies: string[] = []) {
 }
 
 describe("featureDeleteEligibility", () => {
+  it("uses matching authored repair authority to keep disconnected items deletable", () => {
+    const removed = applyHistoryRemoveRetainingDependentsCommand(
+      historyRepairFixture(),
+      repairRemovalCommand(historyRepairFixture().revision),
+    )
+    if (!removed.ok) throw new Error(removed.diagnostic.message)
+    const projected = projectDocumentSnapshotV1ToV0(
+      projectAuthoredDocumentSnapshotToV1(removed.snapshot),
+    )
+    if (!projected.ok) throw new Error(projected.diagnostic.message)
+    const target = removed.snapshot.features.find(
+      (feature) => feature.id === removed.snapshot.repairIntents[0]?.authored.id,
+    )
+    if (!target) throw new Error("Missing repair feature")
+    expect(
+      featureDeleteEligibility(projected.snapshot, target.id, removed.snapshot).unavailable,
+    ).toBe(false)
+  })
   it("returns feature dependency blockers", () => {
     const result = featureDeleteEligibility(
       snapshot([boxFeature("4101"), boxFeature("4102", ["4101"])]),
