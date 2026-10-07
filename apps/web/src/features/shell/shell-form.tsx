@@ -47,6 +47,7 @@ export type ShellFormCopy = ParameterPanelCopy &
     submit: string
     staleRevision: string
     saveFailed: string
+    previewFailed: string
     face: (values: { number: number; area: string; x: string; y: string; z: string }) => string
   }
 type ShellFormProps = FeatureParameterFormProps<ShellFormMode, ShellFormCopy> & {
@@ -248,7 +249,7 @@ export function ShellForm({
             copy={copy}
             legend={copy.parameters}
             disabled={disabled || pending}
-            message={state.message}
+            message={state.message ?? (previewStatus === "error" ? copy.previewFailed : null)}
             actions={
               <TaskPanelFormActions
                 acceptLabel={copy.submit}

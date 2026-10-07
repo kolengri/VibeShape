@@ -56,7 +56,7 @@ const copy = {
 function setup(
   formMode = mode,
   source = evidence,
-  status: "ready" | "loading" = "ready",
+  status: "ready" | "loading" | "error" = "ready",
   pickingRequest: ShellPickRequest | null = null,
 ) {
   const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({
@@ -65,7 +65,7 @@ function setup(
   const onSaved = vi.fn(),
     onCancel = vi.fn(),
     onPreviewChange = vi.fn()
-  const view = render(
+  const renderForm = (previewStatus: "ready" | "loading" | "error") => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <ShellForm
         baseRevision={7}
@@ -77,12 +77,20 @@ function setup(
         onSaved={onSaved}
         onCancel={onCancel}
         onPreviewChange={onPreviewChange}
-        previewStatus={status}
+        previewStatus={previewStatus}
         pickingRequest={pickingRequest}
       />
-    </I18nProvider>,
+    </I18nProvider>
   )
-  return { ...view, onSave, onSaved, onCancel, onPreviewChange }
+  const view = render(renderForm(status))
+  return {
+    ...view,
+    onSave,
+    onSaved,
+    onCancel,
+    onPreviewChange,
+    setPreviewStatus: (next: "ready" | "loading" | "error") => view.rerender(renderForm(next)),
+  }
 }
 function editedFeature() {
   const feature = shellFormFeature(
@@ -99,6 +107,31 @@ function editedFeature() {
 }
 afterEach(cleanup)
 describe("Shell form and explicit opening repair", () => {
+  it("explains a failed exact preview, preserves the draft, and enables Apply only after recovery", async () => {
+    const f = setup(mode, evidence, "loading")
+    await userEvent.click(screen.getByRole("checkbox", { name: /Top face/ }))
+    const thickness = screen.getByRole("combobox", { name: "Wall thickness" }) as HTMLInputElement
+    await userEvent.clear(thickness)
+    await userEvent.type(thickness, "2 mm")
+    f.setPreviewStatus("error")
+    expect(screen.getByRole("alert").textContent).toBe(copy.previewFailed)
+    const apply = screen.getByRole("button", { name: "Apply shell" }) as HTMLButtonElement
+    expect(apply.disabled).toBe(true)
+    await userEvent.click(apply)
+    expect(f.onSave).not.toHaveBeenCalled()
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true)
+    expect(thickness.value).toBe("2 mm")
+
+    f.setPreviewStatus("loading")
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(apply.disabled).toBe(true)
+    f.setPreviewStatus("ready")
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(apply.disabled).toBe(false)
+    await userEvent.click(apply)
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    expect(f.onSave).toHaveBeenCalledOnce()
+  })
   it("formats native round-off at zero without a negative sign while preserving real negative coordinates", () => {
     expect(formatShellMeasurement(-1e-16)).toBe("0.00")
     expect(formatShellMeasurement(-0)).toBe("0.00")
