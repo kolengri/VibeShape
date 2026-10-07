@@ -130,7 +130,7 @@ function VariableRowActions({
       <div className="flex justify-end gap-1">
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="ghost"
           disabled={disabled}
           onClick={onCancelRename}
@@ -139,7 +139,7 @@ function VariableRowActions({
         </Button>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="secondary"
           disabled={disabled}
           onClick={onConfirmRename}
@@ -152,13 +152,13 @@ function VariableRowActions({
   return (
     <div className="flex justify-end gap-1">
       {canRename ? (
-        <Button type="button" size="xs" variant="ghost" disabled={disabled} onClick={onStartRename}>
+        <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onStartRename}>
           {copy.rename}
         </Button>
       ) : null}
       <Button
         type="button"
-        size="xs"
+        size="sm"
         variant="ghost"
         disabled={disabled || removeDisabled}
         title={removeDisabledReason}

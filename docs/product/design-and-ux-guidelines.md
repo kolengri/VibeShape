@@ -117,6 +117,22 @@ Do not mix comfortable dashboard spacing into the editor. A settings or onboardi
 
 Pointer targets MUST be at least 24 × 24 CSS px or have the spacing required by WCAG 2.2. Primary toolbar targets SHOULD be 32 × 32 px. A later touch-authoring mode MUST use at least 44 × 44 px targets and cannot be created by simply scaling the desktop shell.
 
+Button sizing is owned by the shared `Button` primitive:
+
+| Context | Text action | Icon action |
+|---|---|---|
+| Application bar, toolbar, viewport controls, forms, dialogs, and primary actions | `default` / `sm`: 32 px high, 12 px horizontal padding, 14 px text | `icon` / `icon-sm`: 32 × 32 px, 16 px icon |
+| Dense list and History rows, status bar, and inline sketch editors | `xs`: 24 px high, 12 px text | `icon-xs`: 24 × 24 px, 12 px icon |
+| Multiline selection rows and visual library tiles | `content`: natural height, at least 32 px, wrapping text | Use the ordinary icon action beside the content |
+
+Actions in the same group MUST use the same size tier. Text length determines width; it must not
+determine height or icon scale. Feature compositions MUST NOT override button height, square size,
+font size, or internal padding to create another density. Structural widths, alignment, indentation,
+and selection state remain owned by the composition. Content actions may grow with their content;
+ordinary actions retain their height when disabled or pending. Spatial constraint glyphs retain
+their geometry-driven annotation placement and double-click editing contract. The `sm` and `icon-sm` names are
+compatibility aliases for the standard tier, not additional densities.
+
 ### Typography
 
 - Use the bundled system UI stack initially; CAD operation must not depend on network fonts.

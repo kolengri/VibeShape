@@ -131,10 +131,11 @@ export function TextureGallery({
         {shown.map((pattern) => (
           <div key={pattern} className="relative">
             <Button
+              size="content"
               type="button"
               variant="ghost"
               className={cn(
-                "h-auto w-full flex-col gap-2 p-1",
+                "w-full flex-col gap-2",
                 selected.kind === "builtin" && selected.pattern === pattern && "ring-2 ring-ring",
               )}
               aria-pressed={selected.kind === "builtin" && selected.pattern === pattern}

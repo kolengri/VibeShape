@@ -78,7 +78,7 @@ export function OriginPlaneVisibilityControls({
             <TooltipTrigger asChild>
               <Button
                 type="button"
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost"
                 aria-label={action}
                 aria-pressed={visible}

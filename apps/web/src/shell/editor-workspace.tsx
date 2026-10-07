@@ -1336,7 +1336,6 @@ function SketchContextStatus({
         )}
       </span>
       <Button
-        className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
         size="sm"
         type="button"
         variant="secondary"

@@ -49,7 +49,7 @@ export function FaqDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       {showTrigger ? (
         <DialogTrigger asChild>
-          <Button type="button" size="xs" variant="outline">
+          <Button type="button" size="sm" variant="outline">
             {t("trigger")}
           </Button>
         </DialogTrigger>
@@ -67,10 +67,11 @@ export function FaqDialog({
           <nav aria-label={t("navigation")} className="flex flex-wrap gap-1 sm:flex-col">
             {pages.map((item) => (
               <Button
+                size="content"
                 key={item}
                 type="button"
                 variant={item === page ? "secondary" : "ghost"}
-                className="h-auto justify-start whitespace-normal text-left"
+                className="justify-start text-left"
                 aria-current={item === page ? "page" : undefined}
                 onClick={() => setPage(item)}
               >

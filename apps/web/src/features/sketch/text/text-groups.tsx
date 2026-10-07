@@ -13,7 +13,7 @@ export function SketchTextGroups({ draft, disabled }: { draft: SketchRecord; dis
         <Button
           type="button"
           variant="outline"
-          size="xs"
+          size="sm"
           disabled={disabled || !actions}
           onClick={() => actions?.create()}
         >
@@ -37,7 +37,7 @@ export function SketchTextGroups({ draft, disabled }: { draft: SketchRecord; dis
             <Button
               type="button"
               variant="outline"
-              size="xs"
+              size="sm"
               disabled={disabled || !actions}
               aria-label={t("editGroup", { text: group.parameters.text })}
               onClick={() => actions?.edit(group.id)}
@@ -47,7 +47,7 @@ export function SketchTextGroups({ draft, disabled }: { draft: SketchRecord; dis
             <Button
               type="button"
               variant="outline"
-              size="xs"
+              size="sm"
               disabled={disabled || !actions}
               aria-label={t("detachGroup", { text: group.parameters.text })}
               onClick={() => actions?.detach(group.id)}

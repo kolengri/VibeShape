@@ -512,7 +512,7 @@ function ProjectDialogTrigger({ shown }: { shown: boolean }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <DialogTrigger asChild>
-          <Button type="button" size="xs" variant="outline" aria-label={t("file")}>
+          <Button type="button" size="sm" variant="outline" aria-label={t("file")}>
             <FolderOpen aria-hidden="true" />
             <span>{t("file")}</span>
           </Button>

@@ -80,7 +80,6 @@ export function ApplicationMenu({
             type="button"
             size="sm"
             variant="ghost"
-            className="shrink-0 gap-1 px-2"
             aria-label={t("trigger")}
             data-application-menu-trigger
           >

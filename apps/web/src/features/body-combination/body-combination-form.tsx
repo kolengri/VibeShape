@@ -111,9 +111,9 @@ function BodyCombinationInputs(props: SelectionProps) {
           <Button
             key={input.partId}
             type="button"
-            size="sm"
+            size="content"
             variant="outline"
-            className="h-auto min-h-8 justify-start whitespace-normal text-left"
+            className="justify-start text-left"
             aria-label={props.copy.selectPart(input.name)}
             aria-describedby="combination-selection-rules"
             disabled={
