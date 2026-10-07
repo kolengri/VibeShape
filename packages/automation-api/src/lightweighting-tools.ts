@@ -93,7 +93,11 @@ export function lightweightingResultContextMatches(
     value.summary.iterations > input.settings.maxIterations
   )
     return false
-  if (!constraintsMatch(value.summary, input.settings)) return false
+  if (
+    !constraintsMatch(value.summary, input.settings) ||
+    !objectiveMatches(value.summary, input.settings)
+  )
+    return false
   if (parsed.data.tool === "request_lightweighting") {
     const request = lightweightingRequestSchema.parse(result.value)
     if (
@@ -105,6 +109,42 @@ export function lightweightingResultContextMatches(
       return false
   }
   return true
+}
+
+function objectiveMatches(
+  summary: StructuralOptimizationSummary,
+  settings: StructuralOptimizationSettings,
+) {
+  const objective = settings.objective
+  const measured = summary.objective
+  if (objective?.kind !== "maximize-stiffness")
+    return (
+      (measured === undefined || measured.kind === "minimize-mass") &&
+      summary.termination !== "target-mass-reached"
+    )
+  if (measured?.kind !== "maximize-stiffness") return false
+  const targetCount = Math.ceil(summary.initialCellCount * objective.retainedMassFraction)
+  const reached = summary.finalCellCount === targetCount
+  return [
+    measured.retainedMassFraction === objective.retainedMassFraction,
+    measured.targetCellCount === targetCount,
+    summary.finalCellCount >= targetCount,
+    closeFraction(measured.targetMassKg / summary.baseline.massKg, objective.retainedMassFraction),
+    closeFraction(
+      measured.achievedRetainedMassFraction,
+      summary.optimized.massKg / summary.baseline.massKg,
+    ),
+    closeFraction(
+      measured.achievedRetainedMassFraction,
+      summary.finalCellCount / summary.initialCellCount,
+    ),
+    measured.targetStatus === (reached ? "reached" : "not-reached"),
+    (summary.termination === "target-mass-reached") === reached,
+  ].every(Boolean)
+}
+
+function closeFraction(actual: number, expected: number) {
+  return Math.abs(actual - expected) <= 1e-8
 }
 
 function constraintsMatch(

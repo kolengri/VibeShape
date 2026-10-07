@@ -430,6 +430,7 @@ export function createLocalAutomationConnection() {
       "commit_import_upload",
       "commit_planar_import_upload",
       "request_lightweighting",
+      "request_quick_lightweighting",
       "change_metadata",
       "commit_assembly_draft",
       "undo_model",

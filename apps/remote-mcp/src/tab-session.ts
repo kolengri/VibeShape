@@ -25,6 +25,10 @@ import {
 } from "@vibeshape/automation-api/planar-imports"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
+  QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
+  quickLightweightingResultContextMatches,
+} from "@vibeshape/automation-api/quick-lightweighting-tools"
+import {
   REMOTE_MESSAGE_MAX_BYTES,
   REMOTE_REQUEST_TIMEOUT_MS,
   REMOTE_SESSION_MAX_OPERATIONS,
@@ -83,7 +87,8 @@ function authoredResultContextMatches(
     historyResultContextMatches(operation, result) !== false &&
     assemblyResultContextMatches(operation, result) !== false &&
     surfaceTextureResultContextMatches(operation, result) !== false &&
-    lightweightingResultContextMatches(operation, result) !== false
+    lightweightingResultContextMatches(operation, result) !== false &&
+    quickLightweightingResultContextMatches(operation, result) !== false
   )
 }
 
@@ -220,9 +225,11 @@ export class TabSession extends DurableObject<RemoteEnv> {
         () => {
           if (this.pending?.id === id) void this.revoke()
         },
-        operation.tool === "request_lightweighting"
-          ? LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
-          : REMOTE_REQUEST_TIMEOUT_MS,
+        operation.tool === "request_quick_lightweighting"
+          ? QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
+          : operation.tool === "request_lightweighting"
+            ? LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
+            : REMOTE_REQUEST_TIMEOUT_MS,
       )
       this.pending = { id, operation, resolve, timer }
       this.send({ type: "work", requestId: id, operation })

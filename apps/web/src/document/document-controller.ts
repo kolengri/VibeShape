@@ -159,6 +159,7 @@ import type {
   PlanarImportReviewedCommit,
   PlanarImportReviewInput,
 } from "../automation/planar-import-upload-session"
+import { createBrowserQuickLightweightingAutomationSession } from "../automation/quick-lightweighting-automation-session"
 import {
   previewOwnedSurfaceTextures,
   surfaceTextureReviewedInputMatches,
@@ -919,13 +920,13 @@ export function createActiveDocumentAutomationSession() {
       return commitReviewedImport(active, input)
     },
   })
-  const lightweighting = createBrowserLightweightingAutomationSession({
+  const lightweightingConfiguration = {
     documentId: capturedDocumentId,
     isActive: sourceSessionAvailable,
     createId: browserUuidV7,
     readContext: readSourceContext,
-    readSource: (partId) => lightweightingSource(state, partId),
-    async commit(input) {
+    readSource: (partId: string) => lightweightingSource(state, partId),
+    async commit(input: ImportReviewedCommit) {
       if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
         return localFailure(
           "import-review-mismatch",
@@ -933,7 +934,11 @@ export function createActiveDocumentAutomationSession() {
         )
       return commitReviewedImport(active, input)
     },
-  })
+  }
+  const lightweighting = createBrowserLightweightingAutomationSession(lightweightingConfiguration)
+  const quickLightweighting = createBrowserQuickLightweightingAutomationSession(
+    lightweightingConfiguration,
+  )
   const planarImports = createPlanarImportAutomationSession({
     documentId: capturedDocumentId,
     isActive: sourceSessionAvailable,
@@ -1161,6 +1166,7 @@ export function createActiveDocumentAutomationSession() {
       history.cancel("stale-revision")
       surfaceTextures.cancel("stale-revision")
       lightweighting.cancel()
+      quickLightweighting.cancel()
     }
   })
   function dispose() {
@@ -1175,6 +1181,7 @@ export function createActiveDocumentAutomationSession() {
     history.dispose()
     surfaceTextures.dispose()
     lightweighting.dispose()
+    quickLightweighting.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -1192,6 +1199,7 @@ export function createActiveDocumentAutomationSession() {
     history,
     surfaceTextures,
     lightweighting,
+    quickLightweighting,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     disableAutoApply: factory.disableAutoApply,
@@ -1210,6 +1218,7 @@ export function createActiveDocumentAutomationSession() {
       history.cancel(reason)
       surfaceTextures.cancel(reason)
       lightweighting.cancel()
+      quickLightweighting.cancel()
       exports.cancel()
     },
     dispose,
@@ -1422,6 +1431,7 @@ function importReviewIdentity(input: ImportReviewInput) {
     source: input.source,
     label: input.label,
     lightweighting: input.lightweighting ?? null,
+    quickLightweighting: input.quickLightweighting ?? null,
     transaction: input.transaction,
   })
 }

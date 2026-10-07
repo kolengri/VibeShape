@@ -18,13 +18,37 @@ export const structuralMeshSchema = z
       indices.every((index) => index < vertices.length / 3),
     "Meshes require complete XYZ triples and valid triangle indices.",
   )
-export const structuralOptimizationInputSchema = structuralOptimizationSettingsSchema.extend({
-  schemaVersion: z.literal(1),
-  mesh: structuralMeshSchema.refine(
-    ({ vertices, indices }) => vertices.length <= 30_000 && indices.length <= 60_000,
-    "The source mesh exceeds the 10,000-vertex or 20,000-triangle analysis budget.",
-  ),
-})
+export const structuralOptimizationInputSchema = structuralOptimizationSettingsSchema
+  .extend({
+    schemaVersion: z.literal(1),
+    mesh: structuralMeshSchema.refine(
+      ({ vertices, indices }) => vertices.length <= 30_000 && indices.length <= 60_000,
+      "The source mesh exceeds the 10,000-vertex or 20,000-triangle analysis budget.",
+    ),
+  })
+  .superRefine((input, context) => {
+    const regions = [
+      ...input.supports.map((region, index) => ({ region, path: ["supports", index] })),
+      ...input.loadCases.map(({ region }, index) => ({
+        region,
+        path: ["loadCases", index, "region"],
+      })),
+      ...input.preserveRegions.map((region, index) => ({
+        region,
+        path: ["preserveRegions", index],
+      })),
+    ]
+    for (const { region, path } of regions) {
+      if (!("kind" in region)) continue
+      if (region.triangleIndices.some((index) => index >= input.mesh.indices.length / 3)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "triangleIndices"],
+          message: "Surface triangle indices must reference the captured source mesh.",
+        })
+      }
+    }
+  })
 export const structuralOptimizationResultSchema = structuralOptimizationSummarySchema.extend({
   mesh: structuralMeshSchema,
 })

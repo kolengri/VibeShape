@@ -4,6 +4,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { expect, it } from "vitest"
 import { lightweightingOperation } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
+import { quickLightweightingOperation } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
@@ -16,8 +17,13 @@ it("advertises client-valid lightweighting tools without granting unpaired mutat
     const [a, b] = InMemoryTransport.createLinkedPair()
     await Promise.all([adapter.connect(b), client.connect(a)])
     const tools = (await client.listTools()).tools
-    for (const request of [false, true]) {
-      const operation = lightweightingOperation(request)
+    for (const operation of [
+      lightweightingOperation(),
+      lightweightingOperation(true),
+      quickLightweightingOperation(),
+      quickLightweightingOperation(true),
+    ]) {
+      const request = operation.tool.startsWith("request_")
       const tool = tools.find((entry) => entry.name === operation.tool)
       if (!tool) throw new Error("Missing lightweighting tool.")
       const validate = new AjvJsonSchemaValidator().getValidator({

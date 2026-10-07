@@ -2,10 +2,28 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { LightweightingMaterialSelector } from "./lightweighting-material-selector"
-import type { LightweightingFields, RegionFields } from "./lightweighting-model"
+import type {
+  LightweightingFields,
+  LoadCaseFields,
+  SurfaceForceFields,
+} from "./lightweighting-model"
 
-type NumberFieldProps = {
+export type LightweightingPickTarget =
+  | { kind: "support" }
+  | { kind: "load"; caseId: number }
+  | { kind: "preserve" }
+
+function NumberField({
+  id,
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = "any",
+}: {
   id: string
   label: string
   value: string
@@ -13,8 +31,7 @@ type NumberFieldProps = {
   min?: number
   max?: number
   step?: string
-}
-function NumberField({ id, label, value, onChange, min, max, step = "any" }: NumberFieldProps) {
+}) {
   return (
     <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -31,47 +48,109 @@ function NumberField({ id, label, value, onChange, min, max, step = "any" }: Num
     </Field>
   )
 }
-const axes = ["X", "Y", "Z"] as const
+
+function FacePicker({
+  label,
+  faces,
+  active,
+  onPick,
+  onClear,
+  disabled,
+}: {
+  label: string
+  faces: readonly number[]
+  active: boolean
+  onPick: () => void
+  onClear: () => void
+  disabled: boolean
+}) {
+  const t = useTranslations("app.lightweighting")
+  return (
+    <div className="grid gap-2">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant={active ? "secondary" : "outline"}
+          size="sm"
+          aria-label={label}
+          aria-pressed={active}
+          onClick={onPick}
+          disabled={disabled}
+        >
+          {active ? t("finishPicking") : label}
+        </Button>
+        {faces.length > 0 && (
+          <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+            {t("clearFaces")}
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{t("pickedFaces", { count: faces.length })}</p>
+      {active && (
+        <p role="status" className="text-xs">
+          {t("facePickerHelp")}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function LoadForceControls({
+  load,
+  index,
+  onChange,
+}: {
+  load: LoadCaseFields
+  index: number
+  onChange: (next: Partial<SurfaceForceFields>) => void
+}) {
+  const t = useTranslations("app.lightweighting")
+  const force = load.surfaceForce
+  if (!force) return null
+  return (
+    <>
+      <NumberField
+        id={`lightweighting-force-${load.id}`}
+        label={t("forceMagnitude", { index: index + 1 })}
+        value={force.magnitudeN}
+        min={0}
+        onChange={(magnitudeN) => onChange({ magnitudeN })}
+      />
+      <SelectField
+        id={`lightweighting-direction-${load.id}`}
+        label={t("forceDirection", { index: index + 1 })}
+        value={force.direction}
+        onValueChange={(direction) => {
+          if (direction === "normal" || direction === "x" || direction === "y" || direction === "z")
+            onChange({ direction })
+        }}
+      >
+        <SelectOption value="normal">{t("directionNormal")}</SelectOption>
+        <SelectOption value="x">{t("directionX")}</SelectOption>
+        <SelectOption value="y">{t("directionY")}</SelectOption>
+        <SelectOption value="z">{t("directionZ")}</SelectOption>
+      </SelectField>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-pressed={force.flipped}
+        onClick={() => onChange({ flipped: !force.flipped })}
+      >
+        {t("flipForce", { index: index + 1 })}
+      </Button>
+    </>
+  )
+}
+
 const materialFieldKeys = new Set([
   "youngModulusMpa",
   "poissonRatio",
   "yieldStrengthMpa",
   "densityKgM3",
 ])
-function RegionFieldsEditor({
-  id,
-  value,
-  onChange,
-}: {
-  id: string
-  value: RegionFields
-  onChange: (value: RegionFields) => void
-}) {
-  const t = useTranslations("app.lightweighting")
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {(["min", "max"] as const).map((bound) => (
-        <fieldset key={bound} className="grid grid-cols-3 gap-2">
-          <legend className="mb-2 text-xs font-medium">{t(bound)}</legend>
-          {axes.map((axis, index) => (
-            <NumberField
-              key={axis}
-              id={`${id}-${bound}-${axis}`}
-              label={t("coordinate", { bound: t(bound), axis })}
-              value={value[bound][index] ?? ""}
-              onChange={(next) => {
-                const coordinates: RegionFields["min"] = [...value[bound]]
-                coordinates[index] = next
-                onChange({ ...value, [bound]: coordinates })
-              }}
-            />
-          ))}
-        </fieldset>
-      ))}
-    </div>
-  )
-}
-export function LightweightingParameters({
+
+function ObjectiveControls({
   fields,
   onChange,
 }: {
@@ -79,6 +158,61 @@ export function LightweightingParameters({
   onChange: (fields: LightweightingFields) => void
 }) {
   const t = useTranslations("app.lightweighting")
+  return (
+    <fieldset className="grid gap-3">
+      <legend className="mb-2 font-medium">{t("objective")}</legend>
+      <SelectField
+        id="lightweighting-objective"
+        label={t("objective")}
+        value={fields.objective}
+        onValueChange={(objective) => {
+          if (objective === "minimize-mass" || objective === "maximize-stiffness")
+            onChange({ ...fields, objective })
+        }}
+      >
+        <SelectOption value="minimize-mass">{t("minimizeMass")}</SelectOption>
+        <SelectOption value="maximize-stiffness">{t("maximizeStiffness")}</SelectOption>
+      </SelectField>
+      {fields.objective === "maximize-stiffness" && (
+        <div className="grid gap-2">
+          <label htmlFor="lightweighting-retained-mass" className="text-sm font-medium">
+            {t("retainedMassPercent", { value: Number(fields.retainedMassPercent) })}
+          </label>
+          <input
+            id="lightweighting-retained-mass"
+            type="range"
+            min={10}
+            max={100}
+            step={5}
+            value={fields.retainedMassPercent}
+            aria-describedby="lightweighting-objective-help"
+            onChange={(event) => onChange({ ...fields, retainedMassPercent: event.target.value })}
+            className="h-6 w-full cursor-pointer accent-primary"
+          />
+        </div>
+      )}
+      <p id="lightweighting-objective-help" className="text-xs text-muted-foreground">
+        {t(fields.objective === "minimize-mass" ? "minimizeMassHelp" : "maximizeStiffnessHelp")}
+      </p>
+    </fieldset>
+  )
+}
+
+export function LightweightingParameters({
+  fields,
+  onChange,
+  picking,
+  onPick,
+  pickingDisabled,
+}: {
+  fields: LightweightingFields
+  onChange: (fields: LightweightingFields) => void
+  picking: LightweightingPickTarget | null
+  onPick: (target: LightweightingPickTarget) => void
+  pickingDisabled: boolean
+}) {
+  const t = useTranslations("app.lightweighting")
+  const surface = fields.surfaceSelection
   const numeric = (
     key:
       | "youngModulusMpa"
@@ -109,13 +243,25 @@ export function LightweightingParameters({
       }
     />
   )
+  const setSurface = (next: Partial<NonNullable<LightweightingFields["surfaceSelection"]>>) => {
+    if (surface) onChange({ ...fields, surfaceSelection: { ...surface, ...next } })
+  }
+  const updateForce = (caseId: number, next: Partial<SurfaceForceFields>) =>
+    onChange({
+      ...fields,
+      loadCases: fields.loadCases.map((item) =>
+        item.id === caseId && item.surfaceForce
+          ? { ...item, surfaceForce: { ...item.surfaceForce, ...next } }
+          : item,
+      ),
+    })
   return (
     <>
+      <ObjectiveControls fields={fields} onChange={onChange} />
       <fieldset className="grid gap-3">
         <legend className="mb-2 font-medium">{t("material")}</legend>
-        <p className="text-xs text-muted-foreground">{t("materialDescription")}</p>
         <LightweightingMaterialSelector fields={fields} onChange={onChange} />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3">
           {numeric("youngModulusMpa", 0)}
           {numeric("poissonRatio", 0, 0.45)}
           {numeric("yieldStrengthMpa", 0)}
@@ -123,100 +269,76 @@ export function LightweightingParameters({
         </div>
       </fieldset>
       <fieldset className="grid gap-3">
-        <legend className="mb-2 font-medium">{t("constraints")}</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {numeric("safetyFactor", 1)}
-          {numeric("maxDisplacementMm", 0)}
-          {numeric("cellSizeMm", 0)}
-          {numeric("maxIterations", 0, 40, "1")}
-        </div>
-        <p className="text-xs text-muted-foreground">{t("discretizationDescription")}</p>
-      </fieldset>
-      <fieldset className="grid gap-3">
         <legend className="mb-2 font-medium">{t("support")}</legend>
         <p className="text-xs text-muted-foreground">{t("supportDescription")}</p>
-        <RegionFieldsEditor
-          id="lightweighting-support"
-          value={fields.support}
-          onChange={(support) => onChange({ ...fields, support })}
+        <FacePicker
+          label={t("pickSupport")}
+          faces={surface?.supportFaces ?? []}
+          active={picking?.kind === "support"}
+          disabled={pickingDisabled}
+          onPick={() => onPick({ kind: "support" })}
+          onClear={() => setSurface({ supportFaces: [] })}
         />
       </fieldset>
-      <fieldset className="grid gap-4">
+      <fieldset className="grid gap-3">
         <legend className="mb-2 font-medium">{t("loadCases")}</legend>
         <p className="text-xs text-muted-foreground">{t("loadDescription")}</p>
-        {fields.loadCases.map((loadCase, index) => (
-          <fieldset key={loadCase.id} className="grid gap-3 rounded-md border p-3">
+        {fields.loadCases.map((load, index) => (
+          <fieldset key={load.id} className="grid min-w-0 gap-3 rounded-md border p-3">
             <legend className="px-1 text-sm font-medium">
               {t("loadCase", { index: index + 1 })}
             </legend>
             <Field>
-              <FieldLabel htmlFor={`lightweighting-case-${loadCase.id}`}>
-                {t("caseName")}
-              </FieldLabel>
+              <FieldLabel htmlFor={`lightweighting-case-${load.id}`}>{t("caseName")}</FieldLabel>
               <Input
-                id={`lightweighting-case-${loadCase.id}`}
+                id={`lightweighting-case-${load.id}`}
+                value={load.name}
                 required
-                value={loadCase.name}
                 onChange={(event) =>
                   onChange({
                     ...fields,
                     loadCases: fields.loadCases.map((item) =>
-                      item.id === loadCase.id ? { ...item, name: event.currentTarget.value } : item,
+                      item.id === load.id ? { ...item, name: event.currentTarget.value } : item,
                     ),
                   })
                 }
               />
             </Field>
-            <RegionFieldsEditor
-              id={`lightweighting-load-${loadCase.id}`}
-              value={loadCase.region}
-              onChange={(region) =>
-                onChange({
-                  ...fields,
-                  loadCases: fields.loadCases.map((item) =>
-                    item.id === loadCase.id ? { ...item, region } : item,
-                  ),
-                })
-              }
+            <FacePicker
+              label={t("pickLoad", { index: index + 1 })}
+              faces={surface?.loadFaces[load.id] ?? []}
+              active={picking?.kind === "load" && picking.caseId === load.id}
+              disabled={pickingDisabled}
+              onPick={() => onPick({ kind: "load", caseId: load.id })}
+              onClear={() => setSurface({ loadFaces: { ...surface?.loadFaces, [load.id]: [] } })}
             />
-            <div className="grid grid-cols-3 gap-2">
-              {axes.map((axis, coordinate) => (
-                <NumberField
-                  key={axis}
-                  id={`lightweighting-force-${loadCase.id}-${axis}`}
-                  label={t("force", { axis })}
-                  value={loadCase.force[coordinate] ?? ""}
-                  onChange={(next) => {
-                    const force: typeof loadCase.force = [...loadCase.force]
-                    force[coordinate] = next
-                    onChange({
-                      ...fields,
-                      loadCases: fields.loadCases.map((item) =>
-                        item.id === loadCase.id ? { ...item, force } : item,
-                      ),
-                    })
-                  }}
-                />
-              ))}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={fields.loadCases.length === 1}
-              onClick={() =>
-                onChange({
-                  ...fields,
-                  loadCases: fields.loadCases.filter((item) => item.id !== loadCase.id),
-                })
-              }
-            >
-              {t("removeCase", { index: index + 1 })}
-            </Button>
+            <LoadForceControls
+              load={load}
+              index={index}
+              onChange={(next) => updateForce(load.id, next)}
+            />
+            {fields.loadCases.length > 1 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (picking?.kind === "load" && picking.caseId === load.id) onPick(picking)
+                  onChange({
+                    ...fields,
+                    loadCases: fields.loadCases.filter((item) => item.id !== load.id),
+                  })
+                }}
+              >
+                {t("removeCase", { index: index + 1 })}
+              </Button>
+            )}
           </fieldset>
         ))}
         <Button
           type="button"
           variant="outline"
+          size="sm"
           disabled={fields.loadCases.length >= 8}
           onClick={() => {
             const first = fields.loadCases[0]
@@ -229,8 +351,9 @@ export function LightweightingParameters({
                 {
                   id,
                   name: t("defaultCaseName", { index: fields.loadCases.length + 1 }),
-                  region: { min: [...first.region.min], max: [...first.region.max] },
+                  region: first.region,
                   force: ["0", "0", "0"],
+                  surfaceForce: { magnitudeN: "", direction: "normal", flipped: false },
                 },
               ],
             })
@@ -242,54 +365,32 @@ export function LightweightingParameters({
       <fieldset className="grid gap-3">
         <legend className="mb-2 font-medium">{t("preservation")}</legend>
         <p className="text-xs text-muted-foreground">{t("preservationDescription")}</p>
-        {fields.preserveRegions.map(({ id, region }, index) => (
-          <fieldset key={id} className="grid gap-3 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">
-              {t("preserveRegion", { index: index + 1 })}
-            </legend>
-            <RegionFieldsEditor
-              id={`lightweighting-preserve-${id}`}
-              value={region}
-              onChange={(region) =>
-                onChange({
-                  ...fields,
-                  preserveRegions: fields.preserveRegions.map((item) =>
-                    item.id === id ? { ...item, region } : item,
-                  ),
-                })
-              }
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                onChange({
-                  ...fields,
-                  preserveRegions: fields.preserveRegions.filter((item) => item.id !== id),
-                })
-              }
-            >
-              {t("removePreserve", { index: index + 1 })}
-            </Button>
-          </fieldset>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          disabled={fields.preserveRegions.length >= 16}
-          onClick={() => {
-            const id = Math.max(-1, ...fields.preserveRegions.map((item) => item.id)) + 1
-            onChange({
-              ...fields,
-              preserveRegions: [
-                ...fields.preserveRegions,
-                { id, region: { min: [...fields.support.min], max: [...fields.support.max] } },
-              ],
-            })
-          }}
-        >
-          {t("addPreserve")}
-        </Button>
+        <FacePicker
+          label={t("pickPreserve")}
+          faces={surface?.preserveFaces ?? []}
+          active={picking?.kind === "preserve"}
+          disabled={pickingDisabled}
+          onPick={() => onPick({ kind: "preserve" })}
+          onClear={() => setSurface({ preserveFaces: [] })}
+        />
+        <NumberField
+          id="lightweighting-depth"
+          label={t("surfaceDepth")}
+          value={surface?.depthMm ?? ""}
+          min={0.01}
+          onChange={(depthMm) => setSurface({ depthMm })}
+        />
+        <p className="text-xs text-muted-foreground">{t("surfaceDepthDescription")}</p>
+      </fieldset>
+      <fieldset className="grid gap-3">
+        <legend className="mb-2 font-medium">{t("constraints")}</legend>
+        <div className="grid grid-cols-2 gap-3">
+          {numeric("safetyFactor", 1)}
+          {numeric("maxDisplacementMm", 0)}
+          {numeric("cellSizeMm", 0.01)}
+          {numeric("maxIterations", 0, 40, "1")}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("discretizationDescription")}</p>
       </fieldset>
     </>
   )

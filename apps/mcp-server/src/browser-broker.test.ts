@@ -8,6 +8,10 @@ import {
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { lightweightingMaterialCatalogResult } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
+import {
+  quickLightweightingOperation,
+  quickLightweightingValue,
+} from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import { createBrowserBroker } from "./browser-broker"
 
@@ -87,6 +91,52 @@ describe("browser automation broker", () => {
     )
     expect(next.status).toBe(200)
   })
+
+  it.each([false, true])(
+    "accepts quick evidence only for captured source/settings/snapshot (request=%s)",
+    async (requestSnapshot) => {
+      const broker = makeBroker({ origin })
+      const { token } = await connect(broker)
+      const operation = localOperationSchema.parse(quickLightweightingOperation(requestSnapshot))
+      const value = {
+        ...quickLightweightingValue(requestSnapshot),
+        documentId: document.id,
+        ...(requestSnapshot
+          ? { snapshot: { ...quickLightweightingValue(true).snapshot, documentId: document.id } }
+          : {}),
+      }
+      const pending = broker.invoke(operation)
+      const poll = await broker.handle(
+        request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+      )
+      const { work } = localPollResponseSchema.parse(await poll.json())
+      if (!work) throw new Error("Expected quick lightweighting work.")
+      const respond = (output: unknown) =>
+        broker.handle(
+          request(
+            "result",
+            {
+              protocolVersion: 1,
+              requestId: work.requestId,
+              tool: operation.tool,
+              result: { ok: true, value: output },
+            },
+            token,
+          ),
+        )
+      expect(
+        (await respond({ ...value, source: { ...value.source, contentHash: "b".repeat(64) } }))
+          .status,
+      ).toBe(400)
+      expect(
+        (await respond({ ...value, summary: { ...value.summary, requestedRemovalPercent: 36 } }))
+          .status,
+      ).toBe(400)
+      expect((await respond(value)).status).toBe(200)
+      await expect(pending).resolves.toEqual({ ok: true, value })
+      expect(broker.isPaired()).toBe(true)
+    },
+  )
 
   it("moves pairing only after an exact project transition receipt and rejects old target guards", async () => {
     const broker = makeBroker({ origin })

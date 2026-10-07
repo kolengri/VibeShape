@@ -200,6 +200,7 @@
         "saxes": "6.0.0",
         "svgpath": "2.6.0",
         "three": "catalog:",
+        "three-mesh-bvh": "0.9.15",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -304,9 +305,11 @@
       "dependencies": {
         "@vibeshape/domain": "workspace:*",
         "@vibeshape/formats": "workspace:*",
+        "three": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@types/three": "catalog:",
         "@vibeshape/typescript-config": "workspace:*",
         "pyodide": "314.0.7",
       },
@@ -1759,6 +1762,8 @@
     "tapable": ["tapable@2.3.3", "", {}, "sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A=="],
 
     "three": ["three@0.185.1", "", {}, "sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg=="],
+
+    "three-mesh-bvh": ["three-mesh-bvh@0.9.15", "", { "peerDependencies": { "three": ">= 0.159.0" } }, "sha512-9xdEDkCzFoT8VPFH9DznwFSdbaIEjMvM106Iqq7TJurrIheUKDcdW4prfJTCxryih4XS/UxWs0H3K4MLMRFyOQ=="],
 
     "tiny-inflate": ["tiny-inflate@1.0.3", "", {}, "sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw=="],
 

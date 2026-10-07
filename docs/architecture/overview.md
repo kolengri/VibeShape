@@ -291,4 +291,5 @@ The registered toolbar/palette command captures eligible editor selection on ope
 reads the same catalog through `list_lightweighting_materials`. UI and MCP share one browser calculation;
 the CAD source remains editable and results are independent snapshots. See
 [ADR-0101](../adr/0101-browser-structural-lightweighting.md) and
-[Structural lightweighting](../product/lightweighting.md).
+[Lightweighting workflows](../product/lightweighting.md), including the graphical task-panel
+and load-free lattice decision in [ADR-0102](../adr/0102-lightweighting-task-workflows.md).

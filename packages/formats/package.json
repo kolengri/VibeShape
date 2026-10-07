@@ -21,13 +21,14 @@
   },
   "dependencies": {
     "@vibeshape/domain": "workspace:*",
+    "dxf-parser": "1.1.2",
     "fflate": "catalog:",
     "opentype.js": "2.0.0",
-    "zod": "catalog:",
-    "dxf-parser": "1.1.2",
     "saxes": "6.0.0",
     "svgpath": "2.6.0",
-    "three": "catalog:"
+    "three": "catalog:",
+    "three-mesh-bvh": "0.9.15",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*",

@@ -1,5 +1,6 @@
 export const editorCommandIds = {
   lightweighting: "org.vibeshape.editor.lightweighting",
+  quickLightweighting: "org.vibeshape.editor.quick-lightweighting",
   createFdm: "org.vibeshape.editor.part-design.create-fdm",
   placePart: "org.vibeshape.editor.part-design.place-part",
   mirrorPart: "org.vibeshape.editor.part-design.mirror-part",
@@ -217,6 +218,7 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "quickLightweighting"
   | "lightweighting"
   | "createFdm"
   | "placePart"

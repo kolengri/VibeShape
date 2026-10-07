@@ -37,6 +37,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | React | MIT | Include a third-party notice |
 | React DOM | MIT | Include a third-party notice |
 | Three.js | MIT | Include a third-party notice |
+| three-mesh-bvh 0.9.15 | MIT | Browser-shipped bounded shell-containment and intersection queries for valid cavity-aware 3MF export; preserve its upstream notice |
 | Vite | MIT | Include a build-time notice according to release policy |
 | Vite React plugin | MIT | Include a build-time notice according to release policy |
 | Zustand | MIT | Include a third-party notice |

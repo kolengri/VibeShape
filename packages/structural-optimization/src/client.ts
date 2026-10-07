@@ -33,6 +33,78 @@ function metricsFeasible(
     )
   )
 }
+function massTargetMatches(
+  input: StructuralOptimizationInput,
+  result: StructuralOptimizationResult,
+) {
+  const requested = input.objective
+  const objective = result.objective
+  if (requested?.kind !== "maximize-stiffness" || objective?.kind !== "maximize-stiffness")
+    return false
+  const targetCount = Math.ceil(result.initialCellCount * requested.retainedMassFraction)
+  return (
+    objective.retainedMassFraction === requested.retainedMassFraction &&
+    objective.targetCellCount === targetCount &&
+    result.finalCellCount >= targetCount &&
+    Math.abs(objective.targetMassKg / result.baseline.massKg - objective.retainedMassFraction) <=
+      1e-8 &&
+    Math.abs(
+      objective.achievedRetainedMassFraction - result.optimized.massKg / result.baseline.massKg,
+    ) <= 1e-8
+  )
+}
+function objectiveMatches(
+  input: StructuralOptimizationInput,
+  result: StructuralOptimizationResult,
+) {
+  if (input.objective?.kind !== "maximize-stiffness")
+    return (
+      result.objective?.kind !== "maximize-stiffness" &&
+      result.termination !== "target-mass-reached"
+    )
+  return (
+    massTargetMatches(input, result) &&
+    targetStatusMatches(result) &&
+    [result.baseline, result.optimized].every((metrics) =>
+      metrics.cases.every(({ complianceNmm }) => complianceNmm > 0),
+    )
+  )
+}
+function targetStatusMatches(result: StructuralOptimizationResult) {
+  const objective = result.objective
+  if (objective?.kind !== "maximize-stiffness") return false
+  const reached = result.finalCellCount === objective.targetCellCount
+  return (
+    (objective.targetStatus === "reached") === reached &&
+    (result.termination === "target-mass-reached") === reached
+  )
+}
+function cellMetricsMatch(
+  input: StructuralOptimizationInput,
+  result: StructuralOptimizationResult,
+) {
+  const cellVolume = input.cellSizeMm ** 3
+  const cellMass = cellVolume * input.material.densityKgM3 * 1e-9
+  return [
+    { metrics: result.baseline, count: result.initialCellCount },
+    { metrics: result.optimized, count: result.finalCellCount },
+  ].every(
+    ({ metrics, count }) =>
+      Math.abs(metrics.volumeMm3 / cellVolume - count) <= 1e-8 &&
+      Math.abs(metrics.massKg / cellMass - count) <= 1e-8,
+  )
+}
+function modelMetricsMatch(
+  input: StructuralOptimizationInput,
+  result: StructuralOptimizationResult,
+) {
+  return (
+    result.cellSizeMm === input.cellSizeMm &&
+    result.iterations <= input.maxIterations &&
+    result.finalCellCount <= result.initialCellCount &&
+    (result.status === "improved") === result.finalCellCount < result.initialCellCount
+  )
+}
 function validateFeasibility(
   input: StructuralOptimizationInput,
   result: StructuralOptimizationResult,
@@ -44,13 +116,10 @@ function validateFeasibility(
         "The solver returned an infeasible result.",
       )
   }
-  const improved = result.finalCellCount < result.initialCellCount
   if (
-    result.cellSizeMm !== input.cellSizeMm ||
-    result.iterations > input.maxIterations ||
-    result.finalCellCount > result.initialCellCount ||
-    result.optimized.volumeMm3 > result.baseline.volumeMm3 * (1 + 1e-8) ||
-    (result.status === "improved") !== improved
+    !modelMetricsMatch(input, result) ||
+    !cellMetricsMatch(input, result) ||
+    !objectiveMatches(input, result)
   )
     throw new StructuralOptimizationError(
       "invalid-result",

@@ -54,6 +54,29 @@ describe("captured exact source authoring", () => {
       Array(paired.commands.length).fill(actor),
     )
   })
+  it("hides only the chosen source atomically while preserving the ordinary import command order", async () => {
+    let ordinal = 100
+    const prepared = await readExactSource(sourceFile(), "millimeter")
+    const result = createImportTransaction(
+      { ...context, authorityVersion: 4 },
+      prepared,
+      inspection,
+      "Candidate",
+      () => id(ordinal++),
+      undefined,
+      id(90),
+    )
+    expect(result.commands.map(({ kind }) => kind)).toEqual([
+      "org.vibeshape.document.add-source-assets",
+      "org.vibeshape.document.metadata-command",
+      "org.vibeshape.history.insert-feature",
+    ])
+    expect(result.commands[1]).toMatchObject({
+      payload: { kind: "part.set-visibility", partId: id(90), visible: false },
+    })
+    expect(result.commands.map(({ baseRevision }) => baseRevision)).toEqual([7, 8, 9])
+    expect(result.assetBlobs).toHaveLength(1)
+  })
   it.each(importSourceUnits)(
     "hashes immutable bytes and records explicit %s metadata without a second STEP transform",
     async (unit) => {

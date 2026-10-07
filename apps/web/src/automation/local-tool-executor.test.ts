@@ -13,6 +13,10 @@ import {
   parseDocumentCommand,
 } from "@vibeshape/domain"
 import { describe, expect, it, vi } from "vitest"
+import {
+  quickLightweightingOperation,
+  quickLightweightingValue,
+} from "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
 const id = (offset = 0) =>
@@ -76,6 +80,48 @@ describe("local automation tool executor", () => {
     expect(readCad).not.toHaveBeenCalled()
     for (const method of Object.values(host)) expect(method).not.toHaveBeenCalled()
   })
+  it("routes a project-targeted quick request only through the captured quick session", async () => {
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn(),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+    }
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.quick",
+      sessionId: id(1),
+    })
+    const execute = vi.fn(async () => ({
+      ok: true as const,
+      value: quickLightweightingValue(true),
+    }))
+    const executor = createLocalToolExecutor(
+      {
+        documentId: id(2),
+        revision: 4,
+        host,
+        readCad: vi.fn(),
+        readInfo: () => null,
+        exportRevisionBound: vi.fn(),
+        quickLightweighting: { execute, cancel: vi.fn(), dispose: vi.fn() },
+      },
+      actor,
+    )
+    const operation = quickLightweightingOperation(true)
+    const signal = new AbortController().signal
+    expect(
+      await executor.execute(
+        localOperationSchema.parse({ ...operation, projectId: id(2) }),
+        signal,
+      ),
+    ).toMatchObject({ ok: true })
+    expect(execute).toHaveBeenCalledWith(actor, operation, signal)
+    for (const method of Object.values(host)) expect(method).not.toHaveBeenCalled()
+  })
+
   it("forwards a custom camera through the owned draft renderer", async () => {
     const actor = commandActorSchema.parse({
       type: "mcp",

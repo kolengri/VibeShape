@@ -40,6 +40,7 @@ import type {
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
 import { serializedQueryBytes } from "@vibeshape/automation-api/query-byte-budget"
+import { quickLightweightingOperationSchema } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import {
   type RenderPreviewArguments,
   type RenderPreviewResult,
@@ -66,6 +67,7 @@ import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
 import type { ProjectToolPort } from "./project-tool-port"
+import type { createBrowserQuickLightweightingAutomationSession } from "./quick-lightweighting-automation-session"
 import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
 
 type LocalExportResult =
@@ -87,6 +89,7 @@ type LocalSessionPort = Readonly<{
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   lightweighting?: ReturnType<typeof createBrowserLightweightingAutomationSession>
+  quickLightweighting?: ReturnType<typeof createBrowserQuickLightweightingAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
   planarImports?: ReturnType<typeof createPlanarImportAutomationSession>
@@ -380,6 +383,14 @@ export function createLocalToolExecutor(
   }
   function reviewedProposal(operation: LocalOperation, signal?: AbortSignal) {
     const { projectId: _projectId, ...untargeted } = operation
+    const quickLightweighting = quickLightweightingOperationSchema.safeParse(untargeted)
+    if (quickLightweighting.success)
+      return session.quickLightweighting
+        ? session.quickLightweighting.execute(actor, quickLightweighting.data, signal)
+        : localFailure(
+            "lightweighting-unavailable",
+            "The paired session cannot generate quick lightweighting.",
+          )
     const lightweighting = lightweightingOperationSchema.safeParse(untargeted)
     if (lightweighting.success)
       return session.lightweighting

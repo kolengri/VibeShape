@@ -55,6 +55,11 @@ function result(): StructuralOptimizationResult {
     warnings: [],
   }
 }
+function stiffnessMetadata(output: StructuralOptimizationResult) {
+  if (output.objective?.kind !== "maximize-stiffness")
+    throw new Error("The fixture requires stiffness metadata.")
+  return output.objective
+}
 class FakeWorker {
   static instance: FakeWorker
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null
@@ -88,6 +93,123 @@ describe("bounded structural worker client", () => {
     expect(progress).toHaveBeenCalledWith("solving")
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
+  })
+  it.each(["reached", "not-reached"] as const)(
+    "accepts measured %s stiffness-target metadata",
+    async (targetStatus) => {
+      const retainedMassFraction = targetStatus === "reached" ? 1 : 0.96
+      const request = {
+        ...input,
+        objective: { kind: "maximize-stiffness" as const, retainedMassFraction },
+      }
+      const output = result()
+      output.objective = {
+        ...request.objective,
+        targetMassKg: 0.00004 * retainedMassFraction,
+        targetCellCount: targetStatus === "reached" ? 40 : 39,
+        achievedRetainedMassFraction: 1,
+        targetStatus,
+      }
+      if (targetStatus === "reached") output.termination = "target-mass-reached"
+      const pending = optimizeStructuralModel(request, options)
+      FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+      await expect(pending).resolves.toEqual(output)
+    },
+  )
+  it.each<
+    [string, (output: StructuralOptimizationResult, request: StructuralOptimizationInput) => void]
+  >([
+    [
+      "missing",
+      (output) => {
+        delete output.objective
+      },
+    ],
+    [
+      "request-objective",
+      (_, request) => {
+        delete request.objective
+      },
+    ],
+    [
+      "fraction",
+      (output) => {
+        stiffnessMetadata(output).retainedMassFraction = 0.9
+      },
+    ],
+    [
+      "target-count",
+      (output) => {
+        stiffnessMetadata(output).targetCellCount = 40
+      },
+    ],
+    [
+      "target-mass",
+      (output) => {
+        stiffnessMetadata(output).targetMassKg = 0.00004
+      },
+    ],
+    [
+      "achieved-fraction",
+      (output) => {
+        stiffnessMetadata(output).achievedRetainedMassFraction = 0.975
+      },
+    ],
+    [
+      "status",
+      (output) => {
+        stiffnessMetadata(output).targetStatus = "reached"
+      },
+    ],
+    [
+      "termination",
+      (output) => {
+        output.termination = "target-mass-reached"
+      },
+    ],
+    [
+      "mass",
+      (output) => {
+        output.optimized.massKg *= 0.5
+      },
+    ],
+    [
+      "undershoot",
+      (output) => {
+        output.finalCellCount = 38
+        output.optimized.massKg = 0.000038
+        output.optimized.volumeMm3 = 38
+        output.status = "improved"
+        stiffnessMetadata(output).achievedRetainedMassFraction = 0.95
+      },
+    ],
+    [
+      "compliance",
+      (output) => {
+        const loadCase = output.optimized.cases[0]
+        if (!loadCase) throw new Error("The fixture load case is required.")
+        loadCase.complianceNmm = 0
+      },
+    ],
+  ])("rejects forged stiffness %s metadata", async (_, forge) => {
+    const output = result()
+    output.objective = {
+      kind: "maximize-stiffness",
+      retainedMassFraction: 0.96,
+      targetMassKg: 0.0000384,
+      targetCellCount: 39,
+      achievedRetainedMassFraction: 1,
+      targetStatus: "not-reached",
+    }
+    const request: StructuralOptimizationInput = {
+      ...input,
+      objective: { kind: "maximize-stiffness" as const, retainedMassFraction: 0.96 },
+    }
+    forge(output, request)
+    const pending = optimizeStructuralModel(request, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+    expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
   it("terminates canceled work and ignores a late result", async () => {
     const controller = new AbortController()

@@ -10,7 +10,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { agentSkillResources } from "@vibeshape/automation-api/agent-skills"
 import { BINARY_EXPORT_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/binary-exports"
+import { lightweightingOperationSchema } from "@vibeshape/automation-api/lightweighting-tools"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
+import { quickLightweightingOperationSchema } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import {
   remotePairResponseSchema,
   remoteServerMessageSchema,
@@ -20,8 +22,13 @@ import {
   lightweightingId,
   lightweightingOperation,
   lightweightingSnapshot,
+  lightweightingStiffnessSummary,
   lightweightingSummary,
 } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
+import {
+  quickLightweightingOperation,
+  quickLightweightingValue,
+} from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import type { RemoteEnv } from "./environment"
 import worker from "./index"
@@ -565,19 +572,58 @@ describe("remote MCP in workerd", () => {
     })
     expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
   })
-  it.each([false, true])(
-    "routes bounded lightweighting evidence and revokes a forged source (request=%s)",
-    async (request) => {
+  it.each([
+    { quick: false, request: false, variant: false },
+    { quick: false, request: true, variant: false },
+    { quick: true, request: false, variant: false },
+    { quick: true, request: true, variant: false },
+    { quick: false, request: false, variant: true },
+    { quick: true, request: false, variant: true },
+  ])(
+    "routes bounded lightweighting evidence and revokes a forged source (quick=$quick, request=$request, variant=$variant)",
+    async ({ quick, request, variant }) => {
       const tab = await pair()
       const authenticated = await authorizeTab(tab)
-      const command = lightweightingOperation(request)
-      const value = {
-        documentId: lightweightingId(3),
-        baseRevision: 4,
-        source: command.arguments.source,
-        summary: lightweightingSummary(),
-        ...(request ? { snapshot: lightweightingSnapshot() } : {}),
-      }
+      const base = quick ? quickLightweightingOperation(request) : lightweightingOperation(request)
+      const command = !variant
+        ? base
+        : quick
+          ? quickLightweightingOperationSchema.parse({
+              ...base,
+              arguments: {
+                ...base.arguments,
+                settings: {
+                  ...base.arguments.settings,
+                  cellType: "schwarz-d",
+                  latticeCellSizeMm: 9,
+                },
+              },
+            })
+          : lightweightingOperationSchema.parse({
+              ...base,
+              arguments: {
+                ...base.arguments,
+                settings: {
+                  ...base.arguments.settings,
+                  objective: { kind: "maximize-stiffness", retainedMassFraction: 0.8 },
+                },
+              },
+            })
+      const quickValue = quickLightweightingValue(request)
+      const value = quick
+        ? {
+            ...quickValue,
+            ...(variant
+              ? { summary: { ...quickValue.summary, cellType: "schwarz-d", latticeCellSizeMm: 9 } }
+              : {}),
+          }
+        : {
+            documentId: lightweightingId(3),
+            baseRevision: 4,
+            source: command.arguments.source,
+            summary: variant ? lightweightingStiffnessSummary() : lightweightingSummary(),
+            ...(request ? { snapshot: lightweightingSnapshot() } : {}),
+          }
       const send = async (id: number, output: unknown) => {
         const work = nextMessage(tab.socket)
         const pending = mcp(authenticated.token, id, "tools/call", {
@@ -1248,6 +1294,8 @@ describe("remote MCP in workerd", () => {
       expect.arrayContaining([
         "analyze_lightweighting",
         "request_lightweighting",
+        "analyze_quick_lightweighting",
+        "request_quick_lightweighting",
         "create_datum_plane",
         "update_datum_plane",
         "create_boolean",

@@ -1,5 +1,5 @@
 import type { PartId } from "@vibeshape/domain/identifiers"
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import {
   type DocumentControllerState,
   getProjectActiveWorkBlock,
@@ -20,20 +20,25 @@ export function useLightweightingCommand({
   selection?: { featureId: string; outputRole?: string } | null
   assemblyActive?: boolean
 }) {
-  const [dialog, setDialog] = useState({ open: false, initialPartId: "" })
+  const [dialog, setDialog] = useState({
+    open: false,
+    initialPartId: "",
+    mode: "structural" as "structural" | "quick",
+  })
+  const setOpen = useCallback((open: boolean) => {
+    setDialog((current) => ({ ...current, open }))
+  }, [])
   return {
     ...dialog,
     blocked: getProjectActiveWorkBlock() !== null || assemblyActive,
-    show() {
+    show(mode: "structural" | "quick" = "structural") {
       const selected = selectedPlacementPart(
         availableLightweightingParts(controller),
         selectedPartId,
         selectedBody ?? selection,
       )
-      setDialog({ open: true, initialPartId: selected?.part.id ?? "" })
+      setDialog({ open: true, initialPartId: selected?.part.id ?? "", mode })
     },
-    setOpen(open: boolean) {
-      setDialog((current) => ({ ...current, open }))
-    },
+    setOpen,
   }
 }

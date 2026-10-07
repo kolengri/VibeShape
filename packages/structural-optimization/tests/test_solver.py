@@ -8,6 +8,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 import trimesh
+from surface_target_fixtures import (verify_curved_surface_membership_and_preservation,
+                                     verify_rotated_surface_membership,
+                                     verify_surface_boundary_freeze,
+                                     verify_trimmed_surface_ties_and_missing_facets)
 
 
 spec = importlib.util.spec_from_file_location("structural_solver", Path(__file__).parents[1] / "src" / "solver.py")
@@ -82,6 +86,94 @@ def test_all_preserved_cells_return_verified_no_improvement():
     assert result["status"] == "no-improvement"
     assert result["termination"] == "no-removable-cells"
     assert result["optimized"] == result["baseline"]
+
+
+@pytest.mark.parametrize("fraction,target_count", [(0.96, 39), (0.95, 38), (1, 40)])
+def test_stiffness_target_stops_at_conservative_retained_baseline_mass(fraction, target_count):
+    request = request_for_box(4)
+    request["objective"] = {"kind": "maximize-stiffness", "retainedMassFraction": fraction}
+    result = solver.solve(request)
+    assert result["initialCellCount"] == 40
+    assert result["finalCellCount"] == target_count
+    assert result["termination"] == "target-mass-reached"
+    objective = result["objective"]
+    assert objective["targetStatus"] == "reached"
+    assert objective["targetCellCount"] == target_count
+    assert objective["targetMassKg"] == pytest.approx(0.00004 * fraction)
+    assert objective["achievedRetainedMassFraction"] == pytest.approx(target_count / 40)
+    assert result["optimized"]["massKg"] >= objective["targetMassKg"]
+    assert result["optimized"]["safetyFactor"] >= 2
+    assert result["optimized"]["maxDisplacementMm"] <= 1
+    assert result["optimized"]["cases"][0]["complianceNmm"] > 0
+    assert output_mesh(result).volume == pytest.approx(target_count)
+    assert result["sourceVolumeLossFraction"] == pytest.approx(0)
+    assert not any("target not reached" in warning for warning in result["warnings"])
+
+
+@pytest.mark.parametrize("blocker,termination", [("iterations", "iteration-limit"),
+                                                  ("preserved", "no-removable-cells"),
+                                                  ("topology", "constraints-or-topology"),
+                                                  ("constraints", "constraints-or-topology")])
+def test_stiffness_unreachable_targets_report_verified_remaining_mass(blocker, termination):
+    request = request_for_box(4)
+    fraction = 0.9 if blocker == "topology" else 0.1
+    target_count = 36 if blocker == "topology" else 4
+    request["objective"] = {"kind": "maximize-stiffness", "retainedMassFraction": fraction}
+    if blocker == "iterations":
+        request["maxIterations"] = 1
+    elif blocker == "preserved":
+        request["preserveRegions"] = [{"min": [-5, -1, -1], "max": [5, 1, 1]}]
+    elif blocker == "constraints":
+        request["maxDisplacementMm"] = 0.0250000001
+    result = solver.solve(request)
+    assert result["termination"] == termination
+    objective = result["objective"]
+    assert objective["targetStatus"] == "not-reached"
+    assert objective["targetCellCount"] == target_count
+    assert result["finalCellCount"] > target_count
+    assert objective["achievedRetainedMassFraction"] == pytest.approx(result["optimized"]["massKg"] / result["baseline"]["massKg"])
+    assert any("target not reached" in warning for warning in result["warnings"])
+    assert result["optimized"]["safetyFactor"] >= request["safetyFactor"]
+    assert result["optimized"]["maxDisplacementMm"] <= request["maxDisplacementMm"]
+    assert output_mesh(result).volume == pytest.approx(result["optimized"]["volumeMm3"])
+
+
+def test_zero_iterations_full_mass_target_is_already_reached():
+    request = request_for_box(0)
+    request["objective"] = {"kind": "maximize-stiffness", "retainedMassFraction": 1}
+    result = solver.solve(request)
+    assert result["objective"]["targetStatus"] == "reached"
+    assert result["termination"] == "target-mass-reached"
+    assert result["iterations"] == 0 and result["evaluations"] == 2
+    assert result["optimized"] == result["baseline"]
+
+
+def test_explicit_minimum_mass_preserves_the_legacy_default_result():
+    request = request_for_box(4)
+    legacy = solver.solve(request)
+    request["objective"] = {"kind": "minimize-mass"}
+    explicit = solver.solve(request)
+    assert "objective" not in legacy
+    assert explicit.pop("objective") == {"kind": "minimize-mass"}
+    assert explicit == legacy
+
+
+@pytest.mark.parametrize("objective", [None, {}, {"kind": "unknown"},
+    {"kind": "minimize-mass", "retainedMassFraction": 0.5},
+    {"kind": "maximize-stiffness"},
+    {"kind": "maximize-stiffness", "retainedMassFraction": 0.099},
+    {"kind": "maximize-stiffness", "retainedMassFraction": 1.001},
+    {"kind": "maximize-stiffness", "retainedMassFraction": float("nan")},
+    {"kind": "maximize-stiffness", "retainedMassFraction": float("inf")},
+    {"kind": "maximize-stiffness", "retainedMassFraction": True},
+    {"kind": "maximize-stiffness", "retainedMassFraction": 0.5, "targetMassKg": 1},
+])
+def test_invalid_objectives_are_rejected_at_the_python_boundary(objective):
+    request = request_for_box()
+    request["objective"] = objective
+    with pytest.raises(solver.SolverError) as error:
+        solver.solve(request)
+    assert error.value.code == "invalid-input"
 
 
 def test_every_load_case_constrains_the_result_and_has_separate_metrics():
@@ -234,3 +326,31 @@ def test_conservative_cell_clipping_never_emits_rotated_source_expansion():
     assert np.max(np.abs(cross)) <= 2 + 1e-6
     assert result["sourceVolumeLossFraction"] > 0
     assert result["baseline"]["volumeMm3"] < 160
+
+
+@pytest.mark.parametrize("verify", [verify_rotated_surface_membership,
+                                    verify_curved_surface_membership_and_preservation,
+                                    verify_trimmed_surface_ties_and_missing_facets,
+                                    verify_surface_boundary_freeze])
+def test_surface_target_invariants(verify):
+    verify(solver)
+
+
+@pytest.mark.parametrize("region", [
+    {"kind": "surface", "triangleIndices": [], "depthMm": 1},
+    {"kind": "surface", "triangleIndices": [0, 0], "depthMm": 1},
+    {"kind": "surface", "triangleIndices": [-1], "depthMm": 1},
+    {"kind": "surface", "triangleIndices": [12], "depthMm": 1},
+    {"kind": "surface", "triangleIndices": [True], "depthMm": 1},
+    {"kind": "surface", "triangleIndices": [0.5], "depthMm": 1},
+    {"kind": "surface", "triangleIndices": [0], "depthMm": 0},
+    {"kind": "surface", "triangleIndices": [0], "depthMm": float("nan")},
+    {"kind": "surface", "triangleIndices": [0], "depthMm": float("inf")},
+    {"kind": "surface", "triangleIndices": [0], "depthMm": 1, "faceId": "transient"},
+])
+def test_invalid_surface_regions_fail_at_the_python_boundary(region):
+    request = request_for_box()
+    request["supports"] = [region]
+    with pytest.raises(solver.SolverError) as error:
+        solver.solve(request)
+    assert error.value.code == "invalid-input"
