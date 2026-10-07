@@ -665,13 +665,16 @@ export function createBrowserBroker({
       }),
     )
   }
+  function canConnect() {
+    return !disposed && client !== null && (pair === null || pair.suspendedUntil !== null)
+  }
   async function connectRoute(request: Request) {
     if (!client)
       return response(
         409,
         failure("client-not-initialized", "The local automation client is not initialized."),
       )
-    if (pair)
+    if (!canConnect())
       return response(
         409,
         failure("already-paired", "A local automation session is already paired."),
@@ -680,11 +683,14 @@ export function createBrowserBroker({
     const parsed = localConnectRequestSchema.safeParse(body)
     if (!parsed.success)
       return response(400, failure("invalid-connect", "The connect request is invalid."))
-    if (disposed || pair || !client)
+    if (!canConnect() || !client)
       return response(
         409,
         failure("already-paired", "A local automation session is already paired."),
       )
+    // Fresh browser consent may replace suspended authority after tab credentials are lost.
+    // Validate the new request first; an active owner is never displaced.
+    if (pair) revoke()
     const token = randomBytes(32)
     const candidate: Pair = {
       token,

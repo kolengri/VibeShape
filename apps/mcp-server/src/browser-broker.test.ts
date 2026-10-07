@@ -1635,3 +1635,26 @@ it("acknowledges a lost result response once and rejects an altered completion",
   }
   expect((await broker.handle(request("result", altered, token))).status).toBe(409)
 })
+
+it("replaces suspended authority with a fresh pairing without displacing an active owner", async () => {
+  const broker = makeBroker({ origin })
+  const { token } = await connect(broker)
+  expect((await broker.handle(request("connect", { protocolVersion: 1, document }))).status).toBe(
+    409,
+  )
+  expect(broker.isPaired()).toBe(true)
+  expect((await broker.handle(request("suspend", {}, token))).status).toBe(200)
+  expect(
+    (await broker.handle(request("connect", { protocolVersion: 1, document: {} }))).status,
+  ).toBe(400)
+  const target = { ...document, id: "0195b5ac-b220-7a2c-8c33-67a36a7f6102" }
+  const response = await broker.handle(request("connect", { protocolVersion: 1, document: target }))
+  expect(response.status).toBe(200)
+  const fresh = localConnectResponseSchema.parse(await response.json())
+  expect(fresh.token).not.toBe(token)
+  expect(broker.isPaired()).toBe(true)
+  expect(
+    (await broker.handle(request("resume", { protocolVersion: 1, document }, token))).status,
+  ).toBe(401)
+  expect((await broker.handle(request("suspend", {}, fresh.token))).status).toBe(200)
+})

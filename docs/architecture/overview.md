@@ -288,5 +288,5 @@ Committed Undo/Redo uses verified historical revision references, serialized lea
 Structural lightweighting uses a separate disposable numerical worker, pure domain settings/summary
 schemas, and the existing mesh-import transaction. UI and MCP share one browser calculation;
 the CAD source remains editable and results are independent snapshots. See
-[ADR-0100](../adr/0100-browser-structural-lightweighting.md) and
+[ADR-0101](../adr/0101-browser-structural-lightweighting.md) and
 [Structural lightweighting](../product/lightweighting.md).

@@ -41,6 +41,41 @@ type Pair = {
   queuedWork: LocalWork | null
   timer: ReturnType<typeof setTimeout> | null
 }
+const preferenceKey = "vibeshape-local-ai-preferences"
+const preferenceSchema = z
+  .object({
+    client: localConnectResponseSchema.shape.client,
+    autoApply: z.boolean(),
+  })
+  .strict()
+function readPreference() {
+  try {
+    const value = preferenceSchema.safeParse(
+      JSON.parse(window.localStorage.getItem(preferenceKey) ?? "null"),
+    )
+    return value.success ? value.data : null
+  } catch {
+    return null
+  }
+}
+function writePreference(client: LocalConnection["client"], autoApply: boolean) {
+  try {
+    window.localStorage.setItem(preferenceKey, JSON.stringify({ client, autoApply }))
+    return true
+  } catch {
+    return false
+  }
+}
+function clearPreference() {
+  try {
+    window.localStorage.removeItem(preferenceKey)
+  } catch {
+    /* Storage can be unavailable. */
+  }
+}
+function sameClient(left: LocalConnection["client"], right: LocalConnection["client"] | null) {
+  return left.name === right?.name && left.version === right?.version
+}
 const resumeKey = "vibeshape-local-ai-resume"
 const resumeSchema = z
   .object({
@@ -70,6 +105,11 @@ function clearResume() {
     /* Storage can be unavailable. */
   }
 }
+class LocalAutomationSessionLostError extends Error {}
+function requireSessionCredential(response: { status: number }) {
+  if (response.status === 401 || response.status === 410)
+    throw new LocalAutomationSessionLostError("The local session credential is no longer valid.")
+}
 const acknowledgement = z.object({ ok: z.literal(true) }).strict()
 
 export function createLocalAutomationConnection() {
@@ -86,6 +126,7 @@ export function createLocalAutomationConnection() {
   let pair: Pair | null = null
   let generation = 0
   let revokedThroughGeneration = -1
+  let automaticConnectionBlocked = false
   let connecting = false
   let disposed = false
   let restoreTimer: ReturnType<typeof setTimeout> | null = null
@@ -164,7 +205,7 @@ export function createLocalAutomationConnection() {
     current.handle.dispose()
     if (pair === current) pair = null
   }
-  async function disable() {
+  async function disconnect() {
     generation += 1
     revokedThroughGeneration = generation
     const saved = readResume()
@@ -185,9 +226,15 @@ export function createLocalAutomationConnection() {
     const credential = current?.credential ?? saved
     if (credential && !(await revokeCredential(credential))) publish({ ...snapshot, error: true })
   }
+  async function disable() {
+    automaticConnectionBlocked = true
+    clearPreference()
+    await disconnect()
+  }
   async function fail(current: Pair) {
     if (pair !== current) return
-    await disable()
+    automaticConnectionBlocked = true
+    await disconnect()
     publish({ ...snapshot, error: true })
   }
   function isProjectChange(current: Pair) {
@@ -197,7 +244,7 @@ export function createLocalAutomationConnection() {
   function validateDocumentScope() {
     const current = pair
     if (!current || (snapshot.projectManagement && isProjectChange(current))) return
-    if (!current.handle.readIdentity()) void disable()
+    if (!current.handle.readIdentity()) void disconnect()
   }
   function createExecutor(current: Pair) {
     return createLocalToolExecutor(
@@ -224,7 +271,9 @@ export function createLocalAutomationConnection() {
           current.handle.dispose()
           current.handle = created
           current.executor = createExecutor(current)
-          publish({ ...snapshot, autoApply: false })
+          const autoApply = snapshot.autoApply && created.enableAutoApply(current.credential.actor)
+          publish({ ...snapshot, autoApply })
+          saveResume(current)
           return true
         },
       }),
@@ -278,7 +327,12 @@ export function createLocalAutomationConnection() {
       error: false,
     })
     if (saved) retryRestore()
-    else clearResume()
+    else {
+      clearResume()
+      const preference = readPreference()
+      if (!automaticConnectionBlocked && preference && sameClient(preference.client, value.client))
+        void enable(preference.client)
+    }
   }
   async function dispatch(current: Pair, work: LocalWork) {
     if (pair !== current) return
@@ -375,6 +429,7 @@ export function createLocalAutomationConnection() {
       "commit_draft",
       "commit_import_upload",
       "commit_planar_import_upload",
+      "request_lightweighting",
       "change_metadata",
       "commit_assembly_draft",
       "undo_model",
@@ -399,6 +454,7 @@ export function createLocalAutomationConnection() {
     if (current.credential.expiresAt - Date.now() >= 5 * 60_000) return
     const renewed = await localAutomationRequest("/renew", {}, current.credential.token)
     if (pair !== current) return
+    requireSessionCredential(renewed)
     if (retryableResponse(renewed))
       throw new LocalAutomationTransportError("Session renewal is temporarily unavailable.")
     if (!renewed.ok) throw new Error("The local AI session expired.")
@@ -428,6 +484,7 @@ export function createLocalAutomationConnection() {
       current.credential.token,
     )
     if (pair !== current) return
+    requireSessionCredential(response)
     if (retryableResponse(response))
       throw new LocalAutomationTransportError("The browser poll is temporarily unavailable.")
     const value = localPollResponseSchema.parse(response.data)
@@ -436,20 +493,25 @@ export function createLocalAutomationConnection() {
       throw new Error("The session was revoked.")
     if (value.work) acceptWork(current, value.work)
   }
+  async function handlePollFailure(current: Pair, error: unknown) {
+    if (pair !== current) return
+    if (error instanceof LocalAutomationTransportError) await recover(current)
+    else if (error instanceof LocalAutomationSessionLostError) await disconnect()
+    else await fail(current)
+  }
   async function pollSession(current: Pair) {
     try {
       if (isProjectChange(current) && current.active?.acknowledging) return
       const info = retainedIdentity(current)
       if (!info) {
-        await disable()
+        await disconnect()
         return
       }
       await renew(current)
       if (pair !== current) return
       await deliverPoll(current, info)
     } catch (error) {
-      if (error instanceof LocalAutomationTransportError) await recover(current)
-      else await fail(current)
+      await handlePollFailure(current, error)
     }
   }
   async function poll(current: Pair) {
@@ -479,13 +541,11 @@ export function createLocalAutomationConnection() {
   function connectionStillCurrent(created: Handle, at: number) {
     return generation === at && !disposed && created.readIdentity() !== null
   }
-  async function connect(
-    created: Handle,
-    at: number,
-    saved?: NonNullable<ReturnType<typeof readResume>>,
+  async function requestConnection(
+    info: NonNullable<Identity>,
+    saved: ReturnType<typeof readResume> | undefined,
+    expectedClient: LocalConnection["client"] | undefined,
   ) {
-    const info = created.readIdentity()
-    if (!info) throw new Error("The document session is unavailable.")
     const response = await localAutomationRequest(
       saved ? "/resume" : "/connect",
       {
@@ -500,8 +560,24 @@ export function createLocalAutomationConnection() {
     )
     if (retryableResponse(response))
       throw new LocalAutomationTransportError("The local bridge is temporarily unavailable.")
+    if (saved) requireSessionCredential(response)
     if (!response.ok) throw new Error("The local AI bridge rejected pairing.")
     const credential = localConnectResponseSchema.parse(response.data)
+    if (expectedClient && !sameClient(expectedClient, credential.client)) {
+      await revokeCredential(credential)
+      throw new Error("The approved local MCP client changed.")
+    }
+    return credential
+  }
+  async function connect(
+    created: Handle,
+    at: number,
+    saved?: NonNullable<ReturnType<typeof readResume>>,
+    expectedClient?: LocalConnection["client"],
+  ) {
+    const info = created.readIdentity()
+    if (!info) throw new Error("The document session is unavailable.")
+    const credential = await requestConnection(info, saved, expectedClient)
     if (!connectionStillCurrent(created, at)) {
       return discardLateConnection(created, at, credential)
     }
@@ -517,7 +593,15 @@ export function createLocalAutomationConnection() {
     }
     pair = current
     current.executor = createExecutor(current)
-    publishConnection(current, saved?.autoApply === true)
+    const preference = readPreference()
+    publishConnection(
+      current,
+      preference && sameClient(preference.client, credential.client)
+        ? preference.autoApply
+        : saved?.autoApply === true,
+    )
+    if (!writePreference(credential.client, snapshot.autoApply))
+      publish({ ...snapshot, error: true })
     saveResume(current)
     void poll(current)
     return true
@@ -535,14 +619,15 @@ export function createLocalAutomationConnection() {
   function canEnable() {
     return !disposed && !connecting && !pair && snapshot.available && snapshot.client !== null
   }
-  async function enable() {
+  async function enable(expectedClient?: LocalConnection["client"]) {
     if (!canEnable()) return false
+    automaticConnectionBlocked = false
     connecting = true
     const at = ++generation
     const created = createActiveDocumentAutomationSession()
     try {
       if (!created.ok) throw new Error("The active document is unavailable.")
-      return await connect(created, at)
+      return await connect(created, at, undefined, expectedClient)
     } catch {
       if (created.ok) created.dispose()
       if (generation === at) publish({ ...snapshot, connected: false, error: true })
@@ -557,10 +642,7 @@ export function createLocalAutomationConnection() {
       throw new LocalAutomationTransportError("The local bridge is temporarily unavailable.")
     const status = localStatusSchema.parse(response.data)
     if (!status.client) throw new LocalAutomationTransportError("The local MCP client is starting.")
-    if (
-      saved.client &&
-      (saved.client.name !== status.client.name || saved.client.version !== status.client.version)
-    )
+    if (saved.client && !sameClient(saved.client, status.client))
       throw new Error("The approved local MCP client changed.")
   }
   async function recoveryFailure(
@@ -571,6 +653,7 @@ export function createLocalAutomationConnection() {
     if (generation === at && error instanceof LocalAutomationTransportError) {
       retryRestore()
     } else if (generation === at) {
+      automaticConnectionBlocked = !(error instanceof LocalAutomationSessionLostError)
       clearResume()
       await revokeCredential(saved)
       if (generation === at) publish({ ...snapshot, recovering: false, error: true })
@@ -616,11 +699,11 @@ export function createLocalAutomationConnection() {
     }
     if (info.id !== saved.documentId) {
       created.dispose()
-      await disable()
+      await disconnect()
       return
     }
     try {
-      await connect(created, at, saved)
+      await connect(created, at, saved, saved.client)
     } catch (error) {
       created.dispose()
       throw error
@@ -659,7 +742,7 @@ export function createLocalAutomationConnection() {
     void status()
   }
   return {
-    enable,
+    enable: () => enable(),
     validateDocumentScope,
     isProjectActionPending: () =>
       pair !== null && snapshot.projectManagement && isProjectChange(pair),
@@ -685,8 +768,12 @@ export function createLocalAutomationConnection() {
         !current.handle.enableAutoApply(current.credential.actor)
       )
         return false
+      if (!writePreference(current.credential.client, true)) {
+        if (!current.handle.disableAutoApply()) void disable()
+        return false
+      }
       publish({ ...snapshot, autoApply: true })
-      saveResume(current)
+      if (!saveResume(current)) void disable()
       return true
     },
     disableAutoApply() {
@@ -699,7 +786,7 @@ export function createLocalAutomationConnection() {
       )
         return false
       publish({ ...snapshot, autoApply: false })
-      if (!saveResume(current)) void disable()
+      if (!writePreference(current.credential.client, false) || !saveResume(current)) void disable()
       return true
     },
     disable,

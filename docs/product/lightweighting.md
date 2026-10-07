@@ -81,5 +81,5 @@ must be a valid CAD solid, but tessellation self-intersections are not exhaustiv
 constraints concern the analyzed grid only. Physical load testing and an appropriate higher fidelity
 analysis remain necessary before relying on a load-bearing part.
 
-See [the architecture decision](../adr/0100-browser-structural-lightweighting.md),
+See [the architecture decision](../adr/0101-browser-structural-lightweighting.md),
 [testing strategy](../testing-strategy.md), and [licensing](../licensing.md).

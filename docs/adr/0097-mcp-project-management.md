@@ -1,6 +1,7 @@
 # ADR-0097: Browser-owned MCP project management
 
 - Status: **Accepted**
+- Local browser preference scope superseded by [ADR-0100](0100-remembered-local-mcp-preferences.md).
 - Date: 2026-10-04
 
 ## Context

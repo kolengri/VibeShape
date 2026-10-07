@@ -17,6 +17,12 @@ import {
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurements"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  lightweightingOperation,
+  lightweightingSnapshot,
+  lightweightingSummary,
+} from "../../../../packages/automation-api/src/lightweighting.test-fixtures"
+import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { automationReviews } from "./automation-review-controller"
 import type { AutomationReviewState } from "./automation-review-state"
 import { createLocalAutomationConnection } from "./local-automation-connection"
@@ -93,6 +99,7 @@ function historyReview(direction: "undo" | "redo"): AutomationReviewState {
 
 beforeEach(() => {
   sessionStorage.clear()
+  vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.useFakeTimers()
   vi.clearAllMocks()
   review = null
@@ -123,6 +130,7 @@ afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 async function startPending(operation: unknown) {
@@ -160,6 +168,50 @@ async function currentProgress() {
 }
 
 describe("local history manual review progress", () => {
+  it("reports lightweighting snapshot execution, review, applying and idle", async () => {
+    const operation = lightweightingOperation(true)
+    const { work, release } = await startPending(operation)
+    expect(await currentProgress()).toEqual({ requestId: work.requestId, stage: "executing" })
+    review = historyReview("undo")
+    expect(await currentProgress()).toEqual({ requestId: work.requestId, stage: "review" })
+    review = { ...review, status: "applying" }
+    expect(await currentProgress()).toEqual({ requestId: work.requestId, stage: "applying" })
+    release({
+      ok: true,
+      value: {
+        documentId,
+        baseRevision,
+        source: operation.arguments.source,
+        summary: lightweightingSummary(),
+        snapshot: { ...lightweightingSnapshot(), documentId },
+      },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await currentProgress()).toBeNull()
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false })
+  })
+
+  it("keeps lightweighting analysis executing during an unrelated manual review", async () => {
+    const operation = lightweightingOperation()
+    const { work, release } = await startPending(operation)
+    review = historyReview("undo")
+    expect(await currentProgress()).toEqual({ requestId: work.requestId, stage: "executing" })
+    review = { ...review, status: "applying" }
+    expect(await currentProgress()).toEqual({ requestId: work.requestId, stage: "executing" })
+    release({
+      ok: true,
+      value: {
+        documentId,
+        baseRevision,
+        source: operation.arguments.source,
+        summary: lightweightingSummary(),
+      },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await currentProgress()).toBeNull()
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false })
+  })
+
   it.each(["undo", "redo"] as const)(
     "reports pending %s through executing, review, applying and idle",
     async (direction) => {

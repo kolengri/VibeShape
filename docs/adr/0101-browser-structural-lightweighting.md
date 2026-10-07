@@ -1,4 +1,4 @@
-# ADR-0100: Browser Structural Lightweighting Snapshots
+# ADR-0101: Browser Structural Lightweighting Snapshots
 
 - Status: Accepted with reduced scope
 - Date: 2026-10-07
