@@ -1,4 +1,8 @@
-import { localModelInfoSchema, localOperationSchema } from "@vibeshape/automation-api/local-tools"
+import {
+  localModelInfoSchema,
+  localOperationSchema,
+  localToolOutputs,
+} from "@vibeshape/automation-api/local-tools"
 import { documentSummaryViewSchema } from "@vibeshape/automation-api/queries"
 import {
   commandActorSchema,
@@ -37,6 +41,41 @@ const edgeReference = (featureId: ReturnType<typeof featureIdSchema.parse>, role
 })
 
 describe("local automation tool executor", () => {
+  it("returns the shared material catalog without invoking document or geometry services", async () => {
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn(),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+    }
+    const readInfo = vi.fn(() => null)
+    const readCad = vi.fn()
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.materials",
+      sessionId: id(1),
+    })
+    const executor = createLocalToolExecutor(
+      { documentId: id(2), revision: 4, host, readCad, readInfo, exportRevisionBound: vi.fn() },
+      actor,
+    )
+    const result = localToolOutputs.list_lightweighting_materials.parse(
+      await executor.execute(
+        localOperationSchema.parse({ tool: "list_lightweighting_materials", arguments: {} }),
+      ),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("Expected a catalog result.")
+    expect(result.value.presets.find(({ id }) => id === "petg")).toMatchObject({
+      material: { youngModulusMpa: 1939, yieldStrengthMpa: 46.2, densityKgM3: 1270 },
+    })
+    expect(result.value.presets).toHaveLength(8)
+    expect(readInfo).not.toHaveBeenCalled()
+    expect(readCad).not.toHaveBeenCalled()
+    for (const method of Object.values(host)) expect(method).not.toHaveBeenCalled()
+  })
   it("forwards a custom camera through the owned draft renderer", async () => {
     const actor = commandActorSchema.parse({
       type: "mcp",

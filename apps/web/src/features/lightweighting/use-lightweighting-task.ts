@@ -262,20 +262,24 @@ function useTaskLifecycle({
 }
 export function useLightweightingTask({
   controller,
+  initialPartId = "",
   disabled,
   copy,
   onApplied,
   onApplyingChange,
 }: {
   controller: DocumentControllerState
+  initialPartId?: string
   disabled: boolean
   copy: TaskCopy
   onApplied: () => void
   onApplyingChange: (applying: boolean) => void
 }) {
-  const [partId, setPartId] = useState("")
+  const [partId, setPartId] = useState(() =>
+    lightweightingSource(controller, initialPartId) ? initialPartId : "",
+  )
   const [fields, setFields] = useState(() =>
-    initialLightweightingFields(null, copy.initialCaseName),
+    initialLightweightingFields(lightweightingSource(controller, partId), copy.initialCaseName),
   )
   const [ready, setReady] = useState<ReadyResult | null>(null)
   const [previewReady, setPreviewReady] = useState(false)

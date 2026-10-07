@@ -7,10 +7,18 @@ import { cn } from "#lib/cn"
 type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
   id?: string
   label: ReactNode
+  "aria-describedby"?: string
   onBlur?: FocusEventHandler<HTMLButtonElement>
 }
 
-function SelectField({ id: providedId, label, onBlur, children, ...props }: SelectFieldProps) {
+function SelectField({
+  id: providedId,
+  label,
+  onBlur,
+  children,
+  "aria-describedby": describedBy,
+  ...props
+}: SelectFieldProps) {
   const generatedId = useId()
   const id = providedId ?? generatedId
   return (
@@ -21,6 +29,7 @@ function SelectField({ id: providedId, label, onBlur, children, ...props }: Sele
       <SelectPrimitive.Root {...props}>
         <SelectPrimitive.Trigger
           id={id}
+          aria-describedby={describedBy}
           onBlur={onBlur}
           className={cn(
             "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none",

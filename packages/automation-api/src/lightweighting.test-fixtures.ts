@@ -1,4 +1,5 @@
 import { structuralOptimizationSummarySchema } from "@vibeshape/domain/lightweighting"
+import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import { importUploadCommitSchema } from "./imports"
 import {
   lightweightingOperationSchema,
@@ -22,6 +23,9 @@ export const lightweightingSettings = {
   loadCases: [{ name: "Tip load", region: { min: [3, 0, 0], max: [4, 2, 2] }, forceN: [0, 0, -1] }],
   preserveRegions: [],
   maxIterations: 4,
+}
+export function lightweightingMaterialCatalogResult() {
+  return { ok: true as const, value: structuralMaterialCatalog }
 }
 export function lightweightingOperation(request = false) {
   return lightweightingOperationSchema.parse({

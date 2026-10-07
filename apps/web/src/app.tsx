@@ -41,6 +41,8 @@ import {
   assemblyModeCommands,
   useAssemblyMode,
 } from "./features/assembly/assembly-mode"
+import { LightweightingDialog } from "./features/lightweighting/lightweighting-dialog"
+import { useLightweightingCommand } from "./features/lightweighting/use-lightweighting-command"
 import {
   authoredPlacementTarget,
   selectedPlacementPart,
@@ -602,7 +604,11 @@ function resolveEditorApplicationCommands(
   session: EditorApplicationSession,
   sessionActions: EditorSessionActions,
   workspaceActions: EditorWorkspaceActions,
-  dialogs: { openShortcutHelp: () => void; openSketchText: () => void },
+  dialogs: {
+    openShortcutHelp: () => void
+    openSketchText: () => void
+    lightweighting: () => void
+  },
 ) {
   const profileCommandAvailable = sketchProfileCommandAvailable(
     session,
@@ -841,6 +847,13 @@ function EditorApplication({
   const workspaceActions = useEditorWorkspaceActions(controller)
   const textDialog = useSketchTextApplication(controller)
   const assemblyMode = useAssemblyMode(workspaceActions.switchWorkspace)
+  const lightweighting = useLightweightingCommand({
+    controller,
+    selectedPartId: session.selectedPartId,
+    selectedBody: session.selectedBody,
+    selection: session.selection,
+    assemblyActive: assemblyMode.active,
+  })
   const commandPaletteFocus = useCommandPaletteFocus(sessionActions.setCommandPaletteOpen)
   const shortcutHelp = useShortcutHelp()
   const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
@@ -858,6 +871,7 @@ function EditorApplication({
     {
       openShortcutHelp: shortcutHelp.show,
       openSketchText: textDialog.actions.create,
+      lightweighting: lightweighting.show,
     },
   )
   const commands = assemblyModeCommands(modelCommands, assemblyMode.active)
@@ -903,6 +917,13 @@ function EditorApplication({
           onChange={assemblyMode.onChange}
         />
       </ApplicationBar>
+      <LightweightingDialog
+        controller={controller}
+        blocked={lightweighting.blocked}
+        initialPartId={lightweighting.initialPartId}
+        open={lightweighting.open}
+        onOpenChange={lightweighting.setOpen}
+      />
       <ShortcutHelpDialog
         commands={commands}
         open={shortcutHelp.open}

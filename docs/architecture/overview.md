@@ -286,7 +286,9 @@ The initial AI automation path is a local MCP bridge over those same query and c
 Committed Undo/Redo uses verified historical revision references, serialized lease-checked persistence, and the ordinary saved-state rebuild. Navigation is session-scoped and transaction-granular; see [ADR-0039](../adr/0039-committed-document-undo.md).
 
 Structural lightweighting uses a separate disposable numerical worker, pure domain settings/summary
-schemas, and the existing mesh-import transaction. UI and MCP share one browser calculation;
+schemas, a shared editable material-example catalog, and the existing mesh-import transaction.
+The registered toolbar/palette command captures eligible editor selection on open; paired MCP
+reads the same catalog through `list_lightweighting_materials`. UI and MCP share one browser calculation;
 the CAD source remains editable and results are independent snapshots. See
 [ADR-0101](../adr/0101-browser-structural-lightweighting.md) and
 [Structural lightweighting](../product/lightweighting.md).

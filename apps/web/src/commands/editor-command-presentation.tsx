@@ -45,6 +45,7 @@ import {
   InscribedPolygonIcon,
   Keyboard,
   Layers3,
+  LightweightingIcon,
   LinearPatternIcon,
   Link2,
   LoftIcon,
@@ -89,6 +90,7 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  lightweighting: LightweightingIcon,
   shell: BoxSelect,
   thread: Bolt,
   compound: Layers3,

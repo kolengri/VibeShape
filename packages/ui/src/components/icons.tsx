@@ -72,6 +72,7 @@ export {
   ExtrudeIcon,
   FilletIcon,
   HoleIcon,
+  LightweightingIcon,
   LinearPatternIcon,
   LoftIcon,
   MidpointLineIcon,

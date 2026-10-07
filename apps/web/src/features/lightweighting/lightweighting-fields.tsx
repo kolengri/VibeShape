@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
+import { LightweightingMaterialSelector } from "./lightweighting-material-selector"
 import type { LightweightingFields, RegionFields } from "./lightweighting-model"
 
 type NumberFieldProps = {
@@ -31,6 +32,12 @@ function NumberField({ id, label, value, onChange, min, max, step = "any" }: Num
   )
 }
 const axes = ["X", "Y", "Z"] as const
+const materialFieldKeys = new Set([
+  "youngModulusMpa",
+  "poissonRatio",
+  "yieldStrengthMpa",
+  "densityKgM3",
+])
 function RegionFieldsEditor({
   id,
   value,
@@ -93,7 +100,13 @@ export function LightweightingParameters({
       min={min}
       {...(max === undefined ? {} : { max })}
       {...(step === undefined ? {} : { step })}
-      onChange={(value) => onChange({ ...fields, [key]: value })}
+      onChange={(value) =>
+        onChange({
+          ...fields,
+          [key]: value,
+          materialPresetId: materialFieldKeys.has(key) ? "custom" : fields.materialPresetId,
+        })
+      }
     />
   )
   return (
@@ -101,6 +114,7 @@ export function LightweightingParameters({
       <fieldset className="grid gap-3">
         <legend className="mb-2 font-medium">{t("material")}</legend>
         <p className="text-xs text-muted-foreground">{t("materialDescription")}</p>
+        <LightweightingMaterialSelector fields={fields} onChange={onChange} />
         <div className="grid gap-3 sm:grid-cols-2">
           {numeric("youngModulusMpa", 0)}
           {numeric("poissonRatio", 0, 0.45)}

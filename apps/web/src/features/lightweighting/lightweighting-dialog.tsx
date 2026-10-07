@@ -103,11 +103,13 @@ function ResultPreview({ state }: { state: TaskState }) {
 }
 function LightweightingTask({
   controller,
+  initialPartId,
   disabled,
   onClose,
   onApplyingChange,
 }: {
   controller: DocumentControllerState
+  initialPartId: string
   disabled: boolean
   onClose: () => void
   onApplyingChange: (applying: boolean) => void
@@ -115,6 +117,7 @@ function LightweightingTask({
   const t = useTranslations("app.lightweighting")
   const state = useLightweightingTask({
     controller,
+    initialPartId,
     disabled,
     onApplied: onClose,
     onApplyingChange,
@@ -183,12 +186,14 @@ function LightweightingTask({
 }
 export function LightweightingDialog({
   controller,
+  initialPartId = "",
   blocked,
   open,
   onOpenChange,
   onCloseAutoFocus,
 }: {
   controller: DocumentControllerState
+  initialPartId?: string
   blocked: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -223,6 +228,7 @@ export function LightweightingDialog({
           <LightweightingTask
             key={controller.report?.snapshot.id ?? "unavailable"}
             controller={controller}
+            initialPartId={initialPartId}
             disabled={disabled && !applying}
             onClose={() => onOpenChange(false)}
             onApplyingChange={setApplying}

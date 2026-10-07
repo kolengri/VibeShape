@@ -13,7 +13,14 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
    `contentHash`. Supply all four fields under `source`, with `baseRevision`. Do not guess IDs,
    reuse an earlier body's hash, or select an imported triangle mesh. Surface relief is excluded.
 3. Obtain the intended material's Young's modulus and yield strength in MPa, Poisson ratio, and
-   density in kg/m³. A material name alone is insufficient. Do not invent physical properties.
+   density in kg/m³. When advertised, `list_lightweighting_materials` with empty arguments returns
+   the same eight named examples as the editor: PLA, PETG, ABS, ASA, PC Blend, Nylon, aluminum
+   6061-T6 and stainless steel 304. Inspect source revisions, URLs, specimen/product conditions,
+   and limitations; copy the selected entry's `material` into `settings.material` and adjust for
+   the actual material/process. A preset name or ID alone does not replace the numeric settings.
+   Printed examples are horizontal/XY 100%-infill samples, not Z-direction strength or print
+   certification. All listed Poisson ratios are explicitly assumed. Do not invent physical
+   properties, treat sample means as certified design allowables, or use TPU as a supported preset.
 4. Define axis-aligned support, load and preservation boxes with world-mm `min`/`max` triples.
    Supports clamp selected exterior FEM nodes in all directions. Each uniquely named load case
    supplies a nonzero total `forceN` vector in newtons, distributed over complete exterior facets
