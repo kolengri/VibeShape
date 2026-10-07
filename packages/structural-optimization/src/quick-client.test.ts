@@ -70,13 +70,13 @@ describe("disposable quick lightweighting worker client", () => {
     vi.unstubAllGlobals()
   })
 
-  it("accepts measured geometry and releases its worker and deadline", async () => {
+  it("accepts measured geometry and releases its worker", async () => {
     const progress = vi.fn()
     const pending = generateQuickLightweighting(input, { ...options, onProgress: progress })
     FakeWorker.instance.emit({ type: "progress", stage: "generating" })
     FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: result() } })
     await expect(pending).resolves.toMatchObject({ removedPercent: 21.6 })
-    expect(progress).toHaveBeenCalledWith("generating")
+    expect(progress).toHaveBeenCalledWith("generating", undefined)
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
   })
@@ -137,10 +137,39 @@ describe("disposable quick lightweighting worker client", () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it("enforces the 90-second worker lifetime", async () => {
+  it("keeps long computation alive until explicit cancellation", async () => {
+    const controller = new AbortController()
+    const progress = vi.fn()
+    const pending = generateQuickLightweighting(input, {
+      ...options,
+      signal: controller.signal,
+      onProgress: progress,
+    })
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(FakeWorker.instance.terminate).not.toHaveBeenCalled()
+    FakeWorker.instance.emit({
+      type: "progress",
+      stage: "generating",
+      progress: { phase: "sampling", completed: 200, total: 500 },
+    })
+    expect(progress).toHaveBeenCalledWith("generating", {
+      phase: "sampling",
+      completed: 200,
+      total: 500,
+    })
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+    expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects malformed computation progress and releases the worker", async () => {
     const pending = generateQuickLightweighting(input, options)
-    vi.advanceTimersByTime(90_000)
-    await expect(pending).rejects.toMatchObject({ code: "timeout" })
+    FakeWorker.instance.emit({
+      type: "progress",
+      stage: "generating",
+      progress: { phase: "validation", completed: 501, total: 500 },
+    })
+    await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
 

@@ -95,6 +95,7 @@ describe("browser automation broker", () => {
   it.each([false, true])(
     "accepts quick evidence only for captured source/settings/snapshot (request=%s)",
     async (requestSnapshot) => {
+      vi.useFakeTimers()
       const broker = makeBroker({ origin })
       const { token } = await connect(broker)
       const operation = localOperationSchema.parse(quickLightweightingOperation(requestSnapshot))
@@ -111,6 +112,14 @@ describe("browser automation broker", () => {
       )
       const { work } = localPollResponseSchema.parse(await poll.json())
       if (!work) throw new Error("Expected quick lightweighting work.")
+      for (let sequence = 2; sequence <= 62; sequence += 1) {
+        await vi.advanceTimersByTimeAsync(10_000)
+        const heartbeat = await broker.handle(
+          request("poll", { protocolVersion: 1, sequence, document, progress: null }, token),
+        )
+        expect(heartbeat.status).toBe(200)
+      }
+      expect(broker.isPaired()).toBe(true)
       const respond = (output: unknown) =>
         broker.handle(
           request(

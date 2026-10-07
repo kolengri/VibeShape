@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { QuickLightweightingError } from "@vibeshape/structural-optimization/quick-client"
 import type {
   QuickLightweightingInput,
   QuickLightweightingResult,
@@ -195,6 +196,37 @@ afterEach(() => {
 })
 
 describe("quick lightweighting task panel", () => {
+  it("explains a geometry capacity failure and permits regeneration", async () => {
+    ports.generate.mockRejectedValueOnce(new QuickLightweightingError("resource-limit", "capacity"))
+    setup()
+    await advance(650)
+    expect(screen.getByText(messages.app.quickLightweighting.resourceLimit)).toBeTruthy()
+    expect(applyButton().disabled).toBe(true)
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Regenerate preview" }).disabled,
+    ).toBe(false)
+  })
+
+  it("shows current batch progress, keeps cancellation available, and ignores stale progress", async () => {
+    ports.generate.mockReturnValueOnce(deferred<QuickLightweightingResult>().promise)
+    setup()
+    await advance(650)
+    const onProgress = ports.generate.mock.calls[0]?.[1].onProgress
+    if (!onProgress) throw new Error("Expected generation progress callback.")
+    act(() => onProgress("generating", { phase: "sampling", completed: 128, total: 256 }))
+    expect(screen.getByRole("status").textContent).toBe("Sampling the source surface: 128 / 256")
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Cancel generation" }).disabled,
+    ).toBe(false)
+    act(() => onProgress("generating", { phase: "validation", completed: 64, total: 128 }))
+    expect(screen.getByRole("status").textContent).toBe("Checking mesh surface samples: 64 / 128")
+    fireEvent.change(screen.getByRole("slider", { name: /Requested removal/ }), {
+      target: { value: "70" },
+    })
+    act(() => onProgress("generating", { phase: "sampling", completed: 256, total: 256 }))
+    expect(screen.queryByRole("status")).toBeNull()
+  })
+
   it("automatically generates the preselected cube after 650 ms and gates Apply on preview readiness", async () => {
     setup()
     expect(screen.getByRole("combobox", { name: "Source Part" }).textContent).toContain(

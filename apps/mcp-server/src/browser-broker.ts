@@ -71,11 +71,7 @@ import {
   sketchSolutionViewSchema,
   variableListViewSchema,
 } from "@vibeshape/automation-api/queries"
-import {
-  QUICK_LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS,
-  QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
-  quickLightweightingResultContextMatches,
-} from "@vibeshape/automation-api/quick-lightweighting-tools"
+import { quickLightweightingResultContextMatches } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import { renderPreviewResultContextMatches } from "@vibeshape/automation-api/render-preview"
 import { surfaceTextureResultContextMatches } from "@vibeshape/automation-api/surface-texture-result-context"
 import { z } from "zod"
@@ -125,8 +121,8 @@ const TTL = 60 * 60 * 1000
 const OPERATION_TTL = 6 * 60 * 1000
 function operationTimeout(tool: LocalOperation["tool"]) {
   if (tool === "commit_draft") return null
-  if (tool === "analyze_quick_lightweighting") return QUICK_LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS
-  if (tool === "request_quick_lightweighting") return QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
+  if (tool === "analyze_quick_lightweighting" || tool === "request_quick_lightweighting")
+    return null
   if (tool === "analyze_lightweighting") return LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS
   if (tool === "request_lightweighting") return LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
   return OPERATION_TTL

@@ -22,6 +22,16 @@ export const quickLightweightingMeshSchema = z
   )
 export { quickLightweightingSettingsSchema }
 
+export const quickLightweightingProgressSchema = z
+  .object({
+    phase: z.enum(["sampling", "validation"]),
+    completed: z.number().int().min(0).max(1_000_000),
+    total: z.number().int().positive().max(1_000_000),
+  })
+  .strict()
+  .refine(({ completed, total }) => completed <= total, "Progress cannot exceed its batch total.")
+export type QuickLightweightingProgress = z.infer<typeof quickLightweightingProgressSchema>
+
 export const quickLightweightingInputSchema = quickLightweightingSettingsSchema.safeExtend({
   schemaVersion: z.literal(1),
   mesh: structuralMeshSchema.refine(

@@ -2,7 +2,6 @@
 
 import json
 import math
-import time
 import numpy as np
 import trimesh
 from scipy import ndimage, sparse
@@ -10,8 +9,9 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 _QUICK_CONTEXT = None
+_QUICK_PROGRESS = None
 _MAX_RESOLUTION = 56
-_MAX_CANDIDATES = 12000000
+_MAX_BATCH_PAIRS = 262144
 
 
 class QuickError(ValueError):
@@ -32,11 +32,6 @@ def _finite(value, name, lower, upper):
     return float(value)
 
 
-def _budget(context):
-    _ensure(time.monotonic() <= context["deadline"], "timeout",
-            "Geometry exceeded its 60-second compute budget. Increase the detail cell size.")
-
-
 class _SpatialTriangleIndex:
     """Conservative broad phase for trimesh without its native rtree dependency.
 
@@ -44,29 +39,23 @@ class _SpatialTriangleIndex:
     filters their superset. Trimesh still owns distance and ray intersection math.
     """
 
-    def __init__(self, triangles, context):
+    def __init__(self, triangles):
         self.lo = triangles.min(axis=1)
         self.hi = triangles.max(axis=1)
         self.centers = (self.lo + self.hi) / 2
         self.radius = float(np.linalg.norm(self.hi - self.lo, axis=1).max() / 2)
         self.tree = cKDTree(self.centers)
         self.bounds = np.r_[self.lo.min(axis=0), self.hi.max(axis=0)]
-        self.context = context
-        self.candidates = 0
 
     def intersection(self, bounds):
         bounds = np.asarray(bounds)
         center = (bounds[:3] + bounds[3:]) / 2
         radius = np.linalg.norm(bounds[3:] - bounds[:3]) / 2 + self.radius + 1e-8
         candidate = np.asarray(self.tree.query_ball_point(center, radius), dtype=np.int64)
-        self.candidates += len(candidate)
-        _ensure(self.candidates <= _MAX_CANDIDATES, "resource-limit",
-                "The source requires too many proximity queries. Use a simpler source or increase the detail cell size.")
-        _budget(self.context)
-        if not len(candidate):
-            return candidate
-        return candidate[np.all((self.lo[candidate] <= bounds[3:])
-                                & (self.hi[candidate] >= bounds[:3]), axis=1)]
+        if len(candidate):
+            candidate = candidate[np.all((self.lo[candidate] <= bounds[3:])
+                                         & (self.hi[candidate] >= bounds[:3]), axis=1)]
+        return candidate
 
 
 def _surface_components(mesh, label):
@@ -109,12 +98,37 @@ def _surface_components(mesh, label):
     return count, labels
 
 
-def _distances(context, points):
+def _query_batch_size(mesh):
+    # Trimesh's containment check casts rays in both directions. Bound the
+    # worst-case triangle-pair scratch arrays, rather than total useful work.
+    return max(1, min(128, _MAX_BATCH_PAIRS // (2 * len(mesh.faces))))
+
+
+def _report_progress(phase, completed, total):
+    if _QUICK_PROGRESS is not None and total:
+        _QUICK_PROGRESS(phase, completed, total)
+
+
+def _distances(context, points, phase="validation"):
     pieces = []
-    for start in range(0, len(points), 128):
-        _budget(context)
-        pieces.append(trimesh.proximity.signed_distance(context["source"], points[start:start + 128]))
+    batch_size = _query_batch_size(context["source"])
+    _report_progress(phase, 0, len(points))
+    for start in range(0, len(points), batch_size):
+        end = min(start + batch_size, len(points))
+        pieces.append(trimesh.proximity.signed_distance(context["source"], points[start:end]))
+        _report_progress(phase, end, len(points))
     return np.concatenate(pieces) if pieces else np.empty(0)
+
+
+def _contains(mesh, points):
+    batch_size = _query_batch_size(mesh)
+    pieces = []
+    _report_progress("validation", 0, len(points))
+    for start in range(0, len(points), batch_size):
+        end = min(start + batch_size, len(points))
+        pieces.append(mesh.contains(points[start:end]))
+        _report_progress("validation", end, len(points))
+    return np.concatenate(pieces) if pieces else np.empty(0, dtype=bool)
 
 
 def _prepare(request):
@@ -154,19 +168,18 @@ def _prepare(request):
     _ensure(10 <= resolution <= _MAX_RESOLUTION, "resource-limit",
             "The source requires 10 to 56 samples along its longest padded dimension. Adjust the detail cell size.")
     context = {"request": request, "origin": origin, "cell": cell, "resolution": resolution,
-               "cellType": cell_type, "latticeCellSizeMm": period,
-               "deadline": time.monotonic() + 60}
+               "cellType": cell_type, "latticeCellSizeMm": period}
     source = trimesh.Trimesh(normalized, np.array(indices).reshape(-1, 3), process=False)
     source.merge_vertices(digits_vertex=10)
     count, _ = _surface_components(source, "Source mesh")
     _ensure(count == 1 and source.is_volume, "disconnected-mesh",
             "Choose one closed positive-volume solid without separate shells or existing cavities.")
     context["source"] = source
-    source._cache["triangles_tree"] = _SpatialTriangleIndex(source.triangles, context)
+    source._cache["triangles_tree"] = _SpatialTriangleIndex(source.triangles)
     context["sourceVolume"] = float(source.volume * cell ** 3)
     z, y, x = np.indices((resolution,) * 3, dtype=np.float64) - 3
     points = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
-    distances = _distances(context, points)
+    distances = _distances(context, points, "sampling")
     _ensure(np.all(np.isfinite(distances)), "invalid-mesh", "The source signed distance is not finite.")
     phase = points * (2 * math.pi / period_samples) + np.array([0.37, 0.73, 1.11])
     gx, gy, gz = phase.T
@@ -218,7 +231,6 @@ def prepare_quick_json(request_json):
 def _finish(candidate):
     context = _QUICK_CONTEXT
     _ensure(context is not None, "invalid-input", "Prepare a source before generating geometry.")
-    _budget(context)
     request = context["request"]
     _ensure(isinstance(candidate, dict) and set(candidate) == {"vertices", "indices", "threshold"},
             "invalid-result", "The isosurface response is malformed.")
@@ -265,10 +277,10 @@ def _finish(candidate):
         outer_label = next(label for label, volume in enumerate(volumes) if volume > 0)
         outer = trimesh.Trimesh(mesh.vertices, mesh.faces[labels == outer_label], process=False)
         outer.remove_unreferenced_vertices()
-        outer._cache["triangles_tree"] = _SpatialTriangleIndex(outer.triangles, context)
+        outer._cache["triangles_tree"] = _SpatialTriangleIndex(outer.triangles)
         representatives = [mesh.triangles_center[np.flatnonzero(labels == label)[0]]
                            for label in range(count) if label != outer_label]
-        _ensure(not representatives or np.all(outer.contains(np.asarray(representatives))), "invalid-mesh",
+        _ensure(not representatives or np.all(_contains(outer, np.asarray(representatives))), "invalid-mesh",
                 "A generated cavity lies outside its material shell.")
         output_vertices = (mesh.vertices * context["cell"] + context["origin"]).ravel().tolist()
         output_indices = mesh.faces.ravel().tolist()
@@ -292,7 +304,6 @@ def _finish(candidate):
                                 np.asarray(output_indices).reshape(-1, 3), process=False)
     serialized.merge_vertices(digits_vertex=10)
     _surface_components(serialized, "Serialized mesh")
-    _budget(context)
     removed = 100 * (1 - result_volume / context["sourceVolume"])
     _ensure(result_volume > 0 and 0.5 <= removed < 100, "no-removable-material",
             "No meaningful positive-volume lightweighting result was found. Adjust removal, skin, or detail.")

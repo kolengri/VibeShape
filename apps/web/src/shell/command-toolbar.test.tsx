@@ -117,6 +117,10 @@ describe("CommandToolbar", () => {
     const button = within(group).getByRole("button", { name: "Lightweighting" })
     expect(button.querySelector("svg")).toBeTruthy()
     expect(button.querySelector("img")).toBeNull()
+    const quickButton = within(group).getByRole("button", { name: "Quick lightweighting" })
+    expect(quickButton.querySelector("svg")?.innerHTML).not.toBe(
+      button.querySelector("svg")?.innerHTML,
+    )
     await userEvent.click(button)
     expect(actions.lightweighting).toHaveBeenCalledOnce()
   })

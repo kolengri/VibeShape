@@ -88,7 +88,7 @@ export function QuickLightweightingTaskPanel({
       label: (name: string) => t("featureLabel", { name }),
       error: (code: string) =>
         t(
-          code === "resource-limit" || code === "timeout"
+          code === "resource-limit"
             ? "resourceLimit"
             : code === "disconnected-mesh"
               ? "disconnected"
@@ -249,7 +249,12 @@ function QuickPreview({ state, mainViewport }: { state: QuickState; mainViewport
     <>
       {state.activity !== "idle" && (
         <p role="status" className="text-sm">
-          {t(state.activity)}
+          {state.activity === "generating" && state.progress
+            ? t(state.progress.phase === "sampling" ? "samplingProgress" : "validationProgress", {
+                completed: state.progress.completed,
+                total: state.progress.total,
+              })
+            : t(state.activity)}
         </p>
       )}
       {state.message && (
@@ -323,7 +328,11 @@ function QuickActions({
       <TaskPanelLifecycleActions
         ariaLabel={t("actions")}
         acceptLabel={t("apply")}
-        cancelLabel={t("cancel")}
+        cancelLabel={
+          state.activity === "loading" || state.activity === "generating"
+            ? t("cancelGeneration")
+            : t("cancel")
+        }
         acceptDisabled={!state.canApply}
         {...(applyReason ? { acceptDisabledReason: applyReason } : {})}
         cancelDisabled={applying}

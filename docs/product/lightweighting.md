@@ -107,6 +107,9 @@ Download report preserves settings and source identity with the metrics.
 The mesh is a snapshot: changing the source does not regenerate it. It supports ordinary mesh
 STL/3MF export and native project backup; it has no exact B-Rep or STEP reconstruction. Preserved
 regions retain analyzed voxel material, not exact original mating faces.
+Select its feature in History to open the right panel, then choose **Delete feature** and confirm.
+Deletion uses the ordinary dependency checks and persisted Undo/Redo path. Other Parts retain
+their current visibility; show the original through its visibility control if needed.
 
 ## Runtime and limits
 
@@ -188,10 +191,18 @@ manufacturing methods or multiple alternative designs.
 ### Quick runtime and exchange bounds
 
 Quick generation accepts 10,000 source vertices and 20,000 source triangles, at most 56³ samples,
-12 million proximity candidates, and 120,000 generated triangles. The complete result is bounded
+and 120,000 generated triangles. The complete result is bounded
 by 80,000 vertices and 140,000 triangles. At most three connectivity candidates reuse the same
-source distance grid. Compute and worker timeouts are 60 and 90 seconds. Resource limits fail
-explicitly; changing detail or cell size does not guarantee a feasible result.
+source distance grid. Generation runs in a dedicated Web Worker through the local Pyodide
+WebAssembly runtime, without a fixed elapsed-time or cumulative proximity-query cutoff.
+Distance and containment work uses adaptive batches of at most 128 points, with at most 262,144
+worst-case triangle/ray pairs per batch. Larger surfaces use smaller batches to bound intermediate
+memory. Sampling and validation show current-pass progress; validation can restart for another
+pass or connectivity candidate. **Cancel generation**, closing the panel, or changing inputs
+terminates the worker. Local and remote MCP impose no Quick operation deadline; cancellation,
+revocation, source identity, pairing lifetime and the five-minute import/review lease still apply.
+Geometry and payload capacity failures remain explicit; changing detail or cell size does not
+guarantee a feasible result.
 
 Preserved exterior results may contain inward cavity shells. 3MF export uses actual shell
 containment, intersection checks, alternating orientation, and positive total material volume.

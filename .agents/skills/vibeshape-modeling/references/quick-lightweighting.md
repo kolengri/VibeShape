@@ -30,7 +30,11 @@ Supply the complete `settings`:
   Open-organic ignores skin thickness; use zero.
 
 Live schemas remain authoritative. Source input is bounded to 10,000 vertices and 20,000 triangles;
-output is bounded to 80,000 vertices and 140,000 triangles. The worker has a 90-second budget.
+output is bounded to 80,000 vertices and 140,000 triangles. The browser-owned Web Worker uses
+local WebAssembly and adaptive batches to bound intermediate memory. Quick generation has no
+fixed elapsed-time or cumulative-query cutoff, including local and remote MCP operation handling.
+Keep the request pending; cancellation, pairing revocation and source changes still invalidate it.
+The paired session lifetime and five-minute private import/review lease remain enforced.
 Schwarz D at the six-sample boundary can produce disconnected material; start at its twelve-sample
 default and inspect the actual outcome. Larger cells or finer sampling can resolve a failed pattern.
 No material values, mesh arrays, scripts, file paths, actor fields or approval flags are accepted

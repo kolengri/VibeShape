@@ -11,9 +11,6 @@ import { z } from "zod"
 import { importUploadCommitSchema } from "./imports"
 import { lightweightingSourceIdentitySchema } from "./lightweighting-tools"
 
-export const QUICK_LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS = 4 * 60 * 1000
-export const QUICK_LIGHTWEIGHTING_REQUEST_TIMEOUT_MS = 9 * 60 * 1000
-
 const argumentsSchema = z
   .object({
     baseRevision: revisionSchema,

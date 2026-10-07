@@ -212,6 +212,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", verify)
 })
 afterEach(async () => {
+  vi.useRealTimers()
   for (const socket of sockets.splice(0)) socket.close()
   vi.unstubAllGlobals()
   await reset()
@@ -572,6 +573,36 @@ describe("remote MCP in workerd", () => {
     })
     expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
   })
+  it.each([false, true])(
+    "keeps quick work alive beyond ten minutes and honors revocation (request=%s)",
+    async (request) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      vi.useFakeTimers()
+      const command = quickLightweightingOperation(request)
+      const work = nextMessage(tab.socket)
+      const pending = mcp(authenticated.token, 1, "tools/call", {
+        name: command.tool,
+        arguments: command.arguments,
+      })
+      expect((await work).type).toBe("work")
+      await vi.advanceTimersByTimeAsync(10 * 60_000)
+      const stub = bindings.TAB_SESSIONS.getByName(tab.credential.sessionId)
+      expect(
+        await stub.isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(true)
+      await stub.revokeBrowser(tab.credential.browserToken)
+      expect(await (await pending).json()).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+    },
+  )
+
   it.each([
     { quick: false, request: false, variant: false },
     { quick: false, request: true, variant: false },

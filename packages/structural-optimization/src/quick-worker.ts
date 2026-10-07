@@ -1,6 +1,11 @@
 import type { loadPyodide as LoadPyodide } from "pyodide"
 import { z } from "zod"
-import { quickLightweightingInputSchema, quickLightweightingResponseSchema } from "./quick-contract"
+import {
+  type QuickLightweightingProgress,
+  quickLightweightingInputSchema,
+  quickLightweightingProgressSchema,
+  quickLightweightingResponseSchema,
+} from "./quick-contract"
 import { QuickLightweightingError } from "./quick-errors"
 import { generateValidatedQuickLightweighting } from "./quick-generation"
 import { quickGridSchema } from "./quick-isosurface"
@@ -43,6 +48,20 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
     })
     await pyodide.loadPackage(new URL("trimesh-4.12.2-py3-none-any.whl", base).href)
     await pyodide.runPythonAsync(solverSource)
+    let lastProgress: QuickLightweightingProgress | undefined
+    pyodide.globals.set("_QUICK_PROGRESS", (phase: unknown, completed: unknown, total: unknown) => {
+      const progress = quickLightweightingProgressSchema.parse({ phase, completed, total })
+      if (
+        lastProgress?.phase === progress.phase &&
+        lastProgress.total === progress.total &&
+        progress.completed > 0 &&
+        progress.completed < progress.total &&
+        progress.completed - lastProgress.completed < Math.max(1, progress.total / 100)
+      )
+        return
+      lastProgress = progress
+      self.postMessage({ type: "progress", stage: "generating", progress })
+    })
     pyodide.globals.set("_quick_request_json", JSON.stringify(input))
     self.postMessage({ type: "progress", stage: "generating" })
     const raw: unknown = await pyodide.runPythonAsync("prepare_quick_json(_quick_request_json)")

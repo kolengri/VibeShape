@@ -56,6 +56,7 @@ import {
   OffsetIcon,
   PointIcon,
   Pyramid,
+  QuickLightweightingIcon,
   RectangleHorizontal,
   Redo2,
   RevolveIcon,
@@ -91,6 +92,7 @@ import type {
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
   lightweighting: LightweightingIcon,
+  "quick-lightweighting": QuickLightweightingIcon,
   shell: BoxSelect,
   thread: Bolt,
   compound: Layers3,
