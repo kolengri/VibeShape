@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react"
+import { act, cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { documentSnapshotSchema, featureRecordSchema } from "@vibeshape/domain"
 import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
@@ -9,9 +9,17 @@ import type { ComponentProps } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import { removeFeature } from "../document/document-controller"
+import { createEditorSessionStore } from "../editor-session/editor-session-store"
+import { createHistoryNavigation } from "../editor-session/history-navigation"
 import { editPartDesignTool } from "../features/part-design/part-design-tool"
 import { i18n } from "../i18n"
 import { TaskPanel } from "./task-panel"
+
+const ports = vi.hoisted(() => ({ registerSubmission: vi.fn() }))
+vi.mock("../editor-session/editor-session-provider", async (original) => ({
+  ...(await original<typeof import("../editor-session/editor-session-provider")>()),
+  useRegisterTaskSubmission: ports.registerSubmission,
+}))
 
 vi.mock("../document/document-controller", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../document/document-controller")>()),
@@ -53,7 +61,7 @@ const snapshot = documentSnapshotSchema.parse({
   features: [feature],
 })
 
-function renderImportedTask(mode: "read-write" | "read-only" = "read-write") {
+function renderImportedTask(mode: "read-write" | "read-only" = "read-write", close = () => {}) {
   const controller: DocumentControllerState = {
     status: "ready",
     saveStatus: "saved",
@@ -79,7 +87,7 @@ function renderImportedTask(mode: "read-write" | "read-only" = "read-write") {
     },
   }
   const onCompleteTool = vi.fn()
-  const onCloseTool = vi.fn()
+  const onCloseTool = vi.fn(close)
   const props: ComponentProps<typeof TaskPanel> = {
     controller,
     workspace: "model",
@@ -128,10 +136,29 @@ function renderImportedTask(mode: "read-write" | "read-only" = "read-write") {
 
 afterEach(() => {
   cleanup()
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 })
 
 describe("captured-source History task", () => {
+  it("closes inspection before navigating to another History row without saving geometry", async () => {
+    const store = createEditorSessionStore()
+    const tool = editPartDesignTool(feature)
+    if (!tool) throw new Error("The captured feature requires an inspection tool.")
+    store.getState().actions.startPartDesignTool(tool)
+    const navigation = createHistoryNavigation(store)
+    ports.registerSubmission.mockImplementation((submit) => navigation.register(submit))
+    const { onCloseTool } = renderImportedTask(
+      "read-write",
+      store.getState().actions.closeActiveTool,
+    )
+    const activate = vi.fn()
+    await act(async () => expect(await navigation.navigate(activate)).toBe(true))
+    expect(onCloseTool).toHaveBeenCalledOnce()
+    expect(activate).toHaveBeenCalledOnce()
+    expect(store.getState().activePartDesignTool).toBeNull()
+    expect(removeFeature).not.toHaveBeenCalled()
+  })
+
   it("deletes an organic lightweighting feature through the ordinary confirmed removal command", async () => {
     const user = userEvent.setup()
     const { onCompleteTool } = renderImportedTask()

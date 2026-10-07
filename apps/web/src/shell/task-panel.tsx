@@ -2210,6 +2210,10 @@ function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
 function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
   const t = useTranslations("app.shell.taskPanel")
   const treeT = useTranslations("app.shell.modelTree")
+  useRegisterTaskSubmission(async () => {
+    props.onCloseTool()
+    return true
+  })
   const feature = props.report.snapshot.features.find(
     ({ id }) => "featureId" in props.activeTool && id === props.activeTool.featureId,
   )
