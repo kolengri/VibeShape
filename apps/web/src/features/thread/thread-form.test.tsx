@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event"
 import type { FeatureRecord } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import { ThreadForm } from "./thread-form"
 import {
@@ -16,6 +16,9 @@ import { copy, featureId, mode, pitchVariable, units } from "./thread-test-fixtu
 
 const save = () =>
   vi.fn(async (_revision: number, _feature: FeatureRecord) => ({ ok: true as const }))
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+})
 function setup(
   options: {
     mode?: ThreadFormMode
@@ -67,6 +70,34 @@ function setup(
 }
 afterEach(cleanup)
 describe("Modeled Thread form", () => {
+  it("applies a metric diameter/pitch preset while preserving custom parameters and edits", async () => {
+    const f = setup()
+    const depth = screen.getByRole("combobox", { name: "Groove depth" })
+    fireEvent.change(depth, { target: { value: "0.6 mm" } })
+    fireEvent.keyDown(screen.getByRole("combobox", { name: copy.metricSize }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "M8 × 1.25" }))
+    expect(
+      (screen.getByRole("combobox", { name: copy.nominalDiameter }) as HTMLInputElement).value,
+    ).toBe("8 mm")
+    expect((screen.getByRole("combobox", { name: copy.pitch }) as HTMLInputElement).value).toBe(
+      "1.25 mm",
+    )
+    expect((depth as HTMLInputElement).value).toBe("0.6 mm")
+    fireEvent.change(screen.getByRole("combobox", { name: copy.pitch }), {
+      target: { value: "#step" },
+    })
+    expect(screen.getByRole("combobox", { name: copy.metricSize }).textContent).toContain(
+      copy.customSize,
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Apply feature" }))
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    expect(f.onSave.mock.calls[0]?.[1].parameters).toMatchObject({
+      nominalDiameter: { value: 8 },
+      pitch: { value: 2, source: { expression: "#step" } },
+      depth: { value: 0.6 },
+    })
+    expect(f.onSave.mock.calls[0]?.[1].parameters).not.toHaveProperty("metricSize")
+  })
   it("ignores hidden origin errors for a reference axis and restores them on returning to legacy controls", async () => {
     const f = setup({ axisOptions: true })
     await userEvent.click(screen.getByText(copy.advanced))

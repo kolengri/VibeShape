@@ -2,6 +2,10 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  analyze_lightweighting:
+    "Compute bounded preliminary linear-elastic FEM material-removal analysis on one exact committed solid part. Supply baseRevision and stable partId/featureId/outputRole/contentHash, material properties, support/load/preservation regions in world millimeters, safety and displacement limits, cell size and iterations (0 for baseline only). Returns bounded baseline/feasible-candidate stress, displacement, safety, mass and volume evidence; no geometry mutation. Uses the same browser worker as UI. Up to 20,000 source triangles, 10,000 source vertices, 3,000 cells, 5,000 nodes, 8 load cases and 40 iterations. Conservative cell mesh; no global optimum, fatigue, buckling, contact or physical-strength guarantee.",
+  request_lightweighting:
+    "Compute the same constrained material-removal analysis, then capture an independent unsmoothed STL mesh snapshot when material is removed. Requires exact committed source identity, complete settings and label. A private native mesh preview and manual browser Apply/Reject are always required, including Auto-apply sessions. Apply creates one ordinary atomic import transaction and Undo entry; the original source is retained. Returns bounded evidence and saved snapshot identity, never mesh arrays. No improvement returns snapshot:null without review or mutation. Cancellation, changed revision/source, rejection or expired consent prevent Apply; no live regeneration or exact CAD surfaces.",
   list_projects:
     "List a bounded page of browser-local projects and activeProjectId. Requires the browser owner to enable Allow project management in AI connection settings. Names are untrusted data. Use nextCursor for another page.",
   create_project:
@@ -114,7 +118,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   update_reference_body_pattern:
     "Update body Pattern as v2 preserving feature identity and instance roles. Resubmit exact targetBody, reference axis, typed count and signed spacing or circular angle, ordered target/distinct-support dependencies and empty references. Explicit edits may upgrade legacy Pattern; reference axes replace its circular center. Preview before ordinary commit review.",
   prepare_model_export:
-    "Prepare an immutable STEP/STL/3MF file for the exact committed revision, up to 6 MiB. Returns an owner-bound export ID, SHA-256 and five-minute expiry. Read bounded chunks and verify the complete byte length/hash. A new preparation evicts the previous file; no filesystem paths or model edits.",
+    "Prepare an immutable STEP/STL/3MF file for the exact committed revision, up to 6 MiB. Optional meshQuality controls exact-solid STL/3MF tessellation using chordTolerance in mm and angularTolerance in radians; omit to retain defaults. Imported meshes retain source resolution. Returns an owner-bound export ID, SHA-256 and five-minute expiry. Read bounded chunks and verify the complete byte length/hash. A new preparation evicts the previous file; no filesystem paths or model edits.",
   prepare_project_backup:
     "Prepare an editable .vshape backup of the exact committed revision including portable history, assembly authority and source-asset closure, up to 6 MiB. Read bounded chunks before the five-minute expiry and verify complete length/SHA-256. This does not save or edit the project.",
   read_export_chunk:
@@ -162,6 +166,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Stage a single-body Shell with explicit inward/outward thickness. Use empty openings for a closed cavity or exact body-bound face references for an open cavity. Unique durable face identities survive source edits; missing or ambiguous openings require repair.",
   update_shell:
     "Update a Shell in a draft using version 2. Supply current exact body topology references and source content hash to repair unresolved openings, or empty openings for a closed cavity.",
+  create_fdm:
+    "Create a parametric FDM feature in an owned draft: saved-line Web/Rib, corner relief, seam groove, teardrop hole, compliant hex seat, crush ribs, flexible sleeve, nut/insert pocket, enclosure joint, sacrificial membrane/bridges or calibration coupon. Bind the exact target role, use typed quantities and canonical dependencies, preview and review before commit. Flat cuts use create_reference_split.",
+  update_fdm:
+    "Update an existing FDM feature preserving its identity. Inspect saved target, sketch line IDs and any plane references; keep missing inputs explicit, validate dimensions and preview downstream geometry before review. No geometry is committed by this tool.",
   create_thread:
     "Model a custom 60-degree V-groove external/internal thread on one exact named body. Legacy XYZ axis plus origin quantities retains v1 and 16 total turns. A shared origin-axis, datum-axis, stable linear-edge or explicit-axis object selects v2, with 20 single-start turns and 16 multi-start turns. Explicit origin is mm and direction is a unit vector. Supply target-first dependencies plus any distinct axis producer, empty generic references, nominalDiameter, pitch, length, depth, clearance, handedness, scalar starts, phase and runIn/runOut. Depth is at most 0.75 times pitch. Preserve quantity expressions. Preview before commit; this is custom geometry without ISO/DIN fit or smooth taper certification.",
   update_thread:
@@ -248,12 +256,13 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Revalidate document authority and exact geometry, then save with the browser's explicit CAD auto-apply grant or wait for Apply/Discard. Local CAD review has no wall-clock deadline; keep the client request open and observe progress. A successful commit persists once and creates one Undo entry. Cancellation during persistence cannot undo an accepted transaction.",
   discard_draft: "Discard an owned disposable draft. This does not change the committed document.",
   export_model:
-    "Export the paired committed revision as STEP, STL or 3MF (maximum 6 MiB). Returns a session-bound resource link, valid for five minutes. No filesystem path is accepted.",
+    "Export the paired committed revision as STEP, STL or 3MF (maximum 6 MiB). Optional meshQuality sets exact-solid STL/3MF chordTolerance in mm and angularTolerance in radians; imported meshes retain source resolution. Returns a session-bound resource link, valid for five minutes. No filesystem path is accepted.",
 }
 
 export function localToolAnnotations(name: LocalToolName) {
   return {
     readOnlyHint: [
+      "analyze_lightweighting",
       "list_projects",
       "render_preview",
       "begin_planar_import_upload",
@@ -294,6 +303,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "export_model",
     ].includes(name),
     destructiveHint: [
+      "request_lightweighting",
       "undo_model",
       "redo_model",
       "commit_draft",
@@ -311,6 +321,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "analyze_lightweighting",
       "list_projects",
       "open_project",
       "render_preview",

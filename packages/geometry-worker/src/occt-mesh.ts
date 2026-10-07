@@ -1,3 +1,4 @@
+import { type MeshExportQuality, meshExportQualitySchema } from "@vibeshape/protocol"
 import type { Shape3D, ShapeMesh } from "replicad"
 import type {
   gp_Trsf,
@@ -200,16 +201,19 @@ export function exportMeshedOcctStl(
   opencascade: OpenCascadeInstance,
   shape: Shape3D,
   binary: boolean,
+  quality?: MeshExportQuality,
 ) {
   const filename = "/vibeshape-export.stl"
+  const checkedQuality = quality ? meshExportQualitySchema.parse(quality) : null
 
   try {
     // Export cleanup clears shared face triangulations; every export must rebuild all selected faces.
+    if (checkedQuality) opencascade.BRepTools.Clean(shape.wrapped, true)
     const mesher = new opencascade.BRepMesh_IncrementalMesh_2(
       shape.wrapped,
-      0.05,
+      checkedQuality?.chordTolerance ?? 0.05,
       false,
-      0.1,
+      checkedQuality?.angularTolerance ?? 0.1,
       false,
     )
     try {

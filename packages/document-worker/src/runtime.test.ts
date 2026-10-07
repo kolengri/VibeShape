@@ -799,6 +799,7 @@ describe("DocumentWorkerRuntime", () => {
         },
       ]
       const textureQuality = { maxEdgeLengthMm: 1, maxTriangles: 2_000 }
+      const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
       await runtime.handle({
         protocolVersion: DOCUMENT_PROTOCOL_VERSION,
         requestId: `texture-${format}`,
@@ -809,9 +810,10 @@ describe("DocumentWorkerRuntime", () => {
         format,
         surfaceTextures,
         textureQuality,
+        meshQuality,
       })
       expect(format === "stl" ? stlExport : printExport).toHaveBeenCalledWith(
-        expect.objectContaining({ surfaceTextures, textureQuality }),
+        expect.objectContaining({ surfaceTextures, textureQuality, meshQuality }),
       )
     },
   )

@@ -10,9 +10,9 @@
     "#lib/*": "./src/lib/*.ts"
   },
   "scripts": {
-    "dev": "bun node_modules/vite/bin/vite.js",
-    "dev:e2e": "bun node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173",
-    "build": "vite build",
+    "dev": "bun run ../../scripts/prepare-structural-runtime.ts && bun node_modules/vite/bin/vite.js",
+    "dev:e2e": "bun run ../../scripts/prepare-structural-runtime.ts && bun node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173",
+    "build": "bun run ../../scripts/prepare-structural-runtime.ts && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.vite.json"
   },
@@ -29,8 +29,10 @@
     "@vibeshape/geometry-worker": "workspace:*",
     "@vibeshape/i18n": "workspace:*",
     "@vibeshape/persistence": "workspace:*",
+    "@vibeshape/print-analysis": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
     "@vibeshape/slicer-handoff": "workspace:*",
+    "@vibeshape/structural-optimization": "workspace:*",
     "@vibeshape/ui": "workspace:*",
     "@vibeshape/viewer": "workspace:*",
     "immer": "catalog:",
@@ -39,8 +41,7 @@
     "react-dom": "catalog:",
     "react-dropzone": "catalog:",
     "zod": "catalog:",
-    "zustand": "catalog:",
-    "@vibeshape/print-analysis": "workspace:*"
+    "zustand": "catalog:"
   },
   "devDependencies": {
     "@types/node": "26.1.2",

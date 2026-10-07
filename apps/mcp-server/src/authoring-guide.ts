@@ -8,7 +8,7 @@ settings. Shared local/remote tools list_projects (bounded pages), create_projec
 then preserve pairing without reloading. Create/open require expectedProjectId and expectedRevision
 from model_info; open also takes the destination projectId, create takes a normalized name.
 The editor must be saved and idle. A different project disposes private drafts and transfers and
-resets auto-apply. Read model_info and start a fresh draft after switching. CAD tools accept optional
+restores the remembered local CAD approval mode; remote auto-apply resets. Read model_info and start a fresh draft after switching. CAD tools accept optional
 projectId to reject a wrong active target. Never retry uncertain project creation blindly; inspect
 the active project and catalog. Project management permission is not restored after recovery.
 The browser retains the document authority; there is no embedded chat and no headless modeling mode.
@@ -64,6 +64,18 @@ is permitted. Thread models a custom 60-degree V groove
 with at most twenty single-start turns in v2 and sixteen turns for multi-start or legacy v1,
 without ISO/DIN fit certification. Use the live schema for
 limits, quantities, dependencies and repair; exact preview remains mandatory.
+
+\`create_fdm\`/\`update_fdm\` author twelve exact editable FDM kinds: Web/Rib, corner relief,
+seam groove, teardrop hole, compliant hex seat, crush ribs, flexible sleeve, nut pocket,
+insert pocket/boss, enclosure lip/groove, sacrificial membrane/bridges and calibration coupon.
+Use exact target roles; coupon is independent and sleeve may be independent. Dimensions and
+origins retain quantities; counts are bounded numeric snapshots. Web/Rib uses saved solved
+nonconstruction line IDs and actual sketch support reference. Dependencies are target first,
+distinct sketch support then distinct stop-plane owner. Web is normal to the sketch; Rib is
+an in-plane triangle with normal thickness. Wall extension requires complete finite rectangular
+planar wall coverage. Web stop planes are parallel reachable origin/datum/explicit planes;
+finite body-face stops fail explicitly. Missed cuts or disconnected results fail. Flat cuts
+reuse Split. Fit and print orientation remain explicit design decisions.
 
 Before writing, read the modeling skill's construction strategy. Prefer dimensioned analytical
 profiles, Extrude/Revolve for straight/rotational regions, and symmetry where the source supports it.
@@ -128,6 +140,15 @@ The app computes SHA-256 and stable output roles. Inspection remains unsaved; co
 the source and requests manual browser preview/Apply before one atomic source/feature transaction.
 Caller hashes, pins, provenance, paths and generic command payloads are unavailable. Read the
 modeling native-import reference for ownership, five-minute idle expiry and remote pacing/budgets.
+
+Structural lightweighting uses \`analyze_lightweighting\` (compute-only) and \`request_lightweighting\`
+(independent mesh snapshot) on both paired transports. Retain exact committed Part/body identity,
+content hash and revision; supply material properties, world-mm support/load/preservation regions,
+stress safety and displacement constraints. Both call the editor's bounded preliminary FEM worker.
+An improved snapshot requires native mesh preview and manual browser Apply even in Auto-apply
+sessions, then one atomic immutable STL import retaining the original. No improvement mutates nothing.
+Only bounded metrics and snapshot identifiers cross MCP. Read the modeling lightweighting reference
+for resource limits, cancellation, source discretization loss and engineering limitations.
 
 Surface texture create/update/remove use named owned proposals with native relief preview and
 mandatory manual Apply. Read the modeling skill's surface-textures reference for packed custom
@@ -226,7 +247,7 @@ inspect the actual document revision before proposing a new change.
    coexist with unresolved supports; unknown/unavailable diagnostics are not a clean result.
    Repair invalid intent with a new command ID and the returned current draft revision.
 5. Call \`commit_draft\`; by default the person reviews and clicks Apply or Discard in the browser.
-   A person may explicitly enable session-only auto-apply for valid supported first-party CAD edits
+   A person may explicitly enable auto-apply for valid supported first-party CAD edits
    in the browser, including lifecycle removal and suppression. No tool can enable it; metadata,
    separate review services and unsupported drafts still require review.
    Allow enough time for manual review and observe progress. A successful commit saves once with one Undo entry.
@@ -242,7 +263,10 @@ automatically without replaying that request; inspect the saved revision before 
 persistence begins cannot roll back an accepted transaction. For committed Undo/Redo, use the
 document/revision-bound saved-change tools above and wait for manual browser review. A same-document
 reload, transient disconnect or bridge restart restores an unexpired approved pairing and its
-explicit auto-apply choice. An active tab renews its lease; Stop AI prevents restoration.
+explicit auto-apply choice. The local browser remembers access and approval mode across projects
+and fresh browser sessions for that client. Without a usable tab credential, it establishes fresh
+authority without displacing an active owner. A different client requires approval. An active tab
+renews its lease; Stop AI clears remembered access and prevents restoration.
 
 ## Units and IDs
 
@@ -656,7 +680,7 @@ Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on 
 Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
 sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
-Split, Sweep, Loft and custom Thread create/update;
+Split, Sweep, Loft, custom Thread and FDM create/update;
 variables; bounded inspection; draft lifecycle and export; feature/sketch removal,
 explicit feature suppression and project rename; Placement and editable sketch text;
 owned native/planar imports, assembly/library authoring, surface textures and saved-change Undo/Redo.
@@ -686,6 +710,12 @@ length and SHA-256, then \`discard_export\`. Keep binary output out of conversat
 retain one actor-owned file up to 6 MiB for five minutes; reads do not renew expiry. Preparing
 another evicts it. Remote reads share ordinary operation/rate budgets. Larger files and part
 selection use the editor. A descriptor alone is not file delivery.
+
+For STL/3MF, both export tools accept optional \`meshQuality: { chordTolerance, angularTolerance }\`.
+Chord tolerance is absolute mm from 0.005 to 1; angular deflection is radians from 0.01 to 0.5.
+Omit quality to preserve STL 0.05 mm / 0.1 rad and 3MF 0.02 mm / 0.1 rad defaults. Finer meshes
+increase file size; existing transfer and print budgets remain. Imported meshes retain source
+resolution. STEP does not accept mesh quality.
 
 Alternatively, local MCP exports the successful committed revision using \`export_model\` with \`format: "step"\`, \`"stl"\`
 or \`"3mf"\`. Read the returned \`resource_link.uri\` through MCP resources/read, decode its base64

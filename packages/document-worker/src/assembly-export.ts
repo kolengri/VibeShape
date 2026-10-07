@@ -115,7 +115,9 @@ export async function exportAssemblyRuntime(
     engine,
     registry,
     solveSketch,
-    request.assembly,
+    request.settings.meshQuality
+      ? { ...request.assembly, mesh: request.settings.meshQuality }
+      : request.assembly,
     identity,
     async (occurrences, contexts) => {
       const selected = selectedOccurrences(occurrences, request.settings.instanceIds)

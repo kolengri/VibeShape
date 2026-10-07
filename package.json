@@ -48,6 +48,7 @@
     "preinstall": "bun run check:bun",
     "check:bun": "bun run scripts/check-bun-version.ts",
     "dev": "bun run --cwd apps/web dev",
+    "structural:prepare": "bun run scripts/prepare-structural-runtime.ts",
     "build": "bun run --cwd apps/web build",
     "preview": "bun run --cwd apps/web preview",
     "prepare:local": "bun run scripts/prepare-local-release.ts",
@@ -116,6 +117,7 @@
     "replicad-opencascadejs": "catalog:"
   },
   "overrides": {
+    "proxy-addr": "2.0.8",
     "qs": "6.16.0",
     "fast-uri": "3.1.8",
     "ip-address": "10.7.3",

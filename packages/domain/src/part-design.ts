@@ -20,6 +20,7 @@ import {
   unionFeatureTypeHandler,
   unionFeatureTypeV2Handler,
 } from "./part-design-body-combination"
+import { fdmFeatureTypeHandler } from "./part-design-fdm"
 import {
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
@@ -1941,6 +1942,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       }
     },
   },
+  fdmFeatureTypeHandler,
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   holeFeatureTypeHandlerV3,

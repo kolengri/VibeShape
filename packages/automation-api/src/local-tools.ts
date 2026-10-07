@@ -65,6 +65,13 @@ import {
   libraryToolInputs,
   libraryVersionViewSchema,
 } from "./library-tools"
+import {
+  lightweightingAnalysisSchema,
+  lightweightingOperations,
+  lightweightingRequestSchema,
+  lightweightingToolInputs,
+  lightweightingToolNames,
+} from "./lightweighting-tools"
 import { localCadInputs, localCadOperations } from "./local-cad-tools"
 import {
   localDraftInspectionInputs,
@@ -175,6 +182,7 @@ const chamfer = z
   .strict()
 export const localToolInputs = {
   ...projectToolInputs,
+  ...lightweightingToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...localPlanarImportInputs,
@@ -227,9 +235,7 @@ export const localToolInputs = {
   preview_draft: draft,
   commit_draft: draft,
   discard_draft: draft,
-  export_model: z
-    .object({ revision: revisionSchema, format: z.enum(["step", "stl", "3mf"]) })
-    .strict(),
+  export_model: localBinaryExportInputs.prepare_model_export,
 } as const
 export const localModelInfoSchema = z
   .object({
@@ -270,6 +276,8 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
+  request_lightweighting: resultOf(lightweightingRequestSchema),
   list_projects: resultOf(projectListSchema),
   create_project: resultOf(projectViewSchema),
   open_project: resultOf(projectViewSchema),
@@ -392,6 +400,8 @@ export const localToolOutputs = {
   create_shell: resultOf(automationDraftStateSchema),
   update_mirror: resultOf(automationDraftStateSchema),
   update_shell: resultOf(automationDraftStateSchema),
+  create_fdm: resultOf(automationDraftStateSchema),
+  update_fdm: resultOf(automationDraftStateSchema),
   create_thread: resultOf(automationDraftStateSchema),
   update_thread: resultOf(automationDraftStateSchema),
   create_body_pattern: resultOf(automationDraftStateSchema),
@@ -422,6 +432,7 @@ export const localToolOutputs = {
 } as const
 export const localToolNameSchema = z.enum([
   ...projectToolNames,
+  ...lightweightingToolNames,
   "render_preview",
   "model_history_state",
   "undo_model",
@@ -508,6 +519,8 @@ export const localToolNameSchema = z.enum([
   "create_shell",
   "update_mirror",
   "update_shell",
+  "create_fdm",
+  "update_fdm",
   "create_thread",
   "update_thread",
   "create_body_pattern",
@@ -539,6 +552,7 @@ export const localToolNameSchema = z.enum([
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 const untargetedOperationSchema = z.discriminatedUnion("tool", [
   ...projectOperations,
+  ...lightweightingOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,

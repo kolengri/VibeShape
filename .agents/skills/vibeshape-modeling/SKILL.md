@@ -7,6 +7,9 @@ description: Create or edit parametric models in VibeShape using named MCP sketc
 
 Establish the session with [vibeshape-use](../vibeshape-use/SKILL.md) and follow [draft transactions](../vibeshape-use/references/transactions.md). Read [modeling contracts and recipes](references/modeling.md) for the requested feature family. For assemblies and reusable components, read [assembly and library transactions](references/assembly-and-library.md). Live schemas determine the exact input shape.
 For editable printable relief, read [surface texture proposals](references/surface-textures.md). Their native preview and manual review are separate from a CAD draft.
+For material reduction under explicit stress and displacement limits, read
+[structural lightweighting](references/lightweighting.md). Both local and paired remote MCP use
+the browser numerical worker; a result is a separate mesh snapshot with mandatory manual review.
 
 ## Author or revise intent
 
@@ -32,7 +35,9 @@ caller source hashes or bypass ordinary atomic persistence.
 
 For sketch-backed features, discover solved profile selectors with `model_sketch_solution` or `draft_sketch_solution` at the exact current revision. Inspect native status and failed constraint IDs when profiles are absent; never derive a persistent profile index from display order.
 
-Current local and paired remote MCP cover Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update; sketch, Extrude, Revolve, Hole, Fillet, Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, linear/circular body Pattern, Shell, Split, Sweep, Loft, and custom Thread create/update; variables; assembly definitions/instances/mates; immutable local-library authoring; inspection; drafts; feature/sketch removal; explicit feature suppression; project rename; and authored metadata. Arbitrary reference planes/axes use the additive `create_reference_*`/`update_reference_*` Mirror, Split and body Pattern tools; legacy names keep their original contracts. Named Placement create/update and editable sketch text create/update/detach are also available. Check discovery before using any operation.
+Current local and paired remote MCP cover Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update; sketch, Extrude, Revolve, Hole, Fillet, Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, linear/circular body Pattern, Shell, Split, Sweep, Loft, custom Thread, and the twelve-kind FDM family create/update; variables; assembly definitions/instances/mates; immutable local-library authoring; inspection; drafts; feature/sketch removal; explicit feature suppression; project rename; and authored metadata. Arbitrary reference planes/axes use the additive `create_reference_*`/`update_reference_*` Mirror, Split and body Pattern tools; legacy names keep their original contracts. Named Placement create/update and editable sketch text create/update/detach are also available. Check discovery before using any operation.
+
+For printed-part reinforcement, reliefs, fastener fits, enclosure joints, membranes, and calibration coupons, follow the FDM section of [modeling contracts and recipes](references/modeling.md).
 
 For committed Undo/Redo, follow the [saved-change History workflow](../vibeshape-organization/SKILL.md). Registered primitive tools and lifecycle tools use the contracts in the modeling reference; Wedge is not a registered primitive. Feature create/update tools carry explicit suppression intent; supported CAD suppression and removal use an existing explicit auto-apply grant. Existing records may still be inspected and must survive supported upstream edits. Use the ordinary visible editor for a required unsupported operation when available and authorized; otherwise identify the exact limitation. A sketch-backed Extrude/Revolve is a valid alternative only when it preserves the requested design and editability.
 

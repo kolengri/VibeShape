@@ -105,6 +105,17 @@ beforeEach(() => {
 })
 
 describe("assembly export policy over verified world occurrences", () => {
+  it("rebuilds disposable assembly sources with explicit export quality and keeps omitted defaults", async () => {
+    const engine = new ReplicadGeometryEngine()
+    const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
+    await exportWith(engine, { format: "3mf", meshQuality })
+    expect(vi.mocked(withMaterializedAssemblyRuntime).mock.calls[0]?.[3].mesh).toEqual(meshQuality)
+    await exportWith(engine, { format: "stl" })
+    expect(vi.mocked(withMaterializedAssemblyRuntime).mock.calls[1]?.[3].mesh).toEqual({
+      chordTolerance: 0.1,
+      angularTolerance: 0.1,
+    })
+  })
   it("flattens selected world meshes into one STL stream in caller instance order", async () => {
     const before = structuredClone(materialization.occurrences)
     const result = await exportWith(new ReplicadGeometryEngine(), {

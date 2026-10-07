@@ -1,0 +1,30 @@
+// @vitest-environment jsdom
+import { render, screen, within } from "@testing-library/react"
+import { I18nProvider } from "@vibeshape/i18n/provider"
+import { expect, it } from "vitest"
+import { lightweightingSummary } from "../../../../../packages/automation-api/src/lightweighting.test-fixtures"
+import { i18n } from "../../i18n"
+import { LightweightingResults } from "./lightweighting-results"
+
+it("shows small nonzero masses without rounding them to zero", () => {
+  const result = lightweightingSummary()
+  result.sourceVolumeMm3 = 0.00004
+  const load = result.optimized.cases[0]
+  if (!load) throw new Error("Missing load fixture.")
+  load.maxDisplacementMm = 0.000032
+  load.maxVonMisesMpa = 0.000048
+  render(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <LightweightingResults result={result} />
+    </I18nProvider>,
+  )
+  const row = screen.getByRole("rowheader", { name: "Assumed mass (kg)" }).closest("tr")
+  if (!row) throw new Error("Missing mass row.")
+  expect(
+    within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent),
+  ).toEqual(["0.00004", "0.000032"])
+  expect(screen.getByText(/Source volume: 0.00004 mm³/)).toBeTruthy()
+  expect(screen.getByText(/stress 0.000048 MPa; displacement 0.000032 mm/)).toBeTruthy()
+})

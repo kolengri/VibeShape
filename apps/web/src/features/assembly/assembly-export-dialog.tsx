@@ -1,6 +1,7 @@
 import type { AssemblyInstanceRecord as AssemblyInstance } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import type {
+  AssemblyExportSettings,
   AssemblyInspection,
   GeometryExportFormat,
   PrintPreparationSettings,
@@ -19,6 +20,11 @@ import {
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useCallback, useState } from "react"
 import { exportActiveAssembly } from "../../document/document-controller"
+import {
+  type MeshExportQualityChoice,
+  MeshExportQualityField,
+  meshExportQuality,
+} from "../../document/mesh-export-quality-field"
 import { PrintPreparationPanel } from "../../printing/print-preparation-panel"
 import { useAssemblyExport } from "./use-assembly-export"
 
@@ -64,6 +70,7 @@ function useAssemblyExportSelection({ selectedId, inspection, disabled }: Export
   const [scope, setScope] = useState(selectedId ?? "all")
   const [showPreparation, setShowPreparation] = useState(false)
   const [printPending, setPrintPending] = useState(false)
+  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
   const action = useAssemblyExport()
   const selected =
     inspection?.occurrences.filter(({ instanceId }) => scope === "all" || instanceId === scope) ??
@@ -71,15 +78,30 @@ function useAssemblyExportSelection({ selectedId, inspection, disabled }: Export
   const includesMesh = selected.some(({ representation }) => representation === "triangle-mesh")
   const busy = disabled || action.pending !== null || printPending || selected.length === 0
   const prepare = useCallback(
-    (settings: PrintPreparationSettings, signal: AbortSignal) =>
+    (
+      settings: PrintPreparationSettings,
+      signal: AbortSignal,
+      quality?: AssemblyExportSettings["meshQuality"],
+    ) =>
       exportActiveAssembly(
-        { format: "3mf", ...selectedInstanceScope(scope), printPreparation: settings },
+        {
+          format: "3mf",
+          ...selectedInstanceScope(scope),
+          printPreparation: settings,
+          ...(quality ? { meshQuality: quality } : {}),
+        },
         signal,
       ),
     [scope],
   )
   const exportFormat = (format: GeometryExportFormat) =>
-    action.run({ format, ...selectedInstanceScope(scope) })
+    action.run({
+      format,
+      ...selectedInstanceScope(scope),
+      ...(format !== "step" && meshQualityChoice !== "default"
+        ? { meshQuality: meshExportQuality(meshQualityChoice) }
+        : {}),
+    })
   return {
     scope,
     setScope,
@@ -91,6 +113,8 @@ function useAssemblyExportSelection({ selectedId, inspection, disabled }: Export
     busy,
     sourceCount: selected.length,
     prepare,
+    meshQualityChoice,
+    setMeshQualityChoice,
     exportFormat,
     preparationDisabled: disabled || action.pending !== null || selected.length > 8,
   }
@@ -171,6 +195,13 @@ function AssemblyExportContent(props: ExportSelection) {
     <>
       <AssemblyExportScope view={view} instances={props.instances} />
       <p className="text-xs text-muted-foreground">{t("exportGeometryExplanation")}</p>
+      {!view.showPreparation && (
+        <MeshExportQualityField
+          value={view.meshQualityChoice}
+          onChange={view.setMeshQualityChoice}
+          disabled={view.busy}
+        />
+      )}
       {!view.showPreparation && (
         <AssemblyExportFormats
           disabled={view.busy}

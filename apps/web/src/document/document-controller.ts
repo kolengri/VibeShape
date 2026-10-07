@@ -133,6 +133,7 @@ import type {
   AssemblyExportSettings,
   AssemblyInspection,
   GeometryExportFormat,
+  MeshExportQuality,
   PrintPreparationResult,
   PrintPreparationSettings,
 } from "@vibeshape/protocol"
@@ -151,6 +152,7 @@ import { createDocumentAutomationSession } from "../automation/document-automati
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import { createImportAutomationSession } from "../automation/import-automation-session"
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
+import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
 import { createPlanarImportAutomationSession } from "../automation/planar-import-automation-session"
 import type {
@@ -163,6 +165,7 @@ import {
 } from "../automation/surface-texture-automation-preview"
 import { createBrowserSurfaceTextureAutomationSession } from "../automation/surface-texture-automation-session"
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
+import { lightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
@@ -860,14 +863,18 @@ export function createActiveDocumentAutomationSession() {
     }
     return queryDispatcher.dispatcher.dispatch(snapshot, query, edges ? { edges } : undefined)
   }
-  const exportRevisionBound = async (format: GeometryExportFormat, revision: number) => {
+  const exportRevisionBound = async (
+    format: GeometryExportFormat,
+    revision: number,
+    meshQuality?: MeshExportQuality,
+  ) => {
     if (!currentReport() || revision !== active.snapshot.revision)
       return automationCommitFailure(
         "stale-revision",
         "The active project changed before export.",
         true,
       )
-    const result = await exportActiveDocument(format)
+    const result = await exportActiveDocument(format, undefined, meshQuality)
     if (!result.ok) return result
     if (!currentReport() || active.snapshot.revision !== revision)
       return automationCommitFailure(
@@ -908,6 +915,21 @@ export function createActiveDocumentAutomationSession() {
         return localFailure(
           "import-review-mismatch",
           "The captured import review no longer matches.",
+        )
+      return commitReviewedImport(active, input)
+    },
+  })
+  const lightweighting = createBrowserLightweightingAutomationSession({
+    documentId: capturedDocumentId,
+    isActive: sourceSessionAvailable,
+    createId: browserUuidV7,
+    readContext: readSourceContext,
+    readSource: (partId) => lightweightingSource(state, partId),
+    async commit(input) {
+      if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
+        return localFailure(
+          "import-review-mismatch",
+          "The captured lightweighting review no longer matches.",
         )
       return commitReviewedImport(active, input)
     },
@@ -1084,9 +1106,9 @@ export function createActiveDocumentAutomationSession() {
     documentId: capturedDocumentId,
     currentRevision: () => active.snapshot.revision,
     isActive: () => currentReport() !== null,
-    async prepare(format, revision) {
+    async prepare(format, revision, meshQuality) {
       if (format !== "vshape") {
-        const result = await exportRevisionBound(format, revision)
+        const result = await exportRevisionBound(format, revision, meshQuality)
         return result.ok
           ? {
               ok: true as const,
@@ -1138,6 +1160,7 @@ export function createActiveDocumentAutomationSession() {
       assembly.cancel("stale-revision")
       history.cancel("stale-revision")
       surfaceTextures.cancel("stale-revision")
+      lightweighting.cancel()
     }
   })
   function dispose() {
@@ -1151,6 +1174,7 @@ export function createActiveDocumentAutomationSession() {
     assembly.dispose()
     history.dispose()
     surfaceTextures.dispose()
+    lightweighting.dispose()
     exports.dispose()
   }
   window.addEventListener("pagehide", dispose, { once: true })
@@ -1167,6 +1191,7 @@ export function createActiveDocumentAutomationSession() {
     assembly,
     history,
     surfaceTextures,
+    lightweighting,
     exports,
     enableAutoApply: (actor: unknown) => currentReport() !== null && factory.enableAutoApply(actor),
     disableAutoApply: factory.disableAutoApply,
@@ -1184,6 +1209,7 @@ export function createActiveDocumentAutomationSession() {
       assembly.cancel(reason)
       history.cancel(reason)
       surfaceTextures.cancel(reason)
+      lightweighting.cancel()
       exports.cancel()
     },
     dispose,
@@ -1395,6 +1421,7 @@ function importReviewIdentity(input: ImportReviewInput) {
     draft: input.draft,
     source: input.source,
     label: input.label,
+    lightweighting: input.lightweighting ?? null,
     transaction: input.transaction,
   })
 }
@@ -2242,6 +2269,7 @@ export async function solveActiveSketch(
 export async function exportActiveDocument(
   format: GeometryExportFormat,
   partId?: string,
+  meshQuality?: MeshExportQuality,
 ): Promise<ActiveDocumentExportResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
@@ -2261,6 +2289,7 @@ export async function exportActiveDocument(
     state.report,
     format,
     partId,
+    meshQuality,
   )
   if (!prepared.ok) return prepared
   const result = await active.exportDocument(format, prepared.options)
@@ -2307,6 +2336,7 @@ export async function materializeActiveDocumentSourceAssets(input: unknown) {
 export async function prepareActiveDocumentPrint(
   settings: PrintPreparationSettings,
   signal: AbortSignal,
+  meshQuality?: MeshExportQuality,
 ): Promise<ActiveDocumentExportResult> {
   const active = session
   if (!active || state.status !== "ready" || !state.report || signal.aborted) {
@@ -2321,7 +2351,13 @@ export async function prepareActiveDocumentPrint(
     }
   }
   const snapshot = active.snapshot
-  const plan = prepareDocumentGeometryExport(active.authoredSnapshot, state.report, "3mf")
+  const plan = prepareDocumentGeometryExport(
+    active.authoredSnapshot,
+    state.report,
+    "3mf",
+    undefined,
+    meshQuality,
+  )
   if (!plan.ok) return plan
   return prepareDocumentPrint(
     snapshot,

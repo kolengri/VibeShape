@@ -1,0 +1,4 @@
+{
+  "extends": "@vibeshape/typescript-config/worker.json",
+  "include": ["src/worker.ts", "src/raw-assets.d.ts"]
+}

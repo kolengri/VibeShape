@@ -2,6 +2,10 @@
 
 ## Priorities
 
+Structural lightweighting is implemented as preliminary numerical feasibility and separate mesh
+snapshots in the editor and paired local/remote MCP. It does not certify physical strength or
+create parametric organic B-Rep geometry. See [Structural lightweighting](lightweighting.md).
+
 - **P0 / alpha:** required to prove the core workflow.
 - **P1 / v1:** required for regular practical use.
 - **P2 / later:** expansion after the core is stable.
@@ -371,3 +375,7 @@ Named local and paired remote MCP sketch inspection now returns exact-revision n
 status, DOF, conflicts, solved authored coordinates/radii and stable profile selectors through
 `model_sketch_solution` and `draft_sketch_solution`. These disposable reads preserve authored
 intent and use bounded section paging; see [ADR-0085](../adr/0085-disposable-solved-sketch-inspection.md).
+
+## Editable FDM features
+
+The Model FDM tools panel and local/paired remote `create_fdm`/`update_fdm` draft commands implement twelve editable exact-geometry kinds, including Web/Rib, reliefs, teardrop holes, fit and fastener pockets, enclosure joints, sacrificial supports, and calibration coupons. See [Editable FDM features](fdm-tools.md) for targeting, units, bounded wall extension/plane termination, ownership, and process limitations. Metric thread size presets select diameter/pitch while retaining custom groove parameters; STL/3MF quality controls affect export tessellation only.

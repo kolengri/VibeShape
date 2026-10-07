@@ -85,6 +85,21 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly export isolation", () => {
+  it("passes selected mesh quality to scoped assembly exports", async () => {
+    const f = fixture()
+    await open(f)
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Fine" }))
+    await userEvent.click(screen.getByRole("button", { name: "Download 3MF" }))
+    expect(ports.assembly).toHaveBeenCalledWith(
+      {
+        format: "3mf",
+        instanceIds: [f.instances[0]?.id],
+        meshQuality: { chordTolerance: 0.01, angularTolerance: 0.05 },
+      },
+      expect.any(AbortSignal),
+    )
+  })
   it("exports one selected instance or every occurrence without calling the model export port", async () => {
     const f = fixture()
     await open(f)

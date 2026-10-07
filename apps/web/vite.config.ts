@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import license, { type Dependency } from "rollup-plugin-license"
 import { type ConfigEnv, defineConfig, type Plugin } from "vite"
+import { structuralRuntimePlugin } from "./structural-runtime-plugin.ts"
 
 function retainedNotice(file: string) {
   return readFileSync(resolve(import.meta.dirname, "../../deployment/licenses", file), "utf8")
@@ -85,6 +86,7 @@ export default defineConfig(async (environment) => {
       react(),
       tailwindcss(),
       sketchTextNotices(),
+      structuralRuntimePlugin(),
       ...bundledLicensePlugins("sources/browser-licenses.txt"),
     ],
     worker: {

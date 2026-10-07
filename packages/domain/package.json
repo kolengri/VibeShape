@@ -33,6 +33,7 @@
     "./model-body-measurements": "./src/model-body-measurements.ts",
     "./model-body-topology": "./src/model-body-topology.ts",
     "./model-bodies": "./src/model-bodies.ts",
+    "./part-design-fdm": "./src/part-design-fdm.ts",
     "./part-design": "./src/part-design.ts",
     "./part-design-hole": "./src/part-design-hole.ts",
     "./part-design-placement": "./src/part-design-placement.ts",
@@ -93,7 +94,8 @@
     "./reference-frame": "./src/reference-frame.ts",
     "./sketch-solution-evidence": "./src/sketch-solution-evidence.ts",
     "./assembly-pinned-insertion": "./src/assembly-pinned-insertion.ts",
-    "./part-design-subtract": "./src/part-design-subtract.ts"
+    "./part-design-subtract": "./src/part-design-subtract.ts",
+    "./lightweighting": "./src/lightweighting.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

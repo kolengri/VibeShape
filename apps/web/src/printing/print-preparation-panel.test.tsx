@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -47,6 +47,7 @@ vi.mock("./slicer-handoff-panel", () => ({
   ),
 }))
 beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -81,6 +82,22 @@ const result = {
 }
 
 describe("print preparation interaction", () => {
+  it("prepares with selected tessellation quality and invalidates the old copy when quality changes", async () => {
+    exportDocument.mockResolvedValue(result)
+    panel()
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Fine" }))
+    await userEvent.click(screen.getByRole("button", { name: "Generate print preview" }))
+    await screen.findByRole("button", { name: "Download prepared 3MF" })
+    expect(exportDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ layerHeight: 0.2 }),
+      expect.any(AbortSignal),
+      { chordTolerance: 0.01, angularTolerance: 0.05 },
+    )
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Coarse" }))
+    expect(screen.queryByRole("button", { name: "Download prepared 3MF" })).toBeNull()
+  })
   it("invalidates a prepared download immediately when settings change", async () => {
     exportDocument.mockResolvedValue(result)
     const user = userEvent.setup()

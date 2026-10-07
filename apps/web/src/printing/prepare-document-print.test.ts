@@ -56,6 +56,7 @@ describe("disposable print worker lifecycle", () => {
     const options: DocumentExportOptions = {
       bodies: [{ featureId: "0195b5ac-b220-7a2c-8c33-000000000001", outputRole: "result" }],
       surfaceTextures: [],
+      meshQuality: { chordTolerance: 0.01, angularTolerance: 0.05 },
     }
     await prepareDocumentPrint(
       snapshot,

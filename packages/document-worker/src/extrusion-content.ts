@@ -25,6 +25,7 @@ import {
   type SketchProfileSet,
   type SketchRecord,
 } from "@vibeshape/domain"
+import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { holeTreatmentContent } from "@vibeshape/domain/part-design-hole"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
@@ -51,6 +52,7 @@ import {
   type SketchSolveCache,
 } from "./external-sketch-references"
 import { prepareExtrusionEndContent } from "./extrusion-end-content"
+import { prepareFdmContent } from "./fdm-content"
 import {
   prepareReferenceFrameFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
@@ -509,6 +511,18 @@ function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null
     : null
 }
 
+async function prepareNativeParametricContent(
+  feature: FeatureRecord,
+  context: SketchFeatureContentInput,
+) {
+  const thread = prepareThreadContent(feature, context)
+  if (thread) return thread
+  return prepareFdmContent(feature, {
+    ...context,
+    solveSketch: (sketch) => solveFeatureSketch(context, sketch),
+  })
+}
+
 async function prepareFeatureContent(
   document: DocumentSnapshot,
   feature: FeatureRecord,
@@ -521,8 +535,16 @@ async function prepareFeatureContent(
 ) {
   if (shouldPrepareReferenceFrameFeatureContent(feature))
     return prepareReferenceFrameFeatureContent({ document, feature, features, geometry })
-  const thread = prepareThreadContent(feature, { document, features, geometry })
-  if (thread) return thread
+  const parametric = await prepareNativeParametricContent(feature, {
+    document,
+    features,
+    geometry,
+    solveSketch,
+    solvedBySketchId,
+    sectionPlanarFace,
+    modelMaterializationCache,
+  })
+  if (parametric) return parametric
   if (shouldPrepareSweepLoftFeatureContent(feature)) {
     const sketchInput = {
       document,
@@ -767,6 +789,7 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
       readExtrusionFeatureParameters(feature) ||
       readRevolveFeatureParameters(feature) ||
       readHoleFeatureParameters(feature) ||
+      readFdmFeatureParameters(feature) ||
       typeof readThreadFeatureParameters(feature)?.axis === "object" ||
       shouldPrepareSweepLoftFeatureContent(feature),
   )

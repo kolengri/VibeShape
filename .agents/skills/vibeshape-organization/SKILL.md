@@ -37,7 +37,8 @@ This scope covers the local catalog and create/open, not deletion, arbitrary fil
 - Reuse the returned `{ projectId, name, revision }` receipt, then call `model_info`. Include optional
   `projectId` on CAD tools to reject accidental writes to another active project. Start a fresh draft;
   IDs or revisions from the previous project do not establish destination authority.
-- CAD auto-apply resets on a different project. Same-project `open_project` is a no-op. The separate
+- A different project restores the remembered local CAD approval mode; remote auto-apply resets.
+  Same-project `open_project` is a no-op. The separate
   project-management grant lasts for the live connection and is never restored by recovery.
 - After interruption or `outcome-unknown`, inspect the active project and catalog before retrying.
   A created project can already be persisted; a fresh call can create a duplicate. `stale-project`

@@ -5,7 +5,11 @@ import type {
 } from "@vibeshape/application/persistent-document-session"
 import { resolveSurfaceTextureExportLayers } from "@vibeshape/application/surface-textures"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
-import type { DocumentExportOptions, GeometryExportFormat } from "@vibeshape/protocol"
+import type {
+  DocumentExportOptions,
+  GeometryExportFormat,
+  MeshExportQuality,
+} from "@vibeshape/protocol"
 
 type GeometryExportPlan =
   | Readonly<{ ok: true; options: DocumentExportOptions }>
@@ -27,6 +31,7 @@ export function prepareDocumentGeometryExport(
   report: PersistentDocumentSessionReport,
   format: GeometryExportFormat,
   partId?: string,
+  meshQuality?: MeshExportQuality,
 ): GeometryExportPlan {
   const bodies = selectedBodies(authority, report, partId)
   if (bodies === null)
@@ -51,6 +56,7 @@ export function prepareDocumentGeometryExport(
       options: {
         ...(bodies?.length ? { bodies } : {}),
         ...(surfaceTextures.length ? { surfaceTextures } : {}),
+        ...(format !== "step" && meshQuality ? { meshQuality } : {}),
       },
     }
   } catch (error) {

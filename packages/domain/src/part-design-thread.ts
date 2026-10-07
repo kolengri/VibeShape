@@ -14,6 +14,25 @@ import { resolveQuantityExpression } from "./variables"
 
 export const THREAD_MAX_AUTHORED_TURNS = 16
 export const THREAD_V2_MAX_AUTHORED_TURNS = 20
+/** Coarse metric diameter/pitch inputs; the modeled V groove remains a custom thread. */
+export const metricThreadPresets = [
+  { id: "M2", nominalDiameter: 2, pitch: 0.4 },
+  { id: "M2.5", nominalDiameter: 2.5, pitch: 0.45 },
+  { id: "M3", nominalDiameter: 3, pitch: 0.5 },
+  { id: "M4", nominalDiameter: 4, pitch: 0.7 },
+  { id: "M5", nominalDiameter: 5, pitch: 0.8 },
+  { id: "M6", nominalDiameter: 6, pitch: 1 },
+  { id: "M7", nominalDiameter: 7, pitch: 1 },
+  { id: "M8", nominalDiameter: 8, pitch: 1.25 },
+  { id: "M10", nominalDiameter: 10, pitch: 1.5 },
+  { id: "M12", nominalDiameter: 12, pitch: 1.75 },
+  { id: "M14", nominalDiameter: 14, pitch: 2 },
+  { id: "M16", nominalDiameter: 16, pitch: 2 },
+  { id: "M18", nominalDiameter: 18, pitch: 2.5 },
+  { id: "M20", nominalDiameter: 20, pitch: 2.5 },
+  { id: "M22", nominalDiameter: 22, pitch: 2.5 },
+  { id: "M24", nominalDiameter: 24, pitch: 3 },
+] as const
 const positiveLength = lengthQuantitySchema.refine(
   ({ value }) => value > 0 && value <= 1000,
   "Thread dimensions must be positive and no greater than 1,000 mm.",

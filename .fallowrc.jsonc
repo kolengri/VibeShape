@@ -31,6 +31,7 @@
   },
   // Bun resolves these transitive security pins in bun.lock; Fallow currently checks pnpm lockfiles only.
   "ignoreDependencyOverrides": [
+    { "package": "proxy-addr", "source": "package.json" },
     { "package": "fast-uri", "source": "package.json" },
     { "package": "qs", "source": "package.json" },
     { "package": "ip-address", "source": "package.json" },
@@ -83,7 +84,8 @@
       },
       { "name": "ui", "patterns": ["packages/ui/**"] },
       { "name": "test-models", "patterns": ["packages/test-models/**"] },
-      { "name": "slicer-handoff", "patterns": ["packages/slicer-handoff/**"] }
+      { "name": "slicer-handoff", "patterns": ["packages/slicer-handoff/**"] },
+      { "name": "structural-optimization", "patterns": ["packages/structural-optimization/**"] }
     ],
     "rules": [
       // Stable core rule: the domain has no internal package dependencies.
@@ -124,6 +126,8 @@
       { "from": "protocol", "allow": [] },
       // Bounded print-copy generation consumes serializable contracts, never UI or persistence.
       { "from": "print-analysis", "allow": ["protocol"] },
+      // Numerical workers can validate manufacturing meshes without UI or document authority.
+      { "from": "structural-optimization", "allow": ["domain", "formats"] },
       // The geometry worker depends on contracts, never on UI or persistence.
       { "from": "geometry-worker", "allow": ["protocol", "test-models"] },
       // The sketch solver compiles pure domain records into the private native ABI.

@@ -46,8 +46,12 @@ reported loopback editor URL and enable its AI session when using MCP. An alread
 must stay with its owning client; these commands never stop it or discover and kill another PID.
 
 Manual draft approval is the default. The bottom status bar's **AI connection and approval mode → Apply automatically → Set up auto-apply** explicitly enables valid allowlisted CAD
-edits for this project and paired session only; **Auto-apply on** and **Stop AI** remain visible.
-Approved local pairing and the chosen approval mode recover after reload or a temporary interruption on the same origin, project and client. Stop AI, project/client replacement and lease expiry require new consent. Durable bridge-restart recovery currently requires macOS or Linux; see [ADR-0095](adr/0095-local-mcp-continuous-recovery.md). See the
+edits for this local client and browser origin; **Auto-apply on** and **Stop AI** remain visible.
+Approved local access and the chosen approval mode persist across reload, browser restart, and
+project changes on the same origin for the remembered client. Stop AI clears the preference;
+a different client requires new consent. Authenticated bridge-restart recovery currently requires
+macOS or Linux; fresh pairing can recover without the old tab credential. See
+[ADR-0100](adr/0100-remembered-local-mcp-preferences.md) and the
 [MCP quickstart](mcp-quickstart.md) for review, Undo, and cancellation behavior.
 
 Host and port select browser storage. Preserve the same `http://127.0.0.1:PORT` origin to reopen

@@ -13,7 +13,8 @@
     "./assembly-session-contract": "./src/assembly-session-contract.ts",
     "./history-session": "./src/history-session.ts",
     "./surface-texture-proposal": "./src/surface-texture-proposal.ts",
-    "./surface-texture-proposal-contract": "./src/surface-texture-proposal-contract.ts"
+    "./surface-texture-proposal-contract": "./src/surface-texture-proposal-contract.ts",
+    "./lightweighting-proposal": "./src/lightweighting-proposal.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
