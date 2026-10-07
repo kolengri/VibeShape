@@ -100,7 +100,7 @@ function AlignmentFaceField({
       </NativeSelectField>
       <Button
         type="button"
-        size="xs"
+        size="sm"
         variant="outline"
         disabled={!selected}
         onClick={() => {
@@ -174,7 +174,7 @@ export function PlacementAlignmentFields({
         <p className="text-xs text-muted-foreground">{t("alignmentDescription")}</p>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
           onClick={() => {
             clearFeedback()

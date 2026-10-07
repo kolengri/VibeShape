@@ -46,14 +46,12 @@ vi.mock("@dnd-kit/react", () => ({
 }))
 vi.mock("@dnd-kit/dom", () => ({
   Accessibility: class {},
-  KeyboardSensor: { configure: () => ({}), defaults: { keyboardCodes: {} } },
   PointerActivationConstraints: {
     Delay: class {},
     Distance: class {},
   },
   PointerSensor: { configure: () => ({}) },
 }))
-vi.mock("@dnd-kit/dom/sortable", () => ({ SortableKeyboardPlugin: class {} }))
 vi.mock("@dnd-kit/react/sortable", () => ({
   useSortable: () => ({
     isDragSource: false,
@@ -73,6 +71,20 @@ type TestDragCallbacks = {
   onDragStart: (event: { operation: TestOperation }) => void
   onDragOver: (event: { operation: TestOperation }) => void
   onDragEnd: (event: { operation: TestOperation; canceled: boolean }) => void
+}
+
+function dragHistoryRow(
+  sourceId: string,
+  sourceIndex: number,
+  targetId: string,
+  targetIndex: number,
+) {
+  const callbacks = sortableCallbacks.current as TestDragCallbacks
+  const source = { id: sourceId, index: sourceIndex, initialIndex: sourceIndex }
+  const target = { id: targetId, index: targetIndex, initialIndex: targetIndex }
+  act(() => callbacks.onDragStart({ operation: { source, target: null } }))
+  act(() => callbacks.onDragOver({ operation: { source, target } }))
+  act(() => callbacks.onDragEnd({ operation: { source, target }, canceled: false }))
 }
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
@@ -341,6 +353,8 @@ type RenderTreeOptions = Partial<
     | "controller"
     | "onFeatureActivate"
     | "onFeatureRename"
+    | "onFeatureRemove"
+    | "onFeatureDeleted"
     | "onFeaturePreselectionChange"
     | "onFeatureSuppressionChange"
     | "onFeatureVisibilityChange"
@@ -500,6 +514,8 @@ function renderTree(options: RenderTreeOptions = {}) {
     hiddenSketchIds: [],
     onFeatureActivate: vi.fn(),
     onFeatureRename: vi.fn().mockResolvedValue({ ok: true }),
+    onFeatureRemove: vi.fn().mockResolvedValue({ ok: true }),
+    onFeatureDeleted: vi.fn(),
     onFeaturePreselectionChange: vi.fn(),
     onFeatureSuppressionChange: vi.fn().mockResolvedValue({ ok: true }),
     onFeatureVisibilityChange: vi.fn(),
@@ -714,8 +730,7 @@ describe("ModelTree History presentation", () => {
     expect(screen.getByText("Moved Box 1 to position 1")).toBeTruthy()
   })
 
-  it("locks reorder controls while a move is pending and releases them after rejection", async () => {
-    const user = userEvent.setup()
+  it("locks dragging while a move is pending and releases it after rejection", async () => {
     let rejectPending: ((error: Error) => void) | undefined
     const onHistoryMove = vi
       .fn()
@@ -742,8 +757,7 @@ describe("ModelTree History presentation", () => {
       onHistoryMove,
     })
 
-    await user.click(screen.getByRole("button", { name: "Move Box 1" }))
-    await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
+    dragHistoryRow(`feature:${featureId}`, 1, `sketch:${sketchId}`, 0)
     await waitFor(() => {
       expect(
         screen
@@ -751,9 +765,6 @@ describe("ModelTree History presentation", () => {
           .closest("[data-history-id]")
           ?.getAttribute("data-history-reorder-disabled"),
       ).toBe("true")
-      expect(
-        (screen.getByRole("button", { name: "Move Profile" }) as HTMLButtonElement).disabled,
-      ).toBe(true)
     })
     expect(
       [...container.querySelectorAll<HTMLElement>("[data-history-id]")].map(
@@ -771,20 +782,15 @@ describe("ModelTree History presentation", () => {
           .closest("[data-history-id]")
           ?.getAttribute("data-history-reorder-disabled"),
       ).toBeNull()
-      expect(
-        (screen.getByRole("button", { name: "Move Profile" }) as HTMLButtonElement).disabled,
-      ).toBe(false)
     })
     expect(screen.getByText("History reorder cancelled")).toBeTruthy()
 
-    await user.click(screen.getByRole("button", { name: "Move Box 1" }))
-    await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
+    dragHistoryRow(`feature:${featureId}`, 1, `sketch:${sketchId}`, 0)
     await waitFor(() => expect(onHistoryMove).toHaveBeenCalledTimes(2))
     expect(screen.getByText("Moved Box 1 to position 1")).toBeTruthy()
   })
 
-  it("uses semantic History order and moves independent rows by stable identity", async () => {
-    const user = userEvent.setup()
+  it("uses semantic History order and moves independent rows by stable identity without a position picker", async () => {
     const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
     const semanticController = {
       ...controller,
@@ -812,14 +818,14 @@ describe("ModelTree History presentation", () => {
       "history-drag-instructions",
     )
     expect(screen.queryByRole("button", { name: "Move Profile earlier" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Move Profile" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Move Box 1" })).toBeNull()
 
-    await user.click(screen.getByRole("button", { name: "Move Box 1" }))
-    await user.click(screen.getByRole("menuitem", { name: "Move Box 1 to position 1" }))
+    dragHistoryRow(`feature:${featureId}`, 1, `sketch:${sketchId}`, 0)
     expect(onHistoryMove).toHaveBeenCalledWith(7, { kind: "feature", id: featureId }, null)
   })
 
-  it("blocks drag-picker destinations across a declared dependency", async () => {
-    const user = userEvent.setup()
+  it("blocks drag destinations across a declared dependency", () => {
     const fixture = controllerWithBrokenSketchReference()
     const report = fixture.controller.report
     if (!report) throw new Error("Expected a controller report.")
@@ -837,14 +843,15 @@ describe("ModelTree History presentation", () => {
       },
     } as unknown as DocumentControllerState
 
-    renderTree({ activeFeatureId: null, controller: dependencyController })
-
-    await user.click(screen.getByRole("button", { name: "Move Source" }))
+    const onHistoryMove = vi.fn()
+    renderTree({ activeFeatureId: null, controller: dependencyController, onHistoryMove })
+    dragHistoryRow(`sketch:${source.id}`, 0, `sketch:${target.id}`, 1)
+    expect(onHistoryMove).not.toHaveBeenCalled()
     expect(
-      screen
-        .getByRole("menuitem", { name: "Move Source to position 2" })
-        .getAttribute("aria-disabled"),
-    ).toBe("true")
+      screen.getByText(
+        "Cannot move Source to this position because it would break a History dependency",
+      ),
+    ).toBeTruthy()
   })
 
   it("renders one graph-ordered History and terminal Bodies presentation", () => {
@@ -1127,7 +1134,81 @@ describe("ModelTree selection", () => {
 })
 
 describe("ModelTree visibility and deletion", () => {
-  it("toggles persisted feature suppression with a single-flight icon action", async () => {
+  it("deletes a feature through its actions menu after confirmation and restores focus on cancel", async () => {
+    const user = userEvent.setup()
+    const onFeatureRemove = vi.fn().mockResolvedValue({ ok: true })
+    const onFeatureDeleted = vi.fn()
+    renderTree({ activeFeatureId: null, onFeatureRemove, onFeatureDeleted })
+    const actions = screen.getByRole("button", { name: "Actions for Box 1" })
+    await user.click(actions)
+    await user.click(screen.getByRole("menuitem", { name: "Delete Box 1…" }))
+    expect(screen.getByRole("alertdialog", { name: "Delete Box 1?" })).toBeTruthy()
+    expect(onFeatureRemove).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "Keep feature" }))
+    await waitFor(() => expect(document.activeElement).toBe(actions))
+    expect(onFeatureRemove).not.toHaveBeenCalled()
+    await user.click(actions)
+    await user.click(screen.getByRole("menuitem", { name: "Delete Box 1…" }))
+    await user.dblClick(screen.getByRole("button", { name: "Delete feature" }))
+    expect(onFeatureRemove).toHaveBeenCalledExactlyOnceWith(7, featureId)
+    expect(onFeatureDeleted).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+  })
+
+  it("uses the retained-dependent removal command when a feature has dependents", async () => {
+    const dependent = featureRecordSchema.parse({
+      ...feature,
+      id: datumFeature.id,
+      label: "Dependent box",
+      dependencies: [featureId],
+    })
+    const onFeatureRemove = vi.fn().mockResolvedValue({ ok: true })
+    renderTree({
+      activeFeatureId: null,
+      onFeatureRemove,
+      controller: {
+        ...controller,
+        report: {
+          ...controllerReport,
+          snapshot: { ...controllerReport.snapshot, features: [feature, dependent] },
+        },
+      } as DocumentControllerState,
+    })
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Actions for Box 1" }))
+    const deletion = screen.getByRole("menuitem", { name: "Delete Box 1…" })
+    expect(deletion.getAttribute("aria-disabled")).not.toBe("true")
+    await user.click(deletion)
+    expect(onFeatureRemove).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "Delete feature" }))
+    await waitFor(() => expect(onFeatureRemove).toHaveBeenCalledWith(7, featureId))
+  })
+
+  it.each(["read-only", "active-tool", "saving"] as const)(
+    "blocks History feature deletion during %s",
+    async (reason) => {
+      const onFeatureRemove = vi.fn()
+      renderTree({
+        activeFeatureId: reason === "active-tool" ? featureId : null,
+        onFeatureRemove,
+        controller: {
+          ...controller,
+          saveStatus: reason === "saving" ? "saving" : "saved",
+          report: {
+            ...controllerReport,
+            mode: reason === "read-only" ? "read-only" : "read-write",
+          },
+        } as DocumentControllerState,
+      })
+      await userEvent.setup().click(screen.getByRole("button", { name: "Actions for Box 1" }))
+      expect(
+        screen.getByRole("menuitem", { name: "Delete Box 1…" }).getAttribute("aria-disabled"),
+      ).toBe("true")
+      expect(onFeatureRemove).not.toHaveBeenCalled()
+    },
+  )
+
+  it("toggles persisted feature suppression with a single-flight menu action", async () => {
     const user = userEvent.setup()
     let resolveSuppression: ((result: { ok: true }) => void) | undefined
     const onFeatureSuppressionChange = vi.fn(
@@ -1141,7 +1222,8 @@ describe("ModelTree visibility and deletion", () => {
       onFeatureSuppressionChange,
     })
 
-    const suppress = screen.getByRole("button", { name: "Suppress Box 1" })
+    await user.click(screen.getByRole("button", { name: "Actions for Box 1" }))
+    const suppress = screen.getByRole("menuitem", { name: "Suppress Box 1" })
     await user.click(suppress)
 
     expect(onFeatureSuppressionChange).toHaveBeenCalledOnce()
@@ -1151,7 +1233,9 @@ describe("ModelTree visibility and deletion", () => {
     expect(onFeatureSuppressionChange).toHaveBeenCalledOnce()
 
     resolveSuppression?.({ ok: true })
-    await waitFor(() => expect(suppress.hasAttribute("aria-busy")).toBe(false))
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitem", { name: "Suppress Box 1" })).toBeNull(),
+    )
 
     unmount()
     renderTree({
@@ -1160,14 +1244,15 @@ describe("ModelTree visibility and deletion", () => {
       onFeatureSuppressionChange,
     })
     const suppressedRow = screen
-      .getByRole("button", { name: "Unsuppress Box 1" })
+      .getByRole("treeitem", { name: "Box 1" })
       .closest("[data-feature-suppressed]")
     expect(suppressedRow?.getAttribute("data-feature-suppressed")).toBe("true")
     expect((screen.getByRole("button", { name: "Hide Box 1" }) as HTMLButtonElement).disabled).toBe(
       true,
     )
 
-    await user.click(screen.getByRole("button", { name: "Unsuppress Box 1" }))
+    await user.click(screen.getByRole("button", { name: "Actions for Box 1" }))
+    await user.click(screen.getByRole("menuitem", { name: "Unsuppress Box 1" }))
     expect(onFeatureSuppressionChange).toHaveBeenLastCalledWith(7, featureId, false)
   })
 
@@ -1314,7 +1399,8 @@ describe("ModelTree rename", () => {
     const onFeatureRename = vi.fn().mockResolvedValue({ ok: true })
     renderTree({ onFeatureRename })
 
-    await user.click(screen.getByRole("button", { name: "Rename Box 1" }))
+    await user.click(screen.getByRole("button", { name: "Actions for Box 1" }))
+    await user.click(screen.getByRole("menuitem", { name: "Rename Box 1…" }))
     await user.clear(screen.getByRole("textbox", { name: "Feature name" }))
     await user.type(screen.getByRole("textbox", { name: "Feature name" }), "Mounting block")
     await user.dblClick(screen.getByRole("button", { name: /^Rename feature$/ }))
@@ -1344,8 +1430,9 @@ describe("ModelTree rename", () => {
 
     unmount()
     renderTree({ sketchRenameBlockedId: sketchId })
+    await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
     expect(
-      (screen.getByRole("button", { name: "Rename Profile" }) as HTMLButtonElement).disabled,
-    ).toBe(true)
+      screen.getByRole("menuitem", { name: "Rename Profile…" }).getAttribute("aria-disabled"),
+    ).toBe("true")
   })
 })

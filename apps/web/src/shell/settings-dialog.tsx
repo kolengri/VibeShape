@@ -46,14 +46,12 @@ export function SettingsDialog({
         <DialogTrigger asChild>
           <Button
             type="button"
-            size="xs"
+            size="icon"
             variant="outline"
             aria-label={t("title")}
             title={t("title")}
-            className="max-sm:size-7 max-sm:p-0"
           >
             <SettingsIcon aria-hidden="true" />
-            <span className="hidden sm:inline">{t("title")}</span>
           </Button>
         </DialogTrigger>
       ) : null}

@@ -13,14 +13,19 @@ test("suppresses and restores a feature through persisted history", async ({ pag
     .click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
 
-  await page.getByRole("button", { name: "Suppress Box 1" }).click()
+  await page.getByRole("button", { name: "Actions for Box 1" }).click()
+  await page.getByRole("menuitem", { name: "Suppress Box 1" }).click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
-  await expect(page.getByRole("button", { name: "Unsuppress Box 1" })).toBeVisible()
+  await page.getByRole("button", { name: "Actions for Box 1" }).click()
+  await expect(page.getByRole("menuitem", { name: "Unsuppress Box 1" })).toBeVisible()
+  await page.keyboard.press("Escape")
   await expect(page.getByRole("button", { name: "Hide Box 1" })).toBeDisabled()
 
   await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-  await expect(page.getByRole("button", { name: "Suppress Box 1" })).toBeVisible()
+  await page.getByRole("button", { name: "Actions for Box 1" }).click()
+  await expect(page.getByRole("menuitem", { name: "Suppress Box 1" })).toBeVisible()
+  await page.keyboard.press("Escape")
 
   await toolbar.getByRole("button", { name: "Redo", exact: true }).click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
@@ -30,10 +35,13 @@ test("suppresses and restores a feature through persisted history", async ({ pag
     "data-rendered-feature-count",
     "0",
   )
-  await page.getByRole("button", { name: "Unsuppress Box 1" }).click()
+  await page.getByRole("button", { name: "Actions for Box 1" }).click()
+  await page.getByRole("menuitem", { name: "Unsuppress Box 1" }).click()
   await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
     "data-rendered-feature-count",
     "1",
   )
-  await expect(page.getByRole("button", { name: "Suppress Box 1" })).toBeVisible()
+  await page.getByRole("button", { name: "Actions for Box 1" }).click()
+  await expect(page.getByRole("menuitem", { name: "Suppress Box 1" })).toBeVisible()
+  await page.keyboard.press("Escape")
 })

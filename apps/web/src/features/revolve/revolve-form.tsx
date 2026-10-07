@@ -431,8 +431,9 @@ function RevolveAxisField({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            size="content"
             type="button"
-            className="h-auto min-h-9 w-full min-w-0 justify-start gap-2 overflow-hidden border-dashed px-3 py-2 text-left"
+            className="w-full min-w-0 justify-start overflow-hidden border-dashed text-left"
             variant={selectionActive ? "secondary" : "outline"}
             aria-label={copy.axisSelectHint}
             aria-pressed={selectionActive}

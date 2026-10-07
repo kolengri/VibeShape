@@ -1093,7 +1093,7 @@ function ViewportControls({
                 viewportRef.current?.clearSelection()
                 onBodyClear?.()
               }}
-              size="icon-xs"
+              size="icon-sm"
               type="button"
               variant="ghost"
             >
@@ -1110,7 +1110,7 @@ function ViewportControls({
               <Button
                 disabled={cameraLocked}
                 aria-label={t("standardViews")}
-                size="icon-xs"
+                size="icon-sm"
                 type="button"
                 variant="ghost"
               >
@@ -1137,7 +1137,7 @@ function ViewportControls({
             aria-label={fitLabel}
             disabled={cameraLocked}
             onClick={() => viewportRef.current?.fit()}
-            size="icon-xs"
+            size="icon-sm"
             type="button"
             variant="ghost"
           >
@@ -2404,7 +2404,7 @@ function SketchReferenceSelectOtherOverlay({
               position: index + 1,
             })}
             aria-selected={selection.activeIndex === index}
-            className="h-auto min-h-8 justify-start gap-2 px-2 py-1 text-left text-xs"
+            className="justify-start text-left"
             data-sketch-reference-select-other-active={
               selection.activeIndex === index ? "true" : undefined
             }
@@ -2413,7 +2413,7 @@ function SketchReferenceSelectOtherOverlay({
             onClick={() => selection.choose(candidate)}
             onPointerEnter={() => selection.preview(index)}
             role="option"
-            size="sm"
+            size="content"
             tabIndex={-1}
             type="button"
             variant={selection.activeIndex === index ? "secondary" : "ghost"}
@@ -2468,7 +2468,7 @@ function SupportFaceSelectOtherOverlay({
               position: index + 1,
             })}
             aria-selected={selection.activeIndex === index}
-            className="h-auto min-h-8 justify-start gap-2 px-2 py-1 text-left text-xs"
+            className="justify-start text-left"
             data-support-face-select-other-active={
               selection.activeIndex === index ? "true" : undefined
             }
@@ -2477,7 +2477,7 @@ function SupportFaceSelectOtherOverlay({
             onClick={() => selection.choose(candidate)}
             onPointerEnter={() => selection.preview(index)}
             role="option"
-            size="sm"
+            size="content"
             tabIndex={-1}
             type="button"
             variant={selection.activeIndex === index ? "secondary" : "ghost"}
@@ -2637,13 +2637,13 @@ function SavedProfileSelectOtherOverlay({
               position: index + 1,
             })}
             aria-selected={selection.activeIndex === index}
-            className="h-auto min-h-8 justify-start gap-2 px-2 py-1 text-left text-xs"
+            className="justify-start text-left"
             id={`saved-profile-select-other-${index}`}
             key={option.key}
             onClick={() => selection.choose(option.profile)}
             onPointerEnter={() => selection.preview(index)}
             role="option"
-            size="sm"
+            size="content"
             tabIndex={-1}
             type="button"
             variant={selection.activeIndex === index ? "secondary" : "ghost"}
@@ -3108,8 +3108,8 @@ function AxialGizmoSideControls({
         <Button
           key={value}
           type="button"
-          size="sm"
-          className="h-auto min-h-8 min-w-0 whitespace-normal px-2 text-xs"
+          size="content"
+          className="min-w-0"
           variant={side === value ? "secondary" : "ghost"}
           aria-pressed={side === value}
           onClick={() => onSelect(value)}

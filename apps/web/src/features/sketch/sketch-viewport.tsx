@@ -2460,9 +2460,9 @@ function SketchAvailableExternalGeometry({
                     choiceRefs.current[index] = element
                   }}
                   type="button"
-                  className="h-auto justify-start whitespace-normal px-2 py-1.5 text-left"
+                  className="justify-start text-left"
                   data-sketch-external-overlap-active={index === chooserActiveIndex || undefined}
-                  size="sm"
+                  size="content"
                   variant={index === chooserActiveIndex ? "secondary" : "ghost"}
                   onFocus={() => setChooserActiveIndex(index)}
                   onPointerEnter={() => setChooserActiveIndex(index)}
@@ -10950,10 +10950,12 @@ function SketchCreationPrecisionOverlay({
     const affordance = (
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             aria-label={label}
-            className="absolute z-40 inline-flex max-w-52 -translate-y-1/2 items-center gap-1.5 rounded-md border border-border/80 bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-sm backdrop-blur-sm hover:border-primary/60 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            size="xs"
+            variant="outline"
+            className="absolute z-40 max-w-52 -translate-y-1/2 border-border/80 bg-popover/95 text-popover-foreground shadow-sm backdrop-blur-sm hover:border-primary/60"
             data-sketch-creation-precision-trigger
             style={position}
             onClick={onActivate}
@@ -10961,7 +10963,7 @@ function SketchCreationPrecisionOverlay({
             <Ruler aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{option.label}</span>
             <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{value}</span>
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>

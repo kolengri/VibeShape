@@ -36,9 +36,10 @@ export function LibraryBrowserPanel({
         {browser.items.map((item) => (
           <li key={item.id}>
             <Button
+              size="content"
               type="button"
               variant={browser.selection?.item.id === item.id ? "secondary" : "outline"}
-              className="h-auto justify-start whitespace-normal text-left"
+              className="justify-start text-left"
               disabled={pending}
               aria-pressed={browser.selection?.item.id === item.id}
               aria-label={t("selectItem", { name: item.name })}

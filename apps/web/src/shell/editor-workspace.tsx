@@ -55,6 +55,7 @@ import {
   commitAuthoredMetadata,
   type DocumentControllerState,
   moveHistoryItem,
+  removeFeature,
   removeSketch,
   resolveDocumentFeatureParameters,
   setFeatureSuppressed,
@@ -1339,7 +1340,6 @@ function SketchContextStatus({
         )}
       </span>
       <Button
-        className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
         size="sm"
         type="button"
         variant="secondary"
@@ -2138,6 +2138,8 @@ function EditorModelTree({
       onBodyPreselectionChange={actions.preselectBody}
       onFeatureActivate={actions.editFeature}
       onFeatureRename={updateFeature}
+      onFeatureDeleted={actions.closeTool}
+      onFeatureRemove={removeFeature}
       onFeaturePreselectionChange={actions.preselectFeature}
       onFeatureSuppressionChange={setFeatureSuppressed}
       onFeatureVisibilityChange={actions.setFeatureVisibility}

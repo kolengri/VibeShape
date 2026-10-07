@@ -201,7 +201,7 @@ function ToolbarCommandFamilyAction({
                   size="icon-sm"
                   variant={activeCommand ? "secondary" : "ghost"}
                   aria-label={familyLabel}
-                  className="w-6 rounded-l-none border-l border-border px-0"
+                  className="rounded-l-none border-l border-border"
                 >
                   <ChevronDown aria-hidden="true" />
                 </Button>

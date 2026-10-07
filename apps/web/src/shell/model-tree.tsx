@@ -1,10 +1,4 @@
-import {
-  Accessibility,
-  KeyboardSensor,
-  PointerActivationConstraints,
-  PointerSensor,
-} from "@dnd-kit/dom"
-import { SortableKeyboardPlugin } from "@dnd-kit/dom/sortable"
+import { Accessibility, PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom"
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react"
 import { isSortable, isSortableOperation, useSortable } from "@dnd-kit/react/sortable"
 import {
@@ -21,16 +15,8 @@ import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@vibeshape/ui/components/dropdown-menu"
-import {
   ChevronDown,
   CircleAlert,
-  CirclePause,
-  CirclePlay,
   Cuboid,
   Eye,
   EyeOff,
@@ -51,6 +37,7 @@ import type { SemanticRenameResult } from "../components/semantic-rename-dialog"
 import type {
   DocumentControllerState,
   DocumentMutationResult,
+  FeatureMutationResult,
 } from "../document/document-controller"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
@@ -65,6 +52,7 @@ import {
   currentAuthoredSnapshot,
   selectedAuthoredBody,
 } from "./authored-tree-state"
+import { HistoryFeatureActions } from "./history-feature-actions"
 import { HistoryFolderGroup } from "./history-folder-group"
 import {
   HistoryFolderSelectableRow,
@@ -74,7 +62,7 @@ import {
 import { historyInsertionContext } from "./history-insertion-context"
 import { HistoryProfileSources } from "./history-profile-sources"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
-import { historyMovePositions, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
+import { proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
 import type { EditorWorkspaceName } from "./workspace"
 
@@ -87,12 +75,6 @@ const HISTORY_POINTER_SENSOR = PointerSensor.configure({
     event.pointerType === "touch"
       ? [new PointerActivationConstraints.Delay({ value: 250, tolerance: 6 })]
       : [new PointerActivationConstraints.Distance({ value: 5 })],
-})
-
-const HISTORY_KEYBOARD_SENSOR = KeyboardSensor.configure({
-  keyboardCodes: { ...KeyboardSensor.defaults.keyboardCodes, start: ["Space"] },
-  preventActivation: (event) =>
-    !(event.target instanceof Element) || event.target.getAttribute("role") !== "treeitem",
 })
 
 type FeatureRenameHandler = (
@@ -213,48 +195,6 @@ function FeatureVisibilityAction({
   )
 }
 
-function FeatureSuppressionAction({
-  controller,
-  feature,
-  label,
-  onChange,
-}: {
-  controller: DocumentControllerState
-  feature: FeatureRecord
-  label: string
-  onChange: FeatureSuppressionHandler
-}) {
-  const t = useTranslations("app.shell.modelTree")
-  const actionLabel = t(feature.suppressed ? "unsuppressFeature" : "suppressFeature", {
-    feature: label,
-  })
-  const disabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={actionLabel}
-          aria-pressed={feature.suppressed}
-          disabled={disabled}
-          onClick={() =>
-            onChange(controller.report?.snapshot.revision ?? 0, feature.id, !feature.suppressed)
-          }
-        >
-          {feature.suppressed ? (
-            <CirclePlay aria-hidden="true" />
-          ) : (
-            <CirclePause aria-hidden="true" />
-          )}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{actionLabel}</TooltipContent>
-    </Tooltip>
-  )
-}
-
 function FeatureTreeLabel({
   active,
   feature,
@@ -310,6 +250,7 @@ function FeatureTreeLabel({
 function FeatureTreeItem({
   active,
   controller,
+  historyActions,
   feature,
   onActivate,
   onFeatureRename,
@@ -322,6 +263,11 @@ function FeatureTreeItem({
 }: {
   active: boolean
   controller: DocumentControllerState
+  historyActions: {
+    disabled: boolean
+    onDeleted: () => void
+    onRemove: ModelTreeProps["onFeatureRemove"]
+  }
   feature: FeatureRecord
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
@@ -333,6 +279,7 @@ function FeatureTreeItem({
   visible: boolean
 }) {
   const [renameOpen, setRenameOpen] = useState(false)
+  const actionsTriggerRef = useRef<HTMLButtonElement>(null)
   const label = feature.label ?? unnamedFeature
   const renameDisabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
   return (
@@ -357,13 +304,25 @@ function FeatureTreeItem({
         onRenameOpen={() => setRenameOpen(true)}
         renameDisabled={renameDisabled}
       />
-      <FeatureSuppressionAction
+      <HistoryFeatureActions
         controller={controller}
+        deleteDisabled={historyActions.disabled}
         feature={feature}
         label={label}
-        onChange={onSuppressionChange}
+        onDeleted={historyActions.onDeleted}
+        onRemove={historyActions.onRemove}
+        onRename={() => setRenameOpen(true)}
+        onSuppressionChange={onSuppressionChange}
+        renameDisabled={renameDisabled}
+        renameOpen={renameOpen}
+        triggerRef={actionsTriggerRef}
       />
       <ModelTreeRenameDialog
+        showTrigger={false}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          actionsTriggerRef.current?.focus()
+        }}
         controller={controller}
         fallbackName={unnamedFeature}
         onFeatureRename={onFeatureRename}
@@ -402,10 +361,16 @@ function SketchTreeActions({
   unnamedSketch: string
 }) {
   const label = sketch.label || unnamedSketch
+  const actionsTriggerRef = useRef<HTMLButtonElement>(null)
 
   return (
     <>
       <ModelTreeRenameDialog
+        showTrigger={false}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          actionsTriggerRef.current?.focus()
+        }}
         blocked={renameBlocked}
         controller={controller}
         fallbackName={unnamedSketch}
@@ -416,6 +381,15 @@ function SketchTreeActions({
         target={{ kind: "sketch", record: sketch }}
       />
       <SketchDeleteAction
+        renameAction={{
+          triggerRef: actionsTriggerRef,
+          onSelect: () => onRenameOpenChange(true),
+          disabled:
+            renameBlocked ||
+            controller.status !== "ready" ||
+            controller.report?.mode !== "read-write",
+          open: renameOpen,
+        }}
         baseRevision={controller.report?.snapshot.revision ?? 0}
         blocked={renameBlocked || deletionBlocked}
         disabled={controller.status !== "ready" || controller.report?.mode !== "read-write"}
@@ -755,6 +729,11 @@ type ModelTreeProps = {
   controller: DocumentControllerState
   onFeatureActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onFeatureDeleted: () => void
+  onFeatureRemove: (
+    baseRevision: number,
+    featureId: FeatureRecord["id"],
+  ) => Promise<FeatureMutationResult>
   onSketchDeleted: () => void
   onSketchRemove: SketchRemoveHandler
   onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
@@ -910,7 +889,6 @@ type ModelTreeHistoryRowProps = ModelTreeHistoryBranchProps & {
   dragDestinationIndex: number | null
   index: number
   marker: boolean
-  onMoveToIndex: (sourceKey: string, index: number) => void
   rolledBack: boolean
   row: HistoryViewRow
 }
@@ -982,7 +960,7 @@ function useHistoryRowSortable({
     id: historyRefKey(row.ref),
     index,
     disabled: locked || !historyMoveIsAvailable(controller, null, null, true),
-    plugins: [SortableKeyboardPlugin],
+    plugins: [],
   })
   const dropMove = historyRowDropPreview(
     sortable.isDropTarget,
@@ -1011,62 +989,6 @@ function historyRowReorderIsLocked(
   )
 }
 
-function HistoryReorderActions({
-  controller,
-  label,
-  locked,
-  onMoveToIndex,
-  rows,
-  sourceKey,
-  t,
-}: {
-  controller: DocumentControllerState
-  label: string
-  locked: boolean
-  onMoveToIndex: (index: number) => void
-  rows: readonly HistoryViewRow[]
-  sourceKey: string
-  t: ReturnType<typeof useTranslations>
-}) {
-  const [open, setOpen] = useState(false)
-  const unavailable =
-    locked || controller.status !== "ready" || controller.report?.mode !== "read-write"
-  const allowedPositions = open
-    ? new Set(historyMovePositions(rows, sourceKey, true))
-    : new Set<number>()
-  return (
-    <div className="flex shrink-0 items-center">
-      <span className="sr-only">{t("reorderHistory", { item: label })}</span>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={t("historyMovePicker", { item: label })}
-            disabled={unavailable || rows.length < 2}
-          >
-            <ChevronDown aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
-          {open &&
-            rows.map((candidate, position) => (
-              <DropdownMenuItem
-                key={historyRefKey(candidate.ref)}
-                disabled={!allowedPositions.has(position)}
-                title={!allowedPositions.has(position) ? t("historyMoveUnavailable") : undefined}
-                onSelect={() => onMoveToIndex(position)}
-              >
-                {t("historyDropPosition", { item: label, position: position + 1 })}
-              </DropdownMenuItem>
-            ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  )
-}
-
 type HistoryRowFrameProps = Pick<
   ModelTreeHistoryRowProps,
   | "busy"
@@ -1074,13 +996,11 @@ type HistoryRowFrameProps = Pick<
   | "dragSourceKey"
   | "index"
   | "marker"
-  | "onMoveToIndex"
   | "rolledBack"
   | "row"
   | "t"
   | "view"
 > & {
-  label: string
   content: ReactNode
   details?: ReactNode
   sourcePresentation: { summary: ReactNode; highlighted: boolean }
@@ -1105,13 +1025,10 @@ function historyRowStateData(
 }
 
 function HistoryRowPresentation({
-  controller,
   content,
   details,
   feedback,
-  label,
   marker,
-  onMoveToIndex,
   reorderLocked,
   rolledBack,
   row,
@@ -1119,20 +1036,9 @@ function HistoryRowPresentation({
   summaryLabels,
   sourcePresentation,
   t,
-  view,
 }: Pick<
   HistoryRowFrameProps,
-  | "controller"
-  | "content"
-  | "details"
-  | "sourcePresentation"
-  | "label"
-  | "marker"
-  | "onMoveToIndex"
-  | "rolledBack"
-  | "row"
-  | "t"
-  | "view"
+  "content" | "details" | "sourcePresentation" | "marker" | "rolledBack" | "row" | "t"
 > & {
   feedback: ReturnType<typeof historyRowDropFeedback>
   reorderLocked: boolean
@@ -1160,15 +1066,6 @@ function HistoryRowPresentation({
     >
       <div className="flex min-w-0 items-start">
         <div className="min-w-0 flex-1">{content}</div>
-        <HistoryReorderActions
-          controller={controller}
-          label={label}
-          locked={reorderLocked}
-          onMoveToIndex={(position) => onMoveToIndex(historyRefKey(row.ref), position)}
-          rows={view.rows}
-          sourceKey={historyRefKey(row.ref)}
-          t={t}
-        />
       </div>
       {sourcePresentation.summary ?? <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />}
       {details}
@@ -1220,7 +1117,6 @@ function SketchHistoryRow({
   dragSourceKey,
   index,
   marker,
-  onMoveToIndex,
   rolledBack,
   row,
   t,
@@ -1228,7 +1124,6 @@ function SketchHistoryRow({
   ...props
 }: ModelTreeHistoryRowProps) {
   const sketch = row.record as SketchRecord
-  const label = sketch.label || t("unnamedSketch")
   return (
     <HistoryRowFrame
       sourcePresentation={{
@@ -1242,9 +1137,7 @@ function SketchHistoryRow({
       dragDestinationIndex={dragDestinationIndex}
       dragSourceKey={dragSourceKey}
       index={index}
-      label={label}
       marker={marker}
-      onMoveToIndex={onMoveToIndex}
       rolledBack={rolledBack}
       row={row}
       t={t}
@@ -1282,12 +1175,27 @@ function SketchHistoryRow({
   )
 }
 
+function historyFeatureDeleteIsUnavailable(
+  props: ModelTreeProps,
+  busy: boolean,
+  rolledBack: boolean,
+  view: ReturnType<typeof selectModelTreeHistory>,
+) {
+  return (
+    busy ||
+    rolledBack ||
+    authoredTreeWriteBlocked(props) ||
+    props.activeSketchId !== null ||
+    view.graphFailed ||
+    view.reorderUnavailable
+  )
+}
+
 function FeatureHistoryRow({
   busy,
   dragDestinationIndex,
   dragSourceKey,
   index,
-  onMoveToIndex,
   rolledBack,
   row,
   t,
@@ -1295,7 +1203,6 @@ function FeatureHistoryRow({
   ...props
 }: ModelTreeHistoryRowProps) {
   const feature = row.record as FeatureRecord
-  const label = feature.label ?? t("unnamedFeature")
   const profiles = readExtrusionProfileSet(feature) ?? readRevolveProfileSet(feature)
   return (
     <HistoryRowFrame
@@ -1306,7 +1213,6 @@ function FeatureHistoryRow({
       dragDestinationIndex={dragDestinationIndex}
       dragSourceKey={dragSourceKey}
       index={index}
-      label={label}
       marker={false}
       sourcePresentation={{
         highlighted: false,
@@ -1330,7 +1236,6 @@ function FeatureHistoryRow({
           </p>
         ) : undefined
       }
-      onMoveToIndex={onMoveToIndex}
       rolledBack={rolledBack}
       row={row}
       t={t}
@@ -1339,6 +1244,11 @@ function FeatureHistoryRow({
         <FeatureTreeItem
           active={row.ref.id === props.activeFeatureId}
           controller={props.controller}
+          historyActions={{
+            disabled: historyFeatureDeleteIsUnavailable(props, busy, rolledBack, view),
+            onDeleted: props.onFeatureDeleted,
+            onRemove: props.onFeatureRemove,
+          }}
           feature={feature}
           onActivate={props.onFeatureActivate}
           onFeatureRename={props.onFeatureRename}
@@ -1407,22 +1317,6 @@ function HistoryGroup({
         busyRef.current = false
         setBusy(false)
       })
-  }
-  const moveToIndex = (sourceKey: string, index: number) => {
-    const report = props.controller.report
-    if (
-      !report ||
-      !historyMoveIsAvailable(
-        props.controller,
-        props.activeSketchId,
-        props.activeFeatureId,
-        completeGraph,
-      )
-    ) {
-      return
-    }
-    const move = proposeHistoryMoveToIndex(view.rows, sourceKey, index, completeGraph)
-    performMove(move, report.snapshot.revision)
   }
   const handleDragEnd = (event: DragEndEvent) => {
     const destinationIndex = dragDestinationIndexRef.current
@@ -1503,7 +1397,7 @@ function HistoryGroup({
             <DragDropProvider
               // The tree owns localized announcements and selection semantics, even when reorder is locked.
               plugins={(defaults) => defaults.filter((plugin) => plugin !== Accessibility)}
-              sensors={[HISTORY_POINTER_SENSOR, HISTORY_KEYBOARD_SENSOR]}
+              sensors={[HISTORY_POINTER_SENSOR]}
               onDragStart={(event) => {
                 if (!isSortable(event.operation.source)) return
                 const source = event.operation.source
@@ -1571,7 +1465,6 @@ function HistoryGroup({
                     dragDestinationIndex,
                     dragSourceKey,
                     index,
-                    onMoveToIndex: moveToIndex,
                     row,
                     repairRequired: repairIds.has(historyRefKey(row.ref)),
                     rolledBack:

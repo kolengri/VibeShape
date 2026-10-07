@@ -12,7 +12,7 @@ import {
 import { PenLine } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { type ComponentProps, useState } from "react"
 import type { z } from "zod"
 
 export type SemanticRenameResult =
@@ -140,6 +140,8 @@ export function SemanticRenameDialog({
   open,
   triggerLabel,
   triggerTooltip,
+  showTrigger = true,
+  onCloseAutoFocus,
 }: {
   copy: SemanticRenameDialogCopy
   currentName: string
@@ -152,6 +154,8 @@ export function SemanticRenameDialog({
   open: boolean
   triggerLabel: string
   triggerTooltip: string
+  showTrigger?: boolean
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>["onCloseAutoFocus"]
 }) {
   const [pending, setPending] = useState(false)
   const changeOpen = (nextOpen: boolean) => {
@@ -161,23 +165,29 @@ export function SemanticRenameDialog({
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DialogTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              disabled={disabled}
-              aria-label={triggerLabel}
-            >
-              <PenLine aria-hidden="true" />
-            </Button>
-          </DialogTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{disabled ? disabledTooltip : triggerTooltip}</TooltipContent>
-      </Tooltip>
-      <DialogContent closeLabel={copy.closeLabel} showCloseButton={!pending}>
+      {showTrigger ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                disabled={disabled}
+                aria-label={triggerLabel}
+              >
+                <PenLine aria-hidden="true" />
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{disabled ? disabledTooltip : triggerTooltip}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      <DialogContent
+        closeLabel={copy.closeLabel}
+        showCloseButton={!pending}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{copy.description}</DialogDescription>

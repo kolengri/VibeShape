@@ -13,7 +13,7 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
   const box = page.getByRole("form", { name: "Create box" })
   await box.getByRole("button", { name: "Create box", exact: true }).click()
   await expect(box).not.toBeVisible()
-  await expect(page.getByRole("button", { name: "Suppress Box 1" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Actions for Box 1" })).toBeVisible()
   await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model" })
   await dialog.getByRole("button", { name: "Prepare print / breakaway fins…" }).click()
@@ -63,7 +63,7 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
   await dialog.getByRole("button", { name: "Generate print preview" }).click()
   await expect(dialog.getByText("No safe fin was generated.", { exact: false })).toBeVisible()
   await dialog.getByRole("button", { name: "Close", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Suppress Box 1" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Actions for Box 1" })).toBeVisible()
   await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
     "data-rendered-feature-count",
     "1",

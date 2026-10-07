@@ -22,10 +22,11 @@ export function AssemblyTree({
       <div className="grid gap-1">
         {assembly.instances.map((instance) => (
           <Button
+            size="content"
             key={instance.id}
             type="button"
             variant={instance.id === selectedId ? "secondary" : "ghost"}
-            className="h-auto justify-start whitespace-normal text-left"
+            className="justify-start text-left"
             aria-pressed={instance.id === selectedId}
             onClick={() => onSelectInstance(instance.id)}
             data-assembly-instance-id={instance.id}
@@ -46,10 +47,11 @@ export function AssemblyTree({
       <div className="grid gap-1">
         {assembly.definitions.map((definition) => (
           <Button
+            size="content"
             key={definition.id}
             type="button"
             variant={definition.id === selectedDefinitionId ? "secondary" : "ghost"}
-            className="h-auto justify-start whitespace-normal text-left"
+            className="justify-start text-left"
             aria-pressed={definition.id === selectedDefinitionId}
             onClick={() => onSelectDefinition(definition.id)}
             data-assembly-definition-id={definition.id}

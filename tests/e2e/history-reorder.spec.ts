@@ -69,9 +69,7 @@ test("reorders independent History items with undo, redo, and reload persistence
   )
 })
 
-test("reorders History by keyboard and cancels a second drag without changing the order", async ({
-  page,
-}) => {
+test("navigates History with the keyboard without reordering it", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
@@ -81,22 +79,20 @@ test("reorders History by keyboard and cancels a second drag without changing th
   const rows = page.locator('[data-history-kind="feature"] [role="treeitem"]')
   const row = page.getByRole("treeitem", { name: "Box 2", exact: true })
   await row.focus()
-  await page.keyboard.press("Space")
   await page.keyboard.press("ArrowUp")
-  await expect(row).toBeFocused()
-  await page.keyboard.press("Space")
-  await expect(page.getByText("Moved Box 2 to position 1", { exact: true })).toBeAttached()
-  await expect(rows).toHaveText(["Box 2", "Box 1"])
-  await expect(row).toBeFocused()
-  await expect(page.locator('[data-history-id][tabindex="0"]')).toHaveCount(0)
-  await page.keyboard.press("Space")
+  await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeFocused()
   await page.keyboard.press("ArrowDown")
-  await page.keyboard.press("Escape")
-  await expect(rows).toHaveText(["Box 2", "Box 1"])
   await expect(row).toBeFocused()
-  await expect(page.getByRole("form", { name: "Edit box" })).toHaveCount(0)
+  await page.keyboard.press("Space")
+  await expect(page.getByRole("form", { name: "Edit box" })).toBeVisible()
+  await expect(page.getByText(/Picked up Box 2/)).toHaveCount(0)
+  await expect(rows).toHaveText(["Box 1", "Box 2"])
+  await page
+    .getByRole("form", { name: "Edit box" })
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click()
   await page.reload()
-  await expect(rows).toHaveText(["Box 2", "Box 1"], { timeout: 30_000 })
+  await expect(rows).toHaveText(["Box 1", "Box 2"], { timeout: 30_000 })
   await row.focus()
   await page.keyboard.press("Enter")
   await expect(page.getByRole("form", { name: "Edit box" })).toBeVisible()
@@ -128,7 +124,8 @@ test("keeps row clicks, small pointer movement, rename, and visibility independe
   await visibility.click()
   await expect(page.getByRole("button", { name: "Show Box 2", exact: true })).toBeVisible()
 
-  await page.getByRole("button", { name: "Rename Box 2", exact: true }).click()
+  await page.getByRole("button", { name: "Actions for Box 2", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Rename Box 2…", exact: true }).click()
   await expect(page.getByRole("dialog", { name: "Rename feature" })).toBeVisible()
   await page.keyboard.press("Escape")
 
@@ -163,11 +160,7 @@ test("rejects moving a dependent feature before its source without leaving a vis
   await expect(rows).toHaveText(["Box 1", "Fillet 1"])
   await dragHistoryItem(page, "Fillet 1", "Box 1")
   await expect(rows).toHaveText(["Box 1", "Fillet 1"])
-  await page.getByRole("button", { name: "Move Fillet 1", exact: true }).click()
-  await expect(
-    page.getByRole("menuitem", { name: "Move Fillet 1 to position 1", exact: true }),
-  ).toBeDisabled()
-  await page.keyboard.press("Escape")
+  await expect(page.getByRole("button", { name: "Move Fillet 1", exact: true })).toHaveCount(0)
   await page.reload()
   await expect(rows).toHaveText(["Box 1", "Fillet 1"], { timeout: 30_000 })
 })

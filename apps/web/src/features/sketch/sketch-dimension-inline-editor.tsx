@@ -6,6 +6,7 @@ import type {
   VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { FieldError } from "@vibeshape/ui/components/field"
 import { Check, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
@@ -90,22 +91,26 @@ function DimensionModeButtons({
   return (
     <fieldset className="flex rounded-sm border p-0.5">
       <legend className="sr-only">{label}</legend>
-      <button
+      <Button
         type="button"
+        size="xs"
+        variant="ghost"
         aria-pressed={value === "driving"}
-        className="rounded-sm px-1.5 py-1 text-[10px] hover:bg-accent aria-pressed:bg-accent"
+        className="aria-pressed:bg-accent"
         onClick={() => onChange("driving")}
       >
         {drivingLabel}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        size="xs"
+        variant="ghost"
         aria-pressed={value === "reference"}
-        className="rounded-sm px-1.5 py-1 text-[10px] hover:bg-accent aria-pressed:bg-accent"
+        className="aria-pressed:bg-accent"
         onClick={() => onChange("reference")}
       >
         {referenceLabel}
-      </button>
+      </Button>
     </fieldset>
   )
 }
@@ -326,14 +331,16 @@ function DimensionEditorActions({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            size="icon-xs"
+            variant="ghost"
             aria-label={t("dimensionCancel")}
-            className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            className="text-muted-foreground"
             onClick={onCancel}
           >
-            <X aria-hidden="true" className="size-3.5" />
-          </button>
+            <X aria-hidden="true" />
+          </Button>
         </TooltipTrigger>
         <TooltipContent>{t("dimensionCancel")}</TooltipContent>
       </Tooltip>
