@@ -62,7 +62,7 @@
     "lint": "biome lint .",
     "lint:fix": "biome check --write .",
     "typecheck:scripts": "bun run --bun tsc -p tsconfig.scripts.json && bun run --bun tsc -p tsconfig.test-dom.json",
-    "typecheck": "bun run typecheck:scripts && bun run --workspaces typecheck",
+    "typecheck": "bun run scripts/run-typechecks.ts",
     "test": "bun run scripts/run-unit-tests.ts",
     "test:remote-mcp": "bun run --cwd apps/remote-mcp test",
     "test:watch": "bun run scripts/run-unit-tests.ts --watch",
@@ -116,6 +116,7 @@
     "replicad": "catalog:",
     "replicad-opencascadejs": "catalog:",
     "shadcn": "4.16.2",
+    "turbo": "2.11.7",
     "typescript": "7.0.2"
   },
   "overrides": {

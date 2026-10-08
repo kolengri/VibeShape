@@ -15,6 +15,7 @@ coverage/
 playwright-report/
 test-results/
 *.tsbuildinfo
+.turbo/
 __pycache__/
 *.py[cod]
 
