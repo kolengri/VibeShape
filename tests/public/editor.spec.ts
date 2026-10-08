@@ -1,11 +1,12 @@
 import { readFile } from "node:fs/promises"
 import type { Page, TestInfo } from "@playwright/test"
 import { unzipSync } from "fflate"
-import { readVShapeV3 } from "../../packages/formats/src/vshape"
+import { readAuthoredVShape } from "../../packages/formats/src/vshape"
+import { openApplicationMenuItem } from "../e2e/application-menu-support"
 import { expect, test } from "../e2e/fixtures"
 
 async function downloadExport(page: Page, info: TestInfo, format: "STEP" | "STL" | "3MF") {
-  await page.getByRole("button", { name: "Export…", exact: true }).click()
+  await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model", exact: true })
   const downloading = page.waitForEvent("download")
   await dialog.getByRole("button", { name: `Export ${format}`, exact: true }).click()
@@ -76,12 +77,12 @@ test("the public editor loads WASM, edits, restores a native project and exports
   await page.reload()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
 
-  await page.getByRole("button", { name: "File", exact: true }).click()
+  await openApplicationMenuItem(page, "Files and projects…")
   const downloading = page.waitForEvent("download")
   await page.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
   const backup = info.outputPath("public-part.vshape")
   await (await downloading).saveAs(backup)
-  const native = await readVShapeV3(new Uint8Array(await readFile(backup)))
+  const native = await readAuthoredVShape(new Uint8Array(await readFile(backup)))
   expect(native.ok).toBe(true)
 
   const recoveredContext = await browser.newContext({ baseURL })
@@ -94,7 +95,7 @@ test("the public editor loads WASM, edits, restores a native project and exports
   try {
     await recovered.goto("/")
     await expect(recovered.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await recovered.getByRole("button", { name: "File", exact: true }).click()
+    await openApplicationMenuItem(recovered, "Files and projects…")
     await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
     await expect(recovered.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
       "data-rendered-feature-count",
@@ -116,7 +117,7 @@ test("the public editor loads WASM, edits, restores a native project and exports
     expect(model).toContain('unit="millimeter"')
     expect(model).toContain("<triangle ")
     expect(model).toContain("<item ")
-    await recovered.getByRole("button", { name: "Settings", exact: true }).click()
+    await openApplicationMenuItem(recovered, "Settings…")
     await expect(
       recovered.getByRole("link", { name: /Licenses and corresponding source/ }),
     ).toHaveAttribute("href", "/sources/index.html")

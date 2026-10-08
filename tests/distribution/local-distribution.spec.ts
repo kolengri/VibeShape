@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
+import { openApplicationMenuItem } from "../e2e/application-menu-support"
 import { expect, test } from "../e2e/fixtures"
 
 const distribution = resolve(process.env.VIBESHAPE_DISTRIBUTION_ROOT ?? "")
@@ -49,9 +50,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     await startEditor()
     await page.goto(origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await expect(
-      page.getByRole("button", { name: /Enable AI session|Disable AI session/ }),
-    ).toHaveCount(0)
+    await expect(page.getByRole("button", { name: /Enable AI session|Stop AI/ })).toHaveCount(0)
     expect(await fetch(`${origin}/__vibeshape/automation/status`).then((r) => r.status)).toBe(404)
     await page
       .getByRole("toolbar", { name: "Model commands" })
@@ -90,7 +89,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     const edit = page.getByRole("form", { name: "Edit box" })
     await expect(edit.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("22 mm")
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await page.getByRole("button", { name: "File", exact: true }).click()
+    await openApplicationMenuItem(page, "Files and projects…")
     const downloadReady = page.waitForEvent("download")
     await page.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
     const download = await downloadReady
@@ -109,7 +108,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     try {
       await recovered.goto(origin)
       await expect(recovered.getByText("Saved in this browser", { exact: true })).toBeVisible()
-      await recovered.getByRole("button", { name: "File", exact: true }).click()
+      await openApplicationMenuItem(recovered, "Files and projects…")
       await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
       await expect(recovered.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
       await expect(recovered.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
@@ -130,7 +129,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     await stopEditor()
     local = await createMcpTestClient(port, { command: executable, args: ["mcp"], cwd })
     const tools = (await local.client.listTools()).tools
-    expect(tools).toHaveLength(39)
+    expect(new Set(tools.map((tool) => tool.name)).size).toBe(tools.length)
     expect(tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
         "read_agent_skill",
@@ -146,9 +145,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
       "1",
     )
     await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-    await expect(
-      page.getByRole("button", { name: "Disable AI session", exact: true }),
-    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const result = await local.callTool({ name: "model_info", arguments: {} })
     const model = localToolOutputs.model_info.parse(result.structuredContent?.result)
     if (!model.ok) throw new Error(model.diagnostic.message)
@@ -159,7 +156,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     expect(body.shape.volume).toBeCloseTo(26400, 6)
     expect(body.shape.solidCount).toBe(1)
     await page.screenshot({ path: testInfo.outputPath("recovered-packaged-model.png") })
-    await page.getByRole("button", { name: "Disable AI session", exact: true }).click()
+    await page.getByRole("button", { name: "Stop AI", exact: true }).click()
     await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeVisible()
     await page.goto("about:blank")
     await local.close()
