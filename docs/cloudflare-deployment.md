@@ -7,6 +7,10 @@ session relay are a separate implementation; this workflow does not advertise th
 
 ## Pipeline
 
+Runner selection and automatic recovery from GitHub-hosted billing limits are documented in
+[Personal GitHub Actions fallback](github-runner.md). The fallback changes the Linux execution
+host; the publication environments and protected-head checks below still apply.
+
 `.github/workflows/ci.yml` verifies PRs to `main` and can be called by the production workflow.
 `.github/workflows/cloudflare-pages.yml` runs only for this repository's `main`, after
 `VIBESHAPE_CLOUDFLARE_ENABLED` is explicitly set to `true`. Its sequence is:
