@@ -404,7 +404,7 @@ geometry-class drift, and degenerate projections; projection tests cover full an
 ## Monorepo and toolchain checks
 
 - `bun ci` verifies workspace manifests against `bun.lock`.
-- Typecheck, lint, and test run through workspace filters and root aggregate scripts.
+- Typecheck uses TypeScript 7's native compiler, separate incremental state per configuration, and dependency-aware Turbo result caching through `bun run typecheck`; see [ADR-0105](adr/0105-native-typescript-cache.md). Lint and tests retain their existing root scripts and focused filters.
 - `fallow audit` gates error-severity findings introduced by a changeset, including dead code, dependency hygiene, duplication, complexity, styling drift, and configured package-boundary violations.
 - Dependency-boundary tests prohibit UI imports in domain and protocol.
 - Production Vite build confirms Tailwind discovery across `apps/web` and `packages/ui`.

@@ -111,6 +111,7 @@
 | [0102](0102-lightweighting-task-workflows.md) | Accepted | Canvas lightweighting tasks and selectable lattice cells |
 | [0103](0103-retained-history-repair-authority.md) | Accepted | Retained History repair authority and native format 6 |
 | [0104](0104-native-bun-tests.md) | Accepted | Native Bun unit tests and workerd integration boundary |
+| [0105](0105-native-typescript-cache.md) | Accepted | Native TypeScript and dependency-aware typecheck caching |
 
 Statuses:
 

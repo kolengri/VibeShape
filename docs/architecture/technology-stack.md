@@ -4,7 +4,7 @@
 
 | Area | Choice | Rationale |
 |---|---|---|
-| Language | TypeScript with `strict` | Shared typing across domain, UI, protocol, and migrations |
+| Language | TypeScript 7.0.2 with `strict` | Native Go typechecker and shared typing across domain, UI, protocol, and migrations |
 | UI | React 19 | Mature ecosystem for complex desktop-like interfaces |
 | Build/dev | Vite 8 | Fast static build, worker/WASM assets, no backend required |
 | Package manager/runtime | Bun workspaces | One lockfile, fast installs, `workspace:*`, catalogs, filters, and `bun ci` |

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "agentGuidance": false,
+  "ui": "stream",
+  "globalDependencies": [
+    "package.json",
+    "bun.lock",
+    "turbo.json",
+    "tsconfig*.json",
+    "packages/typescript-config/*.json",
+    "scripts/**",
+    "tests/unit/support/**",
+    ".github/workflows/ci.yml"
+  ],
+  "globalEnv": [
+    "CI",
+    "NODE_ENV",
+    "TZ",
+    "LANG",
+    "LC_ALL",
+    "BUN_OPTIONS",
+    "NODE_OPTIONS",
+    "VIBESHAPE_BUN_BIN",
+    "VIBESHAPE_CONTROLLED_OCCT",
+    "VIBESHAPE_DISTRIBUTION_ROOT",
+    "VIBESHAPE_DOCKER_BIN",
+    "VIBESHAPE_EXPECTED_COMMIT",
+    "VIBESHAPE_GEOMETRY_LIFECYCLE_OPERATIONS",
+    "VIBESHAPE_OCCT_PERFORMANCE_PAGE_RUNS",
+    "VIBESHAPE_PUBLIC_URL",
+    "VIBESHAPE_TEST_ENV",
+    "VIBESHAPE_TEST_MCP_ENTRY",
+    "VIBESHAPE_TYPECHECK_RUNTIME"
+  ],
+  "tasks": {
+    "typecheck": {
+      "outputs": ["*.tsbuildinfo"]
+    },
+    "//#typecheck:scripts": {
+      "outputs": ["*.tsbuildinfo"]
+    }
+  }
+}
