@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createSketchProfileSet,
   MAX_SKETCH_PROFILE_SET_BOUNDARY_ENTITIES,

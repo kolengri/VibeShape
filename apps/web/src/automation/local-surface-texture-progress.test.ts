@@ -1,33 +1,40 @@
-// @vitest-environment jsdom
-import {
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
+
+import type { AutomationReviewState } from "./automation-review-state"
+
+const mocks = (() => ({ request: vi.fn(), createHandle: vi.fn(), execute: vi.fn() }))()
+const originalModule1 = { ...(await import("./local-automation-http")) }
+mock.module("./local-automation-http", () => ({
+  ...originalModule1,
+  localAutomationRequest: mocks.request,
+}))
+const controllerModule = { ...(await import("../document/document-controller")) }
+mock.module("../document/document-controller", () => ({
+  ...controllerModule,
+  createActiveDocumentAutomationSession: mocks.createHandle,
+}))
+mock.module("./local-tool-executor", () => ({
+  createLocalToolExecutor: () => ({ execute: mocks.execute }),
+}))
+
+const {
   localConnectResponseSchema,
   localPollRequestSchema,
   localPollResponseSchema,
   localWorkSchema,
-} from "@vibeshape/automation-api/local-session"
-import { localFailure, localOperationSchema } from "@vibeshape/automation-api/local-tools"
-import { surfaceTextureCommandSchema } from "@vibeshape/automation-host/surface-texture-proposal-contract"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import {
-  surfaceTextureProjectFixture,
-  textureFixtureId,
-} from "../../../../tests/fixtures/surface-texture-project"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
-import { automationReviews } from "./automation-review-controller"
-import type { AutomationReviewState } from "./automation-review-state"
-import { createLocalAutomationConnection } from "./local-automation-connection"
-
-const mocks = vi.hoisted(() => ({ request: vi.fn(), createHandle: vi.fn(), execute: vi.fn() }))
-vi.mock("./local-automation-http", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./local-automation-http")>()),
-  localAutomationRequest: mocks.request,
-}))
-vi.mock("../document/document-controller", () => ({
-  createActiveDocumentAutomationSession: mocks.createHandle,
-}))
-vi.mock("./local-tool-executor", () => ({
-  createLocalToolExecutor: () => ({ execute: mocks.execute }),
-}))
+} = await import("@vibeshape/automation-api/local-session")
+const { localFailure, localOperationSchema } = await import("@vibeshape/automation-api/local-tools")
+const { surfaceTextureCommandSchema } = await import(
+  "@vibeshape/automation-host/surface-texture-proposal-contract"
+)
+const { surfaceTextureProjectFixture, textureFixtureId } = await import(
+  "../../../../tests/fixtures/surface-texture-project"
+)
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
+const { automationReviews } = await import("./automation-review-controller")
+const { createLocalAutomationConnection } = await import("./local-automation-connection")
 
 const { snapshot, layer } = surfaceTextureProjectFixture()
 const { id: _id, featureId: _featureId, ...recipe } = layer
@@ -151,7 +158,8 @@ async function startPending(operation: unknown) {
   await connection.status()
   expect(await connection.enable()).toBe(true)
   await vi.advanceTimersByTimeAsync(0)
-  expect(mocks.execute).toHaveBeenCalledExactlyOnceWith(work.operation, expect.any(AbortSignal))
+  expect(mocks.execute).toHaveBeenCalledTimes(1)
+  expect(mocks.execute).toHaveBeenCalledWith(work.operation, expect.any(AbortSignal))
   return {
     work,
     release: () => release(localFailure("draft-review-cancelled", "The texture was not applied.")),

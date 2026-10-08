@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
 import {
   createCommandDispatcher,
@@ -15,7 +16,6 @@ import {
 } from "@vibeshape/domain/modules"
 import { boxFeatureType, partDesignFeatureTypeHandlers } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import {
   type AutomationDocumentPort,
   type AutomationHost,

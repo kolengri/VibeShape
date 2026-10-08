@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { featureRecordSchema } from "./feature-graph"
 import { featureIdSchema } from "./identifiers"
 import {
@@ -31,7 +31,7 @@ describe("new-body Sweep contract", () => {
       references: [],
       suppressed: false,
     })
-    expect(readSweepFeatureParameters(feature)).toEqual(parameters)
+    expect(readSweepFeatureParameters(feature)).toEqual<unknown>(parameters)
     expect(sweepFeatureTypeHandler.contentParameters(feature.parameters)).toEqual(parameters)
     expect(
       readSweepFeatureParameters({ ...feature, type: { ...feature.type, schemaVersion: 2 } }),
@@ -48,6 +48,6 @@ describe("new-body Sweep contract", () => {
   })
   it("retains first profile/path support owner occurrences", () => {
     const owners = [3, 1, 3, 2].map((value) => featureIdSchema.parse(id(value)))
-    expect(expectedSweepDependencyIds(owners)).toEqual([id(3), id(1), id(2)])
+    expect(expectedSweepDependencyIds(owners)).toEqual<unknown>([id(3), id(1), id(2)])
   })
 })

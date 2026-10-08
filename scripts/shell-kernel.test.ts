@@ -1,8 +1,7 @@
-// @vitest-environment node
+import { afterEach, describe, expect, it } from "bun:test"
 /// <reference path="../packages/geometry-worker/src/vite-modules.d.ts" />
 import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
-import { afterEach, describe, expect, it, vi } from "vitest"
 import { resolveShellOpeningCandidates } from "../packages/application/src/shell-opening-resolution"
 import {
   createBodyTopologyReferenceProjector,
@@ -15,6 +14,9 @@ import {
   featureContentIdentitySchema,
   serializeFeatureContentIdentity,
 } from "../packages/protocol/src/index"
+import { testAssetPath } from "../tests/unit/support/assets"
+import { vi } from "../tests/unit/support/bun-test"
+import { matchValue } from "../tests/unit/support/match-value"
 
 const id = (number: number) => `0195b5ac-b220-7a2c-8c33-${String(number).padStart(12, "0")}`
 function requireSuccess<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
@@ -30,10 +32,7 @@ const featureType = (name: string) => ({
 async function kernelFixture() {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (url: string) =>
-        new Response(await readFile(resolve(url.startsWith("/@fs/") ? url.slice(4) : `.${url}`))),
-    ),
+    vi.fn(async (url: string) => new Response(await readFile(resolve(testAssetPath(url))))),
   )
   const engine = new ReplicadGeometryEngine(undefined, resolveShellOpeningCandidates)
   const metadata = await engine.initialize()
@@ -210,7 +209,7 @@ describe("Shell with the pinned real OCCT kernel", () => {
       const retained = requireSuccess(await f.evaluate(id(2), parameters, [dependency], "shell", 2))
       expect(retained.result.shape).toMatchObject({ valid: true, solidCount: 1 })
       expect(retained.result.shape.volume).toBeCloseTo(5532, 6)
-      expect(await f.evaluate(id(3), parameters, [dependency])).toMatchObject({
+      expect(matchValue(await f.evaluate(id(3), parameters, [dependency]))).toMatchObject({
         ok: false,
         diagnostic: { message: expect.stringContaining("Reselect") },
       })
@@ -218,23 +217,27 @@ describe("Shell with the pinned real OCCT kernel", () => {
         ({ semanticRole: _role, lineageToken: _token, ...reference }) => reference,
       )
       expect(
-        await f.evaluate(
-          id(4),
-          { ...parameters, openings: signatureOnly },
-          [dependency],
-          "shell",
-          2,
+        matchValue(
+          await f.evaluate(
+            id(4),
+            { ...parameters, openings: signatureOnly },
+            [dependency],
+            "shell",
+            2,
+          ),
         ),
       ).toMatchObject({ ok: false, diagnostic: { message: expect.stringContaining("Reselect") } })
       const opening = selected[0]
       if (!opening) throw new Error("The authored top opening must be present.")
       expect(
-        await f.evaluate(
-          id(5),
-          { ...parameters, openings: [{ ...opening, lineageToken: "history:missing" }] },
-          [dependency],
-          "shell",
-          2,
+        matchValue(
+          await f.evaluate(
+            id(5),
+            { ...parameters, openings: [{ ...opening, lineageToken: "history:missing" }] },
+            [dependency],
+            "shell",
+            2,
+          ),
         ),
       ).toMatchObject({ ok: false, diagnostic: { message: expect.stringContaining("Reselect") } })
       const closed = requireSuccess(
@@ -325,7 +328,11 @@ describe("Shell with the pinned real OCCT kernel", () => {
         openings: selected,
       }
       expect(
-        await f.evaluate(id(2), { ...parameters, sourceContentHash: "f".repeat(64) }, [dependency]),
+        matchValue(
+          await f.evaluate(id(2), { ...parameters, sourceContentHash: "f".repeat(64) }, [
+            dependency,
+          ]),
+        ),
       ).toMatchObject({
         ok: false,
         diagnostic: {
@@ -337,7 +344,7 @@ describe("Shell with the pinned real OCCT kernel", () => {
       if (!opening) throw new Error("The top opening face must be present.")
       const changed = { ...opening, signature: { ...opening.signature, measure: 601 } }
       expect(
-        await f.evaluate(id(3), { ...parameters, openings: [changed] }, [dependency]),
+        matchValue(await f.evaluate(id(3), { ...parameters, openings: [changed] }, [dependency])),
       ).toMatchObject({
         ok: false,
         diagnostic: {
@@ -368,7 +375,9 @@ describe("Shell with the pinned real OCCT kernel", () => {
       )
       const newer = requireSuccess(await f.evaluate(id(1), { ...box, height: 45 }, [], "box"))
       expect(
-        await f.evaluate(id(2), parameters, [{ ...dependency, contentHash: newer.contentHash }]),
+        matchValue(
+          await f.evaluate(id(2), parameters, [{ ...dependency, contentHash: newer.contentHash }]),
+        ),
       ).toMatchObject({ ok: false, diagnostic: { message: expect.stringContaining("Reselect") } })
       const repaired = requireSuccess(
         await f.evaluate(

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { PersistentDocumentSessionReport } from "@vibeshape/application/persistent-document-session"
 import { projectDocumentSnapshotV1ToV0 } from "@vibeshape/domain"
 import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
@@ -8,7 +9,6 @@ import {
   surfaceTextureLayerIdSchema,
 } from "@vibeshape/domain/surface-textures"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import {
   historyRepairFixture,
   repairId,

@@ -1,4 +1,5 @@
-// @vitest-environment node
+import type { Mock as MockInstance } from "bun:test"
+import { beforeAll, expect, it } from "bun:test"
 import {
   Edge,
   Face,
@@ -9,7 +10,7 @@ import {
   setOC,
 } from "replicad"
 import initializeOC, { type OpenCascadeInstance, type TopoDS_Solid } from "replicad-opencascadejs"
-import { beforeAll, expect, it, type MockInstance, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
 import { type AnalyticalProfile, createAnalyticalFace, validateOcctProfileSolid } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftPatchNetwork } from "./occt-loft-filling"
@@ -480,7 +481,7 @@ it.each(["throw", "false"] as const)(
       ).toThrow(failure === "throw" ? "Injected orientation failure" : /could not be oriented/)
       expect(owned).toHaveLength(1)
       for (const { shape, dispose } of owned) {
-        expect(dispose).toHaveBeenCalledOnce()
+        expect(dispose).toHaveBeenCalledTimes(1)
         expect(() => shape.ShapeType()).toThrow()
       }
       expect(supportDelete).not.toHaveBeenCalled()

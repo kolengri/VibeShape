@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { featureRecordV1Schema } from "./feature-graph"
 import { featureIdSchema, partIdSchema } from "./identifiers"
 import { derivePartBindings, requiredPartAllocations } from "./part-bindings"

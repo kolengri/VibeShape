@@ -78,7 +78,7 @@ Shared interactive components require behavior tests, not snapshots alone.
 - Test async fulfillment and rejection, immediate repeat attempts, external loading, and unmount or cancellation behavior when relevant.
 - Test label and description relationships, validation announcements, and accessible names while pending.
 - Test the TanStack adapter separately for value binding, validation timing, dirty policy, and single submission.
-- Run UI typecheck, focused Vitest tests, production Vite build when styles or exports change, Playwright E2E for user-visible flows, and Fallow changed-code audit.
+- Run UI typecheck, focused Bun tests, production Vite build when styles or exports change, Playwright E2E for user-visible flows, and Fallow changed-code audit.
 
 ## Implemented foundation
 
@@ -93,4 +93,4 @@ The foundation includes:
 - a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, `NativeSelectField`, and `SubmitButton` adapters;
 - state-agnostic primitive and sketch-dimension fields with separate TanStack Form adapters that preserve raw Quantity expressions, share variable completion through explicit value callbacks, publish transient draft state outside base controls, and submit through the shared single-flight action contract;
 - a specialized SVG sketch canvas that receives one schema-valid analytical draft, delegates mutations, click-targeted analytical curve modification, and deterministic point, bounded-intersection, direction inference, and regular-polygon construction to pure domain operations, preserves retained curve identity while repairing detached endpoint dependencies, represents a split circle as complementary equal-radius arcs without redundant SolveSpace equations, persists accepted inference and polygon design intent as ordinary constraints, coalesces drag samples to one inference/render update per animation frame, exposes entity and stable-region selection, renders constraint and authored-dimension glyphs, and keeps solved display geometry disposable;
-- Vitest and Testing Library coverage for the base and integrated layers.
+- Bun and Testing Library coverage for the base and integrated layers.

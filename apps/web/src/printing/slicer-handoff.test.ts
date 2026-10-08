@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
-import { afterEach, describe, expect, it, vi } from "vitest"
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import {
   DEFAULT_SLICER_ID,
   handoffThreeMfToSlicer,
@@ -8,9 +8,9 @@ import {
   readPreferredSlicer,
   readSlicerBridgeToken,
   removeSlicerBridgeToken,
+  SLICER_BRIDGE_TOKEN_STORAGE_KEY,
   savePreferredSlicer,
   saveSlicerBridgeToken,
-  SLICER_BRIDGE_TOKEN_STORAGE_KEY,
 } from "./slicer-handoff"
 
 const token = "a".repeat(43)
@@ -85,7 +85,7 @@ describe("slicer bridge client", () => {
         filename: "Printer bracket.3mf",
         slicerId: "snapmaker-orca",
         token,
-        fetch,
+        fetch: fetch as unknown as typeof globalThis.fetch,
         createRequestId: () => requestId,
       }),
     ).resolves.toEqual({ ok: true })
@@ -132,7 +132,7 @@ describe("slicer bridge client", () => {
         filename: "Bracket.3mf",
         slicerId: "orca-slicer",
         token,
-        fetch: rejectedFetch,
+        fetch: rejectedFetch as unknown as typeof globalThis.fetch,
         createRequestId: () => requestId,
       }),
     ).resolves.toMatchObject({
@@ -149,7 +149,7 @@ describe("slicer bridge client", () => {
         token,
         fetch: vi.fn(async () => {
           throw new TypeError("Failed to fetch")
-        }),
+        }) as unknown as typeof globalThis.fetch,
         createRequestId: () => requestId,
       }),
     ).resolves.toEqual({ ok: false, reason: "unavailable" })

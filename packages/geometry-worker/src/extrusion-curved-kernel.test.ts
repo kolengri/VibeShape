@@ -1,5 +1,6 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { featureEvaluationInputSchema } from "@vibeshape/protocol"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type FeatureEvaluationInput, ReplicadGeometryEngine } from "./engine"
 
 const engine = new ReplicadGeometryEngine(undefined, (references, candidates) => {
@@ -26,7 +27,7 @@ const type = (typeId: string, schemaVersion: number) => ({
   schemaVersion,
 })
 beforeAll(async () => {
-  const { readFileSync } = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const { readFileSync } = await import("node:fs")
   const bytes = readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )

@@ -1,17 +1,16 @@
-// @vitest-environment node
-
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
 import { importedBodyOutputRole, importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { sourceAssetSchema } from "@vibeshape/domain/source-assets"
 import { VibeShapeDatabase } from "@vibeshape/persistence"
-import { describe, expect, it, vi } from "vitest"
 import {
   historyRepairFixture,
   repairId,
   repairRemovalCommand,
 } from "../../../../packages/domain/src/history-repair.test-fixture"
 import { assemblyLibraryFixture } from "../../../../scripts/assembly-library-fixture"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import {
   materializeAssemblySourceAssets,

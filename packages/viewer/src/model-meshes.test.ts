@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { BufferAttribute, LineBasicMaterial, MeshBasicMaterial, Raycaster, Vector3 } from "three"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { ModelMeshPresentation } from "./model-meshes"
 import type { ViewerMesh } from "./three-viewport"
 
@@ -67,7 +68,7 @@ describe("current model mesh resource ownership", () => {
       expect(replacement?.surface).not.toBe(first.surface)
       expect(replacement?.edges).not.toBe(first.edges)
       expect(retained?.surface).toBe(other.surface)
-      expect(released).toHaveBeenCalledOnce()
+      expect(released).toHaveBeenCalledTimes(1)
       expect(replacement?.surface.geometry.getAttribute("position").array).toBe(changed.positions)
       dispose()
     },
@@ -93,12 +94,12 @@ describe("current model mesh resource ownership", () => {
     firstLeft.surface.geometry.addEventListener("dispose", surfaceDisposed)
     firstLeft.edges.geometry.addEventListener("dispose", edgesDisposed)
     presentation.setMeshes([right])
-    expect(surfaceDisposed).toHaveBeenCalledOnce()
-    expect(edgesDisposed).toHaveBeenCalledOnce()
+    expect(surfaceDisposed).toHaveBeenCalledTimes(1)
+    expect(edgesDisposed).toHaveBeenCalledTimes(1)
     expect(presentation.group.children).toHaveLength(2)
     dispose()
     expect(presentation.group.children).toHaveLength(0)
-    expect(surfaceDisposed).toHaveBeenCalledOnce()
+    expect(surfaceDisposed).toHaveBeenCalledTimes(1)
     expect(presentation.setMeshes([mesh])).toEqual([])
   })
 
@@ -114,7 +115,7 @@ describe("current model mesh resource ownership", () => {
     if (!model || Array.isArray(model.surface.material)) throw new Error("Expected model material.")
     const modelDisposed = vi.spyOn(model.surface.material, "dispose")
     const [selectionSource] = presentation.setMeshes([{ ...mesh, appearance: "selection-source" }])
-    expect(modelDisposed).toHaveBeenCalledOnce()
+    expect(modelDisposed).toHaveBeenCalledTimes(1)
     if (!selectionSource || Array.isArray(selectionSource.surface.material))
       throw new Error("Expected selection source material.")
     expect(selectionSource.surface.material.opacity).toBe(0.12)
@@ -125,8 +126,8 @@ describe("current model mesh resource ownership", () => {
     presentation.dispose()
     expect(previewDisposed).not.toHaveBeenCalled()
     dispose()
-    expect(previewDisposed).toHaveBeenCalledOnce()
-    expect(previewEdgesDisposed).toHaveBeenCalledOnce()
+    expect(previewDisposed).toHaveBeenCalledTimes(1)
+    expect(previewEdgesDisposed).toHaveBeenCalledTimes(1)
   })
 
   it("refreshes equal original texture geometry and releases changed or removed originals once", () => {
@@ -146,10 +147,10 @@ describe("current model mesh resource ownership", () => {
     const changed = structuredClone(source)
     changed.textureSource.positions[0] = 1
     const [replacement] = presentation.setMeshes([changed])
-    expect(released).toHaveBeenCalledOnce()
+    expect(released).toHaveBeenCalledTimes(1)
     expect(replacement?.textureSource?.surface.geometry).not.toBe(originalGeometry)
     presentation.setMeshes([mesh])
     dispose()
-    expect(released).toHaveBeenCalledOnce()
+    expect(released).toHaveBeenCalledTimes(1)
   })
 })

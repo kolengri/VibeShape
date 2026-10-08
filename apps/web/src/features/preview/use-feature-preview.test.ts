@@ -1,7 +1,16 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it, mock } from "bun:test"
+import type { FeatureRecord } from "@vibeshape/domain"
+import type { DocumentWorkerResponse } from "@vibeshape/protocol"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 
-import { act, cleanup, renderHook } from "@testing-library/react"
-import {
+const createSession = (() => vi.fn())()
+mock.module("@vibeshape/document-worker/session", () => ({
+  createDocumentWorkerSession: createSession,
+}))
+
+const { act, cleanup, renderHook } = await import("@testing-library/react")
+const {
   booleanFeatureTypeV2,
   boxFeatureType,
   coneFeatureType,
@@ -9,27 +18,20 @@ import {
   datumPlaneFeatureType,
   documentIdSchema,
   documentSnapshotSchema,
-  type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
   holeFeatureTypeV2,
   pyramidFeatureType,
   sphereFeatureType,
   torusFeatureType,
-} from "@vibeshape/domain"
-import { DOCUMENT_PROTOCOL_VERSION, type DocumentWorkerResponse } from "@vibeshape/protocol"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import {
+} = await import("@vibeshape/domain")
+const { DOCUMENT_PROTOCOL_VERSION } = await import("@vibeshape/protocol")
+const {
   createFeaturePreviewDocument,
   createFeaturePreviewMeshes,
   featurePreviewKind,
   useFeaturePreview,
-} from "./use-feature-preview"
-
-const createSession = vi.hoisted(() => vi.fn())
-vi.mock("@vibeshape/document-worker/session", () => ({
-  createDocumentWorkerSession: createSession,
-}))
+} = await import("./use-feature-preview")
 
 afterEach(() => {
   cleanup()
@@ -171,7 +173,7 @@ describe("feature preview worker lifetime", () => {
     rerender({ candidate: { ...original } })
     expect(createSession).not.toHaveBeenCalled()
     rerender({ candidate: { ...original, parameters: { width: 20 } } })
-    expect(session.rebuild).toHaveBeenCalledOnce()
+    expect(session.rebuild).toHaveBeenCalledTimes(1)
     expect(result.current.status).toBe("loading")
   })
   it("does not reuse stale committed evidence for an untouched edit", () => {
@@ -188,7 +190,7 @@ describe("feature preview worker lifetime", () => {
       useFeaturePreview(snapshot, snapshot.features[0]!, response.geometry, true, response),
     )
     expect(result.current.status).toBe("loading")
-    expect(session.rebuild).toHaveBeenCalledOnce()
+    expect(session.rebuild).toHaveBeenCalledTimes(1)
   })
 
   it("keeps the worker through debounce invalidation and terminates it when the tool closes", async () => {
@@ -213,23 +215,23 @@ describe("feature preview worker lifetime", () => {
 
     expect(createSession).not.toHaveBeenCalled()
     rerender({ active: true, candidate })
-    expect(firstSession.rebuild).toHaveBeenCalledOnce()
+    expect(firstSession.rebuild).toHaveBeenCalledTimes(1)
     rerender({ active: true, candidate: null })
     expect(firstSession.terminate).not.toHaveBeenCalled()
     expect(result.current.status).toBe("idle")
     rerender({ active: true, candidate })
-    expect(createSession).toHaveBeenCalledOnce()
-    expect(firstSession.rebuild).toHaveBeenCalledOnce()
+    expect(createSession).toHaveBeenCalledTimes(1)
+    expect(firstSession.rebuild).toHaveBeenCalledTimes(1)
     rerender({ active: false, candidate: null })
-    expect(firstSession.terminate).toHaveBeenCalledOnce()
+    expect(firstSession.terminate).toHaveBeenCalledTimes(1)
     rerender({ active: true, candidate })
-    expect(secondSession.rebuild).toHaveBeenCalledOnce()
+    expect(secondSession.rebuild).toHaveBeenCalledTimes(1)
     await act(async () => rejectFirst(new Error("The previous worker was terminated.")))
     expect(result.current.status).toBe("loading")
-    expect(firstSession.rebuild).toHaveBeenCalledOnce()
+    expect(firstSession.rebuild).toHaveBeenCalledTimes(1)
 
     unmount()
-    expect(secondSession.terminate).toHaveBeenCalledOnce()
+    expect(secondSession.terminate).toHaveBeenCalledTimes(1)
     await act(async () => rejectSecond(new Error("The preview was unmounted.")))
   })
 
@@ -261,7 +263,7 @@ describe("feature preview worker lifetime", () => {
     rerender({ width: 20 })
     rerender({ width: 30 })
     rerender({ width: 40 })
-    expect(session.rebuild).toHaveBeenCalledOnce()
+    expect(session.rebuild).toHaveBeenCalledTimes(1)
     await act(async () => complete(response))
     expect(session.rebuild).toHaveBeenCalledTimes(2)
     expect(session.rebuild.mock.calls[1]?.[0].document.features.at(-1).parameters).toEqual({

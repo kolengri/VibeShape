@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
   createEmptySketch,
@@ -14,7 +15,6 @@ import {
   type DocumentWorkerResponse,
   topologyCandidateSchema as workerTopologyCandidateSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { createCylindricalLoftProject } from "../../../../../tests/support/loft-v3-cylinder-fixture"
 import { loftFixtureId as id } from "../../../../../tests/support/loft-v3-fixture"
 import type { DocumentControllerState } from "../../document/document-controller"

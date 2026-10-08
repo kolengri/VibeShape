@@ -112,4 +112,4 @@ bun ci
 bun run extension:evidence
 ```
 
-The runner rejects a truthy `CI` environment, starts a local Vite server, runs the package corpus with Vitest, and runs Chromium, Firefox, and WebKit through `playwright.extension.config.ts`. No GitHub Actions workflow invokes this command.
+The runner rejects a truthy `CI` environment, starts a local Vite server, runs the package corpus with Bun, and runs Chromium, Firefox, and WebKit through `playwright.extension.config.ts`. No GitHub Actions workflow invokes this command.

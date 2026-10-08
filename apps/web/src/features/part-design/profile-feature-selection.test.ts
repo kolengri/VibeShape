@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createLengthQuantity,
   documentSnapshotSchema,
@@ -10,7 +11,6 @@ import {
   sketchRecordSchema,
   topoRefSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import type { ActivePartDesignTool } from "./part-design-tool"
 import {
   ineligibleProfileSketchIds,

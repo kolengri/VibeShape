@@ -1,13 +1,16 @@
-// @vitest-environment jsdom
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { AssemblyInspection } from "@vibeshape/protocol"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
-import type { AssemblyDocumentContext } from "./assembly-model"
-import { useAssemblyInspection } from "./use-assembly-inspection"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 
-const ports = vi.hoisted(() => ({ inspect: vi.fn() }))
-vi.mock("../../document/document-controller", () => ({ inspectActiveAssembly: ports.inspect }))
+import type { AssemblyDocumentContext } from "./assembly-model"
+
+const ports = (() => ({ inspect: vi.fn() }))()
+mock.module("../../document/document-controller", () => ({ inspectActiveAssembly: ports.inspect }))
+
+const { act, cleanup, renderHook, waitFor } = await import("@testing-library/react")
+const { authoredTestId: id } = await import("../../test-support/authored-tree-fixture")
+const { useAssemblyInspection } = await import("./use-assembly-inspection")
 const context: AssemblyDocumentContext = { documentId: id(1), revision: 7, authorityVersion: 4 }
 const empty: AssemblyInspection = { occurrences: [], interference: [] }
 function deferred() {

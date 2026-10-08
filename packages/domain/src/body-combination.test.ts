@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import type { DocumentSnapshotV2 } from "./document-v2"
 import { applyDocumentV2Command, reduceDocumentV2Event } from "./document-v2-commands"
 import { applyDocumentUpgradeV2Command } from "./document-v2-migration"
@@ -86,7 +86,9 @@ describe("trusted bounded body combinations", () => {
       ok: true,
       contentParameters: { outputRoles: [`body.${id(700)}`, `body.${id(701)}`] },
     })
-    expect(featureBodyDependencies(feature)).toEqual(slots().map(({ targetBody }) => targetBody))
+    expect(featureBodyDependencies(feature)).toEqual<unknown>(
+      slots().map(({ targetBody }) => targetBody),
+    )
     expect(
       registry().validateFeature({ ...feature, dependencies: [...feature.dependencies].reverse() })
         .ok,
@@ -331,8 +333,10 @@ describe("body combination authored identities", () => {
       const repaired = success(
         model(added, "org.vibeshape.feature.update", { feature: combined("union") }),
       ).snapshot
-      expect(partBinding(repaired, id(100))).toEqual(body(id(5)))
-      expect(repaired.parts.find(({ id: partId }) => partId === id(101))?.consumedBy).toBe(id(5))
+      expect(partBinding(repaired, id(100))).toEqual<unknown>(body(id(5)))
+      expect(repaired.parts.find(({ id: partId }) => partId === id(101))?.consumedBy).toBe<unknown>(
+        id(5),
+      )
       const unavailableAgain = success(
         model(repaired, "org.vibeshape.feature.update", { feature: unavailable }),
       ).snapshot
@@ -343,9 +347,9 @@ describe("body combination authored identities", () => {
   it("advances each Compound input PartId in one replayable event and preserves slots on reorder", () => {
     const before = roots()
     const added = insert(before, combined("compound"))
-    expect(added.snapshot.parts.map(({ id }) => id)).toEqual([id(100), id(101)])
-    expect(partBinding(added.snapshot, id(100))).toEqual(body(id(5), `body.${id(700)}`))
-    expect(partBinding(added.snapshot, id(101))).toEqual(body(id(5), `body.${id(701)}`))
+    expect(added.snapshot.parts.map(({ id }) => id)).toEqual<unknown>([id(100), id(101)])
+    expect(partBinding(added.snapshot, id(100))).toEqual<unknown>(body(id(5), `body.${id(700)}`))
+    expect(partBinding(added.snapshot, id(101))).toEqual<unknown>(body(id(5), `body.${id(701)}`))
     expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
     const reordered = success(
       model(added.snapshot, "org.vibeshape.feature.update", {
@@ -387,8 +391,10 @@ describe("body combination authored identities", () => {
   it("retains the first Union identity, consumes the remaining identities, and restores them on suppression or target reorder", () => {
     const before = roots()
     const added = insert(before, combined("union")).snapshot
-    expect(partBinding(added, id(100))).toEqual(body(id(5)))
-    expect(added.parts.find(({ id: partId }) => partId === id(101))?.consumedBy).toBe(id(5))
+    expect(partBinding(added, id(100))).toEqual<unknown>(body(id(5)))
+    expect(added.parts.find(({ id: partId }) => partId === id(101))?.consumedBy).toBe<unknown>(
+      id(5),
+    )
     const suppressed = success(
       model(added, "org.vibeshape.feature.update", { feature: combined("union", true) }),
     ).snapshot
@@ -406,8 +412,10 @@ describe("body combination authored identities", () => {
         },
       }),
     ).snapshot
-    expect(partBinding(reordered, id(101))).toEqual(body(id(5)))
-    expect(reordered.parts.find(({ id: partId }) => partId === id(100))?.consumedBy).toBe(id(5))
+    expect(partBinding(reordered, id(101))).toEqual<unknown>(body(id(5)))
+    expect(reordered.parts.find(({ id: partId }) => partId === id(100))?.consumedBy).toBe<unknown>(
+      id(5),
+    )
   })
   it("requires a captured fresh historical fork per Compound slot and preserves that fork when an earlier modifier is suppressed", () => {
     const before = roots()
@@ -437,16 +445,18 @@ describe("body combination authored identities", () => {
     const added = insert(modified, combined("compound"), [
       { id: id(102), name: "Historical fork", origin: "fork", body: forkBody },
     ]).snapshot
-    expect(partBinding(added, id(100))).toEqual(body(id(4)))
-    expect(partBinding(added, id(102))).toEqual(forkBody)
+    expect(partBinding(added, id(100))).toEqual<unknown>(body(id(4)))
+    expect(partBinding(added, id(102))).toEqual<unknown>(forkBody)
     expect(added.parts).toHaveLength(3)
     expect(requiredPartAllocations(added, added.parts)).toEqual([])
     const exposed = success(
       model(added, "org.vibeshape.feature.update", { feature: { ...placement, suppressed: true } }),
     ).snapshot
-    expect(partBinding(exposed, id(102))).toEqual(forkBody)
+    expect(partBinding(exposed, id(102))).toEqual<unknown>(forkBody)
     expect(exposed.parts.find(({ id: partId }) => partId === id(102))?.origin).toBe("fork")
-    expect(exposed.parts.find(({ id: partId }) => partId === id(100))?.consumedBy).toBe(id(5))
+    expect(exposed.parts.find(({ id: partId }) => partId === id(100))?.consumedBy).toBe<unknown>(
+      id(5),
+    )
   })
 })
 
@@ -494,14 +504,21 @@ describe("ordered same-producer body ownership", () => {
     (kind) => {
       const before = patternedRoots()
       const added = insert(before, v2Combination(kind))
-      expect(partBinding(added.snapshot, id(102))).toEqual(
+      expect(partBinding(added.snapshot, id(102))).toEqual<unknown>(
         body(id(5), kind === "compound" ? `body.${id(700)}` : "result"),
       )
       if (kind === "compound")
-        expect(partBinding(added.snapshot, id(103))).toEqual(body(id(5), `body.${id(701)}`))
-      else expect(added.snapshot.parts.find((part) => part.id === id(103))?.consumedBy).toBe(id(5))
-      expect(partBinding(added.snapshot, id(100))).toEqual(body(id(6), "pattern.instance.0"))
-      expect(partBinding(added.snapshot, id(101))).toEqual(body(id(3)))
+        expect(partBinding(added.snapshot, id(103))).toEqual<unknown>(
+          body(id(5), `body.${id(701)}`),
+        )
+      else
+        expect(added.snapshot.parts.find((part) => part.id === id(103))?.consumedBy).toBe<unknown>(
+          id(5),
+        )
+      expect(partBinding(added.snapshot, id(100))).toEqual<unknown>(
+        body(id(6), "pattern.instance.0"),
+      )
+      expect(partBinding(added.snapshot, id(101))).toEqual<unknown>(body(id(3)))
       expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
       const suppressed = success(
         model(added.snapshot, "org.vibeshape.feature.update", {
@@ -563,9 +580,9 @@ describe("ordered same-producer body ownership", () => {
       model(old, "org.vibeshape.feature.update", { feature: v2Combination("compound") }),
     ).snapshot
     expect(upgraded.features.find((feature) => feature.id === id(5))?.type?.schemaVersion).toBe(2)
-    expect(partBinding(upgraded, id(102))).toEqual(body(id(5), `body.${id(700)}`))
-    expect(partBinding(upgraded, id(103))).toEqual(body(id(5), `body.${id(701)}`))
-    expect(partBinding(upgraded, id(101))).toEqual(body(id(3)))
+    expect(partBinding(upgraded, id(102))).toEqual<unknown>(body(id(5), `body.${id(700)}`))
+    expect(partBinding(upgraded, id(103))).toEqual<unknown>(body(id(5), `body.${id(701)}`))
+    expect(partBinding(upgraded, id(101))).toEqual<unknown>(body(id(3)))
     expect(old.features.find((feature) => feature.id === id(5))?.type?.schemaVersion).toBe(1)
   })
 })

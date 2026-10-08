@@ -1,7 +1,6 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, expect, it } from "bun:test"
 import { cleanup, render } from "@testing-library/react"
-import { afterEach, expect, it } from "vitest"
 import { builtInEditorCommandDescriptors } from "./built-in-editor-commands"
 import { EditorCommandIconView } from "./editor-command-presentation"
 

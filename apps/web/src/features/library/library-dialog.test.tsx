@@ -1,20 +1,9 @@
-// @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
-import { i18n } from "../../i18n"
-import messages from "../../i18n/messages/en.json"
-import { LibraryDialog } from "./library-dialog"
-import {
-  libraryController,
-  libraryItem,
-  libraryRead,
-  librarySourcePartId,
-} from "./library-test-fixtures"
 
-const ports = vi.hoisted(() => ({
+const ports = (() => ({
   list: vi.fn(),
   read: vi.fn(),
   save: vi.fn(),
@@ -22,8 +11,8 @@ const ports = vi.hoisted(() => ({
   insert: vi.fn(),
   relink: vi.fn(),
   detach: vi.fn(),
-}))
-vi.mock("../../document/library-controller", () => ({
+}))()
+mock.module("../../document/library-controller", () => ({
   listLocalLibraryItems: ports.list,
   readLocalLibraryVersion: ports.read,
   saveActiveLibraryDefinition: ports.save,
@@ -32,6 +21,18 @@ vi.mock("../../document/library-controller", () => ({
   relinkActiveLibraryDefinition: ports.relink,
   detachActiveLibraryDefinition: ports.detach,
 }))
+
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../../i18n")
+const { default: messages } = await import("../../i18n/messages/en.json")
+const { LibraryDialog } = await import("./library-dialog")
+const { libraryController, libraryItem, libraryRead, librarySourcePartId } = await import(
+  "./library-test-fixtures"
+)
 function setup(initial = libraryController(), blocked = false) {
   const tree = (controller: DocumentControllerState) => (
     <I18nProvider i18n={i18n}>
@@ -181,7 +182,7 @@ describe("local component library dialog", () => {
     const form = within(dialog).getByRole("form", { name: "Save a frozen component" })
     fireEvent.submit(form)
     fireEvent.submit(form)
-    expect(ports.save).toHaveBeenCalledOnce()
+    expect(ports.save).toHaveBeenCalledTimes(1)
     await userEvent.keyboard("{Escape}")
     expect(screen.getByRole("dialog")).toBeTruthy()
     expect(
@@ -205,13 +206,15 @@ describe("local component library dialog", () => {
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Update reference to selected version" }),
     )
-    expect(ports.relink).toHaveBeenCalledExactlyOnceWith({
+    expect(ports.relink).toHaveBeenCalledTimes(1)
+    expect(ports.relink).toHaveBeenCalledWith({
       definitionId: libraryRead().version.definition.id,
       itemId: libraryItem.id,
       version: 2,
     })
     await userEvent.click(within(dialog).getByRole("button", { name: "Detach library reference" }))
-    expect(ports.detach).toHaveBeenCalledExactlyOnceWith(libraryRead().version.definition.id)
+    expect(ports.detach).toHaveBeenCalledTimes(1)
+    expect(ports.detach).toHaveBeenCalledWith(libraryRead().version.definition.id)
   })
   it("shows corrupt/missing version diagnostics and never inserts a fallback version", async () => {
     setup()

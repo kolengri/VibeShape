@@ -1,8 +1,8 @@
+import { expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
-import { expect, it } from "vitest"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "./queries"
 
 it("bounds serialized multibyte body labels and allows a smaller page", () => {

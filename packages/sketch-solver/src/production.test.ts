@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test"
 import {
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -7,7 +8,7 @@ import {
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { variableDefinitionsSchema } from "@vibeshape/domain/variables"
-import { describe, expect, test, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   type NativeFlatSolveResult,
   type NativeSketchSolverModule,

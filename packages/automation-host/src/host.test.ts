@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
 import {
   createCommandDispatcher,
@@ -15,7 +16,6 @@ import {
 } from "@vibeshape/domain/modules"
 import { boxFeatureType, partDesignFeatureTypeHandlers } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import { type AutomationDocumentPort, type AutomationHost, createAutomationHost } from "./host"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -355,7 +355,7 @@ describe("automation draft host", () => {
     })
 
     const committed = await host.commitDraft(actor, operationRequest())
-    expect(committed).toEqual({
+    expect(committed).toEqual<unknown>({
       ok: true,
       value: {
         schemaVersion: 1,
@@ -605,7 +605,7 @@ describe("automation draft host", () => {
       ok: false,
       diagnostic: { code: "draft-expired" },
     })
-    expect(await host.discardDraft(actor, operationRequest())).toEqual({
+    expect(await host.discardDraft(actor, operationRequest())).toEqual<unknown>({
       ok: true,
       value: { schemaVersion: 1, draftId: draftIdA, discarded: false },
     })
@@ -619,11 +619,11 @@ describe("automation draft host", () => {
       ok: false,
       diagnostic: { code: "draft-owner-mismatch" },
     })
-    expect(await host.discardDraft(actor, operationRequest())).toEqual({
+    expect(await host.discardDraft(actor, operationRequest())).toEqual<unknown>({
       ok: true,
       value: { schemaVersion: 1, draftId: draftIdA, discarded: true },
     })
-    expect(await host.discardDraft(actor, operationRequest())).toEqual({
+    expect(await host.discardDraft(actor, operationRequest())).toEqual<unknown>({
       ok: true,
       value: { schemaVersion: 1, draftId: draftIdA, discarded: false },
     })

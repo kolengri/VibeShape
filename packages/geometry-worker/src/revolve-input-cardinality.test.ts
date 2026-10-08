@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { revolveFeatureContentParametersSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import {
   type FeatureEvaluationInput,
   type RevolveContentParameters,

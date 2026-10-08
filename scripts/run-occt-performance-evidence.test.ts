@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   assertLocalPerformanceEnvironment,
   createOcctPerformanceEnvironment,
@@ -19,7 +19,7 @@ describe("controlled OCCT performance runner", () => {
         { PATH: "/bin", VIBESHAPE_OCCT_PERFORMANCE_PAGE_RUNS: "5" },
         { VIBESHAPE_OCCT_PERFORMANCE_PAGE_RUNS: "20" },
       ),
-    ).toEqual({
+    ).toEqual<Record<string, string>>({
       PATH: "/bin",
       VIBESHAPE_CONTROLLED_OCCT: "1",
       VIBESHAPE_OCCT_PERFORMANCE_PAGE_RUNS: "20",

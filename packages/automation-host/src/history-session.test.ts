@@ -1,7 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import { applyVersionedDocumentCommand, projectDocumentSnapshotV1ToV0 } from "@vibeshape/domain"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import { commandIdSchema, documentIdSchema } from "@vibeshape/domain/identifiers"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   createHistoryAutomationSession,
   HISTORY_REVIEW_TTL_MS,
@@ -150,7 +151,7 @@ describe("owned history navigation", () => {
     const approval = deferred<"approved">()
     f.review.mockImplementation(() => approval.promise)
     const pending = f.session.execute(actor, f.operation)
-    await vi.waitFor(() => expect(f.review).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(f.review).toHaveBeenCalledTimes(1))
     expect(f.commit).not.toHaveBeenCalled()
     const input = f.review.mock.calls[0]?.[0]
     expect(input).toMatchObject({
@@ -184,7 +185,7 @@ describe("owned history navigation", () => {
         targetRevision: 1,
       },
     })
-    expect(f.commit).toHaveBeenCalledOnce()
+    expect(f.commit).toHaveBeenCalledTimes(1)
   })
   it.each(["rejected", "cancelled"] as const)(
     "does not navigate after %s consent",
@@ -264,7 +265,7 @@ describe("owned history navigation", () => {
       },
     })
     expect(await pending).toMatchObject({ ok: true })
-    expect(f.commit).toHaveBeenCalledOnce()
+    expect(f.commit).toHaveBeenCalledTimes(1)
   })
   it("rejects stale, raw, approved-flag and invalid actor requests", async () => {
     const f = setup()
@@ -291,7 +292,7 @@ describe("owned history navigation", () => {
     const evaluation = deferred<Awaited<ReturnType<typeof f.preview>>>()
     f.preview.mockImplementationOnce(() => evaluation.promise)
     const pending = f.session.execute(actor, f.operation)
-    await vi.waitFor(() => expect(f.preview).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(f.preview).toHaveBeenCalledTimes(1))
     expect(
       await f.session.execute(actor, {
         ...f.operation,

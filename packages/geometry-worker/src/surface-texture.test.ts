@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import type { SurfaceTextureMesh, SurfaceTextureMeshLayer } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import {
   encodeSurfaceTextureStl,
   sampleSurfaceTexturePattern,
@@ -148,7 +148,7 @@ describe("physical surface texture meshes", () => {
             result.mesh.indices[triangle * 3 + corner] ?? 0,
             faceAxis[face - 1] ?? 0,
           ),
-        ).toBe(faceCoordinate[face - 1])
+        ).toBe<unknown>(faceCoordinate[face - 1])
     }
     assertClosed(result.mesh)
   })

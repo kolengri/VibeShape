@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import type { PrintPreparationMesh } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { preparePrintMeshes } from "./index"
 import { layPrintFacetOnBed } from "./lay-flat"
 import type { Point } from "./mesh-geometry"
@@ -103,13 +103,13 @@ describe("lay a selected disposable print facet on the bed", () => {
   )
 
   it("returns canonical zero angles for an already downward source facet", () => {
-    expect(layPrintFacetOnBed(cuboid, 0, zeroRotation)).toEqual(zeroRotation)
+    expect(layPrintFacetOnBed(cuboid, 0, zeroRotation)).toEqual<unknown>(zeroRotation)
     const current = { rotationX: 61, rotationY: -28, rotationZ: 90 }
     const prepared = required(
       preparePrintMeshes({ meshes: [cuboid], settings: { ...current, supports: false } }).meshes[0],
     )
     const rotation = layPrintFacetOnBed(prepared, 0, current)
-    expect(rotation).toEqual(zeroRotation)
+    expect(rotation).toEqual<unknown>(zeroRotation)
     expect(Object.is(rotation.rotationX, -0)).toBe(false)
     expect(Object.is(rotation.rotationY, -0)).toBe(false)
   })

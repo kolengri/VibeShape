@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip"
 
 class ResizeObserverMock {

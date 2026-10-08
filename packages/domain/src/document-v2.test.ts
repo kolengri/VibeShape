@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { canonicalJson } from "./canonical-json"
 import { applyDocumentCommand } from "./commands"
 import { documentSnapshotV1Schema } from "./document"
@@ -180,7 +180,7 @@ describe("V2 authored part authority", () => {
       ),
     )
     expect(added.snapshot.revision).toBe(base.revision + 1)
-    expect(added.snapshot.parts).toEqual([
+    expect(added.snapshot.parts).toEqual<unknown>([
       {
         schemaVersion: 0,
         id: id(100),
@@ -191,7 +191,7 @@ describe("V2 authored part authority", () => {
         consumedBy: null,
       },
     ])
-    expect(added.event.actor).toEqual(mcpActor)
+    expect(added.event.actor).toEqual<unknown>(mcpActor)
     expect(requireSuccess(reduceDocumentV2Event(base, added.event)).snapshot).toEqual(
       added.snapshot,
     )
@@ -212,9 +212,9 @@ describe("V2 authored part authority", () => {
     const lifted = requireSuccess(
       applyDocumentV2ModelEvent(base, legacy.event, [allocation(id(200))]),
     )
-    expect(lifted.event.actor).toEqual(mcpActor)
+    expect(lifted.event.actor).toEqual<unknown>(mcpActor)
     expect(lifted.snapshot.revision).toBe(base.revision + 1)
-    expect(lifted.snapshot.parts[0]?.id).toBe(id(100))
+    expect(lifted.snapshot.parts[0]?.id).toBe<unknown>(id(100))
     expect(lifted.event.transactionId).toBe(legacy.event.transactionId)
     expect(applyDocumentV2ModelEvent(base, legacy.event, []).ok).toBe(false)
   })
@@ -243,7 +243,7 @@ describe("V2 authored part authority", () => {
       metadata(added.snapshot, { kind: "part.set-visibility", partId: id(100), visible: false }),
     )
     const modified = fillet(hidden.snapshot)
-    expect(modified.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([
+    expect(modified.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
       id(200),
       id(201),
     ])
@@ -270,9 +270,9 @@ describe("V2 authored part authority", () => {
         mcpActor,
       ),
     )
-    expect(updated.snapshot.features[0]?.id).toBe(id(200))
+    expect(updated.snapshot.features[0]?.id).toBe<unknown>(id(200))
     expect(updated.snapshot.parts).toEqual(base.parts)
-    expect(updated.event.actor).toEqual(mcpActor)
+    expect(updated.event.actor).toEqual<unknown>(mcpActor)
   })
 
   it("records consumed tool parts and restores their identity when subtract is removed", () => {
@@ -292,7 +292,9 @@ describe("V2 authored part authority", () => {
         },
       }),
     )
-    expect(cut.snapshot.parts.find((part) => part.id === id(102))?.consumedBy).toBe(id(203))
+    expect(cut.snapshot.parts.find((part) => part.id === id(102))?.consumedBy).toBe<unknown>(
+      id(203),
+    )
     const removed = requireSuccess(
       model(cut.snapshot, "org.vibeshape.feature.remove", { featureId: id(203) }),
     )
@@ -331,7 +333,9 @@ describe("V2 authored part authority", () => {
         feature: { ...feature, parameters: { operation: "subtract" } },
       }),
     )
-    expect(consumed.snapshot.parts.find((part) => part.id === id(102))?.consumedBy).toBe(id(203))
+    expect(consumed.snapshot.parts.find((part) => part.id === id(102))?.consumedBy).toBe<unknown>(
+      id(203),
+    )
     const restored = requireSuccess(
       model(consumed.snapshot, "org.vibeshape.feature.update", { feature }),
     )
@@ -511,8 +515,8 @@ describe("V2 ownership boundaries", () => {
       }),
     ).snapshot
     expect(retargeted.parts[0]).toEqual(hidden.parts[0])
-    expect(retargeted.parts[1]?.id).toBe(id(102))
-    expect(retargeted.parts[1]?.bodyHistory.map((body) => body.featureId)).toEqual([
+    expect(retargeted.parts[1]?.id).toBe<unknown>(id(102))
+    expect(retargeted.parts[1]?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
       id(202),
       id(201),
     ])
@@ -571,8 +575,8 @@ describe("V2 ownership boundaries", () => {
       }),
     )
     expect(added.snapshot.parts).toHaveLength(1)
-    expect(added.snapshot.parts[0]?.id).toBe(id(100))
-    expect(added.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([
+    expect(added.snapshot.parts[0]?.id).toBe<unknown>(id(100))
+    expect(added.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
       id(200),
       id(202),
     ])
@@ -582,7 +586,7 @@ describe("V2 ownership boundaries", () => {
         allocation(id(202), id(103)),
       ]),
     )
-    expect(restoredNew.snapshot.parts.map((part) => part.id)).toEqual([id(100), id(103)])
+    expect(restoredNew.snapshot.parts.map((part) => part.id)).toEqual<unknown>([id(100), id(103)])
     expect(restoredNew.snapshot.parts[0]?.bodyHistory).toEqual(boxModel.parts[0]?.bodyHistory)
     expect(
       requireSuccess(
@@ -622,7 +626,7 @@ describe("V2 ownership boundaries", () => {
     )
     expect(forked.snapshot.parts[0]).toEqual(modified.parts[0])
     const oldModel = projectDocumentSnapshotV2ToV1(forked.snapshot)
-    expect(requiredPartAllocations(oldModel)).toEqual([
+    expect(requiredPartAllocations(oldModel)).toEqual<unknown>([
       {
         body: { schemaVersion: 0, featureId: id(200), outputRole: "result" },
         origin: "independent",
@@ -642,22 +646,21 @@ describe("V2 ownership boundaries", () => {
     const suppressed = requireSuccess(
       model(forked.snapshot, "org.vibeshape.feature.update", { feature: firstModifier }),
     )
-    expect(suppressed.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([
-      id(200),
-    ])
-    expect(suppressed.snapshot.parts[0]?.consumedBy).toBe(id(202))
-    expect(suppressed.snapshot.parts[1]?.id).toBe(id(102))
+    expect(
+      suppressed.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId),
+    ).toEqual<unknown>([id(200)])
+    expect(suppressed.snapshot.parts[0]?.consumedBy).toBe<unknown>(id(202))
+    expect(suppressed.snapshot.parts[1]?.id).toBe<unknown>(id(102))
     const unsuppressed = requireSuccess(
       model(suppressed.snapshot, "org.vibeshape.feature.update", {
         feature: { ...firstModifier, suppressed: false },
       }),
     )
-    expect(unsuppressed.snapshot.parts.map((part) => part.id)).toEqual([id(100), id(102)])
+    expect(unsuppressed.snapshot.parts.map((part) => part.id)).toEqual<unknown>([id(100), id(102)])
     expect(unsuppressed.snapshot.parts[0]?.consumedBy).toBe(null)
-    expect(unsuppressed.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([
-      id(200),
-      id(201),
-    ])
+    expect(
+      unsuppressed.snapshot.parts[0]?.bodyHistory.map((body) => body.featureId),
+    ).toEqual<unknown>([id(200), id(201)])
     expect(
       requireSuccess(
         reduceDocumentV2Event(
@@ -690,7 +693,9 @@ describe("V2 ownership boundaries", () => {
     const suppressed = requireSuccess(
       model(modified, "org.vibeshape.feature.update", { feature }),
     ).snapshot
-    expect(suppressed.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([id(200)])
+    expect(suppressed.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
+      id(200),
+    ])
     const second = requireSuccess(
       model(suppressed, "org.vibeshape.history.insert-feature", {
         historyAfter: suppressed.history.at(-1),
@@ -698,7 +703,10 @@ describe("V2 ownership boundaries", () => {
       }),
     ).snapshot
     expect(second.parts).toHaveLength(1)
-    expect(second.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([id(200), id(202)])
+    expect(second.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
+      id(200),
+      id(202),
+    ])
     const unsuppressed = requireSuccess(
       model(
         second,
@@ -707,8 +715,8 @@ describe("V2 ownership boundaries", () => {
         [allocation(id(202), id(102), "Second branch", "fork")],
       ),
     ).snapshot
-    expect(unsuppressed.parts.map((part) => part.id)).toEqual([id(100), id(102)])
-    expect(unsuppressed.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual([
+    expect(unsuppressed.parts.map((part) => part.id)).toEqual<unknown>([id(100), id(102)])
+    expect(unsuppressed.parts[0]?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
       id(200),
       id(201),
     ])
@@ -735,7 +743,7 @@ function expectTerminalParts(
     .filter((body) =>
       outputs.get(body.featureId)?.some((output) => output.outputRole === body.outputRole),
     )
-  expect(partBodies.map((body) => body.featureId).sort()).toEqual([...expected].sort())
+  expect(partBodies.map((body) => body.featureId).sort()).toEqual<unknown>([...expected].sort())
 }
 
 it("keeps Boolean fork parts aligned with terminal outputs across source suppression", () => {
@@ -759,7 +767,7 @@ it("keeps Boolean fork parts aligned with terminal outputs across source suppres
     ),
   ).snapshot
   expectTerminalParts(forked, [id(200), id(204), id(201), id(202)], [id(201), id(202)])
-  expect(forked.parts.find((part) => part.id === id(104))?.consumedBy).toBe(id(202))
+  expect(forked.parts.find((part) => part.id === id(104))?.consumedBy).toBe<unknown>(id(202))
   const firstModifier = {
     schemaVersion: 0,
     id: id(201),
@@ -969,15 +977,15 @@ describe("V2 replay, restoration and portable copy", () => {
         actor: mcpActor,
       }),
     )
-    expect(copy.snapshot.id).toBe(id(2))
+    expect(copy.snapshot.id).toBe<unknown>(id(2))
     expect(copy.snapshot.parts).toEqual(added.snapshot.parts)
     expect(copy.versionedEvents[2]?.actor).toEqual(actor)
-    expect(copy.versionedEvents.slice(0, 3).map((event) => event.transactionId)).toEqual([
+    expect(copy.versionedEvents.slice(0, 3).map((event) => event.transactionId)).toEqual<unknown>([
       id(701),
       id(701),
       id(701),
     ])
-    expect(copy.versionedEvents.at(-1)?.actor).toEqual(mcpActor)
+    expect(copy.versionedEvents.at(-1)?.actor).toEqual<unknown>(mcpActor)
     expect(
       requireSuccess(replayDocumentAuthorityEvents(copy.seed, copy.versionedEvents)).snapshot,
     ).toEqual(copy.snapshot)
@@ -1022,7 +1030,7 @@ describe("V2 replay, restoration and portable copy", () => {
       }),
     )
     const upgraded = upgrade(added.snapshot, [allocation(id(200))])
-    expect(upgraded.snapshot.parts[0]?.id).toBe(id(100))
+    expect(upgraded.snapshot.parts[0]?.id).toBe<unknown>(id(100))
     const changed: DocumentV2Event = { ...upgraded.event, actor: upgraded.event.actor }
     expect(
       requireSuccess(replayDocumentAuthorityEvents(added.snapshot, [changed])).snapshot,

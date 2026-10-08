@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentUpgradeV2Command,
   applyDocumentV2Command,
@@ -7,7 +8,6 @@ import {
   createLengthQuantity,
 } from "@vibeshape/domain"
 import { strToU8, unzipSync, zipSync } from "fflate"
-import { describe, expect, it } from "vitest"
 import { readAuthoredVShape, readVersionedVShape, readVShapeV3, writeVShapeV3 } from "./vshape"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${n.toString(16).padStart(12, "0")}`

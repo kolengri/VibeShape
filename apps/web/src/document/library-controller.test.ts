@@ -1,41 +1,46 @@
-import {
-  applyCapturedAssemblyMutations,
-  captureAssemblyMutations,
-  projectAssemblyAuthority,
-  upgradeAssemblyAuthority,
-} from "@vibeshape/domain/assembly-authority"
-import {
-  assemblyFrameBindingSchema,
-  assemblyMateJointSchema,
-} from "@vibeshape/domain/assembly-mates"
-import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { resolveAssemblyMateFrames } from "../../../../packages/application/src/assembly-mate-frames"
-import { identityAssemblyPose } from "../features/assembly/assembly-model"
-import {
-  libraryController,
-  libraryItem,
-  libraryRead,
-} from "../features/library/library-test-fixtures"
-import { authoredTestId as id } from "../test-support/authored-tree-fixture"
-import { insertLocalLibraryVersion, relinkActiveLibraryDefinition } from "./library-controller"
+import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const ports = vi.hoisted(() => ({
+const ports = (() => ({
   state: vi.fn(),
   block: vi.fn(),
   preview: vi.fn(),
   commit: vi.fn(),
   read: vi.fn(),
-}))
-vi.mock("./document-controller", () => ({
+}))()
+const controllerModule = { ...(await import("./document-controller")) }
+mock.module("./document-controller", () => ({
+  ...controllerModule,
   getDocumentControllerState: ports.state,
   getProjectActionBlock: ports.block,
   previewAssemblyChanges: ports.preview,
   commitAuthoredTransaction: ports.commit,
 }))
-vi.mock("./browser-library-repository", () => ({
+mock.module("./browser-library-repository", () => ({
   localLibrary: () => ({ readVersion: ports.read }),
 }))
+
+const {
+  applyCapturedAssemblyMutations,
+  captureAssemblyMutations,
+  projectAssemblyAuthority,
+  upgradeAssemblyAuthority,
+} = await import("@vibeshape/domain/assembly-authority")
+const { assemblyFrameBindingSchema, assemblyMateJointSchema } = await import(
+  "@vibeshape/domain/assembly-mates"
+)
+const { documentSnapshotV4Schema } = await import("@vibeshape/domain/document-v4")
+const { resolveAssemblyMateFrames } = await import(
+  "../../../../packages/application/src/assembly-mate-frames"
+)
+const { identityAssemblyPose } = await import("../features/assembly/assembly-model")
+const { libraryController, libraryItem, libraryRead } = await import(
+  "../features/library/library-test-fixtures"
+)
+const { authoredTestId: id } = await import("../test-support/authored-tree-fixture")
+const { insertLocalLibraryVersion, relinkActiveLibraryDefinition } = await import(
+  "./library-controller"
+)
 
 function v2Controller() {
   const controller = libraryController(true)
@@ -221,6 +226,6 @@ describe("library UI general mate preflight", () => {
       }),
     ).toEqual({ ok: true })
     expect(ports.preview).not.toHaveBeenCalled()
-    expect(ports.commit).toHaveBeenCalledOnce()
+    expect(ports.commit).toHaveBeenCalledTimes(1)
   })
 })

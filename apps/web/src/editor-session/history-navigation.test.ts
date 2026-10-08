@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { createEmptySketch, sketchIdSchema } from "@vibeshape/domain"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createEditorSessionStore } from "./editor-session-store"
 import { createHistoryNavigation } from "./history-navigation"
 
@@ -21,8 +22,8 @@ describe("History navigation", () => {
     const save = vi.fn(async () => store.getState().actions.saveSketch(sketch))
     navigation.register(save)
     expect(await navigation.navigate(activate)).toBe(true)
-    expect(save).toHaveBeenCalledOnce()
-    expect(activate).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(activate).toHaveBeenCalledTimes(1)
   })
   it("retains the draft and editor when validation or persistence fails", async () => {
     const { store, sketch, navigation } = editing()
@@ -55,9 +56,9 @@ describe("History navigation", () => {
     complete()
     expect(await initial).toBe(false)
     expect(await latest).toBe(true)
-    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledTimes(1)
     expect(first).not.toHaveBeenCalled()
-    expect(last).toHaveBeenCalledOnce()
+    expect(last).toHaveBeenCalledTimes(1)
   })
   it("returns to the current row when it is the last click during a pending save", async () => {
     const { store, sketch, navigation } = editing()
@@ -79,9 +80,9 @@ describe("History navigation", () => {
     complete()
     expect(await first).toBe(false)
     expect(await last).toBe(true)
-    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledTimes(1)
     expect(otherRow).not.toHaveBeenCalled()
-    expect(currentRow).toHaveBeenCalledOnce()
+    expect(currentRow).toHaveBeenCalledTimes(1)
     expect(store.getState().sketch.draft?.id).toBe(sketch.id)
   })
   it.each([false, true])(
@@ -93,7 +94,7 @@ describe("History navigation", () => {
       navigation.register(save, "lightweighting:quick")
       const activate = vi.fn()
       expect(await navigation.navigate(activate)).toBe(saved)
-      expect(save).toHaveBeenCalledOnce()
+      expect(save).toHaveBeenCalledTimes(1)
       expect(activate).toHaveBeenCalledTimes(saved ? 1 : 0)
       if (!saved) {
         expect(await navigation.navigate(activate)).toBe(false)
@@ -118,9 +119,9 @@ describe("History navigation", () => {
     complete(true)
     expect(await first).toBe(false)
     expect(await last).toBe(true)
-    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledTimes(1)
     expect(firstRow).not.toHaveBeenCalled()
-    expect(lastRow).toHaveBeenCalledOnce()
+    expect(lastRow).toHaveBeenCalledTimes(1)
   })
   it.each(["same", "replacement"])(
     "preserves the mounted owner across a pending workspace save: %s",
@@ -149,7 +150,7 @@ describe("History navigation", () => {
       expect(replacementSave).not.toHaveBeenCalled()
       if (owner === "replacement") {
         expect(await navigation.navigate(activate)).toBe(false)
-        expect(replacementSave).toHaveBeenCalledOnce()
+        expect(replacementSave).toHaveBeenCalledTimes(1)
       }
     },
   )
@@ -160,7 +161,7 @@ describe("History navigation", () => {
       store.getState().actions.startPartDesignTool({ kind: "create-box" }),
     )
     expect(await createHistoryNavigation(store).navigate(activate)).toBe(true)
-    expect(activate).toHaveBeenCalledOnce()
+    expect(activate).toHaveBeenCalledTimes(1)
     expect(store.getState().activePartDesignTool?.kind).toBe("create-box")
   })
   it("does not close a replacement task while a previous save finishes", async () => {

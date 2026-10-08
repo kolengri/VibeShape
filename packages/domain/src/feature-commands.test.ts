@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
 import { documentSnapshotSchema } from "./document"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
@@ -293,18 +294,20 @@ describe("feature document commands", () => {
       },
     })
     expect(
-      reduceDocumentEvent(snapshot, {
-        schemaVersion: 1,
-        type: "org.vibeshape.feature.removed-preserving-model-reference-intent",
-        commandId: commandIds[3],
-        transactionId: null,
-        documentId,
-        baseRevision: snapshot.revision,
-        revision: snapshot.revision + 1,
-        issuedAt: "2026-08-08T12:03:00Z",
-        actor,
-        feature: root,
-      }),
+      matchValue(
+        reduceDocumentEvent(snapshot, {
+          schemaVersion: 1,
+          type: "org.vibeshape.feature.removed-preserving-model-reference-intent",
+          commandId: commandIds[3],
+          transactionId: null,
+          documentId,
+          baseRevision: snapshot.revision,
+          revision: snapshot.revision + 1,
+          issuedAt: "2026-08-08T12:03:00Z",
+          actor,
+          feature: root,
+        }),
+      ),
     ).toMatchObject({
       ok: false,
       diagnostic: {
@@ -435,7 +438,7 @@ describe("feature document commands", () => {
       feature: root,
     })
     expect(removed.snapshot.features).toEqual([])
-    expect(removed.snapshot.sketches[0]?.externalReferences).toEqual(
+    expect(removed.snapshot.sketches[0]?.externalReferences).toEqual<unknown>(
       referenceIds.map((id, index) => ({
         schemaVersion: 1,
         id,

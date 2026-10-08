@@ -1,8 +1,8 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { describe, expect, it } from "bun:test"
 import { act, renderHook } from "@testing-library/react"
 import { featureIdSchema } from "@vibeshape/domain"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
-import { describe, expect, it } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
 import type { ActivePartDesignTool } from "../part-design/part-design-tool"
 import type { ShellPickingContext } from "./shell-picking"

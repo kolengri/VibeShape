@@ -17,9 +17,9 @@ cancel, stale source/revision, review rejection, and one append-only atomic impo
 
 | Level | Coverage | Tool or approach |
 |---|---|---|
-| Pure unit | Units, expressions, DAG, commands, migrations | Vitest through `bun run test` |
+| Pure unit | Units, expressions, DAG, commands, migrations | Native Bun test runner through `bun run test` |
 | Property-based | Parameter ranges, solver degeneracies, `TopoRef` | fast-check or equivalent |
-| Worker contract | Schemas, revisions, cancellation, transfer buffers | Vitest through Bun plus real worker |
+| Worker contract | Schemas, revisions, cancellation, transfer buffers | Bun tests plus real worker |
 | Kernel fixture | Operations, validity, metrics, memory | Browser or Node-compatible WASM harness |
 | Format conformance | `.vshape`, STEP, STL, 3MF | Validators and round-trip |
 | Component | Tree, property editor, diagnostics | Testing Library |
@@ -318,7 +318,7 @@ SPK-005 implements this boundary through `bun run persistence:evidence`. The run
 
 ## Extension sandbox evidence
 
-SPK-006 implements a private package and hostile browser harness through `bun run extension:evidence`. The command rejects truthy `CI`, runs package tests with Vitest, then exercises Chromium, Firefox, and WebKit serially through `playwright.extension.config.ts`. Reports stay under `.artifacts/extension-spike`, and no GitHub Actions workflow invokes the command.
+SPK-006 implements a private package and hostile browser harness through `bun run extension:evidence`. The command rejects truthy `CI`, runs package tests with Bun, then exercises Chromium, Firefox, and WebKit serially through `playwright.extension.config.ts`. Reports stay under `.artifacts/extension-spike`, and no GitHub Actions workflow invokes the command.
 
 The accepted evidence covers pre-extraction ZIP limits, path and symlink rejection, strict manifests, exact checksums and archive integrity, publisher identity, exact-version coexistence, no-import WebAssembly, JavaScript-worker ambient-authority probing, loop termination, message and output budgets, capability revocation, restricted states, and opaque-origin iframe messaging. The result is reduced scope because arbitrary same-origin workspace JavaScript is rejected and a portable hard memory ceiling is not proven. See [SPK-006 evidence](spikes/spk-006-extension-sandbox.md).
 
@@ -419,7 +419,7 @@ The automatic pull-request workflow is one Linux job: frozen install, skill vali
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
-The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces and build scripts, including jsdom-backed component tests. The automatic pull-request workflow performs a frozen install, skill validation, formatting, linting, typechecking, unit tests, production build, critical dependency audit, and uncached Fallow audit in one job. A superseding commit cancels the older run, and the squash-merged tree is not run again on `main`.
+The foundation scaffold implements these gates as root Bun scripts. The Bun unit-test launcher discovers TypeScript and TSX tests across workspaces and build scripts, including jsdom-backed component tests. The automatic pull-request workflow performs a frozen install, skill validation, formatting, linting, typechecking, unit tests, production build, critical dependency audit, and uncached Fallow audit in one job. A superseding commit cancels the older run, and the squash-merged tree is not run again on `main`.
 
 The external-sketch context suite requires a new unsaved draft to include every committed sketch while an existing draft excludes itself and later sketches. Component coverage proves that passive earlier points and lines wake without draft mutation, distinguishes solid ordinary source geometry from dashed construction geometry, and verifies that `Shift` suppresses the preview while acceptance creates one stable reference plus one local Coincident or Point on line relation. External-constraint coverage requires point and line relations to resolve annotation anchors from solved projected geometry, remain selectable with non-color external-relation semantics, and retain that presentation after Finish and reopen. Collision fixtures require source-sketch identity to disambiguate repeated entity IDs, including a two-reference external intersection. Dense inference fixtures require the spatially queried candidate set to match unbounded inference while excluding distant geometry from the pointer hot path. A graphical-overlap fixture requires the normal-view chooser to expose deterministic source labels without mutating the draft, cycle its analytical preselection forward and backward with grave accent, and commit only the Enter-confirmed source. Browser coverage proves both line wake-up without activating Use and keyboard-driven graphical disambiguation of two coincident earlier-sketch lines in Chromium, Firefox, and WebKit. A saved-later-sketch regression creates two sketches around an upstream body, reopens the later sketch, and requires normal mode to retain the body while assigning each earlier sketch only to the analytical projected layer. It then requires orbit mode to restore the earlier saved sketch plus one active draft to Three.js, verifies the model-tree visibility action in normal mode, and rejects duplicate saved-sketch rendering across layer transitions.
 

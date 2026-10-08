@@ -1,20 +1,10 @@
-// @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, beforeEach, expect, it, vi } from "vitest"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
 import type { DocumentControllerState } from "../document/document-controller"
-import { i18n } from "../i18n"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
-import { ApplicationBar } from "./application-bar"
-import { AutomationConnectionsProvider, AutomationEditorScope } from "./automation-status"
-import { StatusBar } from "./status-bar"
-import { ViewerPreferencesProvider } from "./viewer-preferences"
-import { WorkspaceLayoutPreferencesProvider } from "./workspace-layout-preferences"
 
-const work = vi.hoisted(() => ({
+const work = (() => ({
   active: vi.fn(),
   register: vi.fn((_guard: () => unknown) => () => {}),
   disable: vi.fn(),
@@ -45,16 +35,17 @@ const work = vi.hoisted(() => ({
     projectManagement: false,
     client: null,
   },
-}))
-vi.mock("../document/document-controller", async (original) => ({
-  ...(await original<typeof import("../document/document-controller")>()),
+}))()
+const originalModule1 = { ...(await import("../document/document-controller")) }
+mock.module("../document/document-controller", () => ({
+  ...originalModule1,
   getProjectActionBlock: () => "save-error",
   getProjectActiveWorkBlock: work.active,
   registerProjectActionGuard: work.register,
 }))
-vi.mock("../document/document-export-dialog", () => ({ DocumentExportDialog: () => null }))
-vi.mock("../document/document-rename-dialog", () => ({ DocumentRenameDialog: () => null }))
-vi.mock("../automation/local-automation-connection", () => ({
+mock.module("../document/document-export-dialog", () => ({ DocumentExportDialog: () => null }))
+mock.module("../document/document-rename-dialog", () => ({ DocumentRenameDialog: () => null }))
+mock.module("../automation/local-automation-connection", () => ({
   createLocalAutomationConnection: () => {
     const snapshot = work.local
     return {
@@ -69,7 +60,7 @@ vi.mock("../automation/local-automation-connection", () => ({
     }
   },
 }))
-vi.mock("../automation/remote-automation-connection", () => ({
+mock.module("../automation/remote-automation-connection", () => ({
   createRemoteAutomationConnection: () => ({
     getSnapshot: () => work.remote,
     subscribe: () => () => {},
@@ -81,11 +72,23 @@ vi.mock("../automation/remote-automation-connection", () => ({
     isProjectActionPending: work.remoteProjectPending,
   }),
 }))
-vi.mock("../editor-session/editor-session-provider", () => {
+mock.module("../editor-session/editor-session-provider", () => {
   const state = { activePartDesignTool: null, sketch: { activeSketchTool: null, draft: null } }
   const store = { getState: () => state, subscribe: () => () => {} }
   return { useEditorSessionStoreApi: () => store }
 })
+
+const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { i18n } = await import("../i18n")
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
+const { ApplicationBar } = await import("./application-bar")
+const { AutomationConnectionsProvider, AutomationEditorScope } = await import("./automation-status")
+const { StatusBar } = await import("./status-bar")
+const { ViewerPreferencesProvider } = await import("./viewer-preferences")
+const { WorkspaceLayoutPreferencesProvider } = await import("./workspace-layout-preferences")
 
 beforeEach(() => {
   work.local = {
@@ -296,16 +299,16 @@ it("keeps Stop AI available when the local bridge is offline during approved rec
   renderHeader()
   expect(screen.getByText("Reconnecting AI…").closest("footer")).toBeTruthy()
   await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
-  expect(work.disable).toHaveBeenCalledOnce()
-  expect(work.remoteDisable).toHaveBeenCalledOnce()
+  expect(work.disable).toHaveBeenCalledTimes(1)
+  expect(work.remoteDisable).toHaveBeenCalledTimes(1)
 })
 
 it("lets the initiating project action pass its guard while another busy transport remains blocking", () => {
   renderHeader()
   const guard = work.register.mock.calls.at(-1)?.[0]
   if (!guard) throw new Error("Missing project action guard.")
-  expect(work.localValidate).toHaveBeenCalledOnce()
-  expect(work.remoteValidate).toHaveBeenCalledOnce()
+  expect(work.localValidate).toHaveBeenCalledTimes(1)
+  expect(work.remoteValidate).toHaveBeenCalledTimes(1)
   work.local.busy = true
   expect(guard()).toBe("automation-busy")
   work.localProjectPending.mockReturnValue(true)
@@ -338,8 +341,8 @@ it("stops both connections when a remote pairing hides an already connected loca
   renderHeader()
   expect(screen.getAllByRole("button", { name: "Stop AI" })).toHaveLength(1)
   await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
-  expect(work.disable).toHaveBeenCalledOnce()
-  expect(work.remoteDisable).toHaveBeenCalledOnce()
+  expect(work.disable).toHaveBeenCalledTimes(1)
+  expect(work.remoteDisable).toHaveBeenCalledTimes(1)
 })
 
 it("keeps local AI status and Stop visible while remote pairing is still awaiting authorization", async () => {
@@ -361,8 +364,8 @@ it("keeps local AI status and Stop visible while remote pairing is still awaitin
   renderHeader()
   expect(screen.getByText("AI access on · Auto-apply on").closest("footer")).toBeTruthy()
   await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
-  expect(work.disable).toHaveBeenCalledOnce()
-  expect(work.remoteDisable).toHaveBeenCalledOnce()
+  expect(work.disable).toHaveBeenCalledTimes(1)
+  expect(work.remoteDisable).toHaveBeenCalledTimes(1)
 })
 
 it("shows incoming remote consent while the application menu and connection settings are closed", async () => {

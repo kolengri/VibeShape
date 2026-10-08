@@ -1,8 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
-import { describe, expect, it } from "vitest"
 import { createQueryDispatcher, documentCoreQueryHandlers, modelEdgeViewSchema } from "./queries"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-000000000001"
@@ -188,6 +188,6 @@ describe("registered model edge inspection", () => {
     const small = view(query, evidence(candidates))
     expect(small.data.total).toBe(100)
     expect(small.data.edges).toHaveLength(1)
-    expect(small.nextCursor).toEqual({ rebuildId: "rebuild-a", featureId, offset: 1 })
+    expect(small.nextCursor).toEqual<unknown>({ rebuildId: "rebuild-a", featureId, offset: 1 })
   })
 })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   featureIdSchema,
   sketchEntityIdSchema,
@@ -69,7 +69,7 @@ describe("inspectSketchReferenceHealth", () => {
       transitiveBrokenReferenceIds: [],
       unknownReferenceIds: [],
     })
-    expect(health.get(broken.id)).toEqual({
+    expect(health.get(broken.id)).toEqual<unknown>({
       status: "broken",
       directBrokenReferenceIds: [broken.externalReferences?.[0]?.id],
       transitiveBrokenReferenceIds: [],
@@ -159,7 +159,7 @@ describe("inspectSketchReferenceHealth", () => {
 
     const health = inspectSketchReferenceHealth([deletedSource, middle, target])
 
-    expect(health.get(middle.id)?.directBrokenReferenceIds).toEqual([
+    expect(health.get(middle.id)?.directBrokenReferenceIds).toEqual<unknown>([
       middle.externalReferences?.[0]?.id,
     ])
     expect(health.get(target.id)).toMatchObject({
@@ -247,7 +247,7 @@ describe("inspectSketchReferenceHealth", () => {
       ],
     })
 
-    expect(inspectSketchReferenceHealth([sketch]).get(sketch.id)).toEqual({
+    expect(inspectSketchReferenceHealth([sketch]).get(sketch.id)).toEqual<unknown>({
       status: "unknown",
       directBrokenReferenceIds: [],
       transitiveBrokenReferenceIds: [],

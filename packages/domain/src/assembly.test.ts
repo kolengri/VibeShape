@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   assemblyDefinitionIdSchema,
   assemblyDefinitionSchema,
@@ -127,9 +127,9 @@ describe("versioned assembly declarations", () => {
     const parsed = assemblySchema.parse(raw)
     expect(
       parsed.definitions[0]?.sources.map((source) => source.kind === "part" && source.partId),
-    ).toEqual([id(500), id(501)])
-    expect(parsed.instances.map((entry) => entry.id)).toEqual([id(10), id(20)])
-    expect(parsed.definitions[0]?.sources[0]).toEqual(partSource())
+    ).toEqual<unknown>([id(500), id(501)])
+    expect(parsed.instances.map((entry) => entry.id)).toEqual<unknown>([id(10), id(20)])
+    expect(parsed.definitions[0]?.sources[0]).toEqual<unknown>(partSource())
   })
 
   it("accepts an immutable source asset output pin", () => {
@@ -139,16 +139,18 @@ describe("versioned assembly declarations", () => {
       outputId: id(701),
       digest: "b".repeat(64),
     }
-    expect(assemblySourceSchema.parse(source)).toEqual(source)
+    expect(assemblySourceSchema.parse(source)).toEqual<unknown>(source)
   })
 
-  it.each([
-    { kind: "part", partId: id(500) },
-    { ...partSource(), contentHash: "A".repeat(64) },
-    { ...partSource(), body: { schemaVersion: 0, featureId: id(600), outputRole: "Face 1" } },
-    { kind: "asset-output", assetId: id(700), outputId: 0, digest: "b".repeat(64) },
-    { ...partSource(), ordinal: 0 },
-  ])("rejects unpinned, malformed or ordinal source identities %#", (source) => {
+  it.each(
+    [
+      { kind: "part", partId: id(500) },
+      { ...partSource(), contentHash: "A".repeat(64) },
+      { ...partSource(), body: { schemaVersion: 0, featureId: id(600), outputRole: "Face 1" } },
+      { kind: "asset-output", assetId: id(700), outputId: 0, digest: "b".repeat(64) },
+      { ...partSource(), ordinal: 0 },
+    ].map((source) => ({ source })),
+  )("rejects unpinned, malformed or ordinal source identities %#", ({ source }) => {
     expect(assemblySourceSchema.safeParse(source).success).toBe(false)
   })
 

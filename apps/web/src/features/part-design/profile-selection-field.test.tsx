@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { ProfileSelectionField } from "./profile-selection-field"
 
 afterEach(cleanup)
@@ -40,7 +40,7 @@ describe("ProfileSelectionField", () => {
 
     await user.click(select)
     await user.click(screen.getByRole("button", { name: "Remove Sketch 1 · Profile 1" }))
-    expect(onSelectionRequest).toHaveBeenCalledOnce()
+    expect(onSelectionRequest).toHaveBeenCalledTimes(1)
     expect(onRemove).toHaveBeenCalledWith(0)
   })
 
@@ -58,6 +58,6 @@ describe("ProfileSelectionField", () => {
     )
 
     await user.click(screen.getByRole("button", { name: copy.clear }))
-    expect(onClear).toHaveBeenCalledOnce()
+    expect(onClear).toHaveBeenCalledTimes(1)
   })
 })

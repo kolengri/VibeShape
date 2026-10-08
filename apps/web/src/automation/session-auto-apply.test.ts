@@ -1,9 +1,9 @@
+import { describe, expect, it } from "bun:test"
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import { commandActorSchema, documentCommandSchema } from "@vibeshape/domain/commands"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { boxFeatureType, extrusionFeatureTypeV5 } from "@vibeshape/domain/part-design"
-import { describe, expect, it } from "vitest"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`

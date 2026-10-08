@@ -1,19 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react"
-import { applyVersionedDocumentCommand } from "@vibeshape/domain"
-import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { DocumentSnapshotV5 } from "@vibeshape/domain/document-v5"
-import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
-import { writeVShapeV2 } from "@vibeshape/formats/vshape"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import {
-  historyRepairFixture,
-  repairRemovalCommand,
-} from "../../../../packages/domain/src/history-repair.test-fixture"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const mocks = vi.hoisted(() => ({
+const mocks = (() => ({
   open: vi.fn(),
   exportProject: vi.fn(),
   copyProject: vi.fn(),
@@ -21,11 +12,11 @@ const mocks = vi.hoisted(() => ({
   readArchive: vi.fn(),
   list: vi.fn(),
   review: vi.fn(),
-}))
-vi.mock("@vibeshape/application/authority-document-session", () => ({
+}))()
+mock.module("@vibeshape/application/authority-document-session", () => ({
   openAuthorityDocumentSession: mocks.open,
 }))
-vi.mock("./browser-project-repository", () => ({
+mock.module("./browser-project-repository", () => ({
   BrowserProjectRepository: class {
     versioned = {}
     legacy = {}
@@ -34,18 +25,32 @@ vi.mock("./browser-project-repository", () => ({
     listProjects = mocks.list
   },
 }))
-vi.mock("@vibeshape/formats/vshape", async (original) => {
-  const actual = await original<typeof import("@vibeshape/formats/vshape")>()
+const originalModule1 = { ...(await import("@vibeshape/formats/vshape")) }
+mock.module("@vibeshape/formats/vshape", () => {
+  const actual = originalModule1
   return { ...actual, readAuthoredVShape: mocks.readArchive }
 })
 
-vi.mock("../automation/automation-review-controller", async (original) => {
-  const actual = await original<typeof import("../automation/automation-review-controller")>()
+const originalModule2 = { ...(await import("../automation/automation-review-controller")) }
+mock.module("../automation/automation-review-controller", () => {
+  const actual = originalModule2
   return {
     ...actual,
     automationReviews: { ...actual.automationReviews, getSnapshot: mocks.review },
   }
 })
+
+const { cleanup, renderHook, waitFor } = await import("@testing-library/react")
+const { applyVersionedDocumentCommand } = await import("@vibeshape/domain")
+const { projectAuthoredDocumentSnapshotToV1 } = await import("@vibeshape/domain/document-v2")
+const { applyHistoryRemoveRetainingDependentsCommand } = await import(
+  "@vibeshape/domain/document-v5-commands"
+)
+const { writeVShapeV2 } = await import("@vibeshape/formats/vshape")
+const { historyRepairFixture, repairRemovalCommand } = await import(
+  "../../../../packages/domain/src/history-repair.test-fixture"
+)
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 
 const id = "0195b5ac-b250-7a2c-8c33-000000000101"
 const issuedAt = "2026-09-01T12:00:00.000Z"
@@ -80,17 +85,16 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+let moduleRevision = 0
 beforeEach(async () => {
-  vi.resetModules()
+  moduleRevision += 1
   vi.clearAllMocks()
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   localStorage.clear()
   vi.stubGlobal("sessionStorage", createTestBrowserStorage())
   sessionStorage.clear()
   localStorage.setItem("vibeshape-active-document-id", id)
-  const actual = await vi.importActual<typeof import("@vibeshape/formats/vshape")>(
-    "@vibeshape/formats/vshape",
-  )
+  const actual = originalModule1
   mocks.readArchive.mockImplementation(actual.readAuthoredVShape)
   mocks.review.mockReturnValue(null)
   mocks.close.mockResolvedValue({ ok: true })
@@ -124,7 +128,9 @@ async function ready(authoredSnapshot?: DocumentSnapshotV5) {
     report: { snapshot: session.snapshot, mode: "read-write", writeAccessDiagnostic: null },
   })
   mocks.exportProject.mockResolvedValue({ ok: true, value: { version: 2, project: source } })
-  const controller = await import("./document-controller")
+  const controller = (await import(
+    `./document-controller?test=${moduleRevision}`
+  )) as typeof import("./document-controller")
   const hook = renderHook(() => controller.useDocumentController("Untitled"))
   await waitFor(() => expect(hook.result.current.status).toBe("ready"))
   return { controller, source, session }
@@ -278,7 +284,7 @@ describe("History removal during an owning editor task", () => {
     session.commitAuthored.mockResolvedValue({ ok: false, diagnostic })
     const release = controller.registerProjectActionGuard(() => "editor-draft")
     const target = "0195b5ac-b250-7a2c-8c33-000000000110" as import("@vibeshape/domain").FeatureId
-    expect(await controller.removeFeature(session.snapshot.revision, target)).toEqual({
+    expect(await controller.removeFeature(session.snapshot.revision, target)).toEqual<unknown>({
       ok: false,
       diagnostic,
     })
@@ -311,7 +317,7 @@ describe("History removal during an owning editor task", () => {
     }
     session.commitAuthored.mockResolvedValue({ ok: false, diagnostic })
     const release = controller.registerProjectActionGuard(() => "editor-draft")
-    expect(await controller.saveFeatureEdits(session.snapshot.revision, feature)).toEqual({
+    expect(await controller.saveFeatureEdits(session.snapshot.revision, feature)).toEqual<unknown>({
       ok: false,
       diagnostic,
     })

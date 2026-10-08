@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
   applyDocumentV3Command,
@@ -19,7 +20,6 @@ import {
   sessionIdSchema,
 } from "@vibeshape/domain/identifiers"
 import { sourceAssetSchema } from "@vibeshape/domain/source-assets"
-import { describe, expect, it } from "vitest"
 import {
   historyRepairFixture,
   repairId,
@@ -961,7 +961,7 @@ describe("V5 retained History persistence", () => {
     )
     const renamedAuthority = f.current()
     if (renamedAuthority.schemaVersion !== 5) throw new Error("Missing V5 authority")
-    expect(renamedAuthority.repairIntents[0]?.authored).toEqual({
+    expect(renamedAuthority.repairIntents[0]?.authored).toEqual<unknown>({
       ...before.features[0],
       label: "Renamed missing extrusion",
     })
@@ -1094,9 +1094,14 @@ describe("V5 retained History persistence", () => {
     if (repaired.schemaVersion !== 5) throw new Error("Missing V5 authority")
     const newPart = repaired.parts.find((part) => part.bodyHistory[0]?.featureId === repairId(4))
     expect(newPart).toMatchObject({ id: id(200), name: "New body" })
-    expect(newPart?.bodyHistory.map((body) => body.featureId)).toEqual([repairId(4), repairId(5)])
-    expect(repaired.repairIntents.map((intent) => intent.authored.id)).toEqual([repairId(3)])
-    expect(repaired.suspendedParts).toEqual([before.parts[0]])
+    expect(newPart?.bodyHistory.map((body) => body.featureId)).toEqual<unknown>([
+      repairId(4),
+      repairId(5),
+    ])
+    expect(repaired.repairIntents.map((intent) => intent.authored.id)).toEqual<unknown>([
+      repairId(3),
+    ])
+    expect(repaired.suspendedParts).toEqual<unknown>([before.parts[0]])
     expect(
       success(
         replayDocumentAuthorityEvents(
@@ -1132,7 +1137,7 @@ describe("History insertion persistence", () => {
     }
     success(await insert(insertion))
     expect(f.writes).toHaveLength(1)
-    expect(f.current().history.map((item) => item.id)).toEqual([
+    expect(f.current().history.map((item) => item.id)).toEqual<unknown>([
       feature.id,
       original.history[0]?.id,
     ])
@@ -1140,7 +1145,7 @@ describe("History insertion persistence", () => {
     success(await f.navigate(612, "undo"))
     expect(f.current().history).toEqual(original.history)
     success(await f.navigate(613, "redo"))
-    expect(f.current().history.map((item) => item.id)).toEqual([
+    expect(f.current().history.map((item) => item.id)).toEqual<unknown>([
       feature.id,
       original.history[0]?.id,
     ])

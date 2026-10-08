@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema, documentSnapshotV1Schema } from "./document"
 import { featureRecordV1Schema } from "./feature-graph"
 

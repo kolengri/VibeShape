@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -18,7 +18,7 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import { collectedExtrusionOptions } from "./extrusion-body-test-fixtures"
@@ -185,7 +185,7 @@ it("authors v7 when choosing a current finite curved face from the real body col
     target: { value: JSON.stringify(selected.reference) },
   })
   await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
-  await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
   expect(onSave).toHaveBeenCalledWith(
     4,
     expect.objectContaining({
@@ -240,7 +240,7 @@ it("preserves the saved v7 schema when explicitly changing its endpoint to a pla
     options,
   )
   await userEvent.setup().click(screen.getByRole("button", { name: "Update extrusion" }))
-  await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
   expect(onSave).toHaveBeenCalledWith(
     4,
     expect.objectContaining({
@@ -304,8 +304,9 @@ describe("ExtrusionForm", () => {
         options,
       )
       await userEvent.click(screen.getByRole("button", { name: "Update extrusion" }))
-      await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
-      expect(onSave).toHaveBeenCalledExactlyOnceWith(4, feature)
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(onSave).toHaveBeenCalledTimes(1)
+      expect(onSave).toHaveBeenCalledWith(4, feature)
     },
   )
   it("preserves schema v1 New when opening and applying its existing profile", async () => {
@@ -323,8 +324,9 @@ describe("ExtrusionForm", () => {
       collectedExtrusionOptions(feature),
     )
     await userEvent.click(screen.getByRole("button", { name: "Update extrusion" }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
-    expect(onSave).toHaveBeenCalledExactlyOnceWith(4, feature)
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith(4, feature)
   })
   it("requires an explicit named body before upgrading a legacy whole-producer modifier", async () => {
     const feature = featureRecordSchema.parse({
@@ -444,7 +446,7 @@ describe("ExtrusionForm", () => {
       ),
     )
     await user.click(screen.getByRole("button", { name: copy.submit }))
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     await user.click(screen.getByRole("checkbox", { name: copy.symmetric }))
     expect(screen.queryByRole("combobox", { name: copy.secondDistance })).toBeNull()
     expect(
@@ -554,7 +556,7 @@ describe("ExtrusionForm", () => {
     )
     expect(create.getAttribute("aria-busy")).toBe("true")
     submission.resolve()
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 
   it("preserves invalid raw input and focuses the distance error", async () => {

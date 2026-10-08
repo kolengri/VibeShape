@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { generateQuickLightweighting } from "./quick-client"
 import type { QuickLightweightingInput, QuickLightweightingResult } from "./quick-contract"
 

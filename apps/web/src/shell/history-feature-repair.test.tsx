@@ -1,29 +1,27 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import {
-  createAngleQuantity,
-  createLengthQuantity,
-  type FeatureRecord,
-  featureIdSchema,
-  featureRecordSchema,
-} from "@vibeshape/domain"
-import { missingInputFeatureType } from "@vibeshape/domain/history-repair"
-import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
+import type { FeatureRecord } from "@vibeshape/domain"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { ExactBodyOption } from "../features/part-design/exact-body-options"
-import { PlacementForm } from "../features/placement/placement-form"
-import { i18n } from "../i18n"
-import messages from "../i18n/messages/en.json"
-import { HistoryFeatureRepair } from "./history-feature-repair"
 
-const candidates = vi.hoisted(() => ({ options: [] as readonly ExactBodyOption[] }))
-vi.mock("../features/part-design/exact-body-options", () => ({
+const candidates = (() => ({ options: [] as readonly ExactBodyOption[] }))()
+mock.module("../features/part-design/exact-body-options", () => ({
   exactSolidBodyOptions: vi.fn(() => candidates.options),
 }))
+
+const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { createAngleQuantity, createLengthQuantity, featureIdSchema, featureRecordSchema } =
+  await import("@vibeshape/domain")
+const { missingInputFeatureType } = await import("@vibeshape/domain/history-repair")
+const { placementFeatureType } = await import("@vibeshape/domain/part-design-placement")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { PlacementForm } = await import("../features/placement/placement-form")
+const { i18n } = await import("../i18n")
+const { default: messages } = await import("../i18n/messages/en.json")
+const { HistoryFeatureRepair } = await import("./history-feature-repair")
 
 const sourceId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f9901")
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f9902")
@@ -153,7 +151,7 @@ describe("explicit retained body input repair", () => {
     expect(onSave).not.toHaveBeenCalled()
     expect(authority.repairIntents[0]?.authored.parameters).toEqual(original.parameters)
     await userEvent.click(screen.getByRole("button", { name: "Update placement" }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
       dependencies: [replacementId],
@@ -180,7 +178,7 @@ describe("explicit retained body input repair", () => {
     expect(screen.getByRole("status").textContent).toContain("No earlier exact solid bodies")
     expect(screen.getByRole("button", { name: "Delete retained feature" })).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(onClose).toHaveBeenCalledOnce()
+    expect(onClose).toHaveBeenCalledTimes(1)
     expect(onSave).not.toHaveBeenCalled()
   })
 })

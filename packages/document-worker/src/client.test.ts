@@ -1,10 +1,11 @@
+import { describe, expect, it } from "bun:test"
 import {
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerRequest,
   type DocumentWorkerResponse,
   documentRebuildSnapshotSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { DocumentWorkerClient, DocumentWorkerRequestError } from "./client-core"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"

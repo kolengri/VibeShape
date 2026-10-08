@@ -1,16 +1,10 @@
-// @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { type AssemblyInspection, printerProfileSchema } from "@vibeshape/protocol"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import type { AssemblyInspection } from "@vibeshape/protocol"
 import type { GeometryViewportOptions } from "@vibeshape/viewer/three-viewport"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { i18n } from "../../i18n"
-import { useViewerPreferences, ViewerPreferencesProvider } from "../../shell/viewer-preferences"
-import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
-import { identityAssemblyPose } from "./assembly-model"
-import { AssemblyViewport } from "./assembly-viewport"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 
-const ports = vi.hoisted(() => ({
+const ports = (() => ({
   create: vi.fn(),
   meshes: vi.fn(),
   highlight: vi.fn(),
@@ -18,13 +12,23 @@ const ports = vi.hoisted(() => ({
   fit: vi.fn(),
   bed: vi.fn(),
   grid: vi.fn(),
-}))
-vi.mock("@vibeshape/viewer/three-viewport", async () => {
-  const actual = await vi.importActual<typeof import("@vibeshape/viewer/three-viewport")>(
-    "@vibeshape/viewer/three-viewport",
-  )
+}))()
+const originalModule1 = { ...(await import("@vibeshape/viewer/three-viewport")) }
+mock.module("@vibeshape/viewer/three-viewport", () => {
+  const actual = originalModule1
   return { ...actual, createGeometryViewport: ports.create }
 })
+
+const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { printerProfileSchema } = await import("@vibeshape/protocol")
+const { i18n } = await import("../../i18n")
+const { useViewerPreferences, ViewerPreferencesProvider } = await import(
+  "../../shell/viewer-preferences"
+)
+const { authoredTestId: id } = await import("../../test-support/authored-tree-fixture")
+const { identityAssemblyPose } = await import("./assembly-model")
+const { AssemblyViewport } = await import("./assembly-viewport")
 function inspection(): AssemblyInspection {
   const occurrence = (instanceId: string, sourceIndex: number) => ({
     instanceId,
@@ -89,7 +93,7 @@ describe("Assembly viewport occurrence identity", () => {
       </I18nProvider>
     )
     const view = render(<View selectedId={null} />)
-    await waitFor(() => expect(ports.meshes).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.meshes).toHaveBeenCalledTimes(1))
     const meshes = ports.meshes.mock.calls[0]?.[0]
     expect(meshes.map((mesh: { featureId: string }) => mesh.featureId)).toEqual([
       id(2),
@@ -112,9 +116,9 @@ describe("Assembly viewport occurrence identity", () => {
     expect(Array.from(highlight.indices)).toEqual([
       0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3, 4, 6, 5, 4, 5, 7, 4, 7, 6, 5, 6, 7,
     ])
-    expect(ports.create).toHaveBeenCalledOnce()
+    expect(ports.create).toHaveBeenCalledTimes(1)
     view.unmount()
-    expect(ports.dispose).toHaveBeenCalledOnce()
+    expect(ports.dispose).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -162,7 +166,7 @@ describe("Assembly print workspace presentation", () => {
         </ViewerPreferencesProvider>
       </I18nProvider>,
     )
-    await waitFor(() => expect(ports.meshes).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.meshes).toHaveBeenCalledTimes(1))
     expect(ports.bed).toHaveBeenLastCalledWith(null)
     expect(ports.grid).toHaveBeenLastCalledWith(true)
     fireEvent.click(screen.getByRole("button", { name: "Set fixture printer" }))
@@ -178,8 +182,8 @@ describe("Assembly print workspace presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle fixture bed" }))
     await waitFor(() => expect(ports.bed).toHaveBeenLastCalledWith(null))
     expect(screen.queryByText("X upper boundary: exceeds by 15.00 mm")).toBeNull()
-    expect(ports.create).toHaveBeenCalledOnce()
-    expect(ports.meshes).toHaveBeenCalledOnce()
+    expect(ports.create).toHaveBeenCalledTimes(1)
+    expect(ports.meshes).toHaveBeenCalledTimes(1)
     expect(ports.meshes.mock.calls[0]?.[0][0].positions).toBe(value.occurrences[0]?.mesh.positions)
   })
 })

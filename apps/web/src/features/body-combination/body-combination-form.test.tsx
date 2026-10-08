@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import {
@@ -100,8 +101,8 @@ describe("Compound and Union form", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add part Part 2" }))
     await userEvent.click(screen.getByRole("button", { name: "Move Part 2 earlier" }))
     await userEvent.click(screen.getByRole("button", { name: "Create" }))
-    await waitFor(() => expect(state.onSaved).toHaveBeenCalledOnce())
-    expect(state.onSave).toHaveBeenCalledOnce()
+    await waitFor(() => expect(state.onSaved).toHaveBeenCalledTimes(1))
+    expect(state.onSave).toHaveBeenCalledTimes(1)
     const [revision, feature] = requireAuthoredFixture(state.onSave.mock.calls[0])
     expect(revision).toBe(state.revision)
     expect(feature.dependencies).toEqual(
@@ -138,6 +139,6 @@ describe("Compound and Union form", () => {
     expect(screen.getByRole("button", { name: "Remove part Part 2" })).toBeTruthy()
     expect(state.onSaved).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(state.onCancel).toHaveBeenCalledOnce()
+    expect(state.onCancel).toHaveBeenCalledTimes(1)
   })
 })

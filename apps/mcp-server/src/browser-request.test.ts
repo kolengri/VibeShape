@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { BrowserRequestError, readBrowserJson } from "./browser-request"
 
 afterEach(() => vi.useRealTimers())
@@ -20,7 +21,7 @@ describe("bounded browser request bodies", () => {
       status: 413,
       code: "body-too-large",
     })
-    expect(cancelled).toHaveBeenCalledOnce()
+    expect(cancelled).toHaveBeenCalledTimes(1)
   })
   it("times out a stalled body and releases its reader", async () => {
     vi.useFakeTimers()
@@ -34,7 +35,7 @@ describe("bounded browser request bodies", () => {
     await vi.advanceTimersByTimeAsync(5000)
     expect(await result).toBeInstanceOf(BrowserRequestError)
     expect(await result).toMatchObject({ status: 408 })
-    expect(cancelled).toHaveBeenCalledOnce()
+    expect(cancelled).toHaveBeenCalledTimes(1)
     expect(request.body?.locked).toBe(false)
   })
 })

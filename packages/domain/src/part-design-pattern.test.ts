@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { bodyOutputRoleSchema } from "./body-reference"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"

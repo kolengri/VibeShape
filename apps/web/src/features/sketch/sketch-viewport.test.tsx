@@ -1,8 +1,44 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
 
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import {
+import { afterEach, describe, expect, it, mock } from "bun:test"
+import type { SketchEntity, SketchEntityId, SketchRecord } from "@vibeshape/domain"
+import { vi } from "../../../../../tests/unit/support/bun-test"
+import type {
+  ActiveSketchSolveResult,
+  DocumentControllerState,
+} from "../../document/document-controller"
+
+import type { SketchProjection } from "./sketch-projection-store"
+
+const sketchInferenceIndexBuilds = (() => vi.fn())()
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal("ResizeObserver", ResizeObserverMock)
+
+const originalModule1 = { ...(await import("@vibeshape/domain")) }
+mock.module("@vibeshape/domain", () => {
+  const domain = originalModule1
+  return {
+    ...domain,
+    createSketchInferenceCandidateQuery: (
+      input: Parameters<typeof domain.createSketchInferenceCandidateQuery>[0],
+    ) => {
+      sketchInferenceIndexBuilds()
+      return domain.createSketchInferenceCandidateQuery(input)
+    },
+  }
+})
+
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const {
   appendSketchArc,
   appendSketchCircle,
   appendSketchEllipse,
@@ -14,57 +50,24 @@ import {
   documentSnapshotSchema,
   featureIdSchema,
   moveSketchPoint,
-  type SketchEntity,
-  type SketchEntityId,
-  type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchExternalReferenceIdSchema,
   sketchIdSchema,
   sketchRecordSchema,
   variableIdSchema,
-} from "@vibeshape/domain"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { useEffect, useState } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import type {
-  ActiveSketchSolveResult,
-  DocumentControllerState,
-} from "../../document/document-controller"
-import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
-import { i18n } from "../../i18n"
-import { externalSketchContextGeometry } from "./external-sketch-points"
-import {
-  type SketchProjection,
-  SketchProjectionProvider,
-  useSketchProjectionStoreApi,
-} from "./sketch-projection-store"
-import { SketchViewport } from "./sketch-viewport"
-
-const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
-
-class ResizeObserverMock {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-
-vi.stubGlobal("ResizeObserver", ResizeObserverMock)
-
-vi.mock("@vibeshape/domain", async (importOriginal) => {
-  const domain = await importOriginal<typeof import("@vibeshape/domain")>()
-  return {
-    ...domain,
-    createSketchInferenceCandidateQuery: (
-      input: Parameters<typeof domain.createSketchInferenceCandidateQuery>[0],
-    ) => {
-      sketchInferenceIndexBuilds()
-      return domain.createSketchInferenceCandidateQuery(input)
-    },
-  }
-})
+} = await import("@vibeshape/domain")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { DOCUMENT_PROTOCOL_VERSION } = await import("@vibeshape/protocol")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { useEffect, useState } = await import("react")
+const { DocumentDisplayUnitsProvider } = await import("../../document/document-display-units")
+const { i18n } = await import("../../i18n")
+const { externalSketchContextGeometry } = await import("./external-sketch-points")
+const { SketchProjectionProvider, useSketchProjectionStoreApi } = await import(
+  "./sketch-projection-store"
+)
+const { SketchViewport } = await import("./sketch-viewport")
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 
@@ -534,7 +537,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerDown(drawing, center)
     expect(onDraftChange).not.toHaveBeenCalled()
     fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 8, y: 0 }))
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const next: SketchRecord = onDraftChange.mock.calls[0]?.[0]
     const circle = requiredSketchEntity(next, "circle")
     const point = requiredSketchEntity(next, "point", circle.centerPointId)
@@ -572,7 +575,7 @@ describe("SketchViewport", () => {
     const end = { ...clientPointForSketch(drawing, { x: 0.2, y: -0.2 }), pointerId: 12 }
     fireEvent.pointerMove(drawing, end)
     fireEvent.pointerUp(drawing, end)
-    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(1))
     const next: SketchRecord = onDraftChange.mock.calls[0]?.[0]
     expect(requiredSketchEntity(next, "point", center.id)).toMatchObject({ x: 0, y: 0 })
     expect(next.constraints).toEqual([
@@ -938,7 +941,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const localPoint = sketchEntitiesOfType(updated, "point").find(
       ({ id }) => id !== circle.centerPointId,
@@ -991,7 +994,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(sourcePointElement)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({
         externalReferences: [
@@ -1096,7 +1099,7 @@ describe("SketchViewport", () => {
 
     fireEvent.click(within(reopenedChooser).getByRole("button", { name: secondCandidate.label }))
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(document.activeElement).toBe(drawing)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     expect(updated.externalReferences).toEqual([
@@ -1212,7 +1215,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -1291,7 +1294,7 @@ describe("SketchViewport", () => {
     ).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const createdPoint = sketchEntitiesOfType(updated, "point").find(
       (entity) => entity.id !== sourcePoint.id,
@@ -1361,7 +1364,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -1433,7 +1436,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -1514,7 +1517,7 @@ describe("SketchViewport", () => {
     ).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -1596,7 +1599,7 @@ describe("SketchViewport", () => {
     ).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -1671,7 +1674,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, inside)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -1839,7 +1842,7 @@ describe("SketchViewport", () => {
     ).toBeTruthy()
     fireEvent.pointerDown(drawing, end)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const references = updated.externalReferences?.filter((reference) => reference.kind === "curve")
     const line = updated.entities.find((entity) => entity.type === "line")
@@ -1928,7 +1931,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="intersection"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, intersection)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const references = updated.externalReferences?.filter((reference) => reference.kind === "line")
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -2028,7 +2031,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, end)
     fireEvent.pointerDown(drawing, end)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const line = updated.entities.find((entity) => entity.type === "line")
@@ -2161,7 +2164,7 @@ describe("SketchViewport", () => {
     ).toBe("Box 1 · Edge 1")
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -2210,7 +2213,7 @@ describe("SketchViewport", () => {
     ).toBe(candidate.label)
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -2300,7 +2303,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = updated.entities.find((entity) => entity.type === "point")
@@ -2334,7 +2337,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeTruthy()
     fireEvent.pointerDown(drawing, center)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const localPoint = requiredSketchEntity(updated, "point")
     expectModelCurveCenterRelation(updated, candidate, localPoint.id)
@@ -2353,7 +2356,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.find(({ kind }) => kind === "model-curve")
     const localPoint = requiredSketchEntity(updated, "point")
@@ -2385,7 +2388,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, end)
     fireEvent.pointerDown(drawing, end)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const line = requiredSketchEntity(updated, "line")
     expectModelCurveCenterRelation(updated, candidate, line.startPointId)
@@ -2463,7 +2466,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, pointer)
     expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = requiredSketchEntity(updated, "point")
@@ -2555,7 +2558,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const localPoint = requiredSketchEntity(updated, "point")
@@ -2635,7 +2638,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, end)
     fireEvent.pointerDown(drawing, end)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     const line = updated.entities.find((entity) => entity.type === "line")
@@ -3120,7 +3123,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, endpoint)
     fireEvent.pointerDown(drawing, endpoint)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     const createdLine = sketchEntitiesOfType(updated, "line").at(-1)
     expect(createdLine?.startPointId).not.toBe(projectedPointId)
@@ -3258,7 +3261,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="point-on-line"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     const createdPoint = updated.entities.filter(({ type }) => type === "point").at(-1)
     expect(updated.constraints).toEqual(
@@ -3488,7 +3491,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const localPoint = updated.entities.filter((entity) => entity.type === "point").at(-1)
     expect(updated.externalReferences).toHaveLength(1)
@@ -3554,7 +3557,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(targetElement, { clientX: 400, clientY: 300 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
       2,
@@ -3593,7 +3596,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerUp(drawing, { clientX: 400, clientY: 300, pointerId: 1 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
       4,
@@ -3664,7 +3667,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerDown(targetElement, { ...click, pointerId: 2 })
     fireEvent.pointerUp(drawing, { ...click, pointerId: 2 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     expect(nextDraft.entities.some(({ id }) => id === target.startPointId)).toBe(false)
     expect(onSelectionChange).toHaveBeenLastCalledWith([])
@@ -3759,7 +3762,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerUp(drawing, { ...end, pointerId: 7 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
       8,
@@ -3800,7 +3803,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
     expect(drawing.getAttribute("data-sketch-trim-gesture")).toBe("active")
     fireEvent.keyDown(drawing, { key: "Escape" })
-    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(1))
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
       52,
@@ -3867,7 +3870,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(targetElement, { clientX: 398, clientY: 300 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     const extended = nextDraft.entities.find(({ id }: { id: string }) => id === target.id)
     const endPoint = nextDraft.entities.find(({ id }: { id: string }) => id === extended.endPointId)
@@ -3900,7 +3903,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerDown(axisElement)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onEditorToolChange).toHaveBeenCalledWith("select")
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     const reflectedLine = nextDraft.entities.find(
@@ -3949,7 +3952,7 @@ describe("SketchViewport", () => {
     )
 
     fireEvent.pointerDown(sourceElement)
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onEditorToolChange).not.toHaveBeenCalled()
 
     fireEvent.keyDown(drawing, { key: "Escape" })
@@ -3980,7 +3983,7 @@ describe("SketchViewport", () => {
     expect(preview?.querySelectorAll("line")).toHaveLength(4)
     fireEvent.pointerDown(drawing, { button: 0, clientX: 400, clientY: 250 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(8)
     expect(nextDraft.constraints.filter(({ type }) => type === "offset")).toHaveLength(1)
@@ -4051,7 +4054,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
     fireEvent.keyDown(drawing, { key: "Enter" })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
     expect(onEditorToolChange).toHaveBeenCalledWith("select")
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
@@ -4175,7 +4178,7 @@ describe("SketchViewport", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Apply transform" }))
 
-    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(1))
     expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     expect(nextDraft.entities.find(({ id }) => id === line.startPointId)).toMatchObject({ x: 2 })
@@ -4216,7 +4219,7 @@ describe("SketchViewport", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Apply linear pattern" }))
 
-    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(1))
     expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(4)
@@ -4257,7 +4260,7 @@ describe("SketchViewport", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Apply circular pattern" }))
 
-    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(1))
     expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
     const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(4)
@@ -4291,7 +4294,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-preview-tool="split-circle-second"]')).toBeTruthy()
 
     fireEvent.pointerDown(circleElement, { clientX: 400, clientY: 280 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(
       nextDraft.entities.filter(({ type }: { type: string }) => type === "circle"),
@@ -4330,7 +4333,7 @@ describe("SketchViewport", () => {
     expect(preview?.querySelectorAll("polyline")).toHaveLength(2)
 
     fireEvent.pointerDown(ellipseElement, { clientX: 400, clientY: 260 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(
       nextDraft.entities.filter(({ type }: { type: string }) => type === "ellipse"),
@@ -4379,7 +4382,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
     fireEvent.pointerUp(drawing, { clientX: 400, clientY: 280, pointerId: 1 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
     expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(
       2,
@@ -4603,7 +4606,7 @@ describe("SketchViewport", () => {
     fireEvent.keyDown(expression, { key: "Escape" })
 
     expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(requiredSketchEntity(placed, "line")).toBeTruthy()
     fireEvent.pointerMove(drawing, { clientX: 700, clientY: 220 })
     expect(document.querySelector('[data-sketch-preview-tool="line"]')).toBeTruthy()
@@ -4670,7 +4673,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 600, clientY: 180 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(3)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(1)
@@ -4794,7 +4797,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 600, clientY: 180 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({
         entities: expect.arrayContaining([
@@ -4888,7 +4891,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-polygon-side-count="8"]')?.textContent).toBe("8")
     fireEvent.keyDown(drawing, { key: "Enter" })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(8)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "circle")).toEqual([
@@ -4948,7 +4951,7 @@ describe("SketchViewport", () => {
     fireEvent.keyDown(drawing, { key: "4" })
     fireEvent.keyDown(drawing, { key: "Enter" })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(4)
     expect(
@@ -4998,7 +5001,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 560, clientY: 140 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(4)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(4)
@@ -5059,7 +5062,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 520, clientY: 180 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(7)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(5)
@@ -5125,7 +5128,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 520, clientY: 180 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(6)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(3)
@@ -5205,7 +5208,7 @@ describe("SketchViewport", () => {
     expect(widthPreview?.querySelectorAll("polyline")).toHaveLength(2)
 
     fireEvent.pointerDown(drawing, { clientX: 560, clientY: 180 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(7)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(3)
@@ -5272,7 +5275,7 @@ describe("SketchViewport", () => {
     expect(preview?.querySelectorAll("polyline")).toHaveLength(2)
     fireEvent.pointerDown(drawing, { clientX: 400, clientY: 180 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onEditorToolChange).toHaveBeenCalledWith("select")
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(6)
@@ -5336,7 +5339,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 400, clientY: 160 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const arc = requiredSketchEntity(placed, "arc")
     expect(sketchEntitiesOfType(placed, "point")).toHaveLength(3)
@@ -5453,7 +5456,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 520, clientY: 180 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(1)
     expect(draft.constraints).toEqual(
@@ -5555,7 +5558,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 400, clientY: 160 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const circle = requiredSketchEntity(placed, "circle")
     expect(sketchEntitiesOfType(placed, "point")).toHaveLength(4)
@@ -5630,7 +5633,7 @@ describe("SketchViewport", () => {
     )
     expect(onDraftChange).not.toHaveBeenCalled()
     fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const cubic = requiredSketchEntity(placed, "cubic-bezier")
     expect(placed.entities).toHaveLength(5)
@@ -5664,7 +5667,7 @@ describe("SketchViewport", () => {
     expect(handles[0]?.getAttribute("data-sketch-handle-control-id")).toBe(cubic.control1PointId)
     expect(handles[1]?.getAttribute("data-sketch-handle-anchor-id")).toBe(cubic.endPointId)
     expect(handles[1]?.getAttribute("data-sketch-handle-control-id")).toBe(cubic.control2PointId)
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     view.rerender(
       viewportElement({
         draft: placed,
@@ -5679,7 +5682,7 @@ describe("SketchViewport", () => {
     expect(
       document.querySelectorAll(`[data-sketch-bezier-handles="${cubic.id}"] line`),
     ).toHaveLength(2)
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
   it("cancels a partial cubic preview with Escape without publishing a draft", () => {
@@ -5731,7 +5734,7 @@ describe("SketchViewport", () => {
       "end point",
     )
     fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
   it("previews and creates an exact center-point ellipse as one draft edit", () => {
@@ -5766,7 +5769,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 400, clientY: 100 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
     const ellipse = requiredSketchEntity(draft, "ellipse")
     expect(sketchEntitiesOfType(draft, "point")).toHaveLength(3)
@@ -5909,7 +5912,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const ellipticalArc = requiredSketchEntity(placed, "elliptical-arc")
     expect(sketchEntitiesOfType(placed, "point")).toHaveLength(5)
@@ -6048,7 +6051,7 @@ describe("SketchViewport", () => {
     if (!referenceLineElement) throw new Error("The midpoint source line must be rendered.")
     fireEvent.pointerDown(referenceLineElement, { clientX: 400, clientY: 324 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const draft = onDraftChange.mock.calls[0]?.[0]
     const createdPoint = draft.entities
       .filter(({ type }: { type: string }) => type === "point")
@@ -6196,7 +6199,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector(`[data-sketch-inference-source="${arc.id}"]`)).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const createdPoint = sketchEntitiesOfType(updated, "point").find(
       ({ id }) => !arcSketch.entities.some((entity) => entity.id === id),
@@ -6237,7 +6240,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector(`[data-sketch-inference-source="${ellipse.id}"]`)).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const createdPoint = sketchEntitiesOfType(updated, "point").find(
       ({ id }) => !ellipseSketch.entities.some((entity) => entity.id === id),
@@ -6293,7 +6296,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const createdPoint = sketchEntitiesOfType(updated, "point").find(
       ({ id }) => !ellipseSketch.entities.some((entity) => entity.id === id),
@@ -6349,7 +6352,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const createdPoint = sketchEntitiesOfType(updated, "point").find(
       ({ id }) => !arcSketch.entities.some((entity) => entity.id === id),
@@ -7189,16 +7192,16 @@ describe("SketchViewport", () => {
       expect(drawing.getAttribute("data-sketch-dragging-point-id")).toBe(firstPoint.id),
     )
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
-    expect(readViewportRectangle).toHaveBeenCalledOnce()
+    expect(readViewportRectangle).toHaveBeenCalledTimes(1)
     fireEvent.pointerMove(drawing, { clientX: 500, clientY: 240, pointerId: 1 })
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
 
     expect(onDraftChange).not.toHaveBeenCalled()
-    expect(readViewportRectangle).toHaveBeenCalledOnce()
+    expect(readViewportRectangle).toHaveBeenCalledTimes(1)
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
     act(() => frame(0))
-    expect(readViewportRectangle).toHaveBeenCalledOnce()
+    expect(readViewportRectangle).toHaveBeenCalledTimes(1)
     expect(onDraftChange).not.toHaveBeenCalled()
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cx"),
@@ -7284,7 +7287,7 @@ describe("SketchViewport", () => {
     act(() => continuedFrame(80))
     await act(async () => vi.advanceTimersByTimeAsync(80))
 
-    expect(solveSketch).toHaveBeenCalledOnce()
+    expect(solveSketch).toHaveBeenCalledTimes(1)
     expect(onDraftChange).not.toHaveBeenCalled()
 
     await act(async () => vi.advanceTimersByTimeAsync(40))
@@ -7294,7 +7297,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
   })
@@ -7336,12 +7339,12 @@ describe("SketchViewport", () => {
     act(() => frame(0))
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 180)))
 
-    expect(solveSketch).toHaveBeenCalledOnce()
+    expect(solveSketch).toHaveBeenCalledTimes(1)
     expect(onDraftChange).not.toHaveBeenCalled()
 
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
   it("reuses the prewarmed inference index across incremental zoom and point drag", () => {
@@ -7501,7 +7504,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).not.toHaveBeenCalled()
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({
         entities: expect.arrayContaining([
@@ -7585,7 +7588,7 @@ describe("SketchViewport", () => {
     expect(screen.getByText("External inference · Layout · Point 1")).toBeTruthy()
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
-    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const reference = updated.externalReferences?.[0]
     expect(reference).toMatchObject({

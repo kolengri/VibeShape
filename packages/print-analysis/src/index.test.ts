@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { printPreparationSettingsSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { preparePrintMeshes } from "./index"
 
 function required<T>(value: T | undefined, label: string): T {

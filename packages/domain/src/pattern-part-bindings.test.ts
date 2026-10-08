@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { bodyReferenceSchema } from "./body-reference"
 import { type DocumentSnapshotV2, projectDocumentSnapshotV2ToV1 } from "./document-v2"
 import { applyDocumentV2Command, reduceDocumentV2Event } from "./document-v2-commands"
@@ -197,12 +197,15 @@ describe("captured Pattern continuation and independent copies", () => {
     const before = fixture().snapshot
     const added = success(insert(before)).snapshot
     expect(added.parts).toHaveLength(3)
-    expect(added.parts[0]).toEqual({ ...before.parts[0], bodyHistory: [body(), instance(0)] })
+    expect(added.parts[0]).toEqual<unknown>({
+      ...before.parts[0],
+      bodyHistory: [body(), instance(0)],
+    })
     expect(added.parts.slice(1).map((part) => part.bodyHistory)).toEqual([
       [instance(1)],
       [instance(2)],
     ])
-    expect(featureBodyDependencies(featureRecordSchema.parse(pattern()))).toEqual([
+    expect(featureBodyDependencies(featureRecordSchema.parse(pattern()))).toEqual<unknown>([
       { featureId: id(2), outputRole: "result" },
     ])
   })
@@ -219,8 +222,13 @@ describe("captured Pattern continuation and independent copies", () => {
     expect(shrunk.parts).toEqual(before.parts)
     expect(success(setCount(shrunk, 3)).snapshot.parts).toEqual(before.parts)
     const grown = success(setCount(shrunk, 4, [allocation(3)])).snapshot
-    expect(grown.parts.map((part) => part.id)).toEqual([id(100), id(101), id(102), id(103)])
-    expect(grown.parts.slice(0, 3)).toEqual(before.parts)
+    expect(grown.parts.map((part) => part.id)).toEqual<unknown>([
+      id(100),
+      id(101),
+      id(102),
+      id(103),
+    ])
+    expect(grown.parts.slice(0, 3)).toEqual<unknown>(before.parts)
     const outputs = [0, 1].map((index) => ({
       featureId: id(3),
       outputRole: patternInstanceOutputRole(index),
@@ -329,7 +337,12 @@ describe("captured Pattern continuation and independent copies", () => {
     const hidden = success(
       model(before, "org.vibeshape.feature.update", { feature: pattern(3, null, true) }),
     ).snapshot
-    expect(hidden.parts.map((part) => part.id)).toEqual([id(100), id(101), id(102), id(200)])
+    expect(hidden.parts.map((part) => part.id)).toEqual<unknown>([
+      id(100),
+      id(101),
+      id(102),
+      id(200),
+    ])
     expect(hidden.parts[2]?.bodyHistory).toEqual([instance(2)])
     expect(hidden.parts[3]?.bodyHistory).toEqual([instance(1, 6)])
     expect(
@@ -415,7 +428,7 @@ describe("variable-aware Pattern allocation capture", () => {
       { body: instance(4), origin: "independent" },
     ])
     const grown = success(variableCount(before.snapshot, "5", [allocation(3), allocation(4)]))
-    expect(grown.snapshot.parts.map((part) => part.id)).toEqual([
+    expect(grown.snapshot.parts.map((part) => part.id)).toEqual<unknown>([
       id(100),
       id(101),
       id(102),
@@ -434,7 +447,7 @@ describe("variable-aware Pattern allocation capture", () => {
       surfaceTextures: [],
       assets: [],
     })
-    expect(projectDocumentSnapshotV4ToV2(v3).variables).toEqual(grown.snapshot.variables)
+    expect(projectDocumentSnapshotV4ToV2(v3).variables).toEqual<unknown>(grown.snapshot.variables)
   })
 
   it("keeps dormant captured copies on variable shrink and reuses them on variable restore", () => {
@@ -450,7 +463,7 @@ describe("variable-aware Pattern allocation capture", () => {
     (expression) => {
       const before = variableFixture().snapshot
       expect(variableCount(before, expression).ok).toBe(false)
-      expect(before.parts.map((part) => part.id)).toEqual([id(100), id(101), id(102)])
+      expect(before.parts.map((part) => part.id)).toEqual<unknown>([id(100), id(101), id(102)])
       expect(before.variables[0]?.expression).toBe("3")
     },
   )
@@ -525,7 +538,7 @@ describe("exact-body modifier Part bindings", () => {
         ),
       )
       expect(added.snapshot.parts[0]?.bodyHistory.at(-1)).toEqual(body(8))
-      expect(added.snapshot.parts[1]?.consumedBy).toBe(keepTools ? null : id(8))
+      expect(added.snapshot.parts[1]?.consumedBy).toBe<unknown>(keepTools ? null : id(8))
       expect(added.snapshot.parts[2]).toEqual(before.parts[2])
       expect(success(reduceDocumentV2Event(before, added.event)).snapshot).toEqual(added.snapshot)
       const suppressed = success(

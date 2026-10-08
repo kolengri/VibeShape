@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createLengthQuantity, cylinderFeatureType } from "@vibeshape/domain"
 import { parseGeometryImport } from "@vibeshape/formats/import"
 import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
@@ -7,7 +8,7 @@ import {
   documentRebuildSnapshotSchema,
   printPreparationSettingsSchema,
 } from "@vibeshape/protocol"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { DocumentWorkerRuntime } from "./runtime"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -23,7 +24,7 @@ const envelope = {
   generation: 1,
 }
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const filesystem = await import("node:fs")
   const bytes = filesystem.readFileSync(
     new URL(
       "../../geometry-worker/node_modules/replicad-opencascadejs/src/replicad_single.wasm",

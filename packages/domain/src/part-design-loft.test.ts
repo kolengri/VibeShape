@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { featureRecordSchema } from "./feature-graph"
 import { featureIdSchema } from "./identifiers"
 import {
@@ -51,7 +51,9 @@ describe("ordered new-body Loft contract", () => {
   })
   it.each([19, 24])("accepts %i ordered sections with bounded producer dependencies", (count) => {
     const sections = Array.from({ length: count }, (_, index) => section(index + 1))
-    expect(loftFeatureParametersSchema.parse({ sections, ruled: true }).sections).toEqual(sections)
+    expect(loftFeatureParametersSchema.parse({ sections, ruled: true }).sections).toEqual<unknown>(
+      sections,
+    )
     expect(loftFeatureType.dependencies).toEqual({ min: 0, max: 24 })
   })
   it("retains section order as content identity and reads only its exact feature version", () => {
@@ -64,7 +66,7 @@ describe("ordered new-body Loft contract", () => {
       references: [],
       suppressed: false,
     })
-    expect(readLoftFeatureParameters(feature)).toEqual(parameters)
+    expect(readLoftFeatureParameters(feature)).toEqual<unknown>(parameters)
     expect(loftFeatureTypeHandler.contentParameters(feature.parameters)).toEqual(parameters)
     expect(
       readLoftFeatureParameters({ ...feature, type: { ...feature.type, schemaVersion: 2 } }),
@@ -96,6 +98,6 @@ describe("ordered new-body Loft contract", () => {
   })
   it("deduplicates resolved support owners without sorting or consuming them", () => {
     const owners = [3, 1, 3, 2, 1].map((value) => featureIdSchema.parse(id(value)))
-    expect(expectedLoftDependencyIds(owners)).toEqual([id(3), id(1), id(2)])
+    expect(expectedLoftDependencyIds(owners)).toEqual<unknown>([id(3), id(1), id(2)])
   })
 })

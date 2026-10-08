@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { Face, Wire } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { OcctShapeCaster } from "./occt-cast"
 import type { AnalyticalProfile } from "./occt-loft"
 import { type AnalyticalSweepPath, createOcctSweepOperations } from "./occt-sweep"
@@ -100,14 +101,14 @@ describe("owned exact OCCT Sweep", () => {
         },
       ],
     }
-    expect(f.run(path, holed)).toBe(f.result)
+    expect(f.run(path, holed)).toBe<unknown>(f.result)
     expect(f.constructors.BRepOffsetAPI_MakePipe_1).toHaveBeenCalledWith(
       f.spine.wrapped,
       f.face.wrapped,
     )
     expect(f.makeFace.mock.calls[0]?.[1]).toEqual(holed)
     for (const temporary of [f.spine, f.face, f.progress, f.builder, f.raw])
-      expect(temporary.delete).toHaveBeenCalledOnce()
+      expect(temporary.delete).toHaveBeenCalledTimes(1)
     expect(f.result.delete).not.toHaveBeenCalled()
   })
   it.each(["face", "builder", "progress", "build", "incomplete", "shape", "cast", "validation"])(
@@ -133,7 +134,7 @@ describe("owned exact OCCT Sweep", () => {
           ? "OCCT Sweep did not complete."
           : `Native Sweep ${stage} fixture failure`,
       )
-      expect(f.spine.delete).toHaveBeenCalledOnce()
+      expect(f.spine.delete).toHaveBeenCalledTimes(1)
       expect(f.face.delete).toHaveBeenCalledTimes(stage === "face" ? 0 : 1)
       expect(f.builder.delete).toHaveBeenCalledTimes(["face", "builder"].includes(stage) ? 0 : 1)
       expect(f.progress.delete).toHaveBeenCalledTimes(

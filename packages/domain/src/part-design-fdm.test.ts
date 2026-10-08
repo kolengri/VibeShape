@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { z } from "zod"
 import { applyDocumentCommand, replayDocumentEvents } from "./commands"
 import { featureBodyDependencies, featureBodyDependencyIds } from "./feature-dependencies"

@@ -1,8 +1,9 @@
-// @vitest-environment node
+import { testAssetPath } from "../tests/unit/support/assets"
 /// <reference path="../packages/geometry-worker/src/vite-modules.d.ts" />
+
+import { afterEach, describe, expect, it } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
-import { afterEach, describe, expect, it, vi } from "vitest"
 import { ReplicadGeometryEngine } from "../packages/geometry-worker/src/engine"
 import {
   type FeatureContentIdentity,
@@ -10,6 +11,7 @@ import {
   featureContentIdentitySchema,
   serializeFeatureContentIdentity,
 } from "../packages/protocol/src/index"
+import { vi } from "../tests/unit/support/bun-test"
 
 const id = (number: number) => `0195b5ac-b220-7a2c-8c33-${String(number).padStart(12, "0")}`
 function requireSuccess<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
@@ -25,10 +27,7 @@ const type = (name: string) => ({
 async function createMirrorKernelFixture() {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (url: string) =>
-        new Response(await readFile(resolve(url.startsWith("/@fs/") ? url.slice(4) : `.${url}`))),
-    ),
+    vi.fn(async (url: string) => new Response(await readFile(resolve(testAssetPath(url))))),
   )
   const engine = new ReplicadGeometryEngine()
   const metadata = await engine.initialize()

@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { expect, it } from "bun:test"
 import { render, screen, within } from "@testing-library/react"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { expect, it } from "vitest"
 import { lightweightingSummary } from "../../../../../packages/automation-api/src/lightweighting.test-fixtures"
 import { i18n } from "../../i18n"
 import { LightweightingResults } from "./lightweighting-results"

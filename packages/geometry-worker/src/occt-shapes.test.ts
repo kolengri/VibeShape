@@ -1,5 +1,6 @@
+import { beforeEach, describe, expect, it } from "bun:test"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createOcctShapeOperations } from "./occt-shapes"
 
 function createDeletable() {
@@ -54,11 +55,11 @@ describe("owned OCCT primitive adapters", () => {
 
     const result = fixture.operations.createBox(fixture.opencascade, [60, 40, 20], true, [8, -4, 6])
 
-    expect(result).toBe(fixture.wrappedShape)
+    expect(result).toBe<unknown>(fixture.wrappedShape)
     expect(fixture.opencascade.gp_Pnt_3).toHaveBeenCalledWith(-22, -24, -4)
-    expect(fixture.maker.delete).toHaveBeenCalledOnce()
-    expect(fixture.point.delete).toHaveBeenCalledOnce()
-    expect(fixture.rawShape.delete).toHaveBeenCalledOnce()
+    expect(fixture.maker.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.point.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.rawShape.delete).toHaveBeenCalledTimes(1)
   })
 
   it("positions a cylinder on a positive-Z axis and deletes every temporary binding", () => {
@@ -66,31 +67,31 @@ describe("owned OCCT primitive adapters", () => {
 
     const result = fixture.operations.createCylinder(fixture.opencascade, 8, 30, [0, 0, -5])
 
-    expect(result).toBe(fixture.wrappedShape)
+    expect(result).toBe<unknown>(fixture.wrappedShape)
     expect(fixture.opencascade.gp_Pnt_3).toHaveBeenCalledWith(0, 0, -5)
     expect(fixture.opencascade.gp_Dir_4).toHaveBeenCalledWith(0, 0, 1)
-    expect(fixture.axis.delete).toHaveBeenCalledOnce()
-    expect(fixture.direction.delete).toHaveBeenCalledOnce()
-    expect(fixture.point.delete).toHaveBeenCalledOnce()
-    expect(fixture.maker.delete).toHaveBeenCalledOnce()
-    expect(fixture.rawShape.delete).toHaveBeenCalledOnce()
+    expect(fixture.axis.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.direction.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.point.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.maker.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.rawShape.delete).toHaveBeenCalledTimes(1)
   })
 })
 
 describe("owned radial primitive adapters", () => {
   it("constructs and disposes a placed sphere", () => {
     const fixture = createPrimitiveFixture()
-    expect(fixture.operations.createSphere(fixture.opencascade, 4, [8, -4, 6])).toBe(
+    expect(fixture.operations.createSphere(fixture.opencascade, 4, [8, -4, 6])).toBe<unknown>(
       fixture.wrappedShape,
     )
     expect(fixture.opencascade.BRepPrimAPI_MakeSphere_5).toHaveBeenCalledWith(fixture.point, 4)
-    expect(fixture.point.delete).toHaveBeenCalledOnce()
-    expect(fixture.maker.delete).toHaveBeenCalledOnce()
-    expect(fixture.rawShape.delete).toHaveBeenCalledOnce()
+    expect(fixture.point.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.maker.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.rawShape.delete).toHaveBeenCalledTimes(1)
   })
   it("constructs a placed torus around a positive Z axis", () => {
     const fixture = createPrimitiveFixture()
-    expect(fixture.operations.createTorus(fixture.opencascade, 12, 4, [8, -4, 6])).toBe(
+    expect(fixture.operations.createTorus(fixture.opencascade, 12, 4, [8, -4, 6])).toBe<unknown>(
       fixture.wrappedShape,
     )
     expect(fixture.opencascade.gp_Dir_4).toHaveBeenCalledWith(0, 0, 1)
@@ -102,7 +103,7 @@ describe("owned radial primitive adapters", () => {
       fixture.maker,
       fixture.rawShape,
     ])
-      expect(object.delete).toHaveBeenCalledOnce()
+      expect(object.delete).toHaveBeenCalledTimes(1)
   })
   it.each(["sphere", "torus"] as const)(
     "disposes %s bindings when shape adoption fails",
@@ -117,10 +118,10 @@ describe("owned radial primitive adapters", () => {
           : fixture.operations.createTorus(fixture.opencascade, 12, 4, [0, 0, 0])
       expect(call).toThrow("Fixture adoption failed")
       for (const object of [fixture.point, fixture.maker, fixture.rawShape])
-        expect(object.delete).toHaveBeenCalledOnce()
+        expect(object.delete).toHaveBeenCalledTimes(1)
       if (kind === "torus") {
-        expect(fixture.axis.delete).toHaveBeenCalledOnce()
-        expect(fixture.direction.delete).toHaveBeenCalledOnce()
+        expect(fixture.axis.delete).toHaveBeenCalledTimes(1)
+        expect(fixture.direction.delete).toHaveBeenCalledTimes(1)
       }
     },
   )
@@ -132,8 +133,8 @@ describe("owned radial primitive adapters", () => {
     expect(() => fixture.operations.createTorus(fixture.opencascade, 12, 4, [0, 0, 0])).toThrow(
       "Fixture axis failed",
     )
-    expect(fixture.point.delete).toHaveBeenCalledOnce()
-    expect(fixture.direction.delete).toHaveBeenCalledOnce()
+    expect(fixture.point.delete).toHaveBeenCalledTimes(1)
+    expect(fixture.direction.delete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -207,8 +208,8 @@ describe("owned exact cone meridian", () => {
       2 * Math.PI,
       false,
     )
-    expect(fixture.castShape).toHaveBeenCalledOnce()
-    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+    expect(fixture.castShape).toHaveBeenCalledTimes(1)
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledTimes(1)
   })
   it.each([
     "gp_Pnt_3",
@@ -230,7 +231,7 @@ describe("owned exact cone meridian", () => {
       ),
     ).toThrow("Fixture construction failed")
     expect(fixture.castShape).not.toHaveBeenCalled()
-    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledTimes(1)
   })
   it("releases the meridian and output when shape adoption fails", () => {
     const fixture = createOwnedPrimitiveFixture()
@@ -245,7 +246,7 @@ describe("owned exact cone meridian", () => {
         [0, 0, 0],
       ),
     ).toThrow("Fixture adoption failed")
-    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -263,8 +264,8 @@ describe("owned exact pyramid solid", () => {
     expect(fixture.opencascade.gp_Pnt_3.mock.calls[4]).toEqual([8, -4, 41])
     expect(fixture.opencascade.BRepBuilderAPI_MakeEdge_3).toHaveBeenCalledTimes(4)
     expect(fixture.opencascade.BRepOffsetAPI_ThruSections).toHaveBeenCalledWith(true, true, 1e-7)
-    expect(fixture.castShape).toHaveBeenCalledOnce()
-    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+    expect(fixture.castShape).toHaveBeenCalledTimes(1)
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledTimes(1)
   })
   it.each([
     "gp_Pnt_3",
@@ -288,7 +289,7 @@ describe("owned exact pyramid solid", () => {
       ),
     ).toThrow("Fixture construction failed")
     expect(fixture.castShape).not.toHaveBeenCalled()
-    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledTimes(1)
   })
   it("releases the polygon, loft, and output when adoption fails", () => {
     const fixture = createOwnedPrimitiveFixture()
@@ -304,7 +305,7 @@ describe("owned exact pyramid solid", () => {
         [0, 0, 0],
       ),
     ).toThrow("Fixture adoption failed")
-    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledOnce()
+    for (const object of fixture.allocated) expect(object.delete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -330,13 +331,13 @@ describe("owned OCCT boolean adapter", () => {
 
     const result = operations.cutShapes(opencascade, source as never, tool as never)
 
-    expect(result).toBe(wrappedShape)
+    expect(result).toBe<unknown>(wrappedShape)
     expect(cutter.Build).toHaveBeenCalledWith(progress)
     expect(cutter.SetToFillHistory).toHaveBeenCalledWith(false)
     expect(cutter.SimplifyResult).toHaveBeenCalledWith(true, true, 1e-3)
-    expect(rawShape.delete).toHaveBeenCalledOnce()
-    expect(cutter.delete).toHaveBeenCalledOnce()
-    expect(progress.delete).toHaveBeenCalledOnce()
+    expect(rawShape.delete).toHaveBeenCalledTimes(1)
+    expect(cutter.delete).toHaveBeenCalledTimes(1)
+    expect(progress.delete).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -364,14 +365,14 @@ describe("owned OCCT boolean adapter", () => {
 
     const result = operations[operation](opencascade, source as never, tool as never)
 
-    expect(result).toBe(wrappedShape)
+    expect(result).toBe<unknown>(wrappedShape)
     expect(builderConstructor).toHaveBeenCalledWith(source.wrapped, tool.wrapped, progress)
     expect(builder.Build).toHaveBeenCalledWith(progress)
     expect(builder.SetToFillHistory).toHaveBeenCalledWith(false)
     expect(builder.SimplifyResult).toHaveBeenCalledWith(true, true, 1e-3)
-    expect(rawShape.delete).toHaveBeenCalledOnce()
-    expect(builder.delete).toHaveBeenCalledOnce()
-    expect(progress.delete).toHaveBeenCalledOnce()
+    expect(rawShape.delete).toHaveBeenCalledTimes(1)
+    expect(builder.delete).toHaveBeenCalledTimes(1)
+    expect(progress.delete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -391,7 +392,7 @@ describe("owned Boolean constructor failure", () => {
       const operations = createOcctShapeOperations(vi.fn() as never)
       const source = { wrapped: {} }
       expect(() => operations[operation](opencascade, source as never, source as never)).toThrow()
-      expect(progress.delete).toHaveBeenCalledOnce()
+      expect(progress.delete).toHaveBeenCalledTimes(1)
     },
   )
 })
@@ -455,19 +456,19 @@ describe("owned OCCT fillet adapter", () => {
       20,
     )
 
-    expect(result).toBe(wrappedShape)
+    expect(result).toBe<unknown>(wrappedShape)
     expect(builder.Add_2).toHaveBeenCalledWith(1.5, edge)
     expect(builder.Build).toHaveBeenCalledWith(progress)
-    expect(rawShape.delete).toHaveBeenCalledOnce()
-    expect(rawEdge.delete).toHaveBeenCalledOnce()
-    expect(edge.delete).toHaveBeenCalledOnce()
-    expect(sourceEdge.delete).toHaveBeenCalledOnce()
-    expect(rawVertex.delete).toHaveBeenCalledOnce()
-    expect(vertex.delete).toHaveBeenCalledOnce()
-    expect(point.delete).toHaveBeenCalledOnce()
-    expect(edgeExplorer.delete).toHaveBeenCalledOnce()
-    expect(vertexExplorer.delete).toHaveBeenCalledOnce()
-    expect(builder.delete).toHaveBeenCalledOnce()
-    expect(progress.delete).toHaveBeenCalledOnce()
+    expect(rawShape.delete).toHaveBeenCalledTimes(1)
+    expect(rawEdge.delete).toHaveBeenCalledTimes(1)
+    expect(edge.delete).toHaveBeenCalledTimes(1)
+    expect(sourceEdge.delete).toHaveBeenCalledTimes(1)
+    expect(rawVertex.delete).toHaveBeenCalledTimes(1)
+    expect(vertex.delete).toHaveBeenCalledTimes(1)
+    expect(point.delete).toHaveBeenCalledTimes(1)
+    expect(edgeExplorer.delete).toHaveBeenCalledTimes(1)
+    expect(vertexExplorer.delete).toHaveBeenCalledTimes(1)
+    expect(builder.delete).toHaveBeenCalledTimes(1)
+    expect(progress.delete).toHaveBeenCalledTimes(1)
   })
 })

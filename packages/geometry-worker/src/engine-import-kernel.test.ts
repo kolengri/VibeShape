@@ -1,4 +1,4 @@
-// @vitest-environment node
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import {
   featureContentIdentitySchema,
   featureEvaluationInputSchema,
@@ -7,7 +7,7 @@ import {
   serializeFeatureContentIdentity,
 } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { ReplicadGeometryEngine } from "./engine"
 import * as sourceImport from "./occt-source-import"
 
@@ -138,16 +138,20 @@ async function unchangedSource(original: Awaited<ReturnType<typeof input>>) {
   })
 }
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFile(path: string): Promise<Uint8Array> }>(
-    "node:fs/promises",
-  )
+  const filesystem = await import("node:fs/promises")
   vi.stubGlobal(
     "fetch",
     vi.fn(
       async (url: string) =>
         new Response(
           Uint8Array.from(
-            await filesystem.readFile(url.startsWith("/@fs/") ? url.slice(4) : `.${url}`),
+            await filesystem.readFile(
+              url.startsWith("/@fs/")
+                ? url.slice(4)
+                : url.startsWith("/") && !url.startsWith("/assets/")
+                  ? url
+                  : `.${url}`,
+            ),
           ),
         ),
     ),
@@ -209,9 +213,9 @@ describe("exact source import through the native feature engine", () => {
     await unchangedSource(prepared.original)
     expect(prepared.materialized.bytes).toEqual(bytes)
     engine.disposeDocument(documentId)
-    for (const release of deleted) expect(release).toHaveBeenCalledOnce()
+    for (const release of deleted) expect(release).toHaveBeenCalledTimes(1)
     engine.disposeDocument(documentId)
-    for (const release of deleted) expect(release).toHaveBeenCalledOnce()
+    for (const release of deleted) expect(release).toHaveBeenCalledTimes(1)
   })
   it("releases the owned imported output after cloning fails without disposing the source", async () => {
     const prepared = await fixture()
@@ -229,7 +233,7 @@ describe("exact source import through the native feature engine", () => {
       diagnostic: { code: "invalid-feature-geometry" },
     })
     expect(deleted).toHaveLength(1)
-    expect(deleted[0]).toHaveBeenCalledOnce()
+    expect(deleted[0]).toHaveBeenCalledTimes(1)
     expect(engine.getHealth().ownedShapeCount).toBe(1)
     await unchangedSource(prepared.original)
     vi.restoreAllMocks()
@@ -260,7 +264,7 @@ describe("exact source import through the native feature engine", () => {
       diagnostic: { code: "invalid-feature-geometry" },
     })
     expect(deleted).toHaveLength(2)
-    for (const release of deleted) expect(release).toHaveBeenCalledOnce()
+    for (const release of deleted) expect(release).toHaveBeenCalledTimes(1)
     expect(engine.getHealth().ownedShapeCount).toBe(1)
     await unchangedSource(prepared.original)
   })

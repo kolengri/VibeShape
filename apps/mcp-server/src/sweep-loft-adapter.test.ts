@@ -1,8 +1,7 @@
-// @vitest-environment node
+import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
-import { expect, it } from "vitest"
 import { createLoftV3Project } from "../../../tests/support/loft-v3-fixture"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"

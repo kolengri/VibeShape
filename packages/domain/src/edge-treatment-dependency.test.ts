@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import { featureRecordSchema } from "./feature-graph"
 import { featureIdSchema } from "./identifiers"

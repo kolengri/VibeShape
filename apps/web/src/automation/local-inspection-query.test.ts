@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { draftIdSchema, featureIdSchema, generateUuidV7 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 
 const id = featureIdSchema.parse(
@@ -19,7 +19,7 @@ describe("local body measurement query", () => {
         },
         id,
       ),
-    ).toEqual({
+    ).toEqual<unknown>({
       kind: "org.vibeshape.model.body-measurements",
       schemaVersion: 1,
       documentId: id,
@@ -49,7 +49,7 @@ it("keeps draft body targets and the paired document distinct from draft identit
       },
       id,
     ),
-  ).toEqual({
+  ).toEqual<unknown>({
     kind: "org.vibeshape.model.body-topology",
     schemaVersion: 1,
     documentId: id,

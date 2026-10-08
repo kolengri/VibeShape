@@ -1,39 +1,39 @@
-// @vitest-environment jsdom
-import { webcrypto } from "node:crypto"
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { sketchRecordSchema } from "@vibeshape/domain"
-import { moveSketchPoint } from "@vibeshape/domain/sketch-edit"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { useEffect } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import "../../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../../document/document-controller"
-import {
-  EditorSessionProvider,
-  useEditorSession,
-  useEditorSessionStoreApi,
-} from "../../../editor-session/editor-session-provider"
-import type { EditorSessionStoreApi } from "../../../editor-session/editor-session-store"
-import { i18n } from "../../../i18n"
-import messages from "../../../i18n/messages/en.json"
-import { useSketchTextApplication } from "./text-application"
-import { SketchTextActionsProvider } from "./text-context"
-import { SketchTextDialog } from "./text-dialog"
-import { SketchTextFontError } from "./text-font"
-import { SketchTextGroups } from "./text-groups"
-import {
-  authoredTextSketch,
-  emptyTextSketch,
-  fontBytes,
-  requireTextGroup,
-  textId,
-} from "./text-test-fixtures"
 
-const font = vi.hoisted(() => ({ load: vi.fn() }))
-vi.mock("./text-font", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./text-font")>()),
+import type { EditorSessionStoreApi } from "../../../editor-session/editor-session-store"
+
+const font = (() => ({ load: vi.fn() }))()
+const originalModule1 = { ...(await import("./text-font")) }
+mock.module("./text-font", () => ({
+  ...originalModule1,
   loadSketchTextFont: font.load,
 }))
+
+const { webcrypto } = await import("node:crypto")
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const { sketchRecordSchema } = await import("@vibeshape/domain")
+const { moveSketchPoint } = await import("@vibeshape/domain/sketch-edit")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { useEffect } = await import("react")
+const { EditorSessionProvider, useEditorSession, useEditorSessionStoreApi } = await import(
+  "../../../editor-session/editor-session-provider"
+)
+const { i18n } = await import("../../../i18n")
+const { default: messages } = await import("../../../i18n/messages/en.json")
+const { useSketchTextApplication } = await import("./text-application")
+const { SketchTextActionsProvider } = await import("./text-context")
+const { SketchTextDialog } = await import("./text-dialog")
+const { SketchTextFontError } = await import("./text-font")
+const { SketchTextGroups } = await import("./text-groups")
+const { authoredTextSketch, emptyTextSketch, fontBytes, requireTextGroup, textId } = await import(
+  "./text-test-fixtures"
+)
 const controller = {
   status: "ready",
   saveStatus: "saved",
@@ -94,7 +94,8 @@ async function openText(text = "O") {
 }
 async function applyText(dialog: HTMLElement) {
   await userEvent.click(within(dialog).getByRole("button", { name: "Apply text" }))
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  // Keep retries cheap: Bun eagerly formats a received DOM node and its React owner graph.
+  await waitFor(() => expect(screen.queryByRole("dialog") === null).toBe(true))
 }
 beforeEach(() => {
   font.load.mockReset().mockResolvedValue(fontBytes)
@@ -165,7 +166,7 @@ describe("editable sketch text application", () => {
     const form = within(dialog).getByRole("form", { name: "Add sketch text" })
     fireEvent.submit(form)
     fireEvent.submit(form)
-    expect(font.load).toHaveBeenCalledOnce()
+    expect(font.load).toHaveBeenCalledTimes(1)
     expect(
       (within(dialog).getByRole("button", { name: "Apply text" }) as HTMLButtonElement).disabled,
     ).toBe(true)
@@ -263,7 +264,7 @@ describe("editable sketch text application", () => {
       within(dialog).getByRole("checkbox", { name: messages.app.sketchText.removeConstraints }),
     )
     await applyText(dialog)
-    expect(view.draft().constraints).toEqual([constrained.constraints[1]])
+    expect(view.draft().constraints).toEqual<unknown>([constrained.constraints[1]])
     act(() => view.store().getState().actions.undoSketchDraft())
     expect(view.draft()).toEqual(constrained)
   })

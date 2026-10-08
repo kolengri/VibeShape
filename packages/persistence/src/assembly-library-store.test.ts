@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { meshImportOutputRole } from "@vibeshape/domain"
 import { assemblyLibraryDefinitionSchema } from "@vibeshape/domain/assembly-library"
-import { describe, expect, it } from "vitest"
 import {
   assemblyLibraryFixture,
   libraryFixtureId,

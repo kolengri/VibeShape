@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   type DocumentSnapshot,
   edgeTopoRefSchema,
@@ -7,7 +8,6 @@ import {
   sketchIdSchema,
 } from "@vibeshape/domain"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import {
   revolveModelEdgeAxisCandidates,
   revolveSketchLineAxisCandidates,

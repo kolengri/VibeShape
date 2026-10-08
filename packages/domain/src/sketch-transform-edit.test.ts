@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
 import type { SketchEntity, SketchRecord } from "./sketch"
 import {

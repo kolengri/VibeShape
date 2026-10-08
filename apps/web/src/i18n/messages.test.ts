@@ -1,10 +1,13 @@
+import { afterEach, describe, expect, it } from "bun:test"
 import { I18nProvider, useTranslations } from "@vibeshape/i18n"
 import { compareMessageCatalogs } from "@vibeshape/i18n/catalog"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
 import { i18n, messages } from "./index"
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe("web message catalogs", () => {
   it("keeps every locale structurally compatible with canonical English", () => {
@@ -14,6 +17,7 @@ describe("web message catalogs", () => {
   })
 
   it("formats exact open Sweep curve options using valid ICU selector keys", () => {
+    vi.stubGlobal("navigator", { language: "en", languages: ["en"] })
     const kinds = ["line", "arc", "cubic_bezier", "elliptical_arc"] as const
     function CurveOptions() {
       const t = useTranslations("app.sweepLoft")

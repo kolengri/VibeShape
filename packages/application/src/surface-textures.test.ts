@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { projectDocumentSnapshotV1ToV0 } from "@vibeshape/domain"
 import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
 import { createBodyTopologyReferenceProjector } from "@vibeshape/domain/model-body-topology"
@@ -11,12 +12,12 @@ import {
   type TopologyCandidate,
   topologyCandidateSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it, vi } from "vitest"
 import {
   surfaceTextureProjectFixture,
   textureFixtureId,
   textureSuccess,
 } from "../../../tests/fixtures/surface-texture-project"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createModelBodyTopologyEvidence } from "./model-body-topology"
 import {
   previewSurfaceTextureRelief,
@@ -275,7 +276,7 @@ describe("shared native surface relief preview lifecycle", () => {
     expect(results[0]?.source).toBe(source)
     expect(results[0]?.mesh.positions[0]).toBe(99)
     expect(source.positions[0]).toBe(0)
-    expect(terminate).toHaveBeenCalledOnce()
+    expect(terminate).toHaveBeenCalledTimes(1)
   })
 
   it("rejects hidden, duplicate or stale topology sources before creating a worker", async () => {
@@ -333,7 +334,7 @@ describe("shared native surface relief preview lifecycle", () => {
         createWorker: () => failed,
       }),
     ).rejects.toThrow("Invalid displacement")
-    expect(failed.terminate).toHaveBeenCalledOnce()
+    expect(failed.terminate).toHaveBeenCalledTimes(1)
     let aborted = false
     let listener: () => void = () => undefined
     const signal = {
@@ -359,7 +360,7 @@ describe("shared native surface relief preview lifecycle", () => {
     aborted = true
     listener()
     await expect(pending).rejects.toThrow("cancelled")
-    expect(blocked.terminate).toHaveBeenCalledOnce()
-    expect(signal.removeEventListener).toHaveBeenCalledOnce()
+    expect(blocked.terminate).toHaveBeenCalledTimes(1)
+    expect(signal.removeEventListener).toHaveBeenCalledTimes(1)
   })
 })

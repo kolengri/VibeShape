@@ -1,10 +1,9 @@
-// @vitest-environment node
-
+import { beforeAll, describe, expect, it } from "bun:test"
 import { assemblyMateGraphSchema } from "@vibeshape/domain/assembly-mates"
 import { assemblyRigidPoseWireSchema, topologyCandidatesSchema } from "@vibeshape/protocol"
 import { makeBox, makeCylinder, makeSphere, measureVolume, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it } from "vitest"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { measureOcctInterference } from "../../geometry-worker/src/occt-interference"
 import { captureReplicadTopologyCandidates } from "../../geometry-worker/src/topology-signatures"
 import createNativeSolver from "../../sketch-solver/runtime/vibeshape_slvs.mjs"
@@ -138,7 +137,10 @@ describe("native general assembly analytical placement", () => {
           },
         ],
       )
-      expect(interference).toMatchObject({ solidCount: 1, volume: expect.closeTo(12, 8) })
+      expect(matchValue(interference)).toMatchObject({
+        solidCount: 1,
+        volume: expect.closeTo(12, 8),
+      })
       expect(measureVolume(shape)).toBeCloseTo(24, 10)
       required(graph.joints[1]).parentFrame = assemblyMateGraphSchema.shape.joints.element.parse(
         mate(21, 2),

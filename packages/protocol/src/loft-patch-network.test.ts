@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { loftFeatureContentParametersV3Schema } from "./loft-patch-network"
 
 const id = (n: number) => `018f0000-0000-7000-8000-${String(n).padStart(12, "0")}`

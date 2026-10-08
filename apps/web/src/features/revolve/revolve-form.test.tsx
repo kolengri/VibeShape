@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -20,7 +20,7 @@ import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { revolveFeatureTypeV7 } from "@vibeshape/domain/part-design"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { currentBodyOptions } from "../part-design/exact-body-options.test-fixtures"
@@ -339,7 +339,7 @@ describe("RevolveForm", () => {
     )
     expect(create.getAttribute("aria-busy")).toBe("true")
     submission.resolve()
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 
   it("preserves and focuses invalid raw input", async () => {

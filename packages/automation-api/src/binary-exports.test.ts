@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   BINARY_EXPORT_CHUNK_MAX_BYTES,
   BINARY_EXPORT_MAX_BYTES,
@@ -71,7 +71,9 @@ describe("binary export wire contract", () => {
       { tool: "read_export_chunk", arguments: { exportId: id(1), offset: 0 } },
       { tool: "discard_export", arguments: { exportId: id(1) } },
     ])
-      expect(remoteOperationSchema.parse(operation)).toEqual(localOperationSchema.parse(operation))
+      expect(remoteOperationSchema.parse(operation)).toEqual<unknown>(
+        localOperationSchema.parse(operation),
+      )
     expect(
       remoteOperationSchema.safeParse({
         tool: "export_model",

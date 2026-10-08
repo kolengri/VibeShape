@@ -1,12 +1,13 @@
+import { beforeAll, describe, expect, it } from "bun:test"
 import { makeBox, measureVolume, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import * as casting from "./occt-cast"
 import { draftExtrusionTool } from "./occt-extrusion-end"
 
 let occt: OpenCascadeInstance
 beforeAll(async () => {
-  const { readFileSync } = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const { readFileSync } = await import("node:fs")
   occt = await Reflect.apply(initializeOpenCascade, undefined, [
     {
       wasmBinary: new Uint8Array(
@@ -62,7 +63,7 @@ describe("draft inspection exception ownership", () => {
           draftExtrusionTool(failingOcct, source, [0, 0, 0], [0, 0, 1], Math.PI / 36),
         ).toThrow(failure)
         expect(adoptedDeletes).toHaveLength(1)
-        expect(adoptedDeletes[0]).toHaveBeenCalledOnce()
+        expect(adoptedDeletes[0]).toHaveBeenCalledTimes(1)
         expect(sourceDelete).not.toHaveBeenCalled()
         volumeSpy?.mockRestore()
         expect(measureVolume(source)).toBeCloseTo(volume, 8)

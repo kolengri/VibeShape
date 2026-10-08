@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { editPartDesignTool, modifyingSolidTargetFeatures } from "../part-design/part-design-tool"
 import {
   parseThreadForm,

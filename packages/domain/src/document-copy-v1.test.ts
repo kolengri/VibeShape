@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { applyDocumentCommand } from "./commands"
 import { copyCompleteVersionedDocumentHistory, copyVersionedDocumentHistory } from "./document-copy"
 import { migrateDocumentSnapshot } from "./document-migration"

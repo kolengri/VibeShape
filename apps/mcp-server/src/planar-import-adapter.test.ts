@@ -1,10 +1,9 @@
-// @vitest-environment node
+import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { agentSkillTool } from "@vibeshape/automation-api/agent-skills"
 import { localToolNameSchema } from "@vibeshape/automation-api/local-tools"
-import { expect, it } from "vitest"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"

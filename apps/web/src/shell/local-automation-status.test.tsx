@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ComponentProps } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { LocalAutomationStatus } from "./local-automation-status"
 
@@ -68,7 +68,7 @@ describe("local AI auto-apply controls", () => {
     expect(screen.queryByText("MCP client not connected")).toBeNull()
     expect(connection.enable).not.toHaveBeenCalled()
     await userEvent.click(enable)
-    expect(connection.enable).toHaveBeenCalledOnce()
+    expect(connection.enable).toHaveBeenCalledTimes(1)
   })
 
   it("keeps active AI access and Stop AI visibly styled as buttons", () => {
@@ -111,13 +111,13 @@ describe("local AI auto-apply controls", () => {
     expect(screen.getByRole("status").textContent).toBe("Reconnecting AI…")
     expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
     await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
-    expect(connection.disable).toHaveBeenCalledOnce()
+    expect(connection.disable).toHaveBeenCalledTimes(1)
   })
   it("offers explicit setup only after pairing and preserves manual session actions", async () => {
     const { connection, rerender } = setup({ ...manual, connected: false })
     expect(screen.queryByRole("button", { name: "AI connection and approval mode" })).toBeNull()
     await userEvent.click(screen.getByRole("button", { name: "Enable AI session" }))
-    expect(connection.enable).toHaveBeenCalledOnce()
+    expect(connection.enable).toHaveBeenCalledTimes(1)
     expect(connection.enableAutoApply).not.toHaveBeenCalled()
     rerender(manual)
     expect(screen.getByRole("button", { name: "Stop AI" })).toBeTruthy()
@@ -166,7 +166,7 @@ describe("local AI auto-apply controls", () => {
     expect(screen.getByRole("status").textContent).toBe("AI access on · Auto-apply on")
     expect(screen.getByRole("button", { name: "AI connection and approval mode" })).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
-    expect(connection.disable).toHaveBeenCalledOnce()
+    expect(connection.disable).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("dialog")).toBeNull()
   })
   it("switches to manual approval without disconnecting and restores menu focus", async () => {
@@ -180,7 +180,7 @@ describe("local AI auto-apply controls", () => {
         .getAttribute("aria-checked"),
     ).toBe("true")
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Approve each change" }))
-    expect(connection.disableAutoApply).toHaveBeenCalledOnce()
+    expect(connection.disableAutoApply).toHaveBeenCalledTimes(1)
     expect(connection.disable).not.toHaveBeenCalled()
     expect(document.activeElement).toBe(trigger)
   })
@@ -206,6 +206,6 @@ describe("local AI auto-apply controls", () => {
     expect(connection.disableAutoApply).not.toHaveBeenCalled()
     await userEvent.keyboard("{Escape}")
     await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
-    expect(connection.disable).toHaveBeenCalledOnce()
+    expect(connection.disable).toHaveBeenCalledTimes(1)
   })
 })

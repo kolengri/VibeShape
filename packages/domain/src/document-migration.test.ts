@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { canonicalJson } from "./canonical-json"
 import { applyDocumentCommand, type DocumentEvent } from "./commands"
 import type { DocumentSnapshot } from "./document"
@@ -314,7 +314,7 @@ describe("document snapshot migration", () => {
 
     expect(result).toMatchObject({ ok: true, provenance: "snapshot-derived" })
     if (!result.ok) return
-    expect(result.snapshot.features[0]?.semanticInputs).toEqual([
+    expect(result.snapshot.features[0]?.semanticInputs).toEqual<unknown>([
       { kind: "sketch", id: source.sketches[0]?.id },
     ])
     expect(result.snapshot.features[1]?.semanticInputs).toBeNull()

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { structuralOptimizationInputSchema } from "./contract"
 
 function input() {
@@ -28,9 +28,9 @@ function input() {
 describe("captured structural surface contract", () => {
   it("passes the optional domain objective through the worker contract", () => {
     const objective = { kind: "maximize-stiffness", retainedMassFraction: 0.96 }
-    expect(structuralOptimizationInputSchema.parse({ ...input(), objective }).objective).toEqual(
-      objective,
-    )
+    expect(
+      structuralOptimizationInputSchema.parse({ ...input(), objective }).objective,
+    ).toEqual<unknown>(objective)
     expect(
       structuralOptimizationInputSchema.safeParse({
         ...input(),
@@ -39,7 +39,7 @@ describe("captured structural surface contract", () => {
     ).toBe(false)
   })
   it("accepts indices within the exact source mesh", () => {
-    expect(structuralOptimizationInputSchema.parse(input())).toEqual(input())
+    expect(structuralOptimizationInputSchema.parse(input())).toEqual<unknown>(input())
   })
 
   it.each(["support", "load", "preserve"])("rejects an out-of-source %s triangle", (kind) => {

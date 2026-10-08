@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { createLocalVariableCommand } from "./local-variable-command"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -47,11 +47,11 @@ describe("local variable commands", () => {
           throw new Error("Unexpected non-variable operation")
       }
     })()
-    expect(request.draftId).toBe(base.draftId)
+    expect(request.draftId).toBe<unknown>(base.draftId)
     expect(request.command.baseRevision).toBe(base.baseRevision)
-    expect(request.command.commandId).toBe(base.commandId)
+    expect(request.command.commandId).toBe<unknown>(base.commandId)
     expect(request.command.actor).toEqual(actor)
-    expect(request.command.documentId).toBe(id(5))
+    expect(request.command.documentId).toBe<unknown>(id(5))
     expect(request.command.kind).toBe(kind)
     const parsed = parseDocumentCommand(request.command)
     expect(parsed.ok).toBe(true)

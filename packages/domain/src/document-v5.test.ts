@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createDocumentDependencyGraph } from "./document-graph"
 import { projectAuthoredDocumentSnapshotToV1 } from "./document-v2"
 import { replayDocumentAuthorityEvents } from "./document-v2-replay"
@@ -83,10 +83,9 @@ describe("retained History repair authority", () => {
       ),
     )
     expect(ownerDeleted.snapshot.suspendedParts).toEqual([])
-    expect(ownerDeleted.snapshot.repairIntents.map((intent) => intent.authored.id)).toEqual([
-      repairId(4),
-      repairId(5),
-    ])
+    expect(
+      ownerDeleted.snapshot.repairIntents.map((intent) => intent.authored.id),
+    ).toEqual<unknown>([repairId(4), repairId(5)])
     expect(
       success(
         replayDocumentAuthorityEvents(before, [
@@ -116,7 +115,7 @@ describe("retained History repair authority", () => {
       }),
     )
     const retained = success(applyDocumentV5ModelEvent(detached.snapshot, removed.event, []))
-    expect(retained.snapshot.repairIntents.map((intent) => intent.authored.id)).toEqual([
+    expect(retained.snapshot.repairIntents.map((intent) => intent.authored.id)).toEqual<unknown>([
       repairId(3),
       repairId(4),
     ])
@@ -136,13 +135,13 @@ describe("retained History repair authority", () => {
       before.features.map((feature) => feature.id),
     )
     expect(removed.snapshot.features.slice(0, 3).every(isMissingInputFeature)).toBe(true)
-    expect(removed.snapshot.features[1]?.dependencies).toEqual([repairId(3)])
+    expect(removed.snapshot.features[1]?.dependencies).toEqual<unknown>([repairId(3)])
     expect(removed.snapshot.features[3]).toEqual(before.features[3])
     expect(authoredHistoryFeature(removed.snapshot, first(before.features).id)).toEqual(
       before.features[0],
     )
-    expect(removed.snapshot.suspendedParts).toEqual([before.parts[0]])
-    expect(removed.snapshot.parts).toEqual([before.parts[1]])
+    expect(removed.snapshot.suspendedParts).toEqual<unknown>([before.parts[0]])
+    expect(removed.snapshot.parts).toEqual<unknown>([before.parts[1]])
     expect(removed.snapshot.folders).toEqual(before.folders)
     expect(success(replayDocumentAuthorityEvents(before, [removed.event])).snapshot).toEqual(
       removed.snapshot,
@@ -161,7 +160,7 @@ describe("retained History repair authority", () => {
       createDocumentDependencyGraph({ ...runtime, history: removed.snapshot.history }),
     ).graph
     expect(graph.dependencyModelIssues).toEqual([])
-    expect(runtime.features[1]?.dependencies).toEqual([repairId(3)])
+    expect(runtime.features[1]?.dependencies).toEqual<unknown>([repairId(3)])
     const corrupted = createDocumentDependencyGraph({
       ...runtime,
       history: removed.snapshot.history,
@@ -335,14 +334,14 @@ describe("retained History repair authority", () => {
         repairRemovalCommand(before.revision, { kind: "feature", id: repairId(3) }),
       ),
     )
-    expect(removed.snapshot.features.map((feature) => feature.id)).toEqual([
+    expect(removed.snapshot.features.map((feature) => feature.id)).toEqual<unknown>([
       repairId(4),
       repairId(5),
       repairId(6),
     ])
     expect(authoredHistorySketch(removed.snapshot, source.id)).toEqual(source)
     expect(removed.snapshot.features[0]?.dependencies).toEqual([])
-    expect(removed.snapshot.features[1]?.dependencies).toEqual([repairId(4)])
+    expect(removed.snapshot.features[1]?.dependencies).toEqual<unknown>([repairId(4)])
   })
 
   it("clears feature support and model references while retaining the supported sketch for normal repair", () => {
@@ -433,7 +432,7 @@ describe("retained History repair authority", () => {
       }),
     )
     const repaired = success(applyDocumentV5ModelEvent(removed.snapshot, changed.event, []))
-    expect(repaired.snapshot.sketches[1]).toEqual(repairedSketch)
+    expect(repaired.snapshot.sketches[1]).toEqual<unknown>(repairedSketch)
     expect(repaired.snapshot.repairIntents.some((intent) => intent.kind === "sketch")).toBe(false)
     expect(
       success(replayDocumentAuthorityEvents(before, [removed.event, repaired.event])).snapshot,
@@ -496,7 +495,7 @@ describe("retained History repair authority", () => {
       }),
     )
     const renamed = success(applyDocumentV5ModelEvent(removed.snapshot, renamedModel.event, []))
-    expect(authoredHistorySketch(renamed.snapshot, target.id)).toEqual({
+    expect(authoredHistorySketch(renamed.snapshot, target.id)).toEqual<unknown>({
       ...before.sketches[1],
       label: "Renamed projection",
     })

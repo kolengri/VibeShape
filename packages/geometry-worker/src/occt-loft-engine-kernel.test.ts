@@ -1,5 +1,5 @@
-// @vitest-environment node
-import { afterAll, beforeAll, expect, it, vi } from "vitest"
+import { afterAll, beforeAll, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   type FeatureEvaluationInput,
   type GeometryShellOpeningResolver,
@@ -29,7 +29,7 @@ const resolver: GeometryShellOpeningResolver = (references, candidates, scope) =
 const engine = new ReplicadGeometryEngine(undefined, resolver)
 const documentId = "constrained-loft-kernel"
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const filesystem = await import("node:fs")
   const wasm = filesystem.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )

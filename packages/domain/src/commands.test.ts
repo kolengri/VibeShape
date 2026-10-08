@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
   commandActorSchema,
@@ -93,7 +93,7 @@ describe("document commands", () => {
   it("normalizes a create command and emits a deterministic first revision", () => {
     const result = createDocument()
 
-    expect(result.snapshot).toEqual({
+    expect(result.snapshot).toEqual<unknown>({
       schemaVersion: 0,
       id: documentId,
       revision: 1,
@@ -105,7 +105,7 @@ describe("document commands", () => {
       createdAt: issuedAt,
       updatedAt: issuedAt,
     })
-    expect(result.event).toEqual({
+    expect(result.event).toEqual<unknown>({
       schemaVersion: 1,
       type: "org.vibeshape.document.created",
       commandId: firstCommandId,
@@ -129,7 +129,7 @@ describe("document commands", () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.event.actor).toEqual(actor)
+      expect(result.event.actor).toEqual<unknown>(actor)
       expect(result.event).not.toHaveProperty("prompt")
     }
   })

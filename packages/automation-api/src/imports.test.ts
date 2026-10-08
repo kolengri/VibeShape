@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import {
   IMPORT_UPLOAD_CHUNK_MAX_BYTES,
@@ -74,7 +74,9 @@ describe("bounded native import wire contract", () => {
       { tool: "commit_import_upload", arguments: { uploadId: id(1), uploadVersion: 2 } },
       { tool: "discard_import_upload", arguments: { uploadId: id(1) } },
     ])
-      expect(remoteOperationSchema.parse(operation)).toEqual(localOperationSchema.parse(operation))
+      expect(remoteOperationSchema.parse(operation)).toEqual<unknown>(
+        localOperationSchema.parse(operation),
+      )
   })
   it.each(["source.step", "source.STP", "source.brep", "source.stl"])(
     "requires explicit physical units for %s",

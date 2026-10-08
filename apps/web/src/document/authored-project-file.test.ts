@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { documentIdSchema, draftIdSchema } from "@vibeshape/domain/identifiers"
 import { readAuthoredVShape, writeVShapeV5 } from "@vibeshape/formats/vshape"
-import { describe, expect, it } from "vitest"
 import {
   authorityTimestamp,
   evidenceValue,

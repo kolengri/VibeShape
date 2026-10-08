@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { FeatureRecord } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { ThreadForm } from "./thread-form"
 import {
@@ -90,7 +91,7 @@ describe("Modeled Thread form", () => {
       copy.customSize,
     )
     await userEvent.click(screen.getByRole("button", { name: "Apply feature" }))
-    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1].parameters).toMatchObject({
       nominalDiameter: { value: 8 },
       pitch: { value: 2, source: { expression: "#step" } },
@@ -112,7 +113,7 @@ describe("Modeled Thread form", () => {
     expect(screen.queryByRole("combobox", { name: "Origin X" })).toBeNull()
     expect(apply.disabled).toBe(false)
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       type: { schemaVersion: 2 },
       parameters: { axis: { kind: "explicit-axis", origin: [0, 0, 0], direction: [0, 0, 1] } },
@@ -136,8 +137,9 @@ describe("Modeled Thread form", () => {
     await userEvent.clear(pitch)
     await userEvent.type(pitch, "#step")
     await userEvent.click(screen.getByRole("button", { name: "Apply feature" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
-    expect(f.onSave).toHaveBeenCalledExactlyOnceWith(
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
+    expect(f.onSave).toHaveBeenCalledWith(
       7,
       expect.objectContaining({
         parameters: expect.objectContaining({
@@ -205,14 +207,14 @@ describe("Modeled Thread form", () => {
     const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
     await userEvent.click(apply)
     await userEvent.click(apply)
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(apply.disabled).toBe(true)
     reject?.(new Error("Storage unavailable"))
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
     expect(apply.disabled).toBe(false)
     onSave.mockResolvedValue({ ok: true })
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[1]?.[1]).toEqual(feature)
   })
   it.each([{ status: "loading" as const }, { status: "error" as const }, { unavailable: true }])(
@@ -227,7 +229,7 @@ describe("Modeled Thread form", () => {
   it("cancels without saving and disposes the preview", async () => {
     const f = setup()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(f.onCancel).toHaveBeenCalledOnce()
+    expect(f.onCancel).toHaveBeenCalledTimes(1)
     expect(f.onSave).not.toHaveBeenCalled()
     f.unmount()
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)

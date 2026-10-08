@@ -1,14 +1,17 @@
-import { documentSnapshotSchema } from "@vibeshape/domain"
-import {
-  DEFAULT_SURFACE_TEXTURE_QUALITY,
-  type DocumentExportOptions,
-  printPreparationSettingsSchema,
-} from "@vibeshape/protocol"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { prepareDocumentPrint } from "./prepare-document-print"
+import { beforeEach, describe, expect, it, mock } from "bun:test"
+import type { DocumentExportOptions } from "@vibeshape/protocol"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const worker = vi.hoisted(() => ({ rebuild: vi.fn(), exportDocument: vi.fn(), terminate: vi.fn() }))
-vi.mock("@vibeshape/document-worker/session", () => ({ createDocumentWorkerSession: () => worker }))
+const worker = (() => ({ rebuild: vi.fn(), exportDocument: vi.fn(), terminate: vi.fn() }))()
+mock.module("@vibeshape/document-worker/session", () => ({
+  createDocumentWorkerSession: () => worker,
+}))
+
+const { documentSnapshotSchema } = await import("@vibeshape/domain")
+const { DEFAULT_SURFACE_TEXTURE_QUALITY, printPreparationSettingsSchema } = await import(
+  "@vibeshape/protocol"
+)
+const { prepareDocumentPrint } = await import("./prepare-document-print")
 const snapshot = documentSnapshotSchema.parse({
   schemaVersion: 0,
   id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
@@ -39,7 +42,7 @@ describe("disposable print worker lifecycle", () => {
       () => true,
     )
     expect(result).toMatchObject({ ok: true, documentName: "Source model" })
-    expect(worker.terminate).toHaveBeenCalledOnce()
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
   })
   it("rejects a result whose source changed during export", async () => {
     let current = true
@@ -50,7 +53,7 @@ describe("disposable print worker lifecycle", () => {
     expect(
       await prepareDocumentPrint(snapshot, settings, new AbortController().signal, () => current),
     ).toMatchObject({ ok: false })
-    expect(worker.terminate).toHaveBeenCalledOnce()
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
   })
   it("prepares only the captured terminal bodies and their texture groups", async () => {
     const options: DocumentExportOptions = {

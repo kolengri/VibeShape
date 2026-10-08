@@ -1,10 +1,11 @@
+import { describe, expect, it } from "bun:test"
 import {
   SLICER_BRIDGE_HANDOFF_PATH,
   SLICER_BRIDGE_ORIGIN,
   SLICER_BRIDGE_PROTOCOL_VERSION,
   slicerHandoffResponseSchema,
 } from "@vibeshape/slicer-handoff/protocol"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { BridgeConfiguration } from "./config"
 import { createSlicerBridgeHandler } from "./server"
 
@@ -70,7 +71,7 @@ describe("slicer bridge server", () => {
       slicerId: "orca-slicer",
       filePath: "/tmp/Bracket.3mf",
     })
-    expect(scheduleCleanup).toHaveBeenCalledOnce()
+    expect(scheduleCleanup).toHaveBeenCalledTimes(1)
   })
 
   it("deduplicates a completed request without launching twice", async () => {
@@ -86,8 +87,8 @@ describe("slicer bridge server", () => {
 
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
-    expect(persist).toHaveBeenCalledOnce()
-    expect(launch).toHaveBeenCalledOnce()
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(launch).toHaveBeenCalledTimes(1)
   })
 
   it("rejects unpaired origins, invalid credentials, metadata, and bytes", async () => {

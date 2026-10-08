@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   captureOcctBooleanHistory,
   captureOcctFaceLineage,
@@ -81,7 +82,7 @@ describe("OCCT operation history capture", () => {
     expect(fixture.lists).toHaveLength(16)
 
     for (const binding of [...fixture.currentShapes, ...fixture.explorers, ...fixture.lists]) {
-      expect(binding.delete).toHaveBeenCalledOnce()
+      expect(binding.delete).toHaveBeenCalledTimes(1)
     }
   })
 
@@ -98,8 +99,8 @@ describe("OCCT operation history capture", () => {
     expect(history.edges.generatedRelationCount).toBe(2)
     expect(history.faces.modifiedRelationCount).toBe(1)
     expect(fixture.builder.Generated).toHaveBeenCalledTimes(2)
-    expect(fixture.builder.Modified).toHaveBeenCalledOnce()
-    expect(fixture.builder.IsDeleted).toHaveBeenCalledOnce()
+    expect(fixture.builder.Modified).toHaveBeenCalledTimes(1)
+    expect(fixture.builder.IsDeleted).toHaveBeenCalledTimes(1)
   })
 
   it("maps durable source tokens to immediate descendants without exposing transient hashes", () => {
@@ -143,10 +144,10 @@ describe("OCCT operation history capture", () => {
     )
 
     expect(lineage).toEqual(new Map([[20, ["output:base-extrude.cap.end"]]]))
-    expect(source.delete).toHaveBeenCalledOnce()
-    expect(descendant.delete).toHaveBeenCalledOnce()
-    expect(modifiedList.delete).toHaveBeenCalledOnce()
-    expect(generatedList.delete).toHaveBeenCalledOnce()
-    expect(explorer.delete).toHaveBeenCalledOnce()
+    expect(source.delete).toHaveBeenCalledTimes(1)
+    expect(descendant.delete).toHaveBeenCalledTimes(1)
+    expect(modifiedList.delete).toHaveBeenCalledTimes(1)
+    expect(generatedList.delete).toHaveBeenCalledTimes(1)
+    expect(explorer.delete).toHaveBeenCalledTimes(1)
   })
 })

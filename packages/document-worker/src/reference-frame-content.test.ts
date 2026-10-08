@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   createLengthQuantity,
@@ -6,7 +7,6 @@ import {
   featureRecordSchema,
 } from "@vibeshape/domain"
 import { mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "@vibeshape/domain/part-design-mirror"
-import { describe, expect, it } from "vitest"
 import {
   prepareReferenceFrameFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,

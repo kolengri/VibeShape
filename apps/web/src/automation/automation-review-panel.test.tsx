@@ -1,27 +1,27 @@
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
+import { cleanup, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import {
   type HistoryReviewInput,
   historyRequestSchema,
 } from "@vibeshape/automation-host/history-session"
-import { historyItemRefSchema } from "@vibeshape/domain/document-node"
-import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-command-schemas"
-import { draftIdSchema } from "@vibeshape/domain/identifiers"
-// @vitest-environment jsdom
-
-import { cleanup, render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import {
   type SurfaceTextureReviewInput,
   surfaceTextureCommandSchema,
 } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { commandActorSchema, documentCommandSchema } from "@vibeshape/domain/commands"
+import { historyItemRefSchema } from "@vibeshape/domain/document-node"
+import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-command-schemas"
+import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   surfaceTextureProjectFixture,
   textureFixtureId,
 } from "../../../../tests/fixtures/surface-texture-project"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import * as texturePreview from "../features/surface-texture/surface-texture-preview-context"
 import { i18n } from "../i18n"
 import { automationReviews } from "./automation-review-controller"
@@ -209,7 +209,8 @@ it("requires destructive confirmation before removing the reviewed texture colle
   expect(screen.getByRole("alertdialog")).toBeTruthy()
   expect(decide).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole("button", { name: "Apply changes" }))
-  expect(decide).toHaveBeenCalledExactlyOnceWith("texture-review", "approved")
+  expect(decide).toHaveBeenCalledTimes(1)
+  expect(decide).toHaveBeenCalledWith("texture-review", "approved")
 })
 
 describe("AutomationReviewPanel", () => {
@@ -237,7 +238,8 @@ describe("AutomationReviewPanel", () => {
     expect(decide).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     await userEvent.click(screen.getByRole("button", { name: "Apply changes" }))
-    expect(decide).toHaveBeenCalledExactlyOnceWith("review-1", "approved")
+    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decide).toHaveBeenCalledWith("review-1", "approved")
   })
   it("renders bounded preview details and approves through the review controller", async () => {
     const decide = vi.spyOn(automationReviews, "decide").mockResolvedValue()

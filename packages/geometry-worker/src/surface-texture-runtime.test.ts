@@ -1,9 +1,9 @@
+import { describe, expect, it } from "bun:test"
 import {
   GEOMETRY_PROTOCOL_VERSION,
   type GeometryWorkerRequest,
   type GeometryWorkerResponse,
 } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import type { GeometryKernelEngine } from "./engine"
 import { GeometryWorkerRuntime } from "./runtime"
 

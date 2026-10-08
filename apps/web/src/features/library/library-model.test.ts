@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { documentIdSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   libraryDocumentScope,
   libraryDocumentWritable,
@@ -55,7 +55,7 @@ describe("local component library presentation authority", () => {
   })
   it("separates browsing from guarded writable document mutations", () => {
     const controller = libraryController()
-    expect(libraryDocumentScope(controller)).toEqual({
+    expect(libraryDocumentScope(controller)).toEqual<unknown>({
       documentId: controller.authoredSnapshot?.id,
       revision: controller.authoredSnapshot?.revision,
     })

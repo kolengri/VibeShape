@@ -1,7 +1,7 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { inspectOcctBody } from "./occt-body-validation"
 import { mirrorOcctShape } from "./occt-mirror"
 import {
@@ -45,7 +45,7 @@ describe("reference-plane split ownership", () => {
       positive: f.b,
     })
     for (const temporary of [f.local, f.negative, f.positive])
-      expect(temporary.delete).toHaveBeenCalledOnce()
+      expect(temporary.delete).toHaveBeenCalledTimes(1)
     for (const output of [f.source, f.a, f.b]) expect(output.delete).not.toHaveBeenCalled()
   })
   it("releases the first world output when the second transform fails", () => {
@@ -61,7 +61,7 @@ describe("reference-plane split ownership", () => {
       "Transform failed",
     )
     for (const temporary of [f.local, f.negative, f.positive, f.a])
-      expect(temporary.delete).toHaveBeenCalledOnce()
+      expect(temporary.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
   })
   it("releases outputs and exposes failed temporary cleanup", () => {
@@ -72,8 +72,8 @@ describe("reference-plane split ownership", () => {
     expect(() => f.operations.splitShape({} as OpenCascadeInstance, f.source, parameters)).toThrow(
       "cleanup failed",
     )
-    expect(f.a.delete).toHaveBeenCalledOnce()
-    expect(f.b.delete).toHaveBeenCalledOnce()
+    expect(f.a.delete).toHaveBeenCalledTimes(1)
+    expect(f.b.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
   })
   it("rejects a borrowed source returned by the local split and releases owned sides", () => {
@@ -82,8 +82,8 @@ describe("reference-plane split ownership", () => {
     expect(() => f.operations.splitShape({} as OpenCascadeInstance, f.source, parameters)).toThrow(
       "separately owned",
     )
-    expect(f.local.delete).toHaveBeenCalledOnce()
-    expect(f.positive.delete).toHaveBeenCalledOnce()
+    expect(f.local.delete).toHaveBeenCalledTimes(1)
+    expect(f.positive.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
   })
   it("preserves a null native failure after releasing temporary ownership", () => {
@@ -98,7 +98,7 @@ describe("reference-plane split ownership", () => {
       caught = error
     }
     expect(caught).toBeNull()
-    expect(f.local.delete).toHaveBeenCalledOnce()
+    expect(f.local.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
   })
   it("rejects a degenerate normal before native allocation", () => {

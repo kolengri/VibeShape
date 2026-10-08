@@ -1,35 +1,27 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
 
-import { renderHook, waitFor } from "@testing-library/react"
-import { runtimeProjection } from "@vibeshape/application/authority-persistence-operations"
-import { type HistoryTarget, historyTargetSchema } from "@vibeshape/automation-host/history-session"
-import { documentSnapshotSchema } from "@vibeshape/domain/document"
-import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
-import { documentIdSchema } from "@vibeshape/domain/identifiers"
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { assemblyLibraryFixture } from "../../../../scripts/assembly-library-fixture"
-import {
-  createActiveDocumentAutomationSession,
-  materializeActiveDocumentSourceAssets,
-  useDocumentController,
-} from "./document-controller"
+import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import type { HistoryTarget } from "@vibeshape/automation-host/history-session"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const mocks = vi.hoisted(() => ({
+const mocks = (() => ({
   createSession: vi.fn(),
   createAutomation: vi.fn(),
   createHistory: vi.fn(),
   materialize: vi.fn(),
   materializeCaptured: vi.fn(),
-}))
-vi.mock("@vibeshape/application/persistent-document-session", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@vibeshape/application/persistent-document-session")>()),
+}))()
+const originalModule1 = { ...(await import("@vibeshape/application/persistent-document-session")) }
+mock.module("@vibeshape/application/persistent-document-session", () => ({
+  ...originalModule1,
   createPersistentDocumentSession: mocks.createSession,
 }))
-vi.mock("./authored-document-session", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./authored-document-session")>()),
+const originalModule2 = { ...(await import("./authored-document-session")) }
+mock.module("./authored-document-session", () => ({
+  ...originalModule2,
   enableAuthoredDocument: (result: unknown) => result,
 }))
-vi.mock("./browser-project-repository", () => ({
+mock.module("./browser-project-repository", () => ({
   BrowserProjectRepository: class {
     legacy = {}
     versioned = {}
@@ -37,12 +29,27 @@ vi.mock("./browser-project-repository", () => ({
     materializeCapturedSourceAssets = mocks.materializeCaptured
   },
 }))
-vi.mock("../automation/document-automation-session", () => ({
+mock.module("../automation/document-automation-session", () => ({
   createDocumentAutomationSession: mocks.createAutomation,
 }))
-vi.mock("../automation/history-automation-session", () => ({
+mock.module("../automation/history-automation-session", () => ({
   createBrowserHistoryAutomationSession: mocks.createHistory,
 }))
+
+const { renderHook, waitFor } = await import("@testing-library/react")
+const { runtimeProjection } = await import(
+  "@vibeshape/application/authority-persistence-operations"
+)
+const { historyTargetSchema } = await import("@vibeshape/automation-host/history-session")
+const { documentSnapshotSchema } = await import("@vibeshape/domain/document")
+const { documentSnapshotV4Schema } = await import("@vibeshape/domain/document-v4")
+const { documentIdSchema } = await import("@vibeshape/domain/identifiers")
+const { assemblyLibraryFixture } = await import("../../../../scripts/assembly-library-fixture")
+const {
+  createActiveDocumentAutomationSession,
+  materializeActiveDocumentSourceAssets,
+  useDocumentController,
+} = await import("./document-controller")
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 const document = documentSnapshotSchema.parse({
@@ -107,7 +114,8 @@ describe("paired draft source materialization", () => {
     const draft = { ...document, revision: 9 }
     try {
       await expect(paired.materialize(draft)).resolves.toEqual([])
-      expect(mocks.materialize).toHaveBeenCalledExactlyOnceWith(document.id, draft.features)
+      expect(mocks.materialize).toHaveBeenCalledTimes(1)
+      expect(mocks.materialize).toHaveBeenCalledWith(document.id, draft.features)
       await expect(materializeActiveDocumentSourceAssets(draft)).rejects.toThrow("revision changed")
       await expect(materializeActiveDocumentSourceAssets(document)).resolves.toEqual([])
     } finally {
@@ -175,7 +183,8 @@ describe("paired draft source materialization", () => {
     const paired = await pairedHistoryMaterializer()
     try {
       await expect(paired.materialize(paired.target, document.revision)).resolves.toEqual([])
-      expect(mocks.materializeCaptured).toHaveBeenCalledExactlyOnceWith(paired.target.authority)
+      expect(mocks.materializeCaptured).toHaveBeenCalledTimes(1)
+      expect(mocks.materializeCaptured).toHaveBeenCalledWith(paired.target.authority)
       expect(mocks.materialize).not.toHaveBeenCalled()
     } finally {
       paired.handle.dispose()

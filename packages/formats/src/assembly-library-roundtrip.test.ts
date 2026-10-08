@@ -1,9 +1,9 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentV4Command,
   documentRestoredV4EventSchema,
   reduceDocumentV4Event,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { assemblyLibraryFixture, libraryFixtureId } from "../../../scripts/assembly-library-fixture"
 import {
   authorityEnvelope,
@@ -57,7 +57,7 @@ describe("portable frozen library occurrences", () => {
     const read = evidenceValue(
       await readVShapeV5(evidenceValue(await writeVShapeV5(input)).value),
     ).value
-    expect(read.snapshot.assembly.definitions[0]).toEqual(definition)
+    expect(read.snapshot.assembly.definitions[0]).toEqual<unknown>(definition)
     expect(read.assetBlobs).toEqual([source.blob])
     const undo = documentRestoredV4EventSchema.parse({
       ...authorityEnvelope(inserted.snapshot.revision),

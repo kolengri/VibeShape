@@ -1,3 +1,4 @@
+import { afterEach, describe, expect, it } from "bun:test"
 import {
   type AssemblyDraftState,
   assemblyDraftStateSchema,
@@ -18,7 +19,6 @@ import { type DocumentSnapshotV4, documentSnapshotV4Schema } from "@vibeshape/do
 import { applyDocumentV4Command } from "@vibeshape/domain/document-v4-commands"
 import { documentSourceAssetClosure } from "@vibeshape/domain/source-asset-closure"
 import { VibeShapeDatabase } from "@vibeshape/persistence"
-import { afterEach, describe, expect, it } from "vitest"
 import {
   assemblyLibraryFixture,
   libraryFixtureId as id,

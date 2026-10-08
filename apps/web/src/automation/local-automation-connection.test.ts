@@ -1,36 +1,40 @@
-// @vitest-environment jsdom
-import { act, cleanup, render } from "@testing-library/react"
-import { createElement, StrictMode, useEffect } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
-import { createLocalAutomationConnection } from "./local-automation-connection"
-import { LocalAutomationTransportError } from "./local-automation-http"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
+
 import type { createProjectToolPort } from "./project-tool-port"
 
-const mocks = vi.hoisted(() => ({
+const mocks = (() => ({
   request: vi.fn(),
   createHandle: vi.fn(),
   execute: vi.fn(),
   review: vi.fn(),
   createExecutor: vi.fn(),
   projectPort: vi.fn(),
-}))
-vi.mock("./automation-review-controller", () => ({
+}))()
+mock.module("./automation-review-controller", () => ({
   automationReviews: { getSnapshot: mocks.review },
 }))
-vi.mock("./local-automation-http", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./local-automation-http")>()),
+const originalModule1 = { ...(await import("./local-automation-http")) }
+mock.module("./local-automation-http", () => ({
+  ...originalModule1,
   localAutomationRequest: mocks.request,
 }))
-vi.mock("../document/document-controller", () => ({
+mock.module("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
 }))
-vi.mock("./local-tool-executor", () => ({
+mock.module("./local-tool-executor", () => ({
   createLocalToolExecutor: mocks.createExecutor,
 }))
-vi.mock("./project-tool-port", () => ({
+mock.module("./project-tool-port", () => ({
   createProjectToolPort: mocks.projectPort,
 }))
+
+const { act, cleanup, render } = await import("@testing-library/react")
+const { createElement, StrictMode, useEffect } = await import("react")
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
+const { createLocalAutomationConnection } = await import("./local-automation-connection")
+const { LocalAutomationTransportError } = await import("./local-automation-http")
 const id = "0195b5ac-b250-7a2c-8c33-000000000001"
 const client = { name: "Test CAD client", version: "1" }
 const credential = {
@@ -74,7 +78,7 @@ beforeEach(() => {
   enableAutoApply.mockReturnValue(true)
   optOut.mockReturnValue(true)
   document.head.innerHTML = '<meta name="vibeshape-local-automation" content="1">'
-  mocks.createHandle.mockReturnValue({
+  mocks.createHandle.mockImplementation(() => ({
     ok: true,
     documentId: id,
     revision: 4,
@@ -83,7 +87,7 @@ beforeEach(() => {
     disableAutoApply: optOut,
     readIdentity: () => ({ id, revision: 4, name: "Bracket" }),
     readInfo: vi.fn(),
-  })
+  }))
   mocks.execute.mockResolvedValue(failedResult)
   mocks.request.mockImplementation(async (path: string) => {
     if (path === "/status") return ok({ protocolVersion: 1, client, paired: false })
@@ -230,7 +234,7 @@ describe("local AI project management consent", () => {
     })
     expect(connection.setProjectManagement(false)).toBe(false)
     expect(connection.isProjectActionPending()).toBe(true)
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(mocks.createExecutor).toHaveBeenLastCalledWith(next, credential.actor, expect.anything())
     const pollCount = mocks.request.mock.calls.filter(([path]) => path === "/poll").length
     await vi.advanceTimersByTimeAsync(2000)
@@ -466,7 +470,7 @@ describe("local AI project management consent", () => {
       busy: false,
       autoApply: true,
     })
-    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(mocks.createHandle).toHaveBeenCalledTimes(1)
     expect(dispose).not.toHaveBeenCalled()
   })
 
@@ -497,7 +501,7 @@ describe("local AI project management consent", () => {
       credential.actor,
       expect.anything(),
     )
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(replacement.dispose).not.toHaveBeenCalled()
   })
 
@@ -520,7 +524,7 @@ describe("local AI project management consent", () => {
     pending.resolve()
     await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
-    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(mocks.createHandle).toHaveBeenCalledTimes(1)
     expect(mocks.request.mock.calls.filter(([path]) => path === "/result")).toHaveLength(0)
   })
 
@@ -596,7 +600,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     })
     await connection.enable()
     await vi.advanceTimersByTimeAsync(500)
-    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
     expect(mocks.request).toHaveBeenCalledWith(
       "/poll",
       expect.objectContaining({ progress: { requestId: work.requestId, stage } }),
@@ -629,10 +633,10 @@ describe("browser-owned local AI connection lifecycle", () => {
       return original?.(path, ...args)
     })
     await vi.advanceTimersByTimeAsync(500)
-    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(500)
     expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: true })
-    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
     acknowledgement.resolve(ok({ ok: true }))
     await vi.advanceTimersByTimeAsync(0)
     expect(mocks.execute).toHaveBeenCalledTimes(2)
@@ -659,12 +663,12 @@ describe("browser-owned local AI connection lifecycle", () => {
       return original?.(path, ...args)
     })
     await vi.advanceTimersByTimeAsync(1000)
-    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
     acknowledgement.resolve({ ok: false, status: 401, data: {} })
     await vi.advanceTimersByTimeAsync(0)
-    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, busy: false, error: true })
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
   })
   it("requires explicit pairing and an idle browser opt-in, then resets on disconnect", async () => {
     await ready()
@@ -685,7 +689,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     expect(dispose).not.toHaveBeenCalled()
     const disabling = connection.disable()
     expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     await disabling
     await connection.enable()
     expect(connection.getSnapshot().autoApply).toBe(false)
@@ -729,7 +733,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     created.value.readIdentity = () => null
     await vi.advanceTimersByTimeAsync(500)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, autoApply: false })
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(connection.enableAutoApply()).toBe(false)
   })
   it("keeps an already disconnected snapshot stable on disable and disposal", async () => {
@@ -754,8 +758,8 @@ describe("browser-owned local AI connection lifecycle", () => {
     expect(disconnected.connected).toBe(false)
     expect(disconnected.busy).toBe(false)
     expect(connection.getSnapshot()).toBe(disconnected)
-    expect(listener).toHaveBeenCalledOnce()
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
   })
 
@@ -776,7 +780,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     await connection.enable()
     await vi.advanceTimersByTimeAsync(0)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
   })
   it("reclaims credentials that arrive after Disable and prevents duplicate pairing", async () => {
@@ -792,7 +796,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     connecting.resolve(ok(credential))
     expect(await enabling).toBe(false)
     expect(connection.getSnapshot().connected).toBe(false)
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(mocks.execute).not.toHaveBeenCalled()
     expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
   })

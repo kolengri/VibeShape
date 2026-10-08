@@ -1,10 +1,10 @@
+import { describe, expect, it } from "bun:test"
 import { boxFeatureType, createLengthQuantity, featureRecordSchema } from "@vibeshape/domain"
 import {
   mirrorFeatureType,
   mirrorFeatureTypeV2,
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain/part-design-mirror"
-import { describe, expect, it } from "vitest"
 import {
   activeFeatureId,
   activePartDesignCommand,
@@ -44,18 +44,17 @@ function mirror(version2: boolean, preserveSource = false) {
 describe("Mirror history activation and downstream selection", () => {
   it.each([false, true])("opens the supported Mirror contract from History (v2=%s)", (version2) => {
     const tool = editPartDesignTool(mirror(version2))
-    expect(tool).toEqual({ kind: "edit-mirror", featureId: mirrorId })
-    expect(activeFeatureId(tool)).toBe(mirrorId)
+    expect(tool).toEqual<unknown>({ kind: "edit-mirror", featureId: mirrorId })
+    expect(activeFeatureId(tool)).toBe<unknown>(mirrorId)
     expect(activePartDesignCommand(tool)).toBe("mirror")
   })
   it("offers both source and reflected copy for downstream solid operations", () => {
-    expect(modifyingSolidTargetFeatures([source, mirror(true, true)]).map(({ id }) => id)).toEqual([
-      sourceId,
-      mirrorId,
-    ])
-    expect(modifyingSolidTargetFeatures([source, mirror(true, false)]).map(({ id }) => id)).toEqual(
-      [mirrorId],
-    )
+    expect(
+      modifyingSolidTargetFeatures([source, mirror(true, true)]).map(({ id }) => id),
+    ).toEqual<unknown>([sourceId, mirrorId])
+    expect(
+      modifyingSolidTargetFeatures([source, mirror(true, false)]).map(({ id }) => id),
+    ).toEqual<unknown>([mirrorId])
   })
   it("routes v3 arbitrary-plane intent while retaining a source-preserving copy downstream", () => {
     const legacy = mirror(true, true)
@@ -67,8 +66,11 @@ describe("Mirror history activation and downstream selection", () => {
         plane: { kind: "explicit-plane", origin: [3, 4, 5], normal: [0.6, 0.8, 0] },
       },
     })
-    expect(editPartDesignTool(feature)).toEqual({ kind: "edit-mirror", featureId: mirrorId })
-    expect(modifyingSolidTargetFeatures([source, feature]).map(({ id }) => id)).toEqual([
+    expect(editPartDesignTool(feature)).toEqual<unknown>({
+      kind: "edit-mirror",
+      featureId: mirrorId,
+    })
+    expect(modifyingSolidTargetFeatures([source, feature]).map(({ id }) => id)).toEqual<unknown>([
       sourceId,
       mirrorId,
     ])

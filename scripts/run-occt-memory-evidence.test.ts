@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   CONTROLLED_OCCT_EVIDENCE_RUNS,
   createControlledOcctEnvironment,
@@ -35,7 +35,7 @@ describe("controlled OCCT evidence runner", () => {
         { PATH: "/bin", VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES: "1" },
         { VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES: "5" },
       ),
-    ).toEqual({
+    ).toEqual<Record<string, string>>({
       PATH: "/bin",
       VIBESHAPE_CONTROLLED_OCCT: "1",
       VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES: "5",

@@ -1,11 +1,11 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { makeBox, measureVolume, type Shape3D, Solid, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type STEPControl_Reader,
   type TopoDS_Shape,
 } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createOcctCompound } from "./occt-compound"
 import { exportOcctStep } from "./occt-exchange"
 import {
@@ -265,7 +265,7 @@ describe("verified exact source import with the pinned OCCT kernel", () => {
             rebuildOcctSourceImport(occt, { ...input, content: { ...input.content, outputs } }),
           ).rejects.toMatchObject({ code: "source-mismatch" })
         expect(cleanup).toHaveBeenCalledTimes(6)
-        expect(new Set(cleanup.mock.instances).size).toBe(6)
+        expect(new Set(cleanup.mock.contexts).size).toBe(6)
       } finally {
         cleanup.mockRestore()
       }
@@ -363,7 +363,7 @@ describe("verified exact source import with the pinned OCCT kernel", () => {
           rebuildOcctSourceImport(occt, { ...input, content: { ...input.content, outputs } }),
         ).rejects.toBeInstanceOf(AggregateError)
         expect(cleanup).toHaveBeenCalledTimes(2)
-        expect(new Set(cleanup.mock.instances).size).toBe(2)
+        expect(new Set(cleanup.mock.contexts).size).toBe(2)
       } finally {
         cleanup.mockRestore()
       }

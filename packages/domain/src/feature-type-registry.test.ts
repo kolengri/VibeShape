@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { z } from "zod"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { type FeatureRecord, featureRecordSchema, featureTypeSchema } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import { createFeatureTypeRegistry, type TrustedFeatureTypeHandler } from "./feature-type-registry"
@@ -199,9 +200,11 @@ describe("feature type registry", () => {
     if (!result.ok || !variables.ok) throw new Error("Expected a valid registry fixture.")
 
     expect(
-      result.registry.resolveFeatureParameters(
-        feature({ ...boxParameters(), width: createLengthQuantity(20, "mm", "#missing") }),
-        variables.valuesByName,
+      matchValue(
+        result.registry.resolveFeatureParameters(
+          feature({ ...boxParameters(), width: createLengthQuantity(20, "mm", "#missing") }),
+          variables.valuesByName,
+        ),
       ),
     ).toMatchObject({
       ok: false,
@@ -294,7 +297,7 @@ describe("feature type registry", () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.registry.validateFeature(unknown)).toMatchObject({
+      expect(matchValue(result.registry.validateFeature(unknown))).toMatchObject({
         ok: false,
         diagnostic: {
           code: "feature-type-unavailable",

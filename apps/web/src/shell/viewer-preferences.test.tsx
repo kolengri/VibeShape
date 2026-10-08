@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createTestBrowserStorage } from "../test-support/browser-storage"
 import {
   createViewerPreferencesStore,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   surfaceTextureProjectFixture,
   textureFixtureEnvelope,
@@ -222,7 +222,7 @@ describe("authored surface texture authority", () => {
     expect(copied.snapshot.schemaVersion).toBe(3)
     if (copied.snapshot.schemaVersion !== 3) throw new Error("Missing texture copy")
     expect(copied.snapshot.surfaceTextures).toEqual([layer])
-    expect(copied.snapshot.id).toBe(textureFixtureId(700))
+    expect(copied.snapshot.id).toBe<unknown>(textureFixtureId(700))
     expect(
       canonicalJson(
         textureSuccess(replayDocumentAuthorityEvents(copied.seed, copied.versionedEvents)).snapshot,

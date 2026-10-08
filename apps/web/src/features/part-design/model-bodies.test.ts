@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { DocumentSnapshot } from "@vibeshape/domain"
 import {
   boxFeatureType,
@@ -8,7 +9,6 @@ import {
 } from "@vibeshape/domain"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { DOCUMENT_PROTOCOL_VERSION, type DocumentWorkerResponse } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { exactSolidBodyOptions } from "./exact-body-options"
 import { terminalModelBodies } from "./model-bodies"
 import { modifyingSolidTargetFeatures } from "./part-design-tool"
@@ -251,7 +251,7 @@ describe("exact solid body options", () => {
       exactSolidBodyOptions(snapshot(features), outcome, undefined, [], "Body").map(
         ({ body }) => body,
       ),
-    ).toEqual([
+    ).toEqual<unknown>([
       { ...targetBody, outputRole: "pattern.instance.2" },
       { schemaVersion: 0, featureId: consumerId, outputRole: "result" },
     ])

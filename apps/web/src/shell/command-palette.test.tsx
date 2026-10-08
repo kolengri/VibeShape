@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { resolveBuiltInEditorCommands } from "../commands/built-in-editor-commands"
 import { editorCommandIds } from "../commands/editor-command"
 import type { DocumentControllerState } from "../document/document-controller"
@@ -123,7 +123,7 @@ describe("EditorCommandPalette", () => {
     await user.click(screen.getByText("Box"))
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
-    expect(actions.createBox).toHaveBeenCalledOnce()
+    expect(actions.createBox).toHaveBeenCalledTimes(1)
     expect(JSON.parse(localStorage.getItem("vibeshape.editor-command-recents.v1") ?? "[]")).toEqual(
       [editorCommandIds.createBox],
     )
@@ -141,7 +141,7 @@ describe("EditorCommandPalette", () => {
       renderPalette()
       await user.type(screen.getByRole("combobox", { name: "Search commands" }), keyword)
       await user.click(screen.getByText(label))
-      expect(actions[key]).toHaveBeenCalledOnce()
+      expect(actions[key]).toHaveBeenCalledTimes(1)
     },
   )
 
@@ -150,7 +150,7 @@ describe("EditorCommandPalette", () => {
     renderPalette()
     await user.type(screen.getByRole("combobox", { name: "Search commands" }), "keyboard")
     await user.click(screen.getByText("Keyboard shortcuts"))
-    expect(actions.openShortcutHelp).toHaveBeenCalledOnce()
+    expect(actions.openShortcutHelp).toHaveBeenCalledTimes(1)
     cleanup()
     renderPalette()
     const workspace = screen.getByRole("group", { name: "Workspace" })

@@ -17,12 +17,12 @@ function runExtensionEvidence() {
   const bunCommand = process.env.VIBESHAPE_BUN_BIN || "bun"
   run(
     bunCommand,
-    ["x", "vitest", "run", "packages/extension-spike/src/extension-spike.test.ts"],
+    ["run", "test", "packages/extension-spike/src/extension-spike.test.ts"],
     "Extension package corpus",
   )
   run(
     bunCommand,
-    ["x", "playwright", "test", "--config", "playwright.extension.config.ts"],
+    ["run", "--bun", "playwright", "test", "--config", "playwright.extension.config.ts"],
     "Extension browser evidence",
   )
 }

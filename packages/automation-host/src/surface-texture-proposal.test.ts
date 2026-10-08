@@ -1,15 +1,16 @@
+import { describe, expect, it } from "bun:test"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
-import { describe, expect, it, vi } from "vitest"
 import {
   surfaceTextureProjectFixture,
   textureFixtureId,
   textureSuccess,
 } from "../../../tests/fixtures/surface-texture-project"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createSurfaceTextureProposalCoordinator } from "./surface-texture-proposal"
 import {
   SURFACE_TEXTURE_PROPOSAL_TTL_MS,
@@ -148,7 +149,7 @@ describe("owned surface texture proposal coordination", () => {
         ok: false,
         diagnostic: { code: "document-commit-failed", retryable: true },
       })
-      expect(f.commit).toHaveBeenCalledOnce()
+      expect(f.commit).toHaveBeenCalledTimes(1)
     }
   })
 
@@ -165,7 +166,7 @@ describe("owned surface texture proposal coordination", () => {
         },
       })
       expect(f.native).toHaveBeenCalledTimes(2)
-      expect(f.review).toHaveBeenCalledOnce()
+      expect(f.review).toHaveBeenCalledTimes(1)
       const review = f.review.mock.calls[0]?.[0]
       expect(review).toMatchObject({
         kind: "surface-texture",
@@ -174,7 +175,7 @@ describe("owned surface texture proposal coordination", () => {
         command: { actor, payload: { kind: "textures.replace-layers" } },
         preview,
       })
-      expect(f.commit).toHaveBeenCalledOnce()
+      expect(f.commit).toHaveBeenCalledTimes(1)
       expect(f.snapshot().schemaVersion).toBe(v4 ? 4 : 3)
       if (v4 && before.schemaVersion === 4 && f.snapshot().schemaVersion === 4)
         expect(f.snapshot()).toMatchObject({ assembly: before.assembly, assets: before.assets })

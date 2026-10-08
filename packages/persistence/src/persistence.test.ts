@@ -1,7 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import {
   decideUpdateActivation,
   selectSaveAsMethod,

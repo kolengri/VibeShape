@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { revolveFeatureContentParametersSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 
 const entityId = "0195b5ac-b220-7a2c-8c33-67a36a7f3211"

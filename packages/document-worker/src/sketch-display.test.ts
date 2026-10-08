@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import { documentSnapshotSchema, sketchEntityIdSchema, sketchRecordSchema } from "@vibeshape/domain"
 import {
@@ -6,7 +7,7 @@ import {
   type SketchCompilationInput,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createSketchDisplayRecords } from "./sketch-display"
 
 describe("document sketch display", () => {
@@ -197,7 +198,7 @@ describe("document sketch display", () => {
       sectionPlanarFace,
     )
 
-    expect(sectionPlanarFace).toHaveBeenCalledOnce()
+    expect(sectionPlanarFace).toHaveBeenCalledTimes(1)
     expect(solveSketch).toHaveBeenCalledWith(
       expect.objectContaining({ externalLines: expect.any(Array) }),
     )

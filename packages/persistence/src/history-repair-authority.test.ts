@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { historyRepairJournalFixture } from "../../domain/src/history-repair.test-fixture"
 import * as portableAuthority from "./authority-portable"
 import {

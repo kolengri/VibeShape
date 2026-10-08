@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import {
   createAngleQuantity,
@@ -13,7 +14,6 @@ import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { compoundSlotIdSchema } from "@vibeshape/domain/identifiers"
 import { compoundBodyOutputRole } from "@vibeshape/domain/part-design-body-combination"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
-import { describe, expect, it } from "vitest"
 import {
   authoredTestBody,
   authoredTestId,
@@ -187,7 +187,9 @@ describe("authored combination inputs", () => {
     expect(updated.id).toBe(feature.id)
     expect(updated.label).toBe(feature.label)
     expect(updated.dependencies).toEqual([...feature.dependencies].reverse())
-    expect(updated.parameters.slots).toEqual([...(feature.parameters.slots as unknown[])].reverse())
+    expect(updated.parameters.slots).toEqual<unknown>(
+      [...(feature.parameters.slots as unknown[])].reverse(),
+    )
     for (const input of initial)
       expect(
         authority.parts.find(({ id }) => id === input.partId)?.bodyHistory.at(-1)?.outputRole,

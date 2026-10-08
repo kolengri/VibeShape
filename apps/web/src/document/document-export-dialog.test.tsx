@@ -1,36 +1,39 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
-import {
-  createDefaultSurfaceTextureLayer,
-  surfaceTextureLayerIdSchema,
-} from "@vibeshape/domain/surface-textures"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
-import {
-  historyRepairFixture,
-  repairId,
-} from "../../../../packages/domain/src/history-repair.test-fixture"
-import { i18n } from "../i18n"
 import type { DocumentControllerState } from "./document-controller"
-import { DocumentExportDialog } from "./document-export-dialog"
 
-const mocks = vi.hoisted(() => ({
+const mocks = (() => ({
   exportActiveDocument: vi.fn(),
   downloadDocumentExport: vi.fn(),
-}))
+}))()
 
-vi.mock("./document-controller", () => ({
+const controllerModule = { ...(await import("./document-controller")) }
+mock.module("./document-controller", () => ({
+  ...controllerModule,
   exportActiveDocument: mocks.exportActiveDocument,
 }))
 
-vi.mock("./document-export", async () => {
-  const actual = await vi.importActual<typeof import("./document-export")>("./document-export")
+const originalModule1 = { ...(await import("./document-export")) }
+mock.module("./document-export", () => {
+  const actual = originalModule1
   return { ...actual, downloadDocumentExport: mocks.downloadDocumentExport }
 })
+
+const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { documentSnapshotV5Schema } = await import("@vibeshape/domain/document-v5")
+const { createDefaultSurfaceTextureLayer, surfaceTextureLayerIdSchema } = await import(
+  "@vibeshape/domain/surface-textures"
+)
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { historyRepairFixture, repairId } = await import(
+  "../../../../packages/domain/src/history-repair.test-fixture"
+)
+const { i18n } = await import("../i18n")
+const { DocumentExportDialog } = await import("./document-export-dialog")
 
 class ResizeObserverMock {
   observe() {}

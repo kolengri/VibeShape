@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createAngleQuantity,
@@ -10,7 +11,6 @@ import {
 } from "@vibeshape/domain"
 import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
 import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
-import { describe, expect, it } from "vitest"
 import {
   historyRepairFixture,
   repairRemovalCommand,
@@ -199,7 +199,7 @@ describe("featureDeleteEligibility", () => {
     )
     expect(result.unavailable).toBe(false)
     expect(result.preserveIntentAllowed).toBe(false)
-    expect(result.preservableReferences).toEqual([
+    expect(result.preservableReferences).toEqual<unknown>([
       {
         kind: "model-intersection",
         referenceId: modelDependent.externalReferences?.[0]?.id,
@@ -259,7 +259,7 @@ describe("featureDeleteEligibility", () => {
 
     expect(result.preserveIntentAllowed).toBe(true)
     expect(result.preservableReferenceCount).toBe(1)
-    expect(result.preservableReferences).toEqual([
+    expect(result.preservableReferences).toEqual<unknown>([
       {
         kind: "model-point",
         referenceId: dependent.externalReferences?.[0]?.id,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { assertLocalTopologyEnvironment } from "./run-topology-evidence"
 
 describe("stable topology evidence runner", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test } from "bun:test"
 import { sketchWireRecordSchema } from "./sketch"
 
 const pointA = "0195b5ac-b220-7a2c-8c33-67a36a7f3202"
@@ -121,7 +121,7 @@ describe("sketch alignment wire constraints", () => {
       },
     ])
     const parsed = sketchWireRecordSchema.parse(input)
-    expect(parsed.constraints).toEqual(input.constraints)
+    expect(parsed.constraints).toEqual<unknown>(input.constraints)
   })
 
   test("rejects self and non-point references", () => {
@@ -195,7 +195,7 @@ describe("sketch alignment wire constraints", () => {
     }
     const parsed = sketchWireRecordSchema.safeParse(ellipseRecord([quadrant]))
     expect(parsed.success).toBe(true)
-    if (parsed.success) expect(parsed.data.constraints).toEqual([quadrant])
+    if (parsed.success) expect(parsed.data.constraints).toEqual<unknown>([quadrant])
 
     const constraints = Array.from({ length: 1_667 }, (_, index) => ({
       ...quadrant,
@@ -237,7 +237,7 @@ describe("sketch alignment wire constraints", () => {
     }
     const parsed = sketchWireRecordSchema.safeParse(ellipseRecord([constraint]))
     expect(parsed.success).toBe(true)
-    if (parsed.success) expect(parsed.data.constraints).toEqual([constraint])
+    if (parsed.success) expect(parsed.data.constraints).toEqual<unknown>([constraint])
     expect(
       sketchWireRecordSchema.safeParse(record([{ ...constraint, ellipseId: arcId }])).success,
     ).toBe(false)
@@ -296,7 +296,7 @@ describe("sketch alignment wire constraints", () => {
       externalReferences: [reference],
     })
     expect(live.success).toBe(true)
-    if (live.success) expect(live.data.externalReferences).toEqual([reference])
+    if (live.success) expect(live.data.externalReferences).toEqual<unknown>([reference])
 
     const orphaned = sketchWireRecordSchema.safeParse({
       ...record([]),
@@ -321,7 +321,7 @@ describe("sketch alignment wire constraints", () => {
     }
     const parsed = sketchWireRecordSchema.safeParse(ellipticalArcRecord([constraint]))
     expect(parsed.success).toBe(true)
-    if (parsed.success) expect(parsed.data.constraints).toEqual([constraint])
+    if (parsed.success) expect(parsed.data.constraints).toEqual<unknown>([constraint])
     expect(
       sketchWireRecordSchema.safeParse(
         ellipseRecord([{ ...constraint, ellipticalArcId: ellipseId }]),

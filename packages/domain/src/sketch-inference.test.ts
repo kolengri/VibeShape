@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { SketchEntityId } from "./identifiers"
 import { createSketchInferenceCandidateQuery, inferSketchPoint } from "./sketch-inference"
 
@@ -803,7 +804,7 @@ describe("sketch inference", () => {
         kind: "quadrant",
         point: { x: 10, y: 0 },
       })
-      expect(inference.relations[0]).toEqual({
+      expect(inference.relations[0]).toEqual<unknown>({
         type: "point-on-curve",
         curveId: curves[0]?.id,
       })
@@ -835,7 +836,7 @@ describe("sketch inference", () => {
       })
 
       expect(inference).toMatchObject({ kind: "midpoint" })
-      expect(inference.relations).toEqual([{ type: "arc-midpoint", arcId: curves[0]?.id }])
+      expect(inference.relations).toEqual<unknown>([{ type: "arc-midpoint", arcId: curves[0]?.id }])
       expect(sort).not.toHaveBeenCalled()
     } finally {
       sort.mockRestore()
@@ -864,7 +865,7 @@ describe("sketch inference", () => {
       })
 
       expect(inference).toMatchObject({ kind: "quadrant", point: { x: -10, y: 0 } })
-      expect(inference.relations).toEqual([
+      expect(inference.relations).toEqual<unknown>([
         {
           type: "ellipse-quadrant",
           ellipseId: curves[0]?.id,
@@ -1000,7 +1001,9 @@ describe("sketch inference", () => {
       })
 
       expect(inference).toMatchObject({ kind: "point-on-curve" })
-      expect(inference.relations).toEqual([{ type: "point-on-ellipse", ellipseId: curves[0]?.id }])
+      expect(inference.relations).toEqual<unknown>([
+        { type: "point-on-ellipse", ellipseId: curves[0]?.id },
+      ])
       expect(sort).not.toHaveBeenCalled()
     } finally {
       sort.mockRestore()

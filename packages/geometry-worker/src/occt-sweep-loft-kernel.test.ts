@@ -1,7 +1,6 @@
-// @vitest-environment node
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { makeCylinder, measureVolume, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import {
   type AnalyticalProfile,
   createAnalyticalFace,

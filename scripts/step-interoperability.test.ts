@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { delimiter } from "node:path"
-import { describe, expect, it } from "vitest"
 import { GEOMETRY_PROTOCOL_VERSION } from "../packages/protocol/src"
 import { OCCT_BUILD_INPUTS } from "./occt-build-config"
 import {

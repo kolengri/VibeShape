@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
-import { describe, expect, it } from "vitest"
 import { resolveShellOpeningCandidates } from "./shell-opening-resolution"
 
 const scope = { featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f7801", outputRole: "result" }

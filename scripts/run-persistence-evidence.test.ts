@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { assertLocalPersistenceEnvironment } from "./run-persistence-evidence"
 
 describe("persistence evidence runner", () => {

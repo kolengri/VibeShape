@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import type { DocumentSnapshotV1 } from "./document"
 import { copyVersionedDocumentHistory } from "./document-copy"
 import { documentRestoredEventSchema } from "./document-history"
@@ -161,5 +161,5 @@ it("copies a complete restore journal while retaining valid historical revision 
     ok: true,
     snapshot: copied.snapshot,
   })
-  expect(h.before.id).toBe(id(1))
+  expect(h.before.id).toBe<unknown>(id(1))
 })

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   isLocalLifecycleCommand,
   localOperationSchema,
@@ -11,12 +12,12 @@ import {
 } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it, vi } from "vitest"
 import {
   lifecycleId as id,
   primitiveNames,
   primitiveParameters,
 } from "../../../../tests/support/primitive-lifecycle"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createLocalLifecycleCommand } from "./local-lifecycle-command"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
@@ -166,7 +167,7 @@ describe("named primitive and lifecycle authority", () => {
           arguments: { ...feature, parameters },
         }),
       )
-      expect(applyCommand).toHaveBeenCalledOnce()
+      expect(applyCommand).toHaveBeenCalledTimes(1)
       expect(applyCommand.mock.calls[0]?.[0]).toEqual(actor)
       const request = applyCommand.mock.calls[0]?.[1]
       expect(parseDocumentCommand(request.command).ok).toBe(true)
@@ -245,7 +246,7 @@ describe("named primitive and lifecycle authority", () => {
         ok: false,
         diagnostic: { code, message: result.diagnostic.message, retryable: false },
       })
-      expect(applyCommand).toHaveBeenCalledOnce()
+      expect(applyCommand).toHaveBeenCalledTimes(1)
     },
   )
 })

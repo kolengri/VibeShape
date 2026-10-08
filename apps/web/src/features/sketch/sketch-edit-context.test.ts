@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -7,7 +8,6 @@ import {
   featureRecordSchema,
   type SketchId,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { mergeSketchEditVisibility, sketchEditContextVisibility } from "./sketch-edit-context"
 
 const ids = {

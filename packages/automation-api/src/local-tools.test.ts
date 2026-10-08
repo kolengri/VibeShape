@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import { localConnectResponseSchema, localResultRequestSchema } from "./local-session"
 import { localOperationSchema, localToolOutputs } from "./local-tools"
 

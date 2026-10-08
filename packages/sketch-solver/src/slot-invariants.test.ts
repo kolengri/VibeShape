@@ -1,3 +1,4 @@
+import { beforeAll, describe, expect, it } from "bun:test"
 import {
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -9,7 +10,6 @@ import {
   createEmptySketch,
   moveSketchPoint,
 } from "@vibeshape/domain/sketch-edit"
-import { beforeAll, describe, expect, it } from "vitest"
 import createNativeSketchSolver from "../runtime/vibeshape_slvs.mjs"
 import type { NativeSketchSolverModule } from "./abi"
 import { solveSketchRecord } from "./production"

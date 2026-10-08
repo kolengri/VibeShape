@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { ExtrusionParameterPanel } from "./extrusion-parameter-panel"
 
 afterEach(cleanup)
@@ -51,7 +51,7 @@ describe("ExtrusionParameterPanel", () => {
     )
     expect(screen.getByText("Sketch 1").textContent).toBe("Sketch 1")
     await user.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(onCancel).toHaveBeenCalledOnce()
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
   it("does not mutate profile selection while the panel is read-only", async () => {

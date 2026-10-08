@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { CONTROLLED_OCCT_SOURCE_REVISION } from "../packages/geometry-worker/src/build-info"
 import { instrumentReplicadBuildConfig, OCCT_BUILD_INPUTS } from "./occt-build-config"
 

@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { strToU8 } from "fflate"
 import { isFunction } from "is-what"
-import { describe, expect, it } from "vitest"
 import {
   buildExtensionArchive,
   extensionFixture,

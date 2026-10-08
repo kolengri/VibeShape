@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { type SketchEntity, type SketchPoint2, sketchEntityIdSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   projectSketchCurveBetweenFrames,
   projectWorldCircularEdgeToSupport,

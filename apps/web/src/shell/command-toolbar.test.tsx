@@ -1,11 +1,11 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import {
   type BuiltInEditorCommandContext,
   resolveBuiltInEditorCommands,
@@ -122,7 +122,7 @@ describe("CommandToolbar", () => {
       button.querySelector("svg")?.innerHTML,
     )
     await userEvent.click(button)
-    expect(actions.lightweighting).toHaveBeenCalledOnce()
+    expect(actions.lightweighting).toHaveBeenCalledTimes(1)
   })
   it("presents registry-backed sketch-first model commands", async () => {
     const user = userEvent.setup()
@@ -140,7 +140,7 @@ describe("CommandToolbar", () => {
     expect((await screen.findByRole("tooltip")).textContent).toContain("Create sketch")
 
     await user.click(createSketch)
-    expect(actions.createSketch).toHaveBeenCalledOnce()
+    expect(actions.createSketch).toHaveBeenCalledTimes(1)
 
     const extrude = screen.getByRole("button", { name: "Extrude" })
     await user.unhover(createSketch)
@@ -288,7 +288,7 @@ describe("CommandToolbar", () => {
     expect(actions.setSketchCameraMode).toHaveBeenNthCalledWith(2, "normal")
 
     await user.click(screen.getByRole("button", { name: "Undo" }))
-    expect(actions.undoSketch).toHaveBeenCalledOnce()
+    expect(actions.undoSketch).toHaveBeenCalledTimes(1)
   }, 15_000)
 
   it("uses roving arrow-key focus across workspace controls", async () => {
@@ -404,7 +404,7 @@ describe("CommandToolbar", () => {
         createPyramid: "Pyramid",
       }[key]
       await user.click(screen.getByRole("button", { name: label }))
-      expect(actions[key]).toHaveBeenCalledOnce()
+      expect(actions[key]).toHaveBeenCalledTimes(1)
     }
   })
 
@@ -470,11 +470,11 @@ describe("CommandToolbar", () => {
     expect(screen.queryByRole("button", { name: "Profile features" })).toBeNull()
 
     await user.dblClick(extrude)
-    expect(actions.createExtrusion).toHaveBeenCalledOnce()
+    expect(actions.createExtrusion).toHaveBeenCalledTimes(1)
     expect(extrude.getAttribute("aria-busy")).toBe("true")
 
     await user.click(revolve)
-    expect(actions.createRevolve).toHaveBeenCalledOnce()
+    expect(actions.createRevolve).toHaveBeenCalledTimes(1)
     expect(screen.getByRole("button", { name: "Extrude" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Revolve" })).toBeTruthy()
   })

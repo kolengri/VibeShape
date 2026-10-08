@@ -1,9 +1,8 @@
-// @vitest-environment node
-
+import { beforeAll, describe, expect, it } from "bun:test"
 import { extrusionProfileSegmentSchema } from "@vibeshape/protocol"
 import { cast, makeFace, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { cubicBezierProjectionBounds } from "./extrusion-curve-geometry"
 import { inspectOcctBody } from "./occt-body-validation"
 import { type CubicBezierControlPoints, makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
@@ -251,7 +250,7 @@ it.each(["poles", "point", "set", "curve", "handle", "builder", "not-done"])(
     for (const resource of fixture.acquired) {
       if (resource.name === "curve" && fixture.acquired.some(({ name }) => name === "handle"))
         expect(resource.delete).not.toHaveBeenCalled()
-      else expect(resource.delete).toHaveBeenCalledOnce()
+      else expect(resource.delete).toHaveBeenCalledTimes(1)
     }
   },
 )

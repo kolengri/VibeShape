@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
   canonicalJson,
@@ -8,7 +9,6 @@ import {
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import {
   createPersistentDocumentSession,
   type DocumentRebuildPort,

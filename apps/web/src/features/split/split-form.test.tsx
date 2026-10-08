@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { SplitForm } from "./split-form"
@@ -74,8 +75,9 @@ describe("Split form", () => {
     await userEvent.click(screen.getByRole("button", { name: "Use body midpoint" }))
     expect(offset.value).toBe("0 mm")
     await userEvent.click(screen.getByRole("button", { name: "Apply split" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
-    expect(f.onSave).toHaveBeenCalledExactlyOnceWith(
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
+    expect(f.onSave).toHaveBeenCalledWith(
       7,
       expect.objectContaining({
         id: featureId,
@@ -111,14 +113,14 @@ describe("Split form", () => {
     const apply = screen.getByRole("button", { name: "Apply split" }) as HTMLButtonElement
     await userEvent.click(apply)
     await userEvent.click(apply)
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(apply.disabled).toBe(true)
     reject?.(new Error("Storage unavailable"))
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
     expect(apply.disabled).toBe(false)
     onSave.mockResolvedValue({ ok: true })
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[1]?.[1]).toEqual(feature)
   })
   it.each([{ status: "error" as const }, { status: "loading" as const }, { unavailable: true }])(
@@ -133,7 +135,7 @@ describe("Split form", () => {
   it("cancels without saving and disposes the preview on unmount", async () => {
     const f = setup()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(f.onCancel).toHaveBeenCalledOnce()
+    expect(f.onCancel).toHaveBeenCalledTimes(1)
     expect(f.onSave).not.toHaveBeenCalled()
     f.unmount()
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)

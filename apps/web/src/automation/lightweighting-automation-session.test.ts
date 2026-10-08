@@ -1,34 +1,41 @@
-// @vitest-environment node
-
-import { lightweightingOperationSchema } from "@vibeshape/automation-api/lightweighting-tools"
-import { commandActorSchema, commandActorsEqual } from "@vibeshape/domain/commands"
-import { StructuralOptimizationError } from "@vibeshape/structural-optimization/client"
+import { afterEach, describe, expect, it, mock } from "bun:test"
 import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import {
-  lightweightingId,
-  lightweightingIdentity,
-  lightweightingOperation,
-  lightweightingStiffnessSummary,
-  lightweightingSummary,
-} from "../../../../packages/automation-api/src/lightweighting.test-fixtures"
-import { meshInspection } from "../features/import/import-test-fixtures"
-import type { LightweightingSource } from "../features/lightweighting/lightweighting-model"
-import { automationReviews } from "./automation-review-controller"
-import type { ImportReviewedCommit } from "./import-upload-session"
-import { createBrowserLightweightingAutomationSession } from "./lightweighting-automation-session"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const mocks = vi.hoisted(() => ({ optimize: vi.fn(), inspect: vi.fn(), terminate: vi.fn() }))
-vi.mock("@vibeshape/structural-optimization/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@vibeshape/structural-optimization/client")>()),
+import type { LightweightingSource } from "../features/lightweighting/lightweighting-model"
+
+import type { ImportReviewedCommit } from "./import-upload-session"
+
+const mocks = (() => ({ optimize: vi.fn(), inspect: vi.fn(), terminate: vi.fn() }))()
+const originalModule1 = { ...(await import("@vibeshape/structural-optimization/client")) }
+mock.module("@vibeshape/structural-optimization/client", () => ({
+  ...originalModule1,
   optimizeStructuralModel: mocks.optimize,
 }))
-vi.mock("@vibeshape/document-worker/session", () => ({
+mock.module("@vibeshape/document-worker/session", () => ({
   createDocumentWorkerSession: () => ({
     inspectMeshImport: mocks.inspect,
     terminate: mocks.terminate,
   }),
 }))
+
+const { lightweightingOperationSchema } = await import(
+  "@vibeshape/automation-api/lightweighting-tools"
+)
+const { commandActorSchema, commandActorsEqual } = await import("@vibeshape/domain/commands")
+const { StructuralOptimizationError } = await import("@vibeshape/structural-optimization/client")
+const {
+  lightweightingId,
+  lightweightingIdentity,
+  lightweightingOperation,
+  lightweightingStiffnessSummary,
+  lightweightingSummary,
+} = await import("../../../../packages/automation-api/src/lightweighting.test-fixtures")
+const { meshInspection } = await import("../features/import/import-test-fixtures")
+const { automationReviews } = await import("./automation-review-controller")
+const { createBrowserLightweightingAutomationSession } = await import(
+  "./lightweighting-automation-session"
+)
 const actor = commandActorSchema.parse({
   type: "mcp",
   clientId: "org.example.lightweighting",

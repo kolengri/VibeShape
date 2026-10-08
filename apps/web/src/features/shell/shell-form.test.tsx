@@ -1,10 +1,11 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { ShellForm } from "./shell-form"
@@ -129,8 +130,8 @@ describe("Shell form and explicit opening repair", () => {
     expect(screen.queryByRole("alert")).toBeNull()
     expect(apply.disabled).toBe(false)
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
-    expect(f.onSave).toHaveBeenCalledOnce()
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
   })
   it("formats native round-off at zero without a negative sign while preserving real negative coordinates", () => {
     expect(formatShellMeasurement(-1e-16)).toBe("0.00")
@@ -153,7 +154,7 @@ describe("Shell form and explicit opening repair", () => {
       ),
     )
     await userEvent.click(screen.getByRole("button", { name: "Apply shell" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     const call = f.onSave.mock.calls[0]
     if (!call) throw new Error("Shell must save exactly once.")
     const saved = call[1]
@@ -183,7 +184,7 @@ describe("Shell form and explicit opening repair", () => {
     expect(f.onSave).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("checkbox"))
     await userEvent.click(screen.getByRole("button", { name: "Apply shell" }))
-    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
       parameters: { sourceContentHash: "b".repeat(64) },
@@ -207,7 +208,7 @@ describe("Shell form and explicit opening repair", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
     expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true)
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(f.onCancel).toHaveBeenCalledOnce()
+    expect(f.onCancel).toHaveBeenCalledTimes(1)
     f.unmount()
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)
   })
@@ -234,7 +235,7 @@ describe("Shell form and explicit opening repair", () => {
     expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true)
     await userEvent.click(screen.getByRole("radio", { name: "Closed cavity" }))
     await userEvent.click(screen.getByRole("button", { name: "Apply shell" }))
-    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1].parameters.openings).toEqual([])
   })
   it("retains a version 2 semantic opening after source dimensions change", () => {

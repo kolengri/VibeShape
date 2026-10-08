@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   createFeatureGraph,
   evaluateFeatureGraph,
@@ -95,20 +96,20 @@ describe("feature graph", () => {
       feature(featureIds.b, [featureIds.a]),
     ])
 
-    expect(graph.features.map(({ id }) => id)).toEqual([
+    expect(graph.features.map(({ id }) => id)).toEqual<unknown>([
       featureIds.c,
       featureIds.d,
       featureIds.a,
       featureIds.b,
     ])
-    expect(graph.evaluationOrder.map(({ id }) => id)).toEqual([
+    expect(graph.evaluationOrder.map(({ id }) => id)).toEqual<unknown>([
       featureIds.d,
       featureIds.a,
       featureIds.b,
       featureIds.c,
     ])
-    expect(graph.dependenciesOf(featureIds.c).map(({ id }) => id)).toEqual([featureIds.b])
-    expect(graph.dependentsOf(featureIds.a).map(({ id }) => id)).toEqual([featureIds.b])
+    expect(graph.dependenciesOf(featureIds.c).map(({ id }) => id)).toEqual<unknown>([featureIds.b])
+    expect(graph.dependentsOf(featureIds.a).map(({ id }) => id)).toEqual<unknown>([featureIds.b])
   })
 
   it("rejects duplicate IDs, missing dependencies, and cycles", () => {
@@ -191,12 +192,16 @@ describe("feature graph evaluation", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(observed).toEqual([featureIds.a, featureIds.b, featureIds.c])
-    expect(result.evaluation.records.map(({ featureId }) => featureId)).toEqual([
+    expect(result.evaluation.records.map(({ featureId }) => featureId)).toEqual<unknown>([
       featureIds.c,
       featureIds.a,
       featureIds.b,
     ])
-    expect(result.evaluation.dirtyFeatureIds).toEqual([featureIds.a, featureIds.b, featureIds.c])
+    expect(result.evaluation.dirtyFeatureIds).toEqual<unknown>([
+      featureIds.a,
+      featureIds.b,
+      featureIds.c,
+    ])
   })
 
   it("rebuilds changed descendants while reusing independent results", async () => {
@@ -221,11 +226,11 @@ describe("feature graph evaluation", () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(evaluate.mock.calls.map(([context]) => context.feature.id)).toEqual([
+    expect(evaluate.mock.calls.map(([context]) => context.feature.id)).toEqual<unknown>([
       featureIds.a,
       featureIds.b,
     ])
-    expect(result.evaluation.reusedFeatureIds).toEqual([featureIds.c])
+    expect(result.evaluation.reusedFeatureIds).toEqual<unknown>([featureIds.c])
     expect(recordById(result.evaluation.records, featureIds.c)).toEqual(
       succeeded(featureIds.c, "3"),
     )
@@ -254,7 +259,7 @@ describe("feature graph evaluation", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(evaluated).toEqual([featureIds.a, featureIds.c])
-    expect(recordById(result.evaluation.records, featureIds.b)).toEqual({
+    expect(recordById(result.evaluation.records, featureIds.b)).toEqual<unknown>({
       featureId: featureIds.b,
       status: "blocked",
       blockedBy: [featureIds.a],
@@ -277,13 +282,13 @@ describe("feature graph evaluation", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(recordById(result.evaluation.records, featureIds.a)?.status).toBe("suppressed")
-    expect(recordById(result.evaluation.records, featureIds.b)).toEqual({
+    expect(recordById(result.evaluation.records, featureIds.b)).toEqual<unknown>({
       featureId: featureIds.b,
       status: "blocked",
       blockedBy: [featureIds.a],
     })
     expect(evaluate).toHaveBeenCalledTimes(1)
-    expect(evaluate.mock.calls[0]?.[0].feature.id).toBe(featureIds.c)
+    expect(evaluate.mock.calls[0]?.[0].feature.id).toBe<unknown>(featureIds.c)
   })
 
   it("contains rejected and invalid evaluator outcomes as stable failures", async () => {
@@ -301,7 +306,7 @@ describe("feature graph evaluation", () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.evaluation.records).toEqual([
+    expect(result.evaluation.records).toEqual<unknown>([
       {
         featureId: featureIds.a,
         status: "failed",

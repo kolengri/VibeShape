@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { parseGeometryImport } from "./import"
 import { writeStlMeshes } from "./stl-meshes"
 

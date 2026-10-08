@@ -1,7 +1,6 @@
-// @vitest-environment node
+import { expect, it } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
-import { expect, it, vi } from "vitest"
 import {
   type FeatureGeometryEvaluationRequest,
   rebuildDocumentFeatures,
@@ -25,6 +24,8 @@ import {
 } from "../packages/domain/src/index"
 import { ReplicadGeometryEngine } from "../packages/geometry-worker/src/engine"
 import { inspectAssemblyInputSchema } from "../packages/protocol/src/assembly-inspection"
+import { testAssetPath } from "../tests/unit/support/assets"
+import { vi } from "../tests/unit/support/bun-test"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${n.toString(16).padStart(12, "0")}`
 const pose = (x = 0) => ({ translation: [x, 0, 0], quaternion: [0, 0, 0, 1] })
@@ -189,10 +190,7 @@ async function nativeAssemblyFixture() {
 it("rebuilds frozen exact assembly sources after their live Part is deleted and isolates native scopes", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (url: string) =>
-        new Response(await readFile(resolve(url.startsWith("/@fs/") ? url.slice(4) : `.${url}`))),
-    ),
+    vi.fn(async (url: string) => new Response(await readFile(resolve(testAssetPath(url))))),
   )
   const { engine, disposed, document, types, baseBounds, frozen, input, liveInput } =
     await nativeAssemblyFixture()

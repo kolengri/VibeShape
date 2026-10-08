@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { OcctShapeCaster } from "./occt-cast"
 import { createOcctPlacementOperations } from "./occt-placement"
 
@@ -43,9 +44,9 @@ const placement = {
 describe("owned rigid OCCT placement", () => {
   it("applies world Rx then Ry then Rz followed by translation using the pinned copy constructor", () => {
     const f = fixture()
-    expect(f.operations.placeShape(f.occt, f.source as unknown as Shape3D, placement)).toBe(
-      f.result,
-    )
+    expect(
+      f.operations.placeShape(f.occt, f.source as unknown as Shape3D, placement),
+    ).toBe<unknown>(f.result)
     const coefficients = f.transform.SetValues.mock.calls[0]
     expect(coefficients).toHaveLength(12)
     const expected = [0, 1, 0, 10, 0, 0, -1, -20, -1, 0, 0, 30]
@@ -53,9 +54,9 @@ describe("owned rigid OCCT placement", () => {
       expect(coefficients?.[index]).toBeCloseTo(value, 12)
     }
     expect(f.builderConstructor).toHaveBeenCalledWith(f.source.wrapped, f.transform, true)
-    expect(f.transform.delete).toHaveBeenCalledOnce()
-    expect(f.builder.delete).toHaveBeenCalledOnce()
-    expect(f.rawShape.delete).toHaveBeenCalledOnce()
+    expect(f.transform.delete).toHaveBeenCalledTimes(1)
+    expect(f.builder.delete).toHaveBeenCalledTimes(1)
+    expect(f.rawShape.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
     expect(f.source.wrapped.delete).not.toHaveBeenCalled()
     expect(f.result.delete).not.toHaveBeenCalled()
@@ -75,7 +76,7 @@ describe("owned rigid OCCT placement", () => {
       expect(() =>
         f.operations.placeShape(f.occt, f.source as unknown as Shape3D, placement),
       ).toThrow()
-      expect(f.transform.delete).toHaveBeenCalledOnce()
+      expect(f.transform.delete).toHaveBeenCalledTimes(1)
       expect(f.builder.delete).toHaveBeenCalledTimes(
         stage === "set-values" || stage === "builder" ? 0 : 1,
       )

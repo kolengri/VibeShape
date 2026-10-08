@@ -1,12 +1,12 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { historyFolderIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import {
   authoredTestBody,
@@ -61,7 +61,8 @@ describe("authored tree controls", () => {
     await userEvent.click(screen.getByRole("treeitem", { name: "Part Part 1" }))
     expect(onSelect).toHaveBeenCalledWith(part.id)
     await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
-    expect(onCommit).toHaveBeenCalledExactlyOnceWith(authority.revision, {
+    expect(onCommit).toHaveBeenCalledTimes(1)
+    expect(onCommit).toHaveBeenCalledWith(authority.revision, {
       kind: "part.set-visibility",
       partId: part.id,
       visible: false,
@@ -140,7 +141,7 @@ describe("authored tree controls", () => {
     const dialog = screen.getByRole("dialog", { name: "New folder" })
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Folder name" }), "Housing")
     await userEvent.click(within(dialog).getByRole("button", { name: "New folder" }))
-    await waitFor(() => expect(onCommit).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1))
     expect(onCommit.mock.calls[0]).toEqual([
       authority.revision,
       {
@@ -185,7 +186,8 @@ describe("authored tree controls", () => {
       within(dialog).getByText(/All sketches, features, and their order stay unchanged/),
     ).toBeTruthy()
     await userEvent.click(within(dialog).getByRole("button", { name: "Ungroup" }))
-    expect(onCommit).toHaveBeenCalledExactlyOnceWith(authority.revision, {
+    expect(onCommit).toHaveBeenCalledTimes(1)
+    expect(onCommit).toHaveBeenCalledWith(authority.revision, {
       kind: "folder.remove",
       folderId: folder.id,
     })
@@ -217,13 +219,14 @@ describe("authored tree controls", () => {
     await userEvent.clear(within(dialog).getByRole("textbox", { name: "Name" }))
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Name" }), "Outer shell")
     await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }))
-    await waitFor(() =>
-      expect(onCommit).toHaveBeenCalledExactlyOnceWith(authority.revision, {
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledTimes(1)
+      expect(onCommit).toHaveBeenCalledWith(authority.revision, {
         kind: "folder.rename",
         folderId: folder.id,
         name: "Outer shell",
-      }),
-    )
+      })
+    })
     expect(screen.getByText("Original history children")).toBeTruthy()
     expect(folder.items).toEqual(authority.history.slice(0, 2))
   })
@@ -288,8 +291,10 @@ describe("surface texture source eligibility", () => {
       if (representation === "triangle-mesh") {
         expect(onSurfaceTexture).not.toHaveBeenCalled()
         expect(screen.getByText(/Triangle mesh/)).toBeTruthy()
-      } else
-        expect(onSurfaceTexture).toHaveBeenCalledExactlyOnceWith(body.featureId, body.outputRole)
+      } else {
+        expect(onSurfaceTexture).toHaveBeenCalledTimes(1)
+        expect(onSurfaceTexture).toHaveBeenCalledWith(body.featureId, body.outputRole)
+      }
     },
   )
 })

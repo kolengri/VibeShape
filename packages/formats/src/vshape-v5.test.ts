@@ -1,10 +1,10 @@
+import { describe, expect, it } from "bun:test"
 import {
   canonicalJson,
   documentRestoredV4EventSchema,
   reduceDocumentV4Event,
 } from "@vibeshape/domain"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
-import { describe, expect, it } from "vitest"
 import {
   authorityEnvelope,
   authorityTimestamp,

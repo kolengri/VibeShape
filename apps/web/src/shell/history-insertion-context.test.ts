@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { historyRepairFixture } from "../../../../packages/domain/src/history-repair.test-fixture"
 import type { DocumentControllerState } from "../document/document-controller"
 import { historyCreationAfter, reconcileHistoryInsertion } from "../document/history-insertion"
@@ -41,7 +41,7 @@ describe("History insertion input boundary", () => {
     expect(limited.report?.snapshot.sketches.map((item) => item.id)).toEqual(
       first.kind === "sketch" ? [first.id] : [],
     )
-    expect(controller.report?.snapshot).toBe(snapshot)
+    expect(controller.report?.snapshot).toBe<unknown>(snapshot)
     const start = historyInsertionContext({
       ...controller,
       historyInsertion: {

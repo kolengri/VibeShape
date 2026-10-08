@@ -1,4 +1,5 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { describe, expect, it } from "bun:test"
 import { act, renderHook } from "@testing-library/react"
 import {
   documentIdSchema,
@@ -8,7 +9,6 @@ import {
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { describe, expect, it } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { i18n } from "../../i18n"
 import type { ActivePartDesignTool } from "../part-design/part-design-tool"

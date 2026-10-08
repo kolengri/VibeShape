@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { resolveBuiltInEditorCommands } from "../commands/built-in-editor-commands"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"

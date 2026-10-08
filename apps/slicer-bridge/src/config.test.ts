@@ -1,7 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
 import { loadBridgeConfiguration, parseBridgeArguments, resolveBridgeConfigPath } from "./config"
 
 describe("slicer bridge configuration", () => {

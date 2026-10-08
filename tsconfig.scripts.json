@@ -17,6 +17,7 @@
     "playwright.public.config.ts",
     "playwright.performance.config.ts",
     "playwright.topology.config.ts",
-    "vitest.config.ts"
-  ]
+    "packages/geometry-worker/src/vite-modules.d.ts"
+  ],
+  "exclude": ["tests/unit/support/dom.ts", "scripts/testing/bun-test-dom.test.ts"]
 }

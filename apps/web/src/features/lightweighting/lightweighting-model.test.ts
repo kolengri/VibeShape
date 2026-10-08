@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createAngleQuantity,
   createLengthQuantity,
@@ -10,7 +11,6 @@ import { projectDocumentSnapshotV2ToV1 } from "@vibeshape/domain/document-v2"
 import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
 import {
   authoredTestBody,

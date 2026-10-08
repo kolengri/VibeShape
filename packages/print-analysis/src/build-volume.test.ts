@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { type PrintPreparationMesh, printerProfileSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { checkPrintVolume, PRINT_VOLUME_EPSILON_MM } from "./build-volume"
 import type { Point } from "./mesh-geometry"
 

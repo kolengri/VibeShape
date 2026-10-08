@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { printerProfileSchema } from "./printer-profile"
 
 const profile = {
@@ -11,7 +11,7 @@ const profile = {
 
 describe("rectangular printer profiles", () => {
   it("defaults to a rectangular bed without a margin", () => {
-    expect(printerProfileSchema.parse(profile)).toEqual({
+    expect(printerProfileSchema.parse(profile)).toEqual<unknown>({
       ...profile,
       bedShape: "rectangular",
       margin: 0,

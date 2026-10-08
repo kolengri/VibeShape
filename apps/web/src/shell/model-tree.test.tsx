@@ -1,8 +1,41 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
+import type { ComponentProps } from "react"
+import { vi } from "../../../../tests/unit/support/bun-test"
+import type { DocumentControllerState } from "../document/document-controller"
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import {
+const sortableCallbacks = (() => ({ current: null as unknown }))()
+
+mock.module("@dnd-kit/react", () => ({
+  DragDropProvider: (props: Record<string, unknown>) => {
+    sortableCallbacks.current = props
+    return props.children as import("react").ReactNode
+  },
+}))
+mock.module("@dnd-kit/dom", () => ({
+  Accessibility: class {},
+  PointerActivationConstraints: {
+    Delay: class {},
+    Distance: class {},
+  },
+  PointerSensor: { configure: () => ({}) },
+}))
+mock.module("@dnd-kit/react/sortable", () => ({
+  useSortable: () => ({
+    isDragSource: false,
+    isDragging: false,
+    isDropTarget: false,
+    ref: () => undefined,
+  }),
+  isSortable: (value: unknown) =>
+    typeof value === "object" && value !== null && "initialIndex" in value && "index" in value,
+  isSortableOperation: (operation: { source: unknown; target: unknown }) =>
+    operation.source !== null && operation.target !== null,
+}))
+
+const { act, cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const {
   boxFeatureType,
   createEmptySketch,
   createLengthQuantity,
@@ -17,53 +50,19 @@ import {
   sketchEntityIdSchema,
   sketchIdSchema,
   sketchRecordSchema,
-} from "@vibeshape/domain"
-import { projectDocumentSnapshotV2ToV1 } from "@vibeshape/domain/document-v2"
-import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import type { ComponentProps } from "react"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
-import type { DocumentControllerState } from "../document/document-controller"
-import { i18n } from "../i18n"
-import {
-  authoredTestBody,
-  authoredTestId,
-  authoredTreeFixture,
-  requireAuthoredFixture,
-} from "../test-support/authored-tree-fixture"
-import { HistoryProfileSources } from "./history-profile-sources"
-import { ModelTree } from "./model-tree"
-
-const sortableCallbacks = vi.hoisted(() => ({ current: null as unknown }))
-
-vi.mock("@dnd-kit/react", () => ({
-  DragDropProvider: (props: Record<string, unknown>) => {
-    sortableCallbacks.current = props
-    return props.children as import("react").ReactNode
-  },
-}))
-vi.mock("@dnd-kit/dom", () => ({
-  Accessibility: class {},
-  PointerActivationConstraints: {
-    Delay: class {},
-    Distance: class {},
-  },
-  PointerSensor: { configure: () => ({}) },
-}))
-vi.mock("@dnd-kit/react/sortable", () => ({
-  useSortable: () => ({
-    isDragSource: false,
-    isDragging: false,
-    isDropTarget: false,
-    ref: () => undefined,
-  }),
-  isSortable: (value: unknown) =>
-    typeof value === "object" && value !== null && "initialIndex" in value && "index" in value,
-  isSortableOperation: (operation: { source: unknown; target: unknown }) =>
-    operation.source !== null && operation.target !== null,
-}))
+} = await import("@vibeshape/domain")
+const { projectDocumentSnapshotV2ToV1 } = await import("@vibeshape/domain/document-v2")
+const { applyDocumentV2Command } = await import("@vibeshape/domain/document-v2-commands")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } = await import(
+  "@vibeshape/protocol"
+)
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { i18n } = await import("../i18n")
+const { authoredTestBody, authoredTestId, authoredTreeFixture, requireAuthoredFixture } =
+  await import("../test-support/authored-tree-fixture")
+const { HistoryProfileSources } = await import("./history-profile-sources")
+const { ModelTree } = await import("./model-tree")
 
 type TestSortable = { id: string; index: number; initialIndex: number }
 type TestOperation = { source: TestSortable | null; target: TestSortable | null }
@@ -569,7 +568,8 @@ describe("ModelTree insertion body boundary", () => {
     await userEvent.hover(current)
     expect(onBodyPreselectionChange).toHaveBeenLastCalledWith({ featureId: sourceId })
     await userEvent.click(current)
-    expect(onPartSelect).toHaveBeenCalledExactlyOnceWith(part.id)
+    expect(onPartSelect).toHaveBeenCalledTimes(1)
+    expect(onPartSelect).toHaveBeenCalledWith(part.id)
   })
 
   it("scopes unmanaged body rows to the insertion prefix while retaining later History", async () => {
@@ -583,7 +583,8 @@ describe("ModelTree insertion body boundary", () => {
     expect(screen.getByRole("treeitem", { name: "Box 3" })).toBeTruthy()
     expect(screen.queryByRole("treeitem", { name: "Body 2" })).toBeNull()
     await userEvent.click(screen.getByRole("treeitem", { name: "Body 1" }))
-    expect(onFeatureActivate).toHaveBeenCalledExactlyOnceWith(sourceId)
+    expect(onFeatureActivate).toHaveBeenCalledTimes(1)
+    expect(onFeatureActivate).toHaveBeenCalledWith(sourceId)
   })
 })
 
@@ -1150,8 +1151,9 @@ describe("ModelTree visibility and deletion", () => {
     await user.click(actions)
     await user.click(screen.getByRole("menuitem", { name: "Delete Box 1…" }))
     await user.dblClick(screen.getByRole("button", { name: "Delete feature" }))
-    expect(onFeatureRemove).toHaveBeenCalledExactlyOnceWith(7, featureId)
-    expect(onFeatureDeleted).toHaveBeenCalledOnce()
+    expect(onFeatureRemove).toHaveBeenCalledTimes(1)
+    expect(onFeatureRemove).toHaveBeenCalledWith(7, featureId)
+    expect(onFeatureDeleted).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("alertdialog")).toBeNull()
   })
 
@@ -1226,11 +1228,11 @@ describe("ModelTree visibility and deletion", () => {
     const suppress = screen.getByRole("menuitem", { name: "Suppress Box 1" })
     await user.click(suppress)
 
-    expect(onFeatureSuppressionChange).toHaveBeenCalledOnce()
+    expect(onFeatureSuppressionChange).toHaveBeenCalledTimes(1)
     expect(onFeatureSuppressionChange).toHaveBeenCalledWith(7, featureId, true)
     expect(suppress.getAttribute("aria-busy")).toBe("true")
     await user.click(suppress)
-    expect(onFeatureSuppressionChange).toHaveBeenCalledOnce()
+    expect(onFeatureSuppressionChange).toHaveBeenCalledTimes(1)
 
     resolveSuppression?.({ ok: true })
     await waitFor(() =>
@@ -1296,7 +1298,7 @@ describe("ModelTree visibility and deletion", () => {
     await user.hover(hideAllSketches)
     expect(await screen.findByText("Hide all sketches · Shift+H")).toBeTruthy()
     await user.click(hideAllSketches)
-    expect(onAllSketchVisibilityToggle).toHaveBeenCalledOnce()
+    expect(onAllSketchVisibilityToggle).toHaveBeenCalledTimes(1)
 
     unmount()
     renderTree({ hiddenSketchIds: [sketchId], onAllSketchVisibilityToggle })
@@ -1320,7 +1322,7 @@ describe("ModelTree visibility and deletion", () => {
     await user.click(screen.getByRole("button", { name: "Delete sketch" }))
 
     expect(onSketchRemove).toHaveBeenCalledWith(7, sketchId)
-    expect(onSketchDeleted).toHaveBeenCalledOnce()
+    expect(onSketchDeleted).toHaveBeenCalledTimes(1)
   })
 
   it("opens sketch deletion from the keyboard and restores focus after cancellation", async () => {
@@ -1387,7 +1389,7 @@ describe("ModelTree visibility and deletion", () => {
       await user.click(deletion)
       expect(screen.getByRole("alertdialog", { name: "Delete Profile?" })).toBeTruthy()
       await user.click(screen.getByRole("button", { name: "Delete sketch" }))
-      expect(onSketchRemove).toHaveBeenCalledOnce()
+      expect(onSketchRemove).toHaveBeenCalledTimes(1)
       expect(onSketchRemove).toHaveBeenCalledWith(7, sketchId)
     },
   )
@@ -1405,7 +1407,7 @@ describe("ModelTree rename", () => {
     await user.type(screen.getByRole("textbox", { name: "Feature name" }), "Mounting block")
     await user.dblClick(screen.getByRole("button", { name: /^Rename feature$/ }))
 
-    expect(onFeatureRename).toHaveBeenCalledOnce()
+    expect(onFeatureRename).toHaveBeenCalledTimes(1)
     expect(onFeatureRename).toHaveBeenCalledWith(
       7,
       expect.objectContaining({ id: featureId, label: "Mounting block" }),

@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { Box3, LineSegments, Mesh, Vector3 } from "three"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { PrintBedDecoration } from "./print-bed"
 
 describe("print bed presentation", () => {
@@ -30,7 +31,7 @@ describe("print bed presentation", () => {
     surface.geometry.addEventListener("dispose", disposed)
     decoration.setGround(true)
     decoration.setBed(null)
-    expect(disposed).toHaveBeenCalledOnce()
+    expect(disposed).toHaveBeenCalledTimes(1)
     expect(decoration.bed.children).toHaveLength(0)
     expect(decoration.ground.children[0]).toBeInstanceOf(LineSegments)
     decoration.setGround(false)

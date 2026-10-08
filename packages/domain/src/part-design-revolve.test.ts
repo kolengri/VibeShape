@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { featureBodyDependencyIds } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
@@ -129,7 +129,7 @@ describe("selector-backed revolve feature", () => {
         },
       })
       expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-      expect(featureBodyDependencyIds(feature)).toEqual([targetFeatureId])
+      expect(featureBodyDependencyIds(feature)).toEqual<unknown>([targetFeatureId])
     },
   )
 
@@ -155,8 +155,8 @@ describe("selector-backed revolve feature", () => {
       },
     })
     expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-    expect(readRevolveProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
-    expect(readRevolveProfileSet(revolve())?.profiles).toEqual([profile])
+    expect(readRevolveProfileSet(feature)?.profiles).toEqual<unknown>([profile, secondProfile])
+    expect(readRevolveProfileSet(revolve())?.profiles).toEqual<unknown>([profile])
     expect(
       multiProfileRevolveFeatureParametersSchema.safeParse({
         ...feature.parameters,
@@ -181,8 +181,8 @@ describe("selector-backed revolve feature", () => {
       })
 
       expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-      expect(readRevolveProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
-      expect(featureBodyDependencyIds(feature)).toEqual([targetFeatureId])
+      expect(readRevolveProfileSet(feature)?.profiles).toEqual<unknown>([profile, secondProfile])
+      expect(featureBodyDependencyIds(feature)).toEqual<unknown>([targetFeatureId])
       expect(registry().validateFeature({ ...feature, dependencies: [] })).toMatchObject({
         ok: false,
         diagnostic: { code: "invalid-feature-dependency-count" },
@@ -282,7 +282,7 @@ describe("selector-backed revolve feature", () => {
     })
 
     expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-    expect(readRevolveFeatureParameters(feature)?.axis).toEqual({
+    expect(readRevolveFeatureParameters(feature)?.axis).toEqual<unknown>({
       kind: "model-edge",
       reference: modelEdgeReference,
     })
@@ -381,7 +381,7 @@ describe("all-edge treatment feature contracts", () => {
       type: chamferFeatureType.type,
       parameters: { distance: createLengthQuantity(1) },
     })
-    expect(featureBodyDependencyIds(feature)).toEqual([target])
+    expect(featureBodyDependencyIds(feature)).toEqual<unknown>([target])
     expect(registry().validateFeature({ ...feature, dependencies: [] })).toMatchObject({
       ok: false,
     })

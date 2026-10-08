@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { sketchIdSchema } from "@vibeshape/domain/identifiers"
 import { sketchProfileSelectorSchema } from "@vibeshape/domain/sketch-profile-selector"
-import { describe, expect, it } from "vitest"
 import {
   createSketchProfileSelector,
   resolveSketchProfileSelector,

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { applyDocumentCommand } from "./commands"
 import { applyCommandToDraft, commitDocumentDraft, createDocumentDraft } from "./drafts"
 
@@ -78,7 +79,7 @@ describe("document drafts", () => {
         revision: 2,
         actor: userActor,
       })
-      expect(result.commit.commandIds).toEqual([
+      expect(result.commit.commandIds).toEqual<unknown>([
         "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
         "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
       ])
@@ -161,7 +162,7 @@ describe("document drafts", () => {
       },
     })
 
-    expect(applied).toMatchObject({
+    expect(matchValue(applied)).toMatchObject({
       ok: true,
       draft: { snapshot: { revision: 2, features: [{ id: expect.any(String) }] } },
     })

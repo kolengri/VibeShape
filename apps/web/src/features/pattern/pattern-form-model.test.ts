@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { editPartDesignTool, modifyingSolidTargetFeatures } from "../part-design/part-design-tool"
 import { parsePatternForm, patternFeatureRecord, patternFormValues } from "./pattern-form-model"
 import { copy, countVariable, featureId, mode, targetId, units } from "./pattern-test-fixtures"

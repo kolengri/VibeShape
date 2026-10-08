@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { copyCompleteDocumentAuthorityHistory } from "@vibeshape/domain/document-v2-copy"
 import { applyHistoryRepairCommand } from "@vibeshape/domain/document-v5-commands"
-import { describe, expect, it } from "vitest"
 import {
   historyRepairJournalFixture,
   repairActor,

@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { applyDocumentV3Command } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   surfaceTextureProjectFixture,
   textureFixtureEnvelope,

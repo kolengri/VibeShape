@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createDocumentDependencyGraph } from "./document-graph"
 import { featureIdSchema } from "./identifiers"
 import { createLengthQuantity } from "./units"

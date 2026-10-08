@@ -1,10 +1,14 @@
-import { Box3, Mesh, type OrthographicCamera, type Scene, Vector3 } from "three"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { type ModelPreviewCamera, renderModelPreview } from "./model-preview"
-import { renderProjectThumbnail } from "./project-thumbnail"
+import type { OrthographicCamera, Scene } from "three"
+
+type Mesh = import("three").Mesh
+
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
+import type { ModelPreviewCamera } from "./model-preview"
+
 import type { ViewerMesh, ViewerStandardView } from "./three-viewport"
 
-const rendererState = vi.hoisted(() => ({
+const rendererState = (() => ({
   draws: [] as { camera: unknown; positions: number[][]; indexLengths: number[] }[],
   instances: [] as {
     dispose: ReturnType<typeof vi.fn>
@@ -13,10 +17,11 @@ const rendererState = vi.hoisted(() => ({
   loseDuringRender: false,
   canvas: null as HTMLCanvasElement | null,
   previousDisposed: [] as boolean[],
-}))
+}))()
 
-vi.mock("three", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("three")>()),
+const originalModule1 = { ...(await import("three")) }
+mock.module("three", () => ({
+  ...originalModule1,
   WebGLRenderer: class {
     domElement: HTMLCanvasElement
     dispose = vi.fn()
@@ -51,6 +56,10 @@ vi.mock("three", async (importOriginal) => ({
     }
   },
 }))
+
+const { Box3, Mesh, Vector3 } = await import("three")
+const { renderModelPreview } = await import("./model-preview")
+const { renderProjectThumbnail } = await import("./project-thumbnail")
 
 const triangle: ViewerMesh = {
   featureId: "test-body",
@@ -172,11 +181,11 @@ describe("model preview", () => {
     )
     expect(rendererState.draws).toHaveLength(4)
     for (const draw of rendererState.draws) expect(draw.indexLengths).toEqual([3_000])
-    expect(geometryDisposed).toHaveBeenCalledOnce()
-    expect(materialDisposed).toHaveBeenCalledOnce()
+    expect(geometryDisposed).toHaveBeenCalledTimes(1)
+    expect(materialDisposed).toHaveBeenCalledTimes(1)
     const renderer = rendererState.instances[0]
-    expect(renderer?.dispose).toHaveBeenCalledOnce()
-    expect(renderer?.forceContextLoss).toHaveBeenCalledOnce()
+    expect(renderer?.dispose).toHaveBeenCalledTimes(1)
+    expect(renderer?.forceContextLoss).toHaveBeenCalledTimes(1)
     expect(mesh.indices).toEqual(indices)
     disposeGeometry.mockRestore()
     disposeMaterial.mockRestore()
@@ -219,8 +228,8 @@ describe("model preview", () => {
     const { encodedWidths } = browserStub([100_000])
     await expect(renderModelPreview([triangle])).rejects.toThrow("88 KiB image limit")
     expect(encodedWidths).toEqual([1_024, 768, 576, 432, 384])
-    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledOnce()
-    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledOnce()
+    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledTimes(1)
+    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledTimes(1)
     browserStub()
     await expect(renderModelPreview([triangle])).resolves.toMatchObject({ mimeType: "image/png" })
   })
@@ -235,8 +244,8 @@ describe("model preview", () => {
     expect(rendererState.instances).toHaveLength(2)
     expect(rendererState.previousDisposed).toEqual([true, true])
     for (const renderer of rendererState.instances) {
-      expect(renderer.dispose).toHaveBeenCalledOnce()
-      expect(renderer.forceContextLoss).toHaveBeenCalledOnce()
+      expect(renderer.dispose).toHaveBeenCalledTimes(1)
+      expect(renderer.forceContextLoss).toHaveBeenCalledTimes(1)
     }
   })
 
@@ -330,8 +339,8 @@ describe("project thumbnail", () => {
       expect(Math.abs(vertex.y)).toBeLessThan(1)
       expect(Math.abs(vertex.z)).toBeLessThan(1)
     }
-    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledOnce()
-    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledOnce()
+    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledTimes(1)
+    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledTimes(1)
     expect(mesh.indices).toEqual(indices)
   })
 
@@ -352,8 +361,8 @@ describe("project thumbnail", () => {
       mimeType: "image/png",
     })
     for (const renderer of rendererState.instances) {
-      expect(renderer.dispose).toHaveBeenCalledOnce()
-      expect(renderer.forceContextLoss).toHaveBeenCalledOnce()
+      expect(renderer.dispose).toHaveBeenCalledTimes(1)
+      expect(renderer.forceContextLoss).toHaveBeenCalledTimes(1)
     }
   })
 })

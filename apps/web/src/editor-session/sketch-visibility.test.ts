@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createEmptySketch,
   createLengthQuantity,
@@ -8,7 +9,6 @@ import {
   sketchIdSchema,
   sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { createEditorSessionStore } from "./editor-session-store"
 import {
   effectiveHiddenSketchIds,

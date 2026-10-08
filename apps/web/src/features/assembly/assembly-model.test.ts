@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   assemblyDefinitionSchema,
   assemblyInstanceSchema,
@@ -11,7 +12,6 @@ import {
 import { solveAssemblyKinematics } from "@vibeshape/domain/assembly-kinematics"
 import { documentSnapshotV3Schema } from "@vibeshape/domain/document-v3"
 import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
-import { describe, expect, it } from "vitest"
 import { prepareAuthorityTransaction } from "../../../../../packages/application/src/authority-transaction"
 import { surfaceTextureProjectFixture } from "../../../../../tests/fixtures/surface-texture-project"
 import { authoredTreeFixture, authoredTestId as id } from "../../test-support/authored-tree-fixture"
@@ -84,7 +84,7 @@ describe("Assembly UI command intent", () => {
       ["org.vibeshape.document.upgrade-v4", 8],
       ["org.vibeshape.document.assembly-command", 9],
     ])
-    expect(transaction.commands[2]?.payload).toEqual({ changes })
+    expect(transaction.commands[2]?.payload).toEqual<unknown>({ changes })
     expect(transaction.assetBlobs).toEqual([])
     const v3 = createAssemblyTransaction(
       { documentId: id(1), revision: 9, authorityVersion: 3 },
@@ -155,11 +155,13 @@ describe("Assembly UI command intent", () => {
     expect(() => assemblyPoseFromEuler([0, 0, 0], [NaN, 0, 0])).toThrow()
     expect(() => assemblyPoseFromEuler([0, 0, 0], [361, 0, 0])).toThrow()
   })
-  it.each([
-    [20, 90, -45],
-    [25, -90, 60],
-    [30, 40, -70],
-  ])("round-trips edit fields at and away from gimbal lock %j", (...angles) => {
+  it.each(
+    [
+      [20, 90, -45],
+      [25, -90, 60],
+      [30, 40, -70],
+    ].map((angles) => ({ angles })),
+  )("round-trips edit fields at and away from gimbal lock %j", ({ angles }) => {
     const original = assemblyPoseFromEuler([3, 4, 5], angles as [number, number, number])
     const edited = assemblyPoseFromEuler(original.translation, assemblyEulerDegrees(original))
     original.quaternion.forEach((component, index) => {

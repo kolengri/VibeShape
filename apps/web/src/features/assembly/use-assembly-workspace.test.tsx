@@ -1,22 +1,26 @@
-// @vitest-environment jsdom
-import { webcrypto } from "node:crypto"
-import { act, cleanup, renderHook } from "@testing-library/react"
-import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
-import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
-import { I18nProvider } from "@vibeshape/i18n/provider"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
-import { i18n } from "../../i18n"
-import { createAssemblyDefinitionChanges } from "./assembly-model"
-import { assemblyUiFixture } from "./assembly-test-fixture"
-import { assemblyTaskActions, useAssemblyWorkspace } from "./use-assembly-workspace"
 
-const ports = vi.hoisted(() => ({ commit: vi.fn(), inspect: vi.fn() }))
-vi.mock("../../document/document-controller", () => ({
+const ports = (() => ({ commit: vi.fn(), inspect: vi.fn() }))()
+const controllerModule = { ...(await import("../../document/document-controller")) }
+mock.module("../../document/document-controller", () => ({
+  ...controllerModule,
   commitAuthoredTransaction: ports.commit,
   inspectActiveAssembly: ports.inspect,
 }))
+
+const { webcrypto } = await import("node:crypto")
+const { act, cleanup, renderHook } = await import("@testing-library/react")
+const { promoteDocumentSnapshotV4 } = await import("@vibeshape/domain/document-v4")
+const { documentSnapshotV5Schema } = await import("@vibeshape/domain/document-v5")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../../i18n")
+const { createAssemblyDefinitionChanges } = await import("./assembly-model")
+const { assemblyUiFixture } = await import("./assembly-test-fixture")
+const { assemblyTaskActions, useAssemblyWorkspace } = await import("./use-assembly-workspace")
 const wrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider i18n={i18n} initialLocale="en">
     {children}
@@ -83,7 +87,7 @@ describe("Assembly Apply publication", () => {
       applying = actions.onApply(f.changes)
       void actions.onApply(f.changes)
     })
-    expect(ports.commit).toHaveBeenCalledOnce()
+    expect(ports.commit).toHaveBeenCalledTimes(1)
     expect(hook.result.current.disabled).toBe(true)
     expect(
       ports.commit.mock.calls[0]?.[1].commands.map((command: { kind: string }) => command.kind),

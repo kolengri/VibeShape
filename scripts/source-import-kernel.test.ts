@@ -1,13 +1,15 @@
-// @vitest-environment node
+import { testAssetPath } from "../tests/unit/support/assets"
 /// <reference path="../packages/geometry-worker/src/vite-modules.d.ts" />
+
+import { expect, it } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
-import { expect, it, vi } from "vitest"
 import { ReplicadGeometryEngine } from "../packages/geometry-worker/src/engine"
 import {
   featureContentIdentitySchema,
   serializeFeatureContentIdentity,
 } from "../packages/protocol/src/index"
+import { vi } from "../tests/unit/support/bun-test"
 
 const id = (n: number) => `0195b5ac-b270-7a2c-8c33-${String(n).padStart(12, "0")}`
 function success<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
@@ -49,10 +51,7 @@ function binaryStlVolume(bytes: Uint8Array) {
 it("inspects and rebuilds immutable multi-body STEP sources, verifies cache bytes and exports exact captured outputs", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (url: string) =>
-        new Response(await readFile(resolve(url.startsWith("/@fs/") ? url.slice(4) : `.${url}`))),
-    ),
+    vi.fn(async (url: string) => new Response(await readFile(resolve(testAssetPath(url))))),
   )
   const engine = new ReplicadGeometryEngine()
   const metadata = await engine.initialize()

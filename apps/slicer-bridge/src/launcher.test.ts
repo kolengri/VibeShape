@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { launchSlicerFile, resolveSlicerExecutable, SlicerNotInstalledError } from "./launcher"
 
 describe("slicer launcher", () => {
@@ -32,7 +33,7 @@ describe("slicer launcher", () => {
       executable: "/usr/local/bin/prusa-slicer",
     })
     expect(spawn).toHaveBeenCalledWith(["/usr/local/bin/prusa-slicer", "/tmp/Bracket.3mf"])
-    expect(unref).toHaveBeenCalledOnce()
+    expect(unref).toHaveBeenCalledTimes(1)
   })
 
   it("rejects relative overrides and reports an unavailable slicer", async () => {

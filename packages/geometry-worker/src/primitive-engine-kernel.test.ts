@@ -1,5 +1,6 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { featureEvaluationEngineResultSchema } from "@vibeshape/protocol"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type FeatureEvaluationInput, ReplicadGeometryEngine } from "./engine"
 
 const pyramidFixtures = [
@@ -76,7 +77,7 @@ const fixtures = [
 const engine = new ReplicadGeometryEngine()
 const documentId = "native-radial-primitives"
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const filesystem = await import("node:fs")
   const wasmBinary = filesystem.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )
@@ -122,7 +123,7 @@ function request(fixture: (typeof fixtures)[number]): FeatureEvaluationInput {
 }
 
 describe("real kernel primitive evaluation pipeline", () => {
-  it.each(fixtures)(
+  it.each([...fixtures])(
     "evaluates, tessellates, names, caches, and disposes $kind $parameters",
     async (fixture) => {
       try {

@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -17,7 +17,7 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import { SketchConstraintManagerPopover, SketchEditorPanel } from "./sketch-editor-panel"
@@ -299,7 +299,7 @@ describe("SketchEditorPanel", () => {
     )
 
     await user.click(screen.getByRole("button", { name: "Replace support" }))
-    expect(onSupportReplace).toHaveBeenCalledOnce()
+    expect(onSupportReplace).toHaveBeenCalledTimes(1)
     expect(onDraftChange).not.toHaveBeenCalled()
   })
 

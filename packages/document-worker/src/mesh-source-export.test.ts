@@ -1,12 +1,15 @@
+import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { FeatureRebuildState } from "@vibeshape/application/feature-rebuild"
-import { type ModelBodyGeometry, terminalBodyGeometry } from "@vibeshape/application/model-bodies"
-import { featureIdSchema } from "@vibeshape/domain"
-import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
-import { surfaceTextureMeshLayerSchema } from "@vibeshape/protocol"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { collectDocumentPrintMeshes } from "./mesh-source-export"
+import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
+import { vi } from "../../../tests/unit/support/bun-test"
 
-vi.mock("@vibeshape/application/model-bodies", () => ({ terminalBodyGeometry: vi.fn() }))
+mock.module("@vibeshape/application/model-bodies", () => ({ terminalBodyGeometry: vi.fn() }))
+
+const { terminalBodyGeometry } = await import("@vibeshape/application/model-bodies")
+const { featureIdSchema } = await import("@vibeshape/domain")
+const { ReplicadGeometryEngine } = await import("@vibeshape/geometry-worker/engine")
+const { surfaceTextureMeshLayerSchema } = await import("@vibeshape/protocol")
+const { collectDocumentPrintMeshes } = await import("./mesh-source-export")
 
 const state: FeatureRebuildState = {
   documentId: "mixed-export",
@@ -124,7 +127,7 @@ describe("mixed exact and imported mesh export", () => {
       features: [selection(exact)],
       ...options,
     })
-    expect(result.meshes).toEqual([
+    expect(result.meshes).toEqual<unknown>([
       {
         featureId: mesh.featureId,
         outputRole: mesh.outputRole,

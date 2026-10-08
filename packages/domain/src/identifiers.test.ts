@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   commandIdSchema,
   generateUuidV7,
@@ -9,7 +9,7 @@ import {
 
 describe("domain identifiers", () => {
   it("accepts lowercase UUIDv7 command identifiers", () => {
-    expect(commandIdSchema.parse("0195b5ac-b213-7f2c-9c33-67a36a7f21ac")).toBe(
+    expect(commandIdSchema.parse("0195b5ac-b213-7f2c-9c33-67a36a7f21ac")).toBe<unknown>(
       "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
     )
   })

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
 import {
@@ -22,7 +23,7 @@ import { boxFeatureType, partDesignFeatureTypeHandlers } from "@vibeshape/domain
 import { createRectangleSketch } from "@vibeshape/domain/rectangle-sketch"
 import { sketchSolutionEvidenceSchema } from "@vibeshape/domain/sketch-solution-evidence"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type AutomationDocumentPort, createAutomationHost } from "./host"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -268,7 +269,7 @@ describe("automation draft inspection", () => {
       },
     })
     expect(second.ok).toBe(true)
-    expect(fixture.geometry.inspectEdges).toHaveBeenCalledOnce()
+    expect(fixture.geometry.inspectEdges).toHaveBeenCalledTimes(1)
     const miss = await fixture.host.inspectDraft(actor, {
       schemaVersion: 1,
       draftId,
@@ -283,7 +284,7 @@ describe("automation draft inspection", () => {
       },
     })
     expect(miss).toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
-    expect(fixture.geometry.inspectEdges).toHaveBeenCalledOnce()
+    expect(fixture.geometry.inspectEdges).toHaveBeenCalledTimes(1)
 
     const cold = hostFixture({ inspectEdges: (snapshot) => edgeEvidence(snapshot) })
     const coldResult = await request(cold, {
@@ -488,7 +489,7 @@ describe("automation draft inspection", () => {
       },
     })
     expect(stale).toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
-    expect(fixture.geometry.inspectEdges).toHaveBeenCalledOnce()
+    expect(fixture.geometry.inspectEdges).toHaveBeenCalledTimes(1)
     await expect(
       fixture.host.discardDraft(actor, { schemaVersion: 1, draftId }),
     ).resolves.toMatchObject({ ok: true })
@@ -582,7 +583,7 @@ it("owns one scoped draft body catalog and rejects stale or cross-target cursors
     ok: true,
     value: { view: { outputRole: "result", contentHash: "a".repeat(64) } },
   })
-  expect(fixture.geometry.inspectBodyTopology).toHaveBeenCalledOnce()
+  expect(fixture.geometry.inspectBodyTopology).toHaveBeenCalledTimes(1)
   expect(
     await fixture.host.inspectDraft(otherActor, { schemaVersion: 1, draftId, query }),
   ).toMatchObject({ ok: false, diagnostic: { code: "draft-owner-mismatch" } })
@@ -618,7 +619,7 @@ it("owns one scoped draft body catalog and rejects stale or cross-target cursors
   expect(
     await fixture.host.inspectDraft(actor, { schemaVersion: 1, draftId, query }),
   ).toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
-  expect(fixture.geometry.inspectBodyTopology).toHaveBeenCalledOnce()
+  expect(fixture.geometry.inspectBodyTopology).toHaveBeenCalledTimes(1)
 })
 it("revalidates the draft base after disposable body inspection before retaining its catalog", async () => {
   let fixture: ReturnType<typeof hostFixture>
@@ -680,7 +681,7 @@ it("keeps body measurements on one bounded catalog and invalidates paging after 
       query: { ...query, cursor: "0" },
     }),
   ).toMatchObject({ ok: true })
-  expect(fixture.geometry.inspectBodyMeasurements).toHaveBeenCalledOnce()
+  expect(fixture.geometry.inspectBodyMeasurements).toHaveBeenCalledTimes(1)
   const changed = await fixture.host.applyCommand(actor, {
     schemaVersion: 1,
     draftId,
@@ -703,7 +704,7 @@ it("keeps body measurements on one bounded catalog and invalidates paging after 
       query: { ...query, revision: 3, cursor: "0" },
     }),
   ).toMatchObject({ ok: false, diagnostic: { code: "stale-geometry" } })
-  expect(fixture.geometry.inspectBodyMeasurements).toHaveBeenCalledOnce()
+  expect(fixture.geometry.inspectBodyMeasurements).toHaveBeenCalledTimes(1)
 })
 it("rejects authority expiration during body calculation without retaining a cursor", async () => {
   let now = 1000
@@ -867,7 +868,7 @@ describe("draft feature measurement catalogs", () => {
         query: { ...query, documentId, revision: first.value.draft.revision, cursor: "1" },
       }),
     ).resolves.toMatchObject({ ok: true, value: { view: { data: { features: [] } } } })
-    expect(fixture.geometry.evaluate).toHaveBeenCalledOnce()
+    expect(fixture.geometry.evaluate).toHaveBeenCalledTimes(1)
     const cold = hostFixture({
       evaluate: () => {
         throw new Error("Cold paging must not rebuild.")
@@ -988,7 +989,7 @@ it("binds solved draft paging to its owner, revision, single catalog and command
     value: { view: { nextCursor: null } },
   })
   await expect(inspect(sketchQuery({ section: "profiles" }))).resolves.toMatchObject({ ok: true })
-  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledOnce()
+  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledTimes(1)
   const changed = await fixture.host.applyCommand(actor, {
     schemaVersion: 1,
     draftId,
@@ -1008,7 +1009,7 @@ it("binds solved draft paging to its owner, revision, single catalog and command
     ok: false,
     diagnostic: { code: "stale-geometry" },
   })
-  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledOnce()
+  expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledTimes(1)
   await expect(inspect(sketchQuery({ revision: 3 }))).resolves.toMatchObject({ ok: true })
   expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledTimes(2)
 })
@@ -1032,7 +1033,7 @@ it("revalidates draft expiry and committed base after asynchronous sketch solvin
         }),
     })
     const pending = request(fixture, sketchQuery())
-    await vi.waitFor(() => expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(fixture.geometry.inspectSketchSolution).toHaveBeenCalledTimes(1))
     if (reason === "expiry") now = 301001
     else fixture.replace({ ...fixture.snapshot, revision: 3 })
     release(sketchEvidence(fixture.snapshot))

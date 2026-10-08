@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { FeatureRecord } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { PatternForm } from "./pattern-form"
 import {
@@ -72,8 +73,9 @@ describe("Body Pattern form", () => {
     )
     await userEvent.click(screen.getByRole("radio", { name: "Z" }))
     await userEvent.click(screen.getByRole("button", { name: "Apply feature" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
-    expect(f.onSave).toHaveBeenCalledExactlyOnceWith(
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
+    expect(f.onSave).toHaveBeenCalledWith(
       7,
       expect.objectContaining({
         id: featureId,
@@ -104,7 +106,7 @@ describe("Body Pattern form", () => {
     expect(screen.queryByRole("combobox", { name: "Center X" })).toBeNull()
     expect(apply.disabled).toBe(false)
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       type: { schemaVersion: 2 },
       parameters: {
@@ -148,14 +150,14 @@ describe("Body Pattern form", () => {
     const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
     await userEvent.click(apply)
     await userEvent.click(apply)
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(apply.disabled).toBe(true)
     reject?.(new Error("Storage unavailable"))
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
     expect(apply.disabled).toBe(false)
     onSave.mockResolvedValue({ ok: true })
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[1]?.[1]).toEqual(feature)
   })
   it.each([{ status: "error" as const }, { status: "loading" as const }, { unavailable: true }])(
@@ -170,7 +172,7 @@ describe("Body Pattern form", () => {
   it("cancels without committing and disposes its preview", async () => {
     const f = setup()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(f.onCancel).toHaveBeenCalledOnce()
+    expect(f.onCancel).toHaveBeenCalledTimes(1)
     expect(f.onSave).not.toHaveBeenCalled()
     f.unmount()
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)

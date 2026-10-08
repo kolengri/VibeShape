@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { sketchEntityIdSchema } from "./identifiers"
 import { type SketchRecord, sketchRecordSchema } from "./sketch"
 import { moveSketchPoint, removeSketchEntities } from "./sketch-edit"

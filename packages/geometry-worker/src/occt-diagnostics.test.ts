@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 
 function createDiagnosticsBinding() {
@@ -17,8 +18,8 @@ describe("controlled OpenCascade diagnostics", () => {
     runNativeOcctLifecycleCycle(opencascade, "box")
     runNativeOcctLifecycleCycle(opencascade, "cylinder")
 
-    expect(binding.RunNativeBoxCycle).toHaveBeenCalledOnce()
-    expect(binding.RunNativeCylinderCycle).toHaveBeenCalledOnce()
+    expect(binding.RunNativeBoxCycle).toHaveBeenCalledTimes(1)
+    expect(binding.RunNativeCylinderCycle).toHaveBeenCalledTimes(1)
   })
 
   it("returns the number of blocks released by the OCCT memory manager", () => {

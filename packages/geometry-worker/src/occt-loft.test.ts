@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { Face, Shape3D, Wire } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { OcctShapeCaster } from "./occt-cast"
 import { type AnalyticalProfile, createOcctLoftOperations } from "./occt-loft"
 
@@ -92,7 +93,7 @@ describe("owned exact OCCT Loft", () => {
     expect(f.builder.CheckCompatibility).toHaveBeenCalledWith(true)
     expect(f.builder.AddWire.mock.calls).toEqual(f.wires.map((wire) => [wire.wrapped]))
     for (const temporary of [...f.wires, ...f.faces, f.progress, f.builder, f.raw])
-      expect(temporary.delete).toHaveBeenCalledOnce()
+      expect(temporary.delete).toHaveBeenCalledTimes(1)
     expect(f.result.delete).not.toHaveBeenCalled()
   })
   it.each([
@@ -126,7 +127,7 @@ describe("owned exact OCCT Loft", () => {
         : `Native Loft ${stage} fixture failure`,
     )
     for (const temporary of [...f.wires, ...f.faces, f.builder])
-      expect(temporary.delete).toHaveBeenCalledOnce()
+      expect(temporary.delete).toHaveBeenCalledTimes(1)
     expect(f.progress.delete).toHaveBeenCalledTimes(
       ["compatibility", "add", "progress"].includes(stage) ? 0 : 1,
     )
@@ -176,9 +177,9 @@ describe("owned exact OCCT Loft", () => {
         f.makeWire.mockReset().mockReturnValueOnce(f.wires[0]).mockImplementationOnce(fail)
       if (stage === "builder") f.constructors.BRepOffsetAPI_ThruSections.mockImplementation(fail)
       expect(f.run).toThrow(`Loft ${stage} fixture failure`)
-      expect(f.wires[0].delete).toHaveBeenCalledOnce()
+      expect(f.wires[0].delete).toHaveBeenCalledTimes(1)
       expect(f.wires[1].delete).toHaveBeenCalledTimes(stage === "builder" ? 1 : 0)
-      expect(f.faces[0].delete).toHaveBeenCalledOnce()
+      expect(f.faces[0].delete).toHaveBeenCalledTimes(1)
       expect(f.faces[1].delete).toHaveBeenCalledTimes(stage === "second-face" ? 0 : 1)
       expect(f.builder.delete).not.toHaveBeenCalled()
     },

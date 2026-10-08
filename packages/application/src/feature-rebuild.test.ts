@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -27,7 +28,7 @@ import {
   type FeatureContentEnvironment,
   featureEvaluationEngineResultSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   historyRepairFixture,
   repairId,
@@ -628,7 +629,7 @@ describe("feature rebuild coordination", () => {
         },
       ],
     })
-    expect(recordById(result.evaluation.records, featureIds.boolean)).toEqual({
+    expect(recordById(result.evaluation.records, featureIds.boolean)).toEqual<unknown>({
       featureId: featureIds.boolean,
       status: "blocked",
       blockedBy: [featureIds.box],
@@ -1473,7 +1474,7 @@ describe("ordered body-slot rebuild preparation", () => {
     if (request?.content.schemaVersion !== 2) throw new Error("Expected canonical ordered slots")
     expect(request.dependencies).toHaveLength(1)
     expect(request.dependencies[0]).not.toHaveProperty("outputRole")
-    expect(request.content.feature.inputSlots).toEqual(
+    expect(request.content.feature.inputSlots).toEqual<unknown>(
       selected.map(({ outputRole }) => ({
         inputIndex: 0,
         contentHash: request.dependencies[0]?.contentHash,
@@ -1538,7 +1539,7 @@ it("fails a detached input before handler/content/kernel work while blocking des
     prepareFeatureContent,
   })
   if (!result.ok) throw new Error(result.diagnostic.message)
-  expect(result.evaluation.records).toEqual([
+  expect(result.evaluation.records).toEqual<unknown>([
     {
       featureId: repairId(3),
       status: "failed",
@@ -1548,9 +1549,9 @@ it("fails a detached input before handler/content/kernel work while blocking des
     { featureId: repairId(5), status: "blocked", blockedBy: [repairId(3)] },
     { featureId: repairId(6), status: "succeeded", contentHash: expect.any(String) },
   ])
-  expect(resolve).toHaveBeenCalledOnce()
+  expect(resolve).toHaveBeenCalledTimes(1)
   expect(resolve).toHaveBeenCalledWith(expect.objectContaining({ id: repairId(6) }), new Map())
   expect(prepareFeatureContent.mock.calls).toHaveLength(1)
   expect(evaluateGeometry.mock.calls).toHaveLength(1)
-  expect(result.geometry.map((record) => record.featureId)).toEqual([repairId(6)])
+  expect(result.geometry.map((record) => record.featureId)).toEqual<unknown>([repairId(6)])
 })

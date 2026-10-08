@@ -124,7 +124,7 @@ function runBrowserProducer(repositoryRoot: string) {
   const bunCommand = process.env.VIBESHAPE_BUN_BIN || "bun"
   const result = spawnSync(
     bunCommand,
-    ["x", "playwright", "test", "--config", "playwright.formats.config.ts"],
+    ["run", "--bun", "playwright", "test", "--config", "playwright.formats.config.ts"],
     { cwd: repositoryRoot, env: process.env, stdio: "inherit" },
   )
   if (result.status === 0) return

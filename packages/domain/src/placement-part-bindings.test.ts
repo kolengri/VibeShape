@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import type { DocumentSnapshotV2 } from "./document-v2"
 import { applyDocumentV2Command, reduceDocumentV2Event } from "./document-v2-commands"
 import { applyDocumentUpgradeV2Command } from "./document-v2-migration"
@@ -135,7 +135,7 @@ describe("placement authored PartId advancement", () => {
       featureId: id(3),
       outputRole: "result",
     })
-    expect(added.snapshot.parts[0]?.bodyHistory).toEqual([
+    expect(added.snapshot.parts[0]?.bodyHistory).toEqual<unknown>([
       { schemaVersion: 0, featureId: id(2), outputRole: "result" },
       { schemaVersion: 0, featureId: id(3), outputRole: "result" },
     ])
@@ -156,7 +156,7 @@ describe("placement authored PartId advancement", () => {
       feature: placedFeature(10, true),
     }).snapshot
     expect(partBodyReference(currentPart(suppressed))).toMatchObject({ featureId: id(2) })
-    expect(suppressed.parts[0]?.id).toBe(id(100))
+    expect(suppressed.parts[0]?.id).toBe<unknown>(id(100))
     const restored = model(suppressed, "org.vibeshape.feature.update", {
       feature: placedFeature(),
     }).snapshot
@@ -167,7 +167,7 @@ describe("placement authored PartId advancement", () => {
     const sourceSuppressed = model(restored, "org.vibeshape.feature.update", {
       feature: { ...legacySource, schemaVersion: 0, suppressed: true },
     }).snapshot
-    expect(sourceSuppressed.parts[0]?.id).toBe(id(100))
+    expect(sourceSuppressed.parts[0]?.id).toBe<unknown>(id(100))
     expect(partBodyReference(currentPart(sourceSuppressed))).toMatchObject({ featureId: id(2) })
   })
   it("consumes only an exact selected constituent and retains its unselected sibling", () => {

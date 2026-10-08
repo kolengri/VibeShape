@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { sketchFrame } from "@vibeshape/application/support-frame"
 import {
   boxFeatureType,
@@ -6,7 +7,6 @@ import {
   featureRecordSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { resolveDocumentFeatureParameters } from "./document-controller"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"

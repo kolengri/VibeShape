@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { OcctShapeCaster } from "./occt-cast"
 import { createOcctMirrorOperations } from "./occt-mirror"
 
@@ -58,7 +59,7 @@ describe("owned exact OCCT reflection", () => {
     expect(f.constructors.gp_Dir_4).toHaveBeenCalledWith(0.6, 0.8, 0)
     expect(f.source.delete).not.toHaveBeenCalled()
     for (const binding of [f.origin, f.direction, f.axis, f.transform, f.builder])
-      expect(binding.delete).toHaveBeenCalledOnce()
+      expect(binding.delete).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -75,7 +76,7 @@ describe("owned exact OCCT reflection", () => {
           f.source as unknown as Shape3D,
           { plane },
         ),
-      ).toBe(f.result)
+      ).toBe<unknown>(f.result)
       expect(f.constructors.gp_Pnt_3).toHaveBeenCalledWith(0, 0, 0)
       expect(f.constructors.gp_Dir_4).toHaveBeenCalledWith(...normal)
       expect(f.constructors.gp_Ax2_3).toHaveBeenCalledWith(f.origin, f.direction)
@@ -86,7 +87,7 @@ describe("owned exact OCCT reflection", () => {
         true,
       )
       for (const temporary of [f.origin, f.direction, f.axis, f.transform, f.builder, f.raw])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
       expect(f.source.delete).not.toHaveBeenCalled()
       expect(f.source.wrapped.delete).not.toHaveBeenCalled()
       expect(f.result.delete).not.toHaveBeenCalled()
@@ -106,11 +107,11 @@ describe("owned exact OCCT reflection", () => {
           f.source as unknown as Shape3D,
           { plane, offset, preserveSource: true },
         ),
-      ).toBe(f.result)
+      ).toBe<unknown>(f.result)
       expect(f.constructors.gp_Pnt_3).toHaveBeenCalledWith(...origin)
       expect(f.source.delete).not.toHaveBeenCalled()
       for (const temporary of [f.origin, f.direction, f.axis, f.transform, f.builder, f.raw])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
     },
   )
   it.each([

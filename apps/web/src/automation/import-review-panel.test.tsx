@@ -1,31 +1,32 @@
-// @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { structuralOptimizationSettingsSchema } from "@vibeshape/domain/lightweighting"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import {
-  lightweightingIdentity,
-  lightweightingSettings,
-  lightweightingStiffnessSummary,
-  lightweightingSummary,
-} from "../../../../packages/automation-api/src/lightweighting.test-fixtures"
-import {
-  quickLightweightingSettings,
-  quickLightweightingSummary,
-} from "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
-import { i18n } from "../i18n"
-import { automationReviews } from "./automation-review-controller"
-import { AutomationReviewPanel } from "./automation-review-panel"
-import { importReviewFixture } from "./import-review.test-fixtures"
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-vi.mock("../features/import/import-preview", () => ({
+mock.module("../features/import/import-preview", () => ({
   ImportPreview: ({ onReady }: { onReady: (ready: boolean) => void }) => (
     <button type="button" onClick={() => onReady(true)}>
       Display preview
     </button>
   ),
 }))
+
+const { cleanup, render, screen } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { structuralOptimizationSettingsSchema } = await import("@vibeshape/domain/lightweighting")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const {
+  lightweightingIdentity,
+  lightweightingSettings,
+  lightweightingStiffnessSummary,
+  lightweightingSummary,
+} = await import("../../../../packages/automation-api/src/lightweighting.test-fixtures")
+const { quickLightweightingSettings, quickLightweightingSummary } = await import(
+  "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
+)
+const { i18n } = await import("../i18n")
+const { automationReviews } = await import("./automation-review-controller")
+const { AutomationReviewPanel } = await import("./automation-review-panel")
+const { importReviewFixture } = await import("./import-review.test-fixtures")
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()

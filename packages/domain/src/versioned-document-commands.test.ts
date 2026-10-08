@@ -1,4 +1,5 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
 import { featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
 import { sketchIdSchema } from "./identifiers"
@@ -21,14 +22,14 @@ it("projects strict v1 snapshots by History without mutating the source", () => 
   const projected = projectDocumentSnapshotV1ToV0(withFeature.snapshot)
   expect(projected).toMatchObject({ ok: true, snapshot: { schemaVersion: 0 } })
   if (!projected.ok) return
-  expect(projected.snapshot.sketches.map(({ id }) => id)).toEqual([uuid(10)])
-  expect(projected.snapshot.features.map(({ id }) => id)).toEqual([uuid(20)])
+  expect(projected.snapshot.sketches.map(({ id }) => id)).toEqual<unknown>([uuid(10)])
+  expect(projected.snapshot.features.map(({ id }) => id)).toEqual<unknown>([uuid(20)])
   expect(projected.snapshot.features[0]).not.toHaveProperty("semanticInputs")
   expect(withFeature.snapshot).toEqual(source)
 })
 
 it("returns bounded diagnostics for invalid v1 projection input", () => {
-  expect(projectDocumentSnapshotV1ToV0({ schemaVersion: 1 })).toMatchObject({
+  expect(matchValue(projectDocumentSnapshotV1ToV0({ schemaVersion: 1 }))).toMatchObject({
     ok: false,
     diagnostic: { issues: expect.any(Array) },
   })

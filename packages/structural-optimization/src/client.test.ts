@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { optimizeStructuralModel } from "./client"
 import type { StructuralOptimizationInput, StructuralOptimizationResult } from "./contract"
 
@@ -222,9 +223,14 @@ describe("bounded structural worker client", () => {
   })
   it("enforces the hard time budget", async () => {
     const pending = optimizeStructuralModel(input, options)
-    const rejected = expect(pending).rejects.toMatchObject({ code: "timeout" })
+    const rejected = pending.then(
+      () => {
+        throw new Error("Expected the hard time budget to reject the operation.")
+      },
+      (error: unknown) => error,
+    )
     vi.advanceTimersByTime(180_000)
-    await rejected
+    expect(await rejected).toMatchObject({ code: "timeout" })
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
   it.each(["stress", "case", "cells", "mesh", "precision"])(

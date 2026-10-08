@@ -1,4 +1,5 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import type { DocumentSnapshotV1 } from "./document"
 import { featureRecordSchema } from "./feature-graph"
 import { boxFeatureType, chamferFeatureType, filletFeatureType } from "./part-design"
@@ -115,7 +116,7 @@ it.each(["fillet", "chamfer"] as const)(
       ...envelope("org.vibeshape.feature.update", inserted.snapshot.revision, 100),
       payload: { feature: { ...legacy, parameters } },
     })
-    expect(updated).toMatchObject({
+    expect(matchValue(updated)).toMatchObject({
       ok: true,
       snapshot: {
         features: [expect.anything(), { parameters, dependencies: [uuid(10)], semanticInputs: [] }],
@@ -129,12 +130,12 @@ it.each(["fillet", "chamfer"] as const)(
     ])
     expect(replayed).toMatchObject({ ok: true })
     const replayedFeature = requireLastFeature(requireSuccess(replayed).snapshot)
-    expect(replayedFeature?.dependencies).toEqual([uuid(10)])
+    expect(replayedFeature?.dependencies).toEqual<unknown>([uuid(10)])
     expect(replayedFeature?.parameters).toEqual(parameters)
     const projected = projectDocumentSnapshotV1ToV0(updatedResult.snapshot)
     expect(projected).toMatchObject({ ok: true, snapshot: { features: [{}, {}] } })
     const projectedFeature = requireLastFeature(requireSuccess(projected).snapshot)
-    expect(projectedFeature?.dependencies).toEqual([uuid(10)])
+    expect(projectedFeature?.dependencies).toEqual<unknown>([uuid(10)])
     expect(projectedFeature?.parameters).toEqual(parameters)
     expect(projectedFeature?.parameters).toHaveProperty(
       kind === "fillet" ? "radius.source.expression" : "distance.source.expression",

@@ -1,8 +1,7 @@
-// @vitest-environment node
+import { expect, it } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { cast, measureVolume, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { expect, it } from "vitest"
 import { materializeSelectedProfile } from "../packages/document-worker/src/analytical-profile-content"
 import { sketchEntityIdSchema, sketchIdSchema } from "../packages/domain/src/identifiers"
 import { THREAD_MAX_AUTHORED_TURNS } from "../packages/domain/src/part-design-thread"

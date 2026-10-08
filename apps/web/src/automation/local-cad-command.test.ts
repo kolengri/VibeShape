@@ -1,7 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain"
 import { createAngleQuantity, createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -86,20 +87,20 @@ describe("local CAD commands", () => {
           },
         }),
       )
-      expect(applyCommand).toHaveBeenCalledOnce()
+      expect(applyCommand).toHaveBeenCalledTimes(1)
       const parsed = parseDocumentCommand(applyCommand.mock.calls[0]?.[1].command)
       expect(parsed.ok).toBe(true)
       if (!parsed.ok || !("feature" in parsed.command.payload))
         throw new Error("Missing feature command")
       expect(parsed.command.actor).toEqual(actor)
-      expect(parsed.command.documentId).toBe(id(4))
+      expect(parsed.command.documentId).toBe<unknown>(id(4))
       expect(parsed.command.baseRevision).toBe(7)
       expect(parsed.command.kind).toBe(
         tool.startsWith("update") ? "org.vibeshape.feature.update" : "org.vibeshape.feature.add",
       )
       expect(parsed.command.payload.feature.type.schemaVersion).toBe(version)
       expect(parsed.command.payload.feature.parameters).toEqual(parameters)
-      expect(parsed.command.payload.feature.dependencies).toEqual(
+      expect(parsed.command.payload.feature.dependencies).toEqual<unknown>(
         operation === "new" ? [] : [id(8)],
       )
     },

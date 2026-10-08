@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   assemblyLibraryFixture,
   libraryFixtureId,
@@ -34,7 +34,7 @@ describe("immutable assembly library schemas", () => {
     ).toEqual([asset])
     expect(
       assemblyLibraryBindingSchema.parse({ itemId: libraryFixtureId(90), version: 1 }),
-    ).toEqual({ itemId: libraryFixtureId(90), version: 1 })
+    ).toEqual<unknown>({ itemId: libraryFixtureId(90), version: 1 })
   })
   it("rejects incomplete, changed, reordered or extraneous pinned semantic content", () => {
     const { definition, asset } = assemblyLibraryFixture()

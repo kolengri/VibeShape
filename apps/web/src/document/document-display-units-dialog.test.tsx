@@ -1,13 +1,8 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { i18n } from "../i18n"
 import type { DocumentControllerState } from "./document-controller"
-import { DocumentDisplayUnitsDialog } from "./document-display-units-dialog"
 
 class ResizeObserverMock {
   observe() {}
@@ -15,12 +10,20 @@ class ResizeObserverMock {
   disconnect() {}
 }
 
-const setActiveProjectDisplayUnits = vi.hoisted(() => vi.fn())
+const setActiveProjectDisplayUnits = (() => vi.fn())()
 
-vi.mock("./document-controller", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./document-controller")>()),
+const originalModule1 = { ...(await import("./document-controller")) }
+mock.module("./document-controller", () => ({
+  ...originalModule1,
   setActiveProjectDisplayUnits,
 }))
+
+const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { i18n } = await import("../i18n")
+const { DocumentDisplayUnitsDialog } = await import("./document-display-units-dialog")
 
 const controller = {
   status: "ready",
@@ -71,7 +74,7 @@ describe("DocumentDisplayUnitsDialog", () => {
 
     await user.dblClick(submit)
 
-    expect(setActiveProjectDisplayUnits).toHaveBeenCalledOnce()
+    expect(setActiveProjectDisplayUnits).toHaveBeenCalledTimes(1)
     expect(setActiveProjectDisplayUnits).toHaveBeenCalledWith(4, {
       length: "in",
       angle: "rad",

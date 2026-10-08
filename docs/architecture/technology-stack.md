@@ -25,7 +25,7 @@
 | Project DB | IndexedDB through Dexie | Transactions and indexes without another heavy WASM runtime |
 | Large binary cache | OPFS | Efficient local files accessed from workers |
 | Offline | Web App Manifest and service worker | Installable offline static PWA |
-| Tests | Vitest through Bun, plus Playwright | Vite-native unit/contract tests and real browser flows |
+| Tests | Bun test, Workers Vitest pool, and Playwright | Isolated native Bun unit/contract tests, real workerd integration, and browser flows |
 | Format and lint | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
 | Code intelligence | Fallow | Changed-code risk, cleanup evidence, duplication, complexity, dependency hygiene, styling drift, and architecture boundaries |
 | CI | GitHub Actions | One fast PR job for frozen install, static checks, unit tests, critical audit, and Fallow; production build and browser matrices stay local |

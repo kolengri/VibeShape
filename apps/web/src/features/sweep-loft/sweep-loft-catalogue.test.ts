@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { documentSketchDisplaySchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { sweepLoftCatalogue } from "./sweep-loft-catalogue"
 import { id, paths, snapshot } from "./sweep-loft-test-fixtures"
 
@@ -57,7 +57,7 @@ describe("Sweep and Loft authoritative selection catalogue", () => {
   it("retains holed Sweep and Loft profiles without renumbering solved regions", () => {
     const sweep = sweepLoftCatalogue(snapshot, [display], [], "sweep", copy)
     expect(sweep.profiles).toHaveLength(2)
-    expect(sweep.profiles[0]?.selector.holeBoundaryEntityIds).toEqual([[id(12)]])
+    expect(sweep.profiles[0]?.selector.holeBoundaryEntityIds).toEqual<unknown>([[id(12)]])
     const loft = sweepLoftCatalogue(snapshot, [display], [], "loft", copy)
     expect(loft.profiles.map(({ label }) => label)).toEqual([
       "Sketch 1 · Profile 1",
@@ -80,7 +80,12 @@ describe("Sweep and Loft authoritative selection catalogue", () => {
       ],
     })
     const catalogue = sweepLoftCatalogue(snapshot, [pathDisplay], [], "sweep", copy)
-    expect(catalogue.paths[0]?.curves.map(({ id: entityId }) => entityId)).toEqual([id(41)])
-    expect(catalogue.paths[0]?.points.map(({ id: pointId }) => pointId)).toEqual([id(30), id(31)])
+    expect(catalogue.paths[0]?.curves.map(({ id: entityId }) => entityId)).toEqual<unknown>([
+      id(41),
+    ])
+    expect(catalogue.paths[0]?.points.map(({ id: pointId }) => pointId)).toEqual<unknown>([
+      id(30),
+      id(31),
+    ])
   })
 })

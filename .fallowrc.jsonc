@@ -17,6 +17,8 @@
     "apps/mcp-server/src/index.ts",
     "apps/remote-mcp/src/index.ts",
     "apps/remote-mcp/vitest.config.ts",
+    // Bun preloads the Vite import adapter through a CLI runtime path.
+    "tests/unit/support/vite-imports.ts",
     // Bun.build packages the relocatable launcher through a runtime entrypoint string.
     "scripts/local-distribution.ts",
     "playwright.formats.config.ts",

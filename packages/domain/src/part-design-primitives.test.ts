@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "./document"
 import { createDocumentDependencyGraph } from "./document-graph"
 import { documentSnapshotV2Schema } from "./document-v2"
@@ -112,13 +112,13 @@ function origin(x: number, y = 0, z = 0) {
 }
 
 describe("radial part-design primitives", () => {
-  it.each(primitives)(
+  it.each([...primitives])(
     "registers $type.type.typeId with canonical dimensions and empty inputs",
     (primitive) => {
       const validated = registry().validateFeature(feature(primitive))
       expect(validated.ok).toBe(true)
       if (!validated.ok) throw new Error(validated.diagnostic.message)
-      expect(validated.contentParameters).toEqual(primitive.content)
+      expect(validated.contentParameters).toEqual<unknown>(primitive.content)
       expect(validated.descriptor.dependencies).toEqual({ min: 0, max: 0 })
       expect(validated.descriptor.references).toEqual({ min: 0, max: 0 })
       expect(
@@ -133,7 +133,7 @@ describe("radial part-design primitives", () => {
     },
   )
 
-  it.each(primitives)(
+  it.each([...primitives])(
     "round-trips authored quantities and placement for $type.type.typeId",
     (primitive) => {
       const authored = feature(primitive, { ...primitive.parameters, origin: origin(-15, 30, 12) })
@@ -158,7 +158,7 @@ describe("radial part-design primitives", () => {
     },
   )
 
-  it.each(primitives)(
+  it.each([...primitives])(
     "rejects non-finite, nonpositive, excessive, and unknown authored dimensions for $type.type.typeId",
     (primitive) => {
       const key = primitive.type === torusFeatureType ? "majorRadius" : "radius"
@@ -256,7 +256,7 @@ describe("radial part-design primitives", () => {
     }
   })
 
-  it.each(primitives)(
+  it.each([...primitives])(
     "resolves dimensions and origin before hashing $type.type.typeId",
     (primitive) => {
       const key = primitive.type === torusFeatureType ? "majorRadius" : "radius"
@@ -358,7 +358,7 @@ describe("radial part-design primitives", () => {
       })
     }
   })
-  it.each(primitives)(
+  it.each([...primitives])(
     "commits, replays, and restores one authored Part for $type.type.typeId",
     (primitive) => {
       const envelope = (baseRevision: number) => ({
@@ -406,10 +406,10 @@ describe("radial part-design primitives", () => {
       if (!committed.ok) throw new Error(committed.diagnostic.message)
       expect(committed.snapshot.features[0]?.semanticInputs).toEqual([])
       expect(committed.snapshot.parts).toHaveLength(1)
-      expect(committed.snapshot.parts[0]?.bodyHistory).toEqual([
+      expect(committed.snapshot.parts[0]?.bodyHistory).toEqual<unknown>([
         { schemaVersion: 0, featureId, outputRole: "result" },
       ])
-      expect(committed.snapshot.history).toEqual([{ kind: "feature", id: featureId }])
+      expect(committed.snapshot.history).toEqual<unknown>([{ kind: "feature", id: featureId }])
       expect(createDocumentDependencyGraph(committed.snapshot)).toMatchObject({
         ok: true,
         graph: { dependencyModelIssues: [] },
@@ -418,7 +418,7 @@ describe("radial part-design primitives", () => {
       expect(replayed).toMatchObject({ ok: true, snapshot: committed.snapshot })
       expect(
         documentSnapshotV2Schema.parse(JSON.parse(JSON.stringify(committed.snapshot))),
-      ).toEqual(committed.snapshot)
+      ).toEqual<unknown>(committed.snapshot)
       expect(
         documentSnapshotV2Schema.safeParse({
           ...committed.snapshot,

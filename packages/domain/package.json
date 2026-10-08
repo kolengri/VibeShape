@@ -104,7 +104,7 @@
     "./quick-lightweighting": "./src/quick-lightweighting.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "is-what": "catalog:",

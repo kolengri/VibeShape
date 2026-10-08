@@ -1,9 +1,9 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { execFileSync } from "node:child_process"
 import { readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadPyodide, type PyodideInterface } from "pyodide"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { StructuralMesh } from "../src/contract"
 import {
   type QuickLightweightingInput,

@@ -1,30 +1,36 @@
-// @vitest-environment jsdom
-
-import { act, cleanup, render, screen, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { documentSnapshotSchema, featureRecordSchema } from "@vibeshape/domain"
-import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
-import { I18nProvider } from "@vibeshape/i18n/provider"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ComponentProps } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
-import { removeFeature } from "../document/document-controller"
-import { createEditorSessionStore } from "../editor-session/editor-session-store"
-import { createHistoryNavigation } from "../editor-session/history-navigation"
-import { editPartDesignTool } from "../features/part-design/part-design-tool"
-import { i18n } from "../i18n"
-import { TaskPanel } from "./task-panel"
 
-const ports = vi.hoisted(() => ({ registerSubmission: vi.fn() }))
-vi.mock("../editor-session/editor-session-provider", async (original) => ({
-  ...(await original<typeof import("../editor-session/editor-session-provider")>()),
+const ports = (() => ({
+  registerSubmission: vi.fn(),
+  removeFeature: vi.fn(async () => ({ ok: true })),
+}))()
+const originalModule1 = { ...(await import("../editor-session/editor-session-provider")) }
+mock.module("../editor-session/editor-session-provider", () => ({
+  ...originalModule1,
   useRegisterTaskSubmission: ports.registerSubmission,
 }))
 
-vi.mock("../document/document-controller", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../document/document-controller")>()),
-  removeFeature: vi.fn(async () => ({ ok: true })),
+const originalModule2 = { ...(await import("../document/document-controller")) }
+mock.module("../document/document-controller", () => ({
+  ...originalModule2,
+  removeFeature: ports.removeFeature,
 }))
+
+const { act, cleanup, render, screen, within } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { documentSnapshotSchema, featureRecordSchema } = await import("@vibeshape/domain")
+const { meshImportFeatureType } = await import("@vibeshape/domain/part-design-mesh-import")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { removeFeature } = await import("../document/document-controller")
+const { createEditorSessionStore } = await import("../editor-session/editor-session-store")
+const { createHistoryNavigation } = await import("../editor-session/history-navigation")
+const { editPartDesignTool } = await import("../features/part-design/part-design-tool")
+const { i18n } = await import("../i18n")
+const { TaskPanel } = await import("./task-panel")
 
 const id = "0195b5ac-b220-7a2c-8c33-67a36a7f2701"
 const feature = featureRecordSchema.parse({
@@ -134,6 +140,8 @@ function renderImportedTask(mode: "read-write" | "read-only" = "read-write", clo
   return { onCompleteTool, onCloseTool }
 }
 
+beforeEach(() => ports.removeFeature.mockResolvedValue({ ok: true }))
+
 afterEach(() => {
   cleanup()
   vi.resetAllMocks()
@@ -153,8 +161,8 @@ describe("captured-source History task", () => {
     )
     const activate = vi.fn()
     await act(async () => expect(await navigation.navigate(activate)).toBe(true))
-    expect(onCloseTool).toHaveBeenCalledOnce()
-    expect(activate).toHaveBeenCalledOnce()
+    expect(onCloseTool).toHaveBeenCalledTimes(1)
+    expect(activate).toHaveBeenCalledTimes(1)
     expect(store.getState().activePartDesignTool).toBeNull()
     expect(removeFeature).not.toHaveBeenCalled()
   })
@@ -168,15 +176,16 @@ describe("captured-source History task", () => {
     await user.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete feature" }),
     )
-    expect(removeFeature).toHaveBeenCalledExactlyOnceWith(7, feature.id)
-    expect(onCompleteTool).toHaveBeenCalledOnce()
+    expect(removeFeature).toHaveBeenCalledTimes(1)
+    expect(removeFeature).toHaveBeenCalledWith(7, feature.id)
+    expect(onCompleteTool).toHaveBeenCalledTimes(1)
   })
 
   it("closes the captured-source task without changing History", async () => {
     const user = userEvent.setup()
     const { onCloseTool } = renderImportedTask()
     await user.click(screen.getByRole("button", { name: "Close" }))
-    expect(onCloseTool).toHaveBeenCalledOnce()
+    expect(onCloseTool).toHaveBeenCalledTimes(1)
     expect(removeFeature).not.toHaveBeenCalled()
   })
 

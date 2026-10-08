@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { Dialog, DialogContent } from "@vibeshape/ui/components/dialog"
 import { type ReactNode, useState } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { ResolvedEditorCommand } from "./editor-command"
 import { editorCommandEnabled, editorCommandIds } from "./editor-command"
 import { useEditorCommandShortcuts } from "./editor-command-shortcuts"
@@ -171,11 +171,11 @@ describe("useEditorCommandShortcuts", () => {
     fireEvent.keyDown(document.body, { key: " ", code: "Space" })
     expect(screen.getByLabelText("Navigation state").textContent).toBe("navigation")
     fireEvent.keyDown(document.body, { key: " ", code: "Space", repeat: true })
-    expect(onNavigation).toHaveBeenCalledOnce()
+    expect(onNavigation).toHaveBeenCalledTimes(1)
     fireEvent.keyUp(document.body, { key: " ", code: "Space" })
     fireEvent.keyUp(document.body, { key: " ", code: "Space" })
     expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
-    expect(onEditing).toHaveBeenCalledOnce()
+    expect(onEditing).toHaveBeenCalledTimes(1)
   })
 
   it("releases a held navigation mode when window focus is lost", () => {
@@ -185,7 +185,7 @@ describe("useEditorCommandShortcuts", () => {
     fireEvent.blur(window)
     expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
     fireEvent.keyUp(document.body, { key: " ", code: "Space" })
-    expect(onEditing).toHaveBeenCalledOnce()
+    expect(onEditing).toHaveBeenCalledTimes(1)
   })
 
   it("preserves navigation explicitly enabled before the Space hold", () => {
@@ -221,7 +221,7 @@ describe("useEditorCommandShortcuts", () => {
     expect(screen.getByRole("textbox", { name: "Expression" })).toHaveProperty("value", " ")
     screen.getByRole("button", { name: "Action" }).focus()
     await user.keyboard(" ")
-    expect(click).toHaveBeenCalledOnce()
+    expect(click).toHaveBeenCalledTimes(1)
     fireEvent.keyDown(document.body, { key: " ", code: "Space", ctrlKey: true })
     expect(onNavigation).not.toHaveBeenCalled()
   })
@@ -235,10 +235,10 @@ describe("useEditorCommandShortcuts", () => {
       <NavigationHoldHarness paletteOpen onNavigation={onNavigation} onEditing={onEditing} />,
     )
     expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
-    expect(onEditing).toHaveBeenCalledOnce()
+    expect(onEditing).toHaveBeenCalledTimes(1)
     fireEvent.keyUp(document.body, { key: " ", code: "Space" })
     fireEvent.keyDown(document.body, { key: " ", code: "Space" })
-    expect(onNavigation).toHaveBeenCalledOnce()
+    expect(onNavigation).toHaveBeenCalledTimes(1)
     view.rerender(<NavigationHoldHarness onNavigation={onNavigation} onEditing={onEditing} />)
     fireEvent.keyDown(document.body, { key: " ", code: "Space" })
     expect(onNavigation).toHaveBeenCalledTimes(2)
@@ -246,7 +246,7 @@ describe("useEditorCommandShortcuts", () => {
       <NavigationHoldHarness available={false} onNavigation={onNavigation} onEditing={onEditing} />,
     )
     fireEvent.keyUp(document.body, { key: " ", code: "Space" })
-    expect(onEditing).toHaveBeenCalledOnce()
+    expect(onEditing).toHaveBeenCalledTimes(1)
   })
 
   it("does not capture Space inside a modal dialog", () => {
@@ -270,7 +270,7 @@ describe("useEditorCommandShortcuts", () => {
     fireEvent(document, new Event("visibilitychange"))
     hidden.mockRestore()
     expect(screen.getByLabelText("Navigation state").textContent).toBe("editing")
-    expect(onEditing).toHaveBeenCalledOnce()
+    expect(onEditing).toHaveBeenCalledTimes(1)
   })
 
   it("invokes a registered single-letter shortcut outside text input", async () => {
@@ -278,7 +278,7 @@ describe("useEditorCommandShortcuts", () => {
     render(<ShortcutHarness />)
 
     await user.keyboard("l")
-    expect(invokeLine).toHaveBeenCalledOnce()
+    expect(invokeLine).toHaveBeenCalledTimes(1)
   })
 
   it("does not capture single-letter shortcuts while the user is typing", async () => {
@@ -300,7 +300,7 @@ describe("useEditorCommandShortcuts", () => {
     await user.keyboard("r")
     expect(invokeCenterRectangle).not.toHaveBeenCalled()
     await user.keyboard("{Shift>}r{/Shift}")
-    expect(invokeCenterRectangle).toHaveBeenCalledOnce()
+    expect(invokeCenterRectangle).toHaveBeenCalledTimes(1)
   })
 
   it("matches letters case-insensitively and rejects unregistered extra modifiers", async () => {
@@ -311,7 +311,7 @@ describe("useEditorCommandShortcuts", () => {
     await user.keyboard("{Control>}l{/Control}")
     expect(invokeLine).not.toHaveBeenCalled()
     await user.keyboard("L")
-    expect(invokeLine).toHaveBeenCalledOnce()
+    expect(invokeLine).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -385,7 +385,7 @@ describe("useEditorCommandShortcuts", () => {
     const { rerender } = render(<ShortcutHarness />)
     rerender(<ShortcutHarness commands={[{ ...lineCommand, invoke: latest }]} />)
     await user.keyboard("l")
-    expect(latest).toHaveBeenCalledOnce()
+    expect(latest).toHaveBeenCalledTimes(1)
     expect(invokeLine).not.toHaveBeenCalled()
   })
 
@@ -468,7 +468,7 @@ describe("useEditorCommandShortcuts", () => {
 
     await user.keyboard("{Control>}z{/Control}")
 
-    expect(invokeUndo).toHaveBeenCalledOnce()
+    expect(invokeUndo).toHaveBeenCalledTimes(1)
     expect(sketchShortcutToolbarChange).not.toHaveBeenCalled()
   })
 
@@ -491,7 +491,7 @@ describe("useEditorCommandShortcuts", () => {
     expect(sketchShortcutToolbarChange).not.toHaveBeenCalled()
 
     await user.keyboard("{Escape}")
-    expect(invokeCancel).toHaveBeenCalledOnce()
+    expect(invokeCancel).toHaveBeenCalledTimes(1)
   })
 
   it("routes Ctrl/Cmd+Z to the committed document command when registered", async () => {
@@ -500,7 +500,7 @@ describe("useEditorCommandShortcuts", () => {
 
     await user.keyboard("{Control>}z{/Control}")
 
-    expect(invokeUndo).toHaveBeenCalledOnce()
+    expect(invokeUndo).toHaveBeenCalledTimes(1)
   })
 
   it("allows Escape to cancel the active editor command from text input", async () => {
@@ -509,7 +509,7 @@ describe("useEditorCommandShortcuts", () => {
 
     await user.click(screen.getByRole("textbox", { name: "Expression" }))
     await user.keyboard("{Escape}")
-    expect(invokeCancel).toHaveBeenCalledOnce()
+    expect(invokeCancel).toHaveBeenCalledTimes(1)
   })
 
   it("opens registered F1 help from a text field without consuming text-editing shortcuts", async () => {
@@ -528,7 +528,7 @@ describe("useEditorCommandShortcuts", () => {
     render(<ShortcutHarness commands={[help, lineCommand]} />)
     await user.click(screen.getByRole("textbox", { name: "Expression" }))
     await user.keyboard("l{F1}")
-    expect(invokeHelp).toHaveBeenCalledOnce()
+    expect(invokeHelp).toHaveBeenCalledTimes(1)
     expect(invokeLine).not.toHaveBeenCalled()
   })
 
@@ -542,6 +542,6 @@ describe("useEditorCommandShortcuts", () => {
     )
     const input = screen.getByRole("textbox", { name: "Task parameter" })
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
-    expect(invokeCancel).toHaveBeenCalledOnce()
+    expect(invokeCancel).toHaveBeenCalledTimes(1)
   })
 })

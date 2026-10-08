@@ -66,7 +66,7 @@ Choose cases that threaten the affected contract; do not manufacture one test fo
 
 ## Conventions
 
-- Use Vitest for TypeScript unit, property, contract, and adapter tests unless a spike documents a Bun-test requirement.
+- Use native Bun tests for TypeScript unit, property, contract, and adapter tests. Use the official Workers Vitest pool only for remote MCP integration tests inside workerd.
 - Use Playwright for real browser, worker, PWA, accessibility, and end-to-end workflows.
 - Co-locate focused tests according to the neighboring package convention.
 - Prefer behavior assertions over implementation details and snapshot-only tests.

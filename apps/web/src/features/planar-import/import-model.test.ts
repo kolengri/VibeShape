@@ -1,12 +1,12 @@
-// @vitest-environment node
+import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { insertSketchInHistoryCommandSchema } from "@vibeshape/domain"
 import { documentSnapshotV3Schema } from "@vibeshape/domain/document-v3"
 import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { documentV4AssetsCommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
-import { describe, expect, it, vi } from "vitest"
 import { prepareAuthorityTransaction } from "../../../../../packages/application/src/authority-transaction"
 import { surfaceTextureProjectFixture } from "../../../../../tests/fixtures/surface-texture-project"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
 import { createPlanarImportTransaction, PlanarFileError, readPlanarSource } from "./import-model"
 import { inspectPlanarRequest } from "./parser-service"
@@ -102,7 +102,7 @@ describe("planar import worker and authored transaction", () => {
           (command) => command.actor.type === "user" && command.actor.userId === null,
         ),
       ).toBe(true)
-      expect(result.commands.map(({ kind }) => kind)).toEqual([
+      expect(result.commands.map(({ kind }) => kind)).toEqual<unknown>([
         ...(authorityVersion === 2 ? ["org.vibeshape.document.upgrade-v3"] : []),
         ...(authorityVersion !== 4 ? ["org.vibeshape.document.upgrade-v4"] : []),
         "org.vibeshape.document.add-source-assets",

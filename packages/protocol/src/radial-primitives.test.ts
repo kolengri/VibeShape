@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   coneFeatureContentParametersSchema,
   pyramidFeatureContentParametersSchema,
@@ -34,7 +34,7 @@ const cases = [
 ] as const
 
 describe("radial primitive worker content schemas", () => {
-  it.each(cases)(
+  it.each([...cases])(
     "defaults a $kind placement and enforces complete horizontal workspace extents",
     ({ schema, parameters, extent }) => {
       expect(schema.parse(parameters)).toEqual({ ...parameters, origin: [0, 0, 0] })
@@ -46,7 +46,7 @@ describe("radial primitive worker content schemas", () => {
       ).toBe(false)
     },
   )
-  it.each(cases)(
+  it.each([...cases])(
     "rejects unsupported dimensions and malformed placement for $kind",
     ({ kind, schema, parameters }) => {
       const key = kind === "torus" ? "minorRadius" : "radius"

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { z } from "zod"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   computeFeatureContentHash,
   createFeatureContentIdentity,

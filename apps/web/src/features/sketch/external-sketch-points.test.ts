@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   documentSnapshotSchema,
   sketchEntityIdSchema,
@@ -6,7 +7,6 @@ import {
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import type { ExternalSketchGeometryCandidate } from "./external-sketch-points"
 import {
   applyExternalSketchCandidateSelection,
@@ -429,7 +429,7 @@ describe("external sketch point candidates", () => {
       updatedAt: "2026-08-24T00:00:00.000Z",
     })
 
-    expect(externalSketchGeometryCandidates(document, target, labels)).toContainEqual({
+    expect(externalSketchGeometryCandidates(document, target, labels)).toContainEqual<unknown>({
       construction: false,
       kind: "line",
       label: "Layout · Line 1",
@@ -653,7 +653,7 @@ describe("external sketch point candidates", () => {
         document.features,
         new Map([[intermediate.id, solvedIntermediate]]),
       ),
-    ).toContainEqual({
+    ).toContainEqual<unknown>({
       construction: true,
       kind: "line",
       label: "Layout · Line 1",
@@ -795,7 +795,7 @@ describe("external sketch point candidates", () => {
       missing: (sourceLabel, kind) => `Missing ${kind} in ${sourceLabel}`,
       unknownSketch: "Missing sketch",
     })
-    expect([...resolution.labels.entries()]).toEqual([
+    expect([...resolution.labels.entries()]).toEqual<unknown>([
       ["0195b5ac-b220-7a2c-8c33-000000004026", "Master · Point 1"],
       ["0195b5ac-b220-7a2c-8c33-000000004028", "Master · Line 1"],
       ["0195b5ac-b220-7a2c-8c33-000000004032", "Master · circle 1"],
@@ -803,7 +803,7 @@ describe("external sketch point candidates", () => {
       ["0195b5ac-b220-7a2c-8c33-000000004039", "Missing point in Master"],
       ["0195b5ac-b220-7a2c-8c33-000000004041", "Missing line in Master"],
     ])
-    expect(resolution.missingReferenceIds).toEqual(
+    expect(resolution.missingReferenceIds).toEqual<unknown>(
       new Set(["0195b5ac-b220-7a2c-8c33-000000004039", "0195b5ac-b220-7a2c-8c33-000000004041"]),
     )
   })

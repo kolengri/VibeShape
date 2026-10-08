@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   featureContentIdentitySchema,
   featureEvaluationEngineResultSchema,
@@ -113,7 +113,7 @@ describe("body output role protocol", () => {
 
   it("validates direct evaluation inputs and strips the worker envelope", () => {
     const parsed = featureEvaluationInputSchema.parse(request())
-    expect(parsed).toEqual({
+    expect(parsed).toEqual<unknown>({
       documentId: "document-1",
       featureId,
       content: v1Content,

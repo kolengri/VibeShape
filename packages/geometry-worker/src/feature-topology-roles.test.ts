@@ -1,8 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { boxFeatureSemanticRole, extrusionFeatureSemanticRole } from "./engine"
 import type { TopologyCandidateContext } from "./topology-signatures"
 

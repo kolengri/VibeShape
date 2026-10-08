@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { coneFeatureType, createLengthQuantity, pyramidFeatureType } from "@vibeshape/domain"
 import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
 import {
@@ -5,14 +6,14 @@ import {
   type DocumentWorkerResponse,
   documentWorkerResponseSchema,
 } from "@vibeshape/protocol"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { DocumentWorkerRuntime } from "./runtime"
 
 const engine = new ReplicadGeometryEngine()
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f3000"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const filesystem = await import("node:fs")
   const wasmBinary = filesystem.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )

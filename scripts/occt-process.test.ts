@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { assertSuccessfulOcctProcess } from "./occt-process"
 
 describe("OCCT child process validation", () => {

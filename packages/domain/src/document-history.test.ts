@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test } from "bun:test"
 import { documentRestoredEventSchema, reduceDocumentRestoredEvent } from "./document-history"
 import {
   applyVersionedDocumentCommand,
@@ -52,8 +52,8 @@ describe("document restoration by historical revision", () => {
       ok: true,
       snapshot: { ...h.before, revision: 3, updatedAt: h.event.issuedAt },
     }
-    expect(reduceDocumentRestoredEvent(h.current, h.event, h.before)).toEqual(expected)
-    expect(replayVersionedDocumentEvents([...h.prefix, h.event])).toEqual(expected)
+    expect(reduceDocumentRestoredEvent(h.current, h.event, h.before)).toEqual<unknown>(expected)
+    expect(replayVersionedDocumentEvents([...h.prefix, h.event])).toEqual<unknown>(expected)
     expect(documentRestoredEventSchema.parse(h.event)).not.toHaveProperty("target")
   })
   test("requires the exact same-document historical checkpoint rather than caller content", () => {

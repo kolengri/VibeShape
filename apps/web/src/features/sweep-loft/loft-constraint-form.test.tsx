@@ -1,4 +1,5 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, expect, it } from "bun:test"
 import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { featureRecordSchema, sketchProfileSelectorSchema } from "@vibeshape/domain"
@@ -8,11 +9,11 @@ import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selec
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
-import { afterEach, expect, it, vi } from "vitest"
 import {
   createLoftV3Project,
   loftFixtureId as id,
 } from "../../../../../tests/support/loft-v3-fixture"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { loftSupportKey, remapLoftOuterTracks } from "./loft-constraint-model"
 import { SweepLoftForm } from "./sweep-loft-form"
@@ -169,7 +170,7 @@ it("remaps authored section cells without guessing correspondence for an inserte
     [first, second],
     [second, added, first],
   )
-  expect(reordered[0]).toEqual({
+  expect(reordered[0]).toEqual<unknown>({
     sectionEntityIds: [id(2011), "", id(1011)],
     sectionStartPointIds: [id(2001), "", id(1001)],
   })

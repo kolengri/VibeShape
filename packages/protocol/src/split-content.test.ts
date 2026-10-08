@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { SPLIT_OUTPUT_ROLES, splitFeatureContentParametersSchema } from "./geometry-worker"
 
 describe("split worker parameters", () => {

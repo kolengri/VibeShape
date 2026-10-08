@@ -1,10 +1,11 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { webcrypto } from "node:crypto"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { assemblyJointSchema } from "@vibeshape/domain/assembly"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
 import { AssemblyDefinitionForm } from "./assembly-definition-form"
@@ -50,7 +51,7 @@ describe("Assembly forms", () => {
     await userEvent.clear(screen.getByLabelText("Name"))
     await userEvent.type(screen.getByLabelText("Name"), "Reusable bracket")
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
-    await waitFor(() => expect(a.onApply).toHaveBeenCalledOnce())
+    await waitFor(() => expect(a.onApply).toHaveBeenCalledTimes(1))
     const changes = a.onApply.mock.calls[0]?.[0]
     expect(changes).toMatchObject([
       {
@@ -106,7 +107,7 @@ describe("Assembly forms", () => {
     await choose("Source Part", "Part 2")
     expect(f.definition).toEqual(before)
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(a.onCancel).toHaveBeenCalledOnce()
+    expect(a.onCancel).toHaveBeenCalledTimes(1)
     expect(a.onApply).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply.mock.calls[0]?.[0]).toMatchObject([
@@ -207,7 +208,7 @@ describe("Assembly forms", () => {
     fireEvent.change(screen.getByLabelText("X (mm)"), { target: { value: "30" } })
     fireEvent.change(screen.getByLabelText("Z (deg)"), { target: { value: "90" } })
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Escape" })
-    expect(a.onCancel).toHaveBeenCalledOnce()
+    expect(a.onCancel).toHaveBeenCalledTimes(1)
     expect(a.onApply).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply.mock.calls[0]?.[0]).toMatchObject([

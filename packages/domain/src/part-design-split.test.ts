@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
@@ -66,10 +66,10 @@ describe("trusted exact-body plane split", () => {
   it("registers one exact role dependency and canonical signed millimeters", () => {
     const validated = registry().validateFeature(feature())
     expect(validated).toMatchObject({ ok: true, contentParameters: { plane: "XZ", offset: -20 } })
-    expect(featureBodyDependencies(feature())).toEqual([
+    expect(featureBodyDependencies(feature())).toEqual<unknown>([
       { featureId: sourceId, outputRole: "body.primary" },
     ])
-    expect(readSplitFeatureParameters(feature())).toEqual(parameters())
+    expect(readSplitFeatureParameters(feature())).toEqual<unknown>(parameters())
     expect(
       readSplitFeatureParameters({
         ...feature(),

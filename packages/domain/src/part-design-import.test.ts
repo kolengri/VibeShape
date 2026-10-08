@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotV2Schema } from "./document-v2"
 import { applyDocumentV2Command } from "./document-v2-commands"
 import { applyDocumentUpgradeV2Command } from "./document-v2-migration"
@@ -353,7 +353,7 @@ describe("captured exact source body features", () => {
     const added = value(insert(f.snapshot))
     expect(
       added.snapshot.parts.map(({ origin, bodyHistory }) => ({ origin, bodyHistory })),
-    ).toEqual(allocations().map(({ origin, body }) => ({ origin, bodyHistory: [body] })))
+    ).toEqual<unknown>(allocations().map(({ origin, body }) => ({ origin, bodyHistory: [body] })))
     const event = {
       ...envelope(f.snapshot.revision),
       schemaVersion: 4,

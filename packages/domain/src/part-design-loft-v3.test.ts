@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { featureBodyDependencies, featureBodyDependencyIds } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
@@ -61,8 +61,12 @@ it("schedules guide sketches and exact support body owners without consuming the
     references: [],
     suppressed: false,
   })
-  expect(loftV3SupportBodies(parsed)).toEqual([{ featureId: id(500), outputRole: "result" }])
-  expect(featureBodyDependencies(feature)).toEqual([{ featureId: id(500), outputRole: "result" }])
+  expect(loftV3SupportBodies(parsed)).toEqual<unknown>([
+    { featureId: id(500), outputRole: "result" },
+  ])
+  expect(featureBodyDependencies(feature)).toEqual<unknown>([
+    { featureId: id(500), outputRole: "result" },
+  ])
   expect(featureBodyDependencyIds(feature)).toEqual([])
   const supportBody = { featureId: id(500), outputRole: "result" },
     siblingBody = { featureId: id(500), outputRole: "other" },
@@ -74,7 +78,7 @@ it("schedules guide sketches and exact support body owners without consuming the
   expect(terminalBodyOutputs([feature], bodies)).toEqual([supportBody, siblingBody, loftBody])
   bodies.set(id(500), [siblingBody])
   expect(terminalBodyOutputs([feature], bodies)).toBeNull()
-  expect(projectFirstPartyFeatureSemanticInputs(feature)).toEqual({
+  expect(projectFirstPartyFeatureSemanticInputs(feature)).toEqual<unknown>({
     recognized: true,
     ok: true,
     inputs: [

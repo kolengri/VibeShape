@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createAngleQuantity,
   createLengthQuantity,
@@ -6,7 +7,6 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
-import { describe, expect, it } from "vitest"
 import messages from "../../i18n/messages/en.json"
 import {
   type PlacementFormMode,

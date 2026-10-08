@@ -1,36 +1,32 @@
-// @vitest-environment jsdom
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { i18n } from "../../i18n"
-import { ViewerPreferencesProvider } from "../../shell/viewer-preferences"
-import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
-import { AssemblyExportDialog } from "./assembly-export-dialog"
-import { identityAssemblyPose, newAssemblyInstance } from "./assembly-model"
-import { assemblyUiFixture } from "./assembly-test-fixture"
-import { useAssemblyExport } from "./use-assembly-export"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 
-const ports = vi.hoisted(() => ({ assembly: vi.fn(), model: vi.fn(), download: vi.fn() }))
-vi.mock("../../document/document-controller", () => ({
+const ports = (() => ({ assembly: vi.fn(), model: vi.fn(), download: vi.fn() }))()
+mock.module("../../document/document-controller", () => ({
   exportActiveAssembly: ports.assembly,
   prepareActiveDocumentPrint: ports.model,
 }))
-vi.mock("../../document/document-export", () => ({ downloadDocumentExport: ports.download }))
-vi.mock("../../printing/print-preparation-preview", () => ({
+mock.module("../../document/document-export", () => ({ downloadDocumentExport: ports.download }))
+mock.module("../../printing/print-preparation-preview", () => ({
   PrintPreparationPreview: () => <div>Prepared geometry preview</div>,
 }))
-vi.mock("../../printing/slicer-handoff-panel", () => ({ SlicerHandoffPanel: () => null }))
+mock.module("../../printing/slicer-handoff-panel", () => ({ SlicerHandoffPanel: () => null }))
+
+const { act, cleanup, fireEvent, render, renderHook, screen, waitFor } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../../i18n")
+const { ViewerPreferencesProvider } = await import("../../shell/viewer-preferences")
+const { authoredTestId: id } = await import("../../test-support/authored-tree-fixture")
+const { AssemblyExportDialog } = await import("./assembly-export-dialog")
+const { identityAssemblyPose, newAssemblyInstance } = await import("./assembly-model")
+const { assemblyUiFixture } = await import("./assembly-test-fixture")
+const { useAssemblyExport } = await import("./use-assembly-export")
 const wrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider i18n={i18n} initialLocale="en">
     <ViewerPreferencesProvider>{children}</ViewerPreferencesProvider>
@@ -181,7 +177,7 @@ describe("Assembly export isolation", () => {
       running = hook.result.current.run({ format: "step" })
       void hook.result.current.run({ format: "stl" })
     })
-    expect(ports.assembly).toHaveBeenCalledOnce()
+    expect(ports.assembly).toHaveBeenCalledTimes(1)
     await act(async () => {
       reject(new Error("Worker rejected"))
       await running
@@ -191,7 +187,7 @@ describe("Assembly export isolation", () => {
     await act(async () => {
       await hook.result.current.run({ format: "3mf" })
     })
-    expect(ports.download).toHaveBeenCalledOnce()
+    expect(ports.download).toHaveBeenCalledTimes(1)
     expect(hook.result.current.failed).toBe(false)
   })
   it("aborts a closed dialog and never downloads a late result", async () => {

@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { strFromU8, unzipSync } from "fflate"
-import { describe, expect, it } from "vitest"
 import { writeThreeMfMeshes } from "./three-mf-meshes"
 
 const faceVertices = [

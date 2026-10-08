@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { sourceAssetsFixture } from "../../../scripts/source-assets-fixture"
 import { prepareSourceAssetBytes } from "./source-asset-store"
 

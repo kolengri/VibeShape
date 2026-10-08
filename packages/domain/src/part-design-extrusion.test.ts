@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { featureBodyDependencies, featureGeometryDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
@@ -213,7 +213,7 @@ describe("selector-backed extrusion feature", () => {
   })
 
   it("persists only stable profile intent and a variable-capable distance", () => {
-    expect(extrusionFeatureParametersSchema.parse(extrusion().parameters)).toEqual(
+    expect(extrusionFeatureParametersSchema.parse(extrusion().parameters)).toEqual<unknown>(
       extrusion().parameters,
     )
     expect(
@@ -268,8 +268,8 @@ describe("selector-backed extrusion feature", () => {
       },
     })
     expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-    expect(readExtrusionProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
-    expect(readExtrusionProfileSet(extrusion())?.profiles).toEqual([profile])
+    expect(readExtrusionProfileSet(feature)?.profiles).toEqual<unknown>([profile, secondProfile])
+    expect(readExtrusionProfileSet(extrusion())?.profiles).toEqual<unknown>([profile])
     expect(
       multiProfileExtrusionFeatureParametersSchema.safeParse({
         ...feature.parameters,
@@ -308,7 +308,7 @@ describe("selector-backed extrusion feature", () => {
       })
 
       expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-      expect(readExtrusionProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
+      expect(readExtrusionProfileSet(feature)?.profiles).toEqual<unknown>([profile, secondProfile])
       expect(
         registry().validateFeature({
           ...feature,
@@ -576,8 +576,8 @@ describe("body-bound extrusion end conditions", () => {
         }),
       ).toMatchObject({ ok: false })
       const consumed = { featureId: target.featureId, outputRole: target.outputRole }
-      expect(featureBodyDependencies(feature)).toEqual([consumed])
-      expect(featureGeometryDependencies(feature)).toEqual([consumed, endpoint])
+      expect(featureBodyDependencies(feature)).toEqual<unknown>([consumed])
+      expect(featureGeometryDependencies(feature)).toEqual<unknown>([consumed, endpoint])
     },
   )
   it("deduplicates a shared v7 target/end producer without silently changing its body role", () => {
@@ -594,7 +594,7 @@ describe("body-bound extrusion end conditions", () => {
       dependencies: [target.featureId],
     })
     expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-    expect(featureGeometryDependencies(feature)).toEqual([
+    expect(featureGeometryDependencies(feature)).toEqual<unknown>([
       { featureId: target.featureId, outputRole: target.outputRole },
     ])
     expect(
@@ -672,10 +672,10 @@ describe("body-bound extrusion end conditions", () => {
       },
       dependencies: [target.featureId, endpoint.featureId],
     })
-    expect(featureBodyDependencies(feature)).toEqual([
+    expect(featureBodyDependencies(feature)).toEqual<unknown>([
       { featureId: target.featureId, outputRole: target.outputRole },
     ])
-    expect(featureGeometryDependencies(feature)).toEqual([
+    expect(featureGeometryDependencies(feature)).toEqual<unknown>([
       { featureId: target.featureId, outputRole: target.outputRole },
       endpoint,
     ])

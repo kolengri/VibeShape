@@ -1,13 +1,17 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, mock } from "bun:test"
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
-import { useEffect } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import { activeSketchDisplayForCamera, ModelingSketchViewportStack } from "./editor-workspace"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
 // These tests own stack lifecycle; real tree interactions are covered by model-tree and browser tests.
-vi.mock("./model-tree", () => ({ ModelTree: () => null }))
+mock.module("./model-tree", () => ({ ModelTree: () => null }))
+
+const { cleanup, render, screen } = await import("@testing-library/react")
+const { useEffect } = await import("react")
+const { activeSketchDisplayForCamera, ModelingSketchViewportStack } = await import(
+  "./editor-workspace"
+)
 
 afterEach(cleanup)
 
@@ -42,7 +46,7 @@ describe("ModelingSketchViewportStack", () => {
     expect(onUnmount).not.toHaveBeenCalled()
 
     view.unmount()
-    expect(onUnmount).toHaveBeenCalledOnce()
+    expect(onUnmount).toHaveBeenCalledTimes(1)
   })
 
   it("renders the active Three.js sketch display only in the orbit context", () => {

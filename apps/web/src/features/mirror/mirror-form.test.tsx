@@ -1,4 +1,5 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -9,7 +10,7 @@ import {
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
@@ -87,8 +88,9 @@ describe("Mirror form", () => {
       ),
     )
     await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
-    expect(f.onSave).toHaveBeenCalledExactlyOnceWith(
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
+    expect(f.onSave).toHaveBeenCalledWith(
       7,
       expect.objectContaining({
         id: featureId,
@@ -118,7 +120,7 @@ describe("Mirror form", () => {
       "explicit",
     )
     await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
       type: mirrorFeatureTypeV3.type,
@@ -156,7 +158,7 @@ describe("Mirror form", () => {
     expect((screen.getByRole("radio", { name: "XY" }) as HTMLInputElement).checked).toBe(true)
     onSave.mockResolvedValue({ ok: true })
     await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[1]?.[1]).toMatchObject({
       id: featureId,
       type: feature.type,
@@ -185,7 +187,7 @@ describe("Mirror form", () => {
       ),
     )
     await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
       type: mirrorFeatureTypeV2.type,
@@ -217,7 +219,7 @@ describe("Mirror form", () => {
     ).toBe(true)
     await userEvent.click(screen.getByRole("radio", { name: "YZ" }))
     await userEvent.click(screen.getByRole("button", { name: "Create mirror" }))
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
       type: mirrorFeatureTypeV2.type,
@@ -244,7 +246,7 @@ describe("Mirror form", () => {
     const f = setup()
     await userEvent.click(screen.getByRole("radio", { name: "YZ" }))
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(f.onCancel).toHaveBeenCalledOnce()
+    expect(f.onCancel).toHaveBeenCalledTimes(1)
     expect(f.onSave).not.toHaveBeenCalled()
     f.unmount()
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)
@@ -270,7 +272,7 @@ describe("Mirror form", () => {
     const apply = screen.getByRole("button", { name: "Create mirror" })
     await userEvent.click(apply)
     await userEvent.click(apply)
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect((apply as HTMLButtonElement).disabled).toBe(true)
     reject?.(new Error("Unavailable"))
     await waitFor(() => expect((apply as HTMLButtonElement).disabled).toBe(false))

@@ -1,57 +1,58 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { PersistentDocumentSessionOpenResult } from "@vibeshape/application/persistent-document-session"
-import {
-  boxFeatureType,
-  createLengthQuantity,
-  type DocumentSnapshot,
-  documentSnapshotSchema,
-  featureRecordSchema,
-} from "@vibeshape/domain"
-import { applyDocumentCommand, commandActorSchema } from "@vibeshape/domain/commands"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
+import type { DocumentSnapshot } from "@vibeshape/domain"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const ports = vi.hoisted(() => ({
+const ports = (() => ({
   create: vi.fn(),
   open: vi.fn(),
   list: vi.fn(),
   review: vi.fn(),
   createAutomation: vi.fn(),
   disposeAutomation: vi.fn(),
-}))
-vi.mock("@vibeshape/application/authority-document-session", () => ({
+}))()
+mock.module("@vibeshape/application/authority-document-session", () => ({
   openAuthorityDocumentSession: ports.open,
 }))
-vi.mock("@vibeshape/application/persistent-document-session", async (original) => ({
-  ...(await original<typeof import("@vibeshape/application/persistent-document-session")>()),
+const originalModule1 = { ...(await import("@vibeshape/application/persistent-document-session")) }
+mock.module("@vibeshape/application/persistent-document-session", () => ({
+  ...originalModule1,
   createPersistentDocumentSession: ports.create,
 }))
-vi.mock("./authored-document-session", async (original) => ({
-  ...(await original<typeof import("./authored-document-session")>()),
+const originalModule2 = { ...(await import("./authored-document-session")) }
+mock.module("./authored-document-session", () => ({
+  ...originalModule2,
   enableAuthoredDocument: (result: unknown) => result,
 }))
-vi.mock("./browser-project-repository", () => ({
+mock.module("./browser-project-repository", () => ({
   BrowserProjectRepository: class {
     legacy = {}
     versioned = {}
     listProjects = ports.list
   },
 }))
-vi.mock("../automation/automation-review-controller", async (original) => {
-  const actual = await original<typeof import("../automation/automation-review-controller")>()
+const originalModule3 = { ...(await import("../automation/automation-review-controller")) }
+mock.module("../automation/automation-review-controller", () => {
+  const actual = originalModule3
   return {
     ...actual,
     automationReviews: { ...actual.automationReviews, getSnapshot: ports.review },
   }
 })
-vi.mock("../automation/document-automation-session", () => ({
+mock.module("../automation/document-automation-session", () => ({
   createDocumentAutomationSession: ports.createAutomation,
 }))
-vi.mock("../automation/history-automation-session", () => ({
+mock.module("../automation/history-automation-session", () => ({
   createBrowserHistoryAutomationSession: () => ({ cancel: vi.fn(), dispose: vi.fn() }),
 }))
+
+const { cleanup, renderHook, waitFor } = await import("@testing-library/react")
+const { boxFeatureType, createLengthQuantity, documentSnapshotSchema, featureRecordSchema } =
+  await import("@vibeshape/domain")
+const { applyDocumentCommand, commandActorSchema } = await import("@vibeshape/domain/commands")
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 
 const initialId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const targetId = "0195b5ac-b250-7a2c-8c33-000000000102"
@@ -127,8 +128,9 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+let moduleRevision = 0
 beforeEach(() => {
-  vi.resetModules()
+  moduleRevision += 1
   vi.clearAllMocks()
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.stubGlobal("sessionStorage", createTestBrowserStorage())
@@ -184,7 +186,9 @@ async function ready(document = snapshot()) {
     projects.set(created.snapshot.id, created.snapshot)
     return persistedSession(created.snapshot)
   })
-  const controller = await import("./document-controller")
+  const controller = (await import(
+    `./document-controller?test=${moduleRevision}`
+  )) as typeof import("./document-controller")
   const hook = renderHook(() => controller.useDocumentController("Untitled"))
   await waitFor(() => expect(hook.result.current.status).toBe("ready"))
   const expected = () => {
@@ -277,9 +281,9 @@ describe("in-place automation project management", () => {
     expect(first).toMatchObject({ ok: true, value: { name: "Project A", revision: 1 } })
     if (!first.ok) throw new Error("Expected project A.")
     expect(localStorage.getItem(storageKey)).toBe(first.value.projectId)
-    expect(source.session.close).toHaveBeenCalledOnce()
+    expect(source.session.close).toHaveBeenCalledTimes(1)
     expect(oldHandle.readIdentity()).toBeNull()
-    expect(ports.disposeAutomation).toHaveBeenCalledOnce()
+    expect(ports.disposeAutomation).toHaveBeenCalledTimes(1)
     expect(await controller.addFeature(1, box)).toMatchObject({ ok: true })
     const second = await controller.createAutomationProject("Project B", expected())
     expect(second).toMatchObject({ ok: true, value: { name: "Project B" } })
@@ -314,7 +318,7 @@ describe("in-place automation project management", () => {
     })
     expect(source.session.close).not.toHaveBeenCalled()
     expect(ports.create).not.toHaveBeenCalled()
-    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(initialId)
   })
 
   it("blocks owner drafts and active manual review", async () => {
@@ -374,7 +378,7 @@ describe("in-place automation project management", () => {
       ok: false,
       diagnostic: { code: "lease-held", retryable: true },
     })
-    expect(readOnly.session.close).toHaveBeenCalledOnce()
+    expect(readOnly.session.close).toHaveBeenCalledTimes(1)
     const target = openResult(snapshot(targetId))
     ports.open.mockResolvedValueOnce(target)
     vi.spyOn(localStorage, "setItem").mockImplementation(() => {
@@ -384,7 +388,7 @@ describe("in-place automation project management", () => {
       ok: false,
       diagnostic: { code: "storage-unavailable" },
     })
-    expect(target.session.close).toHaveBeenCalledOnce()
+    expect(target.session.close).toHaveBeenCalledTimes(1)
     expect(source.session.close).not.toHaveBeenCalled()
     expect(controller.getDocumentControllerState()).toMatchObject({
       status: "ready",
@@ -401,9 +405,9 @@ describe("in-place automation project management", () => {
       ok: false,
       diagnostic: { code: "lease-held", retryable: true },
     })
-    expect(blockedTarget.session.close).toHaveBeenCalledOnce()
+    expect(blockedTarget.session.close).toHaveBeenCalledTimes(1)
     expect(source.session.close).not.toHaveBeenCalled()
-    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(initialId)
     expect(localStorage.getItem(storageKey)).toBe(initialId)
 
     const viewingTarget = openResult(snapshot(targetId, "Other tab's project"), "read-only")
@@ -415,7 +419,7 @@ describe("in-place automation project management", () => {
       report: { mode: "read-only", snapshot: { id: targetId } },
       diagnostic: { code: "write-access-unavailable", sourceCode: "lease-held" },
     })
-    expect(source.session.close).toHaveBeenCalledOnce()
+    expect(source.session.close).toHaveBeenCalledTimes(1)
     expect(viewingTarget.session.close).not.toHaveBeenCalled()
     expect(localStorage.getItem(storageKey)).toBe(targetId)
     expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({
@@ -423,7 +427,7 @@ describe("in-place automation project management", () => {
       diagnostic: { code: "lease-held", retryable: true },
     })
     expect(await controller.activateLocalProject(initialId, expected())).toEqual({ ok: true })
-    expect(viewingTarget.session.close).toHaveBeenCalledOnce()
+    expect(viewingTarget.session.close).toHaveBeenCalledTimes(1)
     expect(controller.getDocumentControllerState().report).toMatchObject({
       mode: "read-write",
       snapshot: { id: initialId },
@@ -458,7 +462,7 @@ describe("in-place automation project management", () => {
     expect(oldHandle.readIdentity()).toBeNull()
     const replacement = controller.createActiveDocumentAutomationSession()
     if (!replacement.ok) throw new Error("Expected a recovered automation handle.")
-    expect(replacement.readIdentity()?.id).toBe(initialId)
+    expect(replacement.readIdentity()?.id).toBe<unknown>(initialId)
     replacement.dispose()
   })
 
@@ -479,17 +483,17 @@ describe("in-place automation project management", () => {
     duringPreparation.abort()
     preparation.resolve(target)
     expect(await pending).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
-    expect(target.session.close).toHaveBeenCalledOnce()
+    expect(target.session.close).toHaveBeenCalledTimes(1)
     expect(source.session.close).not.toHaveBeenCalled()
     const closing = deferred<{ ok: true; value: undefined }>()
     source.session.close.mockReturnValueOnce(closing.promise)
     const duringClose = new AbortController()
     const switching = controller.openAutomationProject(targetId, expected(), duringClose.signal)
-    await waitFor(() => expect(source.session.close).toHaveBeenCalledOnce())
+    await waitFor(() => expect(source.session.close).toHaveBeenCalledTimes(1))
     duringClose.abort()
     closing.resolve({ ok: true, value: undefined })
     expect(await switching).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
-    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(initialId)
     expect(localStorage.getItem(storageKey)).toBe(initialId)
   })
 
@@ -537,7 +541,7 @@ describe("in-place automation project management", () => {
       ok: false,
       diagnostic: { code: "persistence-failed" },
     })
-    expect(target.session.close).toHaveBeenCalledOnce()
+    expect(target.session.close).toHaveBeenCalledTimes(1)
     expect(controller.getDocumentControllerState()).toMatchObject({
       status: "ready",
       saveStatus: "saved",

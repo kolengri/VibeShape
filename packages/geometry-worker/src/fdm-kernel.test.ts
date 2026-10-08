@@ -1,15 +1,14 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import type { FdmFeatureContentParameters } from "@vibeshape/protocol"
 import { type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
 import { inspectOcctBody } from "./occt-body-validation"
 import { createOcctFdmFeature } from "./occt-fdm"
 import { createOcctBox, createOcctCylinder, cutOcctShapes } from "./occt-shapes"
 
 let occt: OpenCascadeInstance
 beforeAll(async () => {
-  const fs = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const fs = await import("node:fs")
   const bytes = fs.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )

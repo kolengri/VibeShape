@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import { commandActorSchema } from "@vibeshape/domain/commands"
@@ -28,7 +29,7 @@ import {
   surfaceTextureLayerIdSchema,
 } from "@vibeshape/domain/surface-textures"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   historyRepairFixture,
   repairRemovalCommand,
@@ -435,6 +436,6 @@ describe("metadata proposals on texture authority", () => {
     const after = f.snapshot()
     if (after.schemaVersion !== 3) throw new Error("Metadata discarded texture authority")
     expect(after.surfaceTextures).toEqual([layer])
-    expect(f.commit).toHaveBeenCalledOnce()
+    expect(f.commit).toHaveBeenCalledTimes(1)
   })
 })

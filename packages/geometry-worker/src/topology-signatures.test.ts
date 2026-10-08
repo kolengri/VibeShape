@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import type { Shape3D } from "replicad"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { captureReplicadTopologySnapshot, createTopologyCandidates } from "./topology-signatures"
 
 function sample(
@@ -88,6 +89,6 @@ describe("createTopologyCandidates", () => {
     } as unknown as Shape3D
 
     expect(() => captureReplicadTopologySnapshot(shape)).toThrow("edge access failed")
-    expect(face.delete).toHaveBeenCalledOnce()
+    expect(face.delete).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,6 +1,4 @@
-// @vitest-environment node
-
-import { expect, it, vi } from "vitest"
+import { expect, it } from "bun:test"
 import { createDisposableSketchInspection } from "../packages/application/src/disposable-sketch-inspection"
 import type { DocumentRebuildPort } from "../packages/application/src/persistent-document-session"
 import { type DocumentSnapshot, documentSnapshotSchema } from "../packages/domain/src/document"
@@ -14,6 +12,7 @@ import { createLengthQuantity } from "../packages/domain/src/units"
 import { DOCUMENT_PROTOCOL_VERSION, solvedSketchWireSchema } from "../packages/protocol/src/index"
 import initializeSolver from "../packages/sketch-solver/runtime/vibeshape_slvs.mjs"
 import { solveSketchRecord } from "../packages/sketch-solver/src/production"
+import { vi } from "../tests/unit/support/bun-test"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${String(n).padStart(12, "0")}`
 const inspectionId = "d8dc8f8a-bb72-43a2-83f3-956f1f36ad62"
@@ -147,7 +146,7 @@ it("projects native solved coordinates and stable profile boundaries before term
   })
   expect(result.evidence.summary.maximumResidual).toBeLessThan(1e-7)
   expect(document).toEqual(before)
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
 })
 it("reports native degrees of freedom without mutating authored point positions", async () => {
   const document = snapshot()
@@ -166,7 +165,7 @@ it("reports native degrees of freedom without mutating authored point positions"
       failedConstraintIds: [],
     },
   })
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
 })
 it("cancels a pending solve immediately and ignores a late native result", async () => {
   let release!: () => void
@@ -176,17 +175,17 @@ it("cancels a pending solve immediately and ignores a late native result", async
   const document = snapshot()
   const fixturePort = await fixture(document, gate)
   const result = fixturePort.inspection.inspect(document, sketchIdSchema.parse(id(200)))
-  await vi.waitFor(() => expect(fixturePort.solveSketch).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(fixturePort.solveSketch).toHaveBeenCalledTimes(1))
   fixturePort.inspection.cancel()
   await expect(result).resolves.toEqual({ ok: false, code: "preview-cancelled" })
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
   release()
   await Promise.resolve()
   fixturePort.inspection.dispose()
   await expect(
     fixturePort.inspection.inspect(document, sketchIdSchema.parse(id(200))),
   ).resolves.toEqual({ ok: false, code: "preview-disposed" })
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
 })
 it("rejects wrong source revision and sketch identity without retaining native evidence", async () => {
   const document = snapshot()
@@ -200,7 +199,7 @@ it("rejects wrong source revision and sketch identity without retaining native e
   await expect(
     fixturePort.inspection.inspect(document, sketchIdSchema.parse(id(200))),
   ).resolves.toEqual({ ok: false, code: "stale-geometry" })
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
 })
 
 it("keeps native fixed external bindings out of authored solved point evidence", async () => {
@@ -212,13 +211,13 @@ it("keeps native fixed external bindings out of authored solved point evidence",
     evidence: { summary: { status: "fully-constrained", degreesOfFreedom: 0 } },
   })
   if (!result.ok) throw new Error(result.code)
-  expect(result.evidence.points.map(({ entityId }) => entityId)).toEqual([
+  expect(result.evidence.points.map(({ entityId }) => entityId)).toEqual<string[]>([
     id(1),
     id(2),
     id(3),
     id(4),
   ])
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
 })
 it("reports native conflicting authored constraints without inventing a usable profile", async () => {
   const document = snapshot(),
@@ -254,5 +253,5 @@ it("reports native conflicting authored constraints without inventing a usable p
       conflicting.sketches[0]?.constraints.some((constraint) => constraint.id === id),
     ),
   ).toBe(true)
-  expect(fixturePort.terminate).toHaveBeenCalledOnce()
+  expect(fixturePort.terminate).toHaveBeenCalledTimes(1)
 })

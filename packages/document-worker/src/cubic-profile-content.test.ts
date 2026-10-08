@@ -1,7 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { sketchProfileSelectorSchema, sketchRecordSchema } from "@vibeshape/domain"
 import { extrusionProfileSegmentSchema } from "@vibeshape/protocol"
 import { detectSketchProfiles, SKETCH_SOLVER_BUILD } from "@vibeshape/sketch-solver"
-import { describe, expect, it } from "vitest"
 import { materializeSelectedProfile } from "./analytical-profile-content"
 
 const id = (n: number) => `01900000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`
@@ -78,7 +78,7 @@ describe("exact cubic profile content", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.diagnostic.code)
     const cubic = result.outer.segments.find((segment) => segment.type === "cubic-bezier")
-    expect(cubic).toEqual({
+    expect(cubic).toEqual<unknown>({
       entityId: id(5),
       type: "cubic-bezier",
       startPointId: id(4),

@@ -1,21 +1,23 @@
-// @vitest-environment jsdom
-
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
-import { i18n } from "../i18n"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
-import { SettingsDialog } from "./settings-dialog"
-import { ViewerPreferencesProvider } from "./viewer-preferences"
-import { WorkspaceLayoutPreferencesProvider } from "./workspace-layout-preferences"
 
-const applyUnits = vi.hoisted(() => vi.fn())
-vi.mock("../document/document-controller", async (original) => ({
-  ...(await original<typeof import("../document/document-controller")>()),
+const applyUnits = (() => vi.fn())()
+const originalModule1 = { ...(await import("../document/document-controller")) }
+mock.module("../document/document-controller", () => ({
+  ...originalModule1,
   setActiveProjectDisplayUnits: applyUnits,
 }))
+
+const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../i18n")
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
+const { SettingsDialog } = await import("./settings-dialog")
+const { ViewerPreferencesProvider } = await import("./viewer-preferences")
+const { WorkspaceLayoutPreferencesProvider } = await import("./workspace-layout-preferences")
 const controller = {
   status: "ready",
   saveStatus: "saved",

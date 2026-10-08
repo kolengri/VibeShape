@@ -1,14 +1,8 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { i18n } from "../i18n"
 import type { DocumentControllerState } from "./document-controller"
-import { DocumentProjectDialog } from "./document-project-dialog"
-import { downloadProjectBackup } from "./document-project-file"
 
 const activeDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
 const otherDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad"
@@ -29,7 +23,7 @@ class ResizeObserverMock {
   disconnect() {}
 }
 
-const controllerMocks = vi.hoisted(() => ({
+const controllerMocks = (() => ({
   activateLocalProject: vi.fn(),
   createNewLocalProject: vi.fn(),
   deleteLocalProject: vi.fn(),
@@ -39,16 +33,25 @@ const controllerMocks = vi.hoisted(() => ({
   listLocalProjects: vi.fn(),
   renameActiveProject: vi.fn(),
   getProjectActionBlock: vi.fn().mockReturnValue(null),
-}))
+}))()
 
-vi.mock("./document-controller", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./document-controller")>()),
+const originalModule1 = { ...(await import("./document-controller")) }
+mock.module("./document-controller", () => ({
+  ...originalModule1,
   ...controllerMocks,
 }))
 
-vi.mock("./document-project-file", () => ({
+mock.module("./document-project-file", () => ({
   downloadProjectBackup: vi.fn(),
 }))
+
+const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { i18n } = await import("../i18n")
+const { DocumentProjectDialog } = await import("./document-project-dialog")
+const { downloadProjectBackup } = await import("./document-project-file")
 
 beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
 afterAll(() => vi.unstubAllGlobals())
@@ -162,14 +165,14 @@ describe("DocumentProjectDialog", () => {
 
     await user.dblClick(backup)
 
-    expect(controllerMocks.exportActiveProjectBackup).toHaveBeenCalledOnce()
+    expect(controllerMocks.exportActiveProjectBackup).toHaveBeenCalledTimes(1)
     expect(backup.getAttribute("aria-busy")).toBe("true")
     finish?.({
       ok: true,
       documentName: "Bracket",
       file: new Uint8Array([1, 2, 3]),
     })
-    await waitFor(() => expect(downloadProjectBackup).toHaveBeenCalledOnce())
+    await waitFor(() => expect(downloadProjectBackup).toHaveBeenCalledTimes(1))
   })
 
   it("lists local projects and guards project switching against double activation", async () => {
@@ -190,7 +193,7 @@ describe("DocumentProjectDialog", () => {
 
     await user.dblClick(open)
 
-    expect(controllerMocks.activateLocalProject).toHaveBeenCalledOnce()
+    expect(controllerMocks.activateLocalProject).toHaveBeenCalledTimes(1)
     expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId)
     expect(open.getAttribute("aria-busy")).toBe("true")
     finish?.({ ok: true })
@@ -229,7 +232,7 @@ describe("DocumentProjectDialog", () => {
 
     await user.dblClick(duplicate)
 
-    expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledOnce()
+    expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledTimes(1)
     expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledWith(
       otherDocumentId,
       2,
@@ -265,7 +268,7 @@ describe("DocumentProjectDialog", () => {
 
     await user.dblClick(confirm)
 
-    expect(controllerMocks.deleteLocalProject).toHaveBeenCalledOnce()
+    expect(controllerMocks.deleteLocalProject).toHaveBeenCalledTimes(1)
     expect(controllerMocks.deleteLocalProject).toHaveBeenCalledWith(otherDocumentId, 2)
     expect(confirm.getAttribute("aria-busy")).toBe("true")
     expect(screen.getByRole("alertdialog")).toBeTruthy()
@@ -321,7 +324,7 @@ describe("DocumentProjectDialog", () => {
 
     await user.upload(input, projectFile())
 
-    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce())
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1))
     expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId, {
       documentId: activeDocumentId,
       revision: 3,
@@ -338,7 +341,7 @@ describe("DocumentProjectDialog", () => {
       dataTransfer: dropPayload([projectFile()]),
     })
 
-    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce())
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1))
     expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId, {
       documentId: activeDocumentId,
       revision: 3,
@@ -380,11 +383,11 @@ describe("DocumentProjectDialog", () => {
     const dropArea = screen.getByRole("group", { name: "Drop a .vshape project" })
     fireEvent.drop(dropArea, { dataTransfer: dropPayload([pendingFile]) })
 
-    await waitFor(() => expect(pendingFile.arrayBuffer).toHaveBeenCalledOnce())
+    await waitFor(() => expect(pendingFile.arrayBuffer).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole("alert")).toBeNull()
     expect(screen.getByRole("status").textContent).toContain("Verifying")
     finishRead?.(new ArrayBuffer(3))
-    await waitFor(() => expect(controllerMocks.activateLocalProject).toHaveBeenCalledOnce())
+    await waitFor(() => expect(controllerMocks.activateLocalProject).toHaveBeenCalledTimes(1))
   })
 
   it("rejects oversized files before reading and guards concurrent imports while extraction is pending", async () => {
@@ -405,7 +408,7 @@ describe("DocumentProjectDialog", () => {
     })
     expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
     finishRead?.(new Uint8Array([1, 2, 3]).buffer)
-    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce())
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1))
 
     const oversizedFile = projectFile()
     Object.defineProperty(oversizedFile, "size", {
@@ -417,7 +420,7 @@ describe("DocumentProjectDialog", () => {
       "This project exceeds the current 32 MiB archive limit.",
     )
     expect(oversizedFile.arrayBuffer).not.toHaveBeenCalled()
-    expect(controllerMocks.importProjectBackup).toHaveBeenCalledOnce()
+    expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1)
   })
   it("keeps Save/Open first and refuses replacing actions while an edit is active", async () => {
     renderDialog(controller, "editor-draft")

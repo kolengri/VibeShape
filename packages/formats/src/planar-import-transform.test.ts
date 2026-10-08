@@ -1,10 +1,10 @@
+import { describe, expect, it } from "bun:test"
 import { sketchEntityIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
 import {
   authorPreparedPlanarImport,
   type PlanarImportPoint,
   planarImportCurvePoint,
 } from "@vibeshape/domain/planar-import-authoring"
-import { describe, expect, it } from "vitest"
 import { type ImportedCurve, type ParsedGeometryImport, parseGeometryImport } from "./import"
 import { preparePlanarImport } from "./planar-import-transform"
 

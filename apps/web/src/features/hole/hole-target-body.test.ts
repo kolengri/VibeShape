@@ -1,24 +1,30 @@
-import { createModelBodyMeasurementEvidence } from "@vibeshape/application/model-measurements"
+import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
-import {
+import type { FeatureRecord } from "@vibeshape/domain"
+import { vi } from "../../../../../tests/unit/support/bun-test"
+
+mock.module("@vibeshape/application/model-measurements", () => ({
+  createModelBodyMeasurementEvidence: vi.fn(),
+}))
+
+const { createModelBodyMeasurementEvidence } = await import(
+  "@vibeshape/application/model-measurements"
+)
+const {
   boxFeatureType,
   createLengthQuantity,
   documentSnapshotSchema,
-  type FeatureRecord,
   featureRecordSchema,
   holeFeatureTypeV2,
-} from "@vibeshape/domain"
-import { modelBodyMeasurementEvidenceSchema } from "@vibeshape/domain/model-body-measurements"
-import { compoundFeatureTypeV2 } from "@vibeshape/domain/part-design-body-combination"
-import { importedFeatureType } from "@vibeshape/domain/part-design-import"
-import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
-import { splitFeatureType } from "@vibeshape/domain/part-design-split"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { holeTargetBodyOptions } from "./hole-target-body"
-
-vi.mock("@vibeshape/application/model-measurements", () => ({
-  createModelBodyMeasurementEvidence: vi.fn(),
-}))
+} = await import("@vibeshape/domain")
+const { modelBodyMeasurementEvidenceSchema } = await import(
+  "@vibeshape/domain/model-body-measurements"
+)
+const { compoundFeatureTypeV2 } = await import("@vibeshape/domain/part-design-body-combination")
+const { importedFeatureType } = await import("@vibeshape/domain/part-design-import")
+const { patternFeatureType } = await import("@vibeshape/domain/part-design-pattern")
+const { splitFeatureType } = await import("@vibeshape/domain/part-design-split")
+const { holeTargetBodyOptions } = await import("./hole-target-body")
 
 const id = (suffix: number) => `0195b5ac-b220-7a2c-8c33-${String(suffix).padStart(12, "0")}`
 const shape = {
