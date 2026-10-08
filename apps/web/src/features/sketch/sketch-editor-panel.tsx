@@ -498,6 +498,12 @@ export function SketchConstraintManagerPopover({
                     variant="ghost"
                     aria-label={copy.openConstraintManager}
                     className="data-[state=open]:bg-accent"
+                    onMouseDown={(event) => {
+                      if (event.button !== 0) return
+                      // The portal bypasses toolbar pointer tracking; keep WebKit focus on this trigger.
+                      event.preventDefault()
+                      event.currentTarget.focus({ preventScroll: true })
+                    }}
                   >
                     <ListFilter aria-hidden="true" />
                   </Button>
