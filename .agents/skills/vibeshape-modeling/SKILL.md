@@ -17,6 +17,8 @@ Its Gyroid, Schwarz P and Schwarz D geometry reports measured removal and makes 
 
 Translate the request into dimensions, units, mating interfaces, target body, and acceptance measurements. Ask only for missing information that changes the design. For reversible choices, state a reasonable assumption and continue. Preserve protected interfaces and existing model intent.
 
+Prefer rounded transitions over sharp corners where feasible and consistent with the task, especially at internal corners, section changes, and the roots of load-bearing ribs, brackets, and snap arms, to reduce stress concentrations. Choose radii that preserve required dimensions, mating surfaces, clearances, remaining load-bearing sections, and print constraints; retain sharp edges when their function requires them. Use supported profile arcs or scoped Fillet features, and inspect the exact preview after treatment. Successful geometry alone does not establish strength or fatigue life.
+
 Make all editable design dimensions and numeric controls variable-driven by default: lengths, thicknesses, diameters/radii, clearances, offsets, angles, and supported counts. Create or reuse named document variables before their consumers, and retain `#name` references or derived expressions in sketch constraints and feature quantities instead of baking in evaluated numbers. Follow the Variables section of [modeling contracts and recipes](references/modeling.md), including expression support limits and editability checks.
 
 For modifying Revolve or Subtract on a Pattern/Split constituent, use the exact-body contracts in
