@@ -32,6 +32,9 @@ The performance correction avoids an unnecessary renderer disposal/recreation pa
 measured frame-rate or overall speedup claim. Pointer raycasting and thumbnail generation remain
 measurement candidates, not confirmed bottlenecks in this audit.
 
+The subsequent [viewport mesh update investigation](viewport-mesh-performance.md) measures
+complete mesh replacement separately and adds per-body render-resource reuse.
+
 A parallel browser run additionally encountered a WebKit multisample allocation failure followed by
 context loss, and Firefox document-startup assertion timeouts. These do not establish a memory leak.
 The renderer caps device-pixel ratio at two and always requests antialiasing, but has no backing-buffer
