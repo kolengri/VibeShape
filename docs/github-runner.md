@@ -12,7 +12,11 @@ The runner uses the official GitHub runner image, pinned by version and digest, 
 Python, build tools, and Node.js 24/npm added. OrbStack runs the Linux ARM64 container on Apple Silicon.
 It has four CPUs, a 6 GiB memory limit, a 1 GiB shared-memory area, and its own named
 workspace volume. No macOS home directory or Docker socket is mounted, and no ports are
-published. Dependency installation and browser downloads happen inside Linux.
+published. Dependency installation and browser downloads happen inside Linux. A GitHub pre-job
+hook clears the exact repository workspace, including hidden files, before every job; runner
+actions/tool/browser caches remain outside it. Publication jobs start without a stale checkout,
+lockfile, dependencies, or older downloaded artifacts. Unexpected/symlinked workspace paths fail
+the job instead of being deleted.
 
 Only this private repository is registered. Owner-authored PRs whose source is the same
 repository can use the fallback; fork and other authors' PRs retain GitHub-hosted routing.
@@ -39,7 +43,9 @@ The installer copies the controller into
 `~/Library/Application Support/GitHubRunners/vibeshape/` and installs the LaunchAgent
 `dev.vibeshape.actions-fallback`. It starts OrbStack and checks every three minutes, also at
 login. Docker's restart policy restarts the container after the Linux runtime restarts.
-Re-run the installer to update the copied controller after reviewing changes.
+Re-run the installer to update the copied controller after reviewing changes. Restore hosted
+routing and wait for the local runner to be idle first; the installer rejects a busy runner and
+restarts an existing idle listener so its pre-job hook configuration takes effect.
 
 Keep the Mac connected to power and the network, with sleep disabled on AC power. This is
 a login service: after a reboot/FileVault unlock, the macOS user must log in before it starts.

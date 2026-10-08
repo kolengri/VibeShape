@@ -16,6 +16,11 @@ open -gj -a OrbStack
 "$docker_path" info >/dev/null
 "$gh_path" api "repos/$repository" --jq '.private and .permissions.admin' | /usr/bin/grep -qx true
 "$docker_path" build -t vibeshape-actions-runner:2.338.0 "$directory"
+runner_busy="$("$gh_path" api "repos/$repository/actions/runners" --jq '.runners[] | select(.name == "vibeshape-mac") | .busy')"
+if [[ "$runner_busy" == true ]]; then
+    echo 'Wait for the active runner job to finish before updating the installation.' >&2
+    exit 1
+fi
 
 if ! "$docker_path" container inspect "$container" >/dev/null 2>&1; then
     "$docker_path" run -d --name "$container" --init --restart unless-stopped \
@@ -28,6 +33,13 @@ fi
 # Docker creates an empty named volume as root; the runner must own its workspace.
 "$docker_path" exec --user root "$container" chown runner:docker /home/runner/_work
 "$docker_path" exec "$container" test -w /home/runner/_work
+"$docker_path" exec --user root "$container" mkdir -p /opt/vibeshape-runner
+"$docker_path" cp "$directory/clean-workspace.sh" "$container:/opt/vibeshape-runner/clean-workspace.sh"
+"$docker_path" exec --user root "$container" chmod 755 /opt/vibeshape-runner/clean-workspace.sh
+"$docker_path" exec "$container" bash -c '
+    entry=ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/vibeshape-runner/clean-workspace.sh
+    grep -qx "$entry" .env || printf "%s\n" "$entry" >> .env
+'
 if ! "$docker_path" exec "$container" test -f /home/runner/.runner; then
     # Pipe the short-lived token directly; do not persist it in Docker environment/config.
     "$gh_path" api --method POST "repos/$repository/actions/runners/registration-token" --jq .token |
@@ -37,6 +49,9 @@ if ! "$docker_path" exec "$container" test -f /home/runner/.runner; then
                 --token "$registration_token" --name vibeshape-mac \
                 --labels vibeshape-mac --work _work >/dev/null
         '
+else
+    # The listener reads .env at startup; an idle registered runner needs a restart.
+    "$docker_path" restart "$container" >/dev/null
 fi
 
 umask 077
