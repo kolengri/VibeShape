@@ -1,25 +1,17 @@
-// @vitest-environment jsdom
-import { webcrypto } from "node:crypto"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
-import { i18n } from "../../i18n"
-import messages from "../../i18n/messages/en.json"
-import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
-import { ImportDialog } from "./import-dialog"
-import { inspection, meshInspection } from "./import-test-fixtures"
 
-const ports = vi.hoisted(() => ({ inspect: vi.fn(), inspectMesh: vi.fn(), apply: vi.fn() }))
-vi.mock("../../document/document-controller", () => ({
+const ports = (() => ({ inspect: vi.fn(), inspectMesh: vi.fn(), apply: vi.fn() }))()
+mock.module("../../document/document-controller", () => ({
   inspectGeometrySource: ports.inspect,
   inspectTriangleMeshSource: ports.inspectMesh,
   commitAuthoredTransaction: ports.apply,
 }))
-vi.mock("./import-preview", async () => {
-  const { useEffect } = await import("react")
+const mockDependency1 = await import("react")
+mock.module("./import-preview", () => {
+  const { useEffect } = mockDependency1
   return {
     ImportPreview: ({ label, onReady }: { label: string; onReady: (ready: boolean) => void }) => {
       useEffect(() => {
@@ -30,6 +22,19 @@ vi.mock("./import-preview", async () => {
     },
   }
 })
+
+const { webcrypto } = await import("node:crypto")
+const { cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const { documentSnapshotV5Schema } = await import("@vibeshape/domain/document-v5")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../../i18n")
+const { default: messages } = await import("../../i18n/messages/en.json")
+const { authoredTreeFixture } = await import("../../test-support/authored-tree-fixture")
+const { ImportDialog } = await import("./import-dialog")
+const { inspection, meshInspection } = await import("./import-test-fixtures")
 const fixture = authoredTreeFixture()
 const controller = {
   status: "ready",
@@ -132,7 +137,7 @@ describe("exact source Import workflow", () => {
       name: "Inspect source",
     }) as HTMLButtonElement
     await userEvent.dblClick(inspect)
-    await waitFor(() => expect(ports.inspect).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(1))
     expect(inspect.disabled).toBe(true)
     expect(within(dialog).getByText(messages.app.import.inspecting)).toBeTruthy()
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
@@ -163,7 +168,7 @@ describe("exact source Import workflow", () => {
       expect(screen.getByRole("img", { name: "Read-only import preview" })).toBeTruthy(),
     )
     expect(screen.getByText(messages.app.import.explicitUnitEvidence)).toBeTruthy()
-    expect(ports.inspect).toHaveBeenCalledOnce()
+    expect(ports.inspect).toHaveBeenCalledTimes(1)
     expect(ports.inspect.mock.calls[0]?.[0]).toMatchObject({
       source: {
         format: "step",
@@ -188,7 +193,7 @@ describe("exact source Import workflow", () => {
     const dialog = await inspectSource()
     const apply = within(dialog).getByRole("button", { name: "Apply import" }) as HTMLButtonElement
     await userEvent.dblClick(apply)
-    expect(ports.apply).toHaveBeenCalledOnce()
+    expect(ports.apply).toHaveBeenCalledTimes(1)
     expect(apply.disabled).toBe(true)
     expect(
       (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
@@ -298,7 +303,7 @@ describe("triangle-mesh Import workflow", () => {
     })
     await userEvent.click(screen.getByRole("option", { name: "Inch (in)" }))
     await userEvent.click(within(dialog).getByRole("button", { name: "Inspect source" }))
-    await waitFor(() => expect(ports.inspectMesh).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.inspectMesh).toHaveBeenCalledTimes(1))
     expect(ports.inspectMesh.mock.calls[0]?.[0]).toMatchObject({ format: "stl", units: "in" })
     expect(ports.inspect).not.toHaveBeenCalled()
     expect(within(dialog).getByText("1 triangle mesh is ready for import.")).toBeTruthy()
@@ -327,7 +332,7 @@ describe("triangle-mesh Import workflow", () => {
       ),
     ).toBeTruthy()
     await userEvent.dblClick(within(dialog).getByRole("button", { name: "Apply import" }))
-    expect(ports.apply).toHaveBeenCalledOnce()
+    expect(ports.apply).toHaveBeenCalledTimes(1)
     const transaction = ports.apply.mock.calls[0]?.[1]
     const feature = transaction.commands.find(
       ({ kind }: { kind: string }) => kind === "org.vibeshape.history.insert-feature",

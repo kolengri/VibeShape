@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import type { OcctShapeCaster } from "./occt-cast"
 import { createOcctShellOperations } from "./occt-shell"
 
@@ -147,7 +148,7 @@ describe("OCCT shell ownership", () => {
           2,
           direction,
         ),
-      ).toBe(f.result)
+      ).toBe<unknown>(f.result)
       expect(f.builder.MakeThickSolidByJoin).not.toHaveBeenCalled()
       expect(f.builder.PerformByJoin).toHaveBeenCalled()
       expect(f.constructors.BRepAlgoAPI_Cut_3).toHaveBeenCalledWith(
@@ -169,7 +170,7 @@ describe("OCCT shell ownership", () => {
         f.closedRaw,
         f.explorer,
       ])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
       expect(f.source.delete).not.toHaveBeenCalled()
       expect(f.result.delete).not.toHaveBeenCalled()
     },
@@ -201,7 +202,7 @@ describe("OCCT shell ownership", () => {
         f.offset,
         f.cutter,
       ])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
       expect(f.source.delete).not.toHaveBeenCalled()
       const disposedResult = Number(new Set(["non-nested", "no-inner-shell"]).has(stage))
       expect(f.result.delete).toHaveBeenCalledTimes(disposedResult)
@@ -230,7 +231,7 @@ describe("OCCT shell ownership", () => {
         "inward",
       ),
     ).toThrow(/collapses/)
-    expect(f.offset.delete).toHaveBeenCalledOnce()
+    expect(f.offset.delete).toHaveBeenCalledTimes(1)
     expect(f.constructors.BRepAlgoAPI_Cut_3).not.toHaveBeenCalled()
     expect(f.source.delete).not.toHaveBeenCalled()
   })
@@ -238,7 +239,7 @@ describe("OCCT shell ownership", () => {
     "deep-copies the source, maps selected faces and releases every wrapper for %s",
     (direction) => {
       const f = fixture()
-      expect(run(f, direction)).toBe(f.result)
+      expect(run(f, direction)).toBe<unknown>(f.result)
       expect(f.constructors.BRepBuilderAPI_Transform_2).toHaveBeenCalledWith(
         f.source.wrapped,
         f.transform,
@@ -270,7 +271,7 @@ describe("OCCT shell ownership", () => {
         f.builder,
         f.raw,
       ])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
       expect(f.source.delete).not.toHaveBeenCalled()
       expect(f.result.delete).not.toHaveBeenCalled()
     },
@@ -291,11 +292,11 @@ describe("OCCT shell ownership", () => {
       mutations[stage]()
       expect(() => run(f)).toThrow()
       for (const temporary of [f.face, f.transform, f.copier, f.copied, f.list])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
       expect(f.source.delete).not.toHaveBeenCalled()
       if (stage !== "mapping")
         for (const temporary of [f.mapped, f.appended, f.progress, f.builder])
-          expect(temporary.delete).toHaveBeenCalledOnce()
+          expect(temporary.delete).toHaveBeenCalledTimes(1)
       expect(f.raw.delete).toHaveBeenCalledTimes(stage === "cast" ? 1 : 0)
     },
   )

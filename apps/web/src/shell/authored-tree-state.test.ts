@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-folders"
 import { featureIdSchema, historyFolderIdSchema } from "@vibeshape/domain/identifiers"
-import { describe, expect, it } from "vitest"
 import {
   authoredTestBody,
   authoredTestId,
@@ -105,7 +105,7 @@ describe("authored tree projection", () => {
     ).toEqual(authority.history)
     expect(
       folderRangeItems(authority, requireAuthoredFixture(keys[2]), requireAuthoredFixture(keys[2])),
-    ).toEqual([authority.history[2]])
+    ).toEqual<unknown>([authority.history[2]])
   })
   it("keeps a stable selected PartId while its exact current body advances", () => {
     const { authority } = fixture()

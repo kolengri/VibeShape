@@ -1,10 +1,10 @@
+import { describe, expect, it } from "bun:test"
 import { boxFeatureType, createLengthQuantity } from "@vibeshape/domain"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { modelBodyMeasurementEvidenceSchema } from "@vibeshape/domain/model-body-measurements"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
 import { holeFeatureTypeV2 } from "@vibeshape/domain/part-design-hole"
-import { describe, expect, it } from "vitest"
 import {
   modelBodyMeasurementArgumentsSchema,
   modelBodyMeasurementQuerySchema,

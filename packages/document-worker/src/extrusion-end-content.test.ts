@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   createAngleQuantity,
@@ -10,7 +11,6 @@ import {
   featureRecordSchema,
   topologySignatureSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { prepareExtrusionEndContent } from "./extrusion-end-content"
 
 const sourceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3301"

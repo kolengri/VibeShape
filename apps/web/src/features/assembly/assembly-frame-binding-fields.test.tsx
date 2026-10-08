@@ -1,10 +1,11 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { assemblyFrameBindingSchema } from "@vibeshape/domain/assembly-mates"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { assemblyInspectionSchema, topologyCandidateSchema } from "@vibeshape/protocol"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { AssemblyFrameBindingFields } from "./assembly-frame-binding-fields"
 import { identityAssemblyPose } from "./assembly-model"

@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { sketchIdSchema } from "@vibeshape/domain"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../../tests/unit/support/bun-test"
 import {
   type BuiltInEditorCommandContext,
   resolveBuiltInEditorCommands,
@@ -54,7 +55,7 @@ describe("sketch text command authority", () => {
       labelKey: "sketchText",
     })
     command.invoke()
-    expect(open).toHaveBeenCalledOnce()
+    expect(open).toHaveBeenCalledTimes(1)
   })
   it.each([
     { activeSketchTool: null },

@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { useState } from "react"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { VariableExpressionInput } from "./variable-expression-input"
 
@@ -63,7 +63,8 @@ describe("VariableExpressionInput", () => {
     await user.click(input)
     await user.keyboard("{ArrowUp}")
     expect(input.value).toBe(increased)
-    expect(onValueChange).toHaveBeenCalledExactlyOnceWith(increased)
+    expect(onValueChange).toHaveBeenCalledTimes(1)
+    expect(onValueChange).toHaveBeenCalledWith(increased)
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(document.activeElement).toBe(input)
     expect(input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0)).toBe(

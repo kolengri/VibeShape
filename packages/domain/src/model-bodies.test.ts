@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import type { FeatureRecord } from "./feature-graph"
 import { terminalBodyOutputs } from "./model-bodies"
 import { booleanFeatureType } from "./part-design"

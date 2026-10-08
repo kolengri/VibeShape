@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { assemblyExportSettingsSchema, exportAssemblyInputSchema } from "./assembly-export"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "./document-worker"
 

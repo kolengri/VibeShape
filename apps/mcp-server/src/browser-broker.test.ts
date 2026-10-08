@@ -1,18 +1,17 @@
-// @vitest-environment node
-
+import { afterEach, describe, expect, it } from "bun:test"
 import { IMPORT_UPLOAD_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/imports"
 import {
   localConnectResponseSchema,
   localPollResponseSchema,
 } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
-import { afterEach, describe, expect, it, vi } from "vitest"
 import { lightweightingMaterialCatalogResult } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import {
   quickLightweightingOperation,
   quickLightweightingValue,
 } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createBrowserBroker } from "./browser-broker"
 
 const origin = "http://127.0.0.1:43114"
@@ -142,7 +141,7 @@ describe("browser automation broker", () => {
           .status,
       ).toBe(400)
       expect((await respond(value)).status).toBe(200)
-      await expect(pending).resolves.toEqual({ ok: true, value })
+      await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
       expect(broker.isPaired()).toBe(true)
     },
   )
@@ -252,7 +251,7 @@ describe("browser automation broker", () => {
       })
     }
     expect((await respond(exact)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value: exact })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value: exact })
   })
   it("binds surface texture read receipts to the paired document, revision and feature", async () => {
     const broker = makeBroker({ origin })
@@ -296,7 +295,7 @@ describe("browser automation broker", () => {
       })
     }
     expect((await respond()).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
   })
   it("rejects forged solid STL inspection before forwarding a valid mesh result", async () => {
     const broker = makeBroker({ origin })
@@ -334,7 +333,7 @@ describe("browser automation broker", () => {
     expect(rejected.status).toBe(400)
     expect(await rejected.json()).toMatchObject({ diagnostic: { code: "invalid-result" } })
     expect((await respond(value)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
   })
 
   it("correlates an import's captured document, base and source intent before accepting its browser result", async () => {
@@ -385,7 +384,7 @@ describe("browser automation broker", () => {
     ])
       expect((await respond(wrong)).status).toBe(400)
     expect((await respond(value)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
   })
 
   it("requires the exact unique unordered interference pair set before forwarding inspection", async () => {
@@ -454,7 +453,7 @@ describe("browser automation broker", () => {
     }
     const exact = result([pair(c, a), pair(b, a)])
     expect((await respond(exact)).status).toBe(200)
-    await expect(pending).resolves.toEqual(exact)
+    await expect(pending).resolves.toEqual<unknown>(exact)
   })
   it("denies hostile or missing origins and requires the exact JSON method", async () => {
     const broker = makeBroker({ origin })
@@ -527,7 +526,7 @@ describe("browser automation broker", () => {
         token,
       ),
     )
-    await expect(workPromise).resolves.toEqual(result)
+    await expect(workPromise).resolves.toEqual<unknown>(result)
     expect((await broker.handle(request("connect", { protocolVersion: 1, document }))).status).toBe(
       409,
     )
@@ -544,7 +543,7 @@ describe("browser automation broker", () => {
       ok: false,
       diagnostic: { code: "outcome-unknown" },
     })
-    expect(onRevoke).toHaveBeenCalledOnce()
+    expect(onRevoke).toHaveBeenCalledTimes(1)
     expect(
       (
         await broker.handle(
@@ -719,7 +718,7 @@ describe("browser automation broker", () => {
       ).status,
     ).toBe(400)
     expect((await send(view)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value: view })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value: view })
   })
 
   it("binds variable inspection to the requested revision and paired document", async () => {
@@ -761,7 +760,7 @@ describe("browser automation broker", () => {
       (await send({ ...view, documentId: "0195b5ac-b250-7a2c-8c33-000000000020" })).status,
     ).toBe(400)
     expect((await send(view)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value: view })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value: view })
   })
 
   it("binds edge inspection to its requested feature, document and revision", async () => {
@@ -807,7 +806,7 @@ describe("browser automation broker", () => {
     expect((await send({ ...view, featureId: document.id })).status).toBe(400)
     expect((await send({ ...view, documentId: featureId })).status).toBe(400)
     expect((await send(view)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value: view })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value: view })
   })
 
   it("binds body measurement inspection to document, revision, feature and role", async () => {
@@ -885,7 +884,7 @@ describe("browser automation broker", () => {
       ).status,
     ).toBe(400)
     expect((await send(view)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value: view })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value: view })
   })
 
   it("binds body topology responses and cursors to the exact body and rebuild", async () => {
@@ -950,7 +949,7 @@ describe("browser automation broker", () => {
     ])
       expect((await send({ ...view, ...mismatch })).status).toBe(400)
     expect((await send(view)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value: view })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value: view })
   })
 
   it("returns 204 on authenticated revoke and expires liveness", async () => {
@@ -1086,7 +1085,7 @@ describe("browser automation broker", () => {
         )
       ).status,
     ).toBe(200)
-    await expect(pending).resolves.toEqual(result)
+    await expect(pending).resolves.toEqual<unknown>(result)
     const next = broker.invoke(
       localOperationSchema.parse({ tool: "commit_draft", arguments: { draftId: document.id } }),
     )
@@ -1292,7 +1291,7 @@ it("rejects metadata results from another document, revision, or requested page"
       )
     ).status,
   ).toBe(200)
-  await expect(pending).resolves.toEqual({ ok: true, value })
+  await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
 })
 
 it("requires a metadata commit result to preserve exact command identity, revision and change", async () => {
@@ -1349,7 +1348,7 @@ it("requires a metadata commit result to preserve exact command identity, revisi
       )
     ).status,
   ).toBe(200)
-  await expect(pending).resolves.toEqual({ ok: true, value })
+  await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
 })
 
 describe("authenticated local reload recovery", () => {
@@ -1665,7 +1664,7 @@ describe("recoverable local delivery", () => {
       result,
     }
     expect((await broker.handle(request("result", body, token))).status).toBe(200)
-    await expect(pending).resolves.toEqual(result)
+    await expect(pending).resolves.toEqual<unknown>(result)
     expect((await broker.handle(request("result", body, token))).status).toBe(200)
     expect(
       (

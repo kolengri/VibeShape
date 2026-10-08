@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotV1Schema } from "./document"
 import { reduceDocumentRestoredEvent } from "./document-history"
 import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"

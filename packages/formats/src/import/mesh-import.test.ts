@@ -1,7 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { BufferGeometry, Float32BufferAttribute, Mesh } from "three"
 import { STLExporter } from "three/addons/exporters/STLExporter.js"
-import { describe, expect, it } from "vitest"
 import { writeThreeMf } from "../three-mf"
 import { parseGeometryImport } from "./index"
 

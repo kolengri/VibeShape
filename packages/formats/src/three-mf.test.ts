@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { strFromU8, unzipSync } from "fflate"
-import { describe, expect, it } from "vitest"
 import {
   THREE_MF_CORE_NAMESPACE,
   THREE_MF_MEDIA_TYPE,

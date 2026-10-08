@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { IMPORT_UPLOAD_CHUNK_MAX_BYTES, IMPORT_UPLOAD_MAX_BYTES } from "./imports"
 import { localOperationSchema, localToolOutputs } from "./local-tools"
 import {

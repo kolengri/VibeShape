@@ -1,4 +1,13 @@
-import {
+import { afterEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../tests/unit/support/bun-test"
+
+const originalModule1 = { ...(await import("node:fs")) }
+mock.module("node:fs", () => {
+  const original = originalModule1
+  return { ...original, cpSync: vi.fn(original.cpSync) }
+})
+
+const {
   chmodSync,
   cpSync,
   existsSync,
@@ -8,17 +17,11 @@ import {
   realpathSync,
   rmSync,
   writeFileSync,
-} from "node:fs"
-import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import { createDistributionManifest, distributionHash } from "./local-distribution-files"
-import { prepareCloudflareSite } from "./prepare-cloudflare-site"
-
-vi.mock("node:fs", async (importOriginal) => {
-  const original = await importOriginal<typeof import("node:fs")>()
-  return { ...original, cpSync: vi.fn(original.cpSync) }
-})
+} = await import("node:fs")
+const { tmpdir } = await import("node:os")
+const { dirname, join } = await import("node:path")
+const { createDistributionManifest, distributionHash } = await import("./local-distribution-files")
+const { prepareCloudflareSite } = await import("./prepare-cloudflare-site")
 
 const temporary: string[] = []
 afterEach(() => {

@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { TextField } from "@vibeshape/ui/components/text-field"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { VariablesTable, type VariablesTableCopy } from "./variables-table"
 
 const copy: VariablesTableCopy = {
@@ -66,7 +66,7 @@ describe("VariablesTable", () => {
 
     await user.click(screen.getByRole("button", { name: copy.add }))
     await user.click(screen.getByRole("button", { name: "Remove" }))
-    expect(onAdd).toHaveBeenCalledOnce()
-    expect(onRemove).toHaveBeenCalledOnce()
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(onRemove).toHaveBeenCalledTimes(1)
   })
 })

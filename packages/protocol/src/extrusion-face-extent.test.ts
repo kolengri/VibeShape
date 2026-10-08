@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   extrusionEndConditionContentSchema,
   extrusionEndConditionContentV7Schema,
@@ -27,7 +27,7 @@ const base = {
 describe("versioned finite face extent content", () => {
   it("accepts curved v7 content without invented planar fields while keeping the v6 decoder strict", () => {
     const value = { ...base, kind: "up-to-curved-face" }
-    expect(extrusionEndConditionContentV7Schema.parse(value)).toEqual(value)
+    expect(extrusionEndConditionContentV7Schema.parse(value)).toEqual<unknown>(value)
     expect(extrusionEndConditionContentSchema.safeParse(value).success).toBe(false)
     expect(
       extrusionEndConditionContentV7Schema.safeParse({ ...value, planeNormal: [0, 0, 1] }).success,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { applyDocumentCommand, replayDocumentEvents } from "./commands"
 import { copyDocumentHistory } from "./document-copy"
 import { boxFeatureType } from "./part-design"
@@ -210,12 +210,12 @@ describe("copyDocumentHistory", () => {
       },
     })
     if (!copied.ok) return
-    expect(copied.events.map((event) => event.documentId)).toEqual([
+    expect(copied.events.map((event) => event.documentId)).toEqual<unknown>([
       copiedDocumentId,
       copiedDocumentId,
       copiedDocumentId,
     ])
-    expect(copied.events.map((event) => event.commandId)).toEqual(copiedCommandIds)
+    expect(copied.events.map((event) => event.commandId)).toEqual<unknown>(copiedCommandIds)
     expect(replayDocumentEvents(copied.events)).toEqual({ ok: true, snapshot: copied.snapshot })
     expect(source.snapshot).toMatchObject({ id: sourceDocumentId, name: "Bracket", revision: 2 })
   })

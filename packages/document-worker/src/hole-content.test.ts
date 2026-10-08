@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -13,7 +14,7 @@ import {
   SKETCH_SOLVER_BUILD,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   createDocumentFeatureContentPreparer,
   shouldPrepareDocumentFeatureContent,
@@ -117,8 +118,10 @@ describe("Hole sketch content preparation", () => {
       },
     }
     expect(shouldPrepareDocumentFeatureContent(feature)).toBe(true)
-    expect(await prepare({ document, feature })).toEqual(expected)
-    expect(await prepare({ document, feature: { ...feature, id: target.id } })).toEqual(expected)
+    expect(await prepare({ document, feature })).toEqual<unknown>(expected)
+    expect(await prepare({ document, feature: { ...feature, id: target.id } })).toEqual<unknown>(
+      expected,
+    )
     expect(solve).toHaveBeenCalledTimes(1)
   })
 

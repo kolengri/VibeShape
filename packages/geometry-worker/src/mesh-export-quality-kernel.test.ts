@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type FeatureEvaluationInput, ReplicadGeometryEngine } from "./engine"
 
 const engine = new ReplicadGeometryEngine()
@@ -10,7 +11,7 @@ const coarse = { chordTolerance: 0.2, angularTolerance: 0.3 }
 const fine = { chordTolerance: 0.01, angularTolerance: 0.05 }
 let input: FeatureEvaluationInput
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const filesystem = await import("node:fs")
   const bytes = filesystem.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )

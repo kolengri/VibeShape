@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
-import { describe, expect, it } from "vitest"
 import { assemblyResultContextMatches } from "./assembly-result-context"
 import { assemblyInspectionViewSchema } from "./assembly-tools"
 

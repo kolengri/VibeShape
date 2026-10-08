@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -15,7 +15,7 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ComponentProps } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n, messages } from "../../i18n"
 import {
   BasicPrimitiveForm,
@@ -145,7 +145,7 @@ describe("BasicPrimitiveForm", () => {
       )
       expect(onSave).not.toHaveBeenCalled()
       await user.click(screen.getByRole("button", { name: copy.submit }))
-      expect(onSave).toHaveBeenCalledOnce()
+      expect(onSave).toHaveBeenCalledTimes(1)
       expect(onSave).toHaveBeenCalledWith(
         7,
         expect.objectContaining({
@@ -154,7 +154,7 @@ describe("BasicPrimitiveForm", () => {
           parameters: expectedParameters,
         }),
       )
-      await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     },
   )
 
@@ -349,7 +349,7 @@ describe("BasicPrimitiveForm", () => {
     const { copy, onSaved } = renderPrimitive("sphere", { onSave })
     const submit = screen.getByRole("button", { name: copy.submit })
     await user.dblClick(submit)
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(submit.getAttribute("aria-busy")).toBe("true")
     finish?.()
     await screen.findByText(copy.saveFailed)

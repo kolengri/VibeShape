@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type FeatureEvaluationInput, ReplicadGeometryEngine } from "./engine"
 
 const hash = "a".repeat(64)
@@ -455,7 +456,7 @@ describe("direct geometry engine input boundary", () => {
       },
       vi.fn(),
     )
-    expect(initialize).toHaveBeenCalledOnce()
+    expect(initialize).toHaveBeenCalledTimes(1)
     expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-geometry" } })
   })
 

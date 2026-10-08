@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 import {
   createRectangleSketch,
@@ -36,7 +37,7 @@ describe("rectangular sketch template", () => {
     const sketch = rectangle()
     const definition = rectangleSketchDefinition(sketch)
 
-    expect(sketch).toMatchObject({
+    expect(matchValue(sketch)).toMatchObject({
       id: sketchId,
       label: "Rectangle 1",
       plane: "xy",

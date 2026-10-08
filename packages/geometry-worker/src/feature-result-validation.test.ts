@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   disposeTemporaryShape,
   featureResultMetricsAreValid,
@@ -31,7 +32,7 @@ describe("feature result validation", () => {
   it("disposes a rejected temporary result and reports cleanup failures", () => {
     const deleteShape = vi.fn()
     expect(disposeTemporaryShape({ delete: deleteShape })).toBe(true)
-    expect(deleteShape).toHaveBeenCalledOnce()
+    expect(deleteShape).toHaveBeenCalledTimes(1)
     expect(
       disposeTemporaryShape({
         delete() {

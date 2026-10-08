@@ -1,8 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import {
   type LocalDraftInspectionOperation,
   localOperationSchema,
 } from "@vibeshape/automation-api/local-tools"
-import { describe, expect, it } from "vitest"
 import { draftInspectionMatches } from "./draft-inspection-result"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"

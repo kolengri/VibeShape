@@ -1,17 +1,18 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import {
   type FeatureEvaluationInput,
   ReplicadGeometryEngine,
 } from "@vibeshape/geometry-worker/engine"
 import type { SurfaceTextureMeshLayer } from "@vibeshape/protocol"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 
 const engine = new ReplicadGeometryEngine()
 const documentId = "surface-texture-kernel"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
 const contentHash = "a".repeat(64)
 beforeAll(async () => {
-  const fs = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const fs = await import("node:fs")
   const wasm = fs.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )
@@ -93,7 +94,7 @@ describe("surface texture exact-kernel export", () => {
         ...request.content.feature.type,
         typeId: `org.vibeshape.feature.part-design.${kind}`,
       }
-      request.content.feature.parameters = parameters
+      request.content.feature.parameters = JSON.parse(JSON.stringify(parameters))
       const evaluated = await engine.evaluateFeature(request, vi.fn())
       if (!evaluated.ok) throw new Error(evaluated.diagnostic.message)
       const exported = await engine.exportPrintMeshes({
@@ -163,9 +164,7 @@ describe("surface texture exact-kernel export", () => {
     for (let axis = 0; axis < 3; axis += 1)
       expect((max[axis] ?? 0) - (min[axis] ?? 0)).toBeCloseTo(10, 5)
     expect(engine.getHealth().ownedShapeCount).toBe(1)
-    const fs = await vi.importActual<{ writeFileSync(path: string, bytes: Uint8Array): void }>(
-      "node:fs",
-    )
+    const fs = await import("node:fs")
     fs.writeFileSync("/tmp/vibeshape-surface-texture-kernel.stl", stl.file)
     fs.writeFileSync("/tmp/vibeshape-surface-texture-kernel.3mf", threeMf.bytes)
   })

@@ -1,57 +1,62 @@
-// @vitest-environment jsdom
-
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
-import {
-  boxFeatureType,
-  createLengthQuantity,
-  datumPlaneFeatureType,
-  featureIdSchema,
-  type SketchProfileSelector,
-  sketchEntityIdSchema,
-  sketchIdSchema,
-  sketchRecordSchema,
-} from "@vibeshape/domain"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
+import type { SketchProfileSelector } from "@vibeshape/domain"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
   ViewerSelection,
 } from "@vibeshape/viewer"
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
-import { createSketchProjectionStore } from "../features/sketch/sketch-projection-store"
-import { i18n } from "../i18n"
-import { authoredTreeFixture, requireAuthoredFixture } from "../test-support/authored-tree-fixture"
-import {
+
+import type { GeometryViewportSketchContext } from "./geometry-viewport"
+
+type WorkspaceTask = Parameters<typeof WorkspaceTaskProvider>[0]["value"]
+
+const { saveActiveProjectThumbnailMock, renderProjectThumbnailMock } = (() => ({
+  saveActiveProjectThumbnailMock: vi.fn(),
+  renderProjectThumbnailMock: vi.fn(),
+}))()
+
+const originalModule1 = { ...(await import("../document/document-controller")) }
+mock.module("../document/document-controller", () => {
+  const actual = originalModule1
+  return { ...actual, saveActiveProjectThumbnail: saveActiveProjectThumbnailMock }
+})
+
+mock.module("@vibeshape/viewer/project-thumbnail", () => ({
+  renderProjectThumbnail: renderProjectThumbnailMock,
+}))
+
+const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const {
+  boxFeatureType,
+  createLengthQuantity,
+  datumPlaneFeatureType,
+  featureIdSchema,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+  sketchRecordSchema,
+} = await import("@vibeshape/domain")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { createSketchProjectionStore } = await import("../features/sketch/sketch-projection-store")
+const { i18n } = await import("../i18n")
+const { authoredTreeFixture, requireAuthoredFixture } = await import(
+  "../test-support/authored-tree-fixture"
+)
+const {
   GeometryViewport,
-  type GeometryViewportSketchContext,
   viewerMeshes,
   viewerSketchDisplay,
   viewerSketches,
   withActiveSketchDisplay,
-} from "./geometry-viewport"
-import { WorkspaceTaskProvider } from "./workspace-task-context"
-
-type WorkspaceTask = Parameters<typeof WorkspaceTaskProvider>[0]["value"]
-
-const { saveActiveProjectThumbnailMock, renderProjectThumbnailMock } = vi.hoisted(() => ({
-  saveActiveProjectThumbnailMock: vi.fn(),
-  renderProjectThumbnailMock: vi.fn(),
-}))
-
-vi.mock("../document/document-controller", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../document/document-controller")>()
-  return { ...actual, saveActiveProjectThumbnail: saveActiveProjectThumbnailMock }
-})
-
-vi.mock("@vibeshape/viewer/project-thumbnail", () => ({
-  renderProjectThumbnail: renderProjectThumbnailMock,
-}))
+} = await import("./geometry-viewport")
+const { WorkspaceTaskProvider } = await import("./workspace-task-context")
 
 class ResizeObserverMock {
   observe() {}
@@ -635,7 +640,7 @@ describe("GeometryViewport", () => {
     act(() => options?.onAxialGizmoDistanceChange?.(20))
     expect(onFirstDistanceChange).toHaveBeenLastCalledWith(20)
     expect(onSecondDistanceChange).toHaveBeenCalledTimes(1)
-    expect(createViewport).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
   })
 
   it("retains drag callbacks during pending preview resolution and clears them when the tool closes", async () => {
@@ -667,7 +672,7 @@ describe("GeometryViewport", () => {
     )
     act(() => options?.onAxialGizmoDistanceChange?.(22))
     expect(onDistanceChange).toHaveBeenCalledTimes(1)
-    expect(createViewport).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
   })
 
   it("shows an angular feature gizmo and forwards scalar angle changes", async () => {
@@ -1170,8 +1175,8 @@ describe("GeometryViewport", () => {
     await waitFor(() =>
       expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }]),
     )
-    expect(createViewport).toHaveBeenCalledOnce()
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.fit).toHaveBeenCalledTimes(1)
 
     rerenderSketchContext({
       frame,
@@ -1200,11 +1205,11 @@ describe("GeometryViewport", () => {
     expect(screen.queryByRole("button", { name: "Fit view" })).toBeNull()
     expect(screen.queryByRole("img", { name: "World axes" })).toBeNull()
     expect(screen.queryByText("XYZ · mm")).toBeNull()
-    expect(createViewport).toHaveBeenCalledOnce()
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.fit).toHaveBeenCalledTimes(1)
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
     expect(port.setSketchReferenceCandidates).toHaveBeenLastCalledWith([])
-    expect(port.orientToFrame).toHaveBeenCalledOnce()
+    expect(port.orientToFrame).toHaveBeenCalledTimes(1)
     expect(port.orientToFrame).toHaveBeenCalledWith(frame)
     expect(port.dispose).not.toHaveBeenCalled()
 
@@ -1215,20 +1220,20 @@ describe("GeometryViewport", () => {
     expect(screen.getByRole("button", { name: "Fit view" })).toBeTruthy()
     expect(screen.getByRole("img", { name: "World axes" })).toBeTruthy()
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
-    expect(port.orientToFrame).toHaveBeenCalledOnce()
+    expect(port.orientToFrame).toHaveBeenCalledTimes(1)
 
     rerenderSketchContext({ frame, mode: "normal" })
     expect(port.orientToFrame).toHaveBeenCalledTimes(2)
 
     rerenderSketchContext()
     expect(screen.getByRole("region", { name: "3D viewport" })).toBeTruthy()
-    expect(createViewport).toHaveBeenCalledOnce()
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.fit).toHaveBeenCalledTimes(1)
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("select")
     expect(port.dispose).not.toHaveBeenCalled()
 
     unmount()
-    expect(port.dispose).toHaveBeenCalledOnce()
+    expect(port.dispose).toHaveBeenCalledTimes(1)
   })
 
   it("does not replace viewer meshes for save-status-only controller updates", async () => {
@@ -1237,7 +1242,7 @@ describe("GeometryViewport", () => {
       [{ featureId: boxId, geometry: { mesh } }],
     )
     const { port, rerenderController } = renderViewport(controller)
-    await waitFor(() => expect(port.setMeshes).toHaveBeenCalledOnce())
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalledTimes(1))
 
     for (const saveStatus of ["saving", "saved", "error"] as const) {
       vi.mocked(port.setMeshes).mockClear()
@@ -1286,7 +1291,7 @@ describe("GeometryViewport", () => {
     )
 
     await waitFor(() => expect(port.setSketchProjection).toHaveBeenCalledWith(frame, firstBounds))
-    expect(createViewport).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
     const referenceCandidateCalls = vi.mocked(port.setSketchReferenceCandidates).mock.calls.length
     const interactionModeCalls = vi.mocked(port.setInteractionMode).mock.calls.length
     const secondBounds = { minX: -50, minY: -40, width: 100, height: 80 }
@@ -1294,7 +1299,7 @@ describe("GeometryViewport", () => {
     act(() => store.getState().publish({ frame, bounds: secondBounds }))
     act(() => store.getState().publish({ frame, bounds: latestBounds }))
     expect(frames).toHaveLength(1)
-    expect(port.setSketchProjection).toHaveBeenCalledOnce()
+    expect(port.setSketchProjection).toHaveBeenCalledTimes(1)
     const projectionFrame = frames.shift()
     if (!projectionFrame) throw new Error("The latest sketch projection must schedule a frame.")
     act(() => projectionFrame(0))
@@ -1312,7 +1317,7 @@ describe("GeometryViewport", () => {
 
     rerenderSketchContext({ frame, mode: "normal", projectionStore: store })
     expect(port.setSketchProjection).toHaveBeenLastCalledWith(frame, firstBounds)
-    expect(createViewport).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
     expect(port.dispose).not.toHaveBeenCalled()
   })
 
@@ -1597,7 +1602,7 @@ describe("GeometryViewport", () => {
       },
       pendingViewport,
     )
-    expect(createViewport).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
     await act(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     })
@@ -1622,7 +1627,7 @@ describe("GeometryViewport", () => {
     expect(readyOrder).toBeGreaterThan(meshesOrder)
     unmount()
     expect(onReady).toHaveBeenLastCalledWith(false)
-    expect(port.dispose).toHaveBeenCalledOnce()
+    expect(port.dispose).toHaveBeenCalledTimes(1)
   })
 
   it.each(["cancel", "invalidate"])(
@@ -1727,7 +1732,7 @@ describe("GeometryViewport", () => {
       selection,
     )
 
-    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(createViewport).toHaveBeenCalledTimes(1))
     expect(createViewport).toHaveBeenCalledWith(
       expect.any(HTMLCanvasElement),
       expect.objectContaining({ onSelectionChange: expect.any(Function) }),
@@ -1742,7 +1747,7 @@ describe("GeometryViewport", () => {
         .getByRole("region", { name: "3D viewport" })
         .getAttribute("data-rendered-feature-count"),
     ).toBe("1")
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledTimes(1)
     expect(screen.getByRole("img", { name: "World axes" })).toBeTruthy()
     expect(screen.getByText("XYZ · mm")).toBeTruthy()
 
@@ -1752,10 +1757,10 @@ describe("GeometryViewport", () => {
     await user.click(screen.getByRole("menuitem", { name: "Front" }))
     expect(port.setStandardView).toHaveBeenCalledWith("front")
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }))
-    expect(port.clearSelection).toHaveBeenCalledOnce()
+    expect(port.clearSelection).toHaveBeenCalledTimes(1)
 
     unmount()
-    expect(port.dispose).toHaveBeenCalledOnce()
+    expect(port.dispose).toHaveBeenCalledTimes(1)
   })
 
   it("preserves the camera when rebuilt geometry replaces the displayed mesh", async () => {
@@ -1769,7 +1774,7 @@ describe("GeometryViewport", () => {
     }
     const { port, rerenderController } = renderViewport(firstController)
 
-    await waitFor(() => expect(port.fit).toHaveBeenCalledOnce())
+    await waitFor(() => expect(port.fit).toHaveBeenCalledTimes(1))
     rerenderController(
       readyController(
         [{ id: boxId, dependencies: [] }],
@@ -1780,13 +1785,13 @@ describe("GeometryViewport", () => {
     await waitFor(() =>
       expect(port.setMeshes).toHaveBeenLastCalledWith([{ featureId: boxId, ...updatedMesh }]),
     )
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledTimes(1)
   })
 
   it("keeps the viewer mounted when sketch plane callbacks change and forwards the latest actions", async () => {
     const controller = readyController([], [])
     const port = renderViewport(controller).port
-    await waitFor(() => expect(port.fit).toHaveBeenCalledOnce())
+    await waitFor(() => expect(port.fit).toHaveBeenCalledTimes(1))
     cleanup()
     vi.mocked(port.fit).mockClear()
     vi.mocked(port.dispose).mockClear()
@@ -1819,7 +1824,7 @@ describe("GeometryViewport", () => {
       </I18nProvider>
     )
     const { rerender } = render(element(false))
-    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(createViewport).toHaveBeenCalledTimes(1))
     const options = createViewport.mock.calls[0]?.[1] as GeometryViewportOptions | undefined
     options?.onOriginPlaneSelectionChange?.("xy")
     expect(idlePlaneSelect).toHaveBeenCalledWith("xy")
@@ -1827,10 +1832,10 @@ describe("GeometryViewport", () => {
     options?.onOriginPlaneSelectionChange?.("xz")
     options?.onSelectionChange?.({ featureId: boxId, faceId: 7, faceOrdinal: 2 })
     expect(createPlaneSelect).toHaveBeenCalledWith("xz")
-    expect(currentSelection).toHaveBeenCalledOnce()
+    expect(currentSelection).toHaveBeenCalledTimes(1)
     expect(initialSelection).not.toHaveBeenCalled()
-    expect(createViewport).toHaveBeenCalledOnce()
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.fit).toHaveBeenCalledTimes(1)
     expect(port.dispose).not.toHaveBeenCalled()
   })
 
@@ -1841,7 +1846,7 @@ describe("GeometryViewport", () => {
     )
     const { createViewport, port, rerenderController, rerenderSketchContext } =
       renderViewport(first)
-    await waitFor(() => expect(port.fit).toHaveBeenCalledOnce())
+    await waitFor(() => expect(port.fit).toHaveBeenCalledTimes(1))
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Standard views" }))
     await user.click(screen.getByRole("menuitem", { name: "Isometric" }))
@@ -1860,10 +1865,10 @@ describe("GeometryViewport", () => {
     ]) {
       rerenderController(controller)
     }
-    expect(createViewport).toHaveBeenCalledOnce()
+    expect(createViewport).toHaveBeenCalledTimes(1)
     expect(port.dispose).not.toHaveBeenCalled()
-    expect(port.fit).toHaveBeenCalledOnce()
-    expect(port.setStandardView).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledTimes(1)
+    expect(port.setStandardView).toHaveBeenCalledTimes(1)
     expect(port.orientToFrame).not.toHaveBeenCalled()
     expect(port.setSketchProjection).not.toHaveBeenCalled()
   })
@@ -1883,7 +1888,7 @@ describe("GeometryViewport", () => {
     expect(viewerMeshes(controller, [booleanId])).toEqual([])
 
     const empty = renderViewport(readyController([], []))
-    await waitFor(() => expect(empty.createViewport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(empty.createViewport).toHaveBeenCalledTimes(1))
     expect(screen.getByText("Create a feature to display its rebuilt geometry.").textContent).toBe(
       "Create a feature to display its rebuilt geometry.",
     )
@@ -1941,7 +1946,7 @@ describe("GeometryViewport", () => {
 
   it("renders exact saved sketches with the model and filters hidden sketch identities", async () => {
     const controller = readyController([], [], [sketchDisplay])
-    expect(viewerSketches(controller)).toEqual([sketchDisplay])
+    expect(viewerSketches(controller)).toEqual<unknown>([sketchDisplay])
     expect(viewerSketches(controller, [sketchDisplay.sketchId])).toEqual([])
 
     const { port } = renderViewport(controller)
@@ -2008,7 +2013,7 @@ describe("GeometryViewport", () => {
       onSelect,
     })
 
-    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(createViewport).toHaveBeenCalledTimes(1))
     expect(port.setMeshes).toHaveBeenCalledWith([])
     expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("xz", true, false)
     expect(screen.queryByText("Create a feature to display its rebuilt geometry.")).toBeNull()
@@ -2041,7 +2046,7 @@ describe("GeometryViewport", () => {
       },
     )
 
-    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(createViewport).toHaveBeenCalledTimes(1))
     expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("yz", false, true)
     const viewport = screen.getByRole("region", { name: "3D viewport" })
     expect(viewport.getAttribute("data-origin-plane-selection")).toBe("yz")
@@ -2109,7 +2114,7 @@ describe("GeometryViewport", () => {
       { mode: "create", selectedPlane: "xy", onSelect: vi.fn() },
     )
 
-    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(createViewport).toHaveBeenCalledTimes(1))
     const options = createViewport.mock.calls[0]?.[1]
     expect(options?.isSelectionCandidateEligible?.(boxSelection)).toBe(true)
     expect(options?.isSelectionCandidateEligible?.(extrusionSelection)).toBe(true)
@@ -2232,7 +2237,7 @@ describe("GeometryViewport", () => {
       [{ featureId: boxId, geometry: { mesh } }],
     )
     const viewport = renderViewport(controller)
-    expect(renderProjectThumbnailMock).toHaveBeenCalledOnce()
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
     viewport.unmount()
     await act(async () => finish?.({ mediaType: "image/png", bytes: new Uint8Array([1]) }))
     expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
@@ -2246,9 +2251,9 @@ describe("GeometryViewport", () => {
       [{ featureId: boxId, geometry: { mesh } }],
     )
     renderViewport(controller)
-    await vi.waitFor(() => expect(renderProjectThumbnailMock).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1))
     await vi.advanceTimersByTimeAsync(250)
-    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1))
     expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
     vi.useRealTimers()
   })
@@ -2270,7 +2275,7 @@ describe("GeometryViewport", () => {
 
     renderViewport(controller)
 
-    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1))
     await Promise.resolve()
     await vi.advanceTimersByTimeAsync(250)
     await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(2))
@@ -2388,7 +2393,7 @@ describe("constituent viewport projection", () => {
       onBodySelectionChange,
     })
     await userEvent.click(screen.getByRole("button", { name: "Clear selection" }))
-    expect(onBodySelectionChange).toHaveBeenCalledOnce()
+    expect(onBodySelectionChange).toHaveBeenCalledTimes(1)
     expect(onBodySelectionChange).toHaveBeenCalledWith(null)
   })
 

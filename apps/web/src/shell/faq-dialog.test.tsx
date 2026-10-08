@@ -1,9 +1,12 @@
-// @vitest-environment jsdom
-// @vitest-environment-options {"url":"http://localhost:5291/projects/example?tab=cad"}
+import { setDomUrl } from "../../../../tests/unit/support/dom"
+
+setDomUrl("http://localhost:5291/projects/example?tab=cad")
+
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { FaqDialog } from "./faq-dialog"
 

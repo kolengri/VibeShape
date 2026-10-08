@@ -1,5 +1,5 @@
+import { beforeAll, describe, expect, test } from "bun:test"
 import { type AssemblyMateGraph, assemblyMateGraphSchema } from "@vibeshape/domain/assembly-mates"
-import { beforeAll, describe, expect, test } from "vitest"
 import createNativeSolver from "../runtime/vibeshape_slvs.mjs"
 import type { NativeSketchSolverModule } from "./abi"
 import { solveAssemblyConstraints } from "./assembly"

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { applyDocumentCommand } from "./commands"
 import { documentSnapshotSchema } from "./document"
 import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"

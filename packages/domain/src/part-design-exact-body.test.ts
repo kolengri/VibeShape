@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
@@ -87,7 +87,7 @@ describe("exact-body modifying Revolve and Subtract", () => {
     (keepTools) => {
       const feature = subtract(keepTools)
       expect(registry().validateFeature(feature).ok).toBe(true)
-      expect(featureBodyDependencies(feature)).toEqual(
+      expect(featureBodyDependencies(feature)).toEqual<unknown>(
         keepTools ? [targetBody] : [targetBody, toolBody],
       )
       expect(
@@ -138,8 +138,8 @@ describe("exact-body modifying Revolve and Subtract", () => {
     (operation) => {
       const feature = revolve(operation)
       expect(registry().validateFeature(feature).ok).toBe(true)
-      expect(readRevolveFeatureParameters(feature)?.targetBody).toEqual(targetBody)
-      expect(featureBodyDependencies(feature)).toEqual([
+      expect(readRevolveFeatureParameters(feature)?.targetBody).toEqual<unknown>(targetBody)
+      expect(featureBodyDependencies(feature)).toEqual<unknown>([
         { featureId: targetBody.featureId, outputRole: targetBody.outputRole },
       ])
       expect(

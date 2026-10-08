@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createDocumentDependencyGraph } from "./document-graph"
 import { featureBodyDependencies, featureBodyDependencyIds } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
@@ -80,10 +80,10 @@ describe("versioned body reference frame features", () => {
   ] as const)("orders %j support after the sole consumed body", (type, parameters) => {
     const authored = feature(type.type, parameters)
     expect(registry.validateFeature(authored).ok).toBe(true)
-    expect(featureBodyDependencies(authored)).toEqual([
+    expect(featureBodyDependencies(authored)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "pattern.instance.1" },
     ])
-    expect(featureBodyDependencyIds(authored)).toEqual([sourceId])
+    expect(featureBodyDependencyIds(authored)).toEqual<unknown>([sourceId])
     expect(registry.validateFeature({ ...authored, dependencies: [supportId, sourceId] }).ok).toBe(
       false,
     )
@@ -122,7 +122,7 @@ describe("versioned body reference frame features", () => {
     })
     expect(resolve(copy.parameters, new Map())).toMatchObject({ ok: false })
     expect(featureBodyDependencyIds(copy)).toEqual([])
-    expect(featureBodyDependencies(copy)).toEqual([
+    expect(featureBodyDependencies(copy)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "pattern.instance.1" },
     ])
     expect(classifyPartOperation({ ...copy, schemaVersion: 1, semanticInputs: null })).toEqual({
@@ -183,13 +183,13 @@ describe("versioned body reference frame features", () => {
       [sourceId],
     )
     expect(registry.validateFeature(authored).ok).toBe(true)
-    expect(readMirrorFeatureParametersV3(authored)?.plane).toEqual(plane)
+    expect(readMirrorFeatureParametersV3(authored)?.plane).toEqual<unknown>(plane)
     expect(
       referenceFrameDependencyIds(featureIdSchema.parse(sourceId), {
         kind: "datum-plane",
         featureId: featureIdSchema.parse(sourceId),
       }),
-    ).toEqual([sourceId])
+    ).toEqual<unknown>([sourceId])
     expect(
       registry.validateFeature({
         ...authored,

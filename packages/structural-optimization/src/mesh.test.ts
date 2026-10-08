@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { encodeStructuralStl } from "./mesh"
 
 function box(offset = 0, scale = 1) {

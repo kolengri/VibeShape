@@ -1,4 +1,4 @@
-// @vitest-environment node
+import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { insertFeatureInHistoryCommandSchema } from "@vibeshape/domain"
 import { commandActorSchema } from "@vibeshape/domain/commands"
@@ -6,7 +6,7 @@ import { documentV4AssetsCommandSchema } from "@vibeshape/domain/document-v4-com
 import { readImportedFeatureParameters } from "@vibeshape/domain/part-design-import"
 import { readMeshImportFeatureParameters } from "@vibeshape/domain/part-design-mesh-import"
 import { MAX_SOURCE_ASSET_BYTES } from "@vibeshape/domain/source-assets"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import {
   createImportTransaction,
   type ImportFile,
@@ -77,9 +77,9 @@ describe("captured exact source authoring", () => {
     expect(result.commands.map(({ baseRevision }) => baseRevision)).toEqual([7, 8, 9])
     expect(result.assetBlobs).toHaveLength(1)
   })
-  it.each(importSourceUnits)(
+  it.each(importSourceUnits.map((unit) => ({ unit })))(
     "hashes immutable bytes and records explicit %s metadata without a second STEP transform",
-    async (unit) => {
+    async ({ unit }) => {
       const prepared = await readExactSource(sourceFile("original.STP"), unit)
       expect(prepared.source.digest).toBe(createHash("sha256").update(prepared.bytes).digest("hex"))
       expect(prepared.source).toMatchObject({
@@ -141,7 +141,7 @@ describe("captured exact source authoring", () => {
         "Imported source",
         () => id(ordinal++),
       )
-      expect(result.commands.map(({ kind }) => kind)).toEqual([
+      expect(result.commands.map(({ kind }) => kind)).toEqual<unknown>([
         ...(authorityVersion === 2 ? ["org.vibeshape.document.upgrade-v3"] : []),
         ...(authorityVersion !== 4 ? ["org.vibeshape.document.upgrade-v4"] : []),
         "org.vibeshape.document.add-source-assets",
@@ -197,15 +197,18 @@ describe("captured exact source authoring", () => {
 })
 
 describe("captured triangle-mesh source authoring", () => {
-  it.each(importSourceUnits)("requires and maps explicit STL %s units", async (unit) => {
-    const prepared = await readImportSource(sourceFile("original.STL"), unit)
-    expect(prepared.representation).toBe("triangle-mesh")
-    if (prepared.representation !== "triangle-mesh") throw new Error("Expected a mesh source.")
-    expect(prepared.input.format).toBe("stl")
-    expect(prepared.input.units).toBeDefined()
-    expect(prepared.digest).toBe(createHash("sha256").update(prepared.bytes).digest("hex"))
-    expect(prepared.input.bytes).not.toBe(prepared.bytes)
-  })
+  it.each(importSourceUnits.map((unit) => ({ unit })))(
+    "requires and maps explicit STL %s units",
+    async ({ unit }) => {
+      const prepared = await readImportSource(sourceFile("original.STL"), unit)
+      expect(prepared.representation).toBe("triangle-mesh")
+      if (prepared.representation !== "triangle-mesh") throw new Error("Expected a mesh source.")
+      expect(prepared.input.format).toBe("stl")
+      expect(prepared.input.units).toBeDefined()
+      expect(prepared.digest).toBe(createHash("sha256").update(prepared.bytes).digest("hex"))
+      expect(prepared.input.bytes).not.toBe(prepared.bytes)
+    },
+  )
   it("forbids a 3MF unit override and rejects missing STL units before reading", async () => {
     const read = vi.fn(async () => new ArrayBuffer(3))
     await expect(

@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { ShellFeatureContentParameters } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type BodyFaceResolver, takeResolvedBodyFace } from "./occt-body-face"
 import type { TopologyCaptureSnapshot } from "./topology-signatures"
 
@@ -35,13 +36,13 @@ describe("exact body face ownership", () => {
     const resolver = vi.fn(resolve)
     const face = takeResolvedBodyFace(target, snapshot, reference, scope, resolver)
     expect(resolver).toHaveBeenCalledWith([reference], snapshot.candidates, scope)
-    expect(face).toBe(faces[1])
-    expect(faces[0]?.delete).toHaveBeenCalledOnce()
+    expect(face).toBe<unknown>(faces[1])
+    expect(faces[0]?.delete).toHaveBeenCalledTimes(1)
     expect(faces[1]?.delete).not.toHaveBeenCalled()
-    expect(faces[2]?.delete).toHaveBeenCalledOnce()
+    expect(faces[2]?.delete).toHaveBeenCalledTimes(1)
     expect(source.delete).not.toHaveBeenCalled()
     face.delete()
-    expect(faces[1]?.delete).toHaveBeenCalledOnce()
+    expect(faces[1]?.delete).toHaveBeenCalledTimes(1)
   })
   it("fails before native acquisition when stable resolution is ambiguous", () => {
     const { target, faces } = sourceWithKeys([7])
@@ -60,7 +61,7 @@ describe("exact body face ownership", () => {
       expect(() => takeResolvedBodyFace(target, snapshot, reference, scope, resolve)).toThrow(
         "missing or ambiguous",
       )
-      for (const face of faces) expect(face.delete).toHaveBeenCalledOnce()
+      for (const face of faces) expect(face.delete).toHaveBeenCalledTimes(1)
       expect(source.delete).not.toHaveBeenCalled()
     },
   )

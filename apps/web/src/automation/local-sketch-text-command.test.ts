@@ -1,25 +1,30 @@
-import { readFileSync } from "node:fs"
-import {
-  applyAutomationDraftCommandRequestSchema,
-  automationDraftStateSchema,
-} from "@vibeshape/automation-api/drafts"
-import { isLocalSketchTextOperation } from "@vibeshape/automation-api/local-sketch-text-tools"
-import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
+import { describe, expect, it, mock } from "bun:test"
 import type { AutomationHost } from "@vibeshape/automation-host/host"
-import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain/commands"
-import { type SketchRecord, sketchRecordSchema } from "@vibeshape/domain/sketch"
-import { BUNDLED_SKETCH_TEXT_FONT } from "@vibeshape/domain/sketch-text"
-import { describe, expect, it, vi } from "vitest"
-import { loadSketchTextFont } from "../features/sketch/text/text-font"
-import { createLocalToolExecutor } from "./local-tool-executor"
+import type { SketchRecord } from "@vibeshape/domain/sketch"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
+const { readFileSync } = await import("node:fs")
 const font = Uint8Array.from(
   readFileSync("packages/formats/src/text-outline/fonts/NotoSans-Regular.ttf"),
 )
-vi.mock("../features/sketch/text/text-font", async (original) => ({
-  ...(await original<typeof import("../features/sketch/text/text-font")>()),
+const originalModule1 = { ...(await import("../features/sketch/text/text-font")) }
+mock.module("../features/sketch/text/text-font", () => ({
+  ...originalModule1,
   loadSketchTextFont: vi.fn(async () => Uint8Array.from(font)),
 }))
+
+const { applyAutomationDraftCommandRequestSchema, automationDraftStateSchema } = await import(
+  "@vibeshape/automation-api/drafts"
+)
+const { isLocalSketchTextOperation } = await import(
+  "@vibeshape/automation-api/local-sketch-text-tools"
+)
+const { localOperationSchema } = await import("@vibeshape/automation-api/local-tools")
+const { commandActorSchema, parseDocumentCommand } = await import("@vibeshape/domain/commands")
+const { sketchRecordSchema } = await import("@vibeshape/domain/sketch")
+const { BUNDLED_SKETCH_TEXT_FONT } = await import("@vibeshape/domain/sketch-text")
+const { loadSketchTextFont } = await import("../features/sketch/text/text-font")
+const { createLocalToolExecutor } = await import("./local-tool-executor")
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 const actor = commandActorSchema.parse({
   type: "mcp",

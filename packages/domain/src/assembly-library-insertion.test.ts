@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   assemblyLibraryFixture,
   libraryFixtureId,
@@ -65,9 +65,9 @@ describe("frozen library insertion authority", () => {
       ),
     ).toBe(false)
     expect(inserted.snapshot.assets).toEqual([foreign.asset])
-    expect(inserted.snapshot.assembly.definitions[0]).toEqual(definition)
+    expect(inserted.snapshot.assembly.definitions[0]).toEqual<unknown>(definition)
     expect(inserted.snapshot.parts).toEqual(base.parts)
-    expect(inserted.snapshot.assembly.instances[0]?.definitionId).toBe(definition.id)
+    expect(inserted.snapshot.assembly.instances[0]?.definitionId).toBe<unknown>(definition.id)
   })
   it("relinks only explicitly, preserves occurrence identity and detaches without mutating frozen geometry", async () => {
     const { inserted, definition } = await fixture()
@@ -81,14 +81,14 @@ describe("frozen library insertion authority", () => {
       command(inserted.snapshot, [{ kind: "definition.relink-pinned", definition: replacement }]),
     )
     expect(relinked.snapshot.assembly.instances).toEqual(inserted.snapshot.assembly.instances)
-    expect(relinked.snapshot.assembly.definitions[0]).toEqual(replacement)
+    expect(relinked.snapshot.assembly.definitions[0]).toEqual<unknown>(replacement)
     const detached = evidenceValue(
       command(relinked.snapshot, [
         { kind: "definition.detach-library", definitionId: definition.id },
       ]),
     )
     const { libraryBinding: _binding, ...copy } = replacement
-    expect(detached.snapshot.assembly.definitions[0]).toEqual(copy)
+    expect(detached.snapshot.assembly.definitions[0]).toEqual<unknown>(copy)
     expect(
       command(detached.snapshot, [
         { kind: "definition.detach-library", definitionId: definition.id },
@@ -163,7 +163,7 @@ describe("frozen library insertion authority", () => {
       targetRevision: inserted.snapshot.revision,
     })
     const redone = evidenceValue(reduceDocumentV4Event(undone.snapshot, redo, inserted.snapshot))
-    expect(redone.snapshot.assembly.definitions[0]).toEqual(definition)
+    expect(redone.snapshot.assembly.definitions[0]).toEqual<unknown>(definition)
     const events = [...prefix, inserted.event, undo, redo]
     expect(evidenceValue(replayDocumentAuthorityEvents(null, events)).snapshot).toEqual(
       redone.snapshot,
@@ -185,7 +185,7 @@ describe("frozen library insertion authority", () => {
     expect(copied.snapshot.schemaVersion).toBe(4)
     if (copied.snapshot.schemaVersion !== 4)
       throw new Error("A frozen library copy must retain V4 authority.")
-    expect(copied.snapshot.assembly.definitions[0]).toEqual(definition)
+    expect(copied.snapshot.assembly.definitions[0]).toEqual<unknown>(definition)
     expect(copied.snapshot.assets).toEqual([foreign.asset])
   })
 })

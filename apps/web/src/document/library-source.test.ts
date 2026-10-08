@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
-import { describe, expect, it, vi } from "vitest"
 import { assemblyLibraryFixture } from "../../../../scripts/assembly-library-fixture"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import * as assemblyModel from "../features/assembly/assembly-model"
 import type { DocumentControllerState } from "./document-controller"
 import { captureLibrarySource } from "./library-source"

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   BINARY_EXPORT_CHUNK_MAX_BYTES,
   BINARY_EXPORT_MAX_BYTES,
@@ -6,7 +7,7 @@ import {
   type BinaryExportDescriptor,
 } from "@vibeshape/automation-api/binary-exports"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { type BinaryExportSourcePort, createBinaryExportSession } from "./binary-export-session"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -71,7 +72,8 @@ describe("paired binary export session", () => {
       arguments: { revision: 4, format: "3mf", meshQuality },
     })
     expect(result.ok).toBe(true)
-    expect(f.prepare).toHaveBeenCalledExactlyOnceWith("3mf", 4, meshQuality)
+    expect(f.prepare).toHaveBeenCalledTimes(1)
+    expect(f.prepare).toHaveBeenCalledWith("3mf", 4, meshQuality)
   })
   it("copies source bytes and preserves immutable export provenance after later document edits", async () => {
     const source = new Uint8Array([1, 2, 3, 4, 5]),

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { featureBodyDependencies, featureBodyDependencyIds } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
@@ -146,9 +147,11 @@ describe("exact-body modeled thread intent", () => {
         ),
       ).toMatchObject({ ok: true, parameters: { length: { value: 34 } } })
       expect(
-        threadFeatureTypeHandler.resolveParameters?.(
-          value,
-          new Map([["length", { dimension: "length", value: 36 }]]),
+        matchValue(
+          threadFeatureTypeHandler.resolveParameters?.(
+            value,
+            new Map([["length", { dimension: "length", value: 36 }]]),
+          ),
         ),
       ).toMatchObject({
         ok: false,
@@ -293,8 +296,8 @@ describe("bounded arbitrary-axis modeled thread intent", () => {
       parameters: datum,
       dependencies: [sourceId, axisId],
     })
-    expect(featureBodyDependencyIds(supported)).toEqual([sourceId])
-    expect(featureBodyDependencies(supported)).toEqual([
+    expect(featureBodyDependencyIds(supported)).toEqual<unknown>([sourceId])
+    expect(featureBodyDependencies(supported)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "body.primary" },
     ])
     expect(

@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { strToU8 } from "fflate"
-import { describe, expect, it } from "vitest"
 import { parseGeometryImport } from "./index"
 
 function svg(content: string, attributes = "") {

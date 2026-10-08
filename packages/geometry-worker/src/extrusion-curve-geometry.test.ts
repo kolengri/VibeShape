@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { ellipticalArcKernelParameters } from "./extrusion-curve-geometry"
 
 const center = [0, 0, 0] as [number, number, number]
@@ -38,8 +38,8 @@ describe("extrusion elliptical-arc kernel geometry", () => {
       start: fixture.primaryAxisPoint,
     })
 
-    expect(parameters.normal).toEqual(fixture.expectedNormal)
-    expect(parameters.xDirection).toEqual(fixture.expectedXDirection)
+    expect(parameters.normal).toEqual<unknown>(fixture.expectedNormal)
+    expect(parameters.xDirection).toEqual<unknown>(fixture.expectedXDirection)
     expect(parameters.endParameter - parameters.startParameter).toBeCloseTo(Math.PI, 12)
   })
 

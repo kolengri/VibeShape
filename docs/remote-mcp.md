@@ -194,7 +194,7 @@ overrides; a successful lockfile check alone does not detect stale package links
 
 `bun run test:remote-mcp` runs the official Workers Vitest pool in local workerd, exercising actual
 OAuth/PKCE, SDK consent, WebSockets, SQLite DOs and KV. Turnstile siteverify is mocked only in that
-test runtime; deployment always calls the real verification endpoint. Root Vitest separately checks
+test runtime; deployment always calls the real verification endpoint. Root Bun tests separately check
 browser lifecycle, explicit opt-in and existing local MCP regression behavior.
 
 `bun run --cwd apps/remote-mcp build` bundles through Wrangler's local dry run. It creates no deployed

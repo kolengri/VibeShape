@@ -1,3 +1,4 @@
+import { expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -9,7 +10,6 @@ import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { modelMeasurementEvidenceSchema } from "@vibeshape/domain/model-measurements"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
-import { expect, it } from "vitest"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "./queries"
 
 const docId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"

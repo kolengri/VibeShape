@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { createLengthQuantity, featureIdSchema, variableIdSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import messages from "../../i18n/messages/en.json"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { editPartDesignTool } from "../part-design/part-design-tool"

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotV2Schema } from "./document-v2"
 import { copyCompleteDocumentAuthorityHistory } from "./document-v2-copy"
 import { applyDocumentUpgradeV2Command } from "./document-v2-migration"

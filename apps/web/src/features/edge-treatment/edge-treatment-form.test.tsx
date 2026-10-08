@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -11,7 +11,7 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type React from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { EdgeTreatmentForm } from "./edge-treatment-form"
 

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -29,7 +30,6 @@ import {
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
-import { describe, expect, it } from "vitest"
 import {
   activeFeatureId,
   activePartDesignCommand,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   mirrorFeatureContentParametersSchema,
   mirrorFeatureContentParametersV2Schema,
@@ -22,7 +22,7 @@ describe("mirror worker parameters", () => {
     "accepts signed offset %s only in the explicit v2 contract",
     (offset) => {
       const parameters = { plane: "XZ", offset, preserveSource: true }
-      expect(mirrorFeatureContentParametersV2Schema.parse(parameters)).toEqual(parameters)
+      expect(mirrorFeatureContentParametersV2Schema.parse(parameters)).toEqual<unknown>(parameters)
       expect(mirrorFeatureContentParametersSchema.safeParse(parameters).success).toBe(false)
     },
   )

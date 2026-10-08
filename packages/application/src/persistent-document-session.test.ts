@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { documentSnapshotV2Schema } from "@vibeshape/domain/document-v2"
@@ -7,7 +8,7 @@ import { boxFeatureType } from "@vibeshape/domain/part-design"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   historyRepairFixture,
   repairId,
@@ -442,7 +443,7 @@ describe("persistent document session", () => {
         expectedSnapshot: expected.snapshot,
       }),
     ).resolves.toEqual({ ok: true })
-    expect(validateDraft).toHaveBeenCalledOnce()
+    expect(validateDraft).toHaveBeenCalledTimes(1)
     expect(created.session.snapshot).toBe(base)
     expect(JSON.stringify(created.session.snapshot)).toBe(originalBase)
     expect(JSON.stringify(command)).toBe(originalCommand)

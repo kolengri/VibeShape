@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { BooleanParameterField, TanStackBooleanParameterField } from "./boolean-parameter-field"
 
 afterEach(cleanup)
@@ -15,7 +15,7 @@ describe("BooleanParameterField", () => {
     expect((checkbox as HTMLInputElement).checked).toBe(true)
     fireEvent.click(checkbox)
     expect((checkbox as HTMLInputElement).checked).toBe(false)
-    expect(onChange).toHaveBeenCalledOnce()
+    expect(onChange).toHaveBeenCalledTimes(1)
   })
 
   it("adapts a TanStack-style boolean field without owning form state", () => {
@@ -30,7 +30,7 @@ describe("BooleanParameterField", () => {
     )
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Symmetric" }))
-    expect(onBeforeChange).toHaveBeenCalledOnce()
+    expect(onBeforeChange).toHaveBeenCalledTimes(1)
     expect(handleChange).toHaveBeenCalledWith(true)
   })
 })

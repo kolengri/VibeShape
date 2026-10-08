@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { moveSketchPoint } from "@vibeshape/domain/sketch-edit"
 import { detachSketchTextGroup } from "@vibeshape/domain/sketch-text-edit"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../../tests/unit/support/bun-test"
 import {
   createSketchTextDraft,
   parseSketchTextValues,

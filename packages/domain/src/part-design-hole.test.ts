@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { featureRecordSchema } from "./feature-graph"
 import { featureIdSchema } from "./identifiers"
 import {
@@ -68,7 +68,7 @@ function supportReference(owner: string) {
 describe("sketch-point hole contract", () => {
   it("canonicalizes point IDs and accepts blind and through-all extents", () => {
     const parsed = holeFeatureParametersSchema.parse(parameters())
-    expect(parsed.pointIds).toEqual([pointA, pointB])
+    expect(parsed.pointIds).toEqual<unknown>([pointA, pointB])
     expect(
       holeFeatureParametersSchema.parse({
         ...(({ depth: _, ...rest }) => rest)(parameters()),
@@ -330,7 +330,7 @@ describe("counterbore and countersink authored intent", () => {
         dependencies: [targetId],
       })
       expect(readHoleFeatureParameters(record)).toEqual(value)
-      expect(readHoleBodyTarget(record)).toEqual(base.targetBody)
+      expect(readHoleBodyTarget(record)).toEqual<unknown>(base.targetBody)
       expect(holeFeatureParametersSchema.safeParse(value).success).toBe(false)
     }
     expect(

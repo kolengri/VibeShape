@@ -1,8 +1,8 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { SelectField, SelectOption } from "./select-field"
 
 beforeAll(() => {
@@ -58,7 +58,8 @@ describe("SelectField", () => {
     )
     await user.keyboard("{ArrowDown}{Enter}")
     expect(trigger.textContent).toBe("Remove from body")
-    expect(change).toHaveBeenCalledExactlyOnceWith("remove")
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenCalledWith("remove")
     const form = screen.getByRole("form", { name: "Parameters" }) as HTMLFormElement
     expect(new FormData(form).get("operation")).toBe("remove")
   })
@@ -75,7 +76,8 @@ describe("SelectField", () => {
     const trigger = screen.getByRole("combobox", { name: "Result operation" })
     fireEvent.keyDown(trigger, { key: "Enter" })
     await user.click(screen.getByRole("option", { name: "Remove from body" }))
-    expect(change).toHaveBeenCalledExactlyOnceWith("remove")
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenCalledWith("remove")
     expect(trigger.textContent).toBe("New body")
     rerender(view("remove"))
     expect(trigger.textContent).toBe("Remove from body")

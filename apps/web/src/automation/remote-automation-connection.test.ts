@@ -1,29 +1,31 @@
-// @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { createProjectToolPort } from "./project-tool-port"
-import { createRemoteAutomationConnection } from "./remote-automation-connection"
 
-const mocks = vi.hoisted(() => ({
+const mocks = (() => ({
   createHandle: vi.fn(),
   execute: vi.fn(),
   activeWork: vi.fn(),
   review: vi.fn(),
   createExecutor: vi.fn(),
   projectPort: vi.fn(),
-}))
-vi.mock("../document/document-controller", () => ({
+}))()
+mock.module("../document/document-controller", () => ({
   createActiveDocumentAutomationSession: mocks.createHandle,
   getProjectActiveWorkBlock: mocks.activeWork,
 }))
-vi.mock("./automation-review-controller", () => ({
+mock.module("./automation-review-controller", () => ({
   automationReviews: { getSnapshot: mocks.review },
 }))
-vi.mock("./local-tool-executor", () => ({
+mock.module("./local-tool-executor", () => ({
   createLocalToolExecutor: mocks.createExecutor,
 }))
-vi.mock("./project-tool-port", () => ({
+mock.module("./project-tool-port", () => ({
   createProjectToolPort: mocks.projectPort,
 }))
+
+const { createRemoteAutomationConnection } = await import("./remote-automation-connection")
 
 const id = "0195b5ac-b250-7a2c-8c33-000000000001"
 const credential = {
@@ -49,7 +51,7 @@ const work = {
   requestId: "68a2b4b3-322c-4154-bae6-bfafb86b4255",
   operation: { tool: "model_info", arguments: {} },
 }
-const fetchMock = vi.fn<typeof fetch>()
+const fetchMock = vi.fn<(...arguments_: Parameters<typeof fetch>) => ReturnType<typeof fetch>>()
 const dispose = vi.fn()
 const optOut = vi.fn()
 const optIn = vi.fn()
@@ -196,7 +198,7 @@ describe("remote AI project management consent", () => {
       projectManagement: true,
     })
     expect(mocks.createExecutor).toHaveBeenLastCalledWith(next, actor, expect.anything())
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(socket.close).not.toHaveBeenCalled()
     expect(sockets).toHaveLength(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -229,7 +231,7 @@ describe("remote AI project management consent", () => {
     })
     await vi.waitFor(() => expect(connection.getSnapshot().busy).toBe(false))
     expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
-    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(mocks.createHandle).toHaveBeenCalledTimes(1)
     expect(dispose).not.toHaveBeenCalled()
   })
 
@@ -255,7 +257,7 @@ describe("remote AI project management consent", () => {
     })
     expect(mocks.createExecutor).toHaveBeenLastCalledWith(replacement, actor, expect.anything())
     expect(socket.close).not.toHaveBeenCalled()
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(replacement.dispose).not.toHaveBeenCalled()
   })
 
@@ -277,7 +279,7 @@ describe("remote AI project management consent", () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
-    expect(mocks.createHandle).toHaveBeenCalledOnce()
+    expect(mocks.createHandle).toHaveBeenCalledTimes(1)
     expect(socket.send.mock.calls).toHaveLength(sends)
   })
 
@@ -289,7 +291,7 @@ describe("remote AI project management consent", () => {
     handle.readIdentity = () => null
     connection.validateDocumentScope()
     expect(connection.getSnapshot()).toMatchObject({ connected: false, projectManagement: false })
-    expect(socket.close).toHaveBeenCalledOnce()
+    expect(socket.close).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -318,7 +320,7 @@ describe("browser-owned remote automation lifecycle", () => {
     expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
     expect(dispose).not.toHaveBeenCalled()
     await connection.disable()
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(connection.getSnapshot()).toMatchObject({
       connected: false,
       autoApply: false,
@@ -337,7 +339,7 @@ describe("browser-owned remote automation lifecycle", () => {
     const socket = await authorized()
     connection.enableAutoApply()
     socket.receive(work)
-    await vi.waitFor(() => expect(mocks.execute).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(mocks.execute).toHaveBeenCalledTimes(1))
     expect(connection.enableAutoApply()).toBe(false)
     let acknowledge!: (value: Response) => void
     fetchMock.mockImplementationOnce(
@@ -352,7 +354,7 @@ describe("browser-owned remote automation lifecycle", () => {
       autoApply: false,
       busy: false,
     })
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(mocks.execute.mock.calls[0]?.[1].aborted).toBe(true)
     const before = socket.send.mock.calls.length
     finish(result)
@@ -370,7 +372,7 @@ describe("browser-owned remote automation lifecycle", () => {
     const socket = await authorized()
     connection.enableAutoApply()
     socket.onerror?.()
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(1)
     expect(connection.getSnapshot()).toMatchObject({
       connected: false,
       autoApply: false,
@@ -393,7 +395,7 @@ describe("browser-owned remote automation lifecycle", () => {
     current.receive(work)
     current.receive(work)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
-    expect(mocks.execute).toHaveBeenCalledOnce()
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
   })
 
   it("uses no remote path when unconfigured and blocks pairing during an ordinary edit or review", async () => {

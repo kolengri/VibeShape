@@ -1,41 +1,22 @@
-// @vitest-environment jsdom
-import { webcrypto } from "node:crypto"
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
-import { useCallback, useState } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { DocumentControllerState } from "../../document/document-controller"
-import { i18n } from "../../i18n"
-import messages from "../../i18n/messages/en.json"
-import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
-import { meshInspection } from "../import/import-test-fixtures"
-import {
-  LightweightingTaskPanel,
-  type LightweightingViewportInteraction,
-} from "./lightweighting-dialog"
-import { useLightweightingCommand } from "./use-lightweighting-command"
+import "../../../../../tests/unit/support/dom"
 
-const ports = vi.hoisted(() => ({
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
+import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
+import { vi } from "../../../../../tests/unit/support/bun-test"
+import type { DocumentControllerState } from "../../document/document-controller"
+
+import type { LightweightingViewportInteraction } from "./lightweighting-dialog"
+
+const ports = (() => ({
   optimize: vi.fn(),
   inspect: vi.fn(),
   apply: vi.fn(),
   parts: vi.fn(),
   encode: vi.fn(),
-}))
-vi.mock("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
-vi.mock("@vibeshape/structural-optimization/client", () => ({
+}))()
+mock.module("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
+mock.module("@vibeshape/structural-optimization/client", () => ({
   optimizeStructuralModel: ports.optimize,
   StructuralOptimizationError: class extends Error {
     constructor(readonly code: string) {
@@ -43,14 +24,17 @@ vi.mock("@vibeshape/structural-optimization/client", () => ({
     }
   },
 }))
-vi.mock("@vibeshape/structural-optimization/mesh", () => ({ encodeStructuralStl: ports.encode }))
-vi.mock("../../document/document-controller", () => ({
+mock.module("@vibeshape/structural-optimization/mesh", () => ({
+  encodeStructuralStl: ports.encode,
+}))
+mock.module("../../document/document-controller", () => ({
   getProjectActiveWorkBlock: () => null,
   inspectTriangleMeshSource: ports.inspect,
   commitAuthoredTransaction: ports.apply,
 }))
-vi.mock("../import/import-preview", async () => {
-  const { useEffect } = await import("react")
+const mockDependency1 = await import("react")
+mock.module("../import/import-preview", () => {
+  const { useEffect } = mockDependency1
   return {
     ImportPreview: ({ onReady, label }: { onReady: (ready: boolean) => void; label: string }) => {
       useEffect(() => {
@@ -61,6 +45,20 @@ vi.mock("../import/import-preview", async () => {
     },
   }
 })
+
+const { webcrypto } = await import("node:crypto")
+const { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { useCallback, useState } = await import("react")
+const { i18n } = await import("../../i18n")
+const { default: messages } = await import("../../i18n/messages/en.json")
+const { authoredTreeFixture } = await import("../../test-support/authored-tree-fixture")
+const { meshInspection } = await import("../import/import-test-fixtures")
+const { LightweightingTaskPanel } = await import("./lightweighting-dialog")
+const { useLightweightingCommand } = await import("./use-lightweighting-command")
 const fixture = authoredTreeFixture()
 const firstPartCandidate = fixture.authority.parts[0]
 const bodyBinding = firstPartCandidate?.bodyHistory[0]
@@ -286,7 +284,7 @@ describe("Lightweighting workflow", () => {
     }
     render(<Workspace />)
     await waitFor(() => expect(screen.getByText("pristine-cad-hash")).toBeTruthy())
-    expect(delivered).toHaveBeenCalledOnce()
+    expect(delivered).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
@@ -443,7 +441,7 @@ describe("Lightweighting workflow", () => {
     expect((screen.getByLabelText("Density (kg/m³)") as HTMLInputElement).value).toBe("1270")
     expect(screen.queryByRole("link", { name: "Manufacturer data sheet 1" })).toBeNull()
     await userEvent.click(screen.getByRole("button", { name: "Analyze and optimize" }))
-    await waitFor(() => expect(ports.optimize).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.optimize).toHaveBeenCalledTimes(1))
     expect(ports.optimize.mock.calls[0]?.[0].material).toEqual({
       youngModulusMpa: 1800,
       poissonRatio: 0.35,
@@ -503,7 +501,7 @@ describe("Lightweighting workflow", () => {
     expect(ports.inspect.mock.calls[0]?.[0]).toMatchObject({ format: "stl", units: "mm" })
     expect(ports.apply).not.toHaveBeenCalled()
     await userEvent.dblClick(screen.getByRole("button", { name: "Apply as new mesh Part" }))
-    expect(ports.apply).toHaveBeenCalledOnce()
+    expect(ports.apply).toHaveBeenCalledTimes(1)
     const [revision, transaction] = ports.apply.mock.calls[0] ?? []
     expect(revision).toBe(fixture.snapshot.revision)
     const commands = transaction.commands
@@ -546,7 +544,7 @@ describe("Lightweighting workflow", () => {
     setup()
     await fill()
     await userEvent.dblClick(screen.getByRole("button", { name: "Analyze and optimize" }))
-    expect(ports.optimize).toHaveBeenCalledOnce()
+    expect(ports.optimize).toHaveBeenCalledTimes(1)
     const signal = ports.optimize.mock.calls[0]?.[1].signal as AbortSignal
     await userEvent.click(
       within(screen.getByRole("region", { name: "Lightweighting" })).getByText("Close"),
@@ -568,7 +566,7 @@ describe("Lightweighting workflow", () => {
     expect(signal.aborted).toBe(true)
     await analyze()
     old.resolve({ ...result, optimized: { ...result.optimized, volumeMm3: 1 } })
-    await waitFor(() => expect(ports.inspect).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(1))
     expect(screen.getByText("Material saved relative to the voxel baseline: 20%.")).toBeTruthy()
     expect(ports.optimize.mock.calls[1]?.[0].maxIterations).toBe(13)
   })
@@ -714,7 +712,7 @@ describe("Lightweighting workflow", () => {
     ).toBe(false)
     await userEvent.click(screen.getByRole("button", { name: "Apply as new mesh Part" }))
     expect(ports.apply).toHaveBeenCalledTimes(2)
-    expect(ports.optimize).toHaveBeenCalledOnce()
+    expect(ports.optimize).toHaveBeenCalledTimes(1)
   })
   it("forwards atomic Apply state and success separately from a locked user close", async () => {
     const commit = deferred<{ ok: true }>()
@@ -730,7 +728,7 @@ describe("Lightweighting workflow", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(screen.getByRole("region", { name: "Lightweighting" })).toBeTruthy()
     commit.resolve({ ok: true })
-    await waitFor(() => expect(onApplied).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1))
     expect(onApplyingChange.mock.calls).toEqual([[true], [false]])
   })
   it("downloads settings, numerical metrics, and captured source identity", async () => {
@@ -788,7 +786,7 @@ describe("Lightweighting workflow", () => {
       (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
-    expect(ports.optimize).toHaveBeenCalledOnce()
+    expect(ports.optimize).toHaveBeenCalledTimes(1)
   })
   it("cancels analysis explicitly and releases failed analysis for retry", async () => {
     const work = deferred<StructuralOptimizationResult>()
@@ -806,7 +804,7 @@ describe("Lightweighting workflow", () => {
     )
     await analyze()
     work.resolve(result)
-    await waitFor(() => expect(ports.inspect).toHaveBeenCalledOnce())
+    await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(1))
     expect(ports.apply).not.toHaveBeenCalled()
   })
   it("keeps read-only and blocked sessions unavailable", async () => {

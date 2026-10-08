@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   localModelInfoSchema,
   localOperationSchema,
@@ -12,11 +13,11 @@ import {
   generateUuidV7,
   parseDocumentCommand,
 } from "@vibeshape/domain"
-import { describe, expect, it, vi } from "vitest"
 import {
   quickLightweightingOperation,
   quickLightweightingValue,
 } from "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
 const id = (offset = 0) =>
@@ -160,7 +161,8 @@ describe("local automation tool executor", () => {
       arguments: { source: "draft", draftId: id(3), revision: 4, camera },
     })
     await createLocalToolExecutor(session, actor).execute(operation)
-    expect(renderDraft).toHaveBeenCalledExactlyOnceWith(
+    expect(renderDraft).toHaveBeenCalledTimes(1)
+    expect(renderDraft).toHaveBeenCalledWith(
       actor,
       { schemaVersion: 1, draftId: id(3), revision: 4, camera },
       undefined,
@@ -221,14 +223,12 @@ describe("local automation tool executor", () => {
         createLocalToolExecutor(session, actor).execute(operation, signal),
       ).resolves.toMatchObject({ ok: false, diagnostic: { code: "geometry-unavailable" } })
       if (source === "model") {
-        expect(readRenderPreview).toHaveBeenCalledExactlyOnceWith(
-          id(2),
-          operation.arguments,
-          signal,
-        )
+        expect(readRenderPreview).toHaveBeenCalledTimes(1)
+        expect(readRenderPreview).toHaveBeenCalledWith(id(2), operation.arguments, signal)
         expect(renderDraft).not.toHaveBeenCalled()
       } else {
-        expect(renderDraft).toHaveBeenCalledExactlyOnceWith(
+        expect(renderDraft).toHaveBeenCalledTimes(1)
+        expect(renderDraft).toHaveBeenCalledWith(
           actor,
           { schemaVersion: 1, draftId: id(3), revision: 4, views: ["front"], target },
           signal,
@@ -287,7 +287,8 @@ describe("local automation tool executor", () => {
       })
       const signal = new AbortController().signal
       await createLocalToolExecutor({ ...base, history }, actor).execute(operation, signal)
-      expect(history.execute).toHaveBeenCalledExactlyOnceWith(actor, operation, signal)
+      expect(history.execute).toHaveBeenCalledTimes(1)
+      expect(history.execute).toHaveBeenCalledWith(actor, operation, signal)
       expect(readCad).not.toHaveBeenCalled()
       expect(host.applyCommand).not.toHaveBeenCalled()
       expect(await createLocalToolExecutor(base, actor).execute(operation)).toMatchObject({
@@ -498,7 +499,7 @@ describe("local automation tool executor", () => {
         heightMm: 30,
       },
     })
-    expect(host.applyCommand).toHaveBeenCalledOnce()
+    expect(host.applyCommand).toHaveBeenCalledTimes(1)
     const command = host.applyCommand.mock.calls[0]?.[1].command
     const parsed = parseDocumentCommand(command)
     expect(parsed.ok).toBe(true)

@@ -1,25 +1,17 @@
 import type { AssemblyMaterializedOccurrence } from "@vibeshape/application/assembly-materialization"
-import {
-  assemblyDefinitionIdSchema,
-  assemblyInstanceIdSchema,
-  bodyReferenceSchema,
-  createFeatureTypeRegistry,
-  createModuleRegistry,
-  featureIdSchema,
-} from "@vibeshape/domain"
-import { parseGeometryImport } from "@vibeshape/formats/import"
-import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
-import { inspectAssemblyInputSchema, printPreparationSettingsSchema } from "@vibeshape/protocol"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { exportAssemblyRuntime } from "./assembly-export"
-import { withMaterializedAssemblyRuntime } from "./assembly-inspection"
 
-const materialization = vi.hoisted(() => ({
+type ReplicadGeometryEngine = import("@vibeshape/geometry-worker/engine").ReplicadGeometryEngine
+
+import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
+
+const materialization = (() => ({
   occurrences: [] as AssemblyMaterializedOccurrence[],
   contexts: new Map<string, string>(),
-}))
-vi.mock("./assembly-inspection", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./assembly-inspection")>()
+}))()
+const originalModule1 = { ...(await import("./assembly-inspection")) }
+mock.module("./assembly-inspection", () => {
+  const original = originalModule1
   return {
     ...original,
     withMaterializedAssemblyRuntime: vi.fn(
@@ -28,6 +20,22 @@ vi.mock("./assembly-inspection", async (importOriginal) => {
     ),
   }
 })
+
+const {
+  assemblyDefinitionIdSchema,
+  assemblyInstanceIdSchema,
+  bodyReferenceSchema,
+  createFeatureTypeRegistry,
+  createModuleRegistry,
+  featureIdSchema,
+} = await import("@vibeshape/domain")
+const { parseGeometryImport } = await import("@vibeshape/formats/import")
+const { ReplicadGeometryEngine } = await import("@vibeshape/geometry-worker/engine")
+const { inspectAssemblyInputSchema, printPreparationSettingsSchema } = await import(
+  "@vibeshape/protocol"
+)
+const { exportAssemblyRuntime } = await import("./assembly-export")
+const { withMaterializedAssemblyRuntime } = await import("./assembly-inspection")
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${n.toString(16).padStart(12, "0")}`
 const contentHash = "a".repeat(64)

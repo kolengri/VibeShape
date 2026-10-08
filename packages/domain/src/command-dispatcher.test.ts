@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createCommandDispatcher,
   createCoreCommandHandlers,
@@ -118,7 +118,7 @@ describe("trusted command dispatcher", () => {
       return
     }
 
-    expect(created.event.transactionId).toBe(draftId)
+    expect(created.event.transactionId).toBe<unknown>(draftId)
 
     const renamed = dispatcher.dispatch(
       created.snapshot,

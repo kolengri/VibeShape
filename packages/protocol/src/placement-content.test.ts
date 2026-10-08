@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { placementFeatureContentParametersSchema } from "./geometry-worker"
 
 const valid = { translation: [-5, 20, 0], rotation: [Math.PI / 2, 0, -Math.PI] }
 describe("placement numeric worker parameters", () => {
   it("accepts signed bounded rigid placement values and requires exactly three axes", () => {
-    expect(placementFeatureContentParametersSchema.parse(valid)).toEqual(valid)
+    expect(placementFeatureContentParametersSchema.parse(valid)).toEqual<unknown>(valid)
     expect(
       placementFeatureContentParametersSchema.safeParse({
         translation: [0, 0, 0],

@@ -1,9 +1,9 @@
+import { beforeAll, describe, expect, it } from "bun:test"
 import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadPyodide, type PyodideInterface } from "pyodide"
-import { beforeAll, describe, expect, it } from "vitest"
 import {
   type StructuralMesh,
   type StructuralOptimizationInput,
@@ -144,7 +144,9 @@ describe("pinned Pyodide full-solid structural solver", () => {
     "rejects malformed surface input %j at the Python boundary",
     async (region) => {
       const input = axialBar()
-      input.supports = [{ kind: "surface", ...region }]
+      input.supports = [
+        { kind: "surface", ...region, triangleIndices: [...region.triangleIndices] },
+      ]
       const response = await run(input)
       expect(response.ok).toBe(false)
       if (response.ok) throw new Error("Malformed surface input must not return geometry.")
@@ -247,7 +249,7 @@ describe("pinned Pyodide full-solid structural solver", () => {
       const response = await run(structuralOptimizationInputSchema.parse(input))
       if (!response.ok) throw new Error(response.error.message)
       const result = response.result
-      expect(result.termination).toBe(termination)
+      expect(result.termination).toBe<unknown>(termination)
       expect(result.finalCellCount).toBeGreaterThan(4)
       expect(result.objective).toMatchObject({
         kind: "maximize-stiffness",
@@ -320,7 +322,7 @@ describe("pinned Pyodide full-solid structural solver", () => {
         (axial?.maxDisplacementMm ?? Number.NaN) * 2,
         9,
       )
-      expect(response.result.optimized.safetyFactor).toBe(doubled?.safetyFactor)
+      expect(response.result.optimized.safetyFactor).toBe<unknown>(doubled?.safetyFactor)
     },
     timeout,
   )

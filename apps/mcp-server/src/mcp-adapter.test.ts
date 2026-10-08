@@ -1,5 +1,4 @@
-// @vitest-environment node
-
+import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
@@ -7,7 +6,7 @@ import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
 import { renderPreviewMetadataSchema } from "@vibeshape/automation-api/render-preview"
-import { expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"

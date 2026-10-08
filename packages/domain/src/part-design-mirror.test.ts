@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createDocumentDependencyGraph } from "./document-graph"
 import {
   createFeatureContentIdentity,
@@ -64,7 +64,7 @@ describe("trusted exact-body mirror", () => {
       ok: true,
       contentParameters: { plane: "YZ" },
     })
-    expect(featureBodyDependencies(feature)).toEqual([
+    expect(featureBodyDependencies(feature)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "body.primary" },
     ])
     expect(readMirrorFeatureParameters(feature)?.targetBody.outputRole).toBe("body.primary")
@@ -144,12 +144,12 @@ describe("offset and preserve-source Mirror v2", () => {
       ok: true,
       contentParameters: { plane: "YZ", offset: -20, preserveSource: true },
     })
-    expect(readMirrorFeatureParameters(copy)).toEqual(enhanced)
+    expect(readMirrorFeatureParameters(copy)).toEqual<unknown>(enhanced)
     expect(registry.validateFeature({ ...copy, parameters }).ok).toBe(false)
     expect(registry.validateFeature({ ...feature, parameters: enhanced }).ok).toBe(false)
     expect(registry.validateFeature({ ...copy, dependencies: [mirrorId] }).ok).toBe(false)
     expect(registry.validateFeature({ ...copy, dependencies: [sourceId, mirrorId] }).ok).toBe(false)
-    expect(featureBodyDependencies(copy)).toEqual([
+    expect(featureBodyDependencies(copy)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "body.primary" },
     ])
   })

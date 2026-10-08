@@ -12,7 +12,7 @@ function runPersistenceEvidence() {
   const bunCommand = process.env.VIBESHAPE_BUN_BIN || "bun"
   const result = spawnSync(
     bunCommand,
-    ["x", "playwright", "test", "--config", "playwright.persistence.config.ts"],
+    ["run", "--bun", "playwright", "test", "--config", "playwright.persistence.config.ts"],
     { env: process.env, stdio: "inherit" },
   )
   assertSuccessfulOcctProcess(result, "Local-first persistence evidence")

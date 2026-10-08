@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import type {
   SketchConstraintId,
   SketchEntityId,
@@ -1153,7 +1153,7 @@ describe("sketch editing", () => {
                 }
       const repaired = replaceSketchExternalReference(withReferences, reference.id, replacement)
       const repairedReference = repaired.externalReferences?.find(({ id }) => id === reference.id)
-      expect(repairedReference).toEqual({ ...reference, reference: replacement.reference })
+      expect(repairedReference).toEqual<unknown>({ ...reference, reference: replacement.reference })
       expect(repaired.constraints).toEqual(withReferences.constraints)
     }
   })
@@ -1295,7 +1295,9 @@ describe("sketch editing", () => {
       curveReference.id,
       curveReplacement,
     )
-    expect(repairedCurve.externalReferences?.find(({ id }) => id === curveReference.id)).toEqual({
+    expect(
+      repairedCurve.externalReferences?.find(({ id }) => id === curveReference.id),
+    ).toEqual<unknown>({
       ...curveReference,
       ...curveReplacement,
     })
@@ -1441,7 +1443,7 @@ describe("sketch editing", () => {
       createLengthQuantity(25, "mm", "#width"),
     )
 
-    expect(updated.constraints[0]).toEqual({
+    expect(updated.constraints[0]).toEqual<unknown>({
       ...dimension,
       value: createLengthQuantity(25, "mm", "#width"),
     })

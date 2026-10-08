@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { boxFeatureType, createLengthQuantity } from "@vibeshape/domain"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
@@ -7,7 +8,7 @@ import {
 } from "@vibeshape/domain/model-body-topology"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
 import { topologyCandidateSchema, topologySignatureSchema } from "@vibeshape/domain/topology"
-import { describe, expect, it } from "vitest"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "./queries"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -249,7 +250,7 @@ describe("model body topology query", () => {
     const second = run(snapshot, query({ limit: 1, cursor }), {
       bodyTopology: { ok: true, evidence: evidence("edge", candidates) },
     })
-    expect(second).toMatchObject({
+    expect(matchValue(second)).toMatchObject({
       ok: true,
       view: {
         nextCursor: expect.anything(),

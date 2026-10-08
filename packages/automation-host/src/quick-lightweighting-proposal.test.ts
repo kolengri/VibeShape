@@ -1,8 +1,7 @@
-// @vitest-environment node
-
+import { describe, expect, it } from "bun:test"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   lightweightingId,
   lightweightingIdentity,

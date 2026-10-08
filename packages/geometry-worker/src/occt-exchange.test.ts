@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createOcctExchangeOperations } from "./occt-exchange"
 
 function createDeletable() {
@@ -39,11 +40,11 @@ describe("owned OCCT STEP exchange adapter", () => {
     const bytes = operations.exportStep(opencascade, shape as never)
 
     expect(bytes).toEqual(Uint8Array.from([1, 2, 3]))
-    expect(initialModel.delete).toHaveBeenCalledOnce()
-    expect(resetModel.delete).toHaveBeenCalledOnce()
-    expect(progress.delete).toHaveBeenCalledOnce()
-    expect(writer.delete).toHaveBeenCalledOnce()
-    expect(unlink).toHaveBeenCalledOnce()
+    expect(initialModel.delete).toHaveBeenCalledTimes(1)
+    expect(resetModel.delete).toHaveBeenCalledTimes(1)
+    expect(progress.delete).toHaveBeenCalledTimes(1)
+    expect(writer.delete).toHaveBeenCalledTimes(1)
+    expect(unlink).toHaveBeenCalledTimes(1)
   })
 
   it("clears reader-owned shapes after adopting the imported root", () => {
@@ -72,13 +73,13 @@ describe("owned OCCT STEP exchange adapter", () => {
 
     const result = operations.importStep(opencascade, bytes)
 
-    expect(result).toBe(adoptedShape)
+    expect(result).toBe<unknown>(adoptedShape)
     expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/^\/vibeshape-\d+\.step$/), bytes)
     expect(castShape).toHaveBeenCalledWith(rawShape)
-    expect(rawShape.delete).toHaveBeenCalledOnce()
-    expect(progress.delete).toHaveBeenCalledOnce()
-    expect(reader.ClearShapes).toHaveBeenCalledOnce()
-    expect(reader.delete).toHaveBeenCalledOnce()
-    expect(unlink).toHaveBeenCalledOnce()
+    expect(rawShape.delete).toHaveBeenCalledTimes(1)
+    expect(progress.delete).toHaveBeenCalledTimes(1)
+    expect(reader.ClearShapes).toHaveBeenCalledTimes(1)
+    expect(reader.delete).toHaveBeenCalledTimes(1)
+    expect(unlink).toHaveBeenCalledTimes(1)
   })
 })

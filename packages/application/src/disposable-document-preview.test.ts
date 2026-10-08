@@ -1,8 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import type { FeatureMeshPolicy } from "@vibeshape/protocol"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import type { DocumentRebuildPort } from "./persistent-document-session"
 
@@ -439,7 +439,7 @@ describe("createDisposableDocumentPreview", () => {
     await expect(result).resolves.toMatchObject({ ok: true })
     expect(seenSnapshot).not.toBe(callerSnapshot)
     expect((seenSnapshot as unknown as DocumentSnapshot).name).toBe("Preview")
-    expect(seenMesh).toEqual(mesh)
+    expect(seenMesh).toEqual<unknown>(mesh)
   })
 
   it("contains a throwing terminate without losing terminal state", async () => {

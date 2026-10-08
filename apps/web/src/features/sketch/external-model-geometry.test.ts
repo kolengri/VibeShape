@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import type { SupportFrame } from "@vibeshape/application/support-frame"
 import {
@@ -8,7 +9,7 @@ import {
   type TopologySignature,
 } from "@vibeshape/domain"
 import type { TopologyCandidate } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
+import { matchValue } from "../../../../../tests/unit/support/match-value"
 import { historySketchForEditing } from "../../shell/history-repair-context"
 import {
   applyExternalModelCandidate,
@@ -498,7 +499,7 @@ describe("external model geometry candidates", () => {
     const available = availableExternalModelGeometryCandidates(projected, records, draft())
 
     expect(available[0]).toBe(projected[0])
-    expect(available[0]?.kind === "model-curve" ? available[0].points : []).toBe(
+    expect(available[0]?.kind === "model-curve" ? available[0].points : []).toBe<unknown>(
       projected[0]?.kind === "model-curve" ? projected[0].points : undefined,
     )
   })
@@ -974,7 +975,7 @@ describe("apply external model candidate", () => {
       [],
       referenceId as never,
     )
-    expect(repaired.externalReferences?.[0]).toEqual({
+    expect(repaired.externalReferences?.[0]).toEqual<unknown>({
       ...sketch.externalReferences?.[0],
       reference: repairCandidate.reference,
     })
@@ -1060,7 +1061,7 @@ describe("apply external model candidate", () => {
         [],
         referenceId as never,
       )
-      expect(repaired.externalReferences?.[0]).toEqual({
+      expect(repaired.externalReferences?.[0]).toEqual<unknown>({
         schemaVersion: 0,
         id: referenceId,
         kind: "model-line",
@@ -1265,7 +1266,9 @@ describe("apply external model candidate", () => {
       projectedGeometry: { type: "circle", radius: 5 },
       projectedType: "circle",
     })
-    expect(candidates.find(({ candidateId }) => candidateId === "arc-coplanar")).toMatchObject({
+    expect(
+      matchValue(matchValue(candidates.find(({ candidateId }) => candidateId === "arc-coplanar"))),
+    ).toMatchObject({
       coplanar: true,
       kind: "model-curve",
       passiveEligible: true,
@@ -1273,7 +1276,11 @@ describe("apply external model candidate", () => {
       projectedType: "arc",
       sourceType: "arc",
     })
-    expect(candidates.find(({ candidateId }) => candidateId === "ellipse-coplanar")).toMatchObject({
+    expect(
+      matchValue(
+        matchValue(candidates.find(({ candidateId }) => candidateId === "ellipse-coplanar")),
+      ),
+    ).toMatchObject({
       coplanar: true,
       kind: "model-curve",
       passiveEligible: true,
@@ -1282,7 +1289,9 @@ describe("apply external model candidate", () => {
       sourceType: "ellipse",
     })
     expect(
-      candidates.find(({ candidateId }) => candidateId === "elliptical-arc-coplanar"),
+      matchValue(
+        matchValue(candidates.find(({ candidateId }) => candidateId === "elliptical-arc-coplanar")),
+      ),
     ).toMatchObject({
       coplanar: true,
       kind: "model-curve",

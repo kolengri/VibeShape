@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import { sketchEntityIdSchema, sketchIdSchema, sketchRecordSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { holePointCandidates } from "./hole-point-candidates"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4801")

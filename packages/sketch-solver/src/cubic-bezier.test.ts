@@ -1,7 +1,6 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { sketchEntityIdSchema } from "@vibeshape/domain/identifiers"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
-import { beforeAll, describe, expect, it } from "vitest"
 import initializeSolver from "../runtime/vibeshape_slvs.mjs"
 import type { NativeSketchSolverModule } from "./abi"
 import {

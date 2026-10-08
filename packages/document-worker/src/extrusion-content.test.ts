@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   createAngleQuantity,
@@ -27,7 +28,8 @@ import {
   SKETCH_SOLVER_BUILD,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { createDocumentFeatureContentPreparer } from "./extrusion-content"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
@@ -394,7 +396,7 @@ describe("document extrusion content preparation", () => {
       const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution: source.solution }))
       const prepare = createDocumentFeatureContentPreparer(solve)
       const first = await prepare({ document, feature })
-      expect(first).toMatchObject({
+      expect(matchValue(first)).toMatchObject({
         ok: true,
         parameters: {
           distance: 10,
@@ -428,7 +430,7 @@ describe("document extrusion content preparation", () => {
       ok: true,
       solution: source.solution,
     }))
-    await expect(prepare({ document, feature })).resolves.toMatchObject({
+    await expect(matchValue(prepare({ document, feature }))).resolves.toMatchObject({
       ok: true,
       parameters: {
         profiles: [{ outer: expect.any(Object) }, { outer: expect.any(Object) }],
@@ -490,7 +492,7 @@ describe("document extrusion content preparation", () => {
     const first = await prepare({ document, feature })
     const second = await prepare({ document, feature })
 
-    expect(first).toMatchObject({
+    expect(matchValue(first)).toMatchObject({
       ok: true,
       parameters: {
         sketchId,
@@ -517,7 +519,7 @@ describe("document extrusion content preparation", () => {
     const prepare = createDocumentFeatureContentPreparer(solve)
 
     const prepared = await prepare({ document, feature })
-    expect(prepared, JSON.stringify(prepared)).toMatchObject({
+    expect(matchValue(prepared), JSON.stringify(prepared)).toMatchObject({
       ok: true,
       parameters: {
         profiles: [
@@ -562,7 +564,7 @@ describe("document extrusion content preparation", () => {
       const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution: source.solution }))
       const prepare = createDocumentFeatureContentPreparer(solve)
 
-      await expect(prepare({ document, feature })).resolves.toMatchObject({
+      await expect(matchValue(prepare({ document, feature }))).resolves.toMatchObject({
         ok: true,
         parameters: {
           profiles: [{ outer: expect.any(Object) }, { outer: expect.any(Object) }],
@@ -610,7 +612,7 @@ describe("document extrusion content preparation", () => {
       const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution: source.solution }))
       const prepare = createDocumentFeatureContentPreparer(solve)
 
-      await expect(prepare({ document, feature })).resolves.toMatchObject({
+      await expect(matchValue(prepare({ document, feature }))).resolves.toMatchObject({
         ok: true,
         parameters: {
           profiles: [{ outer: expect.any(Object) }, { outer: expect.any(Object) }],
@@ -976,7 +978,7 @@ describe("document extrusion content preparation", () => {
     const { document, feature, solution } = ellipticalArcFixture()
     const prepare = createDocumentFeatureContentPreparer(() => ({ ok: true, solution }))
 
-    await expect(prepare({ document, feature })).resolves.toMatchObject({
+    await expect(matchValue(prepare({ document, feature }))).resolves.toMatchObject({
       ok: true,
       parameters: {
         outer: {

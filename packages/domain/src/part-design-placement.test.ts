@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
@@ -80,7 +80,7 @@ describe("trusted exact-body placement", () => {
       translation: [-4, 20, 0],
       rotation: [Math.PI / 2, 0, -Math.PI],
     })
-    expect(featureBodyDependencies(feature())).toEqual([
+    expect(featureBodyDependencies(feature())).toEqual<unknown>([
       { featureId: sourceId, outputRole: "result" },
     ])
     expect(readPlacementFeatureParameters(feature())?.targetBody.outputRole).toBe("result")

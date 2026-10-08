@@ -1,12 +1,6 @@
-// @vitest-environment jsdom
-
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
-import { TaskPanelFormActions } from "./task-panel-form-actions"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 
 class ResizeObserverMock {
   observe() {}
@@ -45,9 +39,16 @@ function FormActionsHarness({
   )
 }
 
-vi.mock("../../editor-session/editor-session-provider", () => ({
+mock.module("../../editor-session/editor-session-provider", () => ({
   useRegisterTaskSubmission: vi.fn(),
 }))
+
+const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { Form, useAppForm } = await import("@vibeshape/ui/integrations/tanstack-form")
+const { useRegisterTaskSubmission } = await import("../../editor-session/editor-session-provider")
+const { TaskPanelFormActions } = await import("./task-panel-form-actions")
 
 vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 
@@ -77,7 +78,7 @@ describe("TaskPanelFormActions", () => {
     render(<FormActionsHarness onSubmit={onSubmit} previewStatus="ready" />)
 
     await user.click(screen.getByRole("button", { name: "Create feature" }))
-    expect(onSubmit).toHaveBeenCalledOnce()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
   it("uses the same ready-preview gate when History requests saving", async () => {
@@ -86,7 +87,7 @@ describe("TaskPanelFormActions", () => {
     const submitFromHistory = vi.mocked(useRegisterTaskSubmission).mock.calls.at(-1)?.[0]
     if (!submitFromHistory) throw new Error("History submission must be registered.")
     await submitFromHistory()
-    expect(onSubmit).toHaveBeenCalledOnce()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
   it("submits once and exposes the pending state through the compact accept action", async () => {
@@ -99,7 +100,7 @@ describe("TaskPanelFormActions", () => {
     await user.click(accept)
     await user.click(accept)
 
-    expect(onSubmit).toHaveBeenCalledOnce()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(accept.disabled).toBe(true)
     expect(accept.getAttribute("aria-busy")).toBe("true")
 

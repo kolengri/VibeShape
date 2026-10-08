@@ -1,21 +1,18 @@
-// @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { i18n } from "../i18n"
-import { ViewerPreferencesProvider } from "../shell/viewer-preferences"
-import { PrintPreparationPanel } from "./print-preparation-panel"
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const { exportDocument, download, handoff, placeFace } = vi.hoisted(() => ({
+const { exportDocument, download, handoff, placeFace } = (() => ({
   exportDocument: vi.fn(),
   download: vi.fn(),
   handoff: vi.fn(),
   placeFace: vi.fn(),
+}))()
+mock.module("../document/document-controller", () => ({
+  prepareActiveDocumentPrint: exportDocument,
 }))
-vi.mock("../document/document-controller", () => ({ prepareActiveDocumentPrint: exportDocument }))
-vi.mock("../document/document-export", () => ({ downloadDocumentExport: download }))
-vi.mock("./print-preparation-preview", () => ({
+mock.module("../document/document-export", () => ({ downloadDocumentExport: download }))
+mock.module("./print-preparation-preview", () => ({
   PrintPreparationPreview: ({
     disabled,
     onLayFace,
@@ -28,8 +25,8 @@ vi.mock("./print-preparation-preview", () => ({
     </button>
   ),
 }))
-vi.mock("./print-face-placement", () => ({ placePreparedPrintFace: placeFace }))
-vi.mock("./slicer-handoff-panel", () => ({
+mock.module("./print-face-placement", () => ({ placePreparedPrintFace: placeFace }))
+mock.module("./slicer-handoff-panel", () => ({
   SlicerHandoffPanel: ({ onBusyChange }: { onBusyChange: (busy: boolean) => void }) => (
     <button
       type="button"
@@ -46,6 +43,13 @@ vi.mock("./slicer-handoff-panel", () => ({
     </button>
   ),
 }))
+
+const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../i18n")
+const { ViewerPreferencesProvider } = await import("../shell/viewer-preferences")
+const { PrintPreparationPanel } = await import("./print-preparation-panel")
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
   vi.stubGlobal("matchMedia", () => ({

@@ -1,3 +1,4 @@
+import { expect, it } from "bun:test"
 import type { SketchInspectionResult } from "@vibeshape/application/disposable-sketch-inspection"
 import {
   createQueryDispatcher,
@@ -14,7 +15,7 @@ import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modu
 import { createRectangleSketch } from "@vibeshape/domain/rectangle-sketch"
 import { sketchSolutionEvidenceSchema } from "@vibeshape/domain/sketch-solution-evidence"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createCommittedSketchInspection } from "./committed-sketch-inspection"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -118,13 +119,13 @@ it("caches one committed sketch catalog across bounded sections and rejects cold
   await expect(f.reader.read({ ...f.query, section: "profiles" })).resolves.toMatchObject({
     ok: true,
   })
-  expect(f.inspect).toHaveBeenCalledOnce()
+  expect(f.inspect).toHaveBeenCalledTimes(1)
   f.reader.cancel()
   await expect(f.reader.read({ ...f.query, cursor: first.view.nextCursor })).resolves.toMatchObject(
     { ok: false, diagnostic: { code: "stale-geometry" } },
   )
-  expect(f.cancel).toHaveBeenCalledOnce()
-  expect(f.inspect).toHaveBeenCalledOnce()
+  expect(f.cancel).toHaveBeenCalledTimes(1)
+  expect(f.inspect).toHaveBeenCalledTimes(1)
 })
 it("discards a native result when the committed document changes while solving", async () => {
   const f = fixture()
@@ -136,7 +137,7 @@ it("discards a native result when the committed document changes while solving",
       }),
   )
   const pending = f.reader.read(f.query)
-  await vi.waitFor(() => expect(f.inspect).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(f.inspect).toHaveBeenCalledTimes(1))
   f.replace({ ...f.snapshot, revision: 5 })
   release({ ok: true, evidence: f.evidence })
   await expect(pending).resolves.toMatchObject({
@@ -158,7 +159,7 @@ it("cancellation prevents a late result from repopulating the committed cache", 
       }),
   )
   const pending = f.reader.read(f.query)
-  await vi.waitFor(() => expect(f.inspect).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(f.inspect).toHaveBeenCalledTimes(1))
   f.reader.cancel()
   release({ ok: true, evidence: f.evidence })
   await expect(pending).resolves.toMatchObject({
@@ -173,7 +174,7 @@ it("cancellation prevents a late result from repopulating the committed cache", 
     ok: false,
     diagnostic: { code: "geometry-unavailable" },
   })
-  expect(f.dispose).toHaveBeenCalledOnce()
+  expect(f.dispose).toHaveBeenCalledTimes(1)
 })
 it("checks provenance and complete authored entity coverage before exposing committed evidence", async () => {
   const f = fixture()

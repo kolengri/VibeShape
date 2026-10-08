@@ -1,11 +1,11 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import type { ThreadContentParameters } from "@vibeshape/protocol"
 import { type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopAbs_ShapeEnum,
 } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createOcctBox, createOcctCylinder, cutOcctShapes, fuseOcctShapes } from "./occt-shapes"
 import { createOcctThreadOperations, threadOcctShape } from "./occt-thread"
 
@@ -121,7 +121,7 @@ function failNative(): never {
   throw new Error("Thread native fixture failure")
 }
 function expectReleased(f: ReturnType<typeof harness>) {
-  for (const resource of f.acquired) expect(resource.delete).toHaveBeenCalledOnce()
+  for (const resource of f.acquired) expect(resource.delete).toHaveBeenCalledTimes(1)
   expect(f.source.delete).not.toHaveBeenCalled()
 }
 describe("modeled thread ownership and failure boundary", () => {
@@ -424,7 +424,7 @@ describe("lexically owned thread bindings", () => {
         operations.threadShape(b.occt, f.source as unknown as Shape3D, parameters),
       ).toThrow()
       expectReleased(f)
-      for (const wrapper of b.acquired) expect(wrapper.delete).toHaveBeenCalledOnce()
+      for (const wrapper of b.acquired) expect(wrapper.delete).toHaveBeenCalledTimes(1)
       expect(b.borrowed.delete).not.toHaveBeenCalled()
     },
   )
@@ -447,7 +447,7 @@ describe("lexically owned thread bindings", () => {
     expect(() =>
       operations.threadShape(native, f.source as unknown as Shape3D, parameters),
     ).toThrow("Thread native fixture failure")
-    expect(properties.delete).toHaveBeenCalledOnce()
+    expect(properties.delete).toHaveBeenCalledTimes(1)
     expectReleased(f)
   })
   it.each(["append", "builder", "build"])(
@@ -502,7 +502,7 @@ describe("lexically owned thread bindings", () => {
         operations.threadShape(native, f.source as unknown as Shape3D, parameters),
       ).toThrow("Thread native fixture failure")
       expectReleased(f)
-      for (const wrapper of acquired) expect(wrapper.delete).toHaveBeenCalledOnce()
+      for (const wrapper of acquired) expect(wrapper.delete).toHaveBeenCalledTimes(1)
     },
   )
 })
@@ -678,7 +678,7 @@ describe("modeled threads with pinned real OCCT", () => {
     },
     60_000,
   )
-  it.each(externalCases)(
+  it.each([...externalCases])(
     "cuts real external $handedness thread on $axis with $starts starts and phase $phase",
     (changes) => {
       const value: ThreadContentParameters = { ...parameters, ...changes, origin: [11, -7, 4] }

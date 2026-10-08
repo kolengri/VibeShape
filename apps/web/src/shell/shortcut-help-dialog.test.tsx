@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { editorCommandIds, type ResolvedEditorCommand } from "../commands/editor-command"
 import { i18n } from "../i18n"
 import { ShortcutHelpDialog } from "./shortcut-help-dialog"

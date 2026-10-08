@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type BodyReference, bodyReferenceSchema } from "./body-reference"
 import { type DocumentSnapshotV2, projectDocumentSnapshotV2ToV1 } from "./document-v2"
 import { applyDocumentV2Command, reduceDocumentV2Event } from "./document-v2-commands"
@@ -178,7 +179,7 @@ describe("captured exact-body fan-out", () => {
       visible: false,
     })
     const added = success(insert(before, split(), [allocation(positive(), 101)]))
-    expect(added.snapshot.parts.map((value) => value.id)).toEqual([id(100), id(101)])
+    expect(added.snapshot.parts.map((value) => value.id)).toEqual<unknown>([id(100), id(101)])
     expect(part(added.snapshot, 100)).toEqual({
       ...part(before, 100),
       bodyHistory: [body(), negative()],
@@ -207,7 +208,7 @@ describe("captured exact-body fan-out", () => {
     const added = success(
       insert(modified, split(), [allocation(negative(), 102, "fork"), allocation(positive(), 101)]),
     ).snapshot
-    expect(added.parts.map((value) => value.id)).toEqual([id(100), id(102), id(101)])
+    expect(added.parts.map((value) => value.id)).toEqual<unknown>([id(100), id(102), id(101)])
     expect(part(added, 100)).toEqual(part(modified, 100))
     expect(part(added, 102)).toMatchObject({
       origin: "fork",
@@ -220,8 +221,8 @@ describe("captured exact-body fan-out", () => {
         feature: { ...mirror(4, body()), suppressed: true },
       }),
     ).snapshot
-    expect(part(hiddenModifier, 102).id).toBe(id(102))
-    expect(part(hiddenModifier, 100).consumedBy).toBe(id(3))
+    expect(part(hiddenModifier, 102).id).toBe<unknown>(id(102))
+    expect(part(hiddenModifier, 100).consumedBy).toBe<unknown>(id(3))
     const hiddenSplit = success(
       model(hiddenModifier, "org.vibeshape.feature.update", { feature: split(body(), true) }),
     ).snapshot
@@ -241,7 +242,7 @@ describe("captured exact-body fan-out", () => {
       const feature =
         suppressed === "split" ? split(body(), true) : { ...fixture.source, suppressed: true }
       const hidden = success(model(added, "org.vibeshape.feature.update", { feature })).snapshot
-      expect(hidden.parts.map((value) => value.id)).toEqual([id(100), id(101)])
+      expect(hidden.parts.map((value) => value.id)).toEqual<unknown>([id(100), id(101)])
       expect(part(hidden, 100).bodyHistory).toEqual([body()])
       expect(part(hidden, 101).bodyHistory).toEqual([positive()])
       const activeFeature = suppressed === "split" ? split() : fixture.source
@@ -274,7 +275,7 @@ describe("captured exact-body fan-out", () => {
     const hidden = success(
       model(chained, "org.vibeshape.feature.update", { feature: split(body(), true) }),
     ).snapshot
-    expect(hidden.parts.map((value) => value.id)).toEqual([id(100), id(101), id(102)])
+    expect(hidden.parts.map((value) => value.id)).toEqual<unknown>([id(100), id(101), id(102)])
     expect(part(hidden, 100).bodyHistory).toEqual([body()])
     expect(part(hidden, 102).bodyHistory).toEqual([secondPositive])
     expect(
@@ -287,7 +288,7 @@ describe("captured exact-body fan-out", () => {
     const retargeted = success(
       model(hidden, "org.vibeshape.feature.update", { feature: substituted }),
     ).snapshot
-    expect(retargeted.parts.map((value) => value.id)).toEqual([id(100), id(101)])
+    expect(retargeted.parts.map((value) => value.id)).toEqual<unknown>([id(100), id(101)])
   })
 
   it.each([

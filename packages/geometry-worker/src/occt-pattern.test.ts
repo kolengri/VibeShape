@@ -1,10 +1,10 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopAbs_ShapeEnum,
 } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   createOcctPatternOperations,
   type OwnedBodyPattern,
@@ -75,7 +75,7 @@ function failNative(): never {
   throw new Error("Native pattern fixture failure")
 }
 function expectReleased(f: ReturnType<typeof harness>) {
-  for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledOnce()
+  for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledTimes(1)
   expect(f.source.delete).not.toHaveBeenCalled()
 }
 
@@ -118,8 +118,8 @@ describe("owned body pattern failure boundary", () => {
     ({ angle, angles }) => {
       const f = harness()
       const outputs = invoke(f, { ...circular, angle })
-      expect(f.copy).toHaveBeenCalledOnce()
-      expect(f.rotate.mock.calls.map(([, , , , value]) => value)).toEqual(angles)
+      expect(f.copy).toHaveBeenCalledTimes(1)
+      expect(f.rotate.mock.calls.map(([, , , , value]) => value)).toEqual<unknown>(angles)
       for (const output of outputs) output.shape.delete()
     },
   )
@@ -303,7 +303,7 @@ describe("owned body pattern failure boundary", () => {
       expect(() =>
         operations.patternShape(fakeOcct, f.source as unknown as Shape3D, circular),
       ).toThrow()
-      for (const temporary of acquired) expect(temporary.delete).toHaveBeenCalledOnce()
+      for (const temporary of acquired) expect(temporary.delete).toHaveBeenCalledTimes(1)
       expectReleased(f)
     },
   )

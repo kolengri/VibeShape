@@ -1,4 +1,4 @@
-// @vitest-environment node
+import { afterEach, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import {
   IMPORT_UPLOAD_CHUNK_MAX_BYTES,
@@ -8,7 +8,7 @@ import {
 } from "@vibeshape/automation-api/imports"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { context, id, inspection, meshInspection } from "../features/import/import-test-fixtures"
 import {
   createImportUploadSession,
@@ -162,7 +162,7 @@ describe("actor-owned native import capture", () => {
     })
     expect(test.inspect).toHaveBeenCalledTimes(2)
     const committed = test.commit.mock.calls[0]?.[0]
-    expect(committed?.transaction.transactionId).toBe(captured.upload.uploadId)
+    expect(committed?.transaction.transactionId).toBe<unknown>(captured.upload.uploadId)
     expect(committed?.transaction.commands.map((command) => command.actor)).toEqual(
       Array(4).fill(actor),
     )

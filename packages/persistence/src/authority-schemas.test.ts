@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { applyDocumentUpgradeV2Command, applyVersionedDocumentCommand } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   parseAuthorityProject,
   storeAuthoritySnapshot,

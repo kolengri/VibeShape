@@ -1,10 +1,11 @@
+import { describe, expect, it } from "bun:test"
 import type { DisposableDocumentPreviewResult } from "@vibeshape/application/disposable-document-preview"
 import { boxFeatureType, featureRecordSchema } from "@vibeshape/domain"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import type { ModelPreview } from "@vibeshape/viewer/model-preview"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createModelPreviewSession } from "./model-preview-session"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -211,7 +212,7 @@ describe("isolated model previews", () => {
           ok: false,
           diagnostic: { code: "geometry-unavailable" },
         })
-        expect(f.dispose).toHaveBeenCalledOnce()
+        expect(f.dispose).toHaveBeenCalledTimes(1)
       }
     },
   )
@@ -246,7 +247,7 @@ describe("isolated model previews", () => {
       first = deferred<ModelPreview>()
     f.render.mockImplementationOnce(() => first.promise)
     const old = f.reader.read(f.snapshot.id, f.request)
-    await vi.waitFor(() => expect(f.render).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(f.render).toHaveBeenCalledTimes(1))
     await expect(f.reader.read(f.snapshot.id, f.request)).resolves.toMatchObject({ ok: true })
     first.resolve(image)
     await expect(old).resolves.toMatchObject({

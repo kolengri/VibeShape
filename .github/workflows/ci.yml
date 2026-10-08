@@ -55,7 +55,7 @@ jobs:
 
       - name: Test
         # Use both CPUs on standard private-repository Linux runners.
-        run: bun run test --maxWorkers=2 --testTimeout=15000
+        run: bun run test --parallel=2 --timeout=15000
 
       - name: Test remote MCP authorization and session boundaries
         run: bun run test:remote-mcp

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   authoredTestBody,
   authoredTreeFixture,
@@ -11,7 +11,7 @@ const body = authoredTestBody(part)
 
 describe("selected Part exact-operation eligibility", () => {
   it("accepts only the current visible valid single positive-volume exact solid", () => {
-    expect(authoredPlacementTarget({ part, body, status: "available" })).toEqual(
+    expect(authoredPlacementTarget({ part, body, status: "available" })).toEqual<unknown>(
       part.bodyHistory.at(-1),
     )
     expect(
@@ -20,7 +20,7 @@ describe("selected Part exact-operation eligibility", () => {
         body: { ...body, representation: "exact-solid" },
         status: "available",
       }),
-    ).toEqual(part.bodyHistory.at(-1))
+    ).toEqual<unknown>(part.bodyHistory.at(-1))
   })
   it.each([
     { ...body, representation: "triangle-mesh" as const },

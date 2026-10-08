@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -12,7 +13,7 @@ import {
   SKETCH_SOLVER_BUILD,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createDocumentFeatureContentPreparer } from "./extrusion-content"
 
 const sourceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"

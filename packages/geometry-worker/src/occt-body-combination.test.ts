@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   createOcctBodyCombinationOperations,
   disposeBodyCombination,
@@ -44,13 +45,13 @@ describe("owned exact body combinations", () => {
     const f = harness()
     const roles = ["body.first", "body.second", "body.third"]
     const bundle = f.operations.compoundBodies(f.occt, f.sources as unknown as Shape3D[], roles)
-    expect(bundle.shape).toBe(f.root)
+    expect(bundle.shape).toBe<unknown>(f.root)
     expect(bundle.outputs.map(({ role }) => role)).toEqual(roles)
     expect(f.compound).toHaveBeenCalledWith(f.occt, f.copies)
     expect(f.copies.every((copy) => copy.delete.mock.calls.length === 0)).toBe(true)
     expect(disposeBodyCombination(bundle)).toBe(true)
-    expect(f.root.delete).toHaveBeenCalledOnce()
-    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledOnce()
+    expect(f.root.delete).toHaveBeenCalledTimes(1)
+    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledTimes(1)
     for (const source of f.sources) expect(source.delete).not.toHaveBeenCalled()
   })
   it.each(["copy", "compound"])("releases every acquired copy on Compound %s failure", (stage) => {
@@ -77,21 +78,21 @@ describe("owned exact body combinations", () => {
         "body.third",
       ]),
     ).toThrow()
-    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledOnce()
+    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledTimes(1)
     for (const source of f.sources) expect(source.delete).not.toHaveBeenCalled()
   })
   it("copies every Union tool before fusing and releases intermediates without mutating sources", () => {
     const f = harness()
     const result = f.operations.unionBodies(f.occt, f.sources as unknown as Shape3D[])
-    expect(result).toBe(f.fused[1])
+    expect(result).toBe<unknown>(f.fused[1])
     expect(f.copy).toHaveBeenCalledTimes(3)
     expect(f.fuse).toHaveBeenCalledTimes(2)
-    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledOnce()
-    expect(f.fused[0]?.delete).toHaveBeenCalledOnce()
+    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledTimes(1)
+    expect(f.fused[0]?.delete).toHaveBeenCalledTimes(1)
     expect(f.fused[1]?.delete).not.toHaveBeenCalled()
     for (const source of f.sources) expect(source.delete).not.toHaveBeenCalled()
     result.delete()
-    expect(f.fused[1]?.delete).toHaveBeenCalledOnce()
+    expect(f.fused[1]?.delete).toHaveBeenCalledTimes(1)
   })
   it.each(["copy-tool", "fuse"])("releases acquired Union inputs after %s failure", (stage) => {
     const f = harness()
@@ -110,7 +111,7 @@ describe("owned exact body combinations", () => {
         throw new Error("fuse failure")
       })
     expect(() => f.operations.unionBodies(f.occt, f.sources as unknown as Shape3D[])).toThrow()
-    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledOnce()
+    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledTimes(1)
     for (const source of f.sources) expect(source.delete).not.toHaveBeenCalled()
   })
   it("rejects bounded selection and output-role mismatches before allocating copies", () => {
@@ -142,7 +143,7 @@ describe("owned exact body combinations", () => {
       throw new Error("native release failure")
     })
     expect(disposeBodyCombination(bundle)).toBe(false)
-    expect(f.root.delete).toHaveBeenCalledOnce()
-    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledOnce()
+    expect(f.root.delete).toHaveBeenCalledTimes(1)
+    for (const copy of f.copies) expect(copy.delete).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   createAngleQuantity,
@@ -8,7 +9,6 @@ import {
   topologySignatureSchema,
 } from "@vibeshape/domain"
 import { threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
-import { describe, expect, it } from "vitest"
 import { prepareThreadContent } from "./thread-content"
 
 const targetId = "0195b5ac-b220-7a2c-8c33-67a36a7f3401"

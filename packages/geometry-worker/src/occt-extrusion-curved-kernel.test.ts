@@ -1,6 +1,7 @@
+import { beforeAll, describe, expect, it } from "bun:test"
 import { type Face, makeBox, makeCylinder, measureVolume, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { inspectOcctBody } from "./occt-body-validation"
 import * as casting from "./occt-cast"
 import { terminateExtrusionAtFace } from "./occt-extrusion-end"
@@ -8,7 +9,7 @@ import { createOcctSphere, fuseOcctShapes, intersectOcctShapes } from "./occt-sh
 
 let occt: OpenCascadeInstance
 beforeAll(async () => {
-  const { readFileSync } = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const { readFileSync } = await import("node:fs")
   occt = await Reflect.apply(initializeOpenCascade, undefined, [
     {
       wasmBinary: new Uint8Array(
@@ -224,9 +225,9 @@ describe("exact curved extrusion endpoint proof", () => {
         expect(supportDelete).not.toHaveBeenCalled()
       })
       expect(faces).toHaveLength(6)
-      expect(facesSpy).toHaveBeenCalledOnce()
-      expect(historySpy).toHaveBeenCalledOnce()
-      for (const deleted of faceDeletes) expect(deleted).toHaveBeenCalledOnce()
+      expect(facesSpy).toHaveBeenCalledTimes(1)
+      expect(historySpy).toHaveBeenCalledTimes(1)
+      for (const deleted of faceDeletes) expect(deleted).toHaveBeenCalledTimes(1)
       for (const deleted of borrowedDeletes) expect(deleted).not.toHaveBeenCalled()
       expect(measureVolume(tool)).toBeCloseTo(volumes[0] ?? 0, 8)
       expect(measureVolume(target)).toBeCloseTo(volumes[1] ?? 0, 8)
@@ -281,7 +282,7 @@ describe("exact curved extrusion endpoint proof", () => {
         expect(supportDelete).not.toHaveBeenCalled()
       })
       expect(adoptedDeletes.length).toBeGreaterThanOrEqual(2)
-      for (const deleted of adoptedDeletes) expect(deleted).toHaveBeenCalledOnce()
+      for (const deleted of adoptedDeletes) expect(deleted).toHaveBeenCalledTimes(1)
       for (const deleted of borrowedDeletes) expect(deleted).not.toHaveBeenCalled()
       expect(measureVolume(tool)).toBeCloseTo(volumes[0] ?? 0, 8)
       expect(measureVolume(target)).toBeCloseTo(volumes[1] ?? 0, 8)

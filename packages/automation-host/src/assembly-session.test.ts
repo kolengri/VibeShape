@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   assemblyDraftPreviewSchema,
   assemblyDraftStateSchema,
@@ -17,7 +18,7 @@ import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4Command } from "@vibeshape/domain/document-v4-commands"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createAssemblyAutomationSession } from "./assembly-session"
 import type { AssemblyReviewInput, AssemblySessionConfiguration } from "./assembly-session-contract"
 

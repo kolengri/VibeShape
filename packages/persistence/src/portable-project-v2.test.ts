@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { portableProjectV2CopySchema, portableProjectV2ImportSchema } from "./schemas"
 
 const timestamp = "2026-08-08T00:00:00Z"

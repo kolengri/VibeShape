@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -10,7 +10,7 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { CylinderForm, type CylinderFormMode } from "./cylinder-form"
 
@@ -191,7 +191,7 @@ describe("CylinderForm", () => {
     expect(create.getAttribute("aria-busy")).toBe("true")
 
     submission.resolve()
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 
   it("preserves invalid raw input and focuses its adjacent error", async () => {
@@ -267,6 +267,6 @@ describe("CylinderForm", () => {
         }),
       }),
     )
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 })

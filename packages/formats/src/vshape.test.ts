@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import { applyDocumentCommand, type DocumentEvent } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot, DocumentSnapshotV1 } from "@vibeshape/domain/document"
@@ -5,7 +6,6 @@ import { migrateDocumentSnapshot } from "@vibeshape/domain/document-migration"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
-import { describe, expect, it } from "vitest"
 import {
   readVersionedVShape,
   readVShape,

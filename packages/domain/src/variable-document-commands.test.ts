@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
 import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 import { boxFeatureType } from "./part-design"
@@ -289,10 +290,12 @@ describe("variable document commands", () => {
     if (!featured.ok) throw new Error(featured.diagnostic.message)
 
     expect(
-      applyDocumentCommand(featured.snapshot, {
-        ...envelope("org.vibeshape.variable.remove", 3, 3),
-        payload: { variableId: variableIds.width },
-      }),
+      matchValue(
+        applyDocumentCommand(featured.snapshot, {
+          ...envelope("org.vibeshape.variable.remove", 3, 3),
+          payload: { variableId: variableIds.width },
+        }),
+      ),
     ).toMatchObject({
       ok: false,
       diagnostic: {
@@ -302,10 +305,12 @@ describe("variable document commands", () => {
     })
 
     expect(
-      applyDocumentCommand(featured.snapshot, {
-        ...envelope("org.vibeshape.variable.replace-table", 3, 3),
-        payload: { variables: [] },
-      }),
+      matchValue(
+        applyDocumentCommand(featured.snapshot, {
+          ...envelope("org.vibeshape.variable.replace-table", 3, 3),
+          payload: { variables: [] },
+        }),
+      ),
     ).toMatchObject({
       ok: false,
       diagnostic: {
@@ -329,7 +334,7 @@ describe("variable document commands", () => {
       ...envelope("org.vibeshape.variable.rename", 3, 3),
       payload: { variableId: variableIds.width, name: "span" },
     })
-    expect(renamed).toMatchObject({
+    expect(matchValue(renamed)).toMatchObject({
       ok: true,
       snapshot: {
         variables: [{ id: variableIds.width, name: "span" }],
@@ -353,10 +358,12 @@ describe("variable document commands", () => {
     ).toEqual({ ok: true, snapshot: renamed.snapshot })
 
     expect(
-      applyDocumentCommand(sketched.snapshot, {
-        ...envelope("org.vibeshape.variable.remove", 3, 3),
-        payload: { variableId: variableIds.width },
-      }),
+      matchValue(
+        applyDocumentCommand(sketched.snapshot, {
+          ...envelope("org.vibeshape.variable.remove", 3, 3),
+          payload: { variableId: variableIds.width },
+        }),
+      ),
     ).toMatchObject({
       ok: false,
       diagnostic: {
@@ -365,10 +372,12 @@ describe("variable document commands", () => {
       },
     })
     expect(
-      applyDocumentCommand(sketched.snapshot, {
-        ...envelope("org.vibeshape.variable.replace-table", 3, 3),
-        payload: { variables: [] },
-      }),
+      matchValue(
+        applyDocumentCommand(sketched.snapshot, {
+          ...envelope("org.vibeshape.variable.replace-table", 3, 3),
+          payload: { variables: [] },
+        }),
+      ),
     ).toMatchObject({
       ok: false,
       diagnostic: {

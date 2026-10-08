@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createDocumentDependencyGraph } from "./document-graph"
 import type { DocumentSnapshotV2 } from "./document-v2"
 import { applyDocumentV2Command, reduceDocumentV2Event } from "./document-v2-commands"
@@ -275,7 +275,7 @@ describe.each(["Loft", "Sweep"] as const)("registered new-body %s", (kind) => {
 
   it("declares both direct sketches and rejects substituted semantic inputs and missing sketches", () => {
     const value = feature(kind)
-    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual({
+    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual<unknown>({
       recognized: true,
       ok: true,
       inputs: [
@@ -286,7 +286,7 @@ describe.each(["Loft", "Sweep"] as const)("registered new-body %s", (kind) => {
     const added = success(insert(fixture().snapshot, kind)).snapshot
     const graph = success(createDocumentDependencyGraph(added))
     expect(graph.graph.dependencyModelIssues).toEqual([])
-    expect(graph.graph.dependenciesOf({ kind: "feature", id: value.id })).toEqual([
+    expect(graph.graph.dependenciesOf({ kind: "feature", id: value.id })).toEqual<unknown>([
       { kind: "feature", id: id(2) },
       { kind: "sketch", id: id(400) },
       { kind: "sketch", id: id(401) },
@@ -326,7 +326,7 @@ describe.each(["Loft", "Sweep"] as const)("registered new-body %s", (kind) => {
       graph.graph.edges
         .filter((edge) => edge.target.id === value.id && edge.relation === "semantic-input")
         .map((edge) => edge.source.id),
-    ).toEqual([id(400), id(401)])
+    ).toEqual<unknown>([id(400), id(401)])
   })
 
   it("retains recursive source-sketch reachability through direct sketch semantic inputs", () => {
@@ -379,7 +379,7 @@ describe("ordered sketch-solid semantic inputs", () => {
       ...feature("Loft"),
       parameters: { sections: [profile(401), profile(400), profile(401, 504)], ruled: false },
     }
-    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual({
+    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual<unknown>({
       recognized: true,
       ok: true,
       inputs: [
@@ -396,7 +396,7 @@ describe("ordered sketch-solid semantic inputs", () => {
       type: loftFeatureTypeV2.type,
       parameters: { sections: [profile(401), profile(400)], ruled: false, holeCorrespondence: [] },
     }
-    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual({
+    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual<unknown>({
       recognized: true,
       ok: true,
       inputs: [
@@ -420,7 +420,7 @@ describe("ordered sketch-solid semantic inputs", () => {
         path: { schemaVersion: 0, sketchId: id(400), entityIds: [id(501)], startPointId: id(502) },
       },
     }
-    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual({
+    expect(projectFirstPartyFeatureSemanticInputs(value)).toEqual<unknown>({
       recognized: true,
       ok: true,
       inputs: [{ kind: "sketch", id: id(400) }],

@@ -1,9 +1,9 @@
+import { describe, expect, it } from "bun:test"
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
-import { describe, expect, it } from "vitest"
 import { createLoftV3Project } from "../../../../tests/support/loft-v3-fixture"
 import { createLocalCadCommand } from "./local-cad-command"
 

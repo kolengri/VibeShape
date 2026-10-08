@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
   applyVersionedDocumentCommand,
@@ -5,7 +6,6 @@ import {
   draftIdSchema,
 } from "@vibeshape/domain"
 import { readVersionedVShape, writeVShape } from "@vibeshape/formats/vshape"
-import { describe, expect, it } from "vitest"
 import {
   copyPortableProjectV2,
   formatProjectCopyName,

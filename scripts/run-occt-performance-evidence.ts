@@ -29,7 +29,7 @@ function runPerformanceEvidence() {
   const bunCommand = process.env.VIBESHAPE_BUN_BIN || "bun"
   const result = spawnSync(
     bunCommand,
-    ["x", "playwright", "test", "--config", "playwright.performance.config.ts"],
+    ["run", "--bun", "playwright", "test", "--config", "playwright.performance.config.ts"],
     {
       env: createOcctPerformanceEnvironment(process.env),
       stdio: "inherit",

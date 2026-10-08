@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
-import { describe, expect, it } from "vitest"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import {
   detectSketchProfiles,
   MAX_PROFILE_CURVES,
@@ -220,7 +221,7 @@ describe("sketch profile detection", () => {
       bounds: { minX: -10, minY: -5, maxX: 10, maxY: 5 },
     })
     expect(alignedResult.profiles[0]?.perimeter).toBeCloseTo(48.442_241, 5)
-    expect(alignedResult.loops[0]?.segments).toEqual([
+    expect(alignedResult.loops[0]?.segments).toEqual<unknown>([
       { entityId: id(101), type: "ellipse", reversed: false },
     ])
     const extent = Math.sqrt(62.5)
@@ -301,7 +302,7 @@ describe("sketch profile detection", () => {
       line(102, 4, 2),
     ])
 
-    expect(detectSketchProfiles(value, authoredSolution(value))).toMatchObject({
+    expect(matchValue(detectSketchProfiles(value, authoredSolution(value)))).toMatchObject({
       profiles: [],
       diagnostics: expect.arrayContaining([
         expect.objectContaining({ code: "degenerate-entity", entityIds: [id(101)] }),

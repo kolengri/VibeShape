@@ -1,10 +1,8 @@
-// @vitest-environment node
-
+import { expect, it } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { expect, it } from "vitest"
 import { agentSkillBundlePath, renderAgentSkillBundle } from "./bundle-agent-skills"
 
 it("keeps all bundled instructions synchronized and usable in a relocated Bun server bundle", () => {

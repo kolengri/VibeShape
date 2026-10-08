@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { setOC } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type AnalyticalProfile, createAnalyticalWire } from "./occt-loft"
 
 const entityId = "018f0000-0000-7000-8000-000000000001" as never
@@ -117,11 +118,11 @@ describe("analytical native curve ownership", () => {
   it.each(segments)("releases all point, axis, conic and builder bindings for $type", (segment) => {
     const f = fixture()
     const wire = createAnalyticalWire(f.occt, frame, [segment])
-    for (const binding of f.acquired) expect(binding.delete).toHaveBeenCalledOnce()
-    expect(f.rawEdge.delete).toHaveBeenCalledOnce()
+    for (const binding of f.acquired) expect(binding.delete).toHaveBeenCalledTimes(1)
+    expect(f.rawEdge.delete).toHaveBeenCalledTimes(1)
     expect(f.rawWire.delete).not.toHaveBeenCalled()
     wire.delete()
-    expect(f.rawWire.delete).toHaveBeenCalledOnce()
+    expect(f.rawWire.delete).toHaveBeenCalledTimes(1)
   })
   it.each([
     "direction",
@@ -138,7 +139,7 @@ describe("analytical native curve ownership", () => {
         segments[1] as AnalyticalProfile["outer"]["segments"][number],
       ]),
     ).toThrow(`Native ${stage} fixture failure`)
-    for (const binding of f.acquired) expect(binding.delete).toHaveBeenCalledOnce()
+    for (const binding of f.acquired) expect(binding.delete).toHaveBeenCalledTimes(1)
     expect(f.rawEdge.delete).toHaveBeenCalledTimes(
       ["wire-builder", "progress", "wire-build"].includes(stage) ? 1 : 0,
     )

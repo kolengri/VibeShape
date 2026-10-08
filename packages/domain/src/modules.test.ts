@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createModuleRegistry,
   documentCoreModule,
@@ -210,7 +210,7 @@ describe("module registry", () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.registry.modules.map((module) => module.id)).toEqual([
+      expect(result.registry.modules.map((module) => module.id)).toEqual<unknown>([
         "org.example.alpha",
         "org.example.beta",
       ])

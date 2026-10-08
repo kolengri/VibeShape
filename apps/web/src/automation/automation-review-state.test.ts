@@ -1,7 +1,8 @@
+import { afterEach, describe, expect, it } from "bun:test"
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import { commandActorSchema, commandIdSchema, partIdSchema } from "@vibeshape/domain"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createAutomationReviewController } from "./automation-review-state"
 
 function reviewInput(): DraftReviewInput {

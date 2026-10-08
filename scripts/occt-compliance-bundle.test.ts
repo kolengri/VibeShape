@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { OCCT_BUILD_INPUTS } from "./occt-build-config"
 import {
   assertLocalOcctComplianceEnvironment,
   OCCT_COMPLIANCE_BUNDLE_NAME,
   occtComplianceManifestSchema,
 } from "./occt-compliance-bundle"
-import { OCCT_BUILD_INPUTS } from "./occt-build-config"
 
 const digest = "a".repeat(64)
 

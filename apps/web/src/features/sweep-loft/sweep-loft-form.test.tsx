@@ -1,4 +1,5 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureRecordSchema, sketchEntityIdSchema } from "@vibeshape/domain"
@@ -6,7 +7,7 @@ import { loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { SweepLoftForm } from "./sweep-loft-form"
 import type { ProfileOption, SweepLoftFormMode } from "./sweep-loft-form-model"
@@ -80,7 +81,7 @@ describe("Sweep and Loft task forms", () => {
     )
     expect(apply.disabled).toBe(true)
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(f.onCancel).toHaveBeenCalledOnce()
+    expect(f.onCancel).toHaveBeenCalledTimes(1)
     expect(f.onSave).not.toHaveBeenCalled()
     f.unmount()
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)
@@ -111,7 +112,7 @@ describe("Sweep and Loft task forms", () => {
     expect(apply.disabled).toBe(false)
     await userEvent.click(screen.getByRole("button", { name: "Move section 2 earlier" }))
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       type: { schemaVersion: 2 },
       parameters: {
@@ -160,7 +161,7 @@ describe("Sweep and Loft task forms", () => {
     const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
     expect(apply.disabled).toBe(false)
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
     expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
       type: { schemaVersion: 2 },
@@ -201,8 +202,9 @@ describe("Sweep and Loft task forms", () => {
       ),
     )
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
-    expect(f.onSave).toHaveBeenCalledExactlyOnceWith(
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
+    expect(f.onSave).toHaveBeenCalledWith(
       7,
       expect.objectContaining({ id: featureId, dependencies: [], references: [] }),
     )
@@ -221,14 +223,14 @@ describe("Sweep and Loft task forms", () => {
     const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
     await userEvent.click(apply)
     await userEvent.click(apply)
-    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(apply.disabled).toBe(true)
     reject?.(new Error("Storage unavailable"))
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
     expect(apply.disabled).toBe(false)
     onSave.mockResolvedValue({ ok: true })
     await userEvent.click(apply)
-    await waitFor(() => expect(f.onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
   })
   it.each(["loading", "error"] as const)(
     "blocks a valid Loft selection while exact preview is %s",

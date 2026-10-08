@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createEmptySketch,
@@ -9,7 +10,6 @@ import {
   sketchIdSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { selectModelTreeHistory } from "./model-tree-history"
 import { proposeHistoryMove, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 

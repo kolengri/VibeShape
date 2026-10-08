@@ -1,8 +1,7 @@
-// @vitest-environment node
+import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
-import { expect, it } from "vitest"
 import {
   lifecycleId as id,
   primitiveNames,

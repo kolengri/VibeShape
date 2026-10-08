@@ -1,7 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema, topologySignatureSchema } from "@vibeshape/domain"
 import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { referenceAxisSchema, referencePlaneSchema } from "@vibeshape/domain/reference-frame"
-import { describe, expect, it } from "vitest"
 import type { FeatureGeometryRecord } from "./feature-rebuild"
 import {
   resolveReferenceAxis,
@@ -78,7 +78,7 @@ describe("current body-bound reference frames", () => {
       kind: "edge",
       referenceGeometry: { kind: "line-edge", start: [0, 0, 4], end: [0, 0, 12] },
     }
-    expect(resolveReferenceFace(reference, context([curved, edge]))).toEqual(curved)
+    expect(resolveReferenceFace(reference, context([curved, edge]))).toEqual<unknown>(curved)
     expect(resolveReferenceFace(reference, context([curved], "pattern.instance.0"))).toBeNull()
     expect(
       resolveReferenceFace(

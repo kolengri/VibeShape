@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import {
   commandActorSchema,
@@ -8,7 +9,7 @@ import {
 import { mirrorFeatureTypeV3 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
@@ -133,7 +134,8 @@ describe("named reference-frame draft commands", () => {
           ok: false,
           diagnostic: { code: "draft-not-found" },
         })
-        expect(host.applyCommand).toHaveBeenCalledExactlyOnceWith(
+        expect(host.applyCommand).toHaveBeenCalledTimes(1)
+        expect(host.applyCommand).toHaveBeenCalledWith(
           actor,
           expect.objectContaining({
             draftId: id(1),

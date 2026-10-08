@@ -1,11 +1,11 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { booleanFeatureType, featureIdSchema, featureRecordSchema } from "@vibeshape/domain"
 import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { currentBodyOptions } from "../part-design/exact-body-options.test-fixtures"
 import { BooleanForm, type BooleanFormMode, type BooleanInputOption } from "./boolean-form"
@@ -91,9 +91,9 @@ function renderForm(
 afterEach(cleanup)
 
 describe("BooleanForm", () => {
-  it.each([["result"], ["pattern.instance.0", "pattern.instance.1"]])(
+  it.each([["result"], ["pattern.instance.0", "pattern.instance.1"]].map((roles) => ({ roles })))(
     "retains legacy whole-producer scope from current collector options with %j roles",
-    async (...roles) => {
+    async ({ roles }) => {
       const user = userEvent.setup()
       const producers = [ids.box, ids.cylinder].map((id) => ({
         ...existingFeature,
@@ -181,7 +181,7 @@ describe("BooleanForm", () => {
     expect(submit.getAttribute("aria-busy")).toBe("true")
 
     submission.resolve()
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 
   it("allows repairing a saved subtraction with invalid retention parameters", async () => {
@@ -236,7 +236,7 @@ describe("BooleanForm", () => {
         dependencies: [ids.box, ids.secondCylinder],
       }),
     )
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 })
 
@@ -306,9 +306,9 @@ describe("exact-body Boolean form", () => {
     view.unmount()
     if (!saved) throw new Error("Expected saved exact-body feature.")
     renderForm(undefined, undefined, { kind: "edit", feature: saved }, exactOptions)
-    expect((screen.getByRole("combobox", { name: copy.tool }) as HTMLSelectElement).value).toBe(
-      exactOptions[1]?.id,
-    )
+    expect(
+      (screen.getByRole("combobox", { name: copy.tool }) as HTMLSelectElement).value,
+    ).toBe<unknown>(exactOptions[1]?.id)
   })
 })
 
@@ -325,5 +325,5 @@ it("releases Subtract submission after a rejected save and permits a successful 
   expect((submit as HTMLButtonElement).disabled).toBe(false)
   await user.click(submit)
   expect(onSave).toHaveBeenCalledTimes(2)
-  await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+  await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
 })

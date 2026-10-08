@@ -1,4 +1,5 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
 import { featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
 import {
@@ -601,7 +602,7 @@ it("returns diagnostics instead of throwing for invalid runtime options", () => 
     ]
     for (const run of calls) {
       expect(run).not.toThrow()
-      expect(run()).toMatchObject({
+      expect(matchValue(run())).toMatchObject({
         ok: false,
         diagnostic: {
           code: "invalid-command",
@@ -619,10 +620,12 @@ it("reports malformed feature event fields at their owning paths", () => {
   if (!applied.ok) throw new Error(applied.diagnostic.message)
 
   expect(
-    reduceHistoryDocumentEvent(current, {
-      ...applied.event,
-      feature: { ...applied.event.feature, semanticInputs: "invalid" },
-    }),
+    matchValue(
+      reduceHistoryDocumentEvent(current, {
+        ...applied.event,
+        feature: { ...applied.event.feature, semanticInputs: "invalid" },
+      }),
+    ),
   ).toMatchObject({
     ok: false,
     diagnostic: {
@@ -709,7 +712,7 @@ it("rejects insertion before a required feature support", () => {
   })
 
   expect(
-    applyInsertSketchInHistoryCommand(current, command(current, { sketch: supported })),
+    matchValue(applyInsertSketchInHistoryCommand(current, command(current, { sketch: supported }))),
   ).toMatchObject({
     ok: false,
     diagnostic: {

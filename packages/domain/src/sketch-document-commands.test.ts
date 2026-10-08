@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
 import { documentSnapshotSchema } from "./document"
 import { featureRecordSchema } from "./feature-graph"
@@ -141,7 +142,7 @@ describe("sketch document commands", () => {
     })
     expect(added.ok).toBe(true)
     if (!added.ok) return
-    expect(added.snapshot.sketches).toEqual([sketch()])
+    expect(added.snapshot.sketches).toEqual<unknown>([sketch()])
 
     const updated = applyDocumentCommand(added.snapshot, {
       kind: "org.vibeshape.sketch.update",
@@ -502,7 +503,7 @@ describe("sketch document commands", () => {
         ],
       },
     })
-    expect(reduceDocumentEvent(referenced, removal.event)).toMatchObject({
+    expect(matchValue(reduceDocumentEvent(referenced, removal.event))).toMatchObject({
       ok: false,
       diagnostic: {
         code: "invalid-event",
@@ -642,7 +643,9 @@ describe("sketch document commands", () => {
     })
     expect(added).toMatchObject({ ok: true })
     if (!added.ok) return
-    expect(added.snapshot.sketches[1]?.externalReferences).toEqual(dependent.externalReferences)
+    expect(added.snapshot.sketches[1]?.externalReferences).toEqual<unknown>(
+      dependent.externalReferences,
+    )
     expect(
       applyDocumentCommand(added.snapshot, {
         kind: "org.vibeshape.sketch.remove",

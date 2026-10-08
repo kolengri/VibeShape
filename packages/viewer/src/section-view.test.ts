@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { Vector3 } from "three"
-import { describe, expect, it } from "vitest"
 import { sectionClipPlanes, sectionPointVisible } from "./section-view"
 
 describe("view-only section planes", () => {

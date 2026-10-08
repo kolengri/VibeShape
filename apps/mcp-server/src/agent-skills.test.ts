@@ -1,8 +1,7 @@
-// @vitest-environment node
-
+import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
@@ -98,7 +97,7 @@ it("loads the complete operator pack through resources or tools without browser 
         structuredContent: { result: { ok: true, value: content } },
       })
       for (const link of content.text.matchAll(/\]\((vibeshape:\/\/agent-skills[^)]+)\)/g)) {
-        expect(documents).toContain(link[1])
+        expect(documents).toContain<unknown>(link[1])
         expect((await client.readResource({ uri: String(link[1]) })).contents).toHaveLength(1)
       }
       expect(Buffer.byteLength(JSON.stringify(tool))).toBeLessThan(128 * 1024)

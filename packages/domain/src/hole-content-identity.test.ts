@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   computeFeatureContentHash,
   createFeatureContentIdentity,
@@ -191,7 +191,7 @@ describe("Hole feature content identity", () => {
     expect(firstIdentity.identity.feature.inputs).toEqual(["a".repeat(64), "c".repeat(64)])
     expect(firstIdentity.identity.feature.references[0]).toMatchObject({ inputIndex: 1 })
     expect(firstIdentity.canonicalPayload).toBe(secondIdentity.canonicalPayload)
-    expect(featureBodyDependencyIds(first)).toEqual([ids.targetA])
+    expect(featureBodyDependencyIds(first)).toEqual<unknown>([ids.targetA])
   })
 })
 

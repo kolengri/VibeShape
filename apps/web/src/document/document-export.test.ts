@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
-import { afterEach, describe, expect, it, vi } from "vitest"
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createDocumentExportFilename, downloadDocumentExport } from "./document-export"
 
 afterEach(() => {
@@ -38,7 +38,7 @@ describe("document export download", () => {
     const blob = createObjectURL.mock.calls[0]?.[0]
     expect(blob).toBeInstanceOf(Blob)
     expect(blob?.type).toBe("model/stl")
-    expect(click).toHaveBeenCalledOnce()
+    expect(click).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:vibeshape-export")
     expect(document.querySelector("a")).toBeNull()
   })

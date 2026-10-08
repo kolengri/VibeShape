@@ -1,6 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { SketchId } from "@vibeshape/domain"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import {
   type BuiltInEditorCommandContext,
@@ -60,7 +61,7 @@ it("opens shortcut help through its registered handler even while the document i
   )
   expect(help?.eligibility.enabled).toBe(true)
   help?.invoke()
-  expect(openShortcutHelp).toHaveBeenCalledOnce()
+  expect(openShortcutHelp).toHaveBeenCalledTimes(1)
   expect(context.actions.createSketch).not.toHaveBeenCalled()
 })
 
@@ -293,7 +294,8 @@ describe("editor command registry", () => {
       toolbarGroup: "sketch-tools",
     })
     command?.invoke()
-    expect(context.actions.setSketchTool).toHaveBeenCalledExactlyOnceWith("cubic-bezier")
+    expect(context.actions.setSketchTool).toHaveBeenCalledTimes(1)
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("cubic-bezier")
   })
 
   it("resolves eligibility and invokes the same trusted handler used by every surface", () => {
@@ -310,7 +312,7 @@ describe("editor command registry", () => {
     expect(extrude?.eligibility).toEqual({ enabled: false, reason: "selectProfile" })
     createSketch?.invoke()
     extrude?.invoke()
-    expect(context.actions.createSketch).toHaveBeenCalledOnce()
+    expect(context.actions.createSketch).toHaveBeenCalledTimes(1)
     expect(context.actions.createExtrusion).not.toHaveBeenCalled()
   })
 
@@ -328,7 +330,7 @@ describe("editor command registry", () => {
       })
       expect(command?.eligibility).toEqual({ enabled: true })
       await command?.invoke()
-      expect(context.actions[key]).toHaveBeenCalledOnce()
+      expect(context.actions[key]).toHaveBeenCalledTimes(1)
 
       const controller = readyController()
       if (!controller.report) throw new Error("The ready fixture must include a report.")
@@ -410,7 +412,7 @@ describe("editor command registry", () => {
       ({ descriptor }) => descriptor.id === editorCommandIds.toggleAllSketchVisibility,
     )
     available?.invoke()
-    expect(availableContext.actions.toggleAllSketchVisibility).toHaveBeenCalledOnce()
+    expect(availableContext.actions.toggleAllSketchVisibility).toHaveBeenCalledTimes(1)
   })
 
   it("offers Extrude inside an active sketch when a closed profile is selected", () => {
@@ -426,7 +428,7 @@ describe("editor command registry", () => {
     expect(extrude?.eligibility).toEqual({ enabled: true })
     expect(extrude?.toolbarVisible).toBe(true)
     extrude?.invoke()
-    expect(context.actions.createExtrusion).toHaveBeenCalledOnce()
+    expect(context.actions.createExtrusion).toHaveBeenCalledTimes(1)
   })
 
   it("offers Revolve inside an active sketch when a closed profile is selected", () => {
@@ -442,7 +444,7 @@ describe("editor command registry", () => {
     expect(revolve?.eligibility).toEqual({ enabled: true })
     expect(revolve?.toolbarVisible).toBe(true)
     revolve?.invoke()
-    expect(context.actions.createRevolve).toHaveBeenCalledOnce()
+    expect(context.actions.createRevolve).toHaveBeenCalledTimes(1)
   })
 
   it("routes the center rectangle shortcut descriptor to the trusted sketch tool handler", () => {
@@ -724,7 +726,7 @@ describe("editor command registry", () => {
     )
 
     cancelSketch?.invoke()
-    expect(sketchContext.actions.cancelActive).toHaveBeenCalledOnce()
+    expect(sketchContext.actions.cancelActive).toHaveBeenCalledTimes(1)
 
     const planeContext = commandContext({
       activeSketchTool: { kind: "select-sketch-plane" },
@@ -735,7 +737,7 @@ describe("editor command registry", () => {
     )
 
     cancelPlaneSelection?.invoke()
-    expect(planeContext.actions.cancelActive).toHaveBeenCalledOnce()
+    expect(planeContext.actions.cancelActive).toHaveBeenCalledTimes(1)
     expect(planeContext.actions.setSketchTool).not.toHaveBeenCalled()
   })
 })
@@ -777,7 +779,7 @@ describe("measurement command", () => {
     const command = resolve(context)
     expect(command?.eligibility).toEqual({ enabled: true })
     command?.invoke()
-    expect(context.actions.measure).toHaveBeenCalledOnce()
+    expect(context.actions.measure).toHaveBeenCalledTimes(1)
     expect(context.actions.createBox).not.toHaveBeenCalled()
     expect(context.actions.documentUndo).not.toHaveBeenCalled()
   })
@@ -812,7 +814,7 @@ it("allows Escape to clear idle body selection through the shared command", asyn
   )
   expect(command?.eligibility.enabled).toBe(true)
   await command?.invoke()
-  expect(context.actions.cancelActive).toHaveBeenCalledOnce()
+  expect(context.actions.cancelActive).toHaveBeenCalledTimes(1)
 })
 
 it.each(["createLoft", "createSweep"] as const)(
@@ -835,7 +837,7 @@ it.each(["createLoft", "createSweep"] as const)(
     }).find(({ descriptor }) => descriptor.id === editorCommandIds[command])
     expect(entry?.eligibility.enabled).toBe(true)
     entry?.invoke()
-    expect(action).toHaveBeenCalledOnce()
+    expect(action).toHaveBeenCalledTimes(1)
     const editing = commandContext({ hasSavedSketches: true, activePartDesignCommand: "loft" })
     expect(
       resolveBuiltInEditorCommands(editing).find(

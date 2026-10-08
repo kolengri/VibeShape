@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { type SketchEntity, type SketchEntityId, sketchEntityIdSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   inferSketchDimensionKind,
   type SketchDimensionGeometry,

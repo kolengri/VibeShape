@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { sketchPathSelectorKey, sketchPathSelectorSchema } from "./sketch-path-selector"
 
 const id = (value: number) => `018f0000-0000-7000-8000-${String(value).padStart(12, "0")}`
@@ -12,7 +12,7 @@ const selector = {
 describe("directed sketch path selector", () => {
   it("preserves stable selection and explicit start direction", () => {
     const parsed = sketchPathSelectorSchema.parse(selector)
-    expect(parsed).toEqual(selector)
+    expect(parsed).toEqual<unknown>(selector)
     expect(sketchPathSelectorKey(parsed)).not.toBe(
       sketchPathSelectorKey(sketchPathSelectorSchema.parse({ ...selector, startPointId: id(5) })),
     )

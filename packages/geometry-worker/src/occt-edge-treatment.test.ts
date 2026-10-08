@@ -1,13 +1,15 @@
+import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 
-const { castShape } = vi.hoisted(() => ({ castShape: vi.fn() }))
-vi.mock("./occt-cast", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./occt-cast")>()),
+const { castShape } = (() => ({ castShape: vi.fn() }))()
+const originalModule1 = { ...(await import("./occt-cast")) }
+mock.module("./occt-cast", () => ({
+  ...originalModule1,
   castOcctShape: castShape,
 }))
 
-import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
+const { treatAllOcctEdges, treatSelectedOcctEdges } = await import("./occt-edge-treatment")
 
 function deletable() {
   return { delete: vi.fn() }
@@ -62,14 +64,14 @@ describe("treatAllOcctEdges ownership", () => {
       const value = fixture()
       const result = treatAllOcctEdges(value.opencascade, value.source as never, operation, 1)
 
-      expect(result).toBe(value.result)
+      expect(result).toBe<unknown>(value.result)
       expect(value.builder.Add_2).toHaveBeenCalledWith(1, value.edge.wrapped)
       expect(value.builder.Build).toHaveBeenCalledWith(value.progress)
-      expect(value.rawResult.delete).toHaveBeenCalledOnce()
-      expect(value.edge.delete).toHaveBeenCalledOnce()
-      expect(value.clone.delete).toHaveBeenCalledOnce()
-      expect(value.progress.delete).toHaveBeenCalledOnce()
-      expect(value.builder.delete).toHaveBeenCalledOnce()
+      expect(value.rawResult.delete).toHaveBeenCalledTimes(1)
+      expect(value.edge.delete).toHaveBeenCalledTimes(1)
+      expect(value.clone.delete).toHaveBeenCalledTimes(1)
+      expect(value.progress.delete).toHaveBeenCalledTimes(1)
+      expect(value.builder.delete).toHaveBeenCalledTimes(1)
       expect(value.source.wrapped.delete).not.toHaveBeenCalled()
     },
   )
@@ -79,9 +81,9 @@ describe("treatAllOcctEdges ownership", () => {
     expect(() => treatAllOcctEdges(value.opencascade, value.source as never, "fillet", 1)).toThrow(
       "add failed",
     )
-    expect(value.edge.delete).toHaveBeenCalledOnce()
-    expect(value.clone.delete).toHaveBeenCalledOnce()
-    expect(value.builder.delete).toHaveBeenCalledOnce()
+    expect(value.edge.delete).toHaveBeenCalledTimes(1)
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
+    expect(value.builder.delete).toHaveBeenCalledTimes(1)
     expect(value.progress.delete).not.toHaveBeenCalled()
   })
 
@@ -93,10 +95,10 @@ describe("treatAllOcctEdges ownership", () => {
     expect(() =>
       treatAllOcctEdges(value.opencascade, value.source as never, "chamfer", 1),
     ).toThrow()
-    expect(value.edge.delete).toHaveBeenCalledOnce()
-    expect(value.progress.delete).toHaveBeenCalledOnce()
-    expect(value.clone.delete).toHaveBeenCalledOnce()
-    expect(value.builder.delete).toHaveBeenCalledOnce()
+    expect(value.edge.delete).toHaveBeenCalledTimes(1)
+    expect(value.progress.delete).toHaveBeenCalledTimes(1)
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
+    expect(value.builder.delete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -111,10 +113,10 @@ describe("treatSelectedOcctEdges", () => {
       [7],
     )
 
-    expect(result).toBe(value.result)
+    expect(result).toBe<unknown>(value.result)
     expect(value.builder.Add_2).toHaveBeenCalledWith(1, value.edge.wrapped)
-    expect(value.clone.delete).toHaveBeenCalledOnce()
-    expect(value.edge.delete).toHaveBeenCalledOnce()
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
+    expect(value.edge.delete).toHaveBeenCalledTimes(1)
   })
 
   it("rejects a native edge key absent from the clone", () => {
@@ -122,8 +124,8 @@ describe("treatSelectedOcctEdges", () => {
     expect(() =>
       treatSelectedOcctEdges(value.opencascade, value.source as never, "chamfer", 1, [99]),
     ).toThrow("unavailable")
-    expect(value.clone.delete).toHaveBeenCalledOnce()
-    expect(value.edge.delete).toHaveBeenCalledOnce()
-    expect(value.builder.delete).toHaveBeenCalledOnce()
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
+    expect(value.edge.delete).toHaveBeenCalledTimes(1)
+    expect(value.builder.delete).toHaveBeenCalledTimes(1)
   })
 })

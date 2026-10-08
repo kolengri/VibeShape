@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -10,7 +10,6 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { afterEach, describe, expect, it } from "vitest"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"

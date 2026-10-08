@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import {
   EditorSessionProvider,
   useEditorSession,
@@ -108,7 +108,7 @@ describe("History navigation during a manual feature save", () => {
       await user.click(screen.getByRole("button", { name: "First History row" }))
       await user.click(screen.getByRole("button", { name: "Last History row" }))
 
-      expect(save).toHaveBeenCalledOnce()
+      expect(save).toHaveBeenCalledTimes(1)
       expect(settled).not.toHaveBeenCalled()
       expect(first).not.toHaveBeenCalled()
       expect(last).not.toHaveBeenCalled()
@@ -122,7 +122,7 @@ describe("History navigation during a manual feature save", () => {
       expect(settled).toHaveBeenCalledWith("last", saved)
       expect(first).not.toHaveBeenCalled()
       expect(last).toHaveBeenCalledTimes(saved ? 1 : 0)
-      expect(save).toHaveBeenCalledOnce()
+      expect(save).toHaveBeenCalledTimes(1)
       expect(screen.getByLabelText("Active task").textContent).toBe(saved ? "none" : "create-box")
       if (saved) expect(screen.queryByRole("form", { name: "Feature form" })).toBeNull()
       else

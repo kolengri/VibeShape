@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   expectedSketchFeatureDependencyIds,
   expectedSketchFeatureReferences,
@@ -35,7 +36,8 @@ import {
   detectSketchProfiles,
   SKETCH_SOLVER_BUILD,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { createDocumentFeatureContentPreparer } from "./extrusion-content"
 import type { SketchSolvePort } from "./runtime"
 import { materializeSelectedPath, shouldPrepareSweepLoftFeatureContent } from "./sweep-loft-content"
@@ -406,7 +408,7 @@ describe("exact open sketch curve paths", () => {
       expect(reverse.segments[0]?.start).toEqual(forward.segments[0]?.end)
       expect(reverse.segments[0]?.end).toEqual(forward.segments[0]?.start)
       const curve = reverse.segments[0]
-      if (curve?.type === "cubic-bezier") expect(curve.control1PointId).toBe(id(712))
+      if (curve?.type === "cubic-bezier") expect(curve.control1PointId).toBe<unknown>(id(712))
       if (curve?.type === "elliptical-arc") expect(curve.secondaryAxisPoint).toEqual([10, 12])
       expect(sketch.entities.find(({ id: entityId }) => entityId === id(716))).toMatchObject({
         y: -12,
@@ -495,7 +497,7 @@ describe("document preparation for exact Sweep and Loft", () => {
       [id(561)],
       [id(551)],
     ])
-    expect(content.holeCorrespondence).toEqual(holeCorrespondence)
+    expect(content.holeCorrespondence).toEqual<unknown>(holeCorrespondence)
     const stale = featureRecordSchema.parse({
       ...feature,
       parameters: {
@@ -663,21 +665,21 @@ describe("document preparation for exact Sweep and Loft", () => {
     const source = loftFixture()
     const shared = supported(source.first, 801)
     const snapshot = { ...source.document, sketches: [shared, source.second] }
-    expect(expectedSketchFeatureDependencyIds(snapshot, [source.second.id, shared.id])).toEqual([
-      id(801),
-    ])
+    expect(
+      expectedSketchFeatureDependencyIds(snapshot, [source.second.id, shared.id]),
+    ).toEqual<unknown>([id(801)])
     expect(expectedSketchFeatureReferences(snapshot, [source.second.id, shared.id])).toHaveLength(1)
   })
   it("includes recursively referenced sketch supports and external model owners without consuming bodies", () => {
     const source = externalSourceFixture(true)
     expect(
       expectedSketchFeatureDependencyIds(source.document, [source.second.id, source.first.id]),
-    ).toEqual([id(801), id(800), id(802), id(803)])
+    ).toEqual<unknown>([id(801), id(800), id(802), id(803)])
     expect(
       expectedSketchFeatureReferences(source.document, [source.second.id, source.first.id]).map(
         ({ featureId }) => featureId,
       ),
-    ).toEqual([id(801), id(800), id(802), id(803)])
+    ).toEqual<unknown>([id(801), id(800), id(802), id(803)])
   })
   it("validates external source solutions before target solving and shares their cached solve", async () => {
     const source = externalSourceFixture()
@@ -900,7 +902,9 @@ describe("document preparation for exact Sweep and Loft", () => {
       },
     }
     await expect(
-      createDocumentFeatureContentPreparer(solve)({ document: source.document, feature: loft }),
+      matchValue(
+        createDocumentFeatureContentPreparer(solve)({ document: source.document, feature: loft }),
+      ),
     ).resolves.toMatchObject({
       ok: false,
       diagnostic: {
@@ -987,10 +991,12 @@ describe("document preparation for exact Sweep and Loft", () => {
     })
     const cornerSource = sweepFixture(source.profile, corner)
     await expect(
-      createDocumentFeatureContentPreparer(solve)({
-        document: cornerSource.document,
-        feature: cornerSource.feature,
-      }),
+      matchValue(
+        createDocumentFeatureContentPreparer(solve)({
+          document: cornerSource.document,
+          feature: cornerSource.feature,
+        }),
+      ),
     ).resolves.toMatchObject({
       ok: false,
       diagnostic: {
@@ -999,10 +1005,12 @@ describe("document preparation for exact Sweep and Loft", () => {
     })
     const unaligned = sweepFixture(rectangle(100, "xy"))
     await expect(
-      createDocumentFeatureContentPreparer(solve)({
-        document: unaligned.document,
-        feature: unaligned.feature,
-      }),
+      matchValue(
+        createDocumentFeatureContentPreparer(solve)({
+          document: unaligned.document,
+          feature: unaligned.feature,
+        }),
+      ),
     ).resolves.toMatchObject({
       ok: false,
       diagnostic: {
@@ -1019,7 +1027,7 @@ describe("document preparation for exact Sweep and Loft", () => {
     const prepared = materializeSelectedPath(source.path, solution(source.path), selected)
     expect(prepared.ok).toBe(true)
     if (!prepared.ok) throw new Error("Expected a reversed directed path.")
-    expect(prepared.segments.map(({ entityId }) => entityId)).toEqual([id(320), id(321)])
+    expect(prepared.segments.map(({ entityId }) => entityId)).toEqual<unknown>([id(320), id(321)])
     expect(prepared.segments[0]).toMatchObject({ type: "arc", start: [10, 5], end: [5, 0] })
     expect(prepared.segments[1]).toMatchObject({ start: [5, 0], end: [0, 0] })
   })

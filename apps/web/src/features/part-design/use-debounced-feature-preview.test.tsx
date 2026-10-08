@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { act, cleanup, render } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { useDebouncedFeaturePreview } from "./use-debounced-feature-preview"
 
 function PreviewHarness({

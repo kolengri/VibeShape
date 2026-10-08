@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { resolveSelectedEdgeCandidates } from "./selected-edge-resolution"
 
 const signature = (x: number) => ({

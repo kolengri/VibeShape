@@ -1,19 +1,26 @@
-// @vitest-environment jsdom
-import { webcrypto } from "node:crypto"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { documentSnapshotV5Schema } from "@vibeshape/domain/document-v5"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, expect, it, vi } from "vitest"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, expect, it, mock } from "bun:test"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
-import { i18n } from "../../i18n"
-import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
-import { PlanarImportDialog } from "./import-dialog"
-import { planarParserResponseSchema } from "./parser-contract"
 
-const ports = vi.hoisted(() => ({ inspect: vi.fn(), commit: vi.fn() }))
-vi.mock("./parser-client", () => ({ inspectPlanarSource: ports.inspect }))
-vi.mock("../../document/document-controller", () => ({ commitAuthoredTransaction: ports.commit }))
+const ports = (() => ({ inspect: vi.fn(), commit: vi.fn() }))()
+const parserClient = { ...(await import("./parser-client")) }
+mock.module("./parser-client", () => ({ ...parserClient, inspectPlanarSource: ports.inspect }))
+mock.module("../../document/document-controller", () => ({
+  commitAuthoredTransaction: ports.commit,
+}))
+
+const { webcrypto } = await import("node:crypto")
+const { cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { default: userEvent } = await import("@testing-library/user-event")
+const { documentSnapshotV5Schema } = await import("@vibeshape/domain/document-v5")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../../i18n")
+const { authoredTreeFixture } = await import("../../test-support/authored-tree-fixture")
+const { PlanarImportDialog } = await import("./import-dialog")
+const { planarParserResponseSchema } = await import("./parser-contract")
 const fixture = authoredTreeFixture()
 const controller = {
   status: "ready",
@@ -144,7 +151,7 @@ it("aborts pending inspection on Cancel and ignores late results after reopening
   setup()
   let dialog = await choose()
   await userEvent.click(within(dialog).getByRole("button", { name: "Inspect sketch source" }))
-  await waitFor(() => expect(ports.inspect).toHaveBeenCalledOnce())
+  await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(1))
   const signal = ports.inspect.mock.calls[0]?.[1] as AbortSignal
   await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
   expect(signal.aborted).toBe(true)
@@ -192,7 +199,7 @@ it("locks duplicate Apply, preserves inspection on save rejection, and retries o
   const apply = within(dialog).getByRole("button", { name: "Apply sketch import" })
   fireEvent.click(apply)
   fireEvent.click(apply)
-  await waitFor(() => expect(ports.commit).toHaveBeenCalledOnce())
+  await waitFor(() => expect(ports.commit).toHaveBeenCalledTimes(1))
   expect(
     (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
   ).toBe(true)

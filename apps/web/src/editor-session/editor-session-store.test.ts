@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createEmptySketch,
   featureIdSchema,
@@ -9,7 +10,6 @@ import {
   sketchIdSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { createEditorSessionStore } from "./editor-session-store"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")

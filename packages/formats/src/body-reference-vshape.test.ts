@@ -1,3 +1,4 @@
+import { expect, it } from "bun:test"
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
@@ -5,7 +6,6 @@ import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { holeFeatureTypeV2 } from "@vibeshape/domain/part-design-hole"
 import { createEmptySketch } from "@vibeshape/domain/sketch-edit"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { expect, it } from "vitest"
 import { readVShapeV2, writeVShapeV2 } from "./vshape"
 
 const uuid = (suffix: string) => `0195b5ac-b220-7a2c-8c33-${suffix}`

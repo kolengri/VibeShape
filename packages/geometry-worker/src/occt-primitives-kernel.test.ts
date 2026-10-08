@@ -1,14 +1,14 @@
+import { beforeAll, describe, expect, it } from "bun:test"
 import { measureShapeVolumeProperties, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
 import { createMemoryProfile } from "./memory-profile"
 import { createOcctCone, createOcctPyramid, createOcctSphere, createOcctTorus } from "./occt-shapes"
 
 let controlledBuild = false
 let opencascade: OpenCascadeInstance
 beforeAll(async () => {
-  const filesystem = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
-  const runtime = await vi.importActual<{ env: Record<string, string | undefined> }>("node:process")
+  const filesystem = await import("node:fs")
+  const runtime = await import("node:process")
   controlledBuild = runtime.env.VIBESHAPE_CONTROLLED_OCCT === "1"
   const buildDirectory = controlledBuild
     ? "../../../.artifacts/occt-build/package/src/"

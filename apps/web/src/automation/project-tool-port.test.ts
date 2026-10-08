@@ -1,13 +1,16 @@
-import { localOperationSchema, type ProjectOperation } from "@vibeshape/automation-api/local-tools"
-import { beforeEach, expect, it, vi } from "vitest"
-import { createProjectToolPort } from "./project-tool-port"
+import { beforeEach, expect, it, mock } from "bun:test"
+import type { ProjectOperation } from "@vibeshape/automation-api/local-tools"
+import { vi } from "../../../../tests/unit/support/bun-test"
 
-const controller = vi.hoisted(() => ({ create: vi.fn(), open: vi.fn(), list: vi.fn() }))
-vi.mock("../document/document-controller", () => ({
+const controller = (() => ({ create: vi.fn(), open: vi.fn(), list: vi.fn() }))()
+mock.module("../document/document-controller", () => ({
   createAutomationProject: controller.create,
   openAutomationProject: controller.open,
   listLocalProjects: controller.list,
 }))
+
+const { localOperationSchema } = await import("@vibeshape/automation-api/local-tools")
+const { createProjectToolPort } = await import("./project-tool-port")
 const a = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
 const b = "0195b5ac-b220-7a2c-8c33-67a36a7f6102"
 function operation(

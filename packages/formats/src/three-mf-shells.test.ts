@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { BoxGeometry } from "three"
-import { describe, expect, it } from "vitest"
 import { parseGeometryImport } from "./import"
 import { threeMfModelMeshSchema } from "./three-mf"
 import { writeThreeMfMeshes } from "./three-mf-meshes"

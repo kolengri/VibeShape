@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { featureGeometryRecordSchema } from "@vibeshape/application/feature-rebuild"
 import { terminalBodyGeometry } from "@vibeshape/application/model-bodies"
 import { createModelBodyMeasurementEvidence } from "@vibeshape/application/model-measurements"
@@ -42,8 +43,9 @@ import {
   SKETCH_SOLVER_ABI,
   solveSketchRecord,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
 import { createLoftV3Project, loftFixtureId as id } from "../../../tests/support/loft-v3-fixture"
+import { vi } from "../../../tests/unit/support/bun-test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { type DocumentWorkerEndpoint, DocumentWorkerRuntime, type SketchSolvePort } from "./runtime"
 
 const documentIds = {
@@ -639,7 +641,7 @@ describe("DocumentWorkerRuntime", () => {
     expect(
       transfers.filter((transfer) => transfer.length > 0).map((transfer) => transfer.length),
     ).toEqual([12, 12, 12])
-    expect(engine.synchronizedFeatures.at(-1)).toMatchObject({
+    expect(matchValue(engine.synchronizedFeatures.at(-1))).toMatchObject({
       documentId: documentIds.primary,
       retainedFeatures: expect.arrayContaining([
         expect.objectContaining({ featureId: featureIds.box }),
@@ -660,7 +662,7 @@ describe("DocumentWorkerRuntime", () => {
       }),
     })
 
-    expect(engine.synchronizedFeatures.at(-1)).toMatchObject({
+    expect(matchValue(engine.synchronizedFeatures.at(-1))).toMatchObject({
       documentId: documentIds.primary,
       retainedFeatures: expect.arrayContaining([
         expect.objectContaining({ featureId: featureIds.box }),
@@ -1038,7 +1040,7 @@ describe("DocumentWorkerRuntime", () => {
       draggedPoints: [],
     })
 
-    expect(solvePort).toHaveBeenCalledOnce()
+    expect(solvePort).toHaveBeenCalledTimes(1)
     expect(solvePort.mock.calls[0]?.[0]).toMatchObject({
       revision: 1,
       sketch: { id: sketchIds.sketch, label: "Unsaved worker profile" },
@@ -1481,7 +1483,9 @@ describe("document body catalogs", () => {
       expect(response.evaluation.records.every((record) => record.status === "succeeded")).toBe(
         true,
       )
-      expect(engine.evaluatedInputs.find((input) => input.featureId === loft.id)).toMatchObject({
+      expect(
+        matchValue(engine.evaluatedInputs.find((input) => input.featureId === loft.id)),
+      ).toMatchObject({
         content: { schemaVersion: 1, feature: { inputRoles: ["result"] } },
         dependencies: [
           { featureId: id(850), contentHash: expect.any(String), outputRole: "result" },
@@ -1507,14 +1511,14 @@ describe("document body catalogs", () => {
             ),
           },
         })?.map(({ featureId }) => featureId),
-      ).toEqual(expectedIds)
+      ).toEqual<unknown>(expectedIds)
       const measured = createModelBodyMeasurementEvidence(snapshot, { ok: true, response })
       if (!measured.ok) throw new Error(measured.code)
       const outputs = bodyMeasurementOutputs(snapshot.features, measured.evidence)
       if (!outputs) throw new Error("Borrowed support metrics must remain current.")
       expect(
         terminalBodyOutputs(snapshot.features, outputs)?.map(({ featureId }) => featureId),
-      ).toEqual(expectedIds)
+      ).toEqual<unknown>(expectedIds)
       await runtime.handle({
         protocolVersion: DOCUMENT_PROTOCOL_VERSION,
         requestId: "export-loft-retained-support",
@@ -1623,7 +1627,7 @@ describe("selected terminal export requests", () => {
         bodies: [{ featureId: featureIds.box, outputRole: "body.right", name: "Right housing" }],
       })
       const calls = format === "3mf" ? engine.printMeshExportedFeatures : engine.exportedFeatures
-      expect(calls.at(-1)).toEqual([
+      expect(calls.at(-1)).toEqual<unknown>([
         { featureId: featureIds.box, contentHash: expect.any(String), outputRole: "body.right" },
       ])
       expect(messages.at(-1)).toMatchObject({ type: "documentExported", bodyCount: 1 })

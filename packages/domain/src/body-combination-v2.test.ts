@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
@@ -82,8 +82,8 @@ describe("ordered exact body slots in Compound and Union version 2", () => {
     (kind) => {
       const record = feature(kind)
       expect(registry().validateFeature(record).ok).toBe(true)
-      expect(record.dependencies).toEqual([id(2)])
-      expect(featureBodyDependencies(record)).toEqual(bodies())
+      expect(record.dependencies).toEqual<unknown>([id(2)])
+      expect(featureBodyDependencies(record)).toEqual<unknown>(bodies())
       expect(identity(kind)).toMatchObject({
         ok: true,
         identity: {
@@ -105,7 +105,7 @@ describe("ordered exact body slots in Compound and Union version 2", () => {
       (value) => value !== undefined,
     )
     const record = feature("union", selected)
-    expect(record.dependencies).toEqual([id(3), id(2)])
+    expect(record.dependencies).toEqual<unknown>([id(3), id(2)])
     expect(identity("union", selected)).toMatchObject({
       ok: true,
       identity: {
@@ -128,7 +128,7 @@ describe("ordered exact body slots in Compound and Union version 2", () => {
     const legacy = { ...modern, type: compoundFeatureType.type }
     expect(compoundFeatureParametersSchema.safeParse(legacy.parameters).success).toBe(false)
     expect(readCompoundFeatureParameters(legacy)).toBeNull()
-    expect(readCompoundFeatureParameters(modern)).toEqual(modern.parameters)
+    expect(readCompoundFeatureParameters(modern)).toEqual<unknown>(modern.parameters)
     expect(modern.type.schemaVersion).toBe(2)
   })
   it("rejects repeated exact bodies and duplicate authored Compound output identities", () => {

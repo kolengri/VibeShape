@@ -1,4 +1,4 @@
-// @vitest-environment node
+import { afterEach, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import {
   IMPORT_UPLOAD_CHUNK_MAX_BYTES,
@@ -10,7 +10,8 @@ import {
   type PlanarUploadDescriptor,
   type PlanarUploadInspection,
 } from "@vibeshape/automation-api/planar-imports"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
+import { matchValue } from "../../../../tests/unit/support/match-value"
 import {
   planarActor as actor,
   planarContext as context,
@@ -227,7 +228,7 @@ describe("actor-owned planar source capture", () => {
     await vi.waitFor(() => expect(test.session.isPersisting()).toBe(true))
     test.session.dispose()
     finish({ ok: true, value: { revision: 11 } })
-    expect(await pending).toMatchObject({
+    expect(matchValue(matchValue(await pending))).toMatchObject({
       ok: true,
       value: { revision: 11, pathOutputs: expect.arrayContaining([expect.any(String)]) },
     })

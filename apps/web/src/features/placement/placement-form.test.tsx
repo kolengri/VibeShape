@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { PlacementForm } from "./placement-form"
@@ -64,8 +65,8 @@ describe("Placement form", () => {
     await userEvent.clear(z)
     await userEvent.type(z, "90 deg")
     await userEvent.click(screen.getByRole("button", { name: "Create placement" }))
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
-    expect(onSave).toHaveBeenCalledOnce()
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(onSave.mock.calls[0]?.[0]).toBe(7)
     expect(onSave.mock.calls[0]?.[1]).toMatchObject({
       id: featureId,
@@ -96,7 +97,7 @@ describe("Placement form", () => {
   it("keeps cancellation separate from committing a placement", async () => {
     const { onSave, onCancel } = setup()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(onCancel).toHaveBeenCalledOnce()
+    expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onSave).not.toHaveBeenCalled()
   })
 })

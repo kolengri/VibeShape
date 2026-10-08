@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -8,7 +8,7 @@ import {
   type FeatureRecord,
   featureIdSchema,
 } from "@vibeshape/domain"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { FeatureDeleteAction } from "./feature-delete-action"
 
 const featureIds = {
@@ -104,13 +104,13 @@ describe("FeatureDeleteAction", () => {
     const confirm = screen.getByRole("button", { name: copy.confirm })
     await user.dblClick(confirm)
 
-    expect(onRemove).toHaveBeenCalledOnce()
+    expect(onRemove).toHaveBeenCalledTimes(1)
     expect(onRemove).toHaveBeenCalledWith(5, featureIds.box)
     expect(confirm.getAttribute("aria-busy")).toBe("true")
     expect(screen.getByRole("alertdialog")).not.toBeNull()
 
     operation.resolve({ ok: true })
-    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole("alertdialog")).toBeNull()
   })
 
@@ -133,11 +133,11 @@ describe("FeatureDeleteAction", () => {
     const confirm = screen.getByRole("button", { name: preserveIntent.confirm })
     await user.dblClick(confirm)
 
-    expect(onRemovePreservingIntent).toHaveBeenCalledOnce()
+    expect(onRemovePreservingIntent).toHaveBeenCalledTimes(1)
     expect(onRemovePreservingIntent).toHaveBeenCalledWith(5, featureIds.box)
     expect(confirm.getAttribute("aria-busy")).toBe("true")
     operation.resolve({ ok: true })
-    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole("alertdialog")).toBeNull()
   })
 

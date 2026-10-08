@@ -13,6 +13,8 @@ Use Bun workspaces (`apps/*` and `packages/*`) as the package manager, script ru
 
 Vite remains the browser bundler. Vitest and Playwright run through Bun. Do not add Turborepo until task caching or graph orchestration solves a measured problem.
 
+The unit-test runner choice is superseded by [ADR-0104](0104-native-bun-tests.md). The workspace and Vite decisions remain in effect.
+
 ## Consequences
 
 - The toolchain has fewer commands and fast dependency installation.

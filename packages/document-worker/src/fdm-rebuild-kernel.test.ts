@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -13,7 +14,7 @@ import {
   documentWorkerResponseSchema,
 } from "@vibeshape/protocol"
 import { detectSketchProfiles, SKETCH_SOLVER_BUILD } from "@vibeshape/sketch-solver"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { DocumentWorkerRuntime, type SketchSolvePort } from "./runtime"
 
 const engine = new ReplicadGeometryEngine()
@@ -25,7 +26,7 @@ const startId = "0195b5ac-b220-7a2c-8c33-67a36a7f3211"
 const endId = "0195b5ac-b220-7a2c-8c33-67a36a7f3212"
 const lineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3213"
 beforeAll(async () => {
-  const fs = await vi.importActual<{ readFileSync(path: URL): Uint8Array }>("node:fs")
+  const fs = await import("node:fs")
   const bytes = fs.readFileSync(
     new URL("../node_modules/replicad-opencascadejs/src/replicad_single.wasm", import.meta.url),
   )

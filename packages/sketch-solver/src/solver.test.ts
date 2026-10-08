@@ -1,4 +1,5 @@
-import { describe, expect, test, vi } from "vitest"
+import { describe, expect, test } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   type FlatSketchSystemInput,
   type NativeFlatSolveResult,
@@ -143,7 +144,7 @@ describe("solveSketchSystem", () => {
     }
 
     solveSketchSystem(module, system)
-    expect(module.solveFlatSystem).toHaveBeenCalledOnce()
+    expect(module.solveFlatSystem).toHaveBeenCalledTimes(1)
   })
 
   test("rejects a malformed bounded elliptical-arc half-plane record before native code", () => {

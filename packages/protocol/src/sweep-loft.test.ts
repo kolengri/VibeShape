@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   analyticalPathSegmentTangents,
   analyticalProfileSchema,
@@ -126,7 +126,7 @@ describe("prepared analytical Sweep and Loft contracts", () => {
       path: { ...path, sourceEntityIds: [id(2), id(3)], segments: [line(2, [0, 0], [5, 0]), arc] },
     })
     expect(prepared.profile.holes).toHaveLength(1)
-    expect(prepared.path.segments[1]).toEqual(arc)
+    expect(prepared.path.segments[1]).toEqual<unknown>(arc)
   })
   it.each([
     { sections: [profile()], ruled: false },

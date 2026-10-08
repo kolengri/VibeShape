@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import {
   createFaceHighlightGeometry,
@@ -167,7 +168,7 @@ describe("Three viewport geometry", () => {
 
     publisher.flush()
     expect(callbacks.size).toBe(0)
-    expect(publish).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenCalledTimes(1)
     expect(publish).toHaveBeenLastCalledWith([3, 0, 0])
   })
 
@@ -277,7 +278,7 @@ describe("Three viewport geometry", () => {
           distance: index < 2 ? 1 : index + 1,
         })),
       ),
-    ).toEqual([profiles[8], profiles[9], ...profiles.slice(2, 8).reverse()])
+    ).toEqual<unknown>([profiles[8], profiles[9], ...profiles.slice(2, 8).reverse()])
   })
 
   it("triangulates profile holes and maps local coordinates through its frame", () => {
@@ -427,7 +428,7 @@ describe("Three viewport geometry", () => {
     const disposed = vi.fn()
     geometry.addEventListener("dispose", disposed)
     geometry.dispose()
-    expect(disposed).toHaveBeenCalledOnce()
+    expect(disposed).toHaveBeenCalledTimes(1)
   })
 
   it("binds transferred sketch positions without copying", () => {

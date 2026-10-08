@@ -1,7 +1,7 @@
+import { afterEach, describe, expect, it } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, describe, expect, it } from "vitest"
 import { requireControlledBuildOutputs, stageControlledBuildPackage } from "./occt-build-artifacts"
 
 const temporaryDirectories: string[] = []

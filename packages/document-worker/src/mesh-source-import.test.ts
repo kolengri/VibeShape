@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain"
 import {
   meshImportFeatureType,
@@ -6,7 +7,6 @@ import {
 import { parseGeometryImport } from "@vibeshape/formats/import"
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { type GeometryEngineMetadata, sourceAssetMaterializationSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { inspectMeshSource, rebuildImportedMesh } from "./mesh-source-import"
 import { validateRebuildSourceMaterialization } from "./source-materialization"
 

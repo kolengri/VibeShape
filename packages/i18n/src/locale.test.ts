@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 
 import { findAvailableLocale, getLocaleDirection, persistLocale, readStoredLocale } from "./locale"
 

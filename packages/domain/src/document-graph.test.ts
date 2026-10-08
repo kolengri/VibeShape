@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   createDocumentDependencyGraph,
   createDocumentDependencyGraphFromSnapshot,
@@ -440,7 +440,7 @@ describe("createDocumentDependencyGraph", () => {
       sketches: [supportedSketch("2", "3"), sketch("1")],
       features: [extrusion("3", "1")],
     })
-    expect(result).toEqual({
+    expect(result).toEqual<unknown>({
       ok: true,
       history: [
         { kind: "sketch", id: id("1") },
@@ -461,7 +461,7 @@ describe("createDocumentDependencyGraph", () => {
       sketches: [sketch("2"), sketch("1")],
       features: [feature("9"), feature("1")],
     }
-    expect(deriveLegacyHistory(snapshot)).toEqual({
+    expect(deriveLegacyHistory(snapshot)).toEqual<unknown>({
       ok: true,
       history: [
         { kind: "feature", id: id("9") },
@@ -481,7 +481,7 @@ describe("createDocumentDependencyGraph", () => {
         { kind: "feature", id: id("2") },
         { kind: "feature", id: id("1") },
       ]),
-    ).toEqual({
+    ).toEqual<unknown>({
       ok: true,
       history: [
         { kind: "feature", id: id("1") },
@@ -599,7 +599,7 @@ describe("createDocumentDependencyGraph", () => {
         result.graph.edges
           .filter(({ target: owner }) => owner.id === thread.id)
           .map(({ source }) => source.id),
-      ).toEqual(thread.dependencies)
+      ).toEqual<unknown>(thread.dependencies)
       const malformed = createDocumentDependencyGraphFromSnapshot({
         sketches: [],
         features: [
@@ -715,24 +715,24 @@ describe("createDocumentDependencyGraph", () => {
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.graph.edges).toEqual([
+    expect(result.graph.edges).toEqual<unknown>([
       {
         source: { kind: "feature", id: id("1") },
         target: { kind: "feature", id: id("2") },
         relation: "feature-dependency",
       },
     ])
-    expect(result.graph.evaluationOrder).toEqual([
+    expect(result.graph.evaluationOrder).toEqual<unknown>([
       { kind: "feature", id: id("1") },
       { kind: "feature", id: id("2") },
       { kind: "feature", id: id("3") },
     ])
     expect(
       result.graph.dependenciesOf({ kind: "feature", id: id("2") } as DocumentNodeRef),
-    ).toEqual([{ kind: "feature", id: id("1") }])
-    expect(result.graph.dependentsOf({ kind: "feature", id: id("1") } as DocumentNodeRef)).toEqual([
-      { kind: "feature", id: id("2") },
-    ])
+    ).toEqual<unknown>([{ kind: "feature", id: id("1") }])
+    expect(
+      result.graph.dependentsOf({ kind: "feature", id: id("1") } as DocumentNodeRef),
+    ).toEqual<unknown>([{ kind: "feature", id: id("2") }])
   })
 
   it("requires exact history coverage and never throws on malformed history", () => {
@@ -839,8 +839,8 @@ describe("createDocumentDependencyGraph", () => {
     ])
     expect(
       result.graph.dependenciesOf({ kind: "feature", id: id("2") } as DocumentNodeRef),
-    ).toEqual([{ kind: "feature", id: id("1") }])
-    expect(result.graph.dependencyModelIssues).toEqual([
+    ).toEqual<unknown>([{ kind: "feature", id: id("1") }])
+    expect(result.graph.dependencyModelIssues).toEqual<unknown>([
       {
         featureId: id("1"),
         ownerPath: "features.0.type",
@@ -854,7 +854,7 @@ describe("createDocumentDependencyGraph", () => {
     ])
     expect(
       result.graph.deletionBlockersFor({ kind: "feature", id: id("1") } as DocumentNodeRef),
-    ).toEqual([
+    ).toEqual<unknown>([
       {
         dependent: { kind: "feature", id: id("2") },
         ownerPath: "features.1.dependencies.0",
@@ -931,7 +931,9 @@ describe("createDocumentDependencyGraph", () => {
       "revolve-profile",
       "sketch-support",
     ])
-    expect(result.graph.getNode({ kind: "sketch", id: id("1") } as DocumentNodeRef)?.ref).toEqual({
+    expect(
+      result.graph.getNode({ kind: "sketch", id: id("1") } as DocumentNodeRef)?.ref,
+    ).toEqual<unknown>({
       kind: "sketch",
       id: id("1"),
     })
@@ -1041,7 +1043,7 @@ describe("createDocumentDependencyGraph", () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.graph.edges).toContainEqual({
+    expect(result.graph.edges).toContainEqual<unknown>({
       source: { kind: "feature", id: id("1") },
       target: { kind: "sketch", id: id("2") },
       relation: "feature-topology-reference",

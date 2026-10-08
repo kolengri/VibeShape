@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { localAutomationRequest } from "./local-automation-http"
 
 afterEach(() => {
@@ -22,7 +23,7 @@ describe("local automation response boundaries", () => {
       ),
     )
     await expect(localAutomationRequest("/poll", {})).rejects.toThrow("too large")
-    expect(cancelled).toHaveBeenCalledOnce()
+    expect(cancelled).toHaveBeenCalledTimes(1)
   })
   it("keeps the deadline active after response headers arrive", async () => {
     vi.useFakeTimers()
@@ -68,7 +69,7 @@ it("does not retry pairing or malformed protocol responses", async () => {
   const fetch = vi.fn().mockRejectedValue(new TypeError("Offline"))
   vi.stubGlobal("fetch", fetch)
   await expect(localAutomationRequest("/connect", {})).rejects.toThrow("temporarily unavailable")
-  expect(fetch).toHaveBeenCalledOnce()
+  expect(fetch).toHaveBeenCalledTimes(1)
   fetch.mockResolvedValue(new Response("not-json"))
   await expect(localAutomationRequest("/poll", {})).rejects.toThrow()
   expect(fetch).toHaveBeenCalledTimes(2)

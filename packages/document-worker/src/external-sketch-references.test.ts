@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   documentSnapshotSchema,
@@ -12,7 +13,7 @@ import {
   SKETCH_SOLVER_BUILD,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   inspectExternalModelReferenceHealth,
   resolveExternalSketchGeometry,

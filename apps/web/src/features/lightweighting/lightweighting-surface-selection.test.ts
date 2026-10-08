@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
-import { describe, expect, it } from "vitest"
 import {
   initialLightweightingFields,
   type LightweightingSource,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   shellFeatureContentParametersSchema,
   shellFeatureContentParametersV2Schema,
@@ -26,7 +26,7 @@ const parameters = {
 }
 describe("Shell v1 worker content", () => {
   it("accepts only explicit direction, positive thickness and stable body-scoped face signatures", () => {
-    expect(shellFeatureContentParametersSchema.parse(parameters)).toEqual(parameters)
+    expect(shellFeatureContentParametersSchema.parse(parameters)).toEqual<unknown>(parameters)
     expect(
       shellFeatureContentParametersSchema.safeParse({ ...parameters, thickness: -1 }).success,
     ).toBe(false)
@@ -59,7 +59,7 @@ describe("Shell v1 worker content", () => {
 describe("Shell v2 worker content", () => {
   it("allows an explicit closed cavity without weakening v1 or accepting native face identities", () => {
     const closed = { ...parameters, openings: [] }
-    expect(shellFeatureContentParametersV2Schema.parse(closed)).toEqual(closed)
+    expect(shellFeatureContentParametersV2Schema.parse(closed)).toEqual<unknown>(closed)
     expect(shellFeatureContentParametersSchema.safeParse(closed).success).toBe(false)
     expect(
       shellFeatureContentParametersV2Schema.safeParse({

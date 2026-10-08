@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -9,7 +10,6 @@ import {
   featureRecordSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   datumPlaneFrame,
   projectSketchPointBetweenFrames,
@@ -156,7 +156,7 @@ describe("support-frame resolution", () => {
   ] as const)("resolves the %s origin plane", (plane, origin, xAxis, yAxis, normal) => {
     const source = sketchRecordSchema.parse({ ...sketch(), plane })
     const document = documentWith([source], [])
-    expect(sketchFrame(source, document, [])).toEqual({ origin, xAxis, yAxis, normal })
+    expect(sketchFrame(source, document, [])).toEqual<unknown>({ origin, xAxis, yAxis, normal })
   })
 
   it("resolves a feature face and recursively offsets a datum plane", () => {

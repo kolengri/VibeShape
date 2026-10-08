@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   type FeatureContentEnvironment,
   GEOMETRY_MEMORY_STAGES,
@@ -13,7 +14,6 @@ import {
   type TopologySpikeParameters,
 } from "@vibeshape/protocol"
 import { createKernelSpikeParameters } from "@vibeshape/test-models"
-import { describe, expect, it } from "vitest"
 import type {
   FeatureEvaluationInput,
   FeatureEvaluationResult,

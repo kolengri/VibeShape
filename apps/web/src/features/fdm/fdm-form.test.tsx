@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeAll, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { FdmForm } from "./fdm-form"
@@ -61,7 +62,7 @@ it("previews and saves editable coupon parameters with a stable feature identity
     ),
   )
   await userEvent.click(screen.getByRole("button", { name: "Create" }))
-  await waitFor(() => expect(f.onSave).toHaveBeenCalledOnce())
+  await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
   const parameters = f.onSave.mock.calls[0]?.[1]
   expect(parameters?.id).toBe(id)
   expect(parameters?.parameters).toMatchObject({
@@ -69,7 +70,7 @@ it("previews and saves editable coupon parameters with a stable feature identity
     holeCount: 5,
     diameterStart: { value: 4 },
   })
-  expect(f.onSaved).toHaveBeenCalledOnce()
+  expect(f.onSaved).toHaveBeenCalledTimes(1)
 })
 it("prevents overlapping holes and recovers after a rejected save", async () => {
   const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => {

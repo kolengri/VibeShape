@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS, topologyCandidatesSchema } from "./geometry-worker"
 
 const candidate = (candidateId: string, points: number) => ({

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { assemblyExportSettingsSchema } from "./assembly-export"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerRequestSchema } from "./document-worker"
 import { meshExportQualitySchema } from "./mesh-export-quality"

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
   createLengthQuantity,
@@ -5,7 +6,6 @@ import {
   featureIdSchema,
   featureRecordSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import { terminalFeatureIds } from "./terminal-features"
 
 const boxId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2711")

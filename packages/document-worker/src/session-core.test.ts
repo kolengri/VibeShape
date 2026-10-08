@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain"
 import {
   DOCUMENT_PROTOCOL_VERSION,
@@ -6,7 +7,6 @@ import {
   documentRebuildSnapshotSchema,
   sourceAssetMaterializationsSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { DocumentWorkerRequestError } from "./client-core"
 import { inspectMeshSource } from "./mesh-source-import"
 import {

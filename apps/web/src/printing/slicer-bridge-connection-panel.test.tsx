@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { TextField } from "@vibeshape/ui/components/text-field"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { SlicerBridgeConnectionPanel } from "./slicer-bridge-connection-panel"
 
 afterEach(cleanup)
@@ -28,6 +28,6 @@ describe("SlicerBridgeConnectionPanel", () => {
     expect(token.value).toBe("replacement")
 
     await user.click(screen.getByRole("button", { name: "Disconnect" }))
-    expect(onDisconnect).toHaveBeenCalledOnce()
+    expect(onDisconnect).toHaveBeenCalledTimes(1)
   })
 })

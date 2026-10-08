@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -16,7 +17,6 @@ import {
   serializeFeatureContentIdentity,
   serializeFeatureContentEnvironment as serializeProtocolEnvironment,
 } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 
 function registry() {
   const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])

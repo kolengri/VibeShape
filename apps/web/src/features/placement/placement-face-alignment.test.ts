@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { featureIdSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   calculateFaceAlignment,
   type PlacementAlignmentFace,

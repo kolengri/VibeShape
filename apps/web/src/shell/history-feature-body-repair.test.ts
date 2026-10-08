@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createAngleQuantity,
   createLengthQuantity,
@@ -18,7 +19,6 @@ import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
-import { describe, expect, it } from "vitest"
 import { shellFormFeature, shellInitialValues } from "../features/shell/shell-form-model"
 import { missingHistoryFeatureBody, replaceHistoryFeatureBody } from "./history-feature-body-repair"
 
@@ -155,7 +155,7 @@ describe("retained body feature form adapters", () => {
     })
     const adapted = replaceHistoryFeatureBody(original, missingInputs, replacement)
     expect(adapted?.feature.dependencies).toEqual([replacementId, sourceId])
-    expect(adapted?.feature.parameters.plane).toEqual(plane)
+    expect(adapted?.feature.parameters.plane).toEqual<unknown>(plane)
   })
 
   it("requires new Shell openings while retaining open cavity, thickness and direction", () => {
@@ -187,7 +187,7 @@ describe("retained body feature form adapters", () => {
       openingIds: [],
     })
     expect(adapted.feature.parameters.openings).toEqual([])
-    expect(original.parameters.openings).toEqual([opening])
+    expect(original.parameters.openings).toEqual<unknown>([opening])
     const copy = {
       invalidExpression: "Invalid",
       invalidDimension: "Invalid",

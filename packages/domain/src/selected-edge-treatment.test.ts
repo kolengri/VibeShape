@@ -1,4 +1,4 @@
-import { expect, it } from "vitest"
+import { expect, it } from "bun:test"
 import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import { createFeatureContentIdentity } from "./feature-content-identity"
 import { featureBodyDependencyIds } from "./feature-dependencies"
@@ -81,7 +81,7 @@ it.each([filletFeatureTypeV2, chamferFeatureTypeV2])(
   (type) => {
     const feature = treatment(type)
     expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
-    expect(featureBodyDependencyIds(feature)).toEqual([targetId])
+    expect(featureBodyDependencyIds(feature)).toEqual<unknown>([targetId])
   },
 )
 
@@ -226,7 +226,9 @@ it("preserves selected references through versioned history, replay, projection,
   const projected = projectDocumentSnapshotV1ToV0(updated.snapshot)
   expect(projected).toMatchObject({ ok: true })
   if (projected.ok)
-    expect(projected.snapshot.features.at(-1)?.references).toEqual(updatedFeature.references)
+    expect(projected.snapshot.features.at(-1)?.references).toEqual<unknown>(
+      updatedFeature.references,
+    )
   const graph = createDocumentDependencyGraphFromSnapshot({
     sketches: [],
     features: [box, updatedFeature],

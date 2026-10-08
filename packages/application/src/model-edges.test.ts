@@ -1,9 +1,9 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import { createModelEdgeEvidence } from "./model-edges"
 import type { DocumentRebuildPort } from "./persistent-document-session"
@@ -330,7 +330,7 @@ describe("model edge evidence projection", () => {
       "invalid-geometry-evidence",
     ],
   ])("rejects inconsistent rebuild evidence %#", (overrides, code) => {
-    expect(inspect(response(overrides))).toEqual({ ok: false, code })
+    expect(inspect(response(overrides))).toEqual<unknown>({ ok: false, code })
   })
   it("rejects partial edge catalogs even when the worker envelope is valid", () => {
     const geometry = response().geometry[0]

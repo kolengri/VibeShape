@@ -1,3 +1,4 @@
+import { afterEach, describe, expect, it } from "bun:test"
 import {
   chmodSync,
   existsSync,
@@ -14,7 +15,6 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { afterEach, describe, expect, it } from "vitest"
 import { createDistributionManifest, verifyDistribution } from "./local-distribution-files"
 import { installDistribution, rollbackDistribution } from "./local-distribution-install"
 

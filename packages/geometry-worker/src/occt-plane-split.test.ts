@@ -1,10 +1,10 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopAbs_ShapeEnum,
 } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { placeOcctShape } from "./occt-placement"
 import {
   createOcctPlaneSplitOperations,
@@ -133,18 +133,18 @@ describe("owned exact origin-plane split", () => {
         offset: 1,
       })
       const axis = plane === "XY" ? 2 : plane === "XZ" ? 1 : 0
-      expect(result.negative).toBe(f.outputs[0])
-      expect(result.positive).toBe(f.outputs[1])
+      expect(result.negative).toBe<unknown>(f.outputs[0])
+      expect(result.positive).toBe<unknown>(f.outputs[1])
       expect(f.outputs[0]?.bounds.max[axis]).toBe(1)
       expect(f.outputs[1]?.bounds.min[axis]).toBe(1)
       expect(f.copy).toHaveBeenCalledWith(f.occt, f.source)
       for (const temporary of [...f.copies, ...f.boxes])
-        expect(temporary.delete).toHaveBeenCalledOnce()
+        expect(temporary.delete).toHaveBeenCalledTimes(1)
       for (const output of f.outputs) expect(output.delete).not.toHaveBeenCalled()
       expect(f.source.delete).not.toHaveBeenCalled()
       result.negative.delete()
       result.positive.delete()
-      for (const output of f.outputs) expect(output.delete).toHaveBeenCalledOnce()
+      for (const output of f.outputs) expect(output.delete).toHaveBeenCalledTimes(1)
     },
   )
 
@@ -178,7 +178,7 @@ describe("owned exact origin-plane split", () => {
         f.operations.splitShape(f.occt, f.source as unknown as Shape3D, { plane: "XY", offset: 1 }),
       ).toThrow("Native fixture failure")
       for (const owned of [...f.copies, ...f.boxes, ...f.outputs])
-        expect(owned.delete).toHaveBeenCalledOnce()
+        expect(owned.delete).toHaveBeenCalledTimes(1)
       expect(f.source.delete).not.toHaveBeenCalled()
     },
   )
@@ -213,7 +213,7 @@ describe("owned exact origin-plane split", () => {
       f.operations.splitShape(f.occt, f.source as unknown as Shape3D, { plane: "XY", offset: 1 }),
     ).toThrow()
     for (const owned of [...f.copies, ...f.boxes, ...f.outputs])
-      expect(owned.delete).toHaveBeenCalledOnce()
+      expect(owned.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
   })
 
@@ -227,7 +227,7 @@ describe("owned exact origin-plane split", () => {
       f.operations.splitShape(f.occt, f.source as unknown as Shape3D, { plane: "XY", offset: 1 }),
     ).toThrow("conserve")
     for (const owned of [...f.copies, ...f.boxes, ...f.outputs])
-      expect(owned.delete).toHaveBeenCalledOnce()
+      expect(owned.delete).toHaveBeenCalledTimes(1)
   })
 
   it("discards outputs and attempts every release after a temporary deletion failure", () => {
@@ -245,7 +245,7 @@ describe("owned exact origin-plane split", () => {
       f.operations.splitShape(f.occt, f.source as unknown as Shape3D, { plane: "XY", offset: 1 }),
     ).toThrow("release every")
     for (const owned of [...f.copies, ...f.boxes, ...f.outputs])
-      expect(owned.delete).toHaveBeenCalledOnce()
+      expect(owned.delete).toHaveBeenCalledTimes(1)
     expect(f.source.delete).not.toHaveBeenCalled()
   })
 
@@ -300,7 +300,7 @@ describe("owned exact origin-plane split", () => {
     expect(() =>
       f.operations.splitShape(f.occt, f.source as unknown as Shape3D, { plane: "XY", offset: 0 }),
     ).toThrow("conserve")
-    for (const output of f.outputs) expect(output.delete).toHaveBeenCalledOnce()
+    for (const output of f.outputs) expect(output.delete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -499,7 +499,7 @@ describe("origin-plane split with pinned real OCCT", () => {
       result = operations.splitShape(occt, source, { plane: "XY", offset: 5 })
       expect(() => operations.splitShape(occt, source, { plane: "XY", offset: -3 })).toThrow()
       expect(copies).toHaveLength(2)
-      for (const copy of copies) expect(copy.deletion).toHaveBeenCalledOnce()
+      for (const copy of copies) expect(copy.deletion).toHaveBeenCalledTimes(1)
       expect(measure(source).valid).toBe(true)
     } finally {
       dispose(result)

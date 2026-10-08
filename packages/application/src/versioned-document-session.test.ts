@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
   type DocumentId,
@@ -9,7 +10,6 @@ import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import { applyDocumentUpgradeV2Command } from "@vibeshape/domain/document-v2-migration"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import {
   type AuthorityDocumentSessionDependencies,
   openAuthorityDocumentSession,

@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { createAngleQuantity, createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import { localOperationSchema } from "./local-tools"
 import { remoteOperationSchema } from "./remote-session"
 
@@ -50,7 +50,7 @@ describe("named text and Placement schemas", () => {
       { tool: "create_placement", arguments: placement },
       { tool: "update_placement", arguments: placement },
     ])
-      expect(remoteOperationSchema.parse(value)).toEqual(localOperationSchema.parse(value))
+      expect(remoteOperationSchema.parse(value)).toEqual<unknown>(localOperationSchema.parse(value))
   })
   it("rejects caller font identity/digests, unsupported text and nonfinite/out-of-range layout", () => {
     for (const args of [

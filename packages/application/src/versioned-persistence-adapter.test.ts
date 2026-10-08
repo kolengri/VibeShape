@@ -1,3 +1,4 @@
+import { expect, it } from "bun:test"
 import {
   applyVersionedDocumentCommand,
   boxFeatureType,
@@ -9,7 +10,6 @@ import {
   projectDocumentSnapshotV1ToV0,
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
-import { expect, it } from "vitest"
 import {
   createVersionedPersistenceAdapter,
   type VersionedDocumentRepositoryPort,
@@ -243,7 +243,7 @@ it("translates a legacy sketch add at the final History anchor", async () => {
     event: legacySketchEvent(next.event as DocumentEvent),
     snapshot: result.snapshot,
   })
-  expect(received?.event.type).toBe("org.vibeshape.history.sketch-inserted")
+  expect(received?.event.type).toBe<unknown>("org.vibeshape.history.sketch-inserted")
   expect(received).toMatchObject({
     event: {
       type: "org.vibeshape.history.sketch-inserted",
@@ -353,7 +353,7 @@ it("persists a semantic History move without losing the projected legacy session
     item: second.snapshot.history[1],
     historyAfter: null,
   })
-  expect(adapter.semanticHistory.items).toEqual([
+  expect(adapter.semanticHistory.items).toEqual<unknown>([
     second.snapshot.history[1],
     second.snapshot.history[0],
   ])

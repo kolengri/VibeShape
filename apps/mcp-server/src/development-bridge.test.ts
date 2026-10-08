@@ -1,12 +1,10 @@
-// @vitest-environment node
-
+import { afterEach, describe, expect, it } from "bun:test"
 import { createServer, request as httpRequest } from "node:http"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
-import { afterEach, describe, expect, it } from "vitest"
 import { createDevelopmentBridge } from "./development-bridge"
 
 const cleanups: Array<() => Promise<void>> = []
@@ -25,6 +23,7 @@ async function start() {
   cleanups.push(async () => {
     await bridge.close()
     http.closeAllConnections()
+    if (!http.listening) return
     await new Promise<void>((resolve, reject) =>
       http.close((error) => (error ? reject(error) : resolve())),
     )

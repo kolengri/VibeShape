@@ -1,13 +1,13 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { moduleIdSchema } from "@vibeshape/domain/identifiers"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
-import { describe, expect, it } from "vitest"
 import {
   createQueryDispatcher,
   documentCoreQueryHandlers,
   documentSummaryViewSchema,
-  queryDocumentVariables,
   queryDocumentSummary,
+  queryDocumentVariables,
   type TrustedQueryHandler,
 } from "./queries"
 
@@ -75,7 +75,7 @@ describe("document summary query", () => {
   it("returns a bounded semantic view tagged with the requested revision", () => {
     const result = queryDocumentSummary(snapshot, query())
 
-    expect(result).toEqual({
+    expect(result).toEqual<unknown>({
       ok: true,
       view: {
         kind: "org.vibeshape.document.summary",

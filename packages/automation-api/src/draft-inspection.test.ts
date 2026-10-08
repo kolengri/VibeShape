@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { modelEdgeEvidenceSchema } from "@vibeshape/domain/model-edges"
-import { describe, expect, it } from "vitest"
 import {
   automationDraftEdgeEvidenceSchema,
   automationDraftInspectionRequestSchema,
@@ -179,7 +179,7 @@ it.each(["draft_body_measurements", "draft_body_topology"] as const)(
     }
     const local = localOperationSchema.parse({ tool, arguments: argumentsInput })
     expect(local.arguments).toMatchObject({ cursor: null, limit: 20 })
-    expect(remoteOperationSchema.parse({ tool, arguments: argumentsInput })).toEqual(local)
+    expect(remoteOperationSchema.parse({ tool, arguments: argumentsInput })).toEqual<unknown>(local)
     expect(
       localOperationSchema.safeParse({ tool, arguments: { ...argumentsInput, documentId } })
         .success,

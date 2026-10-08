@@ -1,10 +1,10 @@
+import { describe, expect, it } from "bun:test"
 import { datumPlaneFeatureType } from "@vibeshape/domain"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import { createModelDiagnosticsEvidence } from "./model-diagnostics"
 import {
@@ -154,7 +154,7 @@ describe("createModelMeasurementEvidence", () => {
         ]),
       ),
     )
-    expect(result).toEqual({
+    expect(result).toEqual<unknown>({
       ok: true,
       evidence: {
         schemaVersion: 1,
@@ -176,7 +176,7 @@ describe("createModelMeasurementEvidence", () => {
         ],
       },
     })
-    expect(current.features.map((feature) => feature.id)).toEqual(featureIds)
+    expect(current.features.map((feature) => feature.id)).toEqual<unknown>(featureIds)
   })
 
   it("rejects foreign or missing evaluation IDs and malformed geometry evidence", () => {
@@ -236,7 +236,7 @@ describe("createModelMeasurementEvidence", () => {
     expect(result.evidence.features[0]).not.toHaveProperty("mesh")
     expect(result.evidence.features[0]).not.toHaveProperty("topologyCandidates")
     ;(result.evidence.features[0] as { shape: { volume: number } }).shape.volume = 999
-    expect(current.features.map((feature) => feature.id)).toEqual(featureIds)
+    expect(current.features.map((feature) => feature.id)).toEqual<unknown>(featureIds)
     expect(validGeometry.shape.volume).toBe(120)
   })
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 import { createRectangleSketch } from "./rectangle-sketch"
 import { treatSketchCorner } from "./sketch-corner-edit"

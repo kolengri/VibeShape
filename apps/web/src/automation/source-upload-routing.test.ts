@@ -1,6 +1,6 @@
-// @vitest-environment node
+import { expect, it } from "bun:test"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
-import { expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { inspection } from "../features/import/import-test-fixtures"
 import { createImportUploadSession } from "./import-upload-session"
 import { createLocalToolExecutor } from "./local-tool-executor"

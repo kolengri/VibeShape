@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   structuralOptimizationSettingsSchema,
   structuralOptimizationSummarySchema,
@@ -42,7 +42,7 @@ describe("structural objectives", () => {
       targetStatus: "reached",
     }
     const schema = structuralOptimizationSummarySchema.shape.objective
-    expect(schema.parse(objective)).toEqual(objective)
+    expect(schema.parse(objective)).toEqual<unknown>(objective)
     expect(
       schema.safeParse({ kind: "maximize-stiffness", retainedMassFraction: 0.96 }).success,
     ).toBe(false)
@@ -60,8 +60,8 @@ describe("structural regions", () => {
   it("preserves strict legacy boxes and accepts captured surface triangles", () => {
     const box = { min: [-2, 0, 1], max: [2, 0, 3] }
     const surface = { kind: "surface", triangleIndices: [0, 19_999], depthMm: 0.5 }
-    expect(structuralRegionSchema.parse(box)).toEqual(box)
-    expect(structuralRegionSchema.parse(surface)).toEqual(surface)
+    expect(structuralRegionSchema.parse(box)).toEqual<unknown>(box)
+    expect(structuralRegionSchema.parse(surface)).toEqual<unknown>(surface)
   })
 
   it.each([

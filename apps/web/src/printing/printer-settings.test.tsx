@@ -1,11 +1,12 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
-import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { ViewerPreferencesProvider } from "../shell/viewer-preferences"
+import { createTestBrowserStorage } from "../test-support/browser-storage"
 import { PrinterSettings } from "./printer-settings"
 
 beforeEach(() => {

@@ -1,8 +1,8 @@
+import { describe, expect, it } from "bun:test"
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, createAngleQuantity } from "@vibeshape/domain"
 import { revolveFeatureTypeV7 } from "@vibeshape/domain/part-design"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
-import { describe, expect, it } from "vitest"
 import { createLocalCadCommand } from "./local-cad-command"
 
 const id = (n: number) => `0195b5ac-b260-7a2c-8c33-${String(n).padStart(12, "0")}`

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   assemblyAuthoritySchema,
   captureAssemblyDefinition,
@@ -303,9 +303,13 @@ describe("typed V3 assembly authority", () => {
     const f = populated()
     const captured = f.added.snapshot.assembly.definitions[0]
     expect(captured?.pinRevision).toBe(1)
-    expect(captured?.pinnedModels[0]?.selectedBody).toEqual(body())
-    expect(captured?.pinnedModels[0]?.snapshot.features.map(({ id }) => id)).toEqual([id(2)])
-    expect(captured?.pinnedModels[0]?.snapshot.history).toEqual([{ kind: "feature", id: id(2) }])
+    expect(captured?.pinnedModels[0]?.selectedBody).toEqual<unknown>(body())
+    expect(captured?.pinnedModels[0]?.snapshot.features.map(({ id }) => id)).toEqual<unknown>([
+      id(2),
+    ])
+    expect(captured?.pinnedModels[0]?.snapshot.history).toEqual<unknown>([
+      { kind: "feature", id: id(2) },
+    ])
     expect(f.added.snapshot.parts).toEqual(f.snapshot.parts)
     expect(solveAssemblyKinematics(projectAssemblyAuthority(f.added.snapshot.assembly)).ok).toBe(
       true,
@@ -534,12 +538,12 @@ describe("typed V3 assembly authority", () => {
     const imported = meshImport(sourced.snapshot)
     const added = value(mutate(imported.snapshot, [{ kind: "definition.create", definition: def }]))
     const pinned = added.snapshot.assembly.definitions[0]?.pinnedModels[0]
-    expect(pinned?.selectedBody).toEqual(imported.selectedBody)
+    expect(pinned?.selectedBody).toEqual<unknown>(imported.selectedBody)
     expect(pinned?.snapshot.features[0]?.parameters).toEqual(
       imported.snapshot.features.find(({ id }) => id === imported.selectedBody.featureId)
         ?.parameters,
     )
-    expect(captureAssemblyDefinition(imported.snapshot, def).sources).toEqual(def.sources)
+    expect(captureAssemblyDefinition(imported.snapshot, def).sources).toEqual<unknown>(def.sources)
     expect(documentSourceAssetClosure(null, [added.event], f.snapshot)).toEqual([asset])
     for (const changed of [{ assetId: id(99) }, { digest: "d".repeat(64) }, { outputId: id(99) }])
       expect(
@@ -581,7 +585,7 @@ describe("typed V3 assembly authority", () => {
     const first = meshImport(sourced, 5)
     const identical = meshImport(first.snapshot, 4)
     const captured = captureAssemblyDefinition(identical.snapshot, def)
-    expect(captured.pinnedModels[0]?.selectedBody.featureId).toBe(id(4))
+    expect(captured.pinnedModels[0]?.selectedBody.featureId).toBe<unknown>(id(4))
     const conflicting = meshImport(identical.snapshot, 6, "3mf.node.2")
     expect(() => captureAssemblyDefinition(conflicting.snapshot, def)).toThrow(
       "conflicting import manifests",
@@ -666,7 +670,7 @@ describe("typed V3 assembly authority", () => {
         },
       ],
     })
-    expect(captured.pinnedModels[0]?.selectedBody).toEqual(selectedBody)
+    expect(captured.pinnedModels[0]?.selectedBody).toEqual<unknown>(selectedBody)
     expect(captured.pinnedModels[0]?.snapshot.features[0]?.parameters).toEqual(parameters)
     expect(captured.pinnedModels[0]?.assets).toEqual([exactAsset])
   })
@@ -772,7 +776,7 @@ describe("typed V3 assembly authority", () => {
       sources: [{ ...definition().sources[0], body: { ...body(), featureId: id(5) } }],
     }
     const captured = captureAssemblyDefinition(source, def)
-    expect(captured.pinnedModels[0]?.snapshot.history).toEqual([
+    expect(captured.pinnedModels[0]?.snapshot.history).toEqual<unknown>([
       { kind: "feature", id: id(2) },
       { kind: "feature", id: id(5) },
     ])
@@ -960,7 +964,7 @@ describe("versioned general assembly authority", () => {
     for (const instance of upgraded.snapshot.assembly.instances) {
       expect(instance.schemaVersion).toBe(2)
       if (instance.schemaVersion === 2 && !instance.grounded)
-        expect(instance.initialFrame).toEqual(
+        expect(instance.initialFrame).toEqual<unknown>(
           legacyPoses.instances.find((p) => p.instanceId === instance.id)?.worldFrame,
         )
     }
@@ -990,10 +994,10 @@ describe("versioned general assembly authority", () => {
     const removed = value(
       mutate(loop.snapshot, [{ kind: "instance.remove", instanceId: id(60), cascade: true }]),
     )
-    expect(removed.snapshot.assembly.instances.map((i) => i.id)).toEqual([id(61)])
+    expect(removed.snapshot.assembly.instances.map((i) => i.id)).toEqual<unknown>([id(61)])
     expect(removed.snapshot.assembly.joints).toEqual([])
     // Solvability is a worker concern; replay must retain even an unanchored authored graph.
-    expect(documentSnapshotV4Schema.parse(removed.snapshot)).toEqual(removed.snapshot)
+    expect(documentSnapshotV4Schema.parse(removed.snapshot)).toEqual<unknown>(removed.snapshot)
   })
   it("restores the exact schema version and frozen pins through Undo, Redo and complete replay", () => {
     const f = populated(),

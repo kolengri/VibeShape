@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
@@ -11,7 +12,6 @@ import { loftFeatureType } from "@vibeshape/domain/part-design-loft"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { createAngleQuantity, createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "./queries"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -187,7 +187,10 @@ describe("CAD inspection queries", () => {
     const result = dispatcher().dispatch(current, listQuery({ limit: 2, cursor: "1" }))
     expect(result).toMatchObject({ ok: true, view: { nextCursor: null, data: { total: 3 } } })
     if (result.ok && result.view.kind === "org.vibeshape.cad.inspection.list")
-      expect(result.view.data.items.map((item) => item.id)).toEqual([secondFeatureId, sketchId])
+      expect(result.view.data.items.map((item) => item.id)).toEqual<unknown>([
+        secondFeatureId,
+        sketchId,
+      ])
   })
 
   it("derives multi-profile dependencies only from validated CAD feature types", () => {

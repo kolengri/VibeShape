@@ -1,10 +1,11 @@
-// @vitest-environment jsdom
+import "../../../../../tests/unit/support/dom"
+import { afterEach, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { bodyTopoRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { referenceAxisSchema, referencePlaneSchema } from "@vibeshape/domain/reference-frame"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { ReferenceAxisSelection, ReferencePlaneSelection } from "./reference-support-fields"
 
@@ -85,6 +86,7 @@ it.each(["plane", "axis"] as const)(
     expect(source.selectedOptions[0]?.textContent).toBe("Selected reference")
     expect(onChange).not.toHaveBeenCalled()
     await userEvent.selectOptions(source, "fresh")
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(current)
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith(current)
   },
 )

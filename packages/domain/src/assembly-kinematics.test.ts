@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import type { AssemblyQuaternion, AssemblyRigidPose, AssemblyVector3 } from "./assembly"
 import { solveAssemblyKinematics } from "./assembly-kinematics"
 
@@ -233,8 +233,8 @@ describe("deterministic bounded assembly evaluation", () => {
       joints: [fixed(102, 10, 40), fixed(101, 10, 20)],
     }
     const result = solved(raw)
-    expect(result.evaluationOrder).toEqual([id(10), id(30), id(20), id(40)])
-    expect(result.instances.map((entry) => entry.instanceId)).toEqual([
+    expect(result.evaluationOrder).toEqual<unknown>([id(10), id(30), id(20), id(40)])
+    expect(result.instances.map((entry) => entry.instanceId)).toEqual<unknown>([
       id(10),
       id(20),
       id(30),
@@ -385,6 +385,6 @@ describe("deterministic bounded assembly evaluation", () => {
     Object.freeze(raw.joints)
     Object.freeze(raw)
     solved(raw)
-    expect(raw).toEqual(original)
+    expect(raw).toEqual<unknown>(original)
   })
 })

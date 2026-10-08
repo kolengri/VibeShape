@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
 
 describe("exact selected-edge acquisition", () => {

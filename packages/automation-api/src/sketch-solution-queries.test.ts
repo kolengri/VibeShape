@@ -1,3 +1,4 @@
+import { expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import {
   sketchConstraintIdSchema,
@@ -8,7 +9,6 @@ import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modu
 import { createRectangleSketch } from "@vibeshape/domain/rectangle-sketch"
 import { sketchSolutionEvidenceSchema } from "@vibeshape/domain/sketch-solution-evidence"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { expect, it } from "vitest"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "./queries"
 import {
   sketchSolutionPageMatches,

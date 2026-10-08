@@ -1,7 +1,7 @@
+import { describe, expect, it } from "bun:test"
 import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { surfaceTextureCommandSchema } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { commandActorSchema } from "@vibeshape/domain/commands"
-import { describe, expect, it } from "vitest"
 import {
   surfaceTextureProjectFixture,
   textureFixtureId,

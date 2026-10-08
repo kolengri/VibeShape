@@ -1,22 +1,14 @@
-// @vitest-environment jsdom
-import { webcrypto } from "node:crypto"
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import "../../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
-import { I18nProvider } from "@vibeshape/i18n/provider"
-import { QuickLightweightingError } from "@vibeshape/structural-optimization/quick-client"
 import type {
   QuickLightweightingInput,
   QuickLightweightingResult,
 } from "@vibeshape/structural-optimization/quick-contract"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
-import { i18n } from "../../i18n"
-import messages from "../../i18n/messages/en.json"
-import { authoredTreeFixture } from "../../test-support/authored-tree-fixture"
-import { meshInspection } from "../import/import-test-fixtures"
-import { QuickLightweightingTaskPanel } from "./quick-lightweighting-task-panel"
 
-const ports = vi.hoisted(() => ({
+const ports = (() => ({
   generate: vi.fn(),
   encode: vi.fn(),
   structuralEncode: vi.fn(),
@@ -26,13 +18,14 @@ const ports = vi.hoisted(() => ({
   previewReady: vi.fn(),
   close: vi.fn(),
   registerSubmission: vi.fn(),
-}))
-vi.mock("../../editor-session/editor-session-provider", async (original) => ({
-  ...(await original<typeof import("../../editor-session/editor-session-provider")>()),
+}))()
+const originalModule1 = { ...(await import("../../editor-session/editor-session-provider")) }
+mock.module("../../editor-session/editor-session-provider", () => ({
+  ...originalModule1,
   useRegisterTaskSubmission: ports.registerSubmission,
 }))
-vi.mock("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
-vi.mock("@vibeshape/structural-optimization/quick-client", () => ({
+mock.module("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
+mock.module("@vibeshape/structural-optimization/quick-client", () => ({
   generateQuickLightweighting: ports.generate,
   encodeQuickLightweightingStl: ports.encode,
   QuickLightweightingError: class extends Error {
@@ -41,15 +34,16 @@ vi.mock("@vibeshape/structural-optimization/quick-client", () => ({
     }
   },
 }))
-vi.mock("@vibeshape/structural-optimization/mesh", () => ({
+mock.module("@vibeshape/structural-optimization/mesh", () => ({
   encodeStructuralStl: ports.structuralEncode,
 }))
-vi.mock("../../document/document-controller", () => ({
+mock.module("../../document/document-controller", () => ({
   inspectTriangleMeshSource: ports.inspect,
   commitAuthoredTransaction: ports.apply,
 }))
-vi.mock("../import/import-preview", async () => {
-  const { useEffect } = await import("react")
+const mockDependency1 = await import("react")
+mock.module("../import/import-preview", () => {
+  const { useEffect } = mockDependency1
   return {
     ImportPreview: ({ onReady, label }: { onReady: (ready: boolean) => void; label: string }) => {
       useEffect(() => {
@@ -63,6 +57,16 @@ vi.mock("../import/import-preview", async () => {
     },
   }
 })
+
+const { webcrypto } = await import("node:crypto")
+const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { QuickLightweightingError } = await import("@vibeshape/structural-optimization/quick-client")
+const { i18n } = await import("../../i18n")
+const { default: messages } = await import("../../i18n/messages/en.json")
+const { authoredTreeFixture } = await import("../../test-support/authored-tree-fixture")
+const { meshInspection } = await import("../import/import-test-fixtures")
+const { QuickLightweightingTaskPanel } = await import("./quick-lightweighting-task-panel")
 
 const fixture = authoredTreeFixture()
 const firstPart = fixture.authority.parts[0]
@@ -212,7 +216,7 @@ describe("quick lightweighting task panel", () => {
     await act(async () => expect(await submit()).toBe(false))
     expect(ports.close).not.toHaveBeenCalled()
     await act(async () => expect(await submit()).toBe(true))
-    expect(ports.close).toHaveBeenCalledOnce()
+    expect(ports.close).toHaveBeenCalledTimes(1)
   })
 
   it("keeps the current pointer gesture locked when another slider loses focus", async () => {
@@ -229,7 +233,7 @@ describe("quick lightweighting task panel", () => {
     expect(ports.generate).not.toHaveBeenCalled()
     fireEvent.pointerUp(current)
     await advance(650)
-    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate).toHaveBeenCalledTimes(1)
     expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ cellSizeMm: 0.15 })
   })
 
@@ -249,7 +253,7 @@ describe("quick lightweighting task panel", () => {
     expect(ports.generate).not.toHaveBeenCalled()
     fireEvent.keyUp(slider, { key: "ArrowUp" })
     await advance(650)
-    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate).toHaveBeenCalledTimes(1)
     expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ removalPercent: 70 })
   })
 
@@ -282,7 +286,7 @@ describe("quick lightweighting task panel", () => {
       await advance(649)
       expect(ports.generate).not.toHaveBeenCalled()
       await advance(1)
-      expect(ports.generate).toHaveBeenCalledOnce()
+      expect(ports.generate).toHaveBeenCalledTimes(1)
       expect(ports.generate.mock.calls[0]?.[0]).toMatchObject(expected)
     },
   )
@@ -298,7 +302,7 @@ describe("quick lightweighting task panel", () => {
       expect(ports.generate).not.toHaveBeenCalled()
       fireEvent[event](slider)
       await advance(650)
-      expect(ports.generate).toHaveBeenCalledOnce()
+      expect(ports.generate).toHaveBeenCalledTimes(1)
       expect(ports.generate.mock.calls[0]?.[0]).toMatchObject({ removalPercent: 65 })
     },
   )
@@ -317,7 +321,7 @@ describe("quick lightweighting task panel", () => {
     fireEvent.keyDown(slider, { key: "ArrowRight", repeat: true })
     fireEvent.change(slider, { target: { value: "70" } })
     await advance(1200)
-    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate).toHaveBeenCalledTimes(1)
     fireEvent.keyUp(slider, { key: "ArrowRight" })
     await advance(650)
     expect(ports.generate).toHaveBeenCalledTimes(2)
@@ -366,7 +370,7 @@ describe("quick lightweighting task panel", () => {
     await advance(649)
     expect(ports.generate).not.toHaveBeenCalled()
     await advance(1)
-    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate).toHaveBeenCalledTimes(1)
     expect(screen.queryByText(messages.app.quickLightweighting.schwarzDSampling)).toBeNull()
     expect(ports.generate.mock.calls[0]?.[0]).toEqual({
       schemaVersion: 1,
@@ -378,7 +382,7 @@ describe("quick lightweighting task panel", () => {
       cellType: "gyroid",
       latticeCellSizeMm: 1.125,
     })
-    expect(ports.encode).toHaveBeenCalledOnce()
+    expect(ports.encode).toHaveBeenCalledTimes(1)
     expect(ports.structuralEncode).not.toHaveBeenCalled()
     expect(ports.inspect.mock.calls[0]?.[0]).toMatchObject({ format: "stl", units: "mm" })
     expect(applyButton().disabled).toBe(true)
@@ -386,7 +390,7 @@ describe("quick lightweighting task panel", () => {
     act(() => ports.previewReady(true))
     expect(applyButton().disabled).toBe(false)
     await advance(2_000)
-    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate).toHaveBeenCalledTimes(1)
     expect(ports.apply).not.toHaveBeenCalled()
   })
 
@@ -408,7 +412,7 @@ describe("quick lightweighting task panel", () => {
     })
     expect(signal.aborted).toBe(true)
     await advance(649)
-    expect(ports.generate).toHaveBeenCalledOnce()
+    expect(ports.generate).toHaveBeenCalledTimes(1)
     await advance(1)
     expect(ports.generate).toHaveBeenCalledTimes(2)
     expect(ports.generate.mock.calls[1]?.[0]).toMatchObject({
@@ -419,7 +423,7 @@ describe("quick lightweighting task panel", () => {
       skinThicknessMm: 0.6,
     })
     await act(async () => old.resolve({ ...result, removedPercent: 99 }))
-    expect(ports.inspect).toHaveBeenCalledOnce()
+    expect(ports.inspect).toHaveBeenCalledTimes(1)
     expect(screen.getByText("Material removed: 50%")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Open organic" }))
     expect(screen.queryByRole("img")).toBeNull()
@@ -485,7 +489,7 @@ describe("quick lightweighting task panel", () => {
       open.resolve(result)
       closed.resolve({ ...result, mode: "preserve-exterior" })
     })
-    expect(ports.inspect).toHaveBeenCalledOnce()
+    expect(ports.inspect).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -608,7 +612,7 @@ describe("quick lightweighting task panel", () => {
     await preparedPreview()
     fireEvent.click(applyButton())
     fireEvent.click(applyButton())
-    expect(ports.apply).toHaveBeenCalledOnce()
+    expect(ports.apply).toHaveBeenCalledTimes(1)
     expect(applyButton().disabled).toBe(true)
     const [revision, transaction] = ports.apply.mock.calls[0] ?? []
     expect(revision).toBe(fixture.snapshot.revision)
@@ -623,7 +627,7 @@ describe("quick lightweighting task panel", () => {
     ).toBe(true)
     expect(fixture.authority).toEqual(before)
     await act(async () => saving.resolve({ ok: true }))
-    expect(ports.close).toHaveBeenCalledOnce()
+    expect(ports.close).toHaveBeenCalledTimes(1)
   })
 
   it.each(["exception", "diagnostic"])(
@@ -645,7 +649,7 @@ describe("quick lightweighting task panel", () => {
       fireEvent.click(applyButton())
       await advance(0)
       expect(ports.apply).toHaveBeenCalledTimes(2)
-      expect(ports.close).toHaveBeenCalledOnce()
+      expect(ports.close).toHaveBeenCalledTimes(1)
     },
   )
 

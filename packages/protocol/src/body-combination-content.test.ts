@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import {
   compoundFeatureContentParametersSchema,
   unionFeatureContentParametersSchema,
@@ -11,15 +11,17 @@ describe("body combination worker parameters", () => {
     expect(compoundFeatureContentParametersSchema.parse({ outputRoles })).toEqual({ outputRoles })
     expect(unionFeatureContentParametersSchema.parse({})).toEqual({})
   })
-  it.each([
-    [],
-    [role(1)],
-    Array.from({ length: 9 }, (_, index) => role(index)),
-    [role(1), role(1)],
-    ["result", role(1)],
-    ["body.0", role(1)],
-    ["body.Unknown", role(1)],
-  ])("rejects ambiguous, unbounded or nonauthored catalog roles %j", (outputRoles) => {
+  it.each(
+    [
+      [],
+      [role(1)],
+      Array.from({ length: 9 }, (_, index) => role(index)),
+      [role(1), role(1)],
+      ["result", role(1)],
+      ["body.0", role(1)],
+      ["body.Unknown", role(1)],
+    ].map((outputRoles) => ({ outputRoles })),
+  )("rejects ambiguous, unbounded or nonauthored catalog roles %j", ({ outputRoles }) => {
     expect(compoundFeatureContentParametersSchema.safeParse({ outputRoles }).success).toBe(false)
   })
   it("accepts eight authored slots and rejects arbitrary executable or transform parameters", () => {

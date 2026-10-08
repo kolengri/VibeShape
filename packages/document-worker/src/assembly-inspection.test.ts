@@ -1,20 +1,29 @@
-import { materializeAssembly } from "@vibeshape/application/assembly-materialization"
-import { rebuildDocumentFeatures } from "@vibeshape/application/feature-rebuild"
-import {
+import { beforeEach, describe, expect, it, mock } from "bun:test"
+import type { GeometryEngineMetadata } from "@vibeshape/protocol"
+import { vi } from "../../../tests/unit/support/bun-test"
+
+mock.module("@vibeshape/application/assembly-materialization", () => ({
+  materializeAssembly: vi.fn(),
+}))
+const featureRebuildModule = { ...(await import("@vibeshape/application/feature-rebuild")) }
+mock.module("@vibeshape/application/feature-rebuild", () => ({
+  ...featureRebuildModule,
+  rebuildDocumentFeatures: vi.fn(),
+}))
+
+const { materializeAssembly } = await import("@vibeshape/application/assembly-materialization")
+const { rebuildDocumentFeatures } = await import("@vibeshape/application/feature-rebuild")
+const {
   createFeatureTypeRegistry,
   createModuleRegistry,
   documentSnapshotSchema,
   documentSnapshotV1Schema,
   documentSnapshotV3Schema,
   documentSnapshotV4Schema,
-} from "@vibeshape/domain"
-import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
-import { type GeometryEngineMetadata, inspectAssemblyInputSchema } from "@vibeshape/protocol"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { withMaterializedAssemblyRuntime } from "./assembly-inspection"
-
-vi.mock("@vibeshape/application/assembly-materialization", () => ({ materializeAssembly: vi.fn() }))
-vi.mock("@vibeshape/application/feature-rebuild", () => ({ rebuildDocumentFeatures: vi.fn() }))
+} = await import("@vibeshape/domain")
+const { ReplicadGeometryEngine } = await import("@vibeshape/geometry-worker/engine")
+const { inspectAssemblyInputSchema } = await import("@vibeshape/protocol")
+const { withMaterializedAssemblyRuntime } = await import("./assembly-inspection")
 
 const document = documentSnapshotV4Schema.parse({
   schemaVersion: 4,

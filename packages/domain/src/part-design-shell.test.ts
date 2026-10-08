@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { matchValue } from "../../../tests/unit/support/match-value"
 import { createDocumentDependencyGraph } from "./document-graph"
 import {
   createFeatureContentIdentity,
@@ -86,10 +87,10 @@ describe("persisted exact-body shell openings", () => {
         openings: [{ schemaVersion: 1, outputRole: "body.primary", semanticRole: "box.top" }],
       },
     })
-    expect(featureBodyDependencies(feature)).toEqual([
+    expect(featureBodyDependencies(feature)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "body.primary" },
     ])
-    expect(readShellFeatureParameters(feature)?.openings[0]?.featureId).toBe(sourceId)
+    expect(readShellFeatureParameters(feature)?.openings[0]?.featureId).toBe<unknown>(sourceId)
     const dependency = {
       featureId: sourceId,
       contentHash: parameters.sourceContentHash,
@@ -161,7 +162,9 @@ describe("persisted exact-body shell openings", () => {
       type: shellFeatureTypeV2.type,
       parameters: { ...parameters, openings: [] },
     }
-    expect(shellFeatureParametersV2Schema.parse(closed.parameters)).toEqual(closed.parameters)
+    expect(shellFeatureParametersV2Schema.parse(closed.parameters)).toEqual<unknown>(
+      closed.parameters,
+    )
     expect(readShellFeatureParameters(closed)?.openings).toEqual([])
     expect(registry.validateFeature(closed)).toMatchObject({
       ok: true,
@@ -230,7 +233,7 @@ describe("persisted exact-body shell openings", () => {
           { kind: "feature", id: shellId },
         ],
       })
-    expect(graph({ ...feature, type: shellFeatureTypeV2.type })).toMatchObject({
+    expect(matchValue(graph({ ...feature, type: shellFeatureTypeV2.type }))).toMatchObject({
       ok: false,
       diagnostic: {
         code: "invalid-feature",

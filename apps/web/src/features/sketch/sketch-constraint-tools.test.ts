@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createAngleQuantity,
   createLengthQuantity,
@@ -5,7 +6,6 @@ import {
   type SketchRecord,
   sketchEntityIdSchema,
 } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   compatibleSketchConstraintTools,
   compatibleSketchConstraintToolsForSelection,
@@ -141,7 +141,7 @@ describe("sketch constraint tools", () => {
         expect(repeated.selectedEntityIds, kind).toEqual([])
       } else {
         expect(repeated.definition, kind).toBeNull()
-        expect(repeated.selectedEntityIds, kind).toEqual([ids[0]])
+        expect(repeated.selectedEntityIds, kind).toEqual<unknown>([ids[0]])
       }
     }
   })

@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
-import { afterEach, describe, expect, it, vi } from "vitest"
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createProjectBackupFilename, downloadProjectBackup } from "./document-project-file"
 
 afterEach(() => {
@@ -30,7 +30,7 @@ describe("project backup download", () => {
 
     const blob = createObjectURL.mock.calls[0]?.[0]
     expect(blob?.type).toBe("application/vnd.vibeshape.project+zip")
-    expect(click).toHaveBeenCalledOnce()
+    expect(click).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:vibeshape-project")
     expect(document.querySelector("a")).toBeNull()
   })

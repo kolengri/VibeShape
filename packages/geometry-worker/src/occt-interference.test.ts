@@ -1,7 +1,6 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { makeBox, measureVolume, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it } from "vitest"
 import { measureOcctInterference, type NativeInterferenceSource } from "./occt-interference"
 
 let occt: OpenCascadeInstance

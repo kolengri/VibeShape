@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   assemblyInstanceIdSchema,
   assemblyJointIdSchema,
@@ -26,7 +27,7 @@ import {
   featureEvaluationEngineResultSchema,
   topologyCandidateSchema,
 } from "@vibeshape/protocol"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type AssemblyMateSourceGeometry, resolveAssemblyMateFrames } from "./assembly-mate-frames"
 import {
   AssemblyMaterializationCache,
@@ -421,7 +422,7 @@ describe("frozen topology-bound joint frames", () => {
       )
       expect(result.ok).toBe(true)
       if (result.ok)
-        expect(result.assembly.joints[0]?.parentFrame.translation).toEqual(sample.expected)
+        expect(result.assembly.joints[0]?.parentFrame.translation).toEqual<unknown>(sample.expected)
     }
   })
 })
@@ -594,7 +595,10 @@ describe("immutable assembly materialization", () => {
     })
     const result = success(await materializeAssembly(input))
     expect(input.rebuildPinnedModel).toHaveBeenCalledTimes(1)
-    expect(result.occurrences.map(({ instanceId }) => instanceId)).toEqual([id(60), id(61)])
+    expect(result.occurrences.map(({ instanceId }) => instanceId)).toEqual<unknown>([
+      id(60),
+      id(61),
+    ])
     expect(result.occurrences[0]?.geometry.outputRole).toBe("result")
     expect(result.occurrences[1]?.bounds.min).toEqual([10, 0, 0])
     expect(success(await materializeAssembly(input)).occurrences).toHaveLength(2)

@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
+import "../../../../tests/unit/support/dom"
+import { afterEach, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ComponentProps } from "react"
-import { afterEach, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { RemoteAutomationConsentDialog, RemoteAutomationStatus } from "./remote-automation-status"
 

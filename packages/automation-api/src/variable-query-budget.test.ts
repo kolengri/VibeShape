@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
-import { describe, expect, it } from "vitest"
 import { queryDocumentVariables, variableListViewSchema } from "./queries"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -68,7 +68,9 @@ describe("variable query serialization budget", () => {
     })
     if (!next.ok) throw new Error(next.diagnostic.message)
     const nextView = variableListViewSchema.parse(next.view)
-    expect(nextView.data.variables[0]?.definition.id).toBe("0195b5ac-b240-7a2c-8c33-000000000018")
+    expect(nextView.data.variables[0]?.definition.id).toBe<unknown>(
+      "0195b5ac-b240-7a2c-8c33-000000000018",
+    )
     expect(nextView.data.variables[0]?.result).toEqual({
       dimension: "length",
       value: 8,

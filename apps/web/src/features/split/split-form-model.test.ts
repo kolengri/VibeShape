@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import {
   createLengthQuantity,
   featureIdSchema,
@@ -5,7 +6,6 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
-import { describe, expect, it } from "vitest"
 import messages from "../../i18n/messages/en.json"
 import {
   parseSplitForm,

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "bun:test"
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, createLengthQuantity, datumPlaneFeatureType } from "@vibeshape/domain"
 import { booleanFeatureType } from "@vibeshape/domain/part-design"
@@ -5,7 +6,7 @@ import {
   compoundFeatureTypeV2,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -128,7 +129,8 @@ describe("local Datum Plane and body combination draft tools", () => {
           ok: false,
           diagnostic: { code: "stale-revision", message: "Draft changed.", retryable: true },
         })
-        expect(host.applyCommand).toHaveBeenCalledExactlyOnceWith(actor, {
+        expect(host.applyCommand).toHaveBeenCalledTimes(1)
+        expect(host.applyCommand).toHaveBeenCalledWith(actor, {
           schemaVersion: 1,
           draftId: base.draftId,
           command: {

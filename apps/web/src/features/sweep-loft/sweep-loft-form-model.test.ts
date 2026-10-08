@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { sketchEntityIdSchema, sketchProfileSelectorSchema } from "@vibeshape/domain"
-import { describe, expect, it } from "vitest"
 import {
   reorderLoftSection,
   sweepLoftFeatureRecord,

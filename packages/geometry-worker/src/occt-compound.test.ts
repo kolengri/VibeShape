@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { createOcctCompound } from "./occt-compound"
 
 function harness() {
@@ -28,14 +29,14 @@ describe("createOcctCompound", () => {
 
     expect(
       createOcctCompound(state.opencascade as never, state.shapes as never, castShape as never),
-    ).toBe(adopted)
+    ).toBe<unknown>(adopted)
     expect(state.builder.MakeCompound).toHaveBeenCalledWith(state.compound)
     expect(state.builder.Add.mock.calls).toEqual([
       [state.compound, state.shapes[0]?.wrapped],
       [state.compound, state.shapes[1]?.wrapped],
     ])
-    expect(state.compound.delete).toHaveBeenCalledOnce()
-    expect(state.builder.delete).toHaveBeenCalledOnce()
+    expect(state.compound.delete).toHaveBeenCalledTimes(1)
+    expect(state.builder.delete).toHaveBeenCalledTimes(1)
   })
 
   it("rejects a non-compound input before allocating native wrappers", () => {
@@ -56,8 +57,8 @@ describe("createOcctCompound", () => {
         throw new Error("Synthetic cast failure")
       }),
     ).toThrow("Synthetic cast failure")
-    expect(state.compound.delete).toHaveBeenCalledOnce()
-    expect(state.builder.delete).toHaveBeenCalledOnce()
+    expect(state.compound.delete).toHaveBeenCalledTimes(1)
+    expect(state.builder.delete).toHaveBeenCalledTimes(1)
   })
   it.each(["builder-constructor", "make", "add"])(
     "releases every acquired native wrapper after %s failure",
@@ -70,7 +71,7 @@ describe("createOcctCompound", () => {
       if (stage === "make") state.builder.MakeCompound.mockImplementation(fail)
       if (stage === "add") state.builder.Add.mockImplementation(fail)
       expect(() => createOcctCompound(state.opencascade as never, state.shapes as never)).toThrow()
-      expect(state.compound.delete).toHaveBeenCalledOnce()
+      expect(state.compound.delete).toHaveBeenCalledTimes(1)
       expect(state.builder.delete).toHaveBeenCalledTimes(stage === "builder-constructor" ? 0 : 1)
     },
   )

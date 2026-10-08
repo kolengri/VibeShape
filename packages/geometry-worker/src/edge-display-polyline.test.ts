@@ -1,16 +1,15 @@
+import { afterEach, expect, it, mock } from "bun:test"
 import type { Edge } from "replicad"
-import { afterEach, expect, it, vi } from "vitest"
-import { edgeDisplayPolyline } from "./edge-display-polyline"
 
-const native = vi.hoisted(() => ({
+const native = (() => ({
   point: (t: number) => [Math.cos(t), Math.sin(t), 0],
   first: 0,
   last: Math.PI * 2,
   points: 0,
   deletedPoints: 0,
   deletedAdaptors: 0,
-}))
-vi.mock("replicad", () => ({
+}))()
+mock.module("replicad", () => ({
   getOC: () => ({
     BRepAdaptor_Curve_2: class {
       FirstParameter() {
@@ -37,6 +36,8 @@ vi.mock("replicad", () => ({
     },
   }),
 }))
+
+const { edgeDisplayPolyline } = await import("./edge-display-polyline")
 const edge = { wrapped: {} } as Edge
 
 afterEach(() => {

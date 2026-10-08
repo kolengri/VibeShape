@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { sketchWireRecordSchema } from "./sketch"
 import { sketchSourceImportWireSchema } from "./sketch-source-import"
 
@@ -46,8 +46,8 @@ const sketch = {
 describe("planar source provenance worker contract", () => {
   it("preserves exact provenance and source direction through structured clone", () => {
     const clone = JSON.parse(JSON.stringify(sketch))
-    expect(sketchWireRecordSchema.parse(clone)).toEqual(sketch)
-    expect(sketchSourceImportWireSchema.parse(sourceImport)).toEqual(sourceImport)
+    expect(sketchWireRecordSchema.parse(clone)).toEqual<unknown>(sketch)
+    expect(sketchSourceImportWireSchema.parse(sourceImport)).toEqual<unknown>(sourceImport)
     const { sourceImport: _source, ...old } = sketch
     expect(sketchWireRecordSchema.parse(old)).not.toHaveProperty("sourceImport")
   })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { applyDocumentCommand, reduceDocumentEvent } from "./commands"
 import { featureRecordSchema } from "./feature-graph"
 import { featureIdSchema, sketchIdSchema } from "./identifiers"

@@ -1,12 +1,12 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { documentIdSchema, historyFolderIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { authoredTestId, authoredTreeFixture } from "../test-support/authored-tree-fixture"
 import type { AuthoredMetadataCommit } from "./authored-item-rename"
@@ -85,7 +85,8 @@ describe("History folder selection", () => {
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Box 1" }))
     expect(screen.queryByRole("menuitem", { name: "Add selection to folder" })).toBeNull()
     await userEvent.click(screen.getByRole("menuitem", { name: "Insert above" }))
-    expect(onInsert).toHaveBeenCalledExactlyOnceWith("above")
+    expect(onInsert).toHaveBeenCalledTimes(1)
+    expect(onInsert).toHaveBeenCalledWith("above")
   })
   it("opens the shared row context menu with Shift+F10 and invokes insertion by keyboard", async () => {
     const { onInsert } = selectionFixture()
@@ -93,7 +94,10 @@ describe("History folder selection", () => {
     await userEvent.keyboard("{Shift>}{F10}{/Shift}")
     expect(screen.getByRole("menu")).toBeTruthy()
     await userEvent.keyboard("{Home}{Enter}")
-    await waitFor(() => expect(onInsert).toHaveBeenCalledExactlyOnceWith("above"))
+    await waitFor(() => {
+      expect(onInsert).toHaveBeenCalledTimes(1)
+      expect(onInsert).toHaveBeenCalledWith("above")
+    })
   })
   it("shares one context menu for insertion and folders and allows save-first insertion during an edit", async () => {
     const { authority, onInsert, onCommit, view, content } = selectionFixture()
@@ -106,7 +110,8 @@ describe("History folder selection", () => {
         .getAttribute("aria-disabled"),
     ).toBe("true")
     await userEvent.click(screen.getByRole("menuitem", { name: "Insert above" }))
-    expect(onInsert).toHaveBeenCalledExactlyOnceWith("above")
+    expect(onInsert).toHaveBeenCalledTimes(1)
+    expect(onInsert).toHaveBeenCalledWith("above")
     expect(onCommit).not.toHaveBeenCalled()
   })
 
@@ -138,7 +143,7 @@ describe("History folder selection", () => {
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Box 2" }))
     await userEvent.click(screen.getByRole("menuitem", { name: "Add selection to folder" }))
     await createSelectedFolder("Housing")
-    await waitFor(() => expect(onCommit).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1))
     expect(onCommit.mock.calls[0]).toEqual([
       authority.revision,
       {
@@ -154,7 +159,7 @@ describe("History folder selection", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
     expect(screen.queryByRole("status")).toBeNull()
     await userEvent.click(screen.getByRole("treeitem", { name: "Box 2" }))
-    expect(onActivate).toHaveBeenCalledOnce()
+    expect(onActivate).toHaveBeenCalledTimes(1)
   })
 
   it("provides single-pointer selection and blocks gaps and existing-folder overlap", async () => {
@@ -210,13 +215,14 @@ describe("History folder selection", () => {
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Box 3" }))
     expect(selectThird.getAttribute("aria-pressed")).toBe("true")
     await userEvent.click(screen.getByRole("menuitem", { name: "Add to Housing" }))
-    await waitFor(() =>
-      expect(onCommit).toHaveBeenCalledExactlyOnceWith(authority.revision, {
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledTimes(1)
+      expect(onCommit).toHaveBeenCalledWith(authority.revision, {
         kind: "folder.set-items",
         folderId: folder.id,
         items: authority.history,
-      }),
-    )
+      })
+    })
   })
 
   it("preserves selected rows and reports a failed append without issuing a second command", async () => {
@@ -234,7 +240,7 @@ describe("History folder selection", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Could not update the folder/),
     )
-    expect(onCommit).toHaveBeenCalledOnce()
+    expect(onCommit).toHaveBeenCalledTimes(1)
     expect(
       screen
         .getByRole("button", { name: "Select Box 3 for a folder" })
@@ -286,7 +292,7 @@ describe("History folder selection", () => {
     const action = screen.getByRole("menuitem", { name: "Add to Housing" })
     expect(action.getAttribute("aria-disabled")).toBe("true")
     fireEvent.click(action)
-    expect(onCommit).toHaveBeenCalledOnce()
+    expect(onCommit).toHaveBeenCalledTimes(1)
     await act(async () => resolveCommit?.({ ok: true }))
     await userEvent.keyboard("{Escape}")
     expect((screen.getByRole("button", { name: "New folder" }) as HTMLButtonElement).disabled).toBe(

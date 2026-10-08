@@ -1,10 +1,10 @@
+import { beforeAll, describe, expect, it } from "bun:test"
 import {
   BUNDLED_SKETCH_TEXT_FONT,
   SKETCH_TEXT_LAYOUT_ENGINE,
   SKETCH_TEXT_OUTLINE_SDK,
   type SketchTextParameters,
 } from "@vibeshape/domain/sketch-text"
-import { beforeAll, describe, expect, it, vi } from "vitest"
 import { z } from "zod"
 import {
   prepareSketchTextOutline,
@@ -15,9 +15,7 @@ import {
 let fontBytes: Uint8Array
 beforeAll(async () => {
   // Test-only host IO keeps Node declarations out of the browser library configuration.
-  const { readFile } = await vi.importActual<{ readFile(path: string): Promise<Uint8Array> }>(
-    "node:fs/promises",
-  )
+  const { readFile } = await import("node:fs/promises")
   const module = z.object({ url: z.string().startsWith("file://") }).parse(import.meta)
   const filePath = decodeURIComponent(module.url.slice("file://".length))
   fontBytes = Uint8Array.from(

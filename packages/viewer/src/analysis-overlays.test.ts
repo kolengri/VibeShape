@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import { ArrowHelper, Line, Mesh, MeshBasicMaterial, Plane, Raycaster, Vector3 } from "three"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { AnalysisOverlayDecoration } from "./analysis-overlays"
 import {
   createFaceHighlightGeometry,
@@ -165,16 +166,16 @@ describe("disposable analysis overlays", () => {
     const replaced = watchResources()
     expect(replaced).toHaveLength(6)
     decoration.setOverlays(overlays)
-    for (const onDispose of replaced) expect(onDispose).toHaveBeenCalledOnce()
+    for (const onDispose of replaced) expect(onDispose).toHaveBeenCalledTimes(1)
     const cleared = watchResources()
     decoration.setOverlays(null)
-    for (const onDispose of cleared) expect(onDispose).toHaveBeenCalledOnce()
+    for (const onDispose of cleared) expect(onDispose).toHaveBeenCalledTimes(1)
     expect(decoration.group.children).toHaveLength(0)
     decoration.setOverlays(overlays)
     const final = watchResources()
     decoration.dispose()
     decoration.dispose()
-    for (const onDispose of final) expect(onDispose).toHaveBeenCalledOnce()
+    for (const onDispose of final) expect(onDispose).toHaveBeenCalledTimes(1)
     decoration.setOverlays(overlays)
     expect(decoration.group.children).toHaveLength(0)
   })
@@ -249,9 +250,9 @@ describe("disposable analysis overlays", () => {
       expect(face.material.color.getHexString()).toBe("648296")
       expect(getPropertyValue).toHaveBeenCalledWith("--preselection")
       expect(getPropertyValue).toHaveBeenCalledWith("--diagnostic-warning")
-      expect(onThemeChange).toHaveBeenCalledOnce()
+      expect(onThemeChange).toHaveBeenCalledTimes(1)
       decoration.dispose()
-      expect(disconnect).toHaveBeenCalledOnce()
+      expect(disconnect).toHaveBeenCalledTimes(1)
     } finally {
       decoration.dispose()
       vi.unstubAllGlobals()

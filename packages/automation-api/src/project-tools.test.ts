@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { localOperationSchema, mcpToolInputSchema, parseMcpToolCall } from "./local-tools"
 import { projectResultContextMatches } from "./project-result-context"
 
@@ -21,7 +21,7 @@ describe("project MCP contracts", () => {
   })
   it("separates a CAD target guard from strict command payloads", () => {
     const result = parseMcpToolCall("create_draft", { projectId: a, baseRevision: 4 })
-    expect(result.success && result.data).toEqual({
+    expect(result.success && result.data).toEqual<unknown>({
       tool: "create_draft",
       projectId: a,
       arguments: { baseRevision: 4 },

@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
-import { describe, expect, it } from "vitest"
 import {
   lightweightingId,
   lightweightingOperation,

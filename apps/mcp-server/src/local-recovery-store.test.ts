@@ -1,3 +1,4 @@
+import { afterEach, expect, it } from "bun:test"
 import {
   chmodSync,
   linkSync,
@@ -10,7 +11,6 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { afterEach, expect, it } from "vitest"
 import { createLocalRecoveryStore, localRecoveryRecordSchema } from "./local-recovery-store"
 
 const directories: string[] = []

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { assertRegistryBaseline } from "./build-occt-source-builder"
 
 function createBaselineOutputs() {

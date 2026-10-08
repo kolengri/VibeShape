@@ -1,10 +1,10 @@
-// @vitest-environment node
+import { beforeAll, describe, expect, it } from "bun:test"
 import { makeBox, measureVolume, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopoDS_Shape,
 } from "replicad-opencascadejs"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { exportOcctAssemblyStep } from "./occt-assembly-export"
 import { inspectOcctBody } from "./occt-body-validation"
 import { importOcctStep } from "./occt-exchange"
@@ -47,7 +47,7 @@ function ownedCopies() {
 function assertDisposed(copies: ReturnType<typeof ownedCopies>, expected: number) {
   expect(copies).toHaveLength(expected)
   for (const copy of copies) {
-    expect(copy.dispose).toHaveBeenCalledOnce()
+    expect(copy.dispose).toHaveBeenCalledTimes(1)
   }
 }
 

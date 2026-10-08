@@ -1,5 +1,6 @@
+import { describe, expect, it } from "bun:test"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 
 function createDeletable() {
@@ -108,19 +109,19 @@ describe("owned OCCT tessellation adapter", () => {
       0.2,
       false,
     )
-    expect(mesher.delete).toHaveBeenCalledOnce()
-    expect(explorer.delete).toHaveBeenCalledOnce()
-    expect(rawFace.delete).toHaveBeenCalledOnce()
-    expect(face.delete).toHaveBeenCalledOnce()
-    expect(location.delete).toHaveBeenCalledOnce()
-    expect(transformation.delete).toHaveBeenCalledOnce()
-    expect(triangulationHandle.delete).toHaveBeenCalledOnce()
-    expect(normalsArray.delete).toHaveBeenCalledOnce()
-    expect(connectivity.delete).toHaveBeenCalledOnce()
-    expect(triangle.delete).toHaveBeenCalledOnce()
+    expect(mesher.delete).toHaveBeenCalledTimes(1)
+    expect(explorer.delete).toHaveBeenCalledTimes(1)
+    expect(rawFace.delete).toHaveBeenCalledTimes(1)
+    expect(face.delete).toHaveBeenCalledTimes(1)
+    expect(location.delete).toHaveBeenCalledTimes(1)
+    expect(transformation.delete).toHaveBeenCalledTimes(1)
+    expect(triangulationHandle.delete).toHaveBeenCalledTimes(1)
+    expect(normalsArray.delete).toHaveBeenCalledTimes(1)
+    expect(connectivity.delete).toHaveBeenCalledTimes(1)
+    expect(triangle.delete).toHaveBeenCalledTimes(1)
 
     for (const binding of [...nodes, ...transformedNodes, ...normals, ...transformedNormals]) {
-      expect(binding.delete).toHaveBeenCalledOnce()
+      expect(binding.delete).toHaveBeenCalledTimes(1)
     }
   })
 })
@@ -132,7 +133,7 @@ describe("owned OCCT STL export adapter", () => {
     const clean = vi.fn()
     const mesher = { ...createDeletable(), IsDone: vi.fn(() => true) }
     const write = vi.fn(() => {
-      expect(mesher.IsDone).toHaveBeenCalledOnce()
+      expect(mesher.IsDone).toHaveBeenCalledTimes(1)
       return true
     })
     const opencascade = {
@@ -144,7 +145,7 @@ describe("owned OCCT STL export adapter", () => {
 
     const blob = exportMeshedOcctStl(opencascade, { wrapped } as never, true)
 
-    expect(mesher.delete).toHaveBeenCalledOnce()
+    expect(mesher.delete).toHaveBeenCalledTimes(1)
     expect(blob.size).toBe(3)
     expect(blob.type).toBe("model/stl")
     expect(write).toHaveBeenCalledWith(wrapped, "/vibeshape-export.stl", false)

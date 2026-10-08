@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-
+import "../../../../../tests/unit/support/dom"
+import { describe, expect, it } from "bun:test"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { type VariableDefinition, variableIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../../tests/unit/support/bun-test"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import { evaluateSketchTransformForm, SketchTransformForm } from "./sketch-transform-form"

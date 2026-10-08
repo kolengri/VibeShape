@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { describe, expect, it } from "vitest"
 import {
   lifecycleId as id,
   primitiveNames,
@@ -10,7 +10,7 @@ import { localOperationSchema, localToolNameSchema } from "./local-tools"
 const base = { draftId: id(1), baseRevision: 0, commandId: id(2) }
 const feature = { ...base, featureId: id(3), suppressed: false }
 describe("primitive and lifecycle public schemas", () => {
-  it.each(primitiveNames)("keeps %s quantity inputs bounded and actor-independent", (name) => {
+  it.each([...primitiveNames])("keeps %s quantity inputs bounded and actor-independent", (name) => {
     const tool = `update_${name}`
     const args = { ...feature, parameters: primitiveParameters(name) }
     expect(localOperationSchema.safeParse({ tool, arguments: args }).success).toBe(true)

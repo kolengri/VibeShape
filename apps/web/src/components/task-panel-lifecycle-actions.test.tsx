@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
+import "../../../../tests/unit/support/dom"
+import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import { TaskPanelLifecycleActions } from "./task-panel-lifecycle-actions"
 
 class ResizeObserverMock {
@@ -77,8 +77,8 @@ describe("TaskPanelLifecycleActions", () => {
     await user.click(accept)
     await user.click(accept)
 
-    expect(onCancel).toHaveBeenCalledOnce()
-    expect(onAccept).toHaveBeenCalledOnce()
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onAccept).toHaveBeenCalledTimes(1)
     expect(accept.disabled).toBe(true)
     expect(accept.getAttribute("aria-busy")).toBe("true")
 
@@ -131,7 +131,7 @@ describe("TaskPanelLifecycleActions", () => {
     )
     expect(screen.queryByText("Select two faces first.")).toBeNull()
     await user.click(screen.getByRole("button", { name: "Accept feature" }))
-    expect(onAccept).toHaveBeenCalledOnce()
+    expect(onAccept).toHaveBeenCalledTimes(1)
   })
 
   it("supports a cancel-only selection task without rendering a fake accept action", () => {

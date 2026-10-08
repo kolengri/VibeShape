@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createProjectActionGuard, type ProjectActionBlock } from "./project-action-guard"
 
 describe("mounted project action guard readers", () => {
