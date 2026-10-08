@@ -16,7 +16,6 @@ import {
   LineSegments,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   MOUSE,
   Object3D,
   OrthographicCamera,
@@ -38,6 +37,8 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 import { TransformControls } from "three/addons/controls/TransformControls.js"
 import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysis-overlays"
+import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
+import { ModelMeshPresentation } from "./model-meshes"
 import { orientationInsetPlacement } from "./orientation-inset"
 import {
   defaultViewerOriginPlaneVisibility,
@@ -48,10 +49,10 @@ import {
 import { PrintBedDecoration, type ViewerPrintBed } from "./print-bed"
 import { sectionClipPlanes, sectionPointVisible, type ViewerSection } from "./section-view"
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
-import { viewerBodyColor } from "./viewer-appearance"
 
 export type { ViewerAnalysisOverlay } from "./analysis-overlays"
 export { viewerFaceSurfaceGeometry } from "./face-surface-geometry"
+export { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
 export {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -550,13 +551,6 @@ export type ViewerSurfaceTextureBrush = Readonly<{
   onEnd: (cancelled: boolean) => void
 }>
 
-/** Returns the stable identity key for one feature body output. */
-export function viewerBodyKey(body: Readonly<{ featureId: string; outputRole?: string }>) {
-  return body.outputRole === undefined
-    ? body.featureId
-    : `${body.featureId}\u0000${body.outputRole}`
-}
-
 export type ViewerSelectionHit = Readonly<{
   selection: ViewerSelection
   distance: number
@@ -823,21 +817,6 @@ export function viewerCameraPoseForStandardView(
   }
 }
 
-export function createViewerGeometry(mesh: ViewerMesh) {
-  const geometry = new BufferGeometry()
-  geometry.setAttribute("position", new BufferAttribute(mesh.positions, 3))
-  geometry.setAttribute("normal", new BufferAttribute(mesh.normals, 3))
-  geometry.setIndex(new BufferAttribute(mesh.indices, 1))
-  geometry.userData = {
-    featureId: mesh.featureId,
-    ...(mesh.outputRole === undefined ? {} : { outputRole: mesh.outputRole }),
-    triangleFaceIds: mesh.triangleFaceIds,
-  }
-  geometry.computeBoundingBox()
-  geometry.computeBoundingSphere()
-  return geometry
-}
-
 export function createViewerSketchGeometry(positions: Float32Array) {
   const geometry = new BufferGeometry()
   geometry.setAttribute("position", new BufferAttribute(positions, 3))
@@ -989,10 +968,6 @@ function disposeModelGroup(group: Group) {
       child.geometry.dispose()
     }
   }
-}
-
-function disposeMaterials(materials: readonly (MeshStandardMaterial | LineBasicMaterial)[]) {
-  for (const material of materials) material.dispose()
 }
 
 function sameSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
@@ -1204,7 +1179,6 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #analysisDecoration = new AnalysisOverlayDecoration(createFaceHighlightGeometry, () =>
     this.#render(),
   )
-  readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
   readonly #sketchProfileGroup = new Group()
   readonly #sketchProfilePreselectionGroup = new Group()
@@ -1231,8 +1205,6 @@ class ThreeGeometryViewport implements GeometryViewport {
   >()
   readonly #originPlaneMaterials = new Map<ViewerOriginPlane, MeshBasicMaterial>()
   readonly #originPlaneEdgeMaterials: LineBasicMaterial[] = []
-  readonly #modelSurfaceMaterials: MeshStandardMaterial[] = []
-  readonly #modelEdgeMaterials: LineBasicMaterial[] = []
   readonly #sketchCurveMaterial = new LineBasicMaterial({
     color: new Color("#65a9ee"),
     depthTest: false,
@@ -1335,6 +1307,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     transparent: true,
     opacity: 0.8,
   })
+  readonly #modelPresentation = new ModelMeshPresentation({
+    preview: { surface: this.#previewSurfaceMaterial, edges: this.#previewEdgeMaterial },
+    datum: { surface: this.#datumSurfaceMaterial, edges: this.#datumEdgeMaterial },
+  })
+  readonly #modelGroup = this.#modelPresentation.group
   readonly #preselectionMaterial = new MeshBasicMaterial({
     color: new Color("#65a9ee"),
     transparent: true,
@@ -1685,35 +1662,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.clearSelection()
     disposeModelGroup(this.#faceSelectionGroup)
     this.#setPreselection(null)
-    disposeModelGroup(this.#modelGroup)
-    disposeMaterials(this.#modelSurfaceMaterials)
-    disposeMaterials(this.#modelEdgeMaterials)
-    this.#modelSurfaceMaterials.length = 0
-    this.#modelEdgeMaterials.length = 0
     this.#surfaceMeshes.length = 0
-    this.#disposeTextureSourceMeshes()
+    this.#textureSourceMeshes.clear()
     this.#meshSources.clear()
-    for (const source of meshes) {
-      const preview = source.appearance === "preview"
-      const datum = source.appearance === "datum"
-      const geometry = createViewerGeometry(source)
-      const surfaceMaterial = this.#surfaceMaterialForMesh(source)
-      const edgeMaterial = preview
-        ? this.#previewEdgeMaterial
-        : datum
-          ? this.#datumEdgeMaterial
-          : this.#createModelEdgeMaterial()
-      const surface = new Mesh(geometry, surfaceMaterial)
-      surface.name = viewerBodyKey(source)
-      if (!preview) {
-        this.#meshSources.set(viewerBodyKey(source), source)
-        this.#surfaceMeshes.push(surface)
-        this.#registerTextureSourceMesh(source, surfaceMaterial)
-      }
-      this.#modelGroup.add(surface)
-      const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
-      edges.name = `${viewerBodyKey(source)}:edges`
-      this.#modelGroup.add(edges)
+    for (const { source, surface, textureSource } of this.#modelPresentation.setMeshes(meshes)) {
+      if (source.appearance === "preview") continue
+      this.#meshSources.set(viewerBodyKey(source), source)
+      this.#surfaceMeshes.push(surface)
+      if (textureSource) this.#textureSourceMeshes.set(viewerBodyKey(source), textureSource)
     }
     this.#render()
   }
@@ -1735,29 +1691,6 @@ class ThreeGeometryViewport implements GeometryViewport {
       visibleMesh,
       2,
     )
-  }
-
-  #surfaceMaterialForMesh(source: ViewerMesh) {
-    if (source.appearance === "preview") return this.#previewSurfaceMaterial
-    if (source.appearance === "datum") return this.#datumSurfaceMaterial
-    const material = this.#createModelSurfaceMaterial(source.featureId)
-    if (source.appearance === "selection-source") {
-      material.transparent = true
-      material.opacity = 0.12
-      material.depthWrite = false
-    }
-    return material
-  }
-
-  #registerTextureSourceMesh(source: ViewerMesh, material: Mesh["material"]) {
-    if (!source.textureSource) return
-    const surface = new Mesh(createViewerGeometry(source.textureSource), material)
-    this.#textureSourceMeshes.set(viewerBodyKey(source), { surface, source: source.textureSource })
-  }
-
-  #disposeTextureSourceMeshes() {
-    for (const { surface } of this.#textureSourceMeshes.values()) surface.geometry.dispose()
-    this.#textureSourceMeshes.clear()
   }
 
   setFeatureSelection(mesh: ViewerMesh | null) {
@@ -2219,7 +2152,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#disposed = true
     this.#renderFrames.cancel()
-    this.#disposeTextureSourceMeshes()
+    this.#textureSourceMeshes.clear()
     this.#finishSurfaceTextureStroke(true)
     this.#canvas.removeEventListener("pointercancel", this.#cancelSurfaceTextureStroke)
     this.#canvas.removeEventListener("lostpointercapture", this.#cancelSurfaceTextureStroke)
@@ -2255,15 +2188,13 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationControls.detach()
     this.#scene.remove(this.#translationHelper)
     this.#translationControls.dispose()
-    disposeModelGroup(this.#modelGroup)
+    this.#modelPresentation.dispose()
     disposeModelGroup(this.#sketchGroup)
     disposeModelGroup(this.#sketchPointCandidateGroup)
     disposeModelGroup(this.#sketchPointPreselectionGroup)
     disposeModelGroup(this.#sketchProfileGroup)
     disposeModelGroup(this.#sketchProfilePreselectionGroup)
     disposeModelGroup(this.#sketchProfileSelectionGroup)
-    disposeMaterials(this.#modelSurfaceMaterials)
-    disposeMaterials(this.#modelEdgeMaterials)
     disposeModelGroup(this.#originPlaneGroup)
     disposeModelGroup(this.#featurePreselectionGroup)
     disposeModelGroup(this.#featureSelectionGroup)
@@ -2839,22 +2770,6 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#originPlaneGroup.add(edges)
     }
     this.#updateOriginPlanes()
-  }
-
-  #createModelSurfaceMaterial(featureId: string) {
-    const material = new MeshStandardMaterial({
-      color: new Color(viewerBodyColor(featureId)),
-      roughness: 0.72,
-      metalness: 0.04,
-    })
-    this.#modelSurfaceMaterials.push(material)
-    return material
-  }
-
-  #createModelEdgeMaterial() {
-    const material = new LineBasicMaterial({ color: new Color("#263746") })
-    this.#modelEdgeMaterials.push(material)
-    return material
   }
 
   #addSketchControls(sketch: ViewerSketch) {
