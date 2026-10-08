@@ -28,6 +28,38 @@ cancel, stale source/revision, review rejection, and one append-only atomic impo
 | Extension conformance | Packages, capabilities, determinism, isolation, compatibility | `SPK-006` harness and browser E2E |
 | Automation and MCP conformance | Resources, schemas, draft safety, pairing, consent, progress, cancellation | Contract tests, hostile loopback fixtures, and real MCP client E2E |
 
+## CI unit-test receipts
+
+`bun run test` always runs the complete matching native unit corpus. CI can use
+`bun run test --cache` to reuse successful complete workspace Node/DOM results;
+`--force` runs without reading or writing receipts. Focused paths, watch,
+changed-file selection, coverage, reporters, name/shard filters, bail thresholds,
+and other partial/output-producing options bypass the cache. Reporter filenames
+and DOM preloads retain the native launcher contract.
+
+The cache hashes workspace dependency closure, undeclared relative imports and
+literal assets, actual ignored/untracked fixtures and WASM, installed dependency
+contents, shared inputs, Bun/platform/architecture, execution options, and every
+controlled child environment value. Unknown computed/external boundaries fail
+closed. Root scripts and scopes that require CI metadata always run with their
+original environment. Only complete cached workspace runs remove transport and
+terminal metadata from the child environment. A short-lived TypeScript 7 async
+native parser follows test/preload imports through shared modules; parser failures
+and selected tests outside hashed/parsed trees bypass reuse. Inspected runtime and
+fixture-reader source pins require renewed boundary review after edits.
+Known network, subprocess, interpreter, and unresolved worker/global loader
+boundaries cannot issue receipts. Finite worker URLs retain their source closure.
+Unknown Node/Bun builtin providers and unmodeled filesystem/process/Bun members
+are denied by default.
+Inspected structural preparation/Python and DOM/mock/WebCrypto producers have
+coupled source pins; edited producers bypass reuse until reviewed. This policy
+trusts installed runtime behavior and is not a third-party execution sandbox. See
+[ADR-0106](adr/0106-ci-unit-test-cache-and-preflight.md) for the input boundary,
+archive location, deployment preflight, and runner-resource decisions.
+
+The workerd suite remains separate and always executes. Cache hits, local/native
+runs, workerd evidence, browser evidence, and live deployment are different claims.
+
 ## Document dependency graph tests
 
 The document graph requires deterministic pure tests for every durable relation between sketch and feature

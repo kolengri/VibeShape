@@ -1,51 +1,21 @@
 import { extname, resolve } from "node:path"
+import { UnitTestCache } from "./unit-test-cache"
+import { unitTestEnvironment } from "./unit-test-environment"
+import { unitTestInputs } from "./unit-test-inputs"
+import { unitTestOptions } from "./unit-test-options"
 
 const root = resolve(import.meta.dir, "..")
-const forwarded: string[] = []
-const filters: string[] = []
-const valueFlags = new Set([
-  "-t",
-  "--test-name-pattern",
-  "--timeout",
-  "--parallel-delay",
-  "--max-concurrency",
-  "--reporter",
-  "--reporter-outfile",
-  "--coverage-dir",
-  "--coverage-reporter",
-  "--seed",
-  "--rerun-each",
-  "--retry",
-  "--shard",
-  "--timings",
-  "--preload",
-  "--path-ignore-patterns",
-])
-const args = process.argv.slice(2)
-for (let index = 0; index < args.length; index++) {
-  const argument = args[index]
-  if (argument === undefined) continue
-  const next = args[index + 1]
-  if (argument.startsWith("-")) {
-    forwarded.push(argument)
-    if (valueFlags.has(argument)) {
-      const value = args[++index]
-      if (!value) throw new Error(`Missing value for ${argument}.`)
-      forwarded[forwarded.length - 1] = `${argument}=${value}`
-    } else if (["--parallel", "--bail"].includes(argument) && /^\d+$/.test(args[index + 1] ?? "")) {
-      forwarded[forwarded.length - 1] = `${argument}=${args[++index]}`
-    } else if (argument === "--changed" && next && !next.startsWith("-")) {
-      const reference = Bun.spawnSync(["git", "rev-parse", "--verify", `${next}^{commit}`], {
-        cwd: root,
-        stdout: "ignore",
-        stderr: "ignore",
-      })
-      if (reference.exitCode === 0) forwarded[forwarded.length - 1] = `--changed=${args[++index]}`
-    }
-  } else {
-    filters.push(argument.replace(/^\.\//, ""))
-  }
-}
+const {
+  forwarded,
+  filters,
+  cache: useCache,
+  requested,
+  force,
+} = unitTestOptions(process.argv.slice(2), root)
+if (requested && !useCache)
+  console.log(
+    `Unit cache bypass: ${force ? "forced execution" : "partial or output-producing runner options"}.`,
+  )
 
 const files: string[] = []
 for (const directory of ["apps", "packages", "scripts"]) {
@@ -80,6 +50,38 @@ const changed = forwarded.some(
 const timings = forwarded.some((argument) => argument.startsWith("--timings="))
   ? []
   : ["--timings=./scripts/unit-test-timings.json"]
+const cache = useCache ? new UnitTestCache(root) : undefined
+const controlledEnvironment = unitTestEnvironment(process.env)
+// Prepare the exact pinned runtime before snapshotting inputs, including first CI runs.
+if (
+  cache &&
+  files.some((file) => file.includes("packages/structural-optimization/tests/")) &&
+  (await Bun.file(resolve(root, "scripts/prepare-structural-runtime.ts")).exists())
+) {
+  const prepare = Bun.spawn([process.execPath, "run", "scripts/prepare-structural-runtime.ts"], {
+    cwd: root,
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  const result = await prepare.exited
+  if (result) process.exit(result)
+}
+async function snapshotInputs() {
+  try {
+    return await unitTestInputs(
+      root,
+      [...timings, ...forwarded],
+      controlledEnvironment,
+      undefined,
+      files,
+    )
+  } catch (error) {
+    console.log(`Unit cache disabled: inputs could not be verified (${String(error)}).`)
+    return undefined
+  }
+}
+const snapshot = cache ? await snapshotInputs() : undefined
+const successful: { workspace: string; group: "node" | "dom"; files: string[] }[] = []
 function outputOption(argument: string, group: string) {
   if (argument.startsWith("--coverage-dir=")) return `${argument}/${group}`
   if (!argument.startsWith("--reporter-outfile=")) return argument
@@ -99,8 +101,55 @@ function groupOptions(group: string) {
   return options
 }
 let exitCode = 0
+function groupScopes(group: (typeof groups)[number]) {
+  const scopes = new Map<string, string[]>()
+  for (const file of group.files) {
+    const workspace = snapshot?.workspaceFor(file) ?? "$root"
+    const selected = scopes.get(workspace) ?? []
+    selected.push(file)
+    scopes.set(workspace, selected)
+  }
+  return scopes
+}
+async function pendingScopes(group: (typeof groups)[number]) {
+  const scopes = groupScopes(group)
+  const controlled: string[] = []
+  const original: string[] = []
+  const groupName = group.name as "node" | "dom"
+  for (const [workspace, selected] of scopes) {
+    if (await scopeHit(workspace, groupName, selected))
+      console.log(`Unit cache hit: ${workspace}/${group.name} (${selected.length} files).`)
+    else {
+      const files = controlledScope(workspace) ? controlled : original
+      files.push(...selected)
+      logMiss(workspace, group.name, selected.length)
+    }
+  }
+  const batches = [
+    { files: controlled, env: controlledEnvironment, cacheable: true },
+    { files: original, env: process.env, cacheable: false },
+  ].filter((batch) => batch.files.length > 0)
+  return { scopes, batches, groupName }
+}
+function controlledScope(workspace: string) {
+  return Boolean(snapshot?.scopes.get(workspace)?.cacheable)
+}
+function logMiss(workspace: string, group: string, count: number) {
+  if (cache) console.log(`Unit cache miss: ${workspace}/${group} (${count} files).`)
+}
+async function scopeHit(workspace: string, group: "node" | "dom", files: string[]) {
+  if (!snapshot || !cache) return false
+  const receipt = cache.receipt(snapshot, workspace, group, files)
+  return receipt ? cache.has(receipt) : false
+}
 async function runGroup(group: (typeof groups)[number]) {
-  if (!group.files.length) return
+  const { scopes, batches, groupName } = await pendingScopes(group)
+  for (const batch of batches) {
+    const result = await runBatch(group, batch.files, batch.env)
+    afterBatch(result, batch, scopes, groupName)
+  }
+}
+async function runBatch(group: (typeof groups)[number], files: string[], env: NodeJS.ProcessEnv) {
   const options = groupOptions(group.name)
   const child = Bun.spawn(
     [
@@ -115,12 +164,27 @@ async function runGroup(group: (typeof groups)[number]) {
       ...group.preload,
       ...(changed ? ["--pass-with-no-tests"] : []),
       ...options,
-      ...group.files,
+      ...files.sort(),
     ],
-    { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
+    { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit", env },
   )
   const result = await child.exited
+  return result
+}
+function afterBatch(
+  result: number,
+  batch: { cacheable: boolean; files: string[] },
+  scopes: Map<string, string[]>,
+  group: "node" | "dom",
+) {
   if (result) exitCode = result
+  if (!result && batch.cacheable) recordSuccess(scopes, batch.files, group)
+}
+function recordSuccess(scopes: Map<string, string[]>, pending: string[], group: "node" | "dom") {
+  for (const [workspace, selected] of scopes) {
+    if (selected.some((file) => pending.includes(file)))
+      successful.push({ workspace, group, files: selected })
+  }
 }
 if (forwarded.includes("--watch")) {
   await Promise.all(groups.map(runGroup))
@@ -129,6 +193,19 @@ if (forwarded.includes("--watch")) {
   for (const group of groups) {
     await runGroup(group)
     if (bail && exitCode) break
+  }
+}
+if (cache && snapshot && successful.length) {
+  // Refuse receipts if source, generated inputs, dependencies, or environment changed during execution.
+  const current = await snapshotInputs()
+  for (const scope of successful) {
+    const before = cache.receipt(snapshot, scope.workspace, scope.group, scope.files)
+    const after = current && cache.receipt(current, scope.workspace, scope.group, scope.files)
+    if (before && after?.key === before.key) await cache.save(before, 0)
+    else
+      console.log(
+        `Unit cache not saved: ${scope.workspace}/${scope.group} inputs changed or are unsafe.`,
+      )
   }
 }
 process.exit(exitCode)

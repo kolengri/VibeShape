@@ -13,8 +13,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  preflight:
     if: github.repository == 'kolengri/VibeShape' && github.ref == 'refs/heads/main' && vars.VIBESHAPE_CLOUDFLARE_ENABLED == 'true'
+    runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-24.04"]') }}
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check production prerequisites
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KERNEL_ASSET_ID: ${{ vars.VIBESHAPE_OCCT_RELEASE_ASSET_ID }}
+        run: python3 ops/cloudflare/preflight.py
+
+  verify:
+    needs: preflight
+    if: github.repository == 'kolengri/VibeShape' && github.ref == 'refs/heads/main' && vars.VIBESHAPE_CLOUDFLARE_ENABLED == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  warm-caches:
+    needs: preflight
+    # Keep default-branch receipts available to later PRs while deployment is blocked.
+    if: always() && needs.preflight.result == 'failure' && github.repository == 'kolengri/VibeShape' && github.ref == 'refs/heads/main' && vars.VIBESHAPE_CLOUDFLARE_ENABLED == 'true'
     uses: ./.github/workflows/ci.yml
 
   build:
