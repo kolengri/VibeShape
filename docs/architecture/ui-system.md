@@ -75,6 +75,9 @@ still invalidate the presentation; transient previews keep their separate owners
 
 Feature-save completion is scoped to the initiating tool generation. A late save may finish its
 ordinary document transaction but cannot close a newer sketch edit or a reopened feature task.
+History navigation requested during a manual feature save waits for that submission to finish
+without starting another save. Only the latest requested destination opens after the task closes;
+validation or persistence failure retains the current editor.
 Disposable feature-preview workers exist only while a preview-capable feature tool is active.
 Debounce invalidation clears the visible candidate without restarting the worker; leaving the tool
 releases it, and stale completion or rejection cannot update a newer preview.

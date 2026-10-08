@@ -20,9 +20,20 @@ export function TaskPanelFormActions({
 }>) {
   const form = useFormContext()
   useRegisterTaskSubmission(async () => {
+    if (form.state.isSubmitting) {
+      // History joins a manual save instead of dropping navigation or submitting twice.
+      await new Promise<void>((resolve) => {
+        const subscription = form.store.subscribe((state) => {
+          if (!state.isSubmitting) {
+            subscription.unsubscribe()
+            resolve()
+          }
+        })
+      })
+      return
+    }
     if (
       !disabled &&
-      !form.state.isSubmitting &&
       form.state.canSubmit &&
       (previewStatus === undefined || previewStatus === "ready")
     )

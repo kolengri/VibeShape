@@ -3645,7 +3645,15 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await page.getByRole("button", { name: "Cancel" }).click()
-    await expect(page.getByRole("img", { name: "Solved sketch geometry" })).toBeVisible()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
+    await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+      "data-rendered-sketch-count",
+      "1",
+    )
+    await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+      "data-rendered-sketch-profile-count",
+      "1",
+    )
 
     await page.getByRole("button", { name: "Actions for Sketch 1" }).click()
     await page.getByRole("menuitem", { name: "Rename Sketch 1…" }).click()

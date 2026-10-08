@@ -148,8 +148,11 @@ test.describe("selector-backed extrusion", () => {
     await expect(form.getByRole("combobox", { name: "Result operation" })).toBeEnabled()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create extrusion" }).click()
+    await expect(form).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -203,11 +206,14 @@ test.describe("selector-backed extrusion", () => {
       await expect(form.getByRole("combobox", { name: "Target body" })).toHaveValue(/.+/)
       await expect(
         form.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
-      ).toHaveText("Box 1")
+      ).toHaveText("Box 1 · result")
       await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await form.getByRole("button", { name: "Create extrusion" }).click()
+      await expect(form).toHaveCount(0, { timeout: 30_000 })
 
       await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+      await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
       await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
         timeout: 120_000,
       })
@@ -220,7 +226,7 @@ test.describe("selector-backed extrusion", () => {
       await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
       await expect(
         editForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
-      ).toHaveText("Box 1")
+      ).toHaveText("Box 1 · result")
 
       await editForm.getByRole("button", { name: "Cancel" }).click()
       await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
@@ -229,11 +235,13 @@ test.describe("selector-backed extrusion", () => {
         .selectOption({ label: "Sketch 1 · Profile 1" })
       await extrudeCommand(page).click()
       const downstreamForm = page.getByRole("form", { name: "Extrude profile" })
+      await page.getByRole("button", { name: "Hide Extrusion 1", exact: true }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await page.getByRole("button", { name: "Show Extrusion 1", exact: true }).click()
       await selectResultOperation(page, downstreamForm, operation)
       await expect(
         downstreamForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
-      ).toHaveText("Extrusion 1")
+      ).toHaveText("Extrusion 1 · result")
       await downstreamForm.getByRole("button", { name: "Cancel" }).click()
     })
   }
@@ -277,6 +285,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create extrusion" }).click()
+    await expect(form).toHaveCount(0, { timeout: 30_000 })
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
@@ -286,6 +295,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(editForm).toBeVisible()
     await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await editForm.getByRole("button", { name: "Update extrusion" }).click()
+    await expect(editForm).toHaveCount(0, { timeout: 30_000 })
 
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
@@ -431,11 +441,14 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
-    await expect(page.getByText("Unsaved extrusion preview", { exact: true })).toBeVisible()
+    await expect(page.getByText("Unsaved feature preview", { exact: true })).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).not.toBeVisible()
     await createForm.getByRole("button", { name: "Create extrusion" }).dblclick()
+    await expect(createForm).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -511,12 +524,16 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Model", exact: true })
       .click()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
 
     await page.reload()
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -540,11 +557,17 @@ test.describe("selector-backed extrusion", () => {
     await boxForm.getByRole("button", { name: "Create box" }).click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(boxForm).toHaveCount(0)
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
-    const statusBar = page.locator("footer[role='status']")
+    const statusBar = page
+      .locator("footer")
+      .getByRole("status")
+      .filter({ hasText: /^Selection:/ })
     const faceSamples = [
       { x: bounds.width * 0.4, y: bounds.height * 0.55 },
       { x: bounds.width * 0.6, y: bounds.height * 0.55 },
@@ -578,9 +601,12 @@ test.describe("selector-backed extrusion", () => {
     const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(extrusionForm).toBeVisible()
     await extrusionForm.getByRole("button", { name: "Create extrusion" }).click()
+    await expect(extrusionForm).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
@@ -641,7 +667,8 @@ test.describe("selector-backed extrusion", () => {
     await expect(extrusion).toHaveCount(0, { timeout: 30_000 })
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(viewport).toHaveAttribute("data-preview-status", "idle")
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -649,7 +676,10 @@ test.describe("selector-backed extrusion", () => {
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
     await canvas.click({ position: { x: bounds.width * 0.5, y: bounds.height * 0.5 } })
-    const statusBar = page.locator("footer[role='status']")
+    const statusBar = page
+      .locator("footer")
+      .getByRole("status")
+      .filter({ hasText: /^Selection:/ })
     await expect(statusBar).toContainText(/Selection: Extrusion 1 · Face \d+/)
     const selectedFaceLabel = (await statusBar.textContent())?.match(/Extrusion 1 · Face \d+/)?.[0]
     if (!selectedFaceLabel) throw new Error("The selected extrusion face has no readable label.")
@@ -685,8 +715,13 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
       .click()
+    await expect(page.getByRole("form", { name: "Extrude profile" })).toHaveCount(0, {
+      timeout: 30_000,
+    })
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -729,6 +764,11 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
       .click()
+    await expect(page.getByRole("form", { name: "Extrude profile" })).toHaveCount(0, {
+      timeout: 30_000,
+    })
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
@@ -737,6 +777,9 @@ test.describe("selector-backed extrusion", () => {
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await editForm.getByRole("combobox", { name: "Distance" }).fill("20 mm")
     await editForm.getByRole("button", { name: "Update extrusion" }).click()
+    await expect(editForm).toHaveCount(0, { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
@@ -778,8 +821,13 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
       .click()
+    await expect(page.getByRole("form", { name: "Extrude profile" })).toHaveCount(0, {
+      timeout: 30_000,
+    })
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
