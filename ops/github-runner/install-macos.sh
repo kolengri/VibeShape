@@ -25,6 +25,9 @@ if ! "$docker_path" container inspect "$container" >/dev/null 2>&1; then
         bash -c 'while [ ! -f .runner ]; do sleep 2; done; exec ./run.sh'
 fi
 "$docker_path" start "$container" >/dev/null
+# Docker creates an empty named volume as root; the runner must own its workspace.
+"$docker_path" exec --user root "$container" chown runner:docker /home/runner/_work
+"$docker_path" exec "$container" test -w /home/runner/_work
 if ! "$docker_path" exec "$container" test -f /home/runner/.runner; then
     # Pipe the short-lived token directly; do not persist it in Docker environment/config.
     "$gh_path" api --method POST "repos/$repository/actions/runners/registration-token" --jq .token |
