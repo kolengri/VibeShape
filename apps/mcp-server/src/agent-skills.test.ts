@@ -58,7 +58,13 @@ it("loads the complete operator pack through resources or tools without browser 
       skill.uri,
       ...skill.references.map((reference) => reference.uri),
     ])
-    expect(documents).toHaveLength(15)
+    expect(documents).toHaveLength(17)
+    expect(documents).toContain(
+      "vibeshape://agent-skills/vibeshape-modeling/references/mechanical-design.md",
+    )
+    expect(documents).toContain(
+      "vibeshape://agent-skills/vibeshape-modeling/references/3d-printing.md",
+    )
     expect(documents).toContain(
       "vibeshape://agent-skills/vibeshape-modeling/references/lightweighting.md",
     )

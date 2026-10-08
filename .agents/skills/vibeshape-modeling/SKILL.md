@@ -13,11 +13,20 @@ the browser numerical worker; a result is a separate mesh snapshot with mandator
 For material removal without prescribed loads, read [quick load-free lightweighting](references/quick-lightweighting.md).
 Its Gyroid, Schwarz P and Schwarz D geometry reports measured removal and makes no structural performance claim.
 
+## Choose design guidance by purpose
+
+| Purpose | Guidance to load |
+| --- | --- |
+| Every CAD model | The common intent rules below and [modeling contracts and recipes](references/modeling.md) |
+| Functional parts, load-bearing details, fits, or mechanisms | [Mechanical design](references/mechanical-design.md) |
+| Models intended for 3D printing | [3D-printing design](references/3d-printing.md), using the section for the intended process |
+| Assemblies or reusable components | [Assembly and library transactions](references/assembly-and-library.md) |
+
+Combine applicable categories: a printed latch needs both mechanical and printing guidance. Apply manufacturing rules only when the intended process is established; preserve requested appearance and exact source geometry for visualization or reconstruction. For another manufacturing process, use its current process-specific guidance instead of importing FDM rules.
+
 ## Author or revise intent
 
 Translate the request into dimensions, units, mating interfaces, target body, and acceptance measurements. Ask only for missing information that changes the design. For reversible choices, state a reasonable assumption and continue. Preserve protected interfaces and existing model intent.
-
-Prefer rounded transitions over sharp corners where feasible and consistent with the task, especially at internal corners, section changes, and the roots of load-bearing ribs, brackets, and snap arms, to reduce stress concentrations. Choose radii that preserve required dimensions, mating surfaces, clearances, remaining load-bearing sections, and print constraints; retain sharp edges when their function requires them. Use supported profile arcs or scoped Fillet features, and inspect the exact preview after treatment. Successful geometry alone does not establish strength or fatigue life.
 
 Make all editable design dimensions and numeric controls variable-driven by default: lengths, thicknesses, diameters/radii, clearances, offsets, angles, and supported counts. Create or reuse named document variables before their consumers, and retain `#name` references or derived expressions in sketch constraints and feature quantities instead of baking in evaluated numbers. Follow the Variables section of [modeling contracts and recipes](references/modeling.md), including expression support limits and editability checks.
 

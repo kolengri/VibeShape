@@ -16,6 +16,8 @@ import { quickGridSchema } from "../src/quick-isosurface"
 import { encodeQuickLightweightingStl } from "../src/quick-mesh"
 
 const timeout = 120_000
+// Shared CI runs can take nearly two minutes; this checks batching, not speed.
+const denseSourceTimeout = 180_000
 const root = fileURLToPath(new URL("../../../", import.meta.url))
 let runtime: PyodideInterface
 const matrixReceipts: unknown[] = []
@@ -210,7 +212,7 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
         await runtime.runPythonAsync("_QUICK_PROGRESS = None")
       }
     },
-    timeout,
+    denseSourceTimeout,
   )
 
   it.each(

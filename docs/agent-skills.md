@@ -19,12 +19,14 @@ The server tells the agent to read the index; the client must expose resources o
 | Skill | Use |
 | --- | --- |
 | [vibeshape-use](../.agents/skills/vibeshape-use/SKILL.md) | Entry point, local/remote pairing, capability discovery, recovery, shared draft/revision/units contract |
-| [vibeshape-modeling](../.agents/skills/vibeshape-modeling/SKILL.md) | Parametric sketches, features, variables, existing-model edits, bounded construction recipes |
+| [vibeshape-modeling](../.agents/skills/vibeshape-modeling/SKILL.md) | Parametric authoring and conditional guidance for mechanical design and 3D printing |
 | [vibeshape-inspection](../.agents/skills/vibeshape-inspection/SKILL.md) | Exact measurements, authored intent, body roles, selectable edges, failure diagnosis |
 | [vibeshape-organization](../.agents/skills/vibeshape-organization/SKILL.md) | Part names/visibility and canonical History folders through manual metadata review |
 | [vibeshape-export](../.agents/skills/vibeshape-export/SKILL.md) | Native editable backup, STEP/STL/3MF delivery, print-preparation copy, slicer handoff |
 
 Each folder contains a `SKILL.md`, Codex UI metadata, and references only where needed. Install all five sibling folders together: their relative links form one portable pack. Runtime instructions need no repository checkout, developer dependencies, global engineering skills, or source-code edits. Existing server/client dependencies still apply.
+
+The modeling entrypoint separates common CAD intent from [mechanical design](../.agents/skills/vibeshape-modeling/references/mechanical-design.md) and [3D-printing design](../.agents/skills/vibeshape-modeling/references/3d-printing.md). Load the applicable categories together for a printed functional part. Printing guidance distinguishes FDM/FFF from resin and other processes; it does not alter visualization or exact-reconstruction geometry by default.
 
 ## Optional local installation
 
