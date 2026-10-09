@@ -37,6 +37,12 @@ if [[ "$("$docker_path" inspect "$container" --format '{{.HostConfig.Memory}}')"
     "$docker_path" update --memory "$memory_bytes" --memory-swap "$((memory_bytes * 2))" "$container" >/dev/null
 fi
 "$docker_path" start "$container" >/dev/null
+# Existing containers keep their image filesystem when the image is rebuilt.
+# Match GitHub-hosted Linux cache compression before cross-runner restores.
+if ! "$docker_path" exec "$container" sh -c 'command -v zstd >/dev/null'; then
+    "$docker_path" exec --user root "$container" bash -c \
+        'apt-get update && apt-get install -y --no-install-recommends zstd && rm -rf /var/lib/apt/lists/*'
+fi
 # Docker creates an empty named volume as root; the runner must own its workspace.
 "$docker_path" exec --user root "$container" chown runner:docker /home/runner/_work
 "$docker_path" exec "$container" test -w /home/runner/_work
