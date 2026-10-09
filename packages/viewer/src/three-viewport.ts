@@ -477,8 +477,6 @@ export type ViewerSketchProjectionBounds = Readonly<{
   height: number
 }>
 
-type ViewerCameraClipping = Readonly<{ far: number; near: number }>
-
 export type { ViewerSection } from "./section-view"
 
 export type GeometryViewport = Readonly<{
@@ -666,21 +664,6 @@ export function orthographicFrustum(viewHeight: number, aspect: number): Orthogr
   const halfHeight = safeHeight / 2
   const halfWidth = halfHeight * safeAspect
   return { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight }
-}
-
-function viewerCameraClipping(
-  cameraPosition: ViewerVector3,
-  boundsCenter: ViewerVector3,
-  boundsRadius: number,
-): ViewerCameraClipping {
-  const distance = Math.hypot(
-    cameraPosition[0] - boundsCenter[0],
-    cameraPosition[1] - boundsCenter[1],
-    cameraPosition[2] - boundsCenter[2],
-  )
-  const padding = Math.max(Number.isFinite(boundsRadius) ? boundsRadius * 2.5 : 0, 1)
-  const near = Math.max(distance - padding, 0.01)
-  return { near, far: Math.max(distance + padding, near + 1) }
 }
 
 function viewerViewHeightForBounds(
@@ -1964,7 +1947,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#camera.position.set(...pose.position)
     this.#setCameraUp(pose.up)
     this.#controls.target.set(...pose.target)
-    this.#updateClippingToScene()
     this.#controls.update()
     this.#render()
   }
@@ -1979,7 +1961,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#camera.position.set(...pose.position)
     this.#setCameraUp(pose.up)
     this.#expandViewToScene(frame.origin)
-    this.#updateClippingToScene()
     this.#updateProjection()
     this.#controls.update()
     this.#render()
@@ -2034,7 +2015,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setCameraUp(pose.up)
     const aspect = this.#canvas.clientWidth / Math.max(this.#canvas.clientHeight, 1)
     this.#viewHeight = viewerSketchProjectionViewHeight(bounds, aspect)
-    this.#updateClippingToScene()
     this.#updateProjection()
     this.#controls.update()
     this.#render()
@@ -2098,8 +2078,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#viewHeight = Math.max(radius * 2 * FIT_PADDING, 1)
     this.#controls.target.copy(sphere.center)
     this.#camera.position.copy(sphere.center).addScaledVector(direction, distance)
-    this.#camera.near = Math.max(distance - radius * 2.5, 0.01)
-    this.#camera.far = distance + radius * 2.5
     this.#updateProjection()
     this.#controls.update()
     this.#render()
@@ -2275,19 +2253,49 @@ class ThreeGeometryViewport implements GeometryViewport {
       .expandByObject(this.#sketchGroup)
       .expandByObject(this.#sketchProfileGroup)
       .expandByObject(this.#sketchPointCandidateGroup)
+      .expandByObject(this.#sketchPointPreselectionGroup)
+      .expandByObject(this.#featurePreselectionGroup)
+      .expandByObject(this.#featureSelectionGroup)
+      .expandByObject(this.#analysisDecoration.group)
+      .expandByObject(this.#angularGizmoGroup)
+      .expandByObject(this.#printDecoration.bed)
+      .expandByObject(this.#printDecoration.ground)
+    for (const plane of this.#originPlaneGroup.children) {
+      if (plane.visible) bounds.expandByObject(plane)
+    }
+    if (this.#translationHelper.visible) {
+      // Bound finite handles only; TransformControls also owns million-unit helper axes.
+      const size =
+        ((this.#camera.top - this.#camera.bottom) / this.#camera.zoom) *
+        (this.#translationControls.size / 2)
+      bounds.union(
+        new Box3().setFromCenterAndSize(
+          this.#translationObject.getWorldPosition(new Vector3()),
+          new Vector3(size, size, size),
+        ),
+      )
+    }
     if (bounds.isEmpty()) {
       this.#camera.near = 0.01
       this.#camera.far = 10_000
-      return
+    } else {
+      this.#camera.updateMatrixWorld()
+      bounds.applyMatrix4(this.#camera.matrixWorldInverse)
+      const padding = Math.max((bounds.max.z - bounds.min.z) * 0.05, 1)
+      const near = -bounds.max.z - padding
+      const retreat = Math.max(0.01 - near, 0)
+      // Orthographic scale is unchanged when retreating along the view direction.
+      // Keep visible datums in front of the camera for rendering and raycasting.
+      if (retreat > 0) {
+        this.#camera.position.addScaledVector(
+          this.#camera.getWorldDirection(new Vector3()),
+          -retreat,
+        )
+      }
+      this.#camera.near = Math.max(near + retreat, 0.01)
+      this.#camera.far = Math.max(-bounds.min.z + padding + retreat, this.#camera.near + 1)
     }
-    const sphere = bounds.getBoundingSphere(new Sphere())
-    const clipping = viewerCameraClipping(
-      this.#camera.position.toArray() as [number, number, number],
-      sphere.center.toArray() as [number, number, number],
-      sphere.radius,
-    )
-    this.#camera.near = clipping.near
-    this.#camera.far = clipping.far
+    this.#camera.updateProjectionMatrix()
   }
 
   #expandViewToScene(target: ViewerVector3) {
@@ -3298,6 +3306,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #renderNow = () => {
     if (this.#disposed) return
     this.#applySectionClipping()
+    this.#updateClippingToScene()
     const width = this.#canvas.clientWidth
     const height = this.#canvas.clientHeight
     this.#publishSketchPlaneProjection()

@@ -27,3 +27,12 @@ the analytical draft remains semantic authority, and its world-space line displa
 geometry.
 
 These face IDs are **ephemeral view metadata** for the current rebuild. Mesh replacement clears selection, and neither the ID nor its friendly ordinal may be persisted, used in domain commands, or treated as `TopoRef`. Stable downstream references must continue through the accepted topology-resolution contracts. Body, edge, vertex, and stable-reference selection, view presets, clipping, and display modes remain later adapter capabilities.
+
+## Implementation clarification: render depth (2026-10-09)
+
+The current adapter preserves the support-frame target and orthographic screen framing, while render-depth
+safety can increase camera distance along the view direction. Visible grids, origin datums, History
+highlights, analysis overlays, and finite gizmo handles participate in depth bounds without enlarging
+the model's Fit framing. This refines the initial adapter's distance-preservation behavior; the raw
+Three.js ownership and WebGL2 baseline remain unchanged. See [the current viewport interaction
+contract](../product/ux-flows.md#interface-frame).
