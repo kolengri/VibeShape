@@ -54,14 +54,14 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
-      - name: Check protected branch and configured kernel asset
+      - name: Check current main and configured kernel asset
         env:
           GH_TOKEN: ${{ github.token }}
           KERNEL_ASSET_ID: ${{ vars.VIBESHAPE_OCCT_RELEASE_ASSET_ID }}
         run: |
           set -euo pipefail
           [[ "$KERNEL_ASSET_ID" =~ ^[0-9]+$ ]] || { echo 'Configure VIBESHAPE_OCCT_RELEASE_ASSET_ID.' >&2; exit 1; }
-          test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .protected)" = true
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
           mkdir -p .artifacts/cloudflare-kernel
           gh api "repos/$GITHUB_REPOSITORY/releases/assets/$KERNEL_ASSET_ID" -H 'Accept: application/octet-stream' > .artifacts/occt-source.tar
           echo '965e89b6b7afd1401e7ed34b0ac89157b78e5c3c76d897a2f503fc56523a70c0  .artifacts/occt-source.tar' | sha256sum --check --strict
@@ -139,14 +139,13 @@ jobs:
         with:
           name: cloudflare-relay-${{ github.sha }}
           path: relay
-      - name: Validate exact relay artifact and current protected head
+      - name: Validate exact relay artifact and current main head
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_MANIFEST: ${{ needs.build.outputs.relay-manifest-sha256 }}
           MCP_URL: ${{ vars.VIBESHAPE_REMOTE_MCP_URL }}
         run: |
           set -euo pipefail
-          test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .protected)" = true
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
           python3 - <<'PY'
           import hashlib, json, os, pathlib
@@ -190,7 +189,7 @@ jobs:
         with:
           name: cloudflare-site-${{ github.sha }}
           path: site
-      - name: Validate artifact, destination and current protected head
+      - name: Validate artifact, destination and current main head
         id: config
         env:
           GH_TOKEN: ${{ github.token }}
@@ -201,7 +200,6 @@ jobs:
           set -euo pipefail
           [[ "$PAGES_PROJECT" =~ ^[a-z0-9][a-z0-9-]{0,57}$ ]] || { echo 'Configure CLOUDFLARE_PAGES_PROJECT.' >&2; exit 1; }
           [[ "$ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]] || { echo 'Configure CLOUDFLARE_ACCOUNT_ID.' >&2; exit 1; }
-          test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .protected)" = true
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
           python3 - <<'PY'
           import hashlib, json, os, pathlib

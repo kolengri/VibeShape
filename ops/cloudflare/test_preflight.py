@@ -29,17 +29,23 @@ class PreflightTests(unittest.TestCase):
                 check_preflight({**self.environment, key: value}, self.read_api)
         self.assertEqual(self.requests, [])
 
-    def test_unprotected_main_fails_before_asset_request(self):
-        self.branch["protected"] = False
-        with self.assertRaisesRegex(ValueError, "Protect main"):
-            check_preflight(self.environment, self.read_api)
-        self.assertEqual(len(self.requests), 1)
+    def test_current_main_does_not_require_paid_branch_protection(self):
+        for branch in ({"protected": False, "commit": {"sha": "a" * 40}},
+                       {"commit": {"sha": "a" * 40}}):
+            with self.subTest(branch=branch):
+                self.branch = branch
+                self.requests = []
+                check_preflight(self.environment, self.read_api)
+                self.assertEqual(len(self.requests), 2)
 
     def test_outdated_source_fails_before_asset_request(self):
-        self.branch["commit"]["sha"] = "c" * 40
-        with self.assertRaisesRegex(ValueError, "current main"):
-            check_preflight(self.environment, self.read_api)
-        self.assertEqual(len(self.requests), 1)
+        for protected in (True, False):
+            with self.subTest(protected=protected):
+                self.branch = {"protected": protected, "commit": {"sha": "c" * 40}}
+                self.requests = []
+                with self.assertRaisesRegex(ValueError, "current main"):
+                    check_preflight(self.environment, self.read_api)
+                self.assertEqual(len(self.requests), 1)
 
     def test_missing_mismatched_and_empty_assets_fail(self):
         for asset in ({}, {"id": 124, "size": 10}, {"id": 123, "size": 0},
