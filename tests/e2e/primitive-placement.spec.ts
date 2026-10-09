@@ -61,7 +61,7 @@ test.describe("Primitive graphical placement", () => {
     await page.mouse.move(handle.x + 140, handle.y + 60, { steps: 5 })
     expect((await page.screenshot({ clip: cameraBounds })).equals(cameraBeforeDrag)).toBe(true)
     await page.mouse.up()
-    await expect(page.locator("footer[role='status']")).toContainText("Selection: None")
+    await expect(page.locator("footer > [role='status']")).toContainText("Selection: None")
 
     await page.mouse.move(handle.x, handle.y)
     await page.mouse.down()
@@ -79,7 +79,9 @@ test.describe("Primitive graphical placement", () => {
       steps: 5,
     })
     await page.mouse.up()
-    expect((await page.screenshot({ clip: cameraBounds })).equals(cameraBeforeDrag)).toBe(false)
+    await expect
+      .poll(async () => (await page.screenshot({ clip: cameraBounds })).equals(cameraBeforeDrag))
+      .toBe(false)
     await expect(originX).toHaveValue(movedOrigin)
 
     await form.getByRole("button", { name: "Create box" }).click()
