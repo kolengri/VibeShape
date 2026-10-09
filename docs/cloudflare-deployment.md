@@ -41,13 +41,14 @@ checksum, exact artifact manifests and the configured publication destination.
    rejected, except corresponding-source archives, which are split into reconstructable 20 MiB
    parts. `sources/RECONSTRUCT.txt` records the exact filenames and whole-archive SHA-256. The
    application source TAR is included; no project files or local server executable are uploaded.
-5. Pass an immutable, one-day Actions artifact to the separate publication job. That job installs
+5. Pass the verified output through immutable, run-specific Actions cache entries to the separate
+   publication job. That job installs
    no project dependencies, checks every asset hash and size against the build's manifest digest,
    rejects symlinks, confirms the source is still the current `main`, and publishes with
    pinned Wrangler 4.136.3. Production publication belongs to the workflow-wide concurrency group.
 
 When `VIBESHAPE_REMOTE_MCP_URL` is configured, the same verified build also creates a bundled relay
-artifact with an exact source/hash manifest. A separate `cloudflare-mcp-production` job checks its
+bundle with an exact source/hash manifest. A separate `cloudflare-mcp-production` job checks its
 account, Worker name, origin and current `main`, then publishes with Wrangler 4.147.0
 before the editor. Neither publication job installs project dependencies. Relay failure blocks the
 new editor deployment; an empty relay URL preserves the static-only path. PRs receive no deployment
@@ -62,6 +63,26 @@ and obtain the owner's approval before initial activation. PRs and fork code nev
 No `pull_request_target`, broad write permission, GitHub-to-Cloudflare app grant, or global token is
 used. The workflow records commit, site-manifest digest and Cloudflare deployment URL in its summary;
 the same source identity and per-file hashes are published as `/site-manifest.json`.
+
+## Transfer storage
+
+Actions artifact storage is exhausted for the account, while this repository's cache storage has
+its separate 10 GB allowance. Deployment transfers use the already pinned cache save/restore
+modules. Keys contain the workflow run ID, attempt, source SHA and build manifest digest. There
+are no restore prefixes; both producer and consumer require an exact `cache-hit` after lookup or
+restore. Missing, evicted or prefix-only entries fail before publication. Restored directories,
+source identity, complete file inventory, per-file hashes and destination checks remain required.
+Publication uses the exact key returned by the successful build, including when only failed jobs
+are rerun in a later attempt. Both Linux runner types provide zstd for compatible cache archives.
+Build jobs do not receive publication secrets; publication jobs still install no project code.
+
+These caches are temporary transport, not durable release backups. GitHub manages eviction and
+retention; it can remove an unused entry and deployments must fail closed in that case. No cache
+limit, billing setting or paid service is changed. Exact source manifests remain published
+with the site, and workflow logs record deployment identity. Browser reports use a separate
+`vibeshape-public-browser-v1-RUN_ID-ATTEMPT-SHA` cache entry when generated. They can be restored
+with the pinned `actions/cache/restore` module in a diagnostic workflow using that exact key and
+`.artifacts/public-browser` path; they are no longer Actions download-artifact records.
 
 ## One-time setup requiring the owner's decision
 
@@ -105,7 +126,7 @@ For another account or re-provisioning, use the following setup contract:
    `965e89b6b7afd1401e7ed34b0ac89157b78e5c3c76d897a2f503fc56523a70c0`.
    The pipeline refuses other bytes; a kernel update requires a separately reviewed checksum change.
 5. Confirm the account's free quotas and GitHub artifact budget, then set repository variable
-   `VIBESHAPE_CLOUDFLARE_ENABLED=true`. The pipeline uses one-day artifact retention and does not
+   `VIBESHAPE_CLOUDFLARE_ENABLED=true`. The pipeline uses the separate free Actions cache allowance for transfer and does not
    enable billing. Merge a verified PR to `main` or dispatch the workflow on `main`.
 
 Enabling this pipeline authorizes subsequent current `main` deployments under the configured

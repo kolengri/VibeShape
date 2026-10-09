@@ -45,6 +45,8 @@ jobs:
     env:
       VITE_REMOTE_MCP_URL: ${{ vars.VIBESHAPE_REMOTE_MCP_URL }}
     outputs:
+      site-cache-key: ${{ steps.site-transfer.outputs.cache-primary-key }}
+      relay-cache-key: ${{ steps.relay-transfer.outputs.cache-primary-key }}
       manifest-sha256: ${{ steps.evidence.outputs.sha256 }}
       relay-manifest-sha256: ${{ steps.relay.outputs.sha256 }}
     steps:
@@ -104,27 +106,49 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('sha256=' + hashlib.sha256(manifest.read_bytes()).hexdigest() + '\n')
           PY
-      - name: Transfer the verified relay bundle
+      - name: Stage the verified relay transfer
         if: vars.VIBESHAPE_REMOTE_MCP_URL != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        run: mv .artifacts/cloudflare-relay relay
+      - name: Save the verified relay transfer
+        if: vars.VIBESHAPE_REMOTE_MCP_URL != ''
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          name: cloudflare-relay-${{ github.sha }}
-          path: .artifacts/cloudflare-relay
-          if-no-files-found: error
-          retention-days: 1
-      - name: Record exact upload identity
+          path: relay
+          key: vibeshape-deploy-relay-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ steps.relay.outputs.sha256 }}
+      - name: Check relay transfer availability
+        if: vars.VIBESHAPE_REMOTE_MCP_URL != ''
+        id: relay-transfer
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: relay
+          key: vibeshape-deploy-relay-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ steps.relay.outputs.sha256 }}
+          lookup-only: true
+          fail-on-cache-miss: true
+      - name: Require the exact relay transfer
+        if: vars.VIBESHAPE_REMOTE_MCP_URL != ''
+        run: test '${{ steps.relay-transfer.outputs.cache-hit }}' = true
+      - name: Record exact transfer identity
         id: evidence
         run: |
           printf 'sha256=%s\n' "$(sha256sum .artifacts/cloudflare-site/site-manifest.json | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
           printf 'Source: `%s`\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-      - name: Transfer only the static site to the publication job
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Stage the verified static site transfer
+        run: mv .artifacts/cloudflare-site site
+      - name: Save the verified static site transfer
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          name: cloudflare-site-${{ github.sha }}
-          path: .artifacts/cloudflare-site
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
+          path: site
+          key: vibeshape-deploy-site-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ steps.evidence.outputs.sha256 }}
+      - name: Check static site transfer availability
+        id: site-transfer
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: site
+          key: vibeshape-deploy-site-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ steps.evidence.outputs.sha256 }}
+          lookup-only: true
+          fail-on-cache-miss: true
+      - name: Require the exact static site transfer
+        run: test '${{ steps.site-transfer.outputs.cache-hit }}' = true
 
   publish-relay:
     needs: build
@@ -135,10 +159,15 @@ jobs:
       name: cloudflare-mcp-production
       url: ${{ vars.VIBESHAPE_REMOTE_MCP_URL }}
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Restore this run's verified relay transfer
+        id: transfer
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          name: cloudflare-relay-${{ github.sha }}
           path: relay
+          key: ${{ needs.build.outputs.relay-cache-key }}
+          fail-on-cache-miss: true
+      - name: Require an exact transfer match
+        run: test '${{ steps.transfer.outputs.cache-hit }}' = true
       - name: Validate exact relay artifact and current main head
         env:
           GH_TOKEN: ${{ github.token }}
@@ -150,6 +179,7 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, pathlib
           root = pathlib.Path('relay')
+          assert root.is_dir() and not root.is_symlink()
           assert {p.name for p in root.iterdir()} == {'index.js', 'wrangler.json', 'relay-manifest.json'}
           assert all(p.is_file() and not p.is_symlink() for p in root.iterdir())
           manifest = root / 'relay-manifest.json'
@@ -185,10 +215,15 @@ jobs:
       name: cloudflare-production
       url: ${{ steps.deploy.outputs.deployment-url }}
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Restore this run's verified site transfer
+        id: transfer
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          name: cloudflare-site-${{ github.sha }}
           path: site
+          key: ${{ needs.build.outputs.site-cache-key }}
+          fail-on-cache-miss: true
+      - name: Require an exact transfer match
+        run: test '${{ steps.transfer.outputs.cache-hit }}' = true
       - name: Validate artifact, destination and current main head
         id: config
         env:
@@ -204,6 +239,7 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, pathlib
           root = pathlib.Path('site')
+          assert root.is_dir() and not root.is_symlink()
           manifest = root / 'site-manifest.json'
           assert manifest.is_file() and not manifest.is_symlink()
           assert all(not path.is_symlink() for path in root.rglob('*'))
@@ -258,10 +294,9 @@ jobs:
           VIBESHAPE_PUBLIC_URL: ${{ needs.publish.outputs.deployment-url }}
           VIBESHAPE_EXPECTED_COMMIT: ${{ github.sha }}
         run: bun node_modules/@playwright/test/cli.js test --config=playwright.public.config.ts
-      - name: Retain browser evidence
+      - name: Retain browser evidence in cache storage
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          name: public-browser-${{ github.sha }}
           path: .artifacts/public-browser
-          retention-days: 1
+          key: vibeshape-public-browser-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
