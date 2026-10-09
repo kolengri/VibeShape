@@ -2,8 +2,14 @@ import { createHash } from "node:crypto"
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { z } from "zod"
+import rootManifest from "../package.json"
 
-export const DISTRIBUTION_BUN_VERSION = "1.3.14"
+// JSON imports are embedded by Bun.build, so standalone launchers retain this exact pin.
+export const DISTRIBUTION_BUN_VERSION = z
+  .string()
+  .regex(/^bun@\d+\.\d+\.\d+$/)
+  .parse(rootManifest.packageManager)
+  .slice(4)
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
 const safeRelativePath = z
   .string()

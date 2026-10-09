@@ -15,6 +15,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import rootManifest from "../package.json"
 import { createDistributionManifest, verifyDistribution } from "./local-distribution-files"
 import { installDistribution, rollbackDistribution } from "./local-distribution-install"
 
@@ -63,6 +64,31 @@ function packageFixture(root: string, name = "first", commit = "a".repeat(40)) {
 }
 
 describe("portable local distribution installation", () => {
+  it("records the repository Bun pin and verifies with a standalone bundled launcher", async () => {
+    const { directory } = scenario()
+    const pkg = packageFixture(directory)
+    expect(`bun@${pkg.manifest.bunVersion}`).toBe(rootManifest.packageManager)
+    const build = await Bun.build({
+      entrypoints: [join(import.meta.dirname, "local-distribution.ts")],
+      target: "bun",
+      format: "esm",
+      packages: "bundle",
+    })
+    expect(build.success).toBe(true)
+    expect(build.outputs).toHaveLength(1)
+    const launcher = join(directory, "standalone-launcher.js")
+    const output = build.outputs[0]
+    if (!output) throw new Error("The standalone launcher build produced no artifact.")
+    await Bun.write(launcher, output)
+    const result = Bun.spawnSync([process.execPath, launcher, "verify", pkg.directory], {
+      cwd: directory,
+      env: { ...process.env, NODE_PATH: undefined },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr.toString()).toBe("")
+    expect(result.stdout.toString()).toContain(pkg.manifest.releaseId)
+  })
+
   it("installs, updates and rolls back with immutable versions and spaces in paths", () => {
     const { directory, destination } = scenario()
     const first = packageFixture(directory)
