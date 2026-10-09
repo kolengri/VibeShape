@@ -10,13 +10,21 @@ protected-head checks, and deployment concurrency remain in effect.
 
 The runner uses the official GitHub runner image, pinned by version and digest, with `gh`,
 Python, build tools, and Node.js 24/npm added. OrbStack runs the Linux ARM64 container on Apple Silicon.
-It has four CPUs, a 6 GiB memory limit, a 1 GiB shared-memory area, and its own named
+New containers have no CPU or memory cap, a 1 GiB shared-memory area, and their own named
 workspace volume. No macOS home directory or Docker socket is mounted, and no ports are
 published. Dependency installation and browser downloads happen inside Linux. A GitHub pre-job
 hook clears the exact repository workspace, including hidden files, before every job; runner
 actions/tool/browser caches remain outside it. Publication jobs start without a stale checkout,
 lockfile, dependencies, or older downloaded artifacts. Unexpected/symlinked workspace paths fail
 the job instead of being deleted.
+
+Self-hosted CI selects the native test worker count from the available CPUs; hosted CI keeps
+two workers. OrbStack's global resource limits still apply. On the current eight-core, 16 GiB
+Mac, CPU access is eight cores and the OrbStack memory ceiling is 16 GiB. Memory is allocated
+on demand, rather than reserved. The installer removes a previous CPU quota and raises an
+existing container's memory ceiling to the full OrbStack memory pool;
+OrbStack settings can be adjusted with `orb config set cpu 8` and
+`orb config set memory_mib 16384` on this host.
 
 Only this private repository is registered. Owner-authored PRs whose source is the same
 repository can use the fallback; fork and other authors' PRs retain GitHub-hosted routing.

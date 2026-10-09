@@ -24,10 +24,17 @@ fi
 
 if ! "$docker_path" container inspect "$container" >/dev/null 2>&1; then
     "$docker_path" run -d --name "$container" --init --restart unless-stopped \
-        --cpus 4 --memory 6g --memory-swap 6g --pids-limit 1024 --shm-size 1g \
+        --pids-limit 1024 --shm-size 1g \
         --mount type=volume,source=vibeshape-actions-work,target=/home/runner/_work \
         vibeshape-actions-runner:2.338.0 \
         bash -c 'while [ ! -f .runner ]; do sleep 2; done; exec ./run.sh'
+fi
+# Zero-valued Docker updates retain old limits; lift an existing memory ceiling to the VM pool.
+"$docker_path" update --cpu-quota -1 "$container" >/dev/null
+if [[ "$("$docker_path" inspect "$container" --format '{{.HostConfig.Memory}}')" != 0 ]]; then
+    memory_bytes="$("$docker_path" info --format '{{.MemTotal}}')"
+    [[ "$memory_bytes" =~ ^[1-9][0-9]*$ ]]
+    "$docker_path" update --memory "$memory_bytes" --memory-swap "$((memory_bytes * 2))" "$container" >/dev/null
 fi
 "$docker_path" start "$container" >/dev/null
 # Docker creates an empty named volume as root; the runner must own its workspace.

@@ -38,6 +38,9 @@ jobs:
       - name: Test local runner fallback policy
         run: python3 -m unittest discover -s ops/github-runner -p 'test_*.py'
 
+      - name: Test production preflight policy
+        run: python3 -m unittest discover -s ops/cloudflare -p 'test_*.py'
+
       - name: Audit critical dependency vulnerabilities
         run: bun run audit
 
@@ -79,9 +82,22 @@ jobs:
             echo "- Duration: $((SECONDS - start))s"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Restore dependency-aware unit test results
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: .turbo/unit-tests/v1
+          key: ${{ runner.os }}-${{ runner.arch }}-unit-tests-v1-${{ hashFiles('bun.lock', 'package.json', 'scripts/run-unit-tests.ts', 'scripts/unit-test-cache*.ts', 'scripts/workspace-graph.ts', 'tests/unit/support/**') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-unit-tests-v1-${{ hashFiles('bun.lock', 'package.json', 'scripts/run-unit-tests.ts', 'scripts/unit-test-cache*.ts', 'scripts/workspace-graph.ts', 'tests/unit/support/**') }}-
+
       - name: Test
-        # Use both CPUs on standard private-repository Linux runners.
-        run: bun run test --parallel=2 --timeout=15000
+        # Native receipts validate every input again after archive restoration.
+        run: |
+          workers=2
+          if [[ "$RUNNER_ENVIRONMENT" == self-hosted ]]; then
+            workers=$(bun -e 'console.log(require("node:os").availableParallelism())')
+          fi
+          bun run test --cache --parallel="$workers" --timeout=15000
 
       - name: Test remote MCP authorization and session boundaries
         run: bun run test:remote-mcp

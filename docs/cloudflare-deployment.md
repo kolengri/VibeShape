@@ -15,6 +15,14 @@ host; the publication environments and protected-head checks below still apply.
 `.github/workflows/cloudflare-pages.yml` runs only for this repository's `main`, after
 `VIBESHAPE_CLOUDFLARE_ENABLED` is explicitly set to `true`. Its sequence is:
 
+Before the expensive verification job, an unprivileged production preflight checks the current
+protected `main` and the configured kernel release asset. A missing prerequisite fails that job
+immediately and skips deployment verification and publication. On preflight failure, a separate
+`warm-caches` job runs the same full CI gates to seed dependency-aware typecheck and unit-test
+receipts on the default branch for later PRs. The first cold seed still runs the tests; subsequent
+unchanged scopes can reuse successful receipts. No tests or protection checks are waived.
+Destination settings remain in the publication environment where they are available.
+
 1. Run the existing audit, formatting, lint, types, tests, build and Fallow gates without Cloudflare
    credentials. Official actions are pinned to reviewed commit SHAs.
 2. Confirm `main` is protected. Fetch one repository release asset containing the already verified
