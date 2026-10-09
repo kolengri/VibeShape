@@ -126,8 +126,8 @@ package scripts or changing the test runner.
 ## Deployment preflight
 
 Run Cloudflare preflight before its full reusable verification job. Verify
-required kernel assets and that the push targets the protected, current main
-commit. Preserve the later protection and verified-build checks. Destination
+required kernel assets and that the push targets the current main commit.
+Preserve the later current-head and verified-build checks. Destination
 configuration remains checked by the publication job because production
 environment values need not be visible to the unprivileged preflight job.
 
@@ -136,7 +136,13 @@ CI workflow once in a separate cache-warming job. This preserves default-main
 typecheck/unit archive seeding. A preflight failure becomes visible quickly;
 a first cold cache-warming run still consumes the required full verification
 time. When preflight succeeds, deployment verification performs that one full
-CI invocation instead. No protection or verification gate is removed.
+CI invocation instead. Full CI and artifact verification remain required.
+
+On 2026-10-09 the owner approved removing mandatory GitHub branch protection
+from preflight, build and publication because it is unavailable for this private
+repository on GitHub Free. Build and both publication jobs still reject a stale
+main SHA. This permits deployment without GitHub enforcing PR-only changes;
+verified PRs remain the repository workflow.
 
 ## Runner resources and evidence
 
@@ -166,4 +172,4 @@ logic or worker count. A failed baseline cannot support a speed comparison.
   environment changes invalidate receipts even when test filenames match.
 - Pinned computed loaders and fixture bridges require renewed review after edits.
 - Local test behavior, workerd integration, browser evidence, production
-  publication protection, and the original scenario corpus remain required.
+  publication destination/identity checks, and the original scenario corpus remain required.

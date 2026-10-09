@@ -19,8 +19,6 @@ def check_preflight(environment, read_api):
     if not re.fullmatch(r"[0-9]+", asset):
         raise ValueError("Configure VIBESHAPE_OCCT_RELEASE_ASSET_ID.")
     branch = read_api(f"repos/{repository}/branches/main")
-    if branch.get("protected") is not True:
-        raise ValueError("Protect main before production verification.")
     if branch.get("commit", {}).get("sha") != source:
         raise ValueError("The production source is no longer the current main commit.")
     metadata = read_api(f"repos/{repository}/releases/assets/{asset}")
