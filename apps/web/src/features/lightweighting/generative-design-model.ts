@@ -1,3 +1,4 @@
+import type { StructuralFdmSettings } from "@vibeshape/domain/lightweighting"
 import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import type { StructuralOptimizationInput } from "@vibeshape/structural-optimization/contract"
 import { generativeDesignInputSchema } from "@vibeshape/structural-optimization/generative-design"
@@ -7,6 +8,11 @@ export type GenerativeDesignFields = {
   retainedMassPercents: string
   additionalMaterialIds: string[]
   obstacles: { id: number; region: RegionFields }[]
+  fdm: Pick<StructuralFdmSettings, "buildDirection" | "supportMode"> & {
+    minFeatureSizeMm: string
+    layerHeightMm: string
+    maxOverhangAngleDeg: string
+  }
 }
 
 export function generativeDesignInput(
@@ -23,6 +29,12 @@ export function generativeDesignInput(
     schemaVersion: 1,
     analysis: {
       ...analysis,
+      fdm: {
+        ...fields.fdm,
+        minFeatureSizeMm: number(fields.fdm.minFeatureSizeMm),
+        layerHeightMm: number(fields.fdm.layerHeightMm),
+        maxOverhangAngleDeg: number(fields.fdm.maxOverhangAngleDeg),
+      },
       obstacleRegions: fields.obstacles.map(({ region }) => ({
         min: region.min.map(number),
         max: region.max.map(number),

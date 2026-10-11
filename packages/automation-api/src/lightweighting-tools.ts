@@ -8,6 +8,7 @@ import {
 import {
   type StructuralOptimizationSettings,
   type StructuralOptimizationSummary,
+  structuralFdmSummaryMatches,
   structuralOptimizationSettingsSchema,
   structuralOptimizationSummarySchema,
 } from "@vibeshape/domain/lightweighting"
@@ -95,7 +96,8 @@ export function lightweightingResultContextMatches(
     return false
   if (
     !constraintsMatch(value.summary, input.settings) ||
-    !objectiveMatches(value.summary, input.settings)
+    !objectiveMatches(value.summary, input.settings) ||
+    !structuralFdmSummaryMatches(value.summary.fdm, input.settings.fdm, input.settings.cellSizeMm)
   )
     return false
   if (parsed.data.tool === "request_lightweighting") {

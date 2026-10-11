@@ -10,6 +10,8 @@ and load-free geometry previews. Both workflows use responsive task panels and r
 snapshots; see the same canonical contract for objectives, MCP support, and resource limits.
 The editor's [Generative Design](generative-design.md) workflow compares up to nine independently
 analyzed material/mass-target alternatives, including optional keep-out boxes and Pareto selection.
+FDM settings add model-axis orientation, minimum feature size, and selectable support-free or
+supports-allowed policies, with unsupported-area evidence in comparison.
 It remains a bounded heuristic mesh search; manufacturing-method search and CAD reconstruction
 are not implemented. Paired MCP continues to expose individual structural analyses.
 

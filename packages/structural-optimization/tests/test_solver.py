@@ -8,6 +8,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 import trimesh
+from fdm_fixtures import (verify_fdm_axes_and_cubes, verify_fdm_constraints_change_removal,
+                          verify_fdm_float32_bound, verify_fdm_footprints_and_support_modes,
+                          verify_fdm_rounded_slice_height, verify_invalid_fdm_settings)
 from obstacle_fixtures import (verify_closed_obstacle_contact,
                                verify_invalid_obstacle_boxes,
                                verify_obstacle_baseline_accounting,
@@ -49,6 +52,13 @@ def output_mesh(result):
                                   verify_obstacle_baseline_accounting, verify_obstacle_baseline_failures,
                                   verify_obstacle_conflicts_and_mapping])
 def test_keep_out_invariants(verify):
+    verify(solver)
+
+
+@pytest.mark.parametrize("verify", [verify_fdm_axes_and_cubes, verify_fdm_constraints_change_removal,
+                                  verify_fdm_float32_bound, verify_fdm_footprints_and_support_modes,
+                                  verify_fdm_rounded_slice_height, verify_invalid_fdm_settings])
+def test_fdm_invariants(verify):
     verify(solver)
 
 

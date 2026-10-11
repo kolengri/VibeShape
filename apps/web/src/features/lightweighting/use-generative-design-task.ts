@@ -21,6 +21,13 @@ export function useGenerativeDesignTask(
     retainedMassPercents: "35, 50, 70",
     additionalMaterialIds: [],
     obstacles: [],
+    fdm: {
+      buildDirection: "+z",
+      supportMode: "allowed",
+      minFeatureSizeMm: "1.2",
+      layerHeightMm: "0.2",
+      maxOverhangAngleDeg: "45",
+    },
   })
   const [study, setStudy] = useState<{
     source: LightweightingSource

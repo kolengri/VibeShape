@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { structuralOptimizationSettingsSchema } from "@vibeshape/domain/lightweighting"
 import { structuralOptimizationInputSchema } from "./contract"
 
 function input() {
@@ -26,6 +27,33 @@ function input() {
 }
 
 describe("captured structural surface contract", () => {
+  it("preserves the shared FDM layer-height scope through the worker extension", () => {
+    const { mesh: _mesh, schemaVersion: _version, ...settings } = input()
+    const fdm = {
+      buildDirection: "+z",
+      supportMode: "allowed",
+      minFeatureSizeMm: 1,
+      layerHeightMm: 2,
+      maxOverhangAngleDeg: 0,
+    }
+    for (const parsed of [
+      structuralOptimizationSettingsSchema.safeParse({ ...settings, fdm }),
+      structuralOptimizationInputSchema.safeParse({ ...input(), fdm }),
+    ]) {
+      expect(parsed.success).toBe(false)
+      if (!parsed.success)
+        expect(parsed.error.issues).toEqual([
+          expect.objectContaining({ path: ["fdm", "layerHeightMm"] }),
+        ])
+    }
+    expect(
+      structuralOptimizationInputSchema.safeParse({
+        ...input(),
+        fdm: { ...fdm, layerHeightMm: 1 },
+      }).success,
+    ).toBe(true)
+    expect(structuralOptimizationSettingsSchema.safeParse(settings).success).toBe(true)
+  })
   it("passes the optional domain objective through the worker contract", () => {
     const objective = { kind: "maximize-stiffness", retainedMassFraction: 0.96 }
     expect(

@@ -8,6 +8,11 @@ do not regenerate or preserve exact CAD mating faces. See the explicit
 The bounded [Generative Design](product/generative-design.md) study compares these preliminary
 results; Pareto status does not establish a global optimum or manufacturing suitability. Keep-out
 boxes conservatively exclude intersecting cells and can invalidate the remaining baseline.
+FDM checks constrain the analyzed voxel geometry, not actual extrusion or printed strength.
+Unsupported-area evidence does not measure generated support volume or removal accessibility.
+The selected build direction must be reproduced in slicer preparation; ordinary mesh export
+retains model coordinates. Adhesion, bridging, infill, and layer-direction strength remain outside
+these checks. See [the FDM contract](product/generative-design.md#fdm-constraints).
 
 ## Highest-Risk Items
 

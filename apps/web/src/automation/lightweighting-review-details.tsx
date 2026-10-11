@@ -1,5 +1,6 @@
 import type { StructuralOptimizationSettings } from "@vibeshape/domain/lightweighting"
 import { useTranslations } from "@vibeshape/i18n"
+import { FdmSettingsDetails } from "../features/lightweighting/fdm-analysis-details"
 import { LightweightingResults } from "../features/lightweighting/lightweighting-results"
 import type { ImportReviewInput } from "./import-upload-session"
 
@@ -93,6 +94,7 @@ export function LightweightingReviewDetails({
           ))}
         </details>
       )}
+      {evidence.settings.fdm && <FdmSettingsDetails settings={evidence.settings.fdm} />}
       <LightweightingResults result={evidence.summary} />
       {!!evidence.settings.obstacleRegions?.length && (
         <details className="grid gap-2 text-xs">

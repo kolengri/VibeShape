@@ -2,7 +2,10 @@ import "../../../../../tests/unit/support/dom"
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
-import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
+import type {
+  StructuralOptimizationInput,
+  StructuralOptimizationResult,
+} from "@vibeshape/structural-optimization/contract"
 import { StructuralOptimizationError } from "../../../../../packages/structural-optimization/src/errors"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -262,6 +265,86 @@ describe("Generative Design workflow", () => {
       expect(screen.getByRole("button", { name: "Preview candidate 3" })).toBeTruthy(),
     )
   }
+
+  it("passes both FDM support policies to every scenario and invalidates obsolete candidates", async () => {
+    ports.optimize.mockImplementation(async (input: StructuralOptimizationInput) => {
+      if (!input.fdm) throw new Error("The study must capture FDM settings.")
+      const fdmMetrics = {
+        unsupportedAreaMm2: input.fdm.supportMode === "allowed" ? 8 : 0,
+        requiresSupports: input.fdm.supportMode === "allowed",
+        minFeatureSizeBoundMm: 3.99999,
+        buildHeightMm: 20,
+      }
+      return {
+        ...result,
+        fdm: {
+          settings: input.fdm,
+          approximation: "conservative-voxel",
+          minimumFeatureCubeCells: 1,
+          horizontalReachMm: 0.14,
+          buildPlateCoordinateMm: 20,
+          baseline: fdmMetrics,
+          optimized: fdmMetrics,
+        },
+      }
+    })
+    setup(controller, false, "", {}, true)
+    await fill()
+    expect(screen.getByRole("combobox", { name: "Support policy" }).textContent).toBe(
+      "Supports allowed",
+    )
+    change("Minimum feature size (mm)", "")
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    change("Minimum feature size (mm)", "0.5")
+    change("Layer height (mm)", "5")
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    change("Layer height (mm)", "0.2")
+    change("Maximum overhang from vertical (degrees)", "90")
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    change("Maximum overhang from vertical (degrees)", "35")
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Support policy" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Without supports" }))
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Build direction" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Build toward -X" }))
+    await generate()
+    expect(
+      screen.getAllByText("No unsupported area under the selected conservative limits.").length,
+    ).toBeGreaterThanOrEqual(3)
+    for (const call of ports.optimize.mock.calls)
+      expect(call[0].fdm).toEqual({
+        buildDirection: "-x",
+        supportMode: "forbidden",
+        minFeatureSizeMm: 0.5,
+        layerHeightMm: 0.2,
+        maxOverhangAngleDeg: 35,
+      })
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Support policy" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Supports allowed" }))
+    expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
+    expect(
+      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    await generate()
+    expect(ports.optimize).toHaveBeenCalledTimes(6)
+    for (const call of ports.optimize.mock.calls.slice(3))
+      expect(call[0].fdm.supportMode).toBe("allowed")
+    const demand = screen.getAllByRole("region", { name: "FDM support demand" })
+    for (const item of demand)
+      expect(
+        within(item).getByText("Area requiring support (mm²)").nextElementSibling?.textContent,
+      ).toBe("8")
+    expect(
+      screen.getAllByText("This orientation requires supports under the selected limits.").length,
+    ).toBeGreaterThanOrEqual(3)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
 
   it("compares independently analyzed targets and previews another candidate without rerunning FEM", async () => {
     ports.optimize.mockImplementation(

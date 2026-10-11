@@ -72,6 +72,28 @@ function signedSurfaceVolume(mesh: StructuralMesh) {
   return volume
 }
 
+function stlCoordinatePlanes(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const planes = [new Set<number>(), new Set<number>(), new Set<number>()]
+  for (let offset = 84; offset < bytes.length; offset += 50) {
+    for (let vertex = 0; vertex < 3; vertex++) {
+      for (const [axis, values] of planes.entries())
+        values.add(view.getFloat32(offset + 12 + vertex * 12 + axis * 4, true))
+    }
+  }
+  return planes
+}
+
+function minimumPlaneSpacing(planes: Set<number>[]) {
+  let minimum = Infinity
+  for (const values of planes) {
+    const sorted = [...values].sort((a, b) => a - b)
+    for (let i = 1; i < sorted.length; i++)
+      minimum = Math.min(minimum, (sorted[i] ?? NaN) - (sorted[i - 1] ?? NaN))
+  }
+  return minimum
+}
+
 beforeAll(async () => {
   // Root tests run before build in CI; prepare and verify this same local asset
   // closure rather than depending on a previous build or a Python installation.
@@ -104,6 +126,9 @@ beforeAll(async () => {
       "utf8",
     ),
   )
+  await runtime.runPythonAsync(
+    readFileSync(resolve(root, "packages/structural-optimization/tests/fdm_fixtures.py"), "utf8"),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -118,9 +143,29 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
-  it(
-    "runs a real multi-material study with measured candidates and unreachable-baseline failures",
-    async () => {
+  it.each([
+    [
+      "FDM axes, full cube coverage, thin features, and impossible sizes",
+      "verify_fdm_axes_and_cubes",
+    ],
+    ["FDM conservative footprints and support modes", "verify_fdm_footprints_and_support_modes"],
+    [
+      "FDM hard constraints influence removal and keep the baseline bed",
+      "verify_fdm_constraints_change_removal",
+    ],
+    ["FDM exact nominal minimum versus float32 shrink", "verify_fdm_float32_bound"],
+    ["FDM printed layers cannot skip rounded build-axis slices", "verify_fdm_rounded_slice_height"],
+    ["strict finite FDM settings", "verify_invalid_fdm_settings"],
+  ])(
+    "verifies %s against the browser runtime",
+    async (_, verification) => {
+      await runtime.runPythonAsync(`${verification}(_surface_test_solver)`)
+    },
+    timeout,
+  )
+  it.each([false, true])(
+    "runs a real multi-material study with measured candidates and unreachable-baseline failures, FDM=%s",
+    async (fdmEnabled) => {
       // Only transport is replaced: every scenario executes the pinned WASM solver
       // and passes through the production structural client's final validation.
       class NumericalWorker {
@@ -148,6 +193,14 @@ describe("pinned Pyodide full-solid structural solver", () => {
       }
       vi.stubGlobal("Worker", NumericalWorker)
       const analysis = axialBar(4)
+      if (fdmEnabled)
+        analysis.fdm = {
+          buildDirection: "+x",
+          supportMode: "allowed",
+          minFeatureSizeMm: 1,
+          layerHeightMm: 0.2,
+          maxOverhangAngleDeg: 45,
+        }
       const source = structuredClone(analysis)
       try {
         const output = await generateStructuralDesigns(
@@ -167,6 +220,10 @@ describe("pinned Pyodide full-solid structural solver", () => {
           },
           { runtimeBaseUrl: "http://localhost/structural-runtime/" },
         )
+        expect(output.failures).toEqual([
+          expect.objectContaining({ code: "infeasible-baseline", materialId: "weak" }),
+          expect.objectContaining({ code: "infeasible-baseline", materialId: "weak" }),
+        ])
         expect(output.candidates).toHaveLength(4)
         expect(output.failures.map(({ code }) => code)).toEqual([
           "infeasible-baseline",
@@ -183,6 +240,11 @@ describe("pinned Pyodide full-solid structural solver", () => {
         ])
         expect(output.candidates.slice(0, 2).every(({ pareto }) => !pareto)).toBe(true)
         for (const candidate of output.candidates) {
+          if (fdmEnabled) {
+            expect(candidate.input.fdm).toEqual(analysis.fdm)
+            expect(candidate.result.fdm?.settings).toEqual(analysis.fdm)
+            expect(candidate.result.fdm?.optimized.minFeatureSizeBoundMm).toBeGreaterThanOrEqual(1)
+          } else expect(candidate.result.fdm).toBeUndefined()
           expect(signedSurfaceVolume(candidate.result.mesh)).toBeCloseTo(
             candidate.result.optimized.volumeMm3,
             8,
@@ -227,6 +289,26 @@ describe("pinned Pyodide full-solid structural solver", () => {
           ),
         ).toBe(true)
       }
+    },
+    timeout,
+  )
+  it(
+    "keeps the actual float32 STL minimum-feature span above the accepted request",
+    async () => {
+      const raw: unknown = await runtime.runPythonAsync(
+        "json.dumps(verify_fdm_float32_bound(_surface_test_solver))",
+      )
+      if (typeof raw !== "string") throw new Error("Expected a serialized FDM fixture.")
+      const input = structuralOptimizationInputSchema.parse(JSON.parse(raw))
+      const response = await run(input)
+      if (!response.ok) throw new Error(response.error.message)
+      const fdm = response.result.fdm
+      if (!fdm) throw new Error("Expected measured FDM metadata.")
+      const bytes = encodeStructuralStl(response.result.mesh, input.cellSizeMm)
+      const minimumSpan = minimumPlaneSpacing(stlCoordinatePlanes(bytes))
+      expect(minimumSpan).toBeGreaterThanOrEqual(0.999999)
+      expect(minimumSpan).toBeLessThan(1)
+      expect(fdm.optimized.minFeatureSizeBoundMm).toBeLessThanOrEqual(minimumSpan)
     },
     timeout,
   )

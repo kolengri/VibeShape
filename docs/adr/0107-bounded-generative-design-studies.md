@@ -3,6 +3,7 @@
 - Status: Accepted with reduced scope
 - Date: 2026-10-11
 - Related: [ADR-0101](0101-browser-structural-lightweighting.md), [ADR-0102](0102-lightweighting-task-workflows.md)
+- Extended by: [ADR-0108](0108-generative-design-fdm-constraints.md) for conservative FDM constraints
 
 ## Decision
 

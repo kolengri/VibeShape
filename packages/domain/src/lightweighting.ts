@@ -42,9 +42,20 @@ const structuralObjectiveSchema = z.discriminatedUnion("kind", [
   minimumMassObjectiveSchema,
   stiffnessObjectiveSchema,
 ])
+export const structuralFdmSettingsSchema = z
+  .object({
+    buildDirection: z.enum(["+x", "-x", "+y", "-y", "+z", "-z"]),
+    supportMode: z.enum(["forbidden", "allowed"]),
+    minFeatureSizeMm: z.number().finite().min(0.01).max(100_000),
+    layerHeightMm: z.number().finite().min(0.001).max(100_000),
+    maxOverhangAngleDeg: z.number().finite().min(0).max(89),
+  })
+  .strict()
+export type StructuralFdmSettings = z.infer<typeof structuralFdmSettingsSchema>
 export const structuralOptimizationSettingsSchema = z
   .object({
     objective: structuralObjectiveSchema.optional(),
+    fdm: structuralFdmSettingsSchema.optional(),
     material: z
       .object({
         youngModulusMpa: z.number().finite().min(0.001).max(1_000_000),
@@ -86,6 +97,10 @@ export const structuralOptimizationSettingsSchema = z
     maxIterations: z.number().int().min(0).max(40),
   })
   .strict()
+  .refine(({ fdm, cellSizeMm }) => !fdm || fdm.layerHeightMm <= cellSizeMm, {
+    path: ["fdm", "layerHeightMm"],
+    message: "FDM layer height must not exceed the voxel cell size for one-slice support coverage.",
+  })
 export const structuralMaterialSchema = structuralOptimizationSettingsSchema.shape.material
 export type StructuralMaterial = z.infer<typeof structuralMaterialSchema>
 const nonnegative = z.number().finite().nonnegative()
@@ -109,10 +124,79 @@ const metrics = z
     cases: z.array(caseMetrics).min(1).max(8),
   })
   .strict()
+const structuralFdmMetricsSchema = z
+  .object({
+    unsupportedAreaMm2: nonnegative,
+    requiresSupports: z.boolean(),
+    minFeatureSizeBoundMm: positive,
+    buildHeightMm: positive,
+  })
+  .strict()
+export const structuralFdmSummarySchema = z
+  .object({
+    settings: structuralFdmSettingsSchema,
+    approximation: z.literal("conservative-voxel"),
+    minimumFeatureCubeCells: z.number().int().min(1).max(14),
+    horizontalReachMm: nonnegative,
+    buildPlateCoordinateMm: coordinate,
+    baseline: structuralFdmMetricsSchema,
+    optimized: structuralFdmMetricsSchema,
+  })
+  .strict()
+export type StructuralFdmSummary = z.infer<typeof structuralFdmSummarySchema>
+
+function fdmMetricsMatch(
+  metrics: StructuralFdmSummary["baseline"],
+  settings: StructuralFdmSettings,
+  cellSizeMm: number,
+  cubeCells: number,
+) {
+  const heightCells = metrics.buildHeightMm / cellSizeMm
+  return (
+    metrics.minFeatureSizeBoundMm >= settings.minFeatureSizeMm &&
+    metrics.minFeatureSizeBoundMm <= cubeCells * cellSizeMm + cellSizeMm * 1e-6 &&
+    metrics.requiresSupports === metrics.unsupportedAreaMm2 > 0 &&
+    (settings.supportMode === "allowed" || !metrics.requiresSupports) &&
+    heightCells >= cubeCells &&
+    heightCells <= 3_000 &&
+    Math.abs(heightCells - Math.round(heightCells)) <= 1e-8
+  )
+}
+
+/** Semantic association after both payloads have passed their runtime schemas. */
+export function structuralFdmSummaryMatches(
+  summary: StructuralFdmSummary | undefined,
+  settings: StructuralFdmSettings | undefined,
+  cellSizeMm: number,
+): boolean {
+  if (!settings) return summary === undefined
+  if (!summary || !Number.isFinite(cellSizeMm) || cellSizeMm < 0.01 || cellSizeMm > 100_000)
+    return false
+  if (settings.layerHeightMm > cellSizeMm) return false
+  const keys = [
+    "buildDirection",
+    "supportMode",
+    "minFeatureSizeMm",
+    "layerHeightMm",
+    "maxOverhangAngleDeg",
+  ] as const
+  const cubeCells = Math.ceil(settings.minFeatureSizeMm / cellSizeMm)
+  const reach = settings.layerHeightMm * Math.tan((settings.maxOverhangAngleDeg * Math.PI) / 180)
+  return (
+    keys.every((key) => summary.settings[key] === settings[key]) &&
+    summary.minimumFeatureCubeCells === cubeCells &&
+    Math.abs(summary.horizontalReachMm - reach) <= Math.max(1e-12, reach * 1e-10) &&
+    summary.optimized.buildHeightMm <= summary.baseline.buildHeightMm &&
+    [summary.baseline, summary.optimized].every((metrics) =>
+      fdmMetricsMatch(metrics, settings, cellSizeMm, cubeCells),
+    )
+  )
+}
 export const structuralOptimizationSummarySchema = z
   .object({
     schemaVersion: z.literal(1),
     status: z.enum(["improved", "no-improvement"]),
+    fdm: structuralFdmSummarySchema.optional(),
     baseline: metrics,
     optimized: metrics,
     sourceVolumeMm3: positive,

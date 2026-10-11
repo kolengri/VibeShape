@@ -2,6 +2,8 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
+import { FdmSupportDemand } from "./fdm-analysis-details"
+import { GenerativeFdmControls } from "./generative-fdm-controls"
 import type { useGenerativeDesignTask } from "./use-generative-design-task"
 
 type StudyState = ReturnType<typeof useGenerativeDesignTask>
@@ -57,6 +59,7 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
         {t("scenarioCount", { count: state.scenarioCount })}
       </p>
       <GenerativeObstacleControls state={state} />
+      <GenerativeFdmControls state={state} />
     </fieldset>
   )
 }
@@ -171,6 +174,7 @@ export function GenerativeDesignResults({ state }: { state: StudyState }) {
               N·mm
             </dd>
           </dl>
+          {candidate.result.fdm && <FdmSupportDemand summary={candidate.result.fdm} />}
           <p className="text-xs text-muted-foreground">
             {t(candidate.pareto ? "pareto" : "dominated")}
           </p>

@@ -111,12 +111,19 @@ describe("manual import review", () => {
       expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(true)
     },
   )
-  it("shows the requested structural objective and retained mass budget before Apply", () => {
+  it("shows the requested structural objective, keep-outs, and FDM policy before Apply", () => {
     const input = importReviewFixture(true)
     const settings = structuralOptimizationSettingsSchema.parse({
       ...lightweightingSettings,
       objective: { kind: "maximize-stiffness", retainedMassFraction: 0.8 },
       obstacleRegions: [{ min: [1, 2, 3], max: [4, 5, 6] }],
+      fdm: {
+        buildDirection: "-x",
+        supportMode: "forbidden",
+        minFeatureSizeMm: 1.2,
+        layerHeightMm: 0.2,
+        maxOverhangAngleDeg: 45,
+      },
     })
     render(
       <I18nProvider i18n={i18n} initialLocale="en">
@@ -143,6 +150,10 @@ describe("manual import review", () => {
     expect(screen.getByText("Keep-out regions")).toBeTruthy()
     expect(screen.getByText("1, 2, 3")).toBeTruthy()
     expect(screen.getByText("4, 5, 6")).toBeTruthy()
+    expect(screen.getByRole("region", { name: "FDM settings" })).toBeTruthy()
+    expect(screen.getByText("Without supports")).toBeTruthy()
+    expect(screen.getByText("Build toward -X")).toBeTruthy()
+    expect(screen.getByText("Minimum feature size (mm)")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(true)
   })
   it("renders source surface scope and inward depth without assuming box bounds", () => {

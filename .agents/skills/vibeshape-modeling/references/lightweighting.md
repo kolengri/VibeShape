@@ -43,6 +43,18 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
    Exclusion can disconnect or invalidate the baseline. Mass targets refer to the remaining feasible
    baseline; source-volume loss includes excluded material as well as voxelization loss.
 
+   Optional `fdm` supplies `buildDirection` (`+x`, `-x`, `+y`, `-y`, `+z`, or `-z`),
+   `supportMode` (`forbidden` or `allowed`), `minFeatureSizeMm`, `layerHeightMm`, and
+   `maxOverhangAngleDeg` (0–89 degrees from vertical). Both policies enforce a conservative
+   filled-cube bound in solver and captured float32 geometry. Layer height must not exceed voxel
+   cell size and the smallest actual raw/float32 build-axis slice for the one-slice support check.
+   Exact cell-size equality can fail after rounding; decrease layer height. Both policies enforce the requested
+   minimum-feature bound. `forbidden` additionally requires no unsupported area;
+   `allowed` reports that area without generating supports. An incompatible baseline fails instead
+   of relaxing these limits. No extrusion, bridging, adhesion, infill, or layer-strength simulation
+   is implied. Build direction changes the analysis, not the exported mesh coordinates; reproduce
+   it during print preparation. Omission keeps the prior structural behavior.
+
 6. `objective` is optional. Omission or `{kind: "minimize-mass"}` retains the existing
    mass-reduction search. `{kind: "maximize-stiffness", retainedMassFraction}` uses a retained
    mass fraction of 0.1–1 relative to the conservative FEM baseline, not the original exact solid.
@@ -61,6 +73,12 @@ accepted candidate. Compliance is reported per case as analysis evidence. The se
 by the maximum strain energy across cases, rechecks physical feasibility after accepted removal,
 and reduces infeasible removal batches; it does not compare full candidate compliance to establish
 maximum stiffness.
+
+For requested FDM constraints, inspect `summary.fdm`: its echoed `settings` must match the request,
+and `baseline`/`optimized` report `unsupportedAreaMm2`, `requiresSupports`,
+`minFeatureSizeBoundMm`, and `buildHeightMm`. The minimum-feature bound must satisfy the request;
+support-free evidence must report zero unsupported area. Area is not support volume, support
+accessibility, or a physical printability certificate. Manual review shows the complete FDM settings.
 
 For a stiffness-guided objective, inspect `summary.objective`: requested `retainedMassFraction`,
 `targetMassKg`, `targetCellCount`, `achievedRetainedMassFraction` and `targetStatus`. The target

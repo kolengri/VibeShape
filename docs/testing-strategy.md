@@ -18,6 +18,11 @@ Generative Design adds bounded study settings, sequential worker disposal, mater
 Pareto and duplicate-geometry behavior, and candidate switching without reanalysis. Shared keep-out
 fixtures run inside the same pinned WASM corpus and assert protected-cell conflicts, conservative
 closed-box exclusion, feasible-baseline semantics, target rounding, and emitted-surface containment.
+FDM fixtures cover both support policies, signed build directions, thin-feature rejection,
+unsupported geometry, conservative feature bounds, and repeated final constraints in that same
+pinned runtime. Client and MCP tests bind settings to manufacturing evidence and reject missing
+or mismatched results. UI checks cover policy changes, invalid parameters, study invalidation,
+and support-demand comparison. These establish geometric contracts, not physical print success.
 
 | Level | Coverage | Tool or approach |
 |---|---|---|

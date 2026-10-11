@@ -1,3 +1,4 @@
+import { structuralFdmSummaryMatches } from "@vibeshape/domain/lightweighting"
 import { z } from "zod"
 import {
   type StructuralOptimizationInput,
@@ -119,7 +120,8 @@ function validateFeasibility(
   if (
     !modelMetricsMatch(input, result) ||
     !cellMetricsMatch(input, result) ||
-    !objectiveMatches(input, result)
+    !objectiveMatches(input, result) ||
+    !structuralFdmSummaryMatches(result.fdm, input.fdm, input.cellSizeMm)
   )
     throw new StructuralOptimizationError(
       "invalid-result",

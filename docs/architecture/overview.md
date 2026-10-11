@@ -297,3 +297,5 @@ The same computation package also owns bounded material/target studies and conse
 regions. The editor compares and selects immutable candidates through the same snapshot path;
 see [ADR-0107](../adr/0107-bounded-generative-design-studies.md) and
 [Generative Design](../product/generative-design.md). Multi-candidate study is not exposed as an MCP tool.
+Conservative FDM settings and evidence extend the same worker and shared request/result verification,
+including paired single-scenario MCP; see [ADR-0108](../adr/0108-generative-design-fdm-constraints.md).

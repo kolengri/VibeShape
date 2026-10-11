@@ -198,6 +198,12 @@ regions, topology, or the iteration budget. Both objectives use a greedy heurist
 a global minimum mass or maximum stiffness. This is not a full generative-design search over
 manufacturing methods or multiple alternative designs.
 
+Optional `settings.fdm` extends the shared structural analysis with conservative minimum-feature
+and support-policy checks. The editor exposes these controls in Generative Design; paired MCP
+can supply them for an individual analysis. See the canonical
+[FDM contract](generative-design.md#fdm-constraints) for direction, angle conventions, baseline
+failure, comparison evidence, and the distinction from slicer simulation.
+
 ### Quick runtime and exchange bounds
 
 Quick generation accepts 10,000 source vertices and 20,000 source triangles, at most 56³ samples,
