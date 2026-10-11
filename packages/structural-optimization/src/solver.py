@@ -6,6 +6,7 @@ This heuristic supplies discretized numerical evidence, not a strength rating.
 """
 
 import json
+import itertools
 import math
 import time
 import warnings
@@ -95,6 +96,173 @@ def _region(value, triangle_count):
 def _within(points, region, tolerance):
     lo, hi = region
     return np.all((points >= lo - tolerance) & (points <= hi + tolerance), axis=-1)
+
+
+def _obstacle_regions(request):
+    regions = request.get("obstacleRegions", [])
+    _require(isinstance(regions, list) and len(regions) <= 16,
+             "invalid-input", "At most 16 obstacle box regions are supported.")
+    boxes = []
+    for region in regions:
+        _require(isinstance(region, dict) and set(region) == {"min", "max"},
+                 "invalid-input", "Obstacle regions require only box min and max coordinates.")
+        box = _region(region, 0)
+        _require(np.all(box[0] < box[1]), "invalid-input", "Obstacle boxes must have positive extent on every axis.")
+        boxes.append(box)
+    return boxes
+
+
+def _obstacle_mask(cells, origin, cell_size, boxes):
+    lo = origin + cells * cell_size
+    hi = lo + cell_size
+    mask = np.zeros(len(cells), dtype=bool)
+    # Leave room for the permitted float32 STL displacement, plus grid arithmetic.
+    # Every captured triangle stays inside its cell expanded by this axis margin.
+    tolerance = cell_size * (1e-6 + 1e-9)
+    for rlo, rhi in boxes:
+        mask |= np.all((lo <= rhi + tolerance) & (hi >= rlo - tolerance), axis=1)
+    return mask
+
+
+def _fdm_settings(request):
+    if "fdm" not in request:
+        return None
+    value = request["fdm"]
+    keys = {"buildDirection", "supportMode", "minFeatureSizeMm", "layerHeightMm", "maxOverhangAngleDeg"}
+    _require(isinstance(value, dict) and set(value) == keys, "invalid-input", "fdm requires exactly the five supported settings.")
+    _require(isinstance(value["buildDirection"], str) and value["buildDirection"] in {"+x", "-x", "+y", "-y", "+z", "-z"}, "invalid-input", "Unsupported FDM build direction.")
+    _require(isinstance(value["supportMode"], str) and value["supportMode"] in {"forbidden", "allowed"}, "invalid-input", "Unsupported FDM support mode.")
+    return {"buildDirection": value["buildDirection"], "supportMode": value["supportMode"],
+            "minFeatureSizeMm": _number(value["minFeatureSizeMm"], "minFeatureSizeMm", 0.01, 100000),
+            "layerHeightMm": _number(value["layerHeightMm"], "layerHeightMm", 0.001, 100000),
+            "maxOverhangAngleDeg": _number(value["maxOverhangAngleDeg"], "maxOverhangAngleDeg", 0, 89)}
+
+
+def _fdm_context(settings, cells, origin, cell_size):
+    if settings is None:
+        return None
+    axis = "xyz".index(settings["buildDirection"][1])
+    sign = 1 if settings["buildDirection"][0] == "+" else -1
+    bed = int((sign * cells[:, axis] - (sign < 0)).min())
+    return {"settings": settings, "axis": axis, "sign": sign, "bed": bed,
+            "xy": [i for i in range(3) if i != axis],
+            "k": math.ceil(settings["minFeatureSizeMm"] / cell_size),
+            "plate": float(sign * (sign * origin[axis] + bed * cell_size)),
+            "reach": settings["layerHeightMm"] * math.tan(math.radians(settings["maxOverhangAngleDeg"]))}
+
+
+def _fdm_feature_bound(cells, origin, cell_size, context):
+    k = context["k"]
+    lo = cells.min(axis=0)
+    shape = cells.max(axis=0) - lo + 1
+    # Reject impossible cubes before any k-dependent allocation. Dense work is
+    # bounded by the original voxel grid, not by requested physical dimensions.
+    if k ** 3 > len(cells) or np.any(shape < k):
+        return 0.0
+    _require(math.prod(int(x) for x in shape) <= MAX_GRID_CELLS, "resource-limit", "FDM morphology exceeds the bounded voxel grid.")
+    occupied = np.zeros(tuple(shape), dtype=np.int32)
+    occupied[tuple((cells - lo).T)] = 1
+    prefix = np.pad(occupied, ((1, 0),) * 3).cumsum(0).cumsum(1).cumsum(2)
+    sums = np.zeros(tuple(shape - k + 1), dtype=np.int32)
+    for bits in itertools.product((0, 1), repeat=3):
+        slices = tuple(slice(k, None) if bit else slice(None, -k) for bit in bits)
+        sums += (-1) ** (3 - sum(bits)) * prefix[slices]
+    anchors = np.argwhere(sums == k ** 3)
+    if not len(anchors):
+        return 0.0
+    world_lo = origin + (anchors + lo) * cell_size
+    world_hi = origin + (anchors + lo + k) * cell_size
+    rounded_width = world_hi.astype(np.float32).astype(float) - world_lo.astype(np.float32).astype(float)
+    bounds = np.minimum(world_hi - world_lo, rounded_width).min(axis=1)
+    eligible = bounds >= context["settings"]["minFeatureSizeMm"]
+    anchors = anchors[eligible]
+    if not len(anchors):
+        return 0.0
+    # Union of filled cubes via a difference array. This is a coverage proof for
+    # every occupied voxel, not a neighbor count, local density, or volume proxy.
+    difference = np.zeros(tuple(shape + 1), dtype=np.int32)
+    for bits in itertools.product((0, 1), repeat=3):
+        corners = anchors + np.asarray(bits) * k
+        np.add.at(difference, tuple(corners.T), (-1) ** sum(bits))
+    coverage = difference.cumsum(0).cumsum(1).cumsum(2)[tuple((cells - lo).T)]
+    return float(bounds[eligible].min()) if np.all(coverage > 0) else 0.0
+
+
+def _fdm_uncovered_face(face, lower_rectangles, expansion):
+    lo, hi = face[:2], face[2:]
+    area = float(np.prod(hi - lo))
+    if not len(lower_rectangles):
+        return area
+    rlo = np.maximum(lower_rectangles[:, :2] - expansion, lo)
+    rhi = np.minimum(lower_rectangles[:, 2:] + expansion, hi)
+    if np.any(np.all((rlo <= lo) & (rhi >= hi), axis=1)):
+        return 0.0
+    present = np.all(rhi > rlo, axis=1)
+    rlo, rhi = rlo[present], rhi[present]
+    if not len(rlo):
+        return area
+    xs = np.unique(np.r_[lo[0], hi[0], rlo[:, 0], rhi[:, 0]])
+    covered = 0.0
+    for x0, x1 in zip(xs[:-1], xs[1:]):
+        active = (rlo[:, 0] <= x0) & (rhi[:, 0] >= x1)
+        intervals = sorted(zip(rlo[active, 1], rhi[active, 1]))
+        end, length = lo[1], 0.0
+        for y0, y1 in intervals:
+            length += max(0.0, y1 - max(end, y0))
+            end = max(end, y1)
+        covered += (x1 - x0) * length
+    return max(0.0, area - covered)
+
+
+def _fdm_metrics(cells, origin, cell_size, context, deadline):
+    _require(time.monotonic() < deadline, "resource-limit", "FDM verification exceeded its time budget.")
+    world_lo, world_hi = origin + cells * cell_size, origin + (cells + 1) * cell_size
+    for coordinates in (world_lo, world_hi):
+        _require(np.all(np.abs(coordinates.astype(np.float32).astype(float) - coordinates) <= cell_size * 1e-6),
+                 "serialization-precision", "FDM geometry exceeds the structural float32 displacement allowance.")
+    axis = context["axis"]
+    raw_thickness = world_hi[:, axis] - world_lo[:, axis]
+    rounded_thickness = (world_hi[:, axis].astype(np.float32).astype(float) -
+                         world_lo[:, axis].astype(np.float32).astype(float))
+    # A previous print layer must not skip an actual raw or captured voxel slice.
+    _require(np.all(np.minimum(raw_thickness, rounded_thickness) >= context["settings"]["layerHeightMm"]),
+             "invalid-input", "FDM layer height exceeds a raw or captured float32 build-axis slice. Decrease layer height or use coarser cells.")
+    bound = _fdm_feature_bound(cells, origin, cell_size, context)
+    levels = context["sign"] * cells[:, context["axis"]] - (context["sign"] < 0)
+    xy = context["xy"]
+    raw = np.c_[world_lo[:, xy], world_hi[:, xy]]
+    rounded = raw.astype(np.float32).astype(float)
+    layers = {int(level): np.flatnonzero(levels == level) for level in np.unique(levels)}
+    occupied = {tuple(cell) for cell in cells}
+    step = np.zeros(3, dtype=int)
+    step[context["axis"]] = context["sign"]
+    unsupported = 0.0
+    # An L-infinity square of half-width reach/sqrt(2) is contained in the
+    # Euclidean reach disk. Its union can overestimate support need, never claim
+    # coverage outside the specified one-print-layer horizontal reach.
+    expansion = context["reach"] / math.sqrt(2)
+    for index, cell in enumerate(cells):
+        if levels[index] == context["bed"] or tuple(cell - step) in occupied:
+            continue
+        _require(time.monotonic() < deadline, "resource-limit", "FDM footprint verification exceeded its time budget.")
+        lower = layers.get(int(levels[index]) - 1, np.array([], dtype=int))
+        unsupported += max(_fdm_uncovered_face(raw[index], raw[lower], expansion),
+                           _fdm_uncovered_face(rounded[index], rounded[lower], expansion))
+    return {"unsupportedAreaMm2": float(unsupported), "requiresSupports": bool(unsupported > 0),
+            "minFeatureSizeBoundMm": bound,
+            "buildHeightMm": float((levels.max() + 1 - context["bed"]) * cell_size)}
+
+
+def _fdm_feasible(metrics, context):
+    return (metrics["minFeatureSizeBoundMm"] >= context["settings"]["minFeatureSizeMm"] and
+            (context["settings"]["supportMode"] == "allowed" or not metrics["requiresSupports"]))
+
+
+def _require_fdm(metrics, context, code):
+    _require(metrics["minFeatureSizeBoundMm"] >= context["settings"]["minFeatureSizeMm"], code,
+             "FDM minimum-feature coverage fails: every occupied voxel must belong to a filled requested-size cube in both raw and float32 geometry.")
+    _require(context["settings"]["supportMode"] == "allowed" or not metrics["requiresSupports"], code,
+             "FDM support-free geometry has uncovered downward footprints at the configured one-layer reach.")
 
 
 class _TriangleIndex:
@@ -476,7 +644,10 @@ def solve(request):
     started = time.monotonic()
     deadline = started + MAX_SECONDS
     objective = _objective(request)
+    fdm_settings = _fdm_settings(request)
     cell_size = _number(request.get("cellSizeMm"), "cellSizeMm", 1e-4, 100000)
+    _require(fdm_settings is None or fdm_settings["layerHeightMm"] <= cell_size,
+             "invalid-input", "FDM layer height must not exceed the voxel cell size for one-slice support coverage.")
     max_displacement = _number(request.get("maxDisplacementMm"), "maxDisplacementMm", 1e-9, 100000)
     safety_factor = _number(request.get("safetyFactor"), "safetyFactor", 1, 100)
     max_iterations = request.get("maxIterations")
@@ -488,13 +659,26 @@ def solve(request):
                   _number(material.get("poissonRatio"), "poissonRatio", -0.95, 0.45),
                   _number(material.get("yieldStrengthMpa"), "yieldStrengthMpa", 1e-6, 1e6))
     density = _number(material.get("densityKgM3"), "densityKgM3", 1e-3, 1e6)
+    obstacles = _obstacle_regions(request)
     source, origin, source_volume = _source(request, cell_size)
     cells = _voxelize(source, deadline)
+    initial_mesh, nodes = _hex_mesh(cells, origin, cell_size)
+    # Resolve authored boundaries against the original captured-source baseline;
+    # exclusion must never remap a load or support onto a newly exposed cavity.
+    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size, source, deadline)
+    excluded = _obstacle_mask(cells, origin, cell_size, obstacles)
+    _require(not any(tuple(cell) in protected for cell in cells[excluded]),
+             "invalid-input", "Obstacle boxes intersect protected, support, or load cells on the original baseline.")
+    cells = cells[~excluded]
+    _require(_connected(cells), "infeasible-baseline", "Obstacle exclusion empties or disconnects the analyzed baseline.")
     initial_count = len(cells)
     target_count = (math.ceil(initial_count * objective["retainedMassFraction"])
                     if objective and objective["kind"] == "maximize-stiffness" else None)
-    initial_mesh, nodes = _hex_mesh(cells, origin, cell_size)
-    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size, source, deadline)
+    fdm_context = _fdm_context(fdm_settings, cells, origin, cell_size)
+    baseline_fdm = None
+    if fdm_context is not None:
+        baseline_fdm = _fdm_metrics(cells, origin, cell_size, fdm_context, deadline)
+        _require_fdm(baseline_fdm, fdm_context, "infeasible-baseline")
 
     def feasible(metrics):
         return metrics["safetyFactor"] >= safety_factor and metrics["maxDisplacementMm"] <= max_displacement
@@ -523,6 +707,11 @@ def solve(request):
             mask = np.ones(len(cells), dtype=bool)
             mask[ranked[:remove_count]] = False
             candidate = cells[mask]
+            if fdm_context is not None:
+                candidate_fdm = _fdm_metrics(candidate, origin, cell_size, fdm_context, deadline)
+                if not _fdm_feasible(candidate_fdm, fdm_context):
+                    remove_count //= 2
+                    continue
             try:
                 evaluations += 1
                 metrics, candidate_energy, _ = _evaluate(candidate, origin, cell_size, parameters, fixed_keys, loads, density, deadline)
@@ -545,6 +734,12 @@ def solve(request):
     _require(feasible(optimized), "final-verification-failed", "Repeated final full-solid analysis violates a constraint.")
     _require(optimized["volumeMm3"] <= baseline["volumeMm3"] + 1e-8,
              "final-verification-failed", "The final volume exceeds the baseline.")
+    _require(not np.any(_obstacle_mask(cells, origin, cell_size, obstacles)),
+             "final-verification-failed", "The final analyzed cells intersect a keep-out box.")
+    optimized_fdm = None
+    if fdm_context is not None:
+        optimized_fdm = _fdm_metrics(cells, origin, cell_size, fdm_context, deadline)
+        _require_fdm(optimized_fdm, fdm_context, "final-verification-failed")
     result = {"schemaVersion": 1, "status": "improved" if len(cells) < initial_count else "no-improvement",
             "mesh": {"vertices": output.vertices.ravel().tolist(), "indices": output.faces.ravel().tolist()},
             "baseline": baseline, "optimized": optimized, "sourceVolumeMm3": source_volume,
@@ -557,8 +752,18 @@ def solve(request):
                          "Linear isotropic small-strain FEM; unaveraged element-corner and quadrature stress is resolution dependent and is not a physical strength certification.",
                          "Sharp voxel and clamped-boundary corners can create continuum stress singularities; finite FEM peaks do not establish converged continuum maxima.",
                          "Loads are uniform tractions on selected baseline facets; all load, support, and preservation cells remain fixed."] +
+                        (["Keep-outs exclude entire cells on closed-box contact. Baseline metrics and retained-mass targets use the obstacle-excluded baseline; sourceVolumeLossFraction includes obstacle exclusion and conservative voxelization, before optimization."]
+                         if obstacles else []) +
                         (["Surface selections use nearest captured-source triangles and aligned voxel exterior facets within one cell diagonal; ambiguous edges are excluded. Preservation depth is rounded by half a cell diagonal and stops at another nearest source surface."]
                          if any(region.get("kind") == "surface" for region in request["supports"] + [case["region"] for case in request["loadCases"]] + request.get("preserveRegions", [])) else [])}
+    if fdm_context is not None:
+        result["fdm"] = {"settings": fdm_settings, "approximation": "conservative-voxel",
+                         "minimumFeatureCubeCells": fdm_context["k"], "horizontalReachMm": fdm_context["reach"],
+                         "buildPlateCoordinateMm": fdm_context["plate"],
+                         "baseline": baseline_fdm, "optimized": optimized_fdm}
+        result["warnings"].extend([
+            "FDM feature coverage requires filled axis-aligned k-cubed voxel blocks with k=ceil(minFeatureSizeMm/cellSizeMm). The bound covers raw and float32 coordinates; no sub-target feature is accepted by rounding tolerance.",
+            "FDM support need uses exposed downward voxel footprints, a fixed baseline build plate, and inscribed-square coverage within layerHeightMm*tan(angle from vertical) per print layer. Layer height cannot exceed voxel cell size. Unsupported area is a conservative upper estimate, not support volume or cost. No bridging, anisotropy, slicer equivalence, or printer certification is implied."])
     if objective is not None:
         result["objective"] = objective
         if target_count is not None:

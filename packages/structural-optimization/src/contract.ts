@@ -19,7 +19,7 @@ export const structuralMeshSchema = z
     "Meshes require complete XYZ triples and valid triangle indices.",
   )
 export const structuralOptimizationInputSchema = structuralOptimizationSettingsSchema
-  .extend({
+  .safeExtend({
     schemaVersion: z.literal(1),
     mesh: structuralMeshSchema.refine(
       ({ vertices, indices }) => vertices.length <= 30_000 && indices.length <= 60_000,

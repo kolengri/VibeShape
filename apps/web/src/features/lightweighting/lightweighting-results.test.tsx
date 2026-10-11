@@ -1,10 +1,28 @@
 import "../../../../../tests/unit/support/dom"
-import { expect, it } from "bun:test"
-import { render, screen, within } from "@testing-library/react"
+import { afterEach, expect, it } from "bun:test"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { lightweightingSummary } from "../../../../../packages/automation-api/src/lightweighting.test-fixtures"
 import { i18n } from "../../i18n"
 import { LightweightingResults } from "./lightweighting-results"
+
+afterEach(cleanup)
+
+it("reports pre-optimization keep-out loss together with voxelization loss", () => {
+  const result = lightweightingSummary()
+  result.sourceVolumeMm3 = 160
+  result.sourceVolumeLossFraction = 0.0125
+  render(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <LightweightingResults result={result} />
+    </I18nProvider>,
+  )
+  expect(
+    screen.getByText(
+      "Source volume: 160 mm³. Conservative voxelization and any keep-out exclusions omit 1.25% of source volume before optimization.",
+    ),
+  ).toBeTruthy()
+})
 
 it("shows small nonzero masses without rounding them to zero", () => {
   const result = lightweightingSummary()

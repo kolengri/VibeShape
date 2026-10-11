@@ -8,6 +8,12 @@ create parametric organic B-Rep geometry. See [Structural lightweighting](lightw
 The separate quick workflow provides selectable periodic lattice cells, exterior preservation,
 and load-free geometry previews. Both workflows use responsive task panels and reviewed mesh
 snapshots; see the same canonical contract for objectives, MCP support, and resource limits.
+The editor's [Generative Design](generative-design.md) workflow compares up to nine independently
+analyzed material/mass-target alternatives, including optional keep-out boxes and Pareto selection.
+FDM settings add model-axis orientation, minimum feature size, and selectable support-free or
+supports-allowed policies, with unsupported-area evidence in comparison.
+It remains a bounded heuristic mesh search; manufacturing-method search and CAD reconstruction
+are not implemented. Paired MCP continues to expose individual structural analyses.
 
 - **P0 / alpha:** required to prove the core workflow.
 - **P1 / v1:** required for regular practical use.
@@ -368,7 +374,8 @@ bounds. See [ADR-0078](../adr/0078-extrusion-end-conditions-and-fastener-recesse
 - Executable third-party extensions and a public marketplace until the SPK-006 production follow-ups and stable command/feature contracts pass.
 - Real-time multi-user editing.
 - Direct G-code delivery to printers.
-- Generative or AI CAD before a deterministic command API, draft/preview boundary, local pairing gate, and sandbox exist.
+- Unbounded AI CAD execution without deterministic commands, a draft/preview boundary, pairing, and sandboxed authority.
+- Full generative manufacturing-method search and automatic parametric CAD reconstruction.
 - Claims of complete compatibility with Onshape, FreeCAD, or SolidWorks.
 
 Authored endpoint identities determine traversal direction. The profile must pass through the path start

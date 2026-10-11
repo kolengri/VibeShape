@@ -1,3 +1,4 @@
+import { structuralFdmSummaryMatches } from "@vibeshape/domain/lightweighting"
 import { z } from "zod"
 import {
   type StructuralOptimizationInput,
@@ -119,7 +120,8 @@ function validateFeasibility(
   if (
     !modelMetricsMatch(input, result) ||
     !cellMetricsMatch(input, result) ||
-    !objectiveMatches(input, result)
+    !objectiveMatches(input, result) ||
+    !structuralFdmSummaryMatches(result.fdm, input.fdm, input.cellSizeMm)
   )
     throw new StructuralOptimizationError(
       "invalid-result",
@@ -144,7 +146,18 @@ export function optimizeStructuralModel(
   if (options.signal?.aborted)
     return Promise.reject(new DOMException("Analysis canceled.", "AbortError"))
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+    let worker: Worker
+    try {
+      worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+    } catch {
+      reject(
+        new StructuralOptimizationError(
+          "runtime-unavailable",
+          "The analysis worker could not start.",
+        ),
+      )
+      return
+    }
     let settled = false
     const finish = (operation: () => void) => {
       if (settled) return

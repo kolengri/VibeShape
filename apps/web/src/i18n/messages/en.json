@@ -706,6 +706,10 @@
         "quickLightweighting": {
           "label": "Quick lightweighting",
           "keywords": "lattice|gyroid|organic|lightweighting|material"
+        },
+        "generativeDesign": {
+          "label": "Generative Design",
+          "keywords": "generative|design|alternatives|optimization|pareto|lightweighting"
         }
       }
     },
@@ -3065,7 +3069,7 @@
       "results": "Numerical analysis results",
       "improved": "A lower-volume candidate satisfies the entered numerical constraints.",
       "noImprovement": "No feasible material reduction was found. Apply is unavailable.",
-      "sourceVolumeLoss": "Source volume: {source, number, :: @#####} mm³. Conservative voxelization omits {loss, number, :: @#####}% of source volume before optimization.",
+      "sourceVolumeLoss": "Source volume: {source, number, :: @#####} mm³. Conservative voxelization and any keep-out exclusions omit {loss, number, :: @#####}% of source volume before optimization.",
       "comparison": "Baseline and optimized voxel model comparison",
       "metric": "Metric",
       "baseline": "Voxel baseline",
@@ -3229,6 +3233,62 @@
       "description": "New sketches and features are added here. Later items are excluded from input selection and preview.",
       "returnToEnd": "Return to end",
       "unnamed": "unnamed item"
+    },
+    "generativeDesign": {
+      "title": "Generative Design",
+      "description": "Explore structural alternatives inside one source solid. Each material and mass target receives its own local load analysis. Results are preliminary voxel meshes.",
+      "searchSpace": "Design alternatives",
+      "massTargets": "Retained mass targets (%)",
+      "massTargetsHelp": "Enter up to three distinct percentages from 10 to 100, separated by commas. Targets refer to the feasible voxel baseline after obstacle removal.",
+      "materialsHelp": "The material settings above are always included. Optionally compare up to two published material examples. All calculations assume isotropic material behavior; printed layer-direction strength is not modeled.",
+      "additionalMaterials": "Additional materials",
+      "currentMaterial": "Current material settings",
+      "scenarioCount": "{count, plural, =0 {Complete the settings to define valid alternatives.} one {# alternative will be analyzed.} other {# alternatives will be analyzed sequentially.}}",
+      "obstacles": "Keep-out regions",
+      "obstaclesHelp": "Optional boxes in model coordinates (mm) exclude intersecting voxel cells. Boxes must have positive size and must not intersect support, load, or preserved cells.",
+      "obstacle": "Keep-out region {index}",
+      "min": "Min {axis} (mm)",
+      "max": "Max {axis} (mm)",
+      "addObstacle": "Add keep-out region",
+      "removeObstacle": "Remove keep-out region {index}",
+      "generate": "Generate alternatives",
+      "progress": "Analyzed {completed} of {total} alternatives · {materialName}",
+      "candidates": "Design candidates",
+      "candidate": "Candidate {index} · {material}",
+      "targetMass": "Target retained mass",
+      "mass": "Actual mass",
+      "compliance": "Worst-case compliance",
+      "comparisonHelp": "Compare actual mass and compliance under the same load cases. Lower compliance means less elastic work under these loads. Pareto labels compare mass and compliance; inspect FDM support demand separately.",
+      "pareto": "Pareto candidate",
+      "dominated": "Another candidate has a better mass/compliance tradeoff.",
+      "targetNotReached": "Mass target not reached. The actual result remains feasible; constraints, preserved regions, topology, or the iteration budget prevented further removal.",
+      "duplicate": "This material produced the same geometry for another target.",
+      "previewCandidate": "Preview candidate {index}",
+      "candidateFailed": "{material} · {target}% target: no candidate ({code}).",
+      "noCandidates": "No feasible candidates were found. Review the load constraints, FDM settings, keep-out regions, material properties, or resolution.",
+      "featureLabel": "Generative design of {part}",
+      "fdm": {
+        "title": "FDM constraints",
+        "supportMode": "Support policy",
+        "forbidden": "Without supports",
+        "allowed": "Supports allowed",
+        "forbiddenHelp": "Reject geometries that exceed the selected layer-by-layer support limit. Minimum feature size remains a hard constraint.",
+        "allowedHelp": "Allow overhangs and compare the area requiring support. Minimum feature size remains a hard constraint. Supports are not generated.",
+        "buildDirection": "Build direction",
+        "direction": "Build toward {direction}",
+        "directionHelp": "Choose an axis in model coordinates. The lowest surface along this direction defines the bed. This setting does not rotate the exported mesh.",
+        "minFeatureSizeMm": "Minimum feature size (mm)",
+        "layerHeightMm": "Layer height (mm)",
+        "maxOverhangAngleDeg": "Maximum overhang from vertical (degrees)",
+        "constraintsHelp": "Conservative checks on voxel geometry, not a slicer simulation. Layer height must not exceed voxel cell size. Match your printer and material settings; bridges, adhesion, extrusion paths, and layer-direction strength are not modeled.",
+        "unsupportedArea": "Area requiring support (mm²)",
+        "supportDemand": "FDM support demand",
+        "minimumFeatureBound": "Conservative minimum feature bound (mm)",
+        "supportRequired": "This orientation requires supports under the selected limits.",
+        "supportNotRequired": "No unsupported area under the selected conservative limits.",
+        "reviewSettings": "FDM settings",
+        "minimumFeaturePassed": "Minimum feature constraint satisfied."
+      }
     }
   }
 }

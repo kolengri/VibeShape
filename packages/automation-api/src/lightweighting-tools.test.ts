@@ -23,6 +23,129 @@ import { remoteOperationSchema } from "./remote-session"
 import { localToolAnnotations } from "./tool-metadata"
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it("binds FDM evidence to the request before accepting analysis or an applied snapshot", () => {
+    for (const request of [false, true]) {
+      const operation = lightweightingOperation(request)
+      const settings = {
+        buildDirection: "+z",
+        supportMode: "forbidden",
+        minFeatureSizeMm: 0.5,
+        layerHeightMm: 0.2,
+        maxOverhangAngleDeg: 0,
+      }
+      const withFdm = {
+        ...operation,
+        arguments: {
+          ...operation.arguments,
+          settings: { ...operation.arguments.settings, fdm: settings },
+        },
+      }
+      const metrics = {
+        unsupportedAreaMm2: 0,
+        requiresSupports: false,
+        minFeatureSizeBoundMm: 0.999998,
+        buildHeightMm: 2,
+      }
+      const fdm = {
+        settings,
+        approximation: "conservative-voxel",
+        minimumFeatureCubeCells: 1,
+        horizontalReachMm: 0,
+        buildPlateCoordinateMm: 0,
+        baseline: metrics,
+        optimized: metrics,
+      }
+      const value = {
+        documentId: lightweightingId(3),
+        baseRevision: 4,
+        source: operation.arguments.source,
+        summary: { ...lightweightingSummary(), fdm },
+        ...(request ? { snapshot: lightweightingSnapshot() } : {}),
+      }
+      expect(lightweightingResultContextMatches(withFdm, { ok: true, value })).toBe(true)
+      expect(lightweightingResultContextMatches(operation, { ok: true, value })).toBe(false)
+      for (const patch of [
+        { fdm: undefined },
+        { fdm: { ...fdm, settings: { ...settings, buildDirection: "-z" } } },
+        { fdm: { ...fdm, optimized: { ...metrics, minFeatureSizeBoundMm: 0.4 } } },
+        {
+          fdm: { ...fdm, optimized: { ...metrics, unsupportedAreaMm2: 1, requiresSupports: true } },
+        },
+      ])
+        expect(
+          lightweightingResultContextMatches(withFdm, {
+            ok: true,
+            value: { ...value, summary: { ...value.summary, ...patch } },
+          }),
+        ).toBe(false)
+    }
+  })
+  it("preserves both FDM support policies on paired transports and rejects invalid layer settings", () => {
+    for (const request of [false, true]) {
+      const operation = lightweightingOperation(request)
+      for (const supportMode of ["allowed", "forbidden"]) {
+        const fdm = {
+          supportMode,
+          buildDirection: "-y",
+          minFeatureSizeMm: 1.2,
+          layerHeightMm: 0.2,
+          maxOverhangAngleDeg: 45,
+        }
+        const withFdm = {
+          ...operation,
+          arguments: {
+            ...operation.arguments,
+            settings: { ...operation.arguments.settings, fdm },
+          },
+        }
+        for (const schema of [localOperationSchema, remoteOperationSchema]) {
+          expect(schema.parse(withFdm).arguments).toMatchObject({ settings: { fdm } })
+          for (const invalid of [{ maxOverhangAngleDeg: 90 }, { layerHeightMm: 2 }])
+            expect(
+              schema.safeParse({
+                ...withFdm,
+                arguments: {
+                  ...withFdm.arguments,
+                  settings: {
+                    ...withFdm.arguments.settings,
+                    fdm: { ...fdm, ...invalid },
+                  },
+                },
+              }).success,
+            ).toBe(false)
+        }
+      }
+    }
+  })
+  it("preserves bounded keep-out boxes on both transports and rejects degenerate regions", () => {
+    for (const request of [false, true]) {
+      const operation = lightweightingOperation(request)
+      const obstacleRegions = [{ min: [1, 2, 3], max: [4, 5, 6] }]
+      const withObstacles = {
+        ...operation,
+        arguments: {
+          ...operation.arguments,
+          settings: { ...operation.arguments.settings, obstacleRegions },
+        },
+      }
+      for (const schema of [localOperationSchema, remoteOperationSchema]) {
+        const parsed = schema.parse(withObstacles)
+        expect(parsed.arguments).toMatchObject({ settings: { obstacleRegions } })
+        expect(
+          schema.safeParse({
+            ...withObstacles,
+            arguments: {
+              ...withObstacles.arguments,
+              settings: {
+                ...withObstacles.arguments.settings,
+                obstacleRegions: [{ min: [1, 2, 3], max: [1, 5, 6] }],
+              },
+            },
+          }).success,
+        ).toBe(false)
+      }
+    }
+  })
   it("advertises a strict read-only shared material catalog on both transports", () => {
     const operation = { tool: "list_lightweighting_materials", arguments: {} }
     expect(localOperationSchema.safeParse(operation).success).toBe(true)

@@ -41,6 +41,14 @@ type TaskCopy = {
   featureLabel: (part: string) => string
 }
 type Activity = "idle" | "loading" | "solving" | "inspecting" | "applying"
+export type LightweightingAnalysisRunner = (
+  input: StructuralOptimizationInput,
+  options: {
+    signal: AbortSignal
+    current: () => boolean
+    onProgress: (stage: "loading" | "solving") => void
+  },
+) => Promise<{ input: StructuralOptimizationInput; result: StructuralOptimizationResult }>
 function analysisIsCurrent(
   mounted: boolean,
   generation: number,
@@ -66,15 +74,20 @@ async function runAnalysis(
   signal: AbortSignal,
   current: () => boolean,
   setStage: (stage: Activity) => void,
+  runner?: LightweightingAnalysisRunner,
 ): Promise<ReadyResult | null> {
-  const result = await optimizeStructuralModel(input, {
+  const options = {
     signal,
     runtimeBaseUrl: new URL(`${import.meta.env.BASE_URL}structural-runtime/`, window.location.href)
       .href,
-    onProgress: (stage) => {
+    onProgress: (stage: "loading" | "solving") => {
       if (current()) setStage(stage)
     },
-  })
+  }
+  const computed = runner
+    ? await runner(input, { ...options, current })
+    : { input, result: await optimizeStructuralModel(input, options) }
+  const { result } = computed
   if (!current()) return null
   setStage("inspecting")
   const inspected = await prepareLightweightingSnapshot(
@@ -83,7 +96,7 @@ async function runAnalysis(
     source,
     current,
   )
-  return inspected ? { source, input, result, ...inspected } : null
+  return inspected ? { source, input: computed.input, result, ...inspected } : null
 }
 type CurrentSource = { source: LightweightingSource | null; disabled: boolean }
 function sourceIdentity(source: LightweightingSource | null) {
@@ -263,7 +276,9 @@ export function useLightweightingTask({
   onApplied,
   onApplyingChange,
   graphical = false,
+  analysisRunner,
 }: {
+  analysisRunner?: LightweightingAnalysisRunner
   graphical?: boolean
   controller: DocumentControllerState
   initialPartId?: string
@@ -314,7 +329,7 @@ export function useLightweightingTask({
   const stale = ready !== null && currentReady === null
   const candidate = analysisCandidate(source, fields)
   const canAnalyze = analysisEligible(disabled, activity, candidate)
-  const analyze = async () => {
+  const performAnalysis = async (runner?: LightweightingAnalysisRunner) => {
     if (!candidate || !actionCanBegin(analysis.current, applying.current, canAnalyze)) return
     const { source: captured, input } = candidate
     const abort = new AbortController()
@@ -334,7 +349,14 @@ export function useLightweightingTask({
     setMessage(null)
     setActivity("loading")
     try {
-      const completed = await runAnalysis(input, captured, abort.signal, current, setActivity)
+      const completed = await runAnalysis(
+        input,
+        captured,
+        abort.signal,
+        current,
+        setActivity,
+        runner,
+      )
       if (completed && current()) setReady(completed)
     } catch (error) {
       if (current()) setMessage(analysisError(error, copy))
@@ -383,7 +405,9 @@ export function useLightweightingTask({
     setPreviewReady,
     choosePart,
     changeFields,
-    analyze,
+    analyze: () => performAnalysis(analysisRunner),
+    previewResult: (input: StructuralOptimizationInput, result: StructuralOptimizationResult) =>
+      performAnalysis(async () => ({ input, result })),
     apply,
     cancel,
     downloadReport: () => downloadResultReport(currentReady),

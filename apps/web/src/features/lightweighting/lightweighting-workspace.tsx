@@ -42,7 +42,12 @@ export function LightweightingWorkspace({
     workflow.mode === "quick" ? (
       <QuickLightweightingTaskPanel {...props} />
     ) : (
-      <LightweightingTaskPanel {...props} onInteractionChange={setInteraction} />
+      <LightweightingTaskPanel
+        key={workflow.mode}
+        {...props}
+        generative={workflow.mode === "generative"}
+        onInteractionChange={setInteraction}
+      />
     )
   return (
     <WorkspaceTaskProvider
@@ -79,10 +84,10 @@ function useTaskDismissal(open: boolean, active: boolean, close: () => void) {
 }
 
 function workspaceInteraction(
-  mode: "quick" | "structural",
+  mode: "quick" | "structural" | "generative",
   interaction: LightweightingViewportInteraction | null,
 ) {
-  if (mode !== "structural" || !interaction) return null
+  if (mode === "quick" || !interaction) return null
   return {
     sourceMesh: {
       featureId: interaction.source.featureId,

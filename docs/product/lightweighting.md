@@ -88,6 +88,13 @@ the source closer to the origin or choose coarser cells instead of importing a d
 
 ## Output and lifecycle
 
+Optional `obstacleRegions` are up to sixteen positive-size axis-aligned `{min,max}` boxes in mm.
+Closed voxel boxes intersecting them, including boundary contact, are excluded before baseline
+analysis; conflicts with protected support, load, or preservation cells fail explicitly. Targets
+refer to the remaining feasible baseline, and source-volume loss includes excluded material.
+The editor exposes these controls in [Generative Design](generative-design.md), which compares
+multiple material/mass-target scenarios through this same numerical and snapshot owner.
+
 The report compares the feasible voxel baseline with the optimized solid, includes source volume,
 conservative voxelization loss, cell size, per-case stress/displacement/safety/compliance, volume,
 mass, iterations, termination, and assumptions. Removal percentage uses the voxel baseline;
@@ -190,6 +197,12 @@ mass target. Results distinguish a reached target from a target prevented by con
 regions, topology, or the iteration budget. Both objectives use a greedy heuristic and do not claim
 a global minimum mass or maximum stiffness. This is not a full generative-design search over
 manufacturing methods or multiple alternative designs.
+
+Optional `settings.fdm` extends the shared structural analysis with conservative minimum-feature
+and support-policy checks. The editor exposes these controls in Generative Design; paired MCP
+can supply them for an individual analysis. See the canonical
+[FDM contract](generative-design.md#fdm-constraints) for direction, angle conventions, baseline
+failure, comparison evidence, and the distinction from slicer simulation.
 
 ### Quick runtime and exchange bounds
 

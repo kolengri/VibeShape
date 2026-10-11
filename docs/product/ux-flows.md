@@ -427,6 +427,19 @@ Choose **FDM tools** in Model, select a kind, and supply its exact target or ind
 
 ## Lightweighting tasks
 
+The registered **Generative Design** toolbar/palette command opens the same source-bound task
+workflow with a bounded alternative search instead of a single objective. The user sets up to three
+mass targets, the current material plus up to two catalog examples, and optional keep-out boxes.
+FDM controls select **Without supports** or **Supports allowed**, model-axis build direction,
+minimum feature size, layer height, and maximum overhang from vertical. Both policies enforce
+minimum feature size; support-free additionally excludes unsupported results. Supports-allowed
+reports area requiring support without generating it. Changing any FDM setting invalidates the study.
+Generated candidates show actual mass, worst-case compliance, Pareto status, duplicate geometry,
+unsupported area, unmet targets, and scenario failures. Candidate selection previews an existing analyzed mesh
+without repeating FEM. Settings/source changes invalidate the entire study; Apply uses the same
+renderer readiness, atomic import, source hiding, and Undo behavior. See
+[the study contract](generative-design.md) for scope and limitations.
+
 Structural and quick lightweighting use direct toolbar commands and the responsive right task
 panel. The selected exact solid is prefilled. Structural inputs select support, load, and optional
 preserved faces in the canvas; quick inputs select lattice cells and slider values. Required action

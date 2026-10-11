@@ -109,6 +109,8 @@ function runtimeFixture() {
     "packages/structural-optimization/src/solver.py",
     "packages/structural-optimization/src/quick-solver.py",
     "packages/structural-optimization/tests/surface_target_fixtures.py",
+    "packages/structural-optimization/tests/obstacle_fixtures.py",
+    "packages/structural-optimization/tests/fdm_fixtures.py",
   ]
   for (const path of producers)
     repo.write(path, readFileSync(join(import.meta.dir, "..", path), "utf8"))
@@ -291,6 +293,8 @@ describe("native unit-test result inputs", () => {
       "packages/structural-optimization/src/solver.py",
       "packages/structural-optimization/src/quick-solver.py",
       "packages/structural-optimization/tests/surface_target_fixtures.py",
+      "packages/structural-optimization/tests/obstacle_fixtures.py",
+      "packages/structural-optimization/tests/fdm_fixtures.py",
     ]
     const inputs = paths.map((path) => {
       const contents = readFileSync(join(root, path), "utf8")

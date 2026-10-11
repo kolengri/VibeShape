@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import type { StructuralFdmSummary } from "@vibeshape/domain/lightweighting"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { optimizeStructuralModel } from "./client"
 import type { StructuralOptimizationInput, StructuralOptimizationResult } from "./contract"
@@ -84,6 +85,95 @@ describe("bounded structural worker client", () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+  function fdmOutput(): StructuralFdmSummary {
+    return {
+      settings: {
+        buildDirection: "+x",
+        supportMode: "allowed",
+        minFeatureSizeMm: 1,
+        layerHeightMm: 0.2,
+        maxOverhangAngleDeg: 45,
+      },
+      approximation: "conservative-voxel",
+      minimumFeatureCubeCells: 1,
+      horizontalReachMm: 0.2,
+      buildPlateCoordinateMm: -5,
+      baseline: {
+        unsupportedAreaMm2: 0,
+        requiresSupports: false,
+        minFeatureSizeBoundMm: 1,
+        buildHeightMm: 10,
+      },
+      optimized: {
+        unsupportedAreaMm2: 0,
+        requiresSupports: false,
+        minFeatureSizeBoundMm: 1,
+        buildHeightMm: 10,
+      },
+    }
+  }
+  it("accepts request-bound FDM metrics and releases the worker", async () => {
+    const fdm = fdmOutput()
+    const output = { ...result(), fdm }
+    const pending = optimizeStructuralModel({ ...input, fdm: fdm.settings }, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toEqual(output)
+  })
+  it.each<[string, (fdm: StructuralFdmSummary) => void]>([
+    [
+      "settings",
+      (fdm) => {
+        fdm.settings.buildDirection = "-x"
+      },
+    ],
+    [
+      "bound",
+      (fdm) => {
+        fdm.optimized.minFeatureSizeBoundMm = 0.99
+      },
+    ],
+    [
+      "cube",
+      (fdm) => {
+        fdm.minimumFeatureCubeCells = 2
+      },
+    ],
+    [
+      "area",
+      (fdm) => {
+        fdm.optimized.unsupportedAreaMm2 = 1
+      },
+    ],
+    [
+      "reach",
+      (fdm) => {
+        fdm.horizontalReachMm = 2
+      },
+    ],
+  ])("rejects mismatched FDM %s metrics", async (_, change) => {
+    const fdm = fdmOutput()
+    const request = { ...input, fdm: { ...fdm.settings } }
+    change(fdm)
+    const pending = optimizeStructuralModel(request, options)
+    FakeWorker.instance.emit({
+      type: "complete",
+      response: { ok: true, result: { ...result(), fdm } },
+    })
+    await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+    expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
+  })
+  it.each(["missing", "unsolicited"])("rejects %s FDM response metadata", async (kind) => {
+    const fdm = fdmOutput()
+    const pending = optimizeStructuralModel(
+      kind === "missing" ? { ...input, fdm: fdm.settings } : input,
+      options,
+    )
+    FakeWorker.instance.emit({
+      type: "complete",
+      response: { ok: true, result: kind === "missing" ? result() : { ...result(), fdm } },
+    })
+    await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
   })
   it("accepts a feasible closed result and releases the worker", async () => {
     const progress = vi.fn()

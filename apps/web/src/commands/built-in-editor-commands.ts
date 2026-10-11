@@ -30,6 +30,7 @@ export type BuiltInEditorCommandContext = Readonly<{
   actions: Readonly<{
     lightweighting?: () => void
     quickLightweighting?: () => void
+    generativeDesign?: () => void
     openShortcutHelp?: () => void
     openSketchText?: () => void
     cancelActive: () => void
@@ -157,6 +158,14 @@ const contextualPartDescriptors: readonly EditorCommandDescriptor[] = [
 
 const descriptors: readonly EditorCommandDescriptor[] = [
   ...contextualPartDescriptors,
+  {
+    group: "modeling",
+    icon: "compound",
+    id: editorCommandIds.generativeDesign,
+    labelKey: "generativeDesign",
+    ownerModuleId: editorOwner,
+    toolbarGroup: "model-primary",
+  },
   {
     group: "modeling",
     icon: "quick-lightweighting",
@@ -931,6 +940,16 @@ const contextualPartHandlers: readonly EditorCommandHandler<BuiltInEditorCommand
 ]
 
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  {
+    execute: ({ actions }) => actions.generativeDesign?.(),
+    getEligibility: (context) =>
+      context.actions.generativeDesign
+        ? writableDocumentEligibility(context)
+        : editorCommandDisabled("documentUnavailable"),
+    id: editorCommandIds.generativeDesign,
+    isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
+    ownerModuleId: editorOwner,
+  },
   {
     execute: ({ actions }) => actions.quickLightweighting?.(),
     getEligibility: (context) =>

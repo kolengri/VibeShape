@@ -671,6 +671,7 @@ function resolveEditorApplicationCommands(
     openSketchText: () => void
     lightweighting: () => void
     quickLightweighting: () => void
+    generativeDesign: () => void
   },
 ) {
   const profileCommandAvailable = sketchProfileCommandAvailable(
@@ -949,6 +950,10 @@ function EditorApplication({
       quickLightweighting: () => {
         workspaceActions.closeTool()
         lightweighting.show("quick")
+      },
+      generativeDesign: () => {
+        workspaceActions.closeTool()
+        lightweighting.show("generative")
       },
     },
   )

@@ -8,6 +8,7 @@
   "exports": {
     "./contract": "./src/contract.ts",
     "./client": "./src/client.ts",
+    "./generative-design": "./src/generative-design.ts",
     "./mesh": "./src/mesh.ts",
     "./quick-contract": "./src/quick-contract.ts",
     "./quick-client": "./src/quick-client.ts"

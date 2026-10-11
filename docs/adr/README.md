@@ -113,6 +113,8 @@
 | [0104](0104-native-bun-tests.md) | Accepted | Native Bun unit tests and workerd integration boundary |
 | [0105](0105-native-typescript-cache.md) | Accepted | Native TypeScript and dependency-aware typecheck caching |
 | [0106](0106-ci-unit-test-cache-and-preflight.md) | Accepted | Dependency-aware CI unit receipts and early deployment preflight |
+| [0107](0107-bounded-generative-design-studies.md) | Accepted with reduced scope | Local multi-candidate structural studies and conservative keep-out regions |
+| [0108](0108-generative-design-fdm-constraints.md) | Accepted with reduced scope | Conservative FDM feature-size and support-policy constraints on structural studies |
 
 Statuses:
 
