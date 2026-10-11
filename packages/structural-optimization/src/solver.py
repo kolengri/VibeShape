@@ -97,6 +97,32 @@ def _within(points, region, tolerance):
     return np.all((points >= lo - tolerance) & (points <= hi + tolerance), axis=-1)
 
 
+def _obstacle_regions(request):
+    regions = request.get("obstacleRegions", [])
+    _require(isinstance(regions, list) and len(regions) <= 16,
+             "invalid-input", "At most 16 obstacle box regions are supported.")
+    boxes = []
+    for region in regions:
+        _require(isinstance(region, dict) and set(region) == {"min", "max"},
+                 "invalid-input", "Obstacle regions require only box min and max coordinates.")
+        box = _region(region, 0)
+        _require(np.all(box[0] < box[1]), "invalid-input", "Obstacle boxes must have positive extent on every axis.")
+        boxes.append(box)
+    return boxes
+
+
+def _obstacle_mask(cells, origin, cell_size, boxes):
+    lo = origin + cells * cell_size
+    hi = lo + cell_size
+    mask = np.zeros(len(cells), dtype=bool)
+    # Leave room for the permitted float32 STL displacement, plus grid arithmetic.
+    # Every captured triangle stays inside its cell expanded by this axis margin.
+    tolerance = cell_size * (1e-6 + 1e-9)
+    for rlo, rhi in boxes:
+        mask |= np.all((lo <= rhi + tolerance) & (hi >= rlo - tolerance), axis=1)
+    return mask
+
+
 class _TriangleIndex:
     """Small local AABB index implementing trimesh rays and proximity queries.
 
@@ -488,13 +514,21 @@ def solve(request):
                   _number(material.get("poissonRatio"), "poissonRatio", -0.95, 0.45),
                   _number(material.get("yieldStrengthMpa"), "yieldStrengthMpa", 1e-6, 1e6))
     density = _number(material.get("densityKgM3"), "densityKgM3", 1e-3, 1e6)
+    obstacles = _obstacle_regions(request)
     source, origin, source_volume = _source(request, cell_size)
     cells = _voxelize(source, deadline)
+    initial_mesh, nodes = _hex_mesh(cells, origin, cell_size)
+    # Resolve authored boundaries against the original captured-source baseline;
+    # exclusion must never remap a load or support onto a newly exposed cavity.
+    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size, source, deadline)
+    excluded = _obstacle_mask(cells, origin, cell_size, obstacles)
+    _require(not any(tuple(cell) in protected for cell in cells[excluded]),
+             "invalid-input", "Obstacle boxes intersect protected, support, or load cells on the original baseline.")
+    cells = cells[~excluded]
+    _require(_connected(cells), "infeasible-baseline", "Obstacle exclusion empties or disconnects the analyzed baseline.")
     initial_count = len(cells)
     target_count = (math.ceil(initial_count * objective["retainedMassFraction"])
                     if objective and objective["kind"] == "maximize-stiffness" else None)
-    initial_mesh, nodes = _hex_mesh(cells, origin, cell_size)
-    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size, source, deadline)
 
     def feasible(metrics):
         return metrics["safetyFactor"] >= safety_factor and metrics["maxDisplacementMm"] <= max_displacement
@@ -545,6 +579,8 @@ def solve(request):
     _require(feasible(optimized), "final-verification-failed", "Repeated final full-solid analysis violates a constraint.")
     _require(optimized["volumeMm3"] <= baseline["volumeMm3"] + 1e-8,
              "final-verification-failed", "The final volume exceeds the baseline.")
+    _require(not np.any(_obstacle_mask(cells, origin, cell_size, obstacles)),
+             "final-verification-failed", "The final analyzed cells intersect a keep-out box.")
     result = {"schemaVersion": 1, "status": "improved" if len(cells) < initial_count else "no-improvement",
             "mesh": {"vertices": output.vertices.ravel().tolist(), "indices": output.faces.ravel().tolist()},
             "baseline": baseline, "optimized": optimized, "sourceVolumeMm3": source_volume,
@@ -557,6 +593,8 @@ def solve(request):
                          "Linear isotropic small-strain FEM; unaveraged element-corner and quadrature stress is resolution dependent and is not a physical strength certification.",
                          "Sharp voxel and clamped-boundary corners can create continuum stress singularities; finite FEM peaks do not establish converged continuum maxima.",
                          "Loads are uniform tractions on selected baseline facets; all load, support, and preservation cells remain fixed."] +
+                        (["Keep-outs exclude entire cells on closed-box contact. Baseline metrics and retained-mass targets use the obstacle-excluded baseline; sourceVolumeLossFraction includes obstacle exclusion and conservative voxelization, before optimization."]
+                         if obstacles else []) +
                         (["Surface selections use nearest captured-source triangles and aligned voxel exterior facets within one cell diagonal; ambiguous edges are excluded. Preservation depth is rounded by half a cell diagonal and stops at another nearest source surface."]
                          if any(region.get("kind") == "surface" for region in request["supports"] + [case["region"] for case in request["loadCases"]] + request.get("preserveRegions", [])) else [])}
     if objective is not None:

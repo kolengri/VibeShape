@@ -8,6 +8,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 import trimesh
+from obstacle_fixtures import (verify_closed_obstacle_contact,
+                               verify_invalid_obstacle_boxes,
+                               verify_obstacle_baseline_accounting,
+                               verify_obstacle_baseline_failures,
+                               verify_obstacle_conflicts_and_mapping)
 from surface_target_fixtures import (verify_curved_surface_membership_and_preservation,
                                      verify_rotated_surface_membership,
                                      verify_surface_boundary_freeze,
@@ -38,6 +43,13 @@ def request_for_box(iterations=0):
 def output_mesh(result):
     return trimesh.Trimesh(np.array(result["mesh"]["vertices"]).reshape(-1, 3),
                            np.array(result["mesh"]["indices"]).reshape(-1, 3), process=False)
+
+
+@pytest.mark.parametrize("verify", [verify_closed_obstacle_contact, verify_invalid_obstacle_boxes,
+                                  verify_obstacle_baseline_accounting, verify_obstacle_baseline_failures,
+                                  verify_obstacle_conflicts_and_mapping])
+def test_keep_out_invariants(verify):
+    verify(solver)
 
 
 @pytest.mark.parametrize("cell_size", [0.5, 1, 2])

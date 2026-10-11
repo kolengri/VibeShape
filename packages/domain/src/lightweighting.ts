@@ -25,6 +25,10 @@ export const structuralRegionSchema = z.union([
   structuralBoxRegionSchema,
   structuralSurfaceRegionSchema,
 ])
+const structuralObstacleRegionSchema = structuralBoxRegionSchema.refine(
+  ({ min, max }) => min.every((value, axis) => value < (max[axis] ?? value)),
+  { message: "Obstacle boxes must have positive extent on every axis." },
+)
 export type StructuralRegion = z.infer<typeof structuralRegionSchema>
 export type StructuralSurfaceRegion = z.infer<typeof structuralSurfaceRegionSchema>
 const minimumMassObjectiveSchema = z.object({ kind: z.literal("minimize-mass") }).strict()
@@ -78,6 +82,7 @@ export const structuralOptimizationSettingsSchema = z
         message: "Load case names must be unique.",
       }),
     preserveRegions: z.array(structuralRegionSchema).max(16),
+    obstacleRegions: z.array(structuralObstacleRegionSchema).max(16).optional(),
     maxIterations: z.number().int().min(0).max(40),
   })
   .strict()

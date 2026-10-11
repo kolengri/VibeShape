@@ -36,6 +36,13 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
    authoritative. Analysis is limited to 20,000 source triangles, 10,000 source vertices,
    3,000 FEM cells, 5,000 nodes and 8 load cases.
 
+   Optional `obstacleRegions` accepts up to sixteen positive-size world-mm `{min,max}` boxes.
+   Any closed FEM-cell box intersecting a keep-out box is excluded before baseline analysis,
+   including boundary contact and the permitted STL coordinate-rounding margin. Intersections with
+   support, load, or preserved cells fail explicitly.
+   Exclusion can disconnect or invalidate the baseline. Mass targets refer to the remaining feasible
+   baseline; source-volume loss includes excluded material as well as voxelization loss.
+
 6. `objective` is optional. Omission or `{kind: "minimize-mass"}` retains the existing
    mass-reduction search. `{kind: "maximize-stiffness", retainedMassFraction}` uses a retained
    mass fraction of 0.1–1 relative to the conservative FEM baseline, not the original exact solid.
@@ -101,6 +108,11 @@ global minimum. Results use preliminary isotropic small-deformation linear elast
 specified loads/constraints; they do not establish physical strength, fatigue, buckling, contact,
 manufacturability or print performance. Keep those limits visible when presenting the metrics.
 Export or back up the committed snapshot only when requested, through `vibeshape-export`.
+
+The editor also offers a bounded multi-material/mass-target Generative Design study. It is not a
+new paired MCP tool: these tools still analyze/request one scenario at a time. Do not claim automatic
+study comparison or candidate selection through MCP. The editor study does not add manufacturing
+constraints, CAD reconstruction, global-optimum guarantees, or physical strength certification.
 
 Apply keeps the editable source in the Parts tree and hides it in the same atomic transaction
 as the new mesh, preventing it from covering the result. One Undo removes the mesh and restores

@@ -23,6 +23,35 @@ import { remoteOperationSchema } from "./remote-session"
 import { localToolAnnotations } from "./tool-metadata"
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it("preserves bounded keep-out boxes on both transports and rejects degenerate regions", () => {
+    for (const request of [false, true]) {
+      const operation = lightweightingOperation(request)
+      const obstacleRegions = [{ min: [1, 2, 3], max: [4, 5, 6] }]
+      const withObstacles = {
+        ...operation,
+        arguments: {
+          ...operation.arguments,
+          settings: { ...operation.arguments.settings, obstacleRegions },
+        },
+      }
+      for (const schema of [localOperationSchema, remoteOperationSchema]) {
+        const parsed = schema.parse(withObstacles)
+        expect(parsed.arguments).toMatchObject({ settings: { obstacleRegions } })
+        expect(
+          schema.safeParse({
+            ...withObstacles,
+            arguments: {
+              ...withObstacles.arguments,
+              settings: {
+                ...withObstacles.arguments.settings,
+                obstacleRegions: [{ min: [1, 2, 3], max: [1, 5, 6] }],
+              },
+            },
+          }).success,
+        ).toBe(false)
+      }
+    }
+  })
   it("advertises a strict read-only shared material catalog on both transports", () => {
     const operation = { tool: "list_lightweighting_materials", arguments: {} }
     expect(localOperationSchema.safeParse(operation).success).toBe(true)

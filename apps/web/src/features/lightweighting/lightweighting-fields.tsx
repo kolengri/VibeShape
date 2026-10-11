@@ -34,7 +34,9 @@ function NumberField({
 }) {
   return (
     <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} className="max-w-full">
+        {label}
+      </FieldLabel>
       <Input
         id={id}
         type="number"
@@ -66,13 +68,14 @@ function FacePicker({
 }) {
   const t = useTranslations("app.lightweighting")
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-2">
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           variant={active ? "secondary" : "outline"}
           size="sm"
           aria-label={label}
+          className="h-auto max-w-full whitespace-normal"
           aria-pressed={active}
           onClick={onPick}
           disabled={disabled}
@@ -135,6 +138,7 @@ function LoadForceControls({
         variant="outline"
         size="sm"
         aria-pressed={force.flipped}
+        className="h-auto max-w-full whitespace-normal"
         onClick={() => onChange({ flipped: !force.flipped })}
       >
         {t("flipForce", { index: index + 1 })}
@@ -159,7 +163,7 @@ function ObjectiveControls({
 }) {
   const t = useTranslations("app.lightweighting")
   return (
-    <fieldset className="grid gap-3">
+    <fieldset className="grid min-w-0 grid-cols-1 gap-3">
       <legend className="mb-2 font-medium">{t("objective")}</legend>
       <SelectField
         id="lightweighting-objective"
@@ -204,7 +208,9 @@ export function LightweightingParameters({
   picking,
   onPick,
   pickingDisabled,
+  showObjective = true,
 }: {
+  showObjective?: boolean
   fields: LightweightingFields
   onChange: (fields: LightweightingFields) => void
   picking: LightweightingPickTarget | null
@@ -257,18 +263,18 @@ export function LightweightingParameters({
     })
   return (
     <>
-      <ObjectiveControls fields={fields} onChange={onChange} />
-      <fieldset className="grid gap-3">
+      {showObjective && <ObjectiveControls fields={fields} onChange={onChange} />}
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("material")}</legend>
         <LightweightingMaterialSelector fields={fields} onChange={onChange} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
           {numeric("youngModulusMpa", 0)}
           {numeric("poissonRatio", 0, 0.45)}
           {numeric("yieldStrengthMpa", 0)}
           {numeric("densityKgM3", 0)}
         </div>
       </fieldset>
-      <fieldset className="grid gap-3">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("support")}</legend>
         <p className="text-xs text-muted-foreground">{t("supportDescription")}</p>
         <FacePicker
@@ -280,11 +286,11 @@ export function LightweightingParameters({
           onClear={() => setSurface({ supportFaces: [] })}
         />
       </fieldset>
-      <fieldset className="grid gap-3">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("loadCases")}</legend>
         <p className="text-xs text-muted-foreground">{t("loadDescription")}</p>
         {fields.loadCases.map((load, index) => (
-          <fieldset key={load.id} className="grid min-w-0 gap-3 rounded-md border p-3">
+          <fieldset key={load.id} className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-3">
             <legend className="px-1 text-sm font-medium">
               {t("loadCase", { index: index + 1 })}
             </legend>
@@ -362,7 +368,7 @@ export function LightweightingParameters({
           {t("addCase")}
         </Button>
       </fieldset>
-      <fieldset className="grid gap-3">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("preservation")}</legend>
         <p className="text-xs text-muted-foreground">{t("preservationDescription")}</p>
         <FacePicker
@@ -382,9 +388,9 @@ export function LightweightingParameters({
         />
         <p className="text-xs text-muted-foreground">{t("surfaceDepthDescription")}</p>
       </fieldset>
-      <fieldset className="grid gap-3">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("constraints")}</legend>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
           {numeric("safetyFactor", 1)}
           {numeric("maxDisplacementMm", 0)}
           {numeric("cellSizeMm", 0.01)}

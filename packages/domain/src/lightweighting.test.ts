@@ -6,6 +6,31 @@ import {
   structuralSurfaceRegionSchema,
 } from "./lightweighting"
 
+describe("structural keep-out boxes", () => {
+  const schema = structuralOptimizationSettingsSchema.shape.obstacleRegions
+  const box = { min: [-100_000, 0, 0], max: [100_000, 1, 1] }
+  it("accepts omitted, empty, and bounded closed boxes", () => {
+    expect(schema.parse(undefined)).toBeUndefined()
+    expect(schema.parse([])).toEqual([])
+    expect(schema.parse(Array.from({ length: 16 }, () => box))).toHaveLength(16)
+  })
+  it.each(
+    [
+      null,
+      [{ kind: "surface", triangleIndices: [0], depthMm: 1 }],
+      [{ ...box, max: [-100_001, 0, 1] }],
+      [{ min: [1, 0, 0], max: [0, 1, 1] }],
+      [{ min: [0, 0, 0], max: [1, 0, 1] }],
+      [{ ...box, min: [NaN, 0, 0] }],
+      [{ ...box, min: [Infinity, 0, 0] }],
+      [{ ...box, kind: "box" }],
+      Array.from({ length: 17 }, () => box),
+    ].map((regions) => ({ regions })),
+  )("rejects unbounded, malformed, and non-box obstacles %j", ({ regions }) => {
+    expect(schema.safeParse(regions).success).toBe(false)
+  })
+})
+
 describe("structural objectives", () => {
   it.each([
     undefined,

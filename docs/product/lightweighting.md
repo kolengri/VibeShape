@@ -88,6 +88,13 @@ the source closer to the origin or choose coarser cells instead of importing a d
 
 ## Output and lifecycle
 
+Optional `obstacleRegions` are up to sixteen positive-size axis-aligned `{min,max}` boxes in mm.
+Closed voxel boxes intersecting them, including boundary contact, are excluded before baseline
+analysis; conflicts with protected support, load, or preservation cells fail explicitly. Targets
+refer to the remaining feasible baseline, and source-volume loss includes excluded material.
+The editor exposes these controls in [Generative Design](generative-design.md), which compares
+multiple material/mass-target scenarios through this same numerical and snapshot owner.
+
 The report compares the feasible voxel baseline with the optimized solid, includes source volume,
 conservative voxelization loss, cell size, per-case stress/displacement/safety/compliance, volume,
 mass, iterations, termination, and assumptions. Removal percentage uses the voxel baseline;

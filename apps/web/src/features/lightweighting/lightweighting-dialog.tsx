@@ -7,6 +7,7 @@ import type { DocumentControllerState } from "../../document/document-controller
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
 import { ImportPreview } from "../import/import-preview"
+import { GenerativeDesignControls, GenerativeDesignResults } from "./generative-design-controls"
 import { LightweightingParameters, type LightweightingPickTarget } from "./lightweighting-fields"
 import {
   type LightweightingFields,
@@ -21,7 +22,8 @@ import {
   faceTriangleIndices,
   lightweightingOverlays,
 } from "./lightweighting-surface-selection"
-import { useLightweightingTask } from "./use-lightweighting-task"
+import { useGenerativeDesignTask } from "./use-generative-design-task"
+import type { useLightweightingTask } from "./use-lightweighting-task"
 import { useLightweightingViewportPreview } from "./use-lightweighting-viewport-preview"
 
 type TaskState = ReturnType<typeof useLightweightingTask>
@@ -280,7 +282,9 @@ export function LightweightingTaskPanel({
   onApplyingChange,
   onApplied,
   onPreviewChange,
+  generative = false,
 }: {
+  generative?: boolean
   onApplyingChange?: (applying: boolean) => void
   onApplied?: () => void
   onPreviewChange?: (preview: WorkspaceTaskPreview | null) => void
@@ -291,6 +295,10 @@ export function LightweightingTaskPanel({
   onInteractionChange: (interaction: LightweightingViewportInteraction | null) => void
 }) {
   const t = useTranslations("app.lightweighting")
+  const g = useTranslations("app.generativeDesign")
+  const panelCopy = generative
+    ? { title: g("title"), description: g("description"), analyze: g("generate") }
+    : { title: t("title"), description: t("description"), analyze: t("analyze") }
   const { state, disabled, blockedReason } = useLightweightingPanelState(
     {
       controller,
@@ -299,72 +307,64 @@ export function LightweightingTaskPanel({
       onClose,
       onApplied,
       onApplyingChange,
+      generative,
     },
     t,
   )
   const face = useFaceInteraction(state, disabled, onInteractionChange)
   useLightweightingViewportPreview(state.ready, onPreviewChange, state.setPreviewReady)
   const pending = state.activity !== "idle" && state.activity !== "applying"
+  const inputsDisabled = disabled || state.activity === "applying"
   const reasons = actionReasons(state, blockedReason, t)
   return (
     <section
-      aria-label={t("title")}
-      className="grid h-full min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-3"
+      aria-label={panelCopy.title}
+      className="@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-3"
     >
       <header className="grid gap-2">
-        <h2 className="font-semibold">{t("title")}</h2>
-        <p className="text-xs text-muted-foreground">{t("description")}</p>
+        <h2 className="font-semibold">{panelCopy.title}</h2>
+        <p className="text-xs text-muted-foreground">{panelCopy.description}</p>
       </header>
       <fieldset
-        disabled={disabled || state.activity === "applying"}
-        className="grid min-w-0 gap-4"
+        disabled={inputsDisabled}
+        className="grid min-w-0 grid-cols-1 gap-4"
         aria-busy={pending}
       >
         <legend className="sr-only">{t("settings")}</legend>
         <LightweightingSourceSelector
           controller={controller}
           state={state}
-          disabled={disabled || state.activity === "applying"}
+          disabled={inputsDisabled}
         />
         <LightweightingParameters
+          showObjective={!generative}
           fields={state.fields}
           onChange={state.changeFields}
           picking={face.picking}
           onPick={face.onPick}
           pickingDisabled={!face.interactive}
         />
+        {generative && <GenerativeDesignControls state={state} />}
       </fieldset>
       {face.pickMessage && (
         <p role="status" className="text-xs text-muted-foreground">
           {face.pickMessage}
         </p>
       )}
-      <div className="grid gap-2">
-        <ActionAvailability disabledReason={reasons.analyze} presentation="persistent">
-          {({ describedBy }) => (
-            <Button
-              type="button"
-              aria-describedby={describedBy}
-              isLoading={pending}
-              disabled={!state.canAnalyze}
-              onClick={() => {
-                face.stopPicking()
-                void state.analyze()
-              }}
-            >
-              {t("analyze")}
-            </Button>
-          )}
-        </ActionAvailability>
-        {pending && (
-          <Button type="button" variant="outline" onClick={state.cancel}>
-            {t("cancelAnalysis")}
-          </Button>
-        )}
-      </div>
+      <AnalysisActions
+        state={state}
+        disabledReason={reasons.analyze}
+        label={panelCopy.analyze}
+        onAnalyze={() => {
+          face.stopPicking()
+          void state.analyze()
+        }}
+      />
       <TaskStatus state={state} />
+      <GenerativeProgress state={state} />
+      <GenerativeDesignResults state={state} />
       <ResultPreview state={state} mainViewport={onPreviewChange !== undefined} />
-      <footer className="grid gap-2 border-t pt-3">
+      <footer className="grid grid-cols-1 gap-2 border-t pt-3">
         <ActionAvailability disabledReason={reasons.apply} presentation="persistent">
           {({ describedBy }) => (
             <Button
@@ -372,6 +372,7 @@ export function LightweightingTaskPanel({
               aria-describedby={describedBy}
               isLoading={state.activity === "applying"}
               disabled={!state.canApply}
+              className="h-auto max-w-full whitespace-normal"
               onClick={state.apply}
             >
               {t("apply")}
@@ -391,6 +392,54 @@ export function LightweightingTaskPanel({
   )
 }
 
+function AnalysisActions({
+  state,
+  disabledReason,
+  label,
+  onAnalyze,
+}: {
+  state: TaskState
+  disabledReason: string | null
+  label: string
+  onAnalyze: () => void
+}) {
+  const t = useTranslations("app.lightweighting")
+  const pending = state.activity !== "idle" && state.activity !== "applying"
+  return (
+    <div className="grid grid-cols-1 gap-2">
+      <ActionAvailability disabledReason={disabledReason} presentation="persistent">
+        {({ describedBy }) => (
+          <Button
+            type="button"
+            aria-describedby={describedBy}
+            isLoading={pending}
+            disabled={!state.canAnalyze}
+            className="h-auto max-w-full whitespace-normal"
+            onClick={onAnalyze}
+          >
+            {label}
+          </Button>
+        )}
+      </ActionAvailability>
+      {pending && (
+        <Button type="button" variant="outline" onClick={state.cancel}>
+          {t("cancelAnalysis")}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function GenerativeProgress({ state }: { state: ReturnType<typeof useGenerativeDesignTask> }) {
+  const t = useTranslations("app.generativeDesign")
+  if (!state.progress || state.activity === "idle" || state.activity === "applying") return null
+  return (
+    <p role="status" className="text-xs">
+      {t("progress", state.progress)}
+    </p>
+  )
+}
+
 function useLightweightingPanelState(
   {
     controller,
@@ -399,6 +448,7 @@ function useLightweightingPanelState(
     onClose,
     onApplied,
     onApplyingChange,
+    generative,
   }: {
     controller: DocumentControllerState
     initialPartId: string
@@ -406,9 +456,11 @@ function useLightweightingPanelState(
     onClose: () => void
     onApplied: (() => void) | undefined
     onApplyingChange: ((applying: boolean) => void) | undefined
+    generative: boolean
   },
   t: ReturnType<typeof useTranslations<"app.lightweighting">>,
 ) {
+  const g = useTranslations("app.generativeDesign")
   const [applying, setApplying] = useState(false)
   const blockedReason = documentBlockedReason(controller, blocked, t)
   const notifyApplying = useCallback(
@@ -419,22 +471,30 @@ function useLightweightingPanelState(
     [onApplyingChange],
   )
   const disabled = blockedReason !== null
-  const state = useLightweightingTask({
-    controller,
-    initialPartId,
-    disabled: disabled && !applying,
-    graphical: true,
-    onApplied: onApplied ?? onClose,
-    onApplyingChange: notifyApplying,
-    copy: {
-      initialCaseName: t("defaultCaseName", { index: 1 }),
-      failed: t("failed"),
-      stale: t("stale"),
-      saveFailed: t("saveFailed"),
-      solverFailed: (code) => t("solverFailed", { code }),
-      featureLabel: (part) => t("featureLabel", { part }),
+  const state = useGenerativeDesignTask(
+    {
+      controller,
+      initialPartId,
+      disabled: disabled && !applying,
+      graphical: true,
+      onApplied: onApplied ?? onClose,
+      onApplyingChange: notifyApplying,
+      copy: {
+        initialCaseName: t("defaultCaseName", { index: 1 }),
+        failed: t("failed"),
+        stale: t("stale"),
+        saveFailed: t("saveFailed"),
+        solverFailed: (code) => t("solverFailed", { code }),
+        featureLabel: (part) =>
+          generative ? g("featureLabel", { part }) : t("featureLabel", { part }),
+      },
     },
-  })
-  useRegisterTaskSubmission(state.apply, "lightweighting:structural")
+    generative,
+    g("currentMaterial"),
+  )
+  useRegisterTaskSubmission(
+    state.apply,
+    generative ? "lightweighting:generative" : "lightweighting:structural",
+  )
   return { state, disabled, blockedReason }
 }

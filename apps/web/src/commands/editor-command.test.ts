@@ -77,6 +77,27 @@ function readyController(featureCount = 0) {
   } as unknown as DocumentControllerState
 }
 
+it("routes Generative Design through a writable registered toolbar and palette command", () => {
+  const generativeDesign = vi.fn()
+  const context = commandContext()
+  const withAction = { ...context, actions: { ...context.actions, generativeDesign } }
+  const command = resolveBuiltInEditorCommands(withAction).find(
+    ({ descriptor }) => descriptor.id === editorCommandIds.generativeDesign,
+  )
+  expect(command?.descriptor.labelKey).toBe("generativeDesign")
+  expect(command?.descriptor.toolbarGroup).toBe("model-primary")
+  expect(command?.eligibility.enabled).toBe(true)
+  command?.invoke()
+  expect(generativeDesign).toHaveBeenCalledTimes(1)
+  const blocked = resolveBuiltInEditorCommands({
+    ...withAction,
+    state: { ...withAction.state, controller: { ...readyController(), status: "loading" } },
+  }).find(({ descriptor }) => descriptor.id === editorCommandIds.generativeDesign)
+  expect(blocked?.eligibility.enabled).toBe(false)
+  blocked?.invoke()
+  expect(generativeDesign).toHaveBeenCalledTimes(1)
+})
+
 function commandContext(
   overrides: Partial<BuiltInEditorCommandContext["state"]> = {},
 ): BuiltInEditorCommandContext {

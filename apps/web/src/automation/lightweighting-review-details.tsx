@@ -10,6 +10,7 @@ export function LightweightingReviewDetails({
 }) {
   const t = useTranslations("app.lightweighting")
   const review = useTranslations("app.shell.taskPanel.lightweightingReview")
+  const generative = useTranslations("app.generativeDesign")
   return (
     <section className="grid gap-3">
       <p className="text-sm">{review("description")}</p>
@@ -93,6 +94,14 @@ export function LightweightingReviewDetails({
         </details>
       )}
       <LightweightingResults result={evidence.summary} />
+      {!!evidence.settings.obstacleRegions?.length && (
+        <details className="grid gap-2 text-xs">
+          <summary className="cursor-pointer font-medium">{generative("obstacles")}</summary>
+          {evidence.settings.obstacleRegions.map((region) => (
+            <ReviewRegion key={JSON.stringify(region)} region={region} />
+          ))}
+        </details>
+      )}
     </section>
   )
 }

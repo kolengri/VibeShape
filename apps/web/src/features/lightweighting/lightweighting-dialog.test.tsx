@@ -3,6 +3,7 @@ import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
+import { StructuralOptimizationError } from "../../../../../packages/structural-optimization/src/errors"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
 
@@ -18,11 +19,7 @@ const ports = (() => ({
 mock.module("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
 mock.module("@vibeshape/structural-optimization/client", () => ({
   optimizeStructuralModel: ports.optimize,
-  StructuralOptimizationError: class extends Error {
-    constructor(readonly code: string) {
-      super(code)
-    }
-  },
+  StructuralOptimizationError,
 }))
 mock.module("@vibeshape/structural-optimization/mesh", () => ({
   encodeStructuralStl: ports.encode,
@@ -144,6 +141,7 @@ function setup(
     onApplied?: () => void
     onApplyingChange?: (applying: boolean) => void
   } = {},
+  generative = false,
 ) {
   const View = ({ state }: { state: DocumentControllerState }) => {
     const [open, setOpen] = useState(true)
@@ -154,6 +152,7 @@ function setup(
         </button>
         {open && (
           <LightweightingTaskPanel
+            generative={generative}
             controller={state}
             initialPartId={initialPartId}
             blocked={blocked}
@@ -254,6 +253,125 @@ beforeEach(() => {
   ports.encode.mockReturnValue(new Uint8Array([1, 2, 3]))
   ports.inspect.mockResolvedValue(meshInspection)
   ports.apply.mockResolvedValue({ ok: true })
+})
+
+describe("Generative Design workflow", () => {
+  async function generate() {
+    await userEvent.click(screen.getByRole("button", { name: "Generate alternatives" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Preview candidate 3" })).toBeTruthy(),
+    )
+  }
+
+  it("compares independently analyzed targets and previews another candidate without rerunning FEM", async () => {
+    ports.optimize.mockImplementation(
+      async (input: { objective: { retainedMassFraction: number } }) => {
+        const fraction = input.objective.retainedMassFraction
+        return {
+          ...result,
+          optimized: { ...result.optimized, massKg: fraction * 0.024 },
+          mesh: { ...result.mesh, vertices: result.mesh.vertices.map((value) => value * fraction) },
+        }
+      },
+    )
+    setup(controller, false, "", {}, true)
+    await fill()
+    expect(screen.queryByRole("combobox", { name: "Optimization objective" })).toBeNull()
+    await generate()
+    expect(ports.optimize).toHaveBeenCalledTimes(3)
+    expect(ports.optimize.mock.calls.map((call) => call[0].objective.retainedMassFraction)).toEqual(
+      [0.35, 0.5, 0.7],
+    )
+    await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(1))
+    await userEvent.click(screen.getByRole("button", { name: "Preview candidate 3" }))
+    await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(2))
+    expect(ports.optimize).toHaveBeenCalledTimes(3)
+    expect(
+      screen.getByRole("button", { name: "Preview candidate 3" }).getAttribute("aria-pressed"),
+    ).toBe("true")
+    await userEvent.click(screen.getByRole("button", { name: "Apply as new mesh Part" }))
+    await waitFor(() => expect(ports.apply).toHaveBeenCalledTimes(1))
+    expect(
+      ports.apply.mock.calls[0]?.[1].commands.map(
+        (command: { payload: unknown }) => command.payload,
+      ),
+    ).toContainEqual({ kind: "part.set-visibility", partId: firstPart.id, visible: false })
+  })
+
+  it("validates search settings and cancels stale studies when mass targets change", async () => {
+    const old = deferred<StructuralOptimizationResult>()
+    ports.optimize.mockReturnValueOnce(old.promise)
+    setup(controller, false, "", {}, true)
+    await fill()
+    change("Retained mass targets (%)", "35, 35")
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    change("Retained mass targets (%)", "35, 50, 70")
+    await userEvent.click(screen.getByRole("button", { name: "Generate alternatives" }))
+    const signal = ports.optimize.mock.calls[0]?.[1].signal as AbortSignal
+    change("Retained mass targets (%)", "40, 60, 80")
+    expect(signal.aborted).toBe(true)
+    old.resolve(result)
+    await generate()
+    await waitFor(() => expect(ports.inspect).toHaveBeenCalledTimes(1))
+    expect(
+      ports.optimize.mock.calls.slice(1).map((call) => call[0].objective.retainedMassFraction),
+    ).toEqual([0.4, 0.6, 0.8])
+  })
+
+  it("compares extra materials and excludes incomplete keep-out boxes", async () => {
+    setup(controller, false, "", {}, true)
+    await fill()
+    await userEvent.click(screen.getByRole("button", { name: "Prusament PLA" }))
+    await userEvent.click(screen.getByRole("button", { name: "Add keep-out region" }))
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    const box = screen.getByRole("group", { name: "Keep-out region 1" })
+    for (const axis of ["X", "Y", "Z"]) {
+      fireEvent.change(within(box).getByLabelText(`Min ${axis} (mm)`), { target: { value: "10" } })
+      fireEvent.change(within(box).getByLabelText(`Max ${axis} (mm)`), { target: { value: "12" } })
+    }
+    await generate()
+    await waitFor(() => expect(ports.optimize).toHaveBeenCalledTimes(6))
+    expect(ports.optimize.mock.calls[3]?.[0].material.youngModulusMpa).toBe(2300)
+    expect(ports.optimize.mock.calls[0]?.[0].obstacleRegions).toEqual([
+      { min: [10, 10, 10], max: [12, 12, 12] },
+    ])
+    change("Maximum iterations", "13")
+    expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
+    expect(
+      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+  })
+
+  it("reports infeasible scenarios and invalidates candidates on source revision changes", async () => {
+    ports.optimize.mockRejectedValueOnce(
+      new StructuralOptimizationError("infeasible-baseline", "Infeasible material"),
+    )
+    const view = setup(controller, false, "", {}, true)
+    await fill()
+    await userEvent.click(screen.getByRole("button", { name: "Generate alternatives" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Preview candidate 2" })).toBeTruthy(),
+    )
+    expect(screen.getByText(/35% target: no candidate/)).toBeTruthy()
+    view.update({
+      ...controller,
+      report: {
+        ...report,
+        snapshot: { ...report.snapshot, revision: report.snapshot.revision + 1 },
+      },
+    })
+    expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
+    expect(
+      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
 })
 afterEach(() => {
   cleanup()

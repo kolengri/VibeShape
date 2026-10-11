@@ -23,7 +23,7 @@ export function useLightweightingCommand({
   const [dialog, setDialog] = useState({
     open: false,
     initialPartId: "",
-    mode: "structural" as "structural" | "quick",
+    mode: "structural" as "structural" | "quick" | "generative",
   })
   const setOpen = useCallback((open: boolean) => {
     setDialog((current) => ({ ...current, open }))
@@ -31,7 +31,7 @@ export function useLightweightingCommand({
   return {
     ...dialog,
     blocked: getProjectActiveWorkBlock() !== null || assemblyActive,
-    show(mode: "structural" | "quick" = "structural") {
+    show(mode: "structural" | "quick" | "generative" = "structural") {
       const selected = selectedPlacementPart(
         availableLightweightingParts(controller),
         selectedPartId,

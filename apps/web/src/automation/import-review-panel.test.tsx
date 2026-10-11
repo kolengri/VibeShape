@@ -116,6 +116,7 @@ describe("manual import review", () => {
     const settings = structuralOptimizationSettingsSchema.parse({
       ...lightweightingSettings,
       objective: { kind: "maximize-stiffness", retainedMassFraction: 0.8 },
+      obstacleRegions: [{ min: [1, 2, 3], max: [4, 5, 6] }],
     })
     render(
       <I18nProvider i18n={i18n} initialLocale="en">
@@ -139,6 +140,9 @@ describe("manual import review", () => {
     )
     expect(screen.getAllByText("Maximize stiffness at target mass").length).toBeGreaterThan(0)
     expect(screen.getByText("Target retained mass: 80%")).toBeTruthy()
+    expect(screen.getByText("Keep-out regions")).toBeTruthy()
+    expect(screen.getByText("1, 2, 3")).toBeTruthy()
+    expect(screen.getByText("4, 5, 6")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(true)
   })
   it("renders source surface scope and inward depth without assuming box bounds", () => {

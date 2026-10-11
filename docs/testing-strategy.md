@@ -14,6 +14,10 @@ check that reported material matches the exported solid. Additional native pytes
 topology, conservative containment, preservation, resource bounds, and numerical failures; these
 are supplementary local evidence, not substitutes for the WASM suite. UI/worker/MCP tests cover
 cancel, stale source/revision, review rejection, and one append-only atomic import transaction.
+Generative Design adds bounded study settings, sequential worker disposal, material/target binding,
+Pareto and duplicate-geometry behavior, and candidate switching without reanalysis. Shared keep-out
+fixtures run inside the same pinned WASM corpus and assert protected-cell conflicts, conservative
+closed-box exclusion, feasible-baseline semantics, target rounding, and emitted-surface containment.
 
 | Level | Coverage | Tool or approach |
 |---|---|---|

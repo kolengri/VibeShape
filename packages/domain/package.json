@@ -100,6 +100,7 @@
     "./assembly-pinned-insertion": "./src/assembly-pinned-insertion.ts",
     "./part-design-subtract": "./src/part-design-subtract.ts",
     "./lightweighting": "./src/lightweighting.ts",
+    "./generative-design": "./src/generative-design.ts",
     "./lightweighting-materials": "./src/lightweighting-materials.ts",
     "./quick-lightweighting": "./src/quick-lightweighting.ts"
   },

@@ -4,12 +4,14 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadPyodide, type PyodideInterface } from "pyodide"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   type StructuralMesh,
   type StructuralOptimizationInput,
   structuralOptimizationInputSchema,
   structuralSolverResponseSchema,
 } from "../src/contract"
+import { generateStructuralDesigns } from "../src/generative-design"
 import { encodeStructuralStl } from "../src/mesh"
 
 const timeout = 120_000
@@ -96,6 +98,12 @@ beforeAll(async () => {
       "utf8",
     ),
   )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/obstacle_fixtures.py"),
+      "utf8",
+    ),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -110,6 +118,131 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it(
+    "runs a real multi-material study with measured candidates and unreachable-baseline failures",
+    async () => {
+      // Only transport is replaced: every scenario executes the pinned WASM solver
+      // and passes through the production structural client's final validation.
+      class NumericalWorker {
+        onmessage: ((event: MessageEvent<unknown>) => void) | null = null
+        onerror: (() => void) | null = null
+        onmessageerror: (() => void) | null = null
+        stopped = false
+        terminate() {
+          this.stopped = true
+        }
+        postMessage(request: { input: StructuralOptimizationInput }) {
+          this.onmessage?.({
+            data: { type: "progress", stage: "solving" },
+          } as MessageEvent<unknown>)
+          void run(request.input).then(
+            (response) => {
+              if (!this.stopped)
+                this.onmessage?.({ data: { type: "complete", response } } as MessageEvent<unknown>)
+            },
+            () => {
+              if (!this.stopped) this.onerror?.()
+            },
+          )
+        }
+      }
+      vi.stubGlobal("Worker", NumericalWorker)
+      const analysis = axialBar(4)
+      const source = structuredClone(analysis)
+      try {
+        const output = await generateStructuralDesigns(
+          {
+            schemaVersion: 1,
+            analysis,
+            materials: [
+              { id: "reference", name: "Reference", material: analysis.material },
+              {
+                id: "stiffer-light",
+                name: "Stiffer and lighter",
+                material: { ...analysis.material, youngModulusMpa: 2000, densityKgM3: 500 },
+              },
+              { id: "weak", name: "Weak", material: { ...analysis.material, yieldStrengthMpa: 1 } },
+            ],
+            retainedMassFractions: [0.96, 1],
+          },
+          { runtimeBaseUrl: "http://localhost/structural-runtime/" },
+        )
+        expect(output.candidates).toHaveLength(4)
+        expect(output.failures.map(({ code }) => code)).toEqual([
+          "infeasible-baseline",
+          "infeasible-baseline",
+        ])
+        expect(output.candidates.map(({ result }) => result.finalCellCount)).toEqual([
+          39, 40, 39, 40,
+        ])
+        expect(output.candidates.map(({ result }) => result.objective)).toEqual([
+          expect.objectContaining({ targetStatus: "reached", targetCellCount: 39 }),
+          expect.objectContaining({ targetStatus: "reached", targetCellCount: 40 }),
+          expect.objectContaining({ targetStatus: "reached", targetCellCount: 39 }),
+          expect.objectContaining({ targetStatus: "reached", targetCellCount: 40 }),
+        ])
+        expect(output.candidates.slice(0, 2).every(({ pareto }) => !pareto)).toBe(true)
+        for (const candidate of output.candidates) {
+          expect(signedSurfaceVolume(candidate.result.mesh)).toBeCloseTo(
+            candidate.result.optimized.volumeMm3,
+            8,
+          )
+          expect(encodeStructuralStl(candidate.result.mesh, 1).byteLength).toBeGreaterThan(84)
+        }
+        expect(analysis).toEqual(source)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+    timeout,
+  )
+  it(
+    "keeps the captured float32 STL outside boxes within the serialization displacement margin",
+    async () => {
+      const raw: unknown = await runtime.runPythonAsync(
+        "json.dumps(serialization_clearance_request())",
+      )
+      if (typeof raw !== "string") throw new Error("Expected a serialized clearance fixture.")
+      const input = structuralOptimizationInputSchema.parse(JSON.parse(raw))
+      const response = await run(input)
+      if (!response.ok) throw new Error(response.error.message)
+      expect(response.result.initialCellCount).toBe(158)
+      const bytes = encodeStructuralStl(response.result.mesh, input.cellSizeMm)
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      const box = input.obstacleRegions?.[0]
+      if (!box) throw new Error("Expected a keep-out box.")
+      for (let offset = 84; offset < bytes.byteLength; offset += 50) {
+        const points = Array.from({ length: 3 }, (_, vertex) =>
+          Array.from({ length: 3 }, (_, axis) =>
+            view.getFloat32(offset + 12 + vertex * 12 + axis * 4, true),
+          ),
+        )
+        // These axis-aligned voxel triangles must have a separating axis from the box.
+        expect(
+          box.min.some(
+            (minimum, axis) =>
+              Math.max(...points.map((point) => point[axis] ?? Number.NaN)) < minimum ||
+              Math.min(...points.map((point) => point[axis] ?? Number.NaN)) >
+                (box.max[axis] ?? Number.NaN),
+          ),
+        ).toBe(true)
+      }
+    },
+    timeout,
+  )
+  it.each([
+    ["keep-out baseline and target accounting", "verify_obstacle_baseline_accounting"],
+    ["closed face, edge, corner, and exterior obstacle contact", "verify_closed_obstacle_contact"],
+    ["keep-out conflicts and original baseline mapping", "verify_obstacle_conflicts_and_mapping"],
+    ["keep-out topology and feasibility failures", "verify_obstacle_baseline_failures"],
+    ["strict bounded positive keep-out boxes", "verify_invalid_obstacle_boxes"],
+  ])(
+    "verifies %s against the browser runtime",
+    async (_, verification) => {
+      await runtime.runPythonAsync(`${verification}(_surface_test_solver)`)
+    },
+    timeout,
+  )
   it.each([
     ["rotated-face membership", "verify_rotated_surface_membership"],
     [

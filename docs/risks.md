@@ -5,6 +5,9 @@ Thin/curved interfaces, grid-dependent stress concentrations, material anisotrop
 fatigue, and physical load performance remain outside the current guarantee. Snapshot meshes
 do not regenerate or preserve exact CAD mating faces. See the explicit
 [accuracy boundaries](product/lightweighting.md#accuracy-boundaries).
+The bounded [Generative Design](product/generative-design.md) study compares these preliminary
+results; Pareto status does not establish a global optimum or manufacturing suitability. Keep-out
+boxes conservatively exclude intersecting cells and can invalidate the remaining baseline.
 
 ## Highest-Risk Items
 

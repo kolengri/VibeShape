@@ -144,7 +144,18 @@ export function optimizeStructuralModel(
   if (options.signal?.aborted)
     return Promise.reject(new DOMException("Analysis canceled.", "AbortError"))
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+    let worker: Worker
+    try {
+      worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+    } catch {
+      reject(
+        new StructuralOptimizationError(
+          "runtime-unavailable",
+          "The analysis worker could not start.",
+        ),
+      )
+      return
+    }
     let settled = false
     const finish = (operation: () => void) => {
       if (settled) return

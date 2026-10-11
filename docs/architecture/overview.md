@@ -293,3 +293,7 @@ the CAD source remains editable and results are independent snapshots. See
 [ADR-0101](../adr/0101-browser-structural-lightweighting.md) and
 [Lightweighting workflows](../product/lightweighting.md), including the graphical task-panel
 and load-free lattice decision in [ADR-0102](../adr/0102-lightweighting-task-workflows.md).
+The same computation package also owns bounded material/target studies and conservative keep-out
+regions. The editor compares and selects immutable candidates through the same snapshot path;
+see [ADR-0107](../adr/0107-bounded-generative-design-studies.md) and
+[Generative Design](../product/generative-design.md). Multi-candidate study is not exposed as an MCP tool.
