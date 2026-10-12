@@ -6,8 +6,9 @@ import {
   readUnionFeatureParameters,
 } from "@vibeshape/domain/part-design-body-combination"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
 import type { ReactNode } from "react"
+import { TaskPanelHeader } from "../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -100,16 +101,26 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
         label,
       )
     : null
-  const copy = useCombinationCopy(operation, mode?.kind === "edit")
+  const copy = useCombinationCopy(
+    operation,
+    props.activeTool.kind === "edit-compound" || props.activeTool.kind === "edit-union",
+  )
   if (!mode || !props.authority)
     return (
       <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+        <TaskPanelHeader
+          title={copy.title}
+          actions={
+            <TaskPanelLifecycleActions
+              ariaLabel={copy.title}
+              cancelLabel={copy.cancel}
+              onCancel={props.onCloseTool}
+            />
+          }
+        />
         <p role="alert" className="text-sm">
           {t("unavailable")}
         </p>
-        <Button type="button" variant="outline" onClick={props.onCloseTool}>
-          {t("cancel")}
-        </Button>
       </aside>
     )
   const options = combinationInputOptions(props.authority, props.parts, mode)

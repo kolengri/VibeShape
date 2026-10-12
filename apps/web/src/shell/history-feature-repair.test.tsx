@@ -145,7 +145,20 @@ describe("explicit retained body input repair", () => {
     expect((picker as HTMLSelectElement).value).toBe("")
     expect(screen.queryByRole("button", { name: "Update placement" })).toBeNull()
     expect(screen.getByRole("button", { name: "Delete retained feature" })).toBeTruthy()
+    const header = screen.getByRole("button", { name: "Cancel" }).closest("header")
+    expect(header).not.toBeNull()
+    expect(
+      screen.getByRole("button", { name: "Delete retained feature" }).closest("header"),
+    ).not.toBe(header)
     await userEvent.selectOptions(picker, option.id)
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1)
+    expect(document.querySelectorAll("header")).toHaveLength(1)
+    const repairHeader = screen.getByRole("button", { name: "Update placement" }).closest("header")
+    expect(repairHeader).not.toBeNull()
+    expect(screen.getByRole("button", { name: "Cancel" }).closest("header")).toBe(repairHeader)
+    expect(screen.getByRole("combobox", { name: "Replacement body" }).closest("header")).toBe(
+      repairHeader,
+    )
     const expression = screen.getByRole("combobox", { name: "Translate X" })
     expect((expression as HTMLInputElement).value).toBe("25 mm + 5 mm")
     expect(onSave).not.toHaveBeenCalled()

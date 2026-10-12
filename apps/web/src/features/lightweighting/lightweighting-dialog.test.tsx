@@ -851,7 +851,9 @@ describe("Lightweighting workflow", () => {
     expect(ports.optimize).toHaveBeenCalledTimes(1)
     const signal = ports.optimize.mock.calls[0]?.[1].signal as AbortSignal
     await userEvent.click(
-      within(screen.getByRole("region", { name: "Lightweighting" })).getByText("Close"),
+      within(screen.getByRole("region", { name: "Lightweighting" })).getByRole("button", {
+        name: "Close",
+      }),
     )
     expect(signal.aborted).toBe(true)
     work.resolve(result)

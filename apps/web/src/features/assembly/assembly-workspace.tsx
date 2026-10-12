@@ -7,6 +7,7 @@ import { ResponsiveTaskPanel } from "../../shell/responsive-task-panel"
 import { WorkspacePanels } from "../../shell/workspace-panels"
 import { AssemblyDefinitionForm } from "./assembly-definition-form"
 import { AssemblyExportDialog } from "./assembly-export-dialog"
+import { AssemblyTaskPanelContext } from "./assembly-forms"
 import { AssemblyInstanceForm } from "./assembly-instance-form"
 import { AssemblyInterference } from "./assembly-interference"
 import { AssemblyJointForm } from "./assembly-joint-form"
@@ -267,16 +268,19 @@ function AssemblyPanelContent({
   view: AssemblyWorkspaceView
   selectedPartId: string | null
 }) {
+  const t = useTranslations("app.assembly")
   const task = view.task
   if (!task) return <AssemblyActions view={view} />
   const Form = taskForms[task.kind]
   return (
-    <Form
-      key={`${task.kind}:${task.id}:${task.revision}`}
-      task={task}
-      view={view}
-      selectedPartId={selectedPartId}
-    />
+    <AssemblyTaskPanelContext.Provider value={{ title: t(task.kind), error: view.mutations.error }}>
+      <Form
+        key={`${task.kind}:${task.id}:${task.revision}`}
+        task={task}
+        view={view}
+        selectedPartId={selectedPartId}
+      />
+    </AssemblyTaskPanelContext.Provider>
   )
 }
 function AssemblyInspectionStatus({ view }: { view: AssemblyWorkspaceView }) {
@@ -296,6 +300,20 @@ function AssemblyInspectionStatus({ view }: { view: AssemblyWorkspaceView }) {
     </>
   )
 }
+function IdleAssemblyPanelHeading({ error }: { error: string | null }) {
+  const t = useTranslations("app.assembly")
+  return (
+    <>
+      <h2 className="text-base font-semibold">{t("workspaceTitle")}</h2>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </>
+  )
+}
+
 function AssemblyPanel({
   view,
   selectedPartId,
@@ -311,13 +329,11 @@ function AssemblyPanel({
       collapseLabel={t("collapsePanel")}
       expandLabel={t("expandPanel")}
     >
-      <section className="grid gap-4 overflow-y-auto p-4" aria-label={t("taskPanel")}>
-        <h2 className="text-base font-semibold">{t(task ? task.kind : "workspaceTitle")}</h2>
-        {view.mutations.error && (
-          <p role="alert" className="text-sm text-destructive">
-            {view.mutations.error}
-          </p>
-        )}
+      <section
+        className="grid h-full min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-4"
+        aria-label={t("taskPanel")}
+      >
+        {!task && <IdleAssemblyPanelHeading error={view.mutations.error} />}
         <AssemblyPanelContent view={view} selectedPartId={selectedPartId} />
         <AssemblyInspectionStatus view={view} />
       </section>

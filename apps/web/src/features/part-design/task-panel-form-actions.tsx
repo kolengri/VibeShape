@@ -55,6 +55,7 @@ export function TaskPanelFormActions({
           acceptType="submit"
           ariaLabel={ariaLabel}
           cancelLabel={cancelLabel}
+          cancelDisabled={isSubmitting}
           onCancel={onCancel}
         />
       )}

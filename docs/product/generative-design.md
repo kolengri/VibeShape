@@ -17,7 +17,9 @@ unavailable, its explanation and next-step button direct the user to the source/
 start face picking, or focus the missing force. **Review the settings** opens the advanced sections
 when the primary inputs are complete but validation still fails, bringing the first invalid native
 field or the first disclosure into the form viewport without scrolling workspace ancestors. Apply
-appears only after a candidate is ready; its readiness explanation remains visible while disabled.
+appears in the shared command header only after a candidate is ready; its readiness explanation
+remains visible while disabled. Close stays in that header; Generate and its setup guide stay in
+the fixed footer.
 Collapsing a section preserves
 its values and validation; it never removes an active constraint.
 

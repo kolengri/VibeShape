@@ -1,7 +1,8 @@
 import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
 import { createContext, type ReactNode, useContext, useId, useState } from "react"
+import { TaskPanelHeader, TaskPanelHeaderContentProvider } from "../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../document/document-controller"
 import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
@@ -83,59 +84,106 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
   const adaptedController = replacement
     ? replacementTaskContext(formController, replacement.feature)
     : formController
-  return (
-    <div className="flex min-h-0 flex-col border-l bg-panel">
-      <section aria-label={t("title")} className="grid shrink-0 gap-2 border-b p-4">
-        <h2 className="text-sm font-medium">{t("title")}</h2>
-        <p id={`${selectId}-description`} className="text-xs leading-4 text-muted-foreground">
-          {t("description")}
-        </p>
-        <label htmlFor={selectId} className="grid gap-1 text-sm">
-          {t("replacementBody")}
-          <select
-            id={selectId}
-            aria-describedby={`${selectId}-description`}
-            className="h-9 min-w-0 rounded-md border bg-background px-2"
-            value={selected?.id ?? ""}
-            disabled={
-              controller.status !== "ready" ||
-              controller.saveStatus === "saving" ||
-              report.mode === "read-only"
-            }
-            onChange={(event) => setSelectedBodyId(event.target.value)}
-          >
-            <option value="">{t("chooseBody")}</option>
-            {options.map(({ id, label }) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {options.length === 0 && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {t("noBodies")}
-          </p>
-        )}
-        {replacement?.shellClosed === false && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {t("reselectOpenings")}
-          </p>
-        )}
-        {!replacement && (
+  const controls = (
+    <RepairBodyControls
+      t={t}
+      selectId={selectId}
+      options={options}
+      selectedId={selected?.id ?? ""}
+      disabled={
+        controller.status !== "ready" ||
+        controller.saveStatus === "saving" ||
+        report.mode === "read-only"
+      }
+      onSelect={setSelectedBodyId}
+      reselectOpenings={replacement?.shellClosed === false}
+    />
+  )
+  if (replacement)
+    return (
+      <TaskPanelHeaderContentProvider
+        content={
           <>
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              {t("cancel")}
-            </Button>
-            {renderDelete(feature)}
+            <p id={`${selectId}-description`} className="text-xs text-muted-foreground">
+              {t("description")}
+            </p>
+            {controls}
           </>
-        )}
-      </section>
-      {replacement && (
+        }
+      >
         <replacementContext.Provider key={selectedBodyId} value={replacement}>
           {children(adaptedController)}
         </replacementContext.Provider>
-      )}
+      </TaskPanelHeaderContentProvider>
+    )
+  return (
+    <div className="flex min-h-0 flex-col border-l bg-panel">
+      <section aria-label={t("title")} className="grid shrink-0 gap-2 border-b p-4">
+        <TaskPanelHeader
+          title={t("title")}
+          description={<span id={`${selectId}-description`}>{t("description")}</span>}
+          actions={
+            <TaskPanelLifecycleActions
+              ariaLabel={t("title")}
+              cancelLabel={t("cancel")}
+              onCancel={onClose}
+            />
+          }
+        />
+        {controls}
+        {renderDelete(feature)}
+      </section>
     </div>
+  )
+}
+
+function RepairBodyControls({
+  t,
+  selectId,
+  options,
+  selectedId,
+  disabled,
+  onSelect,
+  reselectOpenings,
+}: {
+  t: ReturnType<typeof useTranslations>
+  selectId: string
+  options: readonly { id: string; label: string }[]
+  selectedId: string
+  disabled: boolean
+  onSelect: (id: string) => void
+  reselectOpenings: boolean
+}) {
+  return (
+    <>
+      <label htmlFor={selectId} className="grid gap-1 text-sm">
+        {t("replacementBody")}
+        <select
+          id={selectId}
+          aria-describedby={`${selectId}-description`}
+          className="h-9 min-w-0 rounded-md border bg-background px-2"
+          value={selectedId}
+          disabled={disabled}
+          onChange={(event) => onSelect(event.target.value)}
+        >
+          <option value="">{t("chooseBody")}</option>
+          {options.map(({ id, label }) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {options.length === 0 && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("noBodies")}
+        </p>
+      )}
+      {reselectOpenings && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("reselectOpenings")}
+        </p>
+      )}
+    </>
   )
 }

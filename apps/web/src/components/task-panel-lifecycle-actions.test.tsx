@@ -81,9 +81,57 @@ describe("TaskPanelLifecycleActions", () => {
     expect(onAccept).toHaveBeenCalledTimes(1)
     expect(accept.disabled).toBe(true)
     expect(accept.getAttribute("aria-busy")).toBe("true")
+    expect(cancel).toHaveProperty("disabled", true)
+    await user.click(cancel)
+    expect(onCancel).toHaveBeenCalledTimes(1)
 
     operation.resolve()
     await waitFor(() => expect(accept.disabled).toBe(false))
+    expect(cancel).toHaveProperty("disabled", false)
+  })
+
+  it("locks both lifecycle actions while an externally controlled save is pending and releases them afterwards", async () => {
+    const onCancel = vi.fn()
+    const view = renderActions({ acceptLoading: true, onCancel })
+    const cancel = screen.getByRole("button", { name: "Cancel feature" })
+    const accept = screen.getByRole("button", { name: "Accept feature" })
+    expect(cancel).toHaveProperty("disabled", true)
+    expect(accept).toHaveProperty("disabled", true)
+    expect(accept.getAttribute("aria-busy")).toBe("true")
+    await userEvent.click(cancel)
+    expect(onCancel).not.toHaveBeenCalled()
+    view.rerender(
+      <TaskPanelLifecycleActions
+        ariaLabel="Feature actions"
+        acceptLabel="Accept feature"
+        cancelLabel="Cancel feature"
+        acceptLoading={false}
+        onAccept={vi.fn()}
+        onCancel={onCancel}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Cancel feature" })).toHaveProperty("disabled", false)
+    await userEvent.click(screen.getByRole("button", { name: "Cancel feature" }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it("releases the lifecycle group after a rejected save so cancellation and retry remain available", async () => {
+    const onAccept = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Save failed"))
+      .mockResolvedValue(undefined)
+    const onCancel = vi.fn()
+    renderActions({ onAccept, onCancel })
+    const accept = screen.getByRole("button", { name: "Accept feature" }) as HTMLButtonElement
+    const cancel = screen.getByRole("button", { name: "Cancel feature" }) as HTMLButtonElement
+    await userEvent.click(accept)
+    await waitFor(() => expect(accept.disabled).toBe(false))
+    expect(cancel.disabled).toBe(false)
+    await userEvent.click(accept)
+    await waitFor(() => expect(onAccept).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(cancel.disabled).toBe(false))
+    await userEvent.click(cancel)
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
   it("supports disabling accept independently", () => {

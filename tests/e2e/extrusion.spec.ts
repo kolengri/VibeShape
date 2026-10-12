@@ -137,6 +137,12 @@ test.describe("selector-backed extrusion", () => {
     await confirmSketchPlane(page, "xy")
     await drawTwoSeparatedProfiles(page)
 
+    await expect(
+      page
+        .getByRole("img", { name: "Editable sketch geometry" })
+        .locator("[data-sketch-profile-index]"),
+    ).toHaveCount(2)
+
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(extrudeCommand(page)).toBeEnabled({ timeout: 120_000 })
     await extrudeCommand(page).click()

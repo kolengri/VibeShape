@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import type { ReactNode } from "react"
+import { TaskPanelHeader } from "../components/task-panel-header"
 
 export function AutomationReviewFrame(props: {
   client: string
@@ -14,11 +15,9 @@ export function AutomationReviewFrame(props: {
   return (
     <section
       aria-label={t("title")}
-      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-l bg-panel"
+      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l bg-panel"
     >
-      <header className="border-b px-4 py-3">
-        <h2 className="text-sm font-medium">{t("title")}</h2>
-      </header>
+      <TaskPanelHeader title={t("title")} actions={props.actions} className="border-b p-4" />
       <section
         aria-label={t("changes")}
         className="min-h-0 min-w-0 overflow-auto overscroll-contain p-4"
@@ -41,7 +40,6 @@ export function AutomationReviewFrame(props: {
         </dl>
         {props.children}
       </section>
-      <div className="border-t px-4 py-3">{props.actions}</div>
     </section>
   )
 }

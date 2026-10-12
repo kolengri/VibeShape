@@ -4,23 +4,12 @@ import type { HistoryReviewInput } from "@vibeshape/automation-host/history-sess
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
-import { documentCoreModule, featureCoreModule } from "@vibeshape/domain/modules"
 import { quantitySchema } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@vibeshape/ui/components/alert-dialog"
-import { Button } from "@vibeshape/ui/components/button"
+import { TaskPanelHeader } from "../components/task-panel-header"
 import { useSurfaceTexturePreviewContext } from "../features/surface-texture/surface-texture-preview-context"
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
-import { automationReviews } from "./automation-review-controller"
+import { isDestructiveCommand, ReviewActions } from "./automation-review-actions"
 import type { AutomationReviewState } from "./automation-review-state"
 import { isImportReview, isPlanarImportReview } from "./automation-review-state"
 import { HistoryAutomationReviewPanel } from "./history-review-panel"
@@ -46,14 +35,6 @@ const commandLabels: Readonly<Record<DocumentCommand["kind"], string>> = {
   "org.vibeshape.feature.remove-preserving-model-reference-intent":
     "removeFeaturePreservingReferences",
   "org.vibeshape.feature.set-suppressed": "setFeatureSuppression",
-}
-
-function isDestructiveCommand(command: DocumentCommand) {
-  const descriptor = [...documentCoreModule.commands, ...featureCoreModule.commands].find(
-    (candidate) =>
-      candidate.kind === command.kind && candidate.schemaVersion === command.schemaVersion,
-  )
-  return descriptor?.automation.destructive === true || descriptor?.confirmation === "destructive"
 }
 
 function actorLabel(actor: CommandActor, t: ReturnType<typeof useTranslations>) {
@@ -232,111 +213,6 @@ function ReviewDiagnostic({ review }: { review: AutomationReviewState }) {
   )
 }
 
-function ReviewActions({
-  commands,
-  review,
-  t,
-  destructive: explicitDestructive,
-  ready = true,
-}: {
-  commands: readonly DocumentCommand[]
-  review: AutomationReviewState
-  t: ReturnType<typeof useTranslations>
-  destructive?: boolean
-  ready?: boolean
-}) {
-  const destructive = explicitDestructive ?? commands.some(isDestructiveCommand)
-  const apply = async () => {
-    await automationReviews.decide(review.id, "approved")
-  }
-  const discard = () => automationReviews.decide(review.id, "rejected")
-  if (review.status === "error") {
-    return (
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => automationReviews.dismiss(review.id)}
-        >
-          {t("close")}
-        </Button>
-      </div>
-    )
-  }
-  return (
-    <div className="flex flex-wrap justify-end gap-2">
-      <Button
-        variant="outline"
-        type="button"
-        disabled={review.status !== "ready"}
-        onClick={discard}
-      >
-        {t("discard")}
-      </Button>
-      {destructive ? (
-        <DestructiveApply
-          disabled={review.status !== "ready" || !ready}
-          isLoading={review.status === "applying"}
-          onApply={apply}
-          label={t("apply")}
-          t={t}
-        />
-      ) : (
-        <Button
-          type="button"
-          disabled={review.status !== "ready" || !ready}
-          isLoading={review.status === "applying"}
-          onClick={apply}
-        >
-          {t("apply")}
-        </Button>
-      )}
-    </div>
-  )
-}
-
-function DestructiveApply({
-  disabled,
-  isLoading,
-  onApply,
-  label,
-  t,
-}: {
-  disabled: boolean
-  isLoading: boolean
-  onApply: () => Promise<void>
-  label: string
-  t: ReturnType<typeof useTranslations>
-}) {
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="destructive" type="button" disabled={disabled} isLoading={isLoading}>
-          {label}
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t("destructiveTitle")}</AlertDialogTitle>
-          <AlertDialogDescription>{t("destructiveDescription")}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            type="button"
-            disabled={disabled}
-            isLoading={isLoading}
-            onClick={onApply}
-          >
-            {t("confirmApply")}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
-
 function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput["metadata"]> }) {
   const t = useTranslations("app.shell.taskPanel.automationReview")
   const { change, targetName, range } = metadata
@@ -458,11 +334,13 @@ function CadReviewPanel({
   return (
     <section
       aria-label={t("title")}
-      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-l bg-panel"
+      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l bg-panel"
     >
-      <header className="border-b px-4 py-3">
-        <h2 className="text-sm font-medium">{t("title")}</h2>
-      </header>
+      <TaskPanelHeader
+        title={t("title")}
+        className="border-b p-4"
+        actions={<ReviewActions commands={commands} review={review} t={t} />}
+      />
       <section
         key={review.status === "error" ? "error" : "proposal"}
         aria-label={t("changes")}
@@ -512,9 +390,6 @@ function CadReviewPanel({
           </p>
         ) : null}
       </section>
-      <div className="border-t px-4 py-3">
-        <ReviewActions commands={commands} review={review} t={t} />
-      </div>
     </section>
   )
 }

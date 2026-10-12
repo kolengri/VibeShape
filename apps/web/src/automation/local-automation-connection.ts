@@ -284,7 +284,8 @@ export function createLocalAutomationConnection() {
       return
     const at = generation
     try {
-      const response = await localAutomationRequest("/status", {})
+      // Credential-free discovery may finish during navigation; its generation still expires.
+      const response = await localAutomationRequest("/status", {}, undefined, true)
       const value = localStatusSchema.parse(response.data)
       if (!response.ok || generation !== at) return
       publishBridgeStatus(value)

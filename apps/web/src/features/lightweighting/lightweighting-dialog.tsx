@@ -11,6 +11,8 @@ import {
   useState,
 } from "react"
 import { ActionAvailability } from "../../components/action-availability"
+import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
@@ -354,14 +356,24 @@ export function LightweightingTaskPanel({
       aria-label={panelCopy.title}
       className={
         generative
-          ? "@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-3"
-          : "@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-3"
+          ? "@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-4"
+          : "@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-4"
       }
     >
-      <header className="grid shrink-0 gap-2">
-        <h2 className="font-semibold">{panelCopy.title}</h2>
-        <p className="text-xs text-muted-foreground">{panelCopy.description}</p>
-      </header>
+      <TaskPanelHeader
+        title={panelCopy.title}
+        description={panelCopy.description}
+        className="shrink-0"
+        actions={
+          <LightweightingLifecycleActions
+            state={state}
+            generative={generative}
+            title={panelCopy.title}
+            applyReason={reasons.apply}
+            onClose={onClose}
+          />
+        }
+      />
       <TaskPanelContent
         state={state}
         generative={generative}
@@ -371,16 +383,44 @@ export function LightweightingTaskPanel({
         analyzeActions={analyzeActions}
         mainViewport={onPreviewChange !== undefined}
       />
-      <TaskPanelFooter
-        state={state}
-        generative={generative}
-        disabled={disabled}
-        applyReason={reasons.apply}
-        analyzeActions={analyzeActions}
-        onPick={face.onPick}
-        onClose={onClose}
-      />
+      {generative && (
+        <GenerativePanelFooter
+          state={state}
+          disabled={disabled}
+          analyzeActions={analyzeActions}
+          onPick={face.onPick}
+        />
+      )}
     </section>
+  )
+}
+
+function LightweightingLifecycleActions({
+  state,
+  generative,
+  title,
+  applyReason,
+  onClose,
+}: {
+  state: ReturnType<typeof useGenerativeDesignTask>
+  generative: boolean
+  title: string
+  applyReason: string | null
+  onClose: () => void
+}) {
+  const t = useTranslations("app.lightweighting")
+  return (
+    <TaskPanelLifecycleActions
+      ariaLabel={title}
+      cancelLabel={t("close")}
+      {...(!generative || state.ready ? { acceptLabel: t("apply") } : {})}
+      acceptDisabled={!state.canApply}
+      acceptDisabledReason={applyReason ?? undefined}
+      acceptLoading={state.activity === "applying"}
+      cancelDisabled={state.activity === "applying"}
+      onAccept={state.apply}
+      onCancel={onClose}
+    />
   )
 }
 
@@ -448,59 +488,23 @@ function TaskPanelContent({
   )
 }
 
-function TaskPanelFooter({
+function GenerativePanelFooter({
   state,
-  generative,
   disabled,
-  applyReason,
   analyzeActions,
   onPick,
-  onClose,
 }: {
   state: ReturnType<typeof useGenerativeDesignTask>
-  generative: boolean
   disabled: boolean
-  applyReason: string | null
   analyzeActions: ReactNode
   onPick: (target: LightweightingPickTarget) => void
-  onClose: () => void
 }) {
-  const t = useTranslations("app.lightweighting")
   const g = useTranslations("app.generativeDesign")
   return (
     <footer className="grid shrink-0 grid-cols-1 gap-2 border-t pt-3">
-      {generative && (
-        <>
-          {analyzeActions}
-          <GenerativeSetupAction state={state} disabled={disabled} onPick={onPick} />
-          {state.canAnalyze && <p className="text-xs text-muted-foreground">{g("setupReady")}</p>}
-        </>
-      )}
-
-      {(!generative || state.ready) && (
-        <ActionAvailability disabledReason={applyReason} presentation="persistent">
-          {({ describedBy }) => (
-            <Button
-              type="button"
-              aria-describedby={describedBy}
-              isLoading={state.activity === "applying"}
-              disabled={!state.canApply}
-              className="h-auto max-w-full whitespace-normal"
-              onClick={state.apply}
-            >
-              {t("apply")}
-            </Button>
-          )}
-        </ActionAvailability>
-      )}
-      <Button
-        type="button"
-        variant="outline"
-        disabled={state.activity === "applying"}
-        onClick={onClose}
-      >
-        {t("close")}
-      </Button>
+      {analyzeActions}
+      <GenerativeSetupAction state={state} disabled={disabled} onPick={onPick} />
+      {state.canAnalyze && <p className="text-xs text-muted-foreground">{g("setupReady")}</p>}
     </footer>
   )
 }
