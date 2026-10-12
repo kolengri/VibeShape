@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { TaskPanelHeader } from "../../components/task-panel-header"
 
 export type ParameterPanelCopy = Readonly<{
   cancel: string
@@ -23,15 +24,7 @@ export function ParameterPanel({
 }) {
   return (
     <div className="grid min-w-0 gap-4">
-      <div className="sticky top-0 z-10 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 bg-panel">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium">{copy.title}</h2>
-          <p className="mt-1 break-words text-xs leading-4 text-muted-foreground">
-            {copy.description}
-          </p>
-        </div>
-        {actions}
-      </div>
+      <TaskPanelHeader title={copy.title} description={copy.description} actions={actions} />
       {message ? (
         <p
           className="rounded-md border border-destructive/40 bg-panel-muted p-2 text-xs text-destructive"

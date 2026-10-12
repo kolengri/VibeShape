@@ -184,7 +184,17 @@ describe("captured-source History task", () => {
   it("closes the captured-source task without changing History", async () => {
     const user = userEvent.setup()
     const { onCloseTool } = renderImportedTask()
-    await user.click(screen.getByRole("button", { name: "Close" }))
+    const close = screen.getByRole("button", { name: "Close" })
+    const header = close.closest("header")
+    expect(header).not.toBeNull()
+    expect(screen.getByRole("heading", { name: "Organic lightweighting" }).closest("header")).toBe(
+      header,
+    )
+    expect(screen.getByRole("button", { name: "Delete feature" }).closest("header")).not.toBe(
+      header,
+    )
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1)
+    await user.click(close)
     expect(onCloseTool).toHaveBeenCalledTimes(1)
     expect(removeFeature).not.toHaveBeenCalled()
   })

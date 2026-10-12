@@ -134,6 +134,24 @@ function deliverProjectChange(projectId: string = "0195b5ac-b250-7a2c-8c33-00000
   })
 }
 describe("unpaired local client discovery", () => {
+  it("keeps a status read alive across navigation and ignores its expired generation", async () => {
+    const pending = deferred<ReturnType<typeof ok>>()
+    mocks.request.mockReturnValueOnce(pending.promise)
+    connection.start()
+    const request = connection.status()
+    expect(mocks.request).toHaveBeenCalledWith("/status", {}, undefined, true)
+    window.dispatchEvent(new Event("beforeunload"))
+    window.dispatchEvent(new Event("pagehide"))
+    pending.resolve(ok({ protocolVersion: 1, client, paired: false }))
+    await request
+    expect(connection.getSnapshot()).toMatchObject({
+      available: false,
+      client: null,
+      connected: false,
+    })
+    expect(mocks.createHandle).not.toHaveBeenCalled()
+  })
+
   it("discovers a client that starts after the editor without granting access", async () => {
     mocks.request.mockResolvedValueOnce(ok({ protocolVersion: 1, client: null, paired: false }))
     await ready()

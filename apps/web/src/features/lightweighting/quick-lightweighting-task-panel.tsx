@@ -3,6 +3,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useMemo, useRef } from "react"
 import { ActionAvailability } from "../../components/action-availability"
+import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
@@ -153,10 +154,11 @@ export function QuickLightweightingTaskPanel({
       aria-label={t("title")}
       className="grid h-full min-h-0 content-start gap-5 overflow-y-auto p-4"
     >
-      <header className="grid gap-2">
-        <h2 className="text-base font-semibold">{t("title")}</h2>
-        <p className="text-xs text-muted-foreground">{t("description")}</p>
-      </header>
+      <TaskPanelHeader
+        title={t("title")}
+        description={t("description")}
+        actions={<QuickLifecycleActions state={state} disabled={disabled} onClose={onClose} />}
+      />
       <LightweightingSourceSelector
         controller={controller}
         state={state}
@@ -164,7 +166,7 @@ export function QuickLightweightingTaskPanel({
       />
       <QuickControls state={state} disabled={disabled || applying} />
       <QuickPreview state={state} mainViewport={onPreviewChange !== undefined} />
-      <QuickActions state={state} disabled={disabled} onClose={onClose} />
+      <QuickActions state={state} disabled={disabled} />
     </section>
   )
 }
@@ -341,18 +343,9 @@ function quickActionReasons(
     generate ?? (!state.ready ? t("needPreview") : !state.previewReady ? t("inspecting") : null)
   return { generate, apply }
 }
-function QuickActions({
-  state,
-  disabled,
-  onClose,
-}: {
-  state: QuickState
-  disabled: boolean
-  onClose: () => void
-}) {
+function QuickActions({ state, disabled }: { state: QuickState; disabled: boolean }) {
   const t = useTranslations("app.quickLightweighting")
-  const applying = state.activity === "applying"
-  const { generate: generateReason, apply: applyReason } = quickActionReasons(state, disabled, t)
+  const { generate: generateReason } = quickActionReasons(state, disabled, t)
   return (
     <div className="grid gap-2">
       <ActionAvailability presentation="persistent" disabledReason={generateReason}>
@@ -370,20 +363,36 @@ function QuickActions({
           </Button>
         )}
       </ActionAvailability>
-      <TaskPanelLifecycleActions
-        ariaLabel={t("actions")}
-        acceptLabel={t("apply")}
-        cancelLabel={
-          state.activity === "loading" || state.activity === "generating"
-            ? t("cancelGeneration")
-            : t("cancel")
-        }
-        acceptDisabled={!state.canApply}
-        {...(applyReason ? { acceptDisabledReason: applyReason } : {})}
-        cancelDisabled={applying}
-        onAccept={state.apply}
-        onCancel={onClose}
-      />
     </div>
+  )
+}
+
+function QuickLifecycleActions({
+  state,
+  disabled,
+  onClose,
+}: {
+  state: QuickState
+  disabled: boolean
+  onClose: () => void
+}) {
+  const t = useTranslations("app.quickLightweighting")
+  const applying = state.activity === "applying"
+  const { apply: applyReason } = quickActionReasons(state, disabled, t)
+  return (
+    <TaskPanelLifecycleActions
+      ariaLabel={t("actions")}
+      acceptLabel={t("apply")}
+      cancelLabel={
+        state.activity === "loading" || state.activity === "generating"
+          ? t("cancelGeneration")
+          : t("cancel")
+      }
+      acceptDisabled={!state.canApply}
+      {...(applyReason ? { acceptDisabledReason: applyReason } : {})}
+      cancelDisabled={applying}
+      onAccept={state.apply}
+      onCancel={onClose}
+    />
   )
 }

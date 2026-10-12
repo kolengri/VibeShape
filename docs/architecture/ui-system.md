@@ -263,6 +263,23 @@ separately. See [the interaction audit](../product/direct-manipulation-and-short
 - high-contrast preset considered after the base accessibility audit;
 - self-hosted or system-first fonts so offline use never requires a third-party network.
 
+## Task panel lifecycle controls
+
+The application-owned `TaskPanelHeader` places one lifecycle group at the command heading.
+`TaskPanelLifecycleActions` and `TaskPanelLifecycleButton` share icon size, action order, labels,
+tooltips, pending state, and disabled feedback. Feature parameter forms retain their TanStack
+adapter; assembly tasks retain native form submission and supply their existing task title/error
+through the assembly UI context. Neither composition changes document authority or saved data.
+Retained-feature repair supplies its replacement-body controls through the header-content provider,
+so the active feature form owns one command heading and keeps its native Save action inside the form.
+
+The lifecycle group locks cancellation while its asynchronous accept callback is pending and
+releases the lock on fulfillment or rejection. Forms also expose their own submission state.
+Manual automation reviews retain their original decision controller and use the accept renderer
+only to preserve a destructive confirmation trigger. Item deletion and navigation within a
+subtask remain separate from panel cancellation. Generate and analysis cancellation are
+computational actions, rather than additional Save/Close controls.
+
 ## Verification
 
 - keyboard-only core flows;

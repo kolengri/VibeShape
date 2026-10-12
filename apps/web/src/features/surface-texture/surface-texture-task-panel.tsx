@@ -4,6 +4,8 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Trash2 } from "@vibeshape/ui/components/icons"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
+import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import { SurfaceTextureControls } from "./surface-texture-controls"
@@ -72,20 +74,29 @@ export function SurfaceTextureTaskPanel({
           void apply()
         }}
       >
-        <div className="grid gap-3 border-b p-4">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-medium">{t("title")}</h2>
-            <Button type="button" size="sm" variant="ghost" onClick={onClose} disabled={saving}>
-              {t("cancel")}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">{t("description")}</p>
+        <TaskPanelHeader
+          title={t("title")}
+          description={t("description")}
+          className="shrink-0 border-b p-4"
+          actions={
+            <TaskPanelLifecycleActions
+              ariaLabel={t("title")}
+              cancelLabel={t("cancel")}
+              acceptLabel={t("apply")}
+              acceptType="submit"
+              acceptDisabled={!canApply}
+              acceptLoading={saving}
+              cancelDisabled={saving}
+              onCancel={onClose}
+            />
+          }
+        >
           {stale && (
             <p role="alert" className="text-xs text-destructive">
               {t("stale")}
             </p>
           )}
-        </div>
+        </TaskPanelHeader>
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <fieldset
             disabled={saving || uploading || stale || report?.mode !== "read-write"}
@@ -113,9 +124,6 @@ export function SurfaceTextureTaskPanel({
               {error}
             </p>
           )}
-          <Button type="submit" disabled={!canApply} isLoading={saving}>
-            {t("apply")}
-          </Button>
         </div>
       </form>
     </aside>

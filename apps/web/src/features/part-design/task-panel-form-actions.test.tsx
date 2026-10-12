@@ -103,8 +103,10 @@ describe("TaskPanelFormActions", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(accept.disabled).toBe(true)
     expect(accept.getAttribute("aria-busy")).toBe("true")
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", true)
 
     operation.resolve()
     await waitFor(() => expect(accept.disabled).toBe(false))
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", false)
   })
 })

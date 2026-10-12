@@ -15,6 +15,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerSelection } from "@vibeshape/viewer"
 import { type ReactNode, useMemo, useState } from "react"
+import { TaskPanelHeader } from "../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   addFeature,
@@ -1507,16 +1508,20 @@ function EmptyProfileFeatureTaskPanel({
   return (
     <aside
       aria-label={panelT("ariaLabel")}
-      className="grid min-h-0 content-between gap-4 overflow-auto border-l bg-panel p-4"
+      className="grid min-h-0 content-start gap-4 overflow-auto border-l bg-panel p-4"
     >
-      <div className="grid gap-2">
-        <h2 className="text-base font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
-        {children}
-      </div>
-      <Button type="button" size="sm" variant="outline" onClick={onCloseTool}>
-        {cancel}
-      </Button>
+      <TaskPanelHeader
+        title={title}
+        description={description}
+        actions={
+          <TaskPanelLifecycleActions
+            ariaLabel={title}
+            cancelLabel={cancel}
+            onCancel={onCloseTool}
+          />
+        }
+      />
+      {children}
     </aside>
   )
 }
@@ -2220,17 +2225,17 @@ function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
   if (!feature) return null
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="min-w-0 truncate text-sm font-medium">
-          {feature.label ?? treeT("unnamedFeature")}
-        </h2>
-        <TaskPanelLifecycleActions
-          ariaLabel={t("capturedSource.actions")}
-          cancelLabel={t("capturedSource.close")}
-          onCancel={props.onCloseTool}
-        />
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">{t("capturedSource.description")}</p>
+      <TaskPanelHeader
+        title={feature.label ?? treeT("unnamedFeature")}
+        description={t("capturedSource.description")}
+        actions={
+          <TaskPanelLifecycleActions
+            ariaLabel={t("capturedSource.actions")}
+            cancelLabel={t("capturedSource.close")}
+            onCancel={props.onCloseTool}
+          />
+        }
+      />
       <ActiveFeatureDeleteAction
         feature={feature}
         onDeleted={props.onCompleteTool}
@@ -2618,21 +2623,23 @@ function ActiveSketchTaskPanel({
       className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
     >
       <SketchConstraintManagerPopover actions={panelActions} copy={copy} state={panelState} />
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
-          <h2 className="mt-1 truncate text-sm font-medium">{draft.label}</h2>
-          <p className="mt-1 text-xs leading-4 text-muted-foreground">{modeDescription}</p>
-        </div>
-        <TaskPanelLifecycleActions
-          acceptDisabled={report.mode === "read-only"}
-          acceptLabel={t("finish")}
-          ariaLabel={t("lifecycleActions")}
-          cancelLabel={t("cancel")}
-          onAccept={finish}
-          onCancel={onCloseTool}
-        />
-      </header>
+      <TaskPanelHeader
+        className="border-b p-4"
+        title={draft.label}
+        description={modeDescription}
+        actions={
+          <TaskPanelLifecycleActions
+            acceptDisabled={report.mode === "read-only"}
+            acceptLabel={t("finish")}
+            ariaLabel={t("lifecycleActions")}
+            cancelLabel={t("cancel")}
+            onAccept={finish}
+            onCancel={onCloseTool}
+          />
+        }
+      >
+        <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
+      </TaskPanelHeader>
       <div className="min-h-0 overflow-auto p-4">
         <SketchEditorPanel copy={copy} state={panelState} actions={panelActions} />
       </div>
@@ -2658,17 +2665,18 @@ function SketchPlaneSelectionTaskPanel({
       aria-label={t("taskAriaLabel")}
       className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
     >
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium">{title}</h2>
-          <p className="mt-1 text-xs leading-4 text-muted-foreground">{description}</p>
-        </div>
-        <TaskPanelLifecycleActions
-          ariaLabel={t("lifecycleActions")}
-          cancelLabel={t("cancel")}
-          onCancel={onCancel}
-        />
-      </header>
+      <TaskPanelHeader
+        className="border-b p-4"
+        title={title}
+        description={description}
+        actions={
+          <TaskPanelLifecycleActions
+            ariaLabel={t("lifecycleActions")}
+            cancelLabel={t("cancel")}
+            onCancel={onCancel}
+          />
+        }
+      />
       <div className="min-h-0 overflow-auto p-4">
         <fieldset className="grid grid-cols-3 gap-2">
           <legend className="sr-only">{t("plane")}</legend>

@@ -28,6 +28,15 @@ import { automationReviews } from "./automation-review-controller"
 import { AutomationReviewPanel } from "./automation-review-panel"
 import type { AutomationReviewState } from "./automation-review-state"
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+)
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()

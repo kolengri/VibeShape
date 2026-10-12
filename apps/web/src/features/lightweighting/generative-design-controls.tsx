@@ -4,6 +4,7 @@ import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { FdmSupportDemand } from "./fdm-analysis-details"
 import { GenerativeFdmControls } from "./generative-fdm-controls"
+import { LightweightingSettingsDetails } from "./lightweighting-settings-details"
 import type { useGenerativeDesignTask } from "./use-generative-design-task"
 
 type StudyState = ReturnType<typeof useGenerativeDesignTask>
@@ -14,51 +15,79 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-3">
       <legend className="mb-2 font-medium">{t("searchSpace")}</legend>
-      <Field>
-        <FieldLabel htmlFor="generative-mass-targets">{t("massTargets")}</FieldLabel>
-        <Input
-          id="generative-mass-targets"
-          value={fields.retainedMassPercents}
-          aria-describedby="generative-mass-help"
-          onChange={(event) =>
-            state.changeStudyFields({ ...fields, retainedMassPercents: event.currentTarget.value })
-          }
-        />
-        <p id="generative-mass-help" className="text-xs text-muted-foreground">
-          {t("massTargetsHelp")}
-        </p>
-      </Field>
-      <p className="text-xs text-muted-foreground">{t("materialsHelp")}</p>
-      <fieldset className="flex flex-wrap gap-2" aria-label={t("additionalMaterials")}>
-        {state.materialOptions.map((preset) => {
-          const selected = fields.additionalMaterialIds.includes(preset.id)
-          return (
-            <Button
-              key={preset.id}
-              type="button"
-              size="sm"
-              variant={selected ? "secondary" : "outline"}
-              aria-pressed={selected}
-              className="h-auto max-w-full whitespace-normal text-start"
-              disabled={!selected && fields.additionalMaterialIds.length >= 2}
-              onClick={() =>
-                state.changeStudyFields({
-                  ...fields,
-                  additionalMaterialIds: selected
-                    ? fields.additionalMaterialIds.filter((id) => id !== preset.id)
-                    : [...fields.additionalMaterialIds, preset.id],
-                })
-              }
-            >
-              {preset.referenceName}
-            </Button>
-          )
-        })}
+      <p className="text-xs text-muted-foreground">{t("targetHelp")}</p>
+      <fieldset className="flex flex-wrap gap-2" aria-label={t("weightTarget")}>
+        {[85, 70, 50].map((percent) => (
+          <Button
+            key={percent}
+            type="button"
+            size="sm"
+            variant={
+              fields.retainedMassPercents.trim() === String(percent) ? "secondary" : "outline"
+            }
+            aria-pressed={fields.retainedMassPercents.trim() === String(percent)}
+            className="h-auto max-w-full whitespace-normal"
+            onClick={() =>
+              state.changeStudyFields({ ...fields, retainedMassPercents: String(percent) })
+            }
+          >
+            {t("removeMass", { percent: 100 - percent })}
+          </Button>
+        ))}
       </fieldset>
+      <p className="text-xs text-muted-foreground">
+        {t("selectedTargets", { targets: fields.retainedMassPercents })}
+      </p>
       <p className="text-xs text-muted-foreground">
         {t("scenarioCount", { count: state.scenarioCount })}
       </p>
-      <GenerativeObstacleControls state={state} />
+      <LightweightingSettingsDetails label={t("advancedStudy")}>
+        <Field>
+          <FieldLabel htmlFor="generative-mass-targets">{t("massTargets")}</FieldLabel>
+          <Input
+            id="generative-mass-targets"
+            value={fields.retainedMassPercents}
+            aria-describedby="generative-mass-help"
+            onChange={(event) =>
+              state.changeStudyFields({
+                ...fields,
+                retainedMassPercents: event.currentTarget.value,
+              })
+            }
+          />
+          <p id="generative-mass-help" className="text-xs text-muted-foreground">
+            {t("massTargetsHelp")}
+          </p>
+        </Field>
+        <p className="text-xs text-muted-foreground">{t("materialsHelp")}</p>
+        <fieldset className="flex flex-wrap gap-2" aria-label={t("additionalMaterials")}>
+          {state.materialOptions.map((preset) => {
+            const selected = fields.additionalMaterialIds.includes(preset.id)
+            return (
+              <Button
+                key={preset.id}
+                type="button"
+                size="sm"
+                variant={selected ? "secondary" : "outline"}
+                aria-pressed={selected}
+                className="h-auto max-w-full whitespace-normal text-start"
+                disabled={!selected && fields.additionalMaterialIds.length >= 2}
+                onClick={() =>
+                  state.changeStudyFields({
+                    ...fields,
+                    additionalMaterialIds: selected
+                      ? fields.additionalMaterialIds.filter((id) => id !== preset.id)
+                      : [...fields.additionalMaterialIds, preset.id],
+                  })
+                }
+              >
+                {preset.referenceName}
+              </Button>
+            )
+          })}
+        </fieldset>
+        <GenerativeObstacleControls state={state} />
+      </LightweightingSettingsDetails>
       <GenerativeFdmControls state={state} />
     </fieldset>
   )

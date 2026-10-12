@@ -197,6 +197,7 @@ function renderPanel(
   state: DocumentControllerState,
   selectedFeatureId: string | null = featureId(0),
   selectedOutputRole?: string | null,
+  onClose: () => void = () => undefined,
 ) {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -205,7 +206,7 @@ function renderPanel(
           controller={state}
           selectedFeatureId={selectedFeatureId}
           {...(selectedOutputRole === undefined ? {} : { selectedOutputRole })}
-          onClose={() => undefined}
+          onClose={onClose}
         />
       </DocumentDisplayUnitsProvider>
     </I18nProvider>,
@@ -215,6 +216,21 @@ function renderPanel(
 afterEach(cleanup)
 
 describe("MeasurementTaskPanel", () => {
+  it("closes from a single header action while retaining measurement controls", async () => {
+    let closed = false
+    renderPanel(controller(), featureId(0), undefined, () => {
+      closed = true
+    })
+    const close = screen.getByRole("button", { name: "Close" })
+    const header = close.closest("header")
+    expect(header).not.toBeNull()
+    expect(screen.getByRole("heading", { name: "Measure" }).closest("header")).toBe(header)
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1)
+    expect(screen.getByRole("combobox", { name: "Body output" })).toBeTruthy()
+    await userEvent.click(close)
+    expect(closed).toBe(true)
+  })
+
   it("renders ready geometry values in the selected project units", () => {
     renderPanel(controller())
 

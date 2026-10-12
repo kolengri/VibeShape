@@ -1,8 +1,8 @@
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
 import { useState } from "react"
+import { TaskPanelHeader } from "../components/task-panel-header"
 import { ImportPreview } from "../features/import/import-preview"
-import { automationReviews } from "./automation-review-controller"
+import { ReviewActions } from "./automation-review-actions"
 import type { AutomationReviewState } from "./automation-review-state"
 import type { ImportReviewInput } from "./import-upload-session"
 import { LightweightingReviewDetails } from "./lightweighting-review-details"
@@ -22,11 +22,13 @@ export function ImportReviewPanel({
   return (
     <section
       aria-label={t("title")}
-      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-l bg-panel"
+      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l bg-panel"
     >
-      <header className="border-b px-4 py-3">
-        <h2 className="text-sm font-medium">{t("title")}</h2>
-      </header>
+      <TaskPanelHeader
+        title={t("title")}
+        className="border-b p-4"
+        actions={<ReviewActions review={review} t={actions} ready={previewReady} />}
+      />
       <div className="grid min-h-0 gap-3 overflow-auto p-4">
         <p className="text-sm">{t("description")}</p>
         {input.lightweighting && <LightweightingReviewDetails evidence={input.lightweighting} />}
@@ -97,30 +99,6 @@ export function ImportReviewPanel({
           </p>
         )}
       </div>
-      <footer className="flex justify-end gap-2 border-t px-4 py-3">
-        {review.status === "error" ? (
-          <Button variant="outline" onClick={() => automationReviews.dismiss(review.id)}>
-            {actions("close")}
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="outline"
-              disabled={review.status !== "ready"}
-              onClick={() => automationReviews.decide(review.id, "rejected")}
-            >
-              {actions("discard")}
-            </Button>
-            <Button
-              disabled={review.status !== "ready" || !previewReady}
-              isLoading={review.status === "applying"}
-              onClick={() => automationReviews.decide(review.id, "approved")}
-            >
-              {actions("apply")}
-            </Button>
-          </>
-        )}
-      </footer>
     </section>
   )
 }

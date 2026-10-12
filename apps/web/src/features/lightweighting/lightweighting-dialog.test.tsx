@@ -199,6 +199,10 @@ async function pickFaces() {
 async function fill() {
   fireEvent.keyDown(screen.getByRole("combobox", { name: "Source Part" }), { key: "Enter" })
   await userEvent.click(screen.getByRole("option", { name: sourcePartName }))
+  const materialDetails = screen.queryByText("Material properties and references", {
+    selector: "summary",
+  })
+  if (materialDetails) await userEvent.click(materialDetails)
   change("Young’s modulus (MPa)", "2000")
   change("Poisson’s ratio", "0.3")
   change("Yield strength (MPa)", "40")
@@ -266,6 +270,109 @@ describe("Generative Design workflow", () => {
     )
   }
 
+  it("guides a first run from missing material to one preview without editing advanced parameters", async () => {
+    setup(controller, false, firstPart.id, {}, true)
+    const generateButton = screen.getByRole("button", {
+      name: "Generate alternatives",
+    }) as HTMLButtonElement
+    expect(generateButton.disabled).toBe(true)
+    expect([...document.querySelectorAll("details")].every((details) => !details.open)).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Choose the material" }))
+    expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Material preset" }))
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Material preset" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "PLA — Prusament" }))
+    await userEvent.click(screen.getByRole("button", { name: "Select the fixed faces" }))
+    expect(viewportInteraction?.picking).toBe(true)
+    act(() =>
+      viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        outputRole: "result",
+        faceId: 1,
+        faceOrdinal: 1,
+      }),
+    )
+    expect(generateButton.disabled).toBe(true)
+    await userEvent.click(
+      screen.getByRole("button", { name: "Select the loaded faces for case 1" }),
+    )
+    act(() =>
+      viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        outputRole: "result",
+        faceId: 2,
+        faceOrdinal: 2,
+      }),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Enter the force for case 1" }))
+    expect(document.activeElement).toBe(screen.getByLabelText("Total force for case 1 (N)"))
+    change("Total force for case 1 (N)", "10")
+    expect(generateButton.disabled).toBe(false)
+    expect([...document.querySelectorAll("details")].every((details) => !details.open)).toBe(true)
+    await userEvent.click(generateButton)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Preview candidate 1" })).toBeTruthy(),
+    )
+    expect(ports.optimize).toHaveBeenCalledTimes(1)
+    expect(ports.optimize.mock.calls[0]?.[0].objective).toEqual({
+      kind: "maximize-stiffness",
+      retainedMassFraction: 0.7,
+    })
+    expect(ports.optimize.mock.calls[0]?.[0].material.youngModulusMpa).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole("button", { name: "Remove 15% of the weight" }))
+    expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Apply as new mesh Part" })).toBeNull()
+    expect(
+      screen.getByRole("button", { name: "Remove 15% of the weight" }).getAttribute("aria-pressed"),
+    ).toBe("true")
+  })
+
+  it("keeps invalid collapsed settings blocking generation and opens them for correction", async () => {
+    setup(controller, false, "", {}, true)
+    await fill()
+    const printer = screen.getByText("Printer settings", { selector: "summary" })
+    await userEvent.click(printer)
+    change("Layer height (mm)", "5")
+    await userEvent.click(printer)
+    expect((printer.parentElement as HTMLDetailsElement).open).toBe(false)
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Review the settings" }))
+    expect((printer.parentElement as HTMLDetailsElement).open).toBe(true)
+    change("Layer height (mm)", "0.2")
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(false)
+    expect(ports.optimize).not.toHaveBeenCalled()
+  })
+
+  it("reveals a collapsed invalid material field inside the form without moving workspace ancestors", async () => {
+    setup(controller, false, "", {}, true)
+    await fill()
+    change("Poisson’s ratio", "0.8")
+    const summary = screen.getByText("Material properties and references", { selector: "summary" })
+    await userEvent.click(summary)
+    const panel = screen.getByRole("region", { name: "Generative Design" })
+    const scroller = panel.querySelector<HTMLElement>("[data-generative-form]")
+    if (!scroller) throw new Error("Missing generative form scroll container.")
+    scroller.scrollTop = 400
+    const field = screen.getByLabelText("Poisson’s ratio")
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue({
+      top: 100,
+      bottom: 500,
+    } as DOMRect)
+    vi.spyOn(field, "getBoundingClientRect").mockReturnValue({ top: -100, bottom: -68 } as DOMRect)
+    const focus = vi.spyOn(field, "focus")
+    await userEvent.click(screen.getByRole("button", { name: "Review the settings" }))
+    expect((summary.parentElement as HTMLDetailsElement).open).toBe(true)
+    expect(scroller.scrollTop).toBe(200)
+    expect(document.activeElement).toBe(field)
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(
+      (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
   it("passes both FDM support policies to every scenario and invalidates obsolete candidates", async () => {
     ports.optimize.mockImplementation(async (input: StructuralOptimizationInput) => {
       if (!input.fdm) throw new Error("The study must capture FDM settings.")
@@ -290,6 +397,7 @@ describe("Generative Design workflow", () => {
     })
     setup(controller, false, "", {}, true)
     await fill()
+    change("Retained mass targets (%)", "35, 50, 70")
     expect(screen.getByRole("combobox", { name: "Support policy" }).textContent).toBe(
       "Supports allowed",
     )
@@ -327,10 +435,7 @@ describe("Generative Design workflow", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Support policy" }), { key: "Enter" })
     await userEvent.click(screen.getByRole("option", { name: "Supports allowed" }))
     expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
-    expect(
-      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true)
+    expect(screen.queryByRole("button", { name: "Apply as new mesh Part" })).toBeNull()
     await generate()
     expect(ports.optimize).toHaveBeenCalledTimes(6)
     for (const call of ports.optimize.mock.calls.slice(3))
@@ -359,6 +464,7 @@ describe("Generative Design workflow", () => {
     )
     setup(controller, false, "", {}, true)
     await fill()
+    change("Retained mass targets (%)", "35, 50, 70")
     expect(screen.queryByRole("combobox", { name: "Optimization objective" })).toBeNull()
     await generate()
     expect(ports.optimize).toHaveBeenCalledTimes(3)
@@ -386,6 +492,7 @@ describe("Generative Design workflow", () => {
     ports.optimize.mockReturnValueOnce(old.promise)
     setup(controller, false, "", {}, true)
     await fill()
+    change("Retained mass targets (%)", "35, 50, 70")
     change("Retained mass targets (%)", "35, 35")
     expect(
       (screen.getByRole("button", { name: "Generate alternatives" }) as HTMLButtonElement).disabled,
@@ -406,6 +513,7 @@ describe("Generative Design workflow", () => {
   it("compares extra materials and excludes incomplete keep-out boxes", async () => {
     setup(controller, false, "", {}, true)
     await fill()
+    change("Retained mass targets (%)", "35, 50, 70")
     await userEvent.click(screen.getByRole("button", { name: "Prusament PLA" }))
     await userEvent.click(screen.getByRole("button", { name: "Add keep-out region" }))
     expect(
@@ -424,10 +532,7 @@ describe("Generative Design workflow", () => {
     ])
     change("Maximum iterations", "13")
     expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
-    expect(
-      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true)
+    expect(screen.queryByRole("button", { name: "Apply as new mesh Part" })).toBeNull()
   })
 
   it("reports infeasible scenarios and invalidates candidates on source revision changes", async () => {
@@ -436,6 +541,7 @@ describe("Generative Design workflow", () => {
     )
     const view = setup(controller, false, "", {}, true)
     await fill()
+    change("Retained mass targets (%)", "35, 50, 70")
     await userEvent.click(screen.getByRole("button", { name: "Generate alternatives" }))
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Preview candidate 2" })).toBeTruthy(),
@@ -449,10 +555,7 @@ describe("Generative Design workflow", () => {
       },
     })
     expect(screen.queryByRole("region", { name: "Design candidates" })).toBeNull()
-    expect(
-      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true)
+    expect(screen.queryByRole("button", { name: "Apply as new mesh Part" })).toBeNull()
     expect(ports.apply).not.toHaveBeenCalled()
   })
 })
@@ -748,7 +851,9 @@ describe("Lightweighting workflow", () => {
     expect(ports.optimize).toHaveBeenCalledTimes(1)
     const signal = ports.optimize.mock.calls[0]?.[1].signal as AbortSignal
     await userEvent.click(
-      within(screen.getByRole("region", { name: "Lightweighting" })).getByText("Close"),
+      within(screen.getByRole("region", { name: "Lightweighting" })).getByRole("button", {
+        name: "Close",
+      }),
     )
     expect(signal.aborted).toBe(true)
     work.resolve(result)

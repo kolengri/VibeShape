@@ -9,6 +9,7 @@ import type {
   LoadCaseFields,
   SurfaceForceFields,
 } from "./lightweighting-model"
+import { LightweightingSettingsDetails } from "./lightweighting-settings-details"
 
 export type LightweightingPickTarget =
   | { kind: "support" }
@@ -52,6 +53,7 @@ function NumberField({
 }
 
 function FacePicker({
+  id,
   label,
   faces,
   active,
@@ -59,6 +61,7 @@ function FacePicker({
   onClear,
   disabled,
 }: {
+  id?: string
   label: string
   faces: readonly number[]
   active: boolean
@@ -74,6 +77,7 @@ function FacePicker({
           type="button"
           variant={active ? "secondary" : "outline"}
           size="sm"
+          id={id}
           aria-label={label}
           className="h-auto max-w-full whitespace-normal"
           aria-pressed={active}
@@ -147,6 +151,36 @@ function LoadForceControls({
   )
 }
 
+function LoadCaseName({
+  load,
+  fields,
+  onChange,
+}: {
+  load: LoadCaseFields
+  fields: LightweightingFields
+  onChange: (fields: LightweightingFields) => void
+}) {
+  const t = useTranslations("app.lightweighting")
+  return (
+    <Field>
+      <FieldLabel htmlFor={`lightweighting-case-${load.id}`}>{t("caseName")}</FieldLabel>
+      <Input
+        id={`lightweighting-case-${load.id}`}
+        value={load.name}
+        required
+        onChange={(event) =>
+          onChange({
+            ...fields,
+            loadCases: fields.loadCases.map((item) =>
+              item.id === load.id ? { ...item, name: event.currentTarget.value } : item,
+            ),
+          })
+        }
+      />
+    </Field>
+  )
+}
+
 const materialFieldKeys = new Set([
   "youngModulusMpa",
   "poissonRatio",
@@ -209,8 +243,10 @@ export function LightweightingParameters({
   onPick,
   pickingDisabled,
   showObjective = true,
+  compact = false,
 }: {
   showObjective?: boolean
+  compact?: boolean
   fields: LightweightingFields
   onChange: (fields: LightweightingFields) => void
   picking: LightweightingPickTarget | null
@@ -218,6 +254,7 @@ export function LightweightingParameters({
   pickingDisabled: boolean
 }) {
   const t = useTranslations("app.lightweighting")
+  const g = useTranslations("app.generativeDesign")
   const surface = fields.surfaceSelection
   const numeric = (
     key:
@@ -261,23 +298,59 @@ export function LightweightingParameters({
           : item,
       ),
     })
+  const advanced = (
+    <>
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
+        <legend className="mb-2 font-medium">{t("preservation")}</legend>
+        <p className="text-xs text-muted-foreground">{t("preservationDescription")}</p>
+        <FacePicker
+          label={t("pickPreserve")}
+          faces={surface?.preserveFaces ?? []}
+          active={picking?.kind === "preserve"}
+          disabled={pickingDisabled}
+          onPick={() => onPick({ kind: "preserve" })}
+          onClear={() => setSurface({ preserveFaces: [] })}
+        />
+        <NumberField
+          id="lightweighting-depth"
+          label={t("surfaceDepth")}
+          value={surface?.depthMm ?? ""}
+          min={0.01}
+          onChange={(depthMm) => setSurface({ depthMm })}
+        />
+        <p className="text-xs text-muted-foreground">{t("surfaceDepthDescription")}</p>
+      </fieldset>
+      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
+        <legend className="mb-2 font-medium">{t("constraints")}</legend>
+        <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
+          {numeric("safetyFactor", 1)}
+          {numeric("maxDisplacementMm", 0)}
+          {numeric("cellSizeMm", 0.01)}
+          {numeric("maxIterations", 0, 40, "1")}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("discretizationDescription")}</p>
+      </fieldset>
+    </>
+  )
   return (
     <>
       {showObjective && <ObjectiveControls fields={fields} onChange={onChange} />}
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("material")}</legend>
-        <LightweightingMaterialSelector fields={fields} onChange={onChange} />
-        <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
-          {numeric("youngModulusMpa", 0)}
-          {numeric("poissonRatio", 0, 0.45)}
-          {numeric("yieldStrengthMpa", 0)}
-          {numeric("densityKgM3", 0)}
-        </div>
+        <LightweightingMaterialSelector fields={fields} onChange={onChange} compact={compact}>
+          <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
+            {numeric("youngModulusMpa", 0)}
+            {numeric("poissonRatio", 0, 0.45)}
+            {numeric("yieldStrengthMpa", 0)}
+            {numeric("densityKgM3", 0)}
+          </div>
+        </LightweightingMaterialSelector>
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("support")}</legend>
+        <legend className="mb-2 font-medium">{compact ? g("fixedFaces") : t("support")}</legend>
         <p className="text-xs text-muted-foreground">{t("supportDescription")}</p>
         <FacePicker
+          id="lightweighting-support-pick"
           label={t("pickSupport")}
           faces={surface?.supportFaces ?? []}
           active={picking?.kind === "support"}
@@ -287,30 +360,22 @@ export function LightweightingParameters({
         />
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("loadCases")}</legend>
+        <legend className="mb-2 font-medium">{compact ? g("loadedFaces") : t("loadCases")}</legend>
         <p className="text-xs text-muted-foreground">{t("loadDescription")}</p>
         {fields.loadCases.map((load, index) => (
           <fieldset key={load.id} className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-3">
             <legend className="px-1 text-sm font-medium">
               {t("loadCase", { index: index + 1 })}
             </legend>
-            <Field>
-              <FieldLabel htmlFor={`lightweighting-case-${load.id}`}>{t("caseName")}</FieldLabel>
-              <Input
-                id={`lightweighting-case-${load.id}`}
-                value={load.name}
-                required
-                onChange={(event) =>
-                  onChange({
-                    ...fields,
-                    loadCases: fields.loadCases.map((item) =>
-                      item.id === load.id ? { ...item, name: event.currentTarget.value } : item,
-                    ),
-                  })
-                }
-              />
-            </Field>
+            {compact ? (
+              <LightweightingSettingsDetails label={t("caseName")}>
+                <LoadCaseName load={load} fields={fields} onChange={onChange} />
+              </LightweightingSettingsDetails>
+            ) : (
+              <LoadCaseName load={load} fields={fields} onChange={onChange} />
+            )}
             <FacePicker
+              id={`lightweighting-load-pick-${load.id}`}
               label={t("pickLoad", { index: index + 1 })}
               faces={surface?.loadFaces[load.id] ?? []}
               active={picking?.kind === "load" && picking.caseId === load.id}
@@ -368,36 +433,13 @@ export function LightweightingParameters({
           {t("addCase")}
         </Button>
       </fieldset>
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("preservation")}</legend>
-        <p className="text-xs text-muted-foreground">{t("preservationDescription")}</p>
-        <FacePicker
-          label={t("pickPreserve")}
-          faces={surface?.preserveFaces ?? []}
-          active={picking?.kind === "preserve"}
-          disabled={pickingDisabled}
-          onPick={() => onPick({ kind: "preserve" })}
-          onClear={() => setSurface({ preserveFaces: [] })}
-        />
-        <NumberField
-          id="lightweighting-depth"
-          label={t("surfaceDepth")}
-          value={surface?.depthMm ?? ""}
-          min={0.01}
-          onChange={(depthMm) => setSurface({ depthMm })}
-        />
-        <p className="text-xs text-muted-foreground">{t("surfaceDepthDescription")}</p>
-      </fieldset>
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("constraints")}</legend>
-        <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
-          {numeric("safetyFactor", 1)}
-          {numeric("maxDisplacementMm", 0)}
-          {numeric("cellSizeMm", 0.01)}
-          {numeric("maxIterations", 0, 40, "1")}
-        </div>
-        <p className="text-xs text-muted-foreground">{t("discretizationDescription")}</p>
-      </fieldset>
+      {compact ? (
+        <LightweightingSettingsDetails label={g("analysisSettings")}>
+          {advanced}
+        </LightweightingSettingsDetails>
+      ) : (
+        advanced
+      )}
     </>
   )
 }

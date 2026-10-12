@@ -3613,6 +3613,9 @@ test.describe("full sketch editor", () => {
     await page.getByRole("textbox", { name: "Variable name" }).fill("span")
     await page.getByRole("button", { name: "Rename variable" }).dblclick()
 
+    await expect(page.getByRole("button", { name: "Rename variable" })).toHaveCount(0)
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()

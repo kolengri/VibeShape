@@ -4,6 +4,8 @@ import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { type ReactNode, useState } from "react"
+import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import {
   formatDisplayArea,
   formatDisplayLength,
@@ -144,15 +146,17 @@ export function MeasurementPanel({
   const t = useTranslations("app.shell.taskPanel.measurement")
   return (
     <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-medium">{t("title")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{t("description")}</p>
-        </div>
-        <Button type="button" size="sm" variant="ghost" onClick={onClose}>
-          {t("close")}
-        </Button>
-      </div>
+      <TaskPanelHeader
+        title={t("title")}
+        description={t("description")}
+        actions={
+          <TaskPanelLifecycleActions
+            ariaLabel={t("title")}
+            cancelLabel={t("close")}
+            onCancel={onClose}
+          />
+        }
+      />
       {onAllOutputs ? (
         <Button type="button" size="sm" variant="ghost" className="mt-3" onClick={onAllOutputs}>
           {t("allOutputs")}

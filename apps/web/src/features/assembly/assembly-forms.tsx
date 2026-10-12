@@ -1,7 +1,13 @@
 import type { AssemblyMutation } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
-import { type ReactNode, useState } from "react"
+import { createContext, type ReactNode, useContext, useState } from "react"
+import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
+
+export const AssemblyTaskPanelContext = createContext<{
+  title: string
+  error: string | null
+} | null>(null)
 
 export type AssemblyFormActions = {
   pending: boolean
@@ -18,7 +24,9 @@ export function AssemblyTaskForm({
   actions: AssemblyFormActions
 }) {
   const t = useTranslations("app.assembly")
+  const panel = useContext(AssemblyTaskPanelContext)
   const [invalid, setInvalid] = useState(false)
+  if (!panel) throw new Error("Assembly task forms require an assembly task panel context.")
   return (
     <form
       className="grid gap-4"
@@ -43,6 +51,26 @@ export function AssemblyTaskForm({
         await actions.onApply(changes)
       }}
     >
+      <TaskPanelHeader
+        title={panel.title}
+        actions={
+          <TaskPanelLifecycleActions
+            ariaLabel={panel.title}
+            acceptLabel={t("apply")}
+            acceptType="submit"
+            acceptDisabled={actions.pending}
+            acceptLoading={actions.pending}
+            cancelLabel={t("cancel")}
+            cancelDisabled={actions.pending}
+            onCancel={actions.onCancel}
+          />
+        }
+      />
+      {panel.error && (
+        <p role="alert" className="text-sm text-destructive">
+          {panel.error}
+        </p>
+      )}
       <fieldset disabled={actions.pending} className="grid min-w-0 gap-4">
         {children}
       </fieldset>
@@ -51,19 +79,6 @@ export function AssemblyTaskForm({
           {t("invalidParameters")}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={actions.pending} aria-busy={actions.pending}>
-          {t("apply")}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={actions.pending}
-          onClick={actions.onCancel}
-        >
-          {t("cancel")}
-        </Button>
-      </div>
     </form>
   )
 }

@@ -5,6 +5,33 @@ structural alternatives inside one exact single-solid Part. It reuses the graphi
 preservation, material, resolution, preview, and Apply workflow described in
 [Structural lightweighting](lightweighting.md).
 
+## First run
+
+The main form asks for the source Part, material preset, fixed faces, loaded faces, and total force.
+Choose actual boundary conditions in the viewport; the editor never guesses them or assigns a
+material. A preset fills the material properties. Custom properties and their reference sources
+remain available under **Material properties and references**.
+
+**Generate alternatives** remains visible in the task footer while the form scrolls. If it is
+unavailable, its explanation and next-step button direct the user to the source/material control,
+start face picking, or focus the missing force. **Review the settings** opens the advanced sections
+when the primary inputs are complete but validation still fails, bringing the first invalid native
+field or the first disclosure into the form viewport without scrolling workspace ancestors. Apply
+appears in the shared command header only after a candidate is ready; its readiness explanation
+remains visible while disabled. Close stays in that header; Generate and its setup guide stay in
+the fixed footer.
+Collapsing a section preserves
+its values and validation; it never removes an active constraint.
+
+The initial study analyzes one target: retain 70% of the feasible starting weight. Quick choices
+request 15%, 30%, or 50% weight reduction; these are targets, not promised reductions. Up to three
+custom retained-mass targets, additional materials, and keep-out regions remain under
+**Compare more alternatives and keep-out regions**. Preserved faces, region depth, safety limits,
+and solver resolution remain under **Preserved faces and analysis settings**. FDM support policy
+and build direction stay visible; **Printer settings** holds the numerical FDM limits, with their
+current values summarized in the main form. Opening a section does not invalidate results;
+changing a parameter does.
+
 ## Search and comparison
 
 Enter one to three distinct retained-mass percentages from 10 to 100. The editable current material

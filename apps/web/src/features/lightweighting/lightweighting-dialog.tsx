@@ -1,13 +1,24 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerAnalysisOverlay, ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { ActionAvailability } from "../../components/action-availability"
+import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
 import { ImportPreview } from "../import/import-preview"
 import { GenerativeDesignControls, GenerativeDesignResults } from "./generative-design-controls"
+import { GenerativeSetupAction } from "./generative-setup-action"
 import { LightweightingParameters, type LightweightingPickTarget } from "./lightweighting-fields"
 import {
   type LightweightingFields,
@@ -232,7 +243,11 @@ function loadSetupReason(fields: LightweightingFields, t: LightweightingCopy) {
   )
   return missingNormal >= 0 ? t("normalDirectionUnavailable", { index: missingNormal + 1 }) : null
 }
-function analysisSetupReason(state: TaskState, t: LightweightingCopy) {
+function analysisSetupReason(
+  state: TaskState,
+  t: LightweightingCopy,
+  materialRequired = t("materialRequired"),
+) {
   if (!state.source) return t("choosePart")
   const fields = state.fields
   if (
@@ -240,7 +255,7 @@ function analysisSetupReason(state: TaskState, t: LightweightingCopy) {
       (value) => value.trim() === "",
     )
   )
-    return t("materialRequired")
+    return materialRequired
   if (!fields.surfaceSelection?.supportFaces.length) return t("supportRequired")
   const loadReason = loadSetupReason(fields, t)
   if (loadReason) return loadReason
@@ -255,10 +270,15 @@ function activityReason(state: TaskState, t: LightweightingCopy) {
   if (state.activity === "idle") return null
   return t(state.activity === "applying" ? "applyBusy" : "analysisBusy")
 }
-function actionReasons(state: TaskState, blockedReason: string | null, t: LightweightingCopy) {
+function actionReasons(
+  state: TaskState,
+  blockedReason: string | null,
+  t: LightweightingCopy,
+  materialRequired?: string,
+) {
   const common = blockedReason ?? activityReason(state, t)
   return {
-    analyze: common ?? analysisSetupReason(state, t),
+    analyze: common ?? analysisSetupReason(state, t, materialRequired),
     apply: common ?? applyResultReason(state, t),
   }
 }
@@ -313,18 +333,125 @@ export function LightweightingTaskPanel({
   )
   const face = useFaceInteraction(state, disabled, onInteractionChange)
   useLightweightingViewportPreview(state.ready, onPreviewChange, state.setPreviewReady)
-  const pending = state.activity !== "idle" && state.activity !== "applying"
   const inputsDisabled = disabled || state.activity === "applying"
-  const reasons = actionReasons(state, blockedReason, t)
+  const reasons = actionReasons(
+    state,
+    blockedReason,
+    t,
+    generative ? g("materialRequired") : undefined,
+  )
+  const analyzeActions = (
+    <AnalysisActions
+      state={state}
+      disabledReason={reasons.analyze}
+      label={panelCopy.analyze}
+      onAnalyze={() => {
+        face.stopPicking()
+        void state.analyze()
+      }}
+    />
+  )
   return (
     <section
       aria-label={panelCopy.title}
-      className="@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-3"
+      className={
+        generative
+          ? "@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-4"
+          : "@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-4"
+      }
     >
-      <header className="grid gap-2">
-        <h2 className="font-semibold">{panelCopy.title}</h2>
-        <p className="text-xs text-muted-foreground">{panelCopy.description}</p>
-      </header>
+      <TaskPanelHeader
+        title={panelCopy.title}
+        description={panelCopy.description}
+        className="shrink-0"
+        actions={
+          <LightweightingLifecycleActions
+            state={state}
+            generative={generative}
+            title={panelCopy.title}
+            applyReason={reasons.apply}
+            onClose={onClose}
+          />
+        }
+      />
+      <TaskPanelContent
+        state={state}
+        generative={generative}
+        inputsDisabled={inputsDisabled}
+        controller={controller}
+        face={face}
+        analyzeActions={analyzeActions}
+        mainViewport={onPreviewChange !== undefined}
+      />
+      {generative && (
+        <GenerativePanelFooter
+          state={state}
+          disabled={disabled}
+          analyzeActions={analyzeActions}
+          onPick={face.onPick}
+        />
+      )}
+    </section>
+  )
+}
+
+function LightweightingLifecycleActions({
+  state,
+  generative,
+  title,
+  applyReason,
+  onClose,
+}: {
+  state: ReturnType<typeof useGenerativeDesignTask>
+  generative: boolean
+  title: string
+  applyReason: string | null
+  onClose: () => void
+}) {
+  const t = useTranslations("app.lightweighting")
+  return (
+    <TaskPanelLifecycleActions
+      ariaLabel={title}
+      cancelLabel={t("close")}
+      {...(!generative || state.ready ? { acceptLabel: t("apply") } : {})}
+      acceptDisabled={!state.canApply}
+      acceptDisabledReason={applyReason ?? undefined}
+      acceptLoading={state.activity === "applying"}
+      cancelDisabled={state.activity === "applying"}
+      onAccept={state.apply}
+      onCancel={onClose}
+    />
+  )
+}
+
+function TaskPanelContent({
+  state,
+  generative,
+  inputsDisabled,
+  controller,
+  face,
+  analyzeActions,
+  mainViewport,
+}: {
+  state: ReturnType<typeof useGenerativeDesignTask>
+  generative: boolean
+  inputsDisabled: boolean
+  controller: DocumentControllerState
+  face: ReturnType<typeof useFaceInteraction>
+  analyzeActions: ReactNode
+  mainViewport: boolean
+}) {
+  const t = useTranslations("app.lightweighting")
+  const pending = state.activity !== "idle" && state.activity !== "applying"
+  return (
+    <div
+      data-generative-form={generative || undefined}
+      className={
+        generative
+          ? "grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start gap-4 overflow-y-auto"
+          : "contents"
+      }
+    >
       <fieldset
         disabled={inputsDisabled}
         className="grid min-w-0 grid-cols-1 gap-4"
@@ -337,6 +464,7 @@ export function LightweightingTaskPanel({
           disabled={inputsDisabled}
         />
         <LightweightingParameters
+          compact={generative}
           showObjective={!generative}
           fields={state.fields}
           onChange={state.changeFields}
@@ -351,44 +479,33 @@ export function LightweightingTaskPanel({
           {face.pickMessage}
         </p>
       )}
-      <AnalysisActions
-        state={state}
-        disabledReason={reasons.analyze}
-        label={panelCopy.analyze}
-        onAnalyze={() => {
-          face.stopPicking()
-          void state.analyze()
-        }}
-      />
+      {!generative && analyzeActions}
       <TaskStatus state={state} />
       <GenerativeProgress state={state} />
       <GenerativeDesignResults state={state} />
-      <ResultPreview state={state} mainViewport={onPreviewChange !== undefined} />
-      <footer className="grid grid-cols-1 gap-2 border-t pt-3">
-        <ActionAvailability disabledReason={reasons.apply} presentation="persistent">
-          {({ describedBy }) => (
-            <Button
-              type="button"
-              aria-describedby={describedBy}
-              isLoading={state.activity === "applying"}
-              disabled={!state.canApply}
-              className="h-auto max-w-full whitespace-normal"
-              onClick={state.apply}
-            >
-              {t("apply")}
-            </Button>
-          )}
-        </ActionAvailability>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={state.activity === "applying"}
-          onClick={onClose}
-        >
-          {t("close")}
-        </Button>
-      </footer>
-    </section>
+      <ResultPreview state={state} mainViewport={mainViewport} />
+    </div>
+  )
+}
+
+function GenerativePanelFooter({
+  state,
+  disabled,
+  analyzeActions,
+  onPick,
+}: {
+  state: ReturnType<typeof useGenerativeDesignTask>
+  disabled: boolean
+  analyzeActions: ReactNode
+  onPick: (target: LightweightingPickTarget) => void
+}) {
+  const g = useTranslations("app.generativeDesign")
+  return (
+    <footer className="grid shrink-0 grid-cols-1 gap-2 border-t pt-3">
+      {analyzeActions}
+      <GenerativeSetupAction state={state} disabled={disabled} onPick={onPick} />
+      {state.canAnalyze && <p className="text-xs text-muted-foreground">{g("setupReady")}</p>}
+    </footer>
   )
 }
 
