@@ -428,8 +428,11 @@ Choose **FDM tools** in Model, select a kind, and supply its exact target or ind
 ## Lightweighting tasks
 
 The registered **Generative Design** toolbar/palette command opens the same source-bound task
-workflow with a bounded alternative search instead of a single objective. The user sets up to three
-mass targets, the current material plus up to two catalog examples, and optional keep-out boxes.
+workflow with a bounded alternative search instead of a single objective. The default form guides
+source/material selection and graphical fixed/load faces with an explicit force, then starts one
+70% retained-mass target. Generate stays visible in the footer with the blocking reason and a
+next-step action. Advanced disclosures retain custom material properties, preservation and solver
+settings, up to three mass targets, two extra catalog materials, and optional keep-out boxes.
 FDM controls select **Without supports** or **Supports allowed**, model-axis build direction,
 minimum feature size, layer height, and maximum overhang from vertical. Both policies enforce
 minimum feature size; support-free additionally excludes unsupported results. Supports-allowed

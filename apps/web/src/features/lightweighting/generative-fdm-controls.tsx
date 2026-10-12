@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { LightweightingSettingsDetails } from "./lightweighting-settings-details"
 import type { useGenerativeDesignTask } from "./use-generative-design-task"
 
 const directions = ["+x", "-x", "+y", "-y", "+z", "-z"] as const
@@ -49,26 +50,35 @@ export function GenerativeFdmControls({
         ))}
       </SelectField>
       <p className="text-xs text-muted-foreground">{t("directionHelp")}</p>
-      <div className="grid min-w-0 grid-cols-1 gap-3 @xs:grid-cols-2">
-        {numericFields.map((key) => (
-          <Field key={key}>
-            <FieldLabel htmlFor={`generative-fdm-${key}`} className="max-w-full">
-              {t(key)}
-            </FieldLabel>
-            <Input
-              id={`generative-fdm-${key}`}
-              type="number"
-              required
-              step="any"
-              min={key === "maxOverhangAngleDeg" ? 0 : key === "layerHeightMm" ? 0.001 : 0.01}
-              max={key === "maxOverhangAngleDeg" ? 89 : undefined}
-              value={fields.fdm[key]}
-              onChange={(event) => change({ [key]: event.currentTarget.value })}
-            />
-          </Field>
-        ))}
-      </div>
-      <p className="text-xs text-muted-foreground">{t("constraintsHelp")}</p>
+      <p className="text-xs text-muted-foreground">
+        {t("settingsSummary", {
+          feature: fields.fdm.minFeatureSizeMm,
+          layer: fields.fdm.layerHeightMm,
+          angle: fields.fdm.maxOverhangAngleDeg,
+        })}
+      </p>
+      <LightweightingSettingsDetails label={t("printerSettings")}>
+        <div className="grid min-w-0 grid-cols-1 gap-3 @xs:grid-cols-2">
+          {numericFields.map((key) => (
+            <Field key={key}>
+              <FieldLabel htmlFor={`generative-fdm-${key}`} className="max-w-full">
+                {t(key)}
+              </FieldLabel>
+              <Input
+                id={`generative-fdm-${key}`}
+                type="number"
+                required
+                step="any"
+                min={key === "maxOverhangAngleDeg" ? 0 : key === "layerHeightMm" ? 0.001 : 0.01}
+                max={key === "maxOverhangAngleDeg" ? 89 : undefined}
+                value={fields.fdm[key]}
+                onChange={(event) => change({ [key]: event.currentTarget.value })}
+              />
+            </Field>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("constraintsHelp")}</p>
+      </LightweightingSettingsDetails>
     </fieldset>
   )
 }

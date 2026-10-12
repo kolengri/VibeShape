@@ -3159,7 +3159,9 @@
       "targetMassReachedTermination": "target mass reached",
       "targetMass": "Requested target mass: {value, number} kg",
       "retainedMassAchieved": "Retained baseline mass: {value, number}%",
-      "mainPreview": "The candidate is shown in the main viewport. Apply saves a mesh Part and hides the editable source. Undo restores the source view."
+      "mainPreview": "The candidate is shown in the main viewport. Apply saves a mesh Part and hides the editable source. Undo restores the source view.",
+      "materialDetails": "Material properties and references",
+      "materialPresetHelp": "Choose a material preset to fill its properties. For a custom material, expand Material properties and references."
     },
     "quickLightweighting": {
       "title": "Quick lightweighting",
@@ -3236,7 +3238,7 @@
     },
     "generativeDesign": {
       "title": "Generative Design",
-      "description": "Explore structural alternatives inside one source solid. Each material and mass target receives its own local load analysis. Results are preliminary voxel meshes.",
+      "description": "Choose a material, pick the fixed and loaded faces, and enter the force to generate a lighter design. Results are preliminary voxel meshes.",
       "searchSpace": "Design alternatives",
       "massTargets": "Retained mass targets (%)",
       "massTargetsHelp": "Enter up to three distinct percentages from 10 to 100, separated by commas. Targets refer to the feasible voxel baseline after obstacle removal.",
@@ -3287,8 +3289,26 @@
         "supportRequired": "This orientation requires supports under the selected limits.",
         "supportNotRequired": "No unsupported area under the selected conservative limits.",
         "reviewSettings": "FDM settings",
-        "minimumFeaturePassed": "Minimum feature constraint satisfied."
-      }
+        "minimumFeaturePassed": "Minimum feature constraint satisfied.",
+        "printerSettings": "Printer settings",
+        "settingsSummary": "Minimum feature {feature} mm · Layer {layer} mm · Overhang {angle}° from vertical"
+      },
+      "fixedFaces": "Where is the part fixed?",
+      "loadedFaces": "Where is the force applied?",
+      "analysisSettings": "Preserved faces and analysis settings",
+      "targetHelp": "Start with one weight target. Compare more targets and materials in advanced settings.",
+      "weightTarget": "Weight reduction target",
+      "removeMass": "Remove {percent}% of the weight",
+      "selectedTargets": "Keep {targets}% of the feasible starting weight.",
+      "advancedStudy": "Compare more alternatives and keep-out regions",
+      "chooseSource": "Choose the source Part",
+      "chooseMaterial": "Choose the material",
+      "pickFixed": "Select the fixed faces",
+      "pickLoaded": "Select the loaded faces for case {index}",
+      "enterForce": "Enter the force for case {index}",
+      "checkSettings": "Review the settings",
+      "setupReady": "Ready to generate. The current material and visible print settings will be used.",
+      "materialRequired": "Choose a material preset, or enter custom values in Material properties and references."
     }
   }
 }

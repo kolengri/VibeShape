@@ -1,15 +1,21 @@
 import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import { useTranslations } from "@vibeshape/i18n"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import type { ReactNode } from "react"
 import {
   applyLightweightingMaterialPreset,
   type LightweightingFields,
 } from "./lightweighting-model"
+import { LightweightingSettingsDetails } from "./lightweighting-settings-details"
 
 export function LightweightingMaterialSelector({
   fields,
   onChange,
+  compact = false,
+  children,
 }: {
+  compact?: boolean
+  children?: ReactNode
   fields: LightweightingFields
   onChange: (fields: LightweightingFields) => void
 }) {
@@ -17,22 +23,8 @@ export function LightweightingMaterialSelector({
   const preset = structuralMaterialCatalog.presets.find(
     (item) => item.id === fields.materialPresetId,
   )
-  return (
+  const details = (
     <>
-      <SelectField
-        id="lightweighting-material"
-        label={t("materialPreset")}
-        value={fields.materialPresetId}
-        onValueChange={(id) => onChange(applyLightweightingMaterialPreset(fields, id))}
-        aria-describedby="lightweighting-material-assumptions"
-      >
-        <SelectOption value="custom">{t("customMaterial")}</SelectOption>
-        {structuralMaterialCatalog.presets.map((item) => (
-          <SelectOption key={item.id} value={item.id}>
-            {t(`presets.${item.id}`)}
-          </SelectOption>
-        ))}
-      </SelectField>
       <p id="lightweighting-material-assumptions" className="text-xs text-muted-foreground">
         {t("presetAssumptions")}
       </p>
@@ -60,6 +52,39 @@ export function LightweightingMaterialSelector({
             ))}
           </div>
         </div>
+      )}
+      {children}
+    </>
+  )
+  return (
+    <>
+      <SelectField
+        id="lightweighting-material"
+        label={t("materialPreset")}
+        value={fields.materialPresetId}
+        onValueChange={(id) => onChange(applyLightweightingMaterialPreset(fields, id))}
+        aria-describedby={
+          compact ? "lightweighting-material-help" : "lightweighting-material-assumptions"
+        }
+      >
+        <SelectOption value="custom">{t("customMaterial")}</SelectOption>
+        {structuralMaterialCatalog.presets.map((item) => (
+          <SelectOption key={item.id} value={item.id}>
+            {t(`presets.${item.id}`)}
+          </SelectOption>
+        ))}
+      </SelectField>
+      {compact ? (
+        <>
+          <p id="lightweighting-material-help" className="text-xs text-muted-foreground">
+            {t("materialPresetHelp")}
+          </p>
+          <LightweightingSettingsDetails label={t("materialDetails")}>
+            {details}
+          </LightweightingSettingsDetails>
+        </>
+      ) : (
+        details
       )}
     </>
   )

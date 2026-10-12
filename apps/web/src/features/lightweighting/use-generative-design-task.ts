@@ -18,7 +18,7 @@ export function useGenerativeDesignTask(
   currentMaterialName: string,
 ) {
   const [fields, setFields] = useState<GenerativeDesignFields>({
-    retainedMassPercents: "35, 50, 70",
+    retainedMassPercents: "70",
     additionalMaterialIds: [],
     obstacles: [],
     fdm: {
