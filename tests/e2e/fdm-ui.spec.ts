@@ -1,6 +1,7 @@
 import { readFdmFeatureParameters } from "../../packages/domain/src/part-design-fdm"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("creates an authored FDM coupon, edits, undoes and reopens its native backup", async ({
   page,
@@ -8,7 +9,7 @@ test("creates an authored FDM coupon, edits, undoes and reopens its native backu
   test.setTimeout(120_000)
   await page.goto("/")
   await saved(page)
-  await page.getByRole("button", { name: "FDM tools", exact: true }).click()
+  await invokeModelCommand(page, "Modify", "FDM tools")
   let form = page.getByRole("form", { name: "FDM tools", exact: true })
   await form.getByRole("combobox", { name: "Tool", exact: true }).click()
   await page.getByRole("option", { name: "Calibration coupon", exact: true }).click()
@@ -82,7 +83,7 @@ test("switches directly between differently typed FDM edits without replacing au
   await page.goto("/")
   await saved(page)
   for (const name of ["Calibration coupon", "Flexible sleeve"]) {
-    await page.getByRole("button", { name: "FDM tools", exact: true }).click()
+    await invokeModelCommand(page, "Modify", "FDM tools")
     const form = page.getByRole("form", { name: "FDM tools", exact: true })
     await form.getByRole("combobox", { name: "Tool", exact: true }).click()
     await page.getByRole("option", { name, exact: true }).click()

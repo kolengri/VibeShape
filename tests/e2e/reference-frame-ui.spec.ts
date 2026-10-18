@@ -3,6 +3,7 @@ import { readPatternFeatureParametersV2 } from "../../packages/domain/src/part-d
 import { readSplitFeatureParametersV2 } from "../../packages/domain/src/part-design-split"
 import { createSolids, openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("authors oblique body reference frames and reopens their exact persisted intent", async ({
   page,
@@ -88,7 +89,7 @@ test("binds current Datum frames and a viewport planar face without consuming su
   await page.goto("/")
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box", exact: true })
     .getByRole("button", { name: "Create box", exact: true })
@@ -96,7 +97,7 @@ test("binds current Datum frames and a viewport planar face without consuming su
   await expect(page.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible({
     timeout: 30_000,
   })
-  await commands.getByRole("button", { name: "Datum plane", exact: true }).click()
+  await invokeModelCommand(page, "Create", "Datum plane")
   const datum = page.getByRole("form", { name: "Create datum plane", exact: true })
   await datum.getByRole("combobox", { name: "Offset", exact: true }).fill("5 mm")
   await datum.getByRole("button", { name: "Create datum plane", exact: true }).click()
@@ -119,7 +120,7 @@ test("binds current Datum frames and a viewport planar face without consuming su
       await canvas.click({
         position: { x: bounds.width * (sample[0] ?? 0.5), y: bounds.height * (sample[1] ?? 0.5) },
       })
-      return page.locator("footer[role='status']").textContent()
+      return page.locator("main > footer").textContent()
     })
     .toMatch(/Selection: Box 1 · Face \d+/)
   await commands.getByRole("button", { name: "Mirror", exact: true }).click()

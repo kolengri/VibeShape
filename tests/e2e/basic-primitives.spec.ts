@@ -1,4 +1,5 @@
 import { expect as baseExpect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.setTimeout(60_000)
 const expect = baseExpect.configure({ timeout: 15_000 })
@@ -18,7 +19,7 @@ for (const primitive of primitives) {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await toolbar.getByRole("button", { name: primitive.name, exact: true }).click()
+    await invokeModelCommand(page, "Primitives", primitive.name)
     const createForm = page.getByRole("form", { name: `Create ${primitive.name.toLowerCase()}` })
     for (const [name, value] of Object.entries(primitive.fields)) {
       await createForm.getByRole("combobox", { name, exact: true }).fill(value)
@@ -84,7 +85,7 @@ test("Torus rejects overlapping radii and cancels its preview without a committe
   await page.goto("/")
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   const viewport = page.getByRole("region", { name: "3D viewport" })
-  await toolbar.getByRole("button", { name: "Torus", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Torus")
   const form = page.getByRole("form", { name: "Create torus" })
   await form.getByRole("combobox", { name: "Major radius", exact: true }).fill("10 mm")
   await form.getByRole("combobox", { name: "Minor radius", exact: true }).fill("12 mm")
@@ -112,7 +113,7 @@ test("Pyramid bounds base sides and cancels a valid 64-sided preview without com
   await page.goto("/")
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   const viewport = page.getByRole("region", { name: "3D viewport" })
-  await toolbar.getByRole("button", { name: "Pyramid", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Pyramid")
   const form = page.getByRole("form", { name: "Create pyramid" })
   const sides = form.getByRole("spinbutton", { name: "Base sides", exact: true })
   const apply = form.getByRole("button", { name: "Create pyramid", exact: true })

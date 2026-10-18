@@ -201,6 +201,7 @@ function renderHeader(
   onOpenCommandPalette = vi.fn(),
   onOpenShortcutHelp = vi.fn(),
   hideModelExport = false,
+  controllerOverrides: Partial<DocumentControllerState> = {},
 ) {
   const controller = {
     status: "ready",
@@ -214,6 +215,7 @@ function renderHeader(
         displayUnits: { length: "mm", angle: "deg" },
       },
     },
+    ...controllerOverrides,
   } as unknown as DocumentControllerState
   const element = () => (
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -238,6 +240,12 @@ function renderHeader(
   const result = render(element())
   return { ...result, refresh: () => result.rerender(element()) }
 }
+
+it("reports an unavailable project instead of a saved document after opening fails", () => {
+  renderHeader(undefined, undefined, false, { status: "error", report: null })
+  expect(screen.getByText("Project unavailable", { exact: true })).toBeTruthy()
+  expect(screen.queryByText("Saved in this browser", { exact: true })).toBeNull()
+})
 
 it("opens help from the keyboard and restores focus to the closed application menu", async () => {
   renderHeader()

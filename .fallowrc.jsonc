@@ -13,6 +13,8 @@
     "apps/web/src/spikes/sketch-worker.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
+    // Vite emits this classic iframe renderer as an asset; it must never execute in the parent.
+    "apps/web/src/features/extensions/ui-panel-runtime.js",
     "apps/slicer-bridge/src/index.ts",
     "apps/mcp-server/src/index.ts",
     "apps/remote-mcp/src/index.ts",

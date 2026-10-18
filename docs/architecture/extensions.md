@@ -6,6 +6,16 @@ VibeShape should use a **microkernel with modular first-party features and separ
 
 This document describes the target contract accepted with reduced scope by [ADR-0012](../adr/0012-capability-based-extension-platform.md). [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md) defines which functionality remains in the trusted kernel, how first-party modules reuse the contribution model, and how external automation reaches commands. [SPK-006](../spikes/spk-006-extension-sandbox.md) accepts immutable packages, exact locks, capabilities, restricted mode, opaque iframe UI, and a narrow no-import WebAssembly feature candidate. It rejects arbitrary same-origin workspace JavaScript and does not publish a public API.
 
+## Implemented declarative profile
+
+[ADR-0109](../adr/0109-local-declarative-ui-plugins.md) adds the first installable product subset:
+local data-only `.vsui.json` workspace plugins with commands and bounded numeric calculator panels.
+The manager validates and integrity-pins packages, reviews UI capabilities, retains a bounded local
+installation store, and revokes active sessions on disable/removal or cross-tab changes. It executes
+only a host-owned renderer in an opaque iframe, not package code. See [UI plugins](../product/ui-plugins.md)
+for the format, limits and workflow. This experimental profile has no document or MCP access and is
+separate from the future executable `.vsext` contract described below.
+
 ## Goals and non-goals
 
 The platform must:

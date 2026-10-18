@@ -3,6 +3,7 @@ import { readHoleFeatureParameters } from "../../packages/domain/src/part-design
 import { readThreadFeatureParameters } from "../../packages/domain/src/part-design-thread"
 import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test("selects an exact planar extrusion endpoint and saves its captured body revision", async ({
@@ -12,7 +13,7 @@ test("selects an exact planar extrusion endpoint and saves its captured body rev
   await page.goto("/")
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box", exact: true })
   for (const name of ["Width", "Depth"])
     await box.getByRole("combobox", { name, exact: true }).fill("200 mm")
@@ -110,7 +111,7 @@ test("authors a counterbore from the ordinary hole task and retains its exact re
   await page.goto("/")
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box", exact: true })
   for (const name of ["Width", "Depth"])
     await box.getByRole("combobox", { name, exact: true }).fill("200 mm")
@@ -120,7 +121,7 @@ test("authors a counterbore from the ordinary hole task and retains its exact re
   await confirmSketchPlane(page)
   await drawRectangle(page)
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-  await commands.getByRole("button", { name: "Hole", exact: true }).click()
+  await invokeModelCommand(page, "Modify", "Hole")
   const form = page.getByRole("form", { name: "Hole", exact: true })
   await form.getByRole("checkbox", { name: "Point 1", exact: true }).check()
   await form.getByRole("combobox", { name: "Hole style", exact: true }).selectOption("counterbore")
@@ -148,7 +149,7 @@ test("authors an explicit reference axis through the thread preview and persists
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
   await commands.getByRole("button", { name: "Model", exact: true }).click()
-  await commands.getByRole("button", { name: "Cylinder", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Cylinder")
   const cylinder = page.getByRole("form", { name: "Create cylinder", exact: true })
   await cylinder.getByRole("combobox", { name: "Radius", exact: true }).fill("5 mm")
   await cylinder.getByRole("combobox", { name: "Height", exact: true }).fill("8 mm")

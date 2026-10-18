@@ -6,6 +6,7 @@ import { createLoftV3Project, loftFixtureId as id } from "../support/loft-v3-fix
 import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("authors exact Loft v3 tracks, rail, C0 guide and independent G1/G2 faces, repairs a native failure, edits, undoes and reopens", async ({
   page,
@@ -36,10 +37,7 @@ test("authors exact Loft v3 tracks, rail, C0 guide and independent G1/G2 faces, 
   })
   await nativeSaved(page)
   await expect(page.getByText(/Needs repair: the support face/)).toHaveCount(0)
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Loft", exact: true })
-    .click()
+  await invokeModelCommand(page, "Create", "Loft")
   let form = page.getByRole("form", { name: "Loft profiles", exact: true })
   for (const label of ["Lower section · Profile 1", "Upper section · Profile 1"]) {
     await form
@@ -162,10 +160,7 @@ test("applies a cylindrical Loft with nonzero G2 at both ends and healthy orient
   )
   await nativeSaved(page)
   await expect(page.getByText(/Needs repair: the support face/)).toHaveCount(0)
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Loft", exact: true })
-    .click()
+  await invokeModelCommand(page, "Create", "Loft")
   const form = page.getByRole("form", { name: "Loft profiles", exact: true })
   for (const label of ["Lower section · Profile 1", "Upper section · Profile 1"]) {
     await form

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test("undoes saved feature edits and deletion, then reopens and copies replayable history", async ({
@@ -15,7 +16,7 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
   const redo = toolbar.getByRole("button", { name: "Redo", exact: true })
   const viewport = page.getByRole("region", { name: "3D viewport" })
   await expect(undo).toBeDisabled()
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const create = page.getByRole("form", { name: "Create box" })
   await create.getByRole("combobox", { name: "Width", exact: true }).fill("20 mm")
   await create.getByRole("button", { name: "Create box", exact: true }).click()

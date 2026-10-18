@@ -1,0 +1,192 @@
+import { describe, expect, it } from "bun:test"
+import { documentIdSchema } from "@vibeshape/domain"
+import { createProjectNavigation, projectRecoveryUrl, readProjectUrl } from "./project-navigation"
+
+const first = documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000101")
+const second = documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000102")
+const third = documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000103")
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+function fixture(failWrites = false) {
+  let href = `https://cad.test/editor?theme=dark&project=${first}#view`
+  let active: string | null = first
+  let listener: (() => void) | null = null
+  const writes: { href: string; mode: string }[] = []
+  const errors: string[] = []
+  const opens: string[] = []
+  let open: Parameters<typeof createProjectNavigation>[0]["open"] = async (id) => {
+    active = id
+    navigation.sync(id)
+    return { ok: true }
+  }
+  const navigation = createProjectNavigation({
+    href: () => href,
+    activeProjectId: () => active,
+    write: (next, mode) => {
+      if (failWrites) throw new Error("History is unavailable")
+      href = next
+      writes.push({ href, mode })
+    },
+    subscribe: (next) => {
+      listener = next
+      return () => {
+        listener = null
+      }
+    },
+    open: (id, signal) => {
+      opens.push(id)
+      return open(id, signal)
+    },
+    failed: (error) => {
+      errors.push(error)
+    },
+  })
+  const stop = navigation.listen()
+  return {
+    navigation,
+    writes,
+    errors,
+    opens,
+    stop,
+    href: () => href,
+    active: () => active,
+    setOpen: (next: typeof open) => {
+      open = next
+    },
+    setActive: (id: string) => {
+      active = id
+    },
+    pop: (id: string) => {
+      const url = new URL(href)
+      url.searchParams.set("project", id)
+      href = url.href
+      listener?.()
+    },
+  }
+}
+
+describe("local project URLs", () => {
+  it("accepts only one schema-valid ID and provides a recovery URL preserving other state", () => {
+    expect(readProjectUrl("https://cad.test/?theme=dark")).toEqual({ kind: "default" })
+    for (const query of ["project=", "project=no", `project=${first}&project=${second}`])
+      expect(readProjectUrl(`https://cad.test/?${query}`)).toEqual({ kind: "invalid" })
+    expect(readProjectUrl(`https://cad.test/?project=${second}`)).toEqual({
+      kind: "project",
+      documentId: second,
+    })
+    expect(projectRecoveryUrl(`https://cad.test/editor?theme=dark&project=no#view`)).toBe(
+      "https://cad.test/editor?theme=dark#view",
+    )
+  })
+
+  it("pushes successful selections without replacing unrelated query or fragment state", () => {
+    const f = fixture()
+    f.navigation.sync(first, "replace")
+    expect(f.writes).toHaveLength(0)
+    f.navigation.sync(second)
+    expect(f.writes).toEqual([
+      { href: `https://cad.test/editor?theme=dark&project=${second}#view`, mode: "push" },
+    ])
+    f.stop()
+  })
+
+  it("opens Back/Forward destinations without adding history entries", async () => {
+    const f = fixture()
+    f.pop(second)
+    await settle()
+    expect(f.active()).toBe(second)
+    f.pop(first)
+    await settle()
+    expect(f.active()).toBe(first)
+    expect(f.opens).toEqual([second, first])
+    expect(f.writes).toEqual([])
+    f.stop()
+  })
+
+  it("reconciles failed and blocked history navigation to the actual active session", async () => {
+    const f = fixture()
+    for (const code of ["project-action-blocked", "document-not-found", "persistence-failed"]) {
+      f.setOpen(async () => ({ ok: false, diagnostic: { code } }))
+      f.pop(second)
+      await settle()
+      expect(f.active()).toBe(first)
+      expect(new URL(f.href()).searchParams.get("project")).toBe(first)
+      expect(f.writes.at(-1)?.mode).toBe("replace")
+    }
+    expect(f.errors).toEqual([
+      "project-action-blocked",
+      "document-not-found",
+      "project-open-failed",
+    ])
+    f.pop("malformed")
+    await settle()
+    expect(f.errors.at(-1)).toBe("invalid-project-url")
+    expect(f.opens).toHaveLength(3)
+    f.stop()
+  })
+
+  it("cancels an older pending destination and serializes the newest request", async () => {
+    const f = fixture()
+    let finish!: () => void
+    let firstSignal: AbortSignal | undefined
+    f.setOpen(async (id, signal) => {
+      if (id === second) {
+        firstSignal = signal
+        await new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        return { ok: false, diagnostic: { code: "cancelled" } }
+      }
+      f.setActive(id)
+      f.navigation.sync(id)
+      return { ok: true }
+    })
+    f.pop(second)
+    await settle()
+    f.pop(third)
+    expect(firstSignal?.aborted).toBe(true)
+    finish()
+    await settle()
+    expect(f.opens).toEqual([second, third])
+    expect(f.active()).toBe(third)
+    expect(new URL(f.href()).searchParams.get("project")).toBe(third)
+    expect(f.errors).toEqual([])
+    expect(f.writes).toEqual([])
+    f.stop()
+  })
+
+  it("reports a failed history write without claiming the URL was restored", async () => {
+    const f = fixture(true)
+    f.setOpen(async () => ({ ok: false, diagnostic: { code: "project-action-blocked" } }))
+    f.pop(second)
+    await settle()
+    expect(f.active()).toBe(first)
+    expect(new URL(f.href()).searchParams.get("project")).toBe(second)
+    expect(f.errors).toEqual(["project-url-unavailable"])
+    f.stop()
+  })
+
+  it("removes listeners and cancels pending navigation on owner cleanup", async () => {
+    const f = fixture()
+    let finish!: () => void
+    let signal: AbortSignal | undefined
+    f.setOpen(async (_id, received) => {
+      signal = received
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { ok: false, diagnostic: { code: "cancelled" } }
+    })
+    f.pop(second)
+    await settle()
+    f.stop()
+    expect(signal?.aborted).toBe(true)
+    finish()
+    await settle()
+    f.pop(third)
+    await settle()
+    expect(f.opens).toEqual([second])
+    expect(f.errors).toEqual([])
+    expect(f.writes).toEqual([])
+  })
+})

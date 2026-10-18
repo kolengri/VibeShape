@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import { drawRectangle } from "./sketch-helpers"
 
 async function selectFeatureFace(page: Page, featureLabel: string) {
@@ -7,7 +8,7 @@ async function selectFeatureFace(page: Page, featureLabel: string) {
   const canvas = viewport.locator("canvas")
   const bounds = await canvas.boundingBox()
   if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
-  const statusBar = page.locator("footer[role='status']")
+  const statusBar = page.locator("main > footer")
   const samples = [
     { x: bounds.width * 0.5, y: bounds.height * 0.5 },
     { x: bounds.width * 0.4, y: bounds.height * 0.55 },
@@ -32,8 +33,7 @@ test.describe("datum plane reference geometry", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Datum plane" }).click()
+    await invokeModelCommand(page, "Create", "Datum plane")
     const createForm = page.getByRole("form", { name: "Create datum plane" })
     await createForm.getByRole("combobox", { name: "Support" }).selectOption("xz")
     await createForm.getByRole("combobox", { name: "Offset" }).fill("14 mm")
@@ -91,15 +91,14 @@ test.describe("datum plane reference geometry", () => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
       .click()
     await selectFeatureFace(page, "Box 1")
 
-    await toolbar.getByRole("button", { name: "Datum plane" }).click()
+    await invokeModelCommand(page, "Create", "Datum plane")
     const form = page.getByRole("form", { name: "Create datum plane" })
     await expect(form.getByRole("combobox", { name: "Support" })).toBeDisabled()
     await expect(form.getByRole("combobox", { name: "Support" })).toHaveText("Selected model face")

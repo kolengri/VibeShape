@@ -7,9 +7,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
-import { CirclePause, CirclePlay, Ellipsis, PenLine, Trash2 } from "@vibeshape/ui/components/icons"
+import {
+  CirclePause,
+  CirclePlay,
+  Ellipsis,
+  PenLine,
+  Scan,
+  Trash2,
+} from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { type RefObject, useState } from "react"
+import { type RefObject, useRef, useState } from "react"
 import type {
   DocumentControllerState,
   DocumentMutationResult,
@@ -19,6 +26,7 @@ import { FeatureDeleteDialog } from "../features/part-design/feature-delete-acti
 import { featureDeleteEligibility } from "../features/part-design/feature-delete-eligibility"
 
 type HistoryFeatureActionsProps = {
+  onFindInBrowser?: (() => void) | undefined
   controller: DocumentControllerState
   deleteDisabled: boolean
   feature: FeatureRecord
@@ -104,6 +112,7 @@ function FeatureHistoryMenu({
 }) {
   const t = useTranslations("app.shell.modelTree")
   const deleteT = useTranslations("app.shell.taskPanel.featureDelete")
+  const revealingResult = useRef(false)
   const actionsLabel = t("featureActions", { feature: props.label })
   const suppressionLabel = t(props.feature.suppressed ? "unsuppressFeature" : "suppressFeature", {
     feature: props.label,
@@ -130,9 +139,22 @@ function FeatureHistoryMenu({
       <DropdownMenuContent
         align="end"
         onCloseAutoFocus={(event) => {
-          if (model.deleteOpen || props.renameOpen) event.preventDefault()
+          if (model.deleteOpen || props.renameOpen || revealingResult.current)
+            event.preventDefault()
+          revealingResult.current = false
         }}
       >
+        {props.onFindInBrowser && (
+          <DropdownMenuItem
+            onSelect={() => {
+              revealingResult.current = true
+              props.onFindInBrowser?.()
+            }}
+          >
+            <Scan aria-hidden="true" />
+            {t("findInBrowser")}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
           disabled={props.renameDisabled || model.suppressionPending}
           onSelect={props.onRename}

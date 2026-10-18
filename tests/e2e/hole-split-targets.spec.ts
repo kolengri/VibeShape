@@ -1,5 +1,6 @@
 import { createSolids, saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test("offers both exact Split outputs as Hole targets after a real worker rebuild", async ({
@@ -27,8 +28,9 @@ test("offers both exact Split outputs as Hole targets after a real worker rebuil
   await drawRectangle(page)
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   await saved(page)
-  await expect(page.getByRole("button", { name: "Hole", exact: true })).toBeEnabled()
-  await page.getByRole("button", { name: "Hole", exact: true }).click()
+  await expect(await openModelCommand(page, "Modify", "Hole")).toBeEnabled()
+  await page.keyboard.press("Escape")
+  await invokeModelCommand(page, "Modify", "Hole")
   const hole = page.getByRole("form", { name: "Hole", exact: true })
   const targetBody = hole.getByRole("combobox", { name: "Target body", exact: true })
   await expect(targetBody.getByRole("option", { name: /split\.negative/ })).toBeAttached()

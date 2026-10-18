@@ -1,11 +1,9 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function addBox(page: Page) {
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box" })
   for (const name of ["Width", "Depth", "Height"])
     await form.getByRole("combobox", { name, exact: true }).fill("20 mm")
@@ -56,10 +54,7 @@ test("picks a source edge graphically and explicitly repairs a change to a congr
   await addBox(page)
   const viewport = page.getByRole("region", { name: "3D viewport" })
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Fillet", exact: true })
-    .click()
+  await invokeModelCommand(page, "Modify", "Fillet")
   const form = page.getByRole("form", { name: "Create fillet" })
   await form.getByRole("radio", { name: "Selected edges", exact: true }).check()
   await pickSourceEdge(page)

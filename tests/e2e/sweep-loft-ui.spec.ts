@@ -4,6 +4,7 @@ import { readSweepFeatureParameters } from "../../packages/domain/src/part-desig
 import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
 
 type ScreenMatrix = { a: number; b: number; c: number; d: number; e: number; f: number }
@@ -85,7 +86,7 @@ async function selectDatumPlaneFace(page: Page) {
           "A canvas sample must exist.",
         )
         await canvas.click({ position })
-        return page.locator("footer[role='status']").textContent()
+        return page.locator("main > footer").textContent()
       },
       { timeout: 30_000 },
     )
@@ -102,7 +103,7 @@ test("authors Loft sections on an explicit datum plane, cancels, reorders, edits
   await commands.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xy")
   await drawCenteredProfile(page)
-  await commands.getByRole("button", { name: "Datum plane", exact: true }).click()
+  await invokeModelCommand(page, "Create", "Datum plane")
   const datum = page.getByRole("form", { name: "Create datum plane", exact: true })
   await datum.getByRole("combobox", { name: "Support", exact: true }).selectOption("xy")
   await datum.getByRole("combobox", { name: "Offset", exact: true }).fill("20 mm")
@@ -120,7 +121,7 @@ test("authors Loft sections on an explicit datum plane, cancels, reorders, edits
   await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
   await drawCenteredProfile(page)
   const before = await saveProject(page)
-  await commands.getByRole("button", { name: "Loft", exact: true }).click()
+  await invokeModelCommand(page, "Create", "Loft")
   let form = page.getByRole("form", { name: "Loft profiles", exact: true })
   await expect(form.getByRole("button", { name: "Apply feature", exact: true })).toBeDisabled()
   await addSection(page, "Sketch 1 · Profile 1")
@@ -132,7 +133,7 @@ test("authors Loft sections on an explicit datum plane, cancels, reorders, edits
   expect((await saveProject(page)).project.snapshot.features).toEqual(
     before.project.snapshot.features,
   )
-  await commands.getByRole("button", { name: "Loft", exact: true }).click()
+  await invokeModelCommand(page, "Create", "Loft")
   form = page.getByRole("form", { name: "Loft profiles", exact: true })
   await addSection(page, "Sketch 1 · Profile 1")
   await addSection(page, "Sketch 2 · Profile 1")
@@ -209,7 +210,7 @@ test("authors a straight Sweep from an XY profile and an explicit XZ path, guard
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   await saved(page)
   const before = await saveProject(page)
-  await commands.getByRole("button", { name: "Sweep", exact: true }).click()
+  await invokeModelCommand(page, "Create", "Sweep")
   let form = page.getByRole("form", { name: "Sweep profile", exact: true })
   await form
     .getByRole("combobox", { name: "Profile", exact: true })
@@ -249,7 +250,7 @@ test("authors a straight Sweep from an XY profile and an explicit XZ path, guard
   expect((await saveProject(page)).project.snapshot.features).toEqual(
     before.project.snapshot.features,
   )
-  await commands.getByRole("button", { name: "Sweep", exact: true }).click()
+  await invokeModelCommand(page, "Create", "Sweep")
   form = page.getByRole("form", { name: "Sweep profile", exact: true })
   await form
     .getByRole("combobox", { name: "Profile", exact: true })

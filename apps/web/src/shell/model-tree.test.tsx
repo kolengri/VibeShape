@@ -33,7 +33,9 @@ mock.module("@dnd-kit/react/sortable", () => ({
     operation.source !== null && operation.target !== null,
 }))
 
-const { act, cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
 const { default: userEvent } = await import("@testing-library/user-event")
 const {
   boxFeatureType,
@@ -376,6 +378,8 @@ type RenderTreeOptions = Partial<
     | "onAuthoredMetadata"
     | "onBodyPreselectionChange"
     | "onBodyActivate"
+    | "onRevealFeature"
+    | "revealRequest"
   >
 >
 
@@ -503,7 +507,7 @@ function authoredInsertionController() {
   return { controller, sourceId, transformerId, part }
 }
 
-function renderTree(options: RenderTreeOptions = {}) {
+function renderTree(options: RenderTreeOptions = {}, detailed = true) {
   const props: ModelTreeProps = {
     activeFeatureId: featureId,
     activeSketchId: null,
@@ -530,13 +534,29 @@ function renderTree(options: RenderTreeOptions = {}) {
     sketchRenameBlockedId: null,
     ...options,
   }
-  return render(
+  const content = (props: ModelTreeProps) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
         <ModelTree {...props} />
+        <ModelTree {...props} surface="timeline" />
       </TooltipProvider>
-    </I18nProvider>,
+    </I18nProvider>
   )
+  const result = render(content(props))
+  if (detailed) fireEvent.click(screen.getByRole("button", { name: "Details" }))
+  return {
+    ...result,
+    rerenderTree: (options: RenderTreeOptions) =>
+      result.rerender(content({ ...props, ...options })),
+  }
+}
+
+function browser() {
+  return within(screen.getByRole("complementary", { name: "Model tree" }))
+}
+
+function timeline() {
+  return within(screen.getByRole("region", { name: "Feature history" }))
 }
 
 describe("ModelTree insertion body boundary", () => {
@@ -691,7 +711,7 @@ describe("ModelTree History presentation", () => {
         await user.hover(screen.getByRole("button", { name: "Source region 2 from Profile" }))
         expect(onPreview).toHaveBeenLastCalledWith(secondProfile)
       }
-      const sketchRow = screen.getByRole("treeitem", { name: "Profile" })
+      const sketchRow = timeline().getByRole("treeitem", { name: "Edit Profile" })
       expect(
         sketchRow.closest("[data-history-id]")?.getAttribute("data-history-source-highlighted"),
       ).toBe("true")
@@ -704,6 +724,54 @@ describe("ModelTree History presentation", () => {
       expect(onPreview).toHaveBeenLastCalledWith(null)
     },
   )
+  it("excludes compact source controls from accessible roles and tab navigation until Details opens", async () => {
+    const user = userEvent.setup()
+    const onPreview = vi.fn()
+    const profile = {
+      schemaVersion: 0 as const,
+      sketchId,
+      outerBoundaryEntityIds: [sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2901")],
+      holeBoundaryEntityIds: [],
+    }
+    const extrusion = featureRecordSchema.parse({
+      ...feature,
+      type: legacyExtrusionFeatureType.type,
+      parameters: {
+        profile,
+        distance: createLengthQuantity(10),
+        symmetric: false,
+        operation: "new",
+      },
+    })
+    renderTree(
+      {
+        controller: {
+          ...controller,
+          report: {
+            ...controllerReport,
+            snapshot: { ...controllerReport.snapshot, features: [extrusion] },
+          },
+        },
+        onSourceProfilePreview: onPreview,
+      },
+      false,
+    )
+    const sourceName = "Source region 1 from Profile"
+    const actions = timeline().getByRole("button", { name: "Actions for Box 1" })
+    expect(timeline().queryByRole("button", { name: sourceName }) === null).toBe(true)
+    act(() => actions.focus())
+    await user.tab()
+    expect(document.activeElement?.getAttribute("aria-label")).not.toBe(sourceName)
+    expect(onPreview).not.toHaveBeenCalled()
+
+    await user.click(timeline().getByRole("button", { name: "Details" }))
+    const source = timeline().getByRole("button", { name: sourceName })
+    act(() => actions.focus())
+    await user.tab()
+    expect(document.activeElement === source).toBe(true)
+    expect(onPreview).toHaveBeenLastCalledWith(profile)
+  })
+
   it("captures a sortable source at drag start before a drop target exists", async () => {
     const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
     const semanticController = {
@@ -761,8 +829,8 @@ describe("ModelTree History presentation", () => {
     dragHistoryRow(`feature:${featureId}`, 1, `sketch:${sketchId}`, 0)
     await waitFor(() => {
       expect(
-        screen
-          .getByRole("treeitem", { name: "Profile" })
+        timeline()
+          .getByRole("treeitem", { name: "Edit Profile" })
           .closest("[data-history-id]")
           ?.getAttribute("data-history-reorder-disabled"),
       ).toBe("true")
@@ -778,8 +846,8 @@ describe("ModelTree History presentation", () => {
     })
     await waitFor(() => {
       expect(
-        screen
-          .getByRole("treeitem", { name: "Profile" })
+        timeline()
+          .getByRole("treeitem", { name: "Edit Profile" })
           .closest("[data-history-id]")
           ?.getAttribute("data-history-reorder-disabled"),
       ).toBeNull()
@@ -815,9 +883,9 @@ describe("ModelTree History presentation", () => {
       ),
     ).toEqual([sketchId, featureId])
     expect(screen.queryByRole("button", { name: "Reorder Profile" })).toBeNull()
-    expect(screen.getByRole("treeitem", { name: "Profile" }).getAttribute("aria-describedby")).toBe(
-      "history-drag-instructions",
-    )
+    expect(
+      timeline().getByRole("treeitem", { name: "Edit Profile" }).getAttribute("aria-describedby"),
+    ).toBe("history-drag-instructions")
     expect(screen.queryByRole("button", { name: "Move Profile earlier" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Move Profile" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Move Box 1" })).toBeNull()
@@ -855,13 +923,18 @@ describe("ModelTree History presentation", () => {
     ).toBeTruthy()
   })
 
-  it("renders one graph-ordered History and terminal Bodies presentation", () => {
+  it("separates graph-ordered History from browser workspaces, bodies, and sketches", () => {
     const { container } = renderTree()
 
-    expect(screen.getByRole("treeitem", { name: "History" })).toBeTruthy()
-    expect(screen.getByRole("treeitem", { name: "Bodies" })).toBeTruthy()
+    expect(timeline().getByRole("treeitem", { name: "History" })).toBeTruthy()
+    expect(browser().queryByRole("treeitem", { name: "History" })).toBeNull()
+    for (const name of ["Variables", "Bodies", "Sketches", "Body 1", "Profile"]) {
+      expect(browser().getByRole("treeitem", { name })).toBeTruthy()
+      expect(timeline().queryByRole("treeitem", { name })).toBeNull()
+    }
+    expect(browser().queryByRole("treeitem", { name: "Box 1" })).toBeNull()
+    expect(timeline().getByRole("treeitem", { name: "Edit Profile" })).toBeTruthy()
     expect(screen.queryByRole("treeitem", { name: "Features" })).toBeNull()
-    expect(screen.queryByRole("treeitem", { name: "Sketches" })).toBeNull()
     expect(
       [...container.querySelectorAll<HTMLElement>("[data-history-id]")].map(
         (element) => `${element.dataset.historyKind}:${element.dataset.historyId}`,
@@ -870,7 +943,7 @@ describe("ModelTree History presentation", () => {
     expect(screen.getByRole("treeitem", { name: "Body 1" })).toBeTruthy()
     expect(screen.getByText("Result of Box 1")).toBeTruthy()
     expect(screen.getByRole("treeitem", { name: "Box 1" }).querySelector("svg")).toBeTruthy()
-    expect(screen.getByText("Supported by XY plane")).toBeTruthy()
+    expect(timeline().getByText("Supported by XY plane")).toBeTruthy()
   })
 
   it("shows a transient rollback boundary only during active sketch editing", () => {
@@ -937,44 +1010,122 @@ describe("ModelTree History presentation", () => {
 })
 
 describe("ModelTree History disclosure", () => {
-  it("collapses History and Bodies without leaving an active sketch", async () => {
+  it("keeps browser sketches, bodies, and History disclosure independent during sketch editing", async () => {
     const user = userEvent.setup()
     const onWorkspaceChange = vi.fn()
+    const onSketchActivate = vi.fn()
     renderTree({
       activeSketchId: sketchId,
       activeWorkspace: "sketch",
       onWorkspaceChange,
+      onSketchActivate,
     })
 
-    const history = screen.getByRole("treeitem", { name: "History" })
+    const history = timeline().getByRole("treeitem", { name: "History" })
     await user.click(history)
     expect(history.getAttribute("aria-expanded")).toBe("false")
-    expect(screen.queryByRole("treeitem", { name: "Profile" })).toBeNull()
+    expect(timeline().queryByRole("treeitem", { name: "Edit Profile" })).toBeNull()
+    expect(browser().getByRole("treeitem", { name: "Profile" })).toBeTruthy()
 
     await user.click(history)
-    const bodies = screen.getByRole("treeitem", { name: "Bodies" })
+    const sketches = browser().getByRole("treeitem", { name: "Sketches" })
+    await user.click(sketches)
+    expect(sketches.getAttribute("aria-expanded")).toBe("false")
+    expect(browser().queryByRole("treeitem", { name: "Profile" })).toBeNull()
+    expect(timeline().getByRole("treeitem", { name: "Edit Profile" })).toBeTruthy()
+
+    const bodies = browser().getByRole("treeitem", { name: "Bodies" })
     await user.click(bodies)
     expect(bodies.getAttribute("aria-expanded")).toBe("false")
-    expect(screen.queryByRole("treeitem", { name: "Body 1" })).toBeNull()
+    expect(browser().queryByRole("treeitem", { name: "Body 1" })).toBeNull()
+    expect(history.getAttribute("aria-expanded")).toBe("true")
     expect(onWorkspaceChange).not.toHaveBeenCalled()
+    expect(onSketchActivate).not.toHaveBeenCalled()
   })
 
-  it("navigates visible tree items and disclosure groups with the keyboard", async () => {
+  it("navigates browser disclosure with vertical arrows without entering the timeline", async () => {
     const user = userEvent.setup()
     renderTree()
 
-    const variables = screen.getByRole("treeitem", { name: "Variables" })
-    variables.focus()
-    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowRight}")
-    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: "Box 1" }))
-
-    await user.keyboard("{ArrowLeft}")
-    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: "History" }))
-    await user.keyboard("{ArrowLeft}")
-    expect(screen.getByRole("treeitem", { name: "History" }).getAttribute("aria-expanded")).toBe(
-      "false",
-    )
+    const sketches = browser().getByRole("treeitem", { name: "Sketches" })
+    sketches.focus()
+    await user.keyboard("{ArrowRight}")
+    expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Profile" }))
+    await user.keyboard("{ArrowLeft}{ArrowLeft}")
+    expect(document.activeElement).toBe(sketches)
+    expect(sketches.getAttribute("aria-expanded")).toBe("false")
+    await user.keyboard("{Home}")
+    expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Variables" }))
+    await user.keyboard("{ArrowDown}")
+    expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Origin" }))
   })
+
+  it("navigates horizontal History with left and right arrows and keeps its tab stop scoped", async () => {
+    const user = userEvent.setup()
+    renderTree({}, false)
+    const history = timeline().getByRole("treeitem", { name: "History" })
+    const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
+    const sketchItem = timeline().getByRole("treeitem", { name: "Edit Profile" })
+    expect(timeline().getByRole("tree").getAttribute("aria-orientation")).toBe("horizontal")
+    history.focus()
+    await user.keyboard("{ArrowRight}")
+    expect(document.activeElement).toBe(featureItem)
+    await user.keyboard("{ArrowRight}")
+    expect(document.activeElement).toBe(sketchItem)
+    expect(sketchItem.tabIndex).toBe(0)
+    expect(featureItem.tabIndex).toBe(-1)
+    await user.keyboard("{ArrowLeft}")
+    expect(document.activeElement).toBe(featureItem)
+    await user.keyboard("{End}")
+    expect(document.activeElement).toBe(sketchItem)
+    await user.keyboard("{Home}")
+    expect(document.activeElement).toBe(history)
+    expect(browser().getByRole("treeitem", { name: "Variables" }).tabIndex).toBe(0)
+  })
+
+  it("starts with compact History icons and toggles details without changing browser content", async () => {
+    const user = userEvent.setup()
+    renderTree({}, false)
+    const details = timeline().getByRole("button", { name: "Details" })
+    const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
+    expect(within(featureItem).getByText("Box 1").classList.contains("sr-only")).toBe(true)
+    expect(featureItem.querySelector("svg")).toBeTruthy()
+    expect(timeline().queryByRole("button", { name: "Hide Box 1" })).toBeNull()
+    expect(browser().getByRole("button", { name: "Hide Profile" })).toBeTruthy()
+    await user.click(details)
+    expect(within(featureItem).getByText("Box 1").classList.contains("sr-only")).toBe(false)
+    expect(timeline().getByRole("button", { name: "Hide Box 1" })).toBeTruthy()
+    expect(timeline().getByText("Supported by XY plane")).toBeTruthy()
+    await user.click(details)
+    expect(within(featureItem).getByText("Box 1").classList.contains("sr-only")).toBe(true)
+    expect(timeline().queryByRole("button", { name: "Hide Box 1" })).toBeNull()
+    expect(browser().getByRole("treeitem", { name: "Profile" })).toBeTruthy()
+  })
+})
+
+describe("ModelTree compact repair evidence", () => {
+  it.each(["reference", "support"] as const)(
+    "keeps a visible repair badge on compact sketches with a broken %s",
+    (kind) => {
+      const broken =
+        kind === "reference"
+          ? controllerWithBrokenSketchReference()
+          : controllerWithMissingSketchSupport()
+      renderTree({ controller: broken.controller }, false)
+      const sketchItem = timeline().getByRole("treeitem", { name: `Edit ${broken.target.label}` })
+      const row = sketchItem.closest<HTMLElement>("[data-history-id]")
+      if (!row) throw new Error("Expected the compact History row.")
+      expect(
+        within(row).getByRole("img", {
+          name: "Missing references — open this item to select replacement inputs.",
+        }),
+      ).toBeTruthy()
+      expect(within(sketchItem).getByText(broken.target.label).classList.contains("sr-only")).toBe(
+        true,
+      )
+      expect(timeline().getAllByRole("img")).toHaveLength(1)
+    },
+  )
 })
 
 describe("ModelTree workspace readiness", () => {
@@ -1021,9 +1172,92 @@ describe("ModelTree History failure", () => {
       controller: invalidController,
     })
 
-    expect(screen.getByRole("status").textContent).toContain("History ordering is unavailable")
+    expect(screen.getByText(/History ordering is unavailable/).getAttribute("role")).toBe("status")
     expect(screen.queryByText(/Rollback context/)).toBeNull()
     expect(container.querySelector("[data-history-rolled-back='true']")).toBeNull()
+  })
+})
+
+describe("ModelTree folder selection descriptions", () => {
+  it("announces feature and sketch grouping selection without changing edit selection or browser names", async () => {
+    const user = userEvent.setup()
+    const fixture = authoredInsertionController()
+    const authority = fixture.controller.authoredSnapshot
+    const report = fixture.controller.report
+    if (!authority || authority.schemaVersion === 1 || !report)
+      throw new Error("Expected authored History.")
+    const history = [...authority.history, { kind: "sketch" as const, id: sketchId }]
+    const activeFeature = requireAuthoredFixture(
+      authority.features.find(({ label }) => label === "Box 2"),
+    )
+    const onFeatureActivate = vi.fn()
+    const onSketchActivate = vi.fn()
+    renderTree(
+      {
+        controller: {
+          ...fixture.controller,
+          historyInsertion: null,
+          authoredSnapshot: { ...authority, sketches: [...authority.sketches, sketch], history },
+          report: {
+            ...report,
+            historyItems: history,
+            snapshot: { ...report.snapshot, sketches: [...report.snapshot.sketches, sketch] },
+          },
+        },
+        activeFeatureId: activeFeature.id,
+        onFeatureActivate,
+        onSketchActivate,
+        onAuthoredMetadata: vi.fn().mockResolvedValue({ ok: true }),
+      },
+      false,
+    )
+    const featureItem = timeline().getByRole("treeitem", { name: "Box 2" })
+    const sketchItem = timeline().getByRole("treeitem", { name: "Edit Profile" })
+    const browserSketch = browser().getByRole("treeitem", { name: "Profile" })
+    expect(
+      timeline().getByRole("treeitem", {
+        name: "Box 2",
+        description: /Not selected for folder grouping[.]/,
+      }),
+    ).toBe(featureItem)
+    expect(
+      timeline().getByRole("treeitem", {
+        name: "Edit Profile",
+        description: /Not selected for folder grouping[.]/,
+      }),
+    ).toBe(sketchItem)
+    expect(browserSketch.getAttribute("aria-describedby")).toBeNull()
+    act(() => featureItem.focus())
+    await user.keyboard("{Shift>} {/Shift}")
+    expect(
+      timeline().getByRole("treeitem", {
+        name: "Box 2",
+        description: /Selected for folder grouping[.]/,
+      }),
+    ).toBe(featureItem)
+    expect(featureItem.getAttribute("aria-selected")).toBe("true")
+    fireEvent.click(sketchItem, { ctrlKey: true })
+    expect(
+      timeline().getByRole("treeitem", {
+        name: "Edit Profile",
+        description: /Selected for folder grouping[.]/,
+      }),
+    ).toBe(sketchItem)
+    expect(sketchItem.getAttribute("aria-selected")).toBe("false")
+    fireEvent.click(featureItem, { ctrlKey: true })
+    expect(
+      timeline().getByRole("treeitem", {
+        name: "Box 2",
+        description: /Not selected for folder grouping[.]/,
+      }),
+    ).toBe(featureItem)
+    expect(featureItem.getAttribute("aria-selected")).toBe("true")
+    expect(
+      browser().getByRole("treeitem", { name: "Profile" }).getAttribute("aria-describedby"),
+    ).toBeNull()
+    expect(timeline().getByRole("treeitem", { name: "Edit Profile" })).toBe(sketchItem)
+    expect(onFeatureActivate).not.toHaveBeenCalled()
+    expect(onSketchActivate).not.toHaveBeenCalled()
   })
 })
 
@@ -1075,8 +1309,10 @@ describe("ModelTree selection", () => {
 
     renderTree({ controller: broken.controller, onSketchActivate })
 
-    expect(screen.getByText("Needs repair: 1 direct failure; no chained failures.")).toBeTruthy()
-    const repair = screen.getByRole("button", {
+    expect(
+      timeline().getByText("Needs repair: 1 direct failure; no chained failures."),
+    ).toBeTruthy()
+    const repair = timeline().getByRole("button", {
       name: "Open Dependent to repair 1 broken reference",
     })
     expect(repair.querySelector("svg")).toBeTruthy()
@@ -1090,11 +1326,13 @@ describe("ModelTree selection", () => {
     renderTree({ controller: broken.controller })
 
     expect(
-      screen.getByRole("button", {
+      timeline().getByRole("button", {
         name: "Open Model dependent to repair 1 broken reference",
       }),
     ).toBeTruthy()
-    expect(screen.getByText("Needs repair: 1 direct failure; no chained failures.")).toBeTruthy()
+    expect(
+      timeline().getByText("Needs repair: 1 direct failure; no chained failures."),
+    ).toBeTruthy()
   })
 
   it("opens graphical support replacement directly from a missing-support badge", async () => {
@@ -1109,8 +1347,8 @@ describe("ModelTree selection", () => {
       onSketchSupportRepair,
     })
 
-    expect(screen.getByText("Needs repair: the support face is missing.")).toBeTruthy()
-    const repair = screen.getByRole("button", {
+    expect(timeline().getByText("Needs repair: the support face is missing.")).toBeTruthy()
+    const repair = timeline().getByRole("button", {
       name: "Replace the missing support for Face sketch",
     })
     await user.click(repair)
@@ -1124,7 +1362,9 @@ describe("ModelTree selection", () => {
     renderTree({ controller: unavailable.controller })
 
     expect(
-      screen.getByText("Support status is unavailable while its source feature is unavailable."),
+      timeline().getByText(
+        "Support status is unavailable while its source feature is unavailable.",
+      ),
     ).toBeTruthy()
     expect(
       screen.queryByRole("button", {
@@ -1132,6 +1372,175 @@ describe("ModelTree selection", () => {
       }),
     ).toBeNull()
   })
+})
+
+describe("ModelTree browser result selection", () => {
+  it("selects an unmanaged legacy body as an object when body activation is available", async () => {
+    const onBodyActivate = vi.fn()
+    const onFeatureActivate = vi.fn()
+    renderTree({ onBodyActivate, onFeatureActivate })
+
+    await userEvent.click(browser().getByRole("treeitem", { name: "Body 1" }))
+
+    expect(onBodyActivate).toHaveBeenCalledTimes(1)
+    expect(onBodyActivate).toHaveBeenCalledWith({ featureId })
+    expect(onFeatureActivate).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, "result"])(
+    "finds a terminal result through its body selection and browser reveal (%s)",
+    async (outputRole) => {
+      const onBodyActivate = vi.fn()
+      const onFeatureActivate = vi.fn()
+      const onRevealFeature = vi.fn()
+      if (!controllerReport.rebuild.ok) throw new Error("Expected rebuild evidence.")
+      const source = {
+        ...controller,
+        report: {
+          ...controllerReport,
+          rebuild: {
+            ok: true,
+            response: {
+              ...controllerReport.rebuild.response,
+              geometry: controllerReport.rebuild.response.geometry.map((geometry) => ({
+                ...geometry,
+                geometry: {
+                  ...geometry.geometry,
+                  ...(outputRole === undefined
+                    ? {}
+                    : {
+                        bodies: [
+                          {
+                            outputRole,
+                            shape: geometry.geometry.shape,
+                            mesh: geometry.geometry.mesh,
+                            topologyCandidates: [],
+                          },
+                        ],
+                      }),
+                },
+              })),
+            },
+          },
+        },
+      } as DocumentControllerState
+      renderTree({ controller: source, onBodyActivate, onFeatureActivate, onRevealFeature })
+
+      await userEvent.click(timeline().getByRole("button", { name: "Actions for Box 1" }))
+      await userEvent.click(screen.getByRole("menuitem", { name: "Find in browser" }))
+
+      expect(onBodyActivate).toHaveBeenCalledTimes(1)
+      expect(onBodyActivate).toHaveBeenCalledWith({
+        featureId,
+        ...(outputRole === undefined ? {} : { outputRole }),
+      })
+      expect(onRevealFeature).toHaveBeenCalledTimes(1)
+      expect(onRevealFeature).toHaveBeenCalledWith(featureId)
+      expect(onFeatureActivate).not.toHaveBeenCalled()
+    },
+  )
+
+  it("prefers the authored part over a raw body when finding its terminal feature result", async () => {
+    const fixture = authoredInsertionController()
+    const authority = fixture.controller.authoredSnapshot
+    if (!authority || authority.schemaVersion === 1) throw new Error("Expected authored parts.")
+    const part = requireAuthoredFixture(authority.parts[1])
+    const body = requireAuthoredFixture(part.bodyHistory.at(-1))
+    const onPartSelect = vi.fn()
+    const onBodyActivate = vi.fn()
+    const onRevealFeature = vi.fn()
+    renderTree({
+      controller: { ...fixture.controller, historyInsertion: null },
+      onPartSelect,
+      onBodyActivate,
+      onRevealFeature,
+    })
+
+    await userEvent.click(timeline().getByRole("button", { name: "Actions for Box 2" }))
+    await userEvent.click(screen.getByRole("menuitem", { name: "Find in browser" }))
+
+    expect(onPartSelect).toHaveBeenCalledTimes(1)
+    expect(onPartSelect).toHaveBeenCalledWith(part.id)
+    expect(onBodyActivate).not.toHaveBeenCalled()
+    expect(onRevealFeature).toHaveBeenCalledWith(body.featureId)
+  })
+
+  it.each(["missing callback", "suppressed", "missing geometry", "rolled back", "superseded"])(
+    "does not offer a false browser result for %s",
+    async (reason) => {
+      const onRevealFeature = vi.fn()
+      let source = reason === "suppressed" ? suppressedController : controller
+      if (reason === "missing geometry") {
+        source = {
+          ...controller,
+          report: { ...controllerReport, rebuild: { ok: false } },
+        } as DocumentControllerState
+      }
+      if (reason === "rolled back") {
+        source = {
+          ...controller,
+          report: {
+            ...controllerReport,
+            historyItems: [
+              { kind: "sketch", id: sketchId },
+              { kind: "feature", id: featureId },
+            ],
+          },
+        } as DocumentControllerState
+      }
+      if (reason === "superseded") {
+        source = { ...authoredInsertionController().controller, historyInsertion: null }
+      }
+      renderTree({
+        controller: source,
+        activeSketchId: reason === "rolled back" ? sketchId : null,
+        activeWorkspace: reason === "rolled back" ? "sketch" : "model",
+        ...(reason === "missing callback" ? {} : { onRevealFeature }),
+      })
+
+      await userEvent.click(timeline().getByRole("button", { name: "Actions for Box 1" }))
+
+      expect(screen.queryByRole("menuitem", { name: "Find in browser" }) === null).toBe(true)
+      expect(onRevealFeature).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([false, true])(
+    "opens a collapsed browser result branch and focuses it for a reveal request (authored: %s)",
+    async (authored) => {
+      const user = userEvent.setup()
+      const fixture = authoredInsertionController()
+      const source = authored ? { ...fixture.controller, historyInsertion: null } : controller
+      const targetFeatureId = authored
+        ? requireAuthoredFixture(
+            source.report?.snapshot.features.find(({ label }) => label === "Box 2"),
+          ).id
+        : featureId
+      const groupName = authored ? "Parts" : "Bodies"
+      const rowName = authored ? "Part Part 2" : "Body 1"
+      const { rerenderTree } = renderTree({
+        controller: source,
+        onPartSelect: vi.fn(),
+        onAuthoredMetadata: vi.fn().mockResolvedValue({ ok: true }),
+      })
+      const group = browser().getByRole("treeitem", { name: groupName })
+      await user.click(group)
+      expect(browser().queryByRole("treeitem", { name: rowName }) === null).toBe(true)
+
+      rerenderTree({ revealRequest: { featureId: targetFeatureId, sequence: 1 } })
+      const row = browser().getByRole("treeitem", { name: rowName })
+      const body = row.closest<HTMLElement>("[data-feature-id]")
+      if (!body) throw new Error("Expected the browser result container.")
+      const scroll = vi.fn()
+      body.scrollIntoView = scroll
+
+      await waitFor(() => {
+        expect(group.getAttribute("aria-expanded")).toBe("true")
+        expect(document.activeElement === row).toBe(true)
+        expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" })
+      })
+    },
+  )
 })
 
 describe("ModelTree visibility and deletion", () => {
@@ -1278,14 +1687,14 @@ describe("ModelTree visibility and deletion", () => {
     const onSketchVisibilityChange = vi.fn()
     const { unmount } = renderTree({ onSketchActivate, onSketchVisibilityChange })
 
-    await user.click(screen.getByRole("button", { name: "Hide Profile" }))
+    await user.click(timeline().getByRole("button", { name: "Hide Profile" }))
 
     expect(onSketchVisibilityChange).toHaveBeenCalledWith(sketchId, false)
     expect(onSketchActivate).not.toHaveBeenCalled()
 
     unmount()
     renderTree({ hiddenSketchIds: [sketchId], onSketchVisibilityChange })
-    await user.click(screen.getByRole("button", { name: "Show Profile" }))
+    await user.click(timeline().getByRole("button", { name: "Show Profile" }))
     expect(onSketchVisibilityChange).toHaveBeenLastCalledWith(sketchId, true)
   })
 
@@ -1314,7 +1723,7 @@ describe("ModelTree visibility and deletion", () => {
 
     expect(screen.queryByRole("button", { name: /Delete Profile/ })).toBeNull()
     expect(screen.queryByRole("menuitem", { name: /Delete Profile/ })).toBeNull()
-    await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
+    await user.click(timeline().getByRole("button", { name: "Actions for Profile" }))
     expect(onSketchRemove).not.toHaveBeenCalled()
     await user.click(screen.getByRole("menuitem", { name: "Delete Profile…" }))
     expect(onSketchRemove).not.toHaveBeenCalled()
@@ -1329,7 +1738,7 @@ describe("ModelTree visibility and deletion", () => {
     const user = userEvent.setup()
     const onSketchRemove = vi.fn()
     renderTree({ onSketchRemove })
-    const actions = screen.getByRole("button", { name: "Actions for Profile" })
+    const actions = timeline().getByRole("button", { name: "Actions for Profile" })
     actions.focus()
     await user.keyboard("{Enter}{ArrowDown}{Enter}")
     expect(screen.getByRole("alertdialog", { name: "Delete Profile?" })).toBeTruthy()
@@ -1383,7 +1792,7 @@ describe("ModelTree visibility and deletion", () => {
         },
       } as DocumentControllerState
       renderTree({ controller: source, onSketchRemove })
-      await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
+      await user.click(timeline().getByRole("button", { name: "Actions for Profile" }))
       const deletion = screen.getByRole("menuitem", { name: "Delete Profile…" })
       expect(deletion.getAttribute("aria-disabled")).not.toBe("true")
       await user.click(deletion)
@@ -1432,7 +1841,7 @@ describe("ModelTree rename", () => {
 
     unmount()
     renderTree({ sketchRenameBlockedId: sketchId })
-    await user.click(screen.getByRole("button", { name: "Actions for Profile" }))
+    await user.click(timeline().getByRole("button", { name: "Actions for Profile" }))
     expect(
       screen.getByRole("menuitem", { name: "Rename Profile…" }).getAttribute("aria-disabled"),
     ).toBe("true")

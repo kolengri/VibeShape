@@ -12,8 +12,11 @@ ellipsis menu; reordering has no position picker or keyboard adapter.
 Drag a row's label or non-interactive surface; there is no separate grip. Mouse movement must exceed
 5 px before dragging starts, so clicks and small pointer jitter still open the item. Nested visibility
 and actions-menu controls keep their own actions and never start a drag. Escape cancels a drag.
-Enter opens the item, F2 renames it, and arrow keys navigate the tree.
-Touch retains the sensor's long-press activation.
+Enter opens the item and F2 renames it. Left/Right navigate the bottom History timeline, while Up/Down operate its disclosure hierarchy; the left object browser retains vertical tree navigation.
+Touch retains the sensor's long-press activation. The vertical History rollback divider is a separate
+control: drag it between operations, or focus it and use Left/Right and Home/End. Escape cancels the
+divider gesture. Releasing it uses the normal guarded History navigation, without reordering items or
+adding an Undo checkpoint.
 
 Projects accepts one dropped `.vshape` file in its file card. Selection and dropping share local
 import, validation, error feedback, and activation. Files are not uploaded and existing projects are

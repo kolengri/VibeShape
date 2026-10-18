@@ -3,6 +3,7 @@ import { readThreadFeatureParameters } from "../../packages/domain/src/part-desi
 import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function startThread(page: Page) {
   await page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true }).click()
@@ -24,7 +25,7 @@ test("models a variable-pitch thread, blocks invalid and missed bands, cancels, 
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
   await commands.getByRole("button", { name: "Model", exact: true }).click()
-  await commands.getByRole("button", { name: "Cylinder", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Cylinder")
   const cylinder = page.getByRole("form", { name: "Create cylinder", exact: true })
   await cylinder.getByRole("combobox", { name: "Radius", exact: true }).fill("5 mm")
   await cylinder.getByRole("combobox", { name: "Height", exact: true }).fill("8 mm")

@@ -76,7 +76,11 @@ export function AssemblyContent({
   children: ReactNode
 }) {
   return active ? (
-    <AssemblyWorkspace controller={controller} selectedPartId={selectedPartId} />
+    <AssemblyWorkspace
+      key={controller.authoredSnapshot?.id ?? "unavailable"}
+      controller={controller}
+      selectedPartId={selectedPartId}
+    />
   ) : (
     children
   )

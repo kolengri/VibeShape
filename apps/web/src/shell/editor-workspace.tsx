@@ -146,7 +146,6 @@ import {
   viewerSketchDisplay,
 } from "./geometry-viewport"
 import { historyInsertionContext } from "./history-insertion-context"
-import { HistoryInsertionPoint } from "./history-insertion-point"
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
 import { useViewerPreferences } from "./viewer-preferences"
@@ -2106,20 +2105,44 @@ function editedSketchId(activeTool: ActiveSketchTool | null) {
 
 function EditorModelTree({
   props,
+  surface,
+  revealRequest,
+  onRevealFeature,
   profilePreview,
   onProfilePreview,
 }: {
   props: EditorWorkspaceProps
+  surface: "browser" | "timeline"
+  revealRequest: Readonly<{ featureId: FeatureId; sequence: number }> | null
+  onRevealFeature: (featureId: FeatureId) => void
   profilePreview: SketchProfileSelector | null
   onProfilePreview: ((profile: SketchProfileSelector | null) => void) | undefined
 }) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
+  const metadataBlocked = Boolean(activeTool || activeSketchTool)
   const repairSketchSupport = async (sketchId: SketchId) => {
     if ((await actions.editSketch(sketchId)) === false) return
     actions.beginSketchSupportReplacement()
   }
   return (
     <ModelTree
+      surface={surface}
+      onCreateSketch={actions.createSketch}
+      origin={{
+        selected: props.selectedOriginPlane,
+        visibility: props.originPlaneVisibility,
+        onSelect: (plane) => {
+          actions.setOriginPlaneVisibility(plane, true)
+          actions.selectOriginPlane(plane)
+        },
+        onVisibilityChange: actions.setOriginPlaneVisibility,
+        disabled: metadataBlocked,
+      }}
+      highlightedFeatureId={props.preselectedBody?.featureId ?? props.preselectedFeatureId}
+      selectedResultFeatureId={props.selectedBody?.featureId ?? props.selection?.featureId ?? null}
+      revealRequest={revealRequest}
+      onRevealFeature={onRevealFeature}
+      onHistoryReturnToEnd={actions.returnHistoryToEnd}
       onSourceProfilePreview={onProfilePreview}
       sourcePreviewSketchId={profilePreview?.sketchId}
       activeWorkspace={workspace}
@@ -2133,7 +2156,7 @@ function EditorModelTree({
       onPartSelect={actions.selectPart}
       onSurfaceTexture={actions.surfaceTexture}
       onAuthoredMetadata={commitAuthoredMetadata}
-      authoredMetadataBlocked={Boolean(activeTool || activeSketchTool)}
+      authoredMetadataBlocked={metadataBlocked}
       onBodyActivate={actions.selectBody}
       onBodyPreselectionChange={actions.preselectBody}
       onFeatureActivate={actions.editFeature}
@@ -2592,6 +2615,12 @@ function useWorkspaceProfileActions(
 }
 
 function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
+  const [revealRequest, setRevealRequest] = useState<Readonly<{
+    featureId: FeatureId
+    sequence: number
+  }> | null>(null)
+  const revealFeature = (featureId: FeatureId) =>
+    setRevealRequest((previous) => ({ featureId, sequence: (previous?.sequence ?? 0) + 1 }))
   const props = useHistoryInsertionWorkspaceProps(fullProps)
   const review = useSyncExternalStore(
     automationReviews.subscribe,
@@ -2629,19 +2658,27 @@ function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
   return (
     <SketchProjectionProvider>
       <WorkspacePanels
+        revealTreeRequest={revealRequest?.sequence}
         allowTransparency={props.workspace !== "variables"}
         modelTree={
-          <>
-            <HistoryInsertionPoint
-              controller={fullProps.controller}
-              onReturnToEnd={props.actions.returnHistoryToEnd}
-            />
-            <EditorModelTree
-              props={fullProps}
-              profilePreview={historySourcePreview.profile}
-              onProfilePreview={historySourcePreview.onPreview}
-            />
-          </>
+          <EditorModelTree
+            surface="browser"
+            revealRequest={revealRequest}
+            onRevealFeature={revealFeature}
+            props={fullProps}
+            profilePreview={historySourcePreview.profile}
+            onProfilePreview={historySourcePreview.onPreview}
+          />
+        }
+        history={
+          <EditorModelTree
+            surface="timeline"
+            revealRequest={revealRequest}
+            onRevealFeature={revealFeature}
+            props={fullProps}
+            profilePreview={historySourcePreview.profile}
+            onProfilePreview={historySourcePreview.onPreview}
+          />
         }
         taskPanel={
           <WorkspaceTaskPanel

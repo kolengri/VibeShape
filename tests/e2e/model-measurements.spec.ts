@@ -1,6 +1,7 @@
 import type { Locator } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 
 async function expectMetric(panel: Locator, label: string, value: string) {
   await expect(
@@ -19,8 +20,7 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-  const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box" })
   await box.getByRole("combobox", { name: "Width", exact: true }).fill("10 mm")
   await box.getByRole("combobox", { name: "Depth", exact: true }).fill("20 mm")
@@ -30,7 +30,7 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   const boxBody = page.locator("[data-body-id]").getByRole("treeitem")
   await expect(boxBody).toHaveCount(1)
   await boxBody.click()
-  const measure = toolbar.getByRole("button", { name: "Measure", exact: true })
+  const measure = await openModelCommand(page, "Inspect", "Measure")
   await measure.focus()
   await page.keyboard.press("Enter")
   const panel = page.getByRole("complementary", { name: "Measure", exact: true })
@@ -41,13 +41,13 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await expectMetric(panel, "Depth", "20 mm")
   await expectMetric(panel, "Height", "30 mm")
   await panel.getByRole("button", { name: "Close", exact: true }).click()
-  await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Cylinder")
   const cylinder = page.getByRole("form", { name: "Create cylinder" })
   await cylinder.getByRole("combobox", { name: "Radius", exact: true }).fill("5 mm")
   await cylinder.getByRole("combobox", { name: "Height", exact: true }).fill("10 mm")
   await cylinder.getByRole("button", { name: "Create cylinder" }).click()
   await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
-  await measure.click()
+  await invokeModelCommand(page, "Inspect", "Measure")
   const all = panel.getByRole("button", { name: "Show all current outputs" })
   if (await all.isVisible()) await all.click()
   const output = panel.getByRole("combobox", { name: "Body output", exact: true })
@@ -70,7 +70,7 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await edit.getByRole("combobox", { name: "Height", exact: true }).fill("40 mm")
   await edit.getByRole("button", { name: "Update box" }).click()
   await expect(edit).not.toBeVisible()
-  await measure.click()
+  await invokeModelCommand(page, "Inspect", "Measure")
   if (await all.isVisible()) await all.click()
   await output.selectOption({ label: "Box 1" })
   await expectMetric(panel, "Volume", "8,000 mm³")
@@ -84,7 +84,7 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await expect(units).not.toBeVisible()
   await page.reload()
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-  await measure.click()
+  await invokeModelCommand(page, "Inspect", "Measure")
   if (await all.isVisible()) await all.click()
   await output.selectOption({ label: "Box 1" })
   await expectMetric(panel, "Volume", "8 cm³")

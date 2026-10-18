@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 
 for (const operation of ["fillet", "chamfer"] as const) {
   test(`${operation} previews, rejects invalid geometry, edits and reopens a variable-driven body`, async ({
@@ -12,21 +13,21 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     const title = operation === "fillet" ? "Fillet" : "Chamfer"
     const dimension = operation === "fillet" ? "Radius" : "Distance"
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await expect(toolbar.getByRole("button", { name: title, exact: true })).toBeDisabled()
+    await expect(await openModelCommand(page, "Modify", title)).toBeDisabled()
+    await page.keyboard.press("Escape")
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("edgeSize")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("1 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const box = page.getByRole("form", { name: "Create box" })
     for (const name of ["Width", "Depth", "Height"]) {
       await box.getByRole("combobox", { name }).fill("20 mm")
     }
     await box.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
-    await toolbar.getByRole("button", { name: title, exact: true }).click()
+    await invokeModelCommand(page, "Modify", title)
     const form = page.getByRole("form", { name: `Create ${operation}` })
     const size = form.getByRole("combobox", { name: dimension, exact: true })
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -44,7 +45,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     )
     await form.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: `${title} 1`, exact: true })).toHaveCount(0)
-    await toolbar.getByRole("button", { name: title, exact: true }).click()
+    await invokeModelCommand(page, "Modify", title)
     await size.fill("#edgeSize")
     await form.getByRole("button", { name: `Create ${operation}` }).dblclick()
     const item = page.getByRole("treeitem", { name: `${title} 1`, exact: true })

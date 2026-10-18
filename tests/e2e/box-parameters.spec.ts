@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.describe("Box parameters", () => {
   test("creates and reopens a Box driven by a document variable", async ({ page }) => {
@@ -12,13 +13,7 @@ test.describe("Box parameters", () => {
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
 
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", {
-        name: "Box",
-        exact: true,
-      })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     await expect(boxForm).toBeVisible()
     const width = boxForm.getByRole("combobox", { name: "Width" })
@@ -31,7 +26,7 @@ test.describe("Box parameters", () => {
     await boxForm.getByRole("combobox", { name: "Origin Z" }).fill("5 mm")
     await boxForm.getByRole("button", { name: "Create box" }).dblclick()
 
-    const boxTreeItem = page.getByRole("treeitem", { name: "Box 1" })
+    const boxTreeItem = page.getByRole("treeitem", { name: "Box 1", exact: true })
     await expect(boxTreeItem).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
@@ -50,7 +45,7 @@ test.describe("Box parameters", () => {
       .toBe(true)
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The geometry canvas has no measurable bounds.")
-    const statusBar = page.locator("footer[role='status']")
+    const statusBar = page.locator("main > footer")
     await expect
       .poll(async () => {
         await viewport.locator("canvas").click({
@@ -81,9 +76,9 @@ test.describe("Box parameters", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.reload()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     const reopenedEditForm = page.getByRole("form", { name: "Edit box" })
     await expect(reopenedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#width")
     await expect(reopenedEditForm.getByRole("combobox", { name: "Depth" })).toHaveValue("28 mm")
@@ -102,7 +97,7 @@ test.describe("Box parameters", () => {
     await expect(committedName).toHaveValue("span")
     await expect(committedName).toBeDisabled()
 
-    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     const renamedEditForm = page.getByRole("form", { name: "Edit box" })
     await expect(renamedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#span")
     await expect(renamedEditForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("#span")
@@ -111,7 +106,7 @@ test.describe("Box parameters", () => {
     await page.reload()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("span")
-    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("#span")
@@ -123,15 +118,15 @@ test.describe("Box parameters", () => {
       .getByRole("form", { name: "Edit box" })
       .getByRole("button", { name: "Cancel" })
       .click()
-    const featureItem = page.getByRole("treeitem", { name: "Box 1" })
+    const featureItem = page.getByRole("treeitem", { name: "Box 1", exact: true })
     await featureItem.focus()
     await page.keyboard.press("F2")
     const renameFeature = page.getByRole("dialog", { name: "Rename feature" })
     await renameFeature.getByRole("textbox", { name: "Feature name" }).fill("Base block")
     await renameFeature.getByRole("button", { name: "Rename feature", exact: true }).dblclick()
-    await expect(page.getByRole("treeitem", { name: "Base block" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Base block", exact: true })).toBeVisible()
 
     await page.reload()
-    await expect(page.getByRole("treeitem", { name: "Base block" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Base block", exact: true })).toBeVisible()
   })
 })

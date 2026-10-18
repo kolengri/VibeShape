@@ -6,6 +6,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { openApplicationMenuItem } from "../e2e/application-menu-support"
 import { expect, test } from "../e2e/fixtures"
+import { invokeModelCommand } from "../e2e/model-command-support"
 
 const distribution = resolve(process.env.VIBESHAPE_DISTRIBUTION_ROOT ?? "")
 
@@ -52,10 +53,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: /Enable AI session|Stop AI/ })).toHaveCount(0)
     expect(await fetch(`${origin}/__vibeshape/automation/status`).then((r) => r.status)).toBe(404)
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const form = page.getByRole("form", { name: "Create box" })
     for (const [name, value] of [
       ["Width", "22 mm"],

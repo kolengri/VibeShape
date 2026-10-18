@@ -99,7 +99,7 @@ test("explains a selected model face and creates a sketch on its planar support"
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const bounds = await viewport.locator("canvas").boundingBox()
   if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
-  const status = page.locator("footer[role='status']")
+  const status = page.locator("main > footer")
   for (let row = 2; row < 10; row += 1) {
     for (let column = 1; column < 6; column += 1) {
       await page.mouse.click(

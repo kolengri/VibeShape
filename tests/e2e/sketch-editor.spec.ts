@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import {
   addDimension,
   clickSketchEntity,
@@ -108,8 +109,7 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Cylinder")
     const createCylinderForm = page.getByRole("form", { name: "Create cylinder" })
     const cylinderRadius = Number.parseFloat(
       await createCylinderForm.getByRole("combobox", { name: "Radius" }).inputValue(),
@@ -179,8 +179,7 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Cylinder")
     const createCylinderForm = page.getByRole("form", { name: "Create cylinder" })
     await createCylinderForm.getByRole("combobox", { name: "Origin X" }).fill("30 mm")
     await createCylinderForm.getByRole("combobox", { name: "Origin Y" }).fill("20 mm")
@@ -246,8 +245,7 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -296,8 +294,7 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -366,13 +363,12 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
       .click()
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -514,8 +510,7 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -594,7 +589,7 @@ test.describe("full sketch editor", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -865,7 +860,7 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })

@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test.setTimeout(60_000)
@@ -71,10 +72,7 @@ for (const theme of ["light", "dark"] as const) {
     page,
   }) => {
     await openWorkspace(page)
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box", exact: true })
@@ -132,10 +130,7 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   page,
 }) => {
   await openWorkspace(page)
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box", exact: true })
   const input = form.getByRole("combobox", { name: "Width", exact: true })
   await input.fill("77")
@@ -145,7 +140,7 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await page.setViewportSize({ width: 800, height: 720 })
   await expect(form).toBeVisible()
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
-  const preview = viewport.getByText("Unsaved extrusion preview", { exact: true })
+  const preview = viewport.getByText("Unsaved feature preview", { exact: true })
   await expect(preview).toBeVisible()
   const previewBounds = await preview.boundingBox()
   const planesBounds = await viewport

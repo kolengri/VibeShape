@@ -28,6 +28,7 @@ import {
   useDocumentController,
 } from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
+import { ProjectNavigationNotice } from "./document/project-navigation-notice"
 import {
   EditorSessionProvider,
   useEditorSession,
@@ -1061,6 +1062,7 @@ export function App() {
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
+      <ProjectNavigationNotice controller={controller} />
       <ViewerPreferencesProvider>
         <WorkspaceLayoutPreferencesProvider>
           <AutomationConnectionsProvider controller={controller}>

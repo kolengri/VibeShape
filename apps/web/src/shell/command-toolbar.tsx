@@ -8,11 +8,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
-import { ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
+import { Check, ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import {
   type EditorCommandId,
   type EditorCommandSketchFamilyId,
@@ -134,6 +134,18 @@ const sketchConstraintFamily = {
 const profileFeatureCommandIds = [
   editorCommandIds.createExtrusion,
   editorCommandIds.createRevolve,
+] as const satisfies readonly EditorCommandId[]
+
+const modelDirectCommandIds = [
+  editorCommandIds.createSketch,
+  ...profileFeatureCommandIds,
+] as const satisfies readonly EditorCommandId[]
+
+const modelCreateCommandIds = [
+  editorCommandIds.createDatumPlane,
+  editorCommandIds.createLoft,
+  editorCommandIds.createSweep,
+  editorCommandIds.generativeDesign,
 ] as const satisfies readonly EditorCommandId[]
 
 function commandsById(
@@ -289,30 +301,57 @@ function ToolbarCommandMenu({
   getDisabledReason,
   getLabel,
   label,
+  showLabel = false,
 }: {
   commands: readonly ResolvedEditorCommand[]
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
   label: string
+  showLabel?: boolean
 }) {
+  const menuId = useId()
+  const hasActiveCommand = commands.some(({ active }) => active)
+  if (commands.length === 0) return null
   return (
     <DropdownMenu>
       <Tooltip>
         <ToolbarButton asChild>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button type="button" size="icon-sm" variant="ghost" aria-label={label}>
-                <Ellipsis aria-hidden="true" />
+              <Button
+                type="button"
+                size={showLabel ? "sm" : "icon-sm"}
+                variant={hasActiveCommand ? "secondary" : "ghost"}
+                aria-label={label}
+                aria-current={hasActiveCommand ? "true" : undefined}
+              >
+                {showLabel ? (
+                  <>
+                    {hasActiveCommand ? <Check aria-hidden="true" /> : null}
+                    {label}
+                    <ChevronDown aria-hidden="true" />
+                  </>
+                ) : (
+                  <Ellipsis aria-hidden="true" />
+                )}
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
         </ToolbarButton>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent
+        align="start"
+        className={
+          showLabel
+            ? "max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+            : undefined
+        }
+      >
         {commands.map((command) => {
           const commandLabel = getLabel(command)
           const disabledReason = getDisabledReason(command)
+          const reasonId = disabledReason ? `${menuId}-${command.descriptor.id}-reason` : undefined
           const shortcut = command.descriptor.shortcut
             ? editorCommandShortcutLabel(command.descriptor.shortcut)
             : null
@@ -320,6 +359,8 @@ function ToolbarCommandMenu({
             <DropdownMenuItem
               key={command.descriptor.id}
               aria-label={commandLabel}
+              aria-describedby={reasonId}
+              aria-current={command.active ? "true" : undefined}
               disabled={!command.eligibility.enabled}
               onSelect={command.invoke}
             >
@@ -327,11 +368,15 @@ function ToolbarCommandMenu({
               <span className="min-w-0 flex-1">
                 <span className="block">{commandLabel}</span>
                 {disabledReason ? (
-                  <span className="block max-w-72 whitespace-normal text-xs text-muted-foreground">
+                  <span
+                    id={reasonId}
+                    className="block max-w-72 whitespace-normal text-xs text-muted-foreground"
+                  >
                     {disabledReason}
                   </span>
                 ) : null}
               </span>
+              {command.active ? <Check aria-hidden="true" /> : null}
               {shortcut ? (
                 <kbd className="font-mono text-[10px] text-muted-foreground">{shortcut}</kbd>
               ) : null}
@@ -373,6 +418,15 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
     ({ descriptor }) => descriptor.id === activeSketchToolId,
   )?.descriptor.sketchPresentation?.family
   const profileFeatureCommands = commandsById(modelPrimaryCommands, profileFeatureCommandIds)
+  const modelDirectCommands = commandsById(modelPrimaryCommands, modelDirectCommandIds)
+  const modelCreateCommands = commandsById(modelPrimaryCommands, modelCreateCommandIds)
+  const groupedModelCommandIds = new Set<EditorCommandId>([
+    ...modelDirectCommandIds,
+    ...modelCreateCommandIds,
+  ])
+  const modelModifyCommands = modelPrimaryCommands.filter(
+    ({ descriptor }) => !groupedModelCommandIds.has(descriptor.id),
+  )
 
   useEffect(() => {
     if (!activeSketchToolId) return
@@ -518,25 +572,39 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
                 />
               ) : null}
               <ToolbarCommandGroup
-                framed
-                commands={modelPrimaryCommands}
+                commands={modelDirectCommands}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
                 label={t("modelPrimaryLabel")}
               />
 
-              <ToolbarCommandGroup
-                framed
+              <ToolbarCommandMenu
+                showLabel
+                commands={modelCreateCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("modelCreateLabel")}
+              />
+              <ToolbarCommandMenu
+                showLabel
+                commands={modelModifyCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("modelModifyLabel")}
+              />
+              <ToolbarCommandMenu
+                showLabel
                 commands={modelPrimitiveCommands}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
                 label={t("primitives")}
               />
-              <ToolbarCommandGroup
+              <ToolbarCommandMenu
+                showLabel
                 commands={modelInspectionCommands}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
-                label={t("inspectionLabel")}
+                label={t("modelInspectLabel")}
               />
             </>
           )}

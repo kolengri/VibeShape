@@ -116,6 +116,8 @@
 | [0107](0107-bounded-generative-design-studies.md) | Accepted with reduced scope | Local multi-candidate structural studies and conservative keep-out regions |
 | [0108](0108-generative-design-fdm-constraints.md) | Accepted with reduced scope | Conservative FDM feature-size and support-policy constraints on structural studies |
 
+| [0109](0109-local-declarative-ui-plugins.md) | Accepted with reduced scope | Installable local declarative UI plugins and isolated calculator panels |
+
 Statuses:
 
 - `Proposed` — under discussion

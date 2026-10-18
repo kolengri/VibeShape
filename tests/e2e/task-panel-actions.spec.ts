@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.describe("Task-panel lifecycle actions", () => {
   test("keeps feature actions compact in the command header without horizontal overflow", async ({
@@ -6,10 +7,7 @@ test.describe("Task-panel lifecycle actions", () => {
   }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
 
     const form = page.getByRole("form", { name: "Create box" })
     const cancel = form.getByRole("button", { name: "Cancel", exact: true })

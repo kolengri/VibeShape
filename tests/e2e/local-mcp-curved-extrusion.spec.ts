@@ -4,6 +4,7 @@ import type { ModelMeasurementEntry } from "../../packages/domain/src/model-meas
 import { createAngleQuantity, createLengthQuantity } from "../../packages/domain/src/units"
 import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 function success<T>(
@@ -29,9 +30,8 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
   try {
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await toolbar.getByRole("button", { name: "Sphere", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Sphere")
     const sphereForm = page.getByRole("form", { name: "Create sphere" })
     await sphereForm.getByRole("combobox", { name: "Radius", exact: true }).fill("4 mm")
     await sphereForm.getByRole("combobox", { name: "Origin Z", exact: true }).fill("8 mm")

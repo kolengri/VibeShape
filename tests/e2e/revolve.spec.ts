@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import { resultOperationLabels, selectResultOperation } from "./result-operation-helpers"
 import {
   clickSavedProfileInViewport,
@@ -62,7 +63,7 @@ test.describe("selector-backed revolve", () => {
       timeout: 120_000,
     })
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     for (const dimension of ["Width", "Depth", "Height"] as const) {
       await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
@@ -174,7 +175,7 @@ test.describe("selector-backed revolve", () => {
         timeout: 120_000,
       })
       const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-      await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+      await invokeModelCommand(page, "Primitives", "Box")
       const boxForm = page.getByRole("form", { name: "Create box" })
       for (const dimension of ["Width", "Depth", "Height"] as const) {
         await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
@@ -199,8 +200,10 @@ test.describe("selector-backed revolve", () => {
       await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
       const form = page.getByRole("form", { name: "Revolve profile" })
       await form.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
+      await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Hide Box 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Box 1" }).click()
       await selectResultOperation(page, form, operation)
       await expect(
@@ -241,8 +244,10 @@ test.describe("selector-backed revolve", () => {
       await downstreamForm
         .getByRole("button", { name: "Select a profile in the 3D viewport" })
         .click()
+      await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Hide Revolve 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Revolve 1" }).click()
       await selectResultOperation(page, downstreamForm, operation)
       const downstreamTarget = downstreamForm
@@ -262,7 +267,7 @@ test.describe("selector-backed revolve", () => {
       timeout: 120_000,
     })
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     for (const dimension of ["Width", "Depth", "Height"] as const) {
       await boxForm.getByRole("combobox", { name: dimension }).fill("1 mm")
@@ -358,7 +363,7 @@ test.describe("selector-backed revolve", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     for (const dimension of ["Width", "Depth", "Height"] as const) {
       await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
@@ -462,7 +467,7 @@ test.describe("selector-backed revolve", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })

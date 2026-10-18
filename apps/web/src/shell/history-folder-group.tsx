@@ -18,7 +18,7 @@ import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useState } from "react"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { HistoryFolderDialog } from "./history-folder-dialog"
-import type { HistoryViewRow } from "./model-tree-history"
+import { type HistoryViewRow, historyRefKey } from "./model-tree-history"
 
 function RemoveFolder({
   folder,
@@ -99,6 +99,21 @@ function RemoveFolder({
   )
 }
 
+function folderVisualRange(folder: HistoryFolder, rows: readonly HistoryViewRow[]) {
+  const first = folder.items[0]
+  if (!first) return null
+  const start = rows.findIndex((row) => historyRefKey(row.ref) === historyRefKey(first))
+  if (
+    start < 0 ||
+    !folder.items.every((item, offset) => {
+      const row = rows[start + offset]
+      return row && historyRefKey(row.ref) === historyRefKey(item)
+    })
+  )
+    return null
+  const end = start + folder.items.length - 1
+  return { start, end, first: historyRefKey(first), last: historyRefKey(rows[end]?.ref ?? first) }
+}
 export function HistoryFolderGroup({
   authority,
   folder,
@@ -106,6 +121,7 @@ export function HistoryFolderGroup({
   disabled,
   onCommit,
   children,
+  horizontal = false,
 }: {
   authority: AuthoredDocumentSnapshot
   folder: HistoryFolder
@@ -113,11 +129,22 @@ export function HistoryFolderGroup({
   disabled: boolean
   onCommit: AuthoredMetadataCommit
   children: ReactNode
+  horizontal?: boolean
 }) {
   const t = useTranslations("app.authoredTree")
   const [expanded, setExpanded] = useState(true)
+  const range = horizontal ? folderVisualRange(folder, rows) : null
   return (
-    <div role="none" data-folder-id={folder.id}>
+    <div
+      role="none"
+      data-folder-id={folder.id}
+      data-history-expanded={horizontal ? String(expanded) : undefined}
+      data-history-range-start={range?.start}
+      data-history-range-end={range?.end}
+      data-history-range-first={range?.first}
+      data-history-range-last={range?.last}
+      className={horizontal ? "shrink-0 border-x" : undefined}
+    >
       <div role="none" className="flex min-w-0 items-center">
         <Button
           type="button"
@@ -155,7 +182,7 @@ export function HistoryFolderGroup({
         />
       </div>
       {expanded && (
-        <fieldset className="ml-3 border-l border-border pl-1">
+        <fieldset className={horizontal ? "flex items-start" : "ml-3 border-l border-border pl-1"}>
           <legend className="sr-only">{folder.name}</legend>
           <HistoryFolderDialog
             authority={authority}

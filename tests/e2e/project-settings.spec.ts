@@ -1,5 +1,6 @@
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 for (const width of [1440, 512, 390]) {
   test(`keeps File and Settings discoverable and persists browser preferences at ${width}px`, async ({
@@ -84,10 +85,7 @@ test("keeps an active feature draft intact while File explains blocked actions",
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
   })
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box", exact: true })
   await form.getByRole("combobox", { name: "Width", exact: true }).fill("23 mm")
   await openApplicationMenuItem(page, "Files and projects…")

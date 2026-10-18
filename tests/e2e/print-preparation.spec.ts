@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { unzipSync } from "fflate"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("previews breakaway fins on a print copy and exports without changing CAD history", async ({
   page,
@@ -9,7 +10,7 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box" })
   await box.getByRole("button", { name: "Create box", exact: true }).click()
   await expect(box).not.toBeVisible()

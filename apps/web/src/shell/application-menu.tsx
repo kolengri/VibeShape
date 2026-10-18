@@ -22,6 +22,7 @@ import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { ImportDialog } from "../features/import/import-dialog"
 import { LibraryDialog } from "../features/library/library-dialog"
 import { PlanarImportDialog } from "../features/planar-import/import-dialog"
+import { ExtensionsDialog } from "./extensions-dialog"
 import { FaqDialog } from "./faq-dialog"
 import { SettingsDialog } from "./settings-dialog"
 import { useViewerPreferences } from "./viewer-preferences"
@@ -34,6 +35,7 @@ type MenuDialog =
   | "source-import"
   | "planar-import"
   | "library"
+  | "extensions"
 
 export function ApplicationMenu({
   controller,
@@ -143,6 +145,9 @@ export function ApplicationMenu({
               <Settings aria-hidden="true" />
               {t("settings")}
             </DropdownMenuItem>
+            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("extensions")}>
+              {t("extensions")}
+            </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
                 if (trigger.current) {
@@ -226,6 +231,11 @@ export function ApplicationMenu({
         blocked={unitChangesBlocked}
         showTrigger={false}
         open={dialog === "settings"}
+        onOpenChange={dialogOpenChange}
+        onCloseAutoFocus={closeDialogMenu}
+      />
+      <ExtensionsDialog
+        open={dialog === "extensions"}
         onOpenChange={dialogOpenChange}
         onCloseAutoFocus={closeDialogMenu}
       />

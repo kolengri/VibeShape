@@ -101,12 +101,16 @@ function taskPresentation(compact: boolean, collapsed: boolean) {
 export function WorkspacePanels({
   allowTransparency,
   children,
+  history,
   modelTree,
+  revealTreeRequest,
   taskPanel,
 }: {
   allowTransparency: boolean
   children: ReactNode
+  history?: ReactNode
   modelTree: ReactNode
+  revealTreeRequest?: number | undefined
   taskPanel: ReactNode
 }) {
   const t = useTranslations("app.shell.workspaceLayout")
@@ -120,6 +124,11 @@ export function WorkspacePanels({
   const preferences = useWorkspaceLayoutPreferences((state) => state)
   const root = useRef<HTMLDivElement>(null)
   const { treeCollapsed, taskCollapsed, treeOpacity, taskOpacity, actions } = preferences
+  useEffect(() => {
+    if (!revealTreeRequest) return
+    if (narrow) setTreeOpen(true)
+    else actions.setCollapsed("tree", false)
+  }, [actions, narrow, revealTreeRequest])
 
   const treeLayout = treePresentation(narrow, treeOpen, treeCollapsed)
   const taskLayout = taskPresentation(compact, taskCollapsed)
@@ -148,89 +157,98 @@ export function WorkspacePanels({
         toggle: () => setTreeOpen((open) => !open),
       }}
     >
-      <div
-        ref={root}
-        className="cad-workspace-grid min-h-0"
-        data-transparent={allowTransparency && !compact && (treeOpacity < 100 || taskOpacity < 100)}
-        style={
-          {
-            "--workspace-tree-opacity": `${treeOpacity}%`,
-            "--workspace-task-opacity": `${taskOpacity}%`,
-          } as CSSProperties
-        }
-      >
-        <div className="workspace-viewport">{children}</div>
-        <ResizablePanelGroup
-          className="pointer-events-none absolute inset-0 z-20"
-          onLayoutChanged={(_layout, { isUserInteraction }) => {
-            if (isUserInteraction) persistLayout()
-          }}
+      <div className="flex min-h-0 flex-col">
+        <div
+          ref={root}
+          className="cad-workspace-grid min-h-0 flex-1"
+          data-transparent={
+            allowTransparency && !compact && (treeOpacity < 100 || taskOpacity < 100)
+          }
+          style={
+            {
+              "--workspace-tree-opacity": `${treeOpacity}%`,
+              "--workspace-task-opacity": `${taskOpacity}%`,
+            } as CSSProperties
+          }
         >
-          <ResizablePanel
-            id="workspace-tree"
-            panelRef={tree}
-            defaultSize={initialTreeSize}
-            minSize={treeLayout.min}
-            maxSize={treeLayout.max}
-            collapsible
-            collapsedSize={0}
-            groupResizeBehavior="preserve-pixel-size"
-            onResize={({ inPixels }) => trackSize("tree", inPixels)}
-            style={{ overflow: treeLayout.overflow }}
-          >
-            <div
-              className="workspace-panel workspace-panel--tree"
-              data-drawer-open={treeLayout.drawerOpen}
-              id={treePanelId}
-              inert={treeLayout.inert}
-            >
-              {modelTree}
-            </div>
-          </ResizablePanel>
-          <ResizableHandle
-            aria-label={t("treeResize")}
-            className="pointer-events-auto max-sm:hidden"
-            disabled={narrow}
-            disableDoubleClick
-            onDoubleClick={() => {
-              actions.setCollapsed("tree", false)
-              actions.setWidth("tree", 240)
-              tree.current?.resize(240)
+          <div className="workspace-viewport">{children}</div>
+          <ResizablePanelGroup
+            className="pointer-events-none absolute inset-0 z-20"
+            onLayoutChanged={(_layout, { isUserInteraction }) => {
+              if (isUserInteraction) persistLayout()
             }}
-          />
-          <ResizablePanel id="workspace-center" minSize={taskLayout.centerMin} aria-hidden="true" />
-          <ResizableHandle
-            aria-label={t("taskResize")}
-            className="pointer-events-auto max-lg:hidden"
-            disabled={compact}
-            disableDoubleClick
-            onDoubleClick={() => {
-              actions.setCollapsed("task", false)
-              actions.setWidth("task", 320)
-              task.current?.resize(320)
-            }}
-          />
-          <ResizablePanel
-            id="workspace-task"
-            panelRef={task}
-            defaultSize={initialTaskSize}
-            minSize={taskLayout.min}
-            maxSize={taskLayout.max}
-            collapsible
-            collapsedSize={0}
-            groupResizeBehavior="preserve-pixel-size"
-            onResize={({ inPixels }) => trackSize("task", inPixels)}
-            style={{ overflow: "visible" }}
           >
-            <div
-              className="workspace-panel workspace-panel--task"
-              inert={taskLayout.hidden}
-              data-collapsed={taskLayout.hidden}
+            <ResizablePanel
+              id="workspace-tree"
+              panelRef={tree}
+              defaultSize={initialTreeSize}
+              minSize={treeLayout.min}
+              maxSize={treeLayout.max}
+              collapsible
+              collapsedSize={0}
+              groupResizeBehavior="preserve-pixel-size"
+              onResize={({ inPixels }) => trackSize("tree", inPixels)}
+              style={{ overflow: treeLayout.overflow }}
             >
-              {taskPanel}
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+              <div
+                className="workspace-panel workspace-panel--tree"
+                data-drawer-open={treeLayout.drawerOpen}
+                id={treePanelId}
+                inert={treeLayout.inert}
+              >
+                {modelTree}
+              </div>
+            </ResizablePanel>
+            <ResizableHandle
+              aria-label={t("treeResize")}
+              className="pointer-events-auto max-sm:hidden"
+              disabled={narrow}
+              disableDoubleClick
+              onDoubleClick={() => {
+                actions.setCollapsed("tree", false)
+                actions.setWidth("tree", 240)
+                tree.current?.resize(240)
+              }}
+            />
+            <ResizablePanel
+              id="workspace-center"
+              minSize={taskLayout.centerMin}
+              aria-hidden="true"
+            />
+            <ResizableHandle
+              aria-label={t("taskResize")}
+              className="pointer-events-auto max-lg:hidden"
+              disabled={compact}
+              disableDoubleClick
+              onDoubleClick={() => {
+                actions.setCollapsed("task", false)
+                actions.setWidth("task", 320)
+                task.current?.resize(320)
+              }}
+            />
+            <ResizablePanel
+              id="workspace-task"
+              panelRef={task}
+              defaultSize={initialTaskSize}
+              minSize={taskLayout.min}
+              maxSize={taskLayout.max}
+              collapsible
+              collapsedSize={0}
+              groupResizeBehavior="preserve-pixel-size"
+              onResize={({ inPixels }) => trackSize("task", inPixels)}
+              style={{ overflow: "visible" }}
+            >
+              <div
+                className="workspace-panel workspace-panel--task"
+                inert={taskLayout.hidden}
+                data-collapsed={taskLayout.hidden}
+              >
+                {taskPanel}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+        {history}
       </div>
     </CompactModelTreeContext.Provider>
   )

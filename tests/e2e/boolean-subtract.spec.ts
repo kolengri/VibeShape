@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 
 test.describe("Boolean subtraction", () => {
   test("restores selectable sources after a failed cut and preserves saved repair inputs", async ({
@@ -6,18 +7,16 @@ test.describe("Boolean subtraction", () => {
   }) => {
     test.setTimeout(60_000)
     await page.goto("/")
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     for (const label of ["Box 1", "Box 2"]) {
-      await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+      await invokeModelCommand(page, "Primitives", "Box")
       await page
         .getByRole("form", { name: "Create box" })
         .getByRole("button", { name: "Create box", exact: true })
         .click()
       await expect(page.getByRole("treeitem", { name: label, exact: true })).toBeVisible()
     }
-    const subtract = toolbar.getByRole("button", { name: "Subtract", exact: true })
-    await subtract.click()
+    await invokeModelCommand(page, "Modify", "Subtract")
     await page
       .getByRole("form", { name: "Subtract solids" })
       .getByRole("button", { name: "Subtract", exact: true })
@@ -25,8 +24,9 @@ test.describe("Boolean subtraction", () => {
     const failedFeature = page.getByRole("treeitem", { name: "Subtract 1", exact: true })
     await expect(failedFeature).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
-    await expect(subtract).toBeEnabled()
-    await subtract.click()
+    await expect(await openModelCommand(page, "Modify", "Subtract")).toBeEnabled()
+    await page.keyboard.press("Escape")
+    await invokeModelCommand(page, "Modify", "Subtract")
     const createForm = page.getByRole("form", { name: "Subtract solids" })
     await expect(
       createForm.getByRole("combobox", { name: "Target solid" }).locator("option"),
@@ -43,17 +43,19 @@ test.describe("Boolean subtraction", () => {
     await editForm.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.reload()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
-    await expect(subtract).toBeEnabled()
+    await expect(await openModelCommand(page, "Modify", "Subtract")).toBeEnabled()
+    await page.keyboard.press("Escape")
   })
 
   test("creates, edits, reopens, and safely deletes ordered solid inputs", async ({ page }) => {
     test.setTimeout(90_000)
     await page.goto("/")
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    const subtractCommand = toolbar.getByRole("button", { name: "Subtract", exact: true })
-    await expect(subtractCommand).toBeDisabled()
+    const subtractCommand = page.getByRole("menuitem", { name: "Subtract", exact: true })
+    await expect(await openModelCommand(page, "Modify", "Subtract")).toBeDisabled()
+    await page.keyboard.press("Escape")
 
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -61,7 +63,7 @@ test.describe("Boolean subtraction", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
 
     async function createCylinder(radius: string, label: string) {
-      await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+      await invokeModelCommand(page, "Primitives", "Cylinder")
       const form = page.getByRole("form", { name: "Create cylinder" })
       await form.getByRole("combobox", { name: "Radius" }).fill(radius)
       await form.getByRole("combobox", { name: "Height" }).fill("40 mm")
@@ -72,7 +74,7 @@ test.describe("Boolean subtraction", () => {
 
     await createCylinder("5 mm", "Cylinder 1")
     await createCylinder("6 mm", "Cylinder 2")
-    await expect(subtractCommand).toBeEnabled()
+    await expect(await openModelCommand(page, "Modify", "Subtract")).toBeEnabled()
     await subtractCommand.click()
 
     const createForm = page.getByRole("form", { name: "Subtract solids" })
@@ -180,9 +182,10 @@ test.describe("Boolean subtraction", () => {
     await compound.getByRole("button", { name: "Add part Cylinder 1", exact: true }).click()
     await compound.getByRole("button", { name: "Create", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Compound 1", exact: true })).toBeVisible()
-    await expect(subtractCommand).toBeDisabled()
+    await expect(await openModelCommand(page, "Modify", "Subtract")).toBeDisabled()
+    await page.keyboard.press("Escape")
     await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Compound 1", exact: true })).not.toBeVisible()
-    await expect(subtractCommand).toBeEnabled()
+    await expect(await openModelCommand(page, "Modify", "Subtract")).toBeEnabled()
   })
 })

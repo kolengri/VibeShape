@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function openLibrary(page: Page, name?: string) {
   await openApplicationMenuItem(page, "Library…")
@@ -73,7 +74,7 @@ test("publishes immutable local versions and explicitly inserts, updates and det
   await page.goto("/")
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box", exact: true })
   await box.getByRole("combobox", { name: "Width", exact: true }).fill("20 mm")
   await box.getByRole("button", { name: "Create box", exact: true }).click()
