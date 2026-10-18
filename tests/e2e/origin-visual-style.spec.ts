@@ -115,7 +115,7 @@ for (const theme of ["light", "dark"] as const) {
     }
     await expect(viewport.getByRole("img", { name: "World axes" })).toBeVisible()
     await selectIdleOriginPlaneInViewport(page, "xz")
-    await expect(page.locator("footer[role='status']")).toContainText("Selection: XZ plane")
+    await expect(page.locator("main > footer")).toContainText("Selection: XZ plane")
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Create sketch", exact: true })

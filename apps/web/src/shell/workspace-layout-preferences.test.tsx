@@ -41,7 +41,7 @@ describe("workspace layout preferences", () => {
     const store = createWorkspaceLayoutStore(storage)
     store.getState().actions.setWidth("tree", Number.NaN)
     store.getState().actions.setOpacity("task", Number.POSITIVE_INFINITY)
-    expect(store.getState()).toMatchObject({ treeWidth: 240, taskOpacity: 100 })
+    expect(store.getState()).toMatchObject({ treeWidth: 240, taskOpacity: 94 })
 
     for (const value of [
       '{"version":2,"treeWidth":300,"taskWidth":320,"treeOpacity":100,"taskOpacity":100,"treeCollapsed":false,"taskCollapsed":false}',
@@ -52,12 +52,23 @@ describe("workspace layout preferences", () => {
       expect(createWorkspaceLayoutStore(brokenStorage).getState()).toMatchObject({
         treeWidth: 240,
         taskWidth: 320,
-        treeOpacity: 100,
-        taskOpacity: 100,
+        treeOpacity: 94,
+        taskOpacity: 94,
         treeCollapsed: false,
         taskCollapsed: false,
       })
     }
+  })
+
+  it("preserves explicit opaque panel preferences when loading saved layouts", () => {
+    const storage = createMemoryStorage()
+    const store = createWorkspaceLayoutStore(storage)
+    store.getState().actions.setOpacity("tree", 100)
+    store.getState().actions.setOpacity("task", 100)
+    expect(createWorkspaceLayoutStore(storage).getState()).toMatchObject({
+      treeOpacity: 100,
+      taskOpacity: 100,
+    })
   })
 
   it("keeps session preferences working when storage throws", () => {
@@ -84,8 +95,8 @@ describe("workspace layout preferences", () => {
     expect(store.getState()).toMatchObject({
       treeWidth: 240,
       taskWidth: 320,
-      treeOpacity: 100,
-      taskOpacity: 100,
+      treeOpacity: 94,
+      taskOpacity: 94,
       treeCollapsed: false,
       taskCollapsed: false,
     })

@@ -183,6 +183,11 @@ import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
 import { createProjectActionGuard } from "./project-action-guard"
+import {
+  createProjectNavigation,
+  type ProjectNavigationError,
+  readProjectUrl,
+} from "./project-navigation"
 import { materializeDocumentSourceAssets } from "./source-assets-rebuild"
 import { formatProjectCopyName } from "./versioned-project-file"
 
@@ -198,6 +203,7 @@ export type DocumentControllerState = Readonly<{
   authoredSnapshot?: DocumentAuthoritySnapshot | null
   saveStatus: SaveStatus
   diagnostic: PersistentDocumentSessionDiagnostic | null
+  projectNavigationError?: ProjectNavigationError | null
   history?: Readonly<{ canUndo: boolean; canRedo: boolean }>
   historyInsertion?: Readonly<{
     documentId: DocumentSnapshot["id"]
@@ -294,9 +300,48 @@ let activeRepository: BrowserProjectRepository | null = null
 let activeDatabase: VibeShapeDatabase | null = null
 let defaultProjectName = "Untitled project"
 let startPromise: Promise<void> | null = null
+let projectNavigation: ReturnType<typeof createProjectNavigation> | null = null
 const listeners = new Set<() => void>()
 const projectActionGuard = createProjectActionGuard()
 export const registerProjectActionGuard = projectActionGuard.register
+
+function browserProjectNavigation() {
+  projectNavigation ??= createProjectNavigation({
+    href: () => window.location.href,
+    write: (href, mode) => {
+      if (mode === "push") window.history.pushState(window.history.state, "", href)
+      else window.history.replaceState(window.history.state, "", href)
+    },
+    subscribe: (listener) => {
+      window.addEventListener("popstate", listener)
+      return () => window.removeEventListener("popstate", listener)
+    },
+    activeProjectId: () => session?.snapshot.id ?? null,
+    open: async (documentId, signal) => {
+      await startPromise
+      if (signal.aborted)
+        return automationProjectFailure("cancelled", "The project action was cancelled.")
+      if (!session && state.status === "error") {
+        window.location.reload()
+        return { ok: true }
+      }
+      const action = captureProjectAction()
+      if (!action) return projectActionUnavailable()
+      return switchAutomationProject(
+        { kind: "open", documentId },
+        { documentId: action.id, revision: action.revision },
+        signal,
+        false,
+      )
+    },
+    failed: (projectNavigationError) => publish({ ...state, projectNavigationError }),
+  })
+  return projectNavigation
+}
+
+export function dismissProjectNavigationError() {
+  publish({ ...state, projectNavigationError: null })
+}
 
 export function getProjectActiveWorkBlock() {
   const review = automationReviews.getSnapshot()
@@ -472,6 +517,19 @@ async function openOrCreate(defaultDocumentName: string) {
   activeDatabase = database
   const repository = new BrowserProjectRepository(database)
   activeRepository = repository
+  const requested = readProjectUrl(window.location.href)
+  if (requested.kind === "invalid")
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "persistence-failed" as const,
+        message: "The project URL must contain exactly one valid project ID.",
+        retryable: false,
+        sourceCode: "invalid-project-url",
+      },
+    }
+  if (requested.kind === "project")
+    return openControllerProject(database, repository, requested.documentId)
   const storedDocumentId = documentIdSchema.safeParse(
     readStoredId(localStorage, DOCUMENT_STORAGE_KEY),
   )
@@ -497,16 +555,31 @@ async function start(defaultDocumentName: string) {
   try {
     const result = await openOrCreate(defaultDocumentName)
     if (!result.ok) {
-      publish({ ...state, status: "error", diagnostic: result.diagnostic })
+      const requested = readProjectUrl(window.location.href)
+      publish({
+        ...state,
+        status: "error",
+        diagnostic: result.diagnostic,
+        projectNavigationError:
+          requested.kind === "default"
+            ? null
+            : requested.kind === "invalid"
+              ? "invalid-project-url"
+              : result.diagnostic.sourceCode === "document-not-found"
+                ? "document-not-found"
+                : "project-open-failed",
+      })
       return
     }
     session = result.session
+    writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, session.snapshot.id)
     publish({
       status: "ready",
       report: result.report,
       saveStatus: "saved",
       diagnostic: result.report.writeAccessDiagnostic,
     })
+    browserProjectNavigation().sync(session.snapshot.id, "replace")
   } catch {
     publish({
       ...state,
@@ -517,6 +590,8 @@ async function start(defaultDocumentName: string) {
         retryable: true,
         sourceCode: null,
       },
+      projectNavigationError:
+        readProjectUrl(window.location.href).kind === "default" ? null : "project-open-failed",
     })
   }
 }
@@ -1620,8 +1695,10 @@ export async function previewAssemblyChanges(
   changes: readonly AssemblyMutation[],
   revision: number,
   ownedBlobs: readonly SourceAssetBlob[] = [],
+  signal?: AbortSignal,
 ) {
   try {
+    if (signal?.aborted) throw new Error("Assembly preview was cancelled.")
     const context = captureAssemblyContext()
     if (context.authority.revision !== revision)
       throw new Error("The assembly preview revision is stale.")
@@ -1636,7 +1713,13 @@ export async function previewAssemblyChanges(
       assets: mergeCapturedAssemblyAssets(context.authority, captured),
       assembly,
     })
-    return await inspectCapturedAssembly({ ...context, authority }, [], ownedBlobs)
+    return await inspectCapturedAssembly(
+      { ...context, authority },
+      [],
+      ownedBlobs,
+      revision,
+      signal,
+    )
   } catch (error) {
     return assemblyFailure(error, "Assembly preview")
   }
@@ -1647,11 +1730,16 @@ async function inspectCapturedAssembly(
   pairs: readonly { leftInstanceId: string; rightInstanceId: string }[],
   ownedBlobs: readonly SourceAssetBlob[] = [],
   baseRevision = context.authority.revision,
+  signal?: AbortSignal,
 ) {
   const { active, repository, authority } = context
+  if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
   const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
+  const cancel = () => worker.terminate()
+  signal?.addEventListener("abort", cancel, { once: true })
   try {
     const sourceAssets = await repository.materializeAssemblySourceAssets(authority, ownedBlobs)
+    if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
     assertAuthorityCurrent(active, baseRevision)
     const result = await worker.inspectAssembly(
       {
@@ -1662,9 +1750,11 @@ async function inspectCapturedAssembly(
       },
       authority.revision,
     )
+    if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
     assertAuthorityCurrent(active, baseRevision)
     return { ok: true as const, inspection: result.inspection }
   } finally {
+    signal?.removeEventListener("abort", cancel)
     worker.terminate()
   }
 }
@@ -2767,6 +2857,7 @@ function publishOpenedProject(opened: Extract<PersistentDocumentSessionOpenResul
     saveStatus: "saved",
     diagnostic: opened.report.writeAccessDiagnostic,
   })
+  browserProjectNavigation().sync(opened.session.snapshot.id)
 }
 
 async function prepareAutomationTarget(
@@ -3233,7 +3324,9 @@ export function useDocumentController(defaultDocumentName: string) {
     getDocumentControllerState,
   )
   useEffect(() => {
+    const stopNavigation = browserProjectNavigation().listen()
     void startDocumentController(defaultDocumentName)
+    return stopNavigation
   }, [defaultDocumentName])
   return controllerState
 }

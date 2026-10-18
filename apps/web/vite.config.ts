@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import license, { type Dependency } from "rollup-plugin-license"
-import { type ConfigEnv, defineConfig, type Plugin } from "vite"
+import { type ConfigEnv, defineConfig, type Plugin, type ViteDevServer } from "vite"
 import { structuralRuntimePlugin } from "./structural-runtime-plugin.ts"
 
 function retainedNotice(file: string) {
@@ -76,12 +76,34 @@ async function developmentPlugins({ command, isPreview }: ConfigEnv): Promise<Pl
   return [developmentMcpPlugin()]
 }
 
+function uiPluginRuntimeHeaders(): Plugin {
+  const configure = (server: Pick<ViteDevServer, "middlewares">) => {
+    server.middlewares.use((request, response, next) => {
+      const path = request.url?.split("?", 1)[0]
+      const runtime =
+        path === "/src/features/extensions/ui-panel-runtime.js" ||
+        /^\/assets\/ui-panel-runtime-[\w-]+\.js$/.test(path ?? "")
+      if (runtime) {
+        response.setHeader("Access-Control-Allow-Origin", "*")
+        response.setHeader("Cross-Origin-Resource-Policy", "same-origin")
+      }
+      next()
+    })
+  }
+  return {
+    name: "vibeshape-ui-plugin-runtime-headers",
+    configureServer: configure,
+    configurePreviewServer: configure,
+  }
+}
+
 export default defineConfig(async (environment) => {
   const { mode } = environment
   const controlledOcct = mode === "controlled-occt"
 
   return {
     plugins: [
+      uiPluginRuntimeHeaders(),
       ...(await developmentPlugins(environment)),
       react(),
       tailwindcss(),

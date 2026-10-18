@@ -1,5 +1,6 @@
 import type { Locator } from "@playwright/test"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.describe("Primitive graphical placement", () => {
   test.use({ viewport: { width: 1440, height: 1000 } })
@@ -8,10 +9,7 @@ test.describe("Primitive graphical placement", () => {
     page,
   }) => {
     await page.goto("/")
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
 
     const form = page.getByRole("form", { name: "Create box" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -101,10 +99,7 @@ test.describe("Primitive graphical placement", () => {
   }) => {
     test.skip(browserName !== "chromium", "Native release coordinates require CDP.")
     await page.goto("/")
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const viewport = page.getByRole("region", { name: "3D viewport" })
     const canvas = viewport.locator("canvas")
     const form = page.getByRole("form", { name: "Create box" })
@@ -136,10 +131,7 @@ test.describe("Primitive graphical placement", () => {
   test("retains the final placement across rapid repeated reversing drags", async ({ page }) => {
     test.setTimeout(60_000)
     await page.goto("/")
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -189,10 +181,7 @@ test.describe("Primitive graphical placement", () => {
         "Native release coordinates require CDP.",
       )
       await page.goto("/")
-      await page
-        .getByRole("toolbar", { name: "Model commands" })
-        .getByRole("button", { name: "Box", exact: true })
-        .click()
+      await invokeModelCommand(page, "Primitives", "Box")
       const viewport = page.getByRole("region", { name: "3D viewport" })
       const canvas = viewport.locator("canvas")
       if (editing) {

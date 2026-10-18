@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 
 test("suppresses and restores a feature through persisted history", async ({ page }) => {
   await page.goto("/")
@@ -6,7 +7,7 @@ test("suppresses and restores a feature through persisted history", async ({ pag
 
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   const viewport = page.getByRole("region", { name: "3D viewport" })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box" })
     .getByRole("button", { name: "Create box", exact: true })
@@ -19,6 +20,7 @@ test("suppresses and restores a feature through persisted history", async ({ pag
   await page.getByRole("button", { name: "Actions for Box 1" }).click()
   await expect(page.getByRole("menuitem", { name: "Unsuppress Box 1" })).toBeVisible()
   await page.keyboard.press("Escape")
+  await expandHistoryDetails(page)
   await expect(page.getByRole("button", { name: "Hide Box 1" })).toBeDisabled()
 
   await toolbar.getByRole("button", { name: "Undo", exact: true }).click()

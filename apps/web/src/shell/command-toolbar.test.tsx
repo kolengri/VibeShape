@@ -1,6 +1,6 @@
 import "../../../../tests/unit/support/dom"
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -28,6 +28,11 @@ const controller = {
 
 const actions = {
   lightweighting: vi.fn(),
+  quickLightweighting: vi.fn(),
+  generativeDesign: vi.fn(),
+  createFdm: vi.fn(),
+  surfaceTexture: vi.fn(),
+  measure: vi.fn(),
   placePart: vi.fn(),
   mirrorPart: vi.fn(),
   shellPart: vi.fn(),
@@ -48,6 +53,8 @@ const actions = {
   createPyramid: vi.fn(),
   createTorus: vi.fn(),
   createDatumPlane: vi.fn(),
+  createLoft: vi.fn(),
+  createSweep: vi.fn(),
   createExtrusion: vi.fn(),
   createRevolve: vi.fn(),
   createSketch: vi.fn(),
@@ -111,17 +118,18 @@ afterEach(() => {
 })
 
 describe("CommandToolbar", () => {
-  it("opens Lightweighting directly from the modeling toolbar with a vector icon", async () => {
+  it("opens Lightweighting from Modify with distinct vector icons", async () => {
+    const user = userEvent.setup()
     renderToolbar()
-    const group = screen.getByRole("group", { name: "Modeling actions" })
-    const button = within(group).getByRole("button", { name: "Lightweighting" })
+    await user.click(screen.getByRole("button", { name: "Modify" }))
+    const button = screen.getByRole("menuitem", { name: "Lightweighting" })
     expect(button.querySelector("svg")).toBeTruthy()
     expect(button.querySelector("img")).toBeNull()
-    const quickButton = within(group).getByRole("button", { name: "Quick lightweighting" })
+    const quickButton = screen.getByRole("menuitem", { name: "Quick lightweighting" })
     expect(quickButton.querySelector("svg")?.innerHTML).not.toBe(
       button.querySelector("svg")?.innerHTML,
     )
-    await userEvent.click(button)
+    await user.click(button)
     expect(actions.lightweighting).toHaveBeenCalledTimes(1)
   })
   it("presents registry-backed sketch-first model commands", async () => {
@@ -308,8 +316,6 @@ describe("CommandToolbar", () => {
     createSketch.focus()
 
     await user.keyboard("{ArrowRight}")
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Datum plane" }))
-    await user.keyboard("{ArrowRight}")
     const extrude = screen.getByRole("button", { name: "Extrude" })
     expect(document.activeElement).toBe(extrude)
     expect(extrude).toHaveProperty("disabled", false)
@@ -376,21 +382,36 @@ describe("CommandToolbar", () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it("keeps primitive creation, modeling operations, inspection, and history in distinct groups", () => {
+  it("keeps primary model actions direct and groups remaining commands in labeled menus", async () => {
+    const user = userEvent.setup()
     renderToolbar()
-    const primitives = screen.getByRole("group", { name: "Primitives" })
     const modeling = screen.getByRole("group", { name: "Modeling actions" })
     const history = screen.getByRole("group", { name: "History" })
-    const inspection = screen.getByRole("group", { name: "Inspection" })
-    expect(within(primitives).getByRole("button", { name: "Pyramid" })).toBeTruthy()
-    expect(within(primitives).queryByRole("button", { name: "Subtract" })).toBeNull()
-    expect(within(modeling).getByRole("button", { name: "Subtract" })).toBeTruthy()
-    expect(within(inspection).getByRole("button", { name: "Measure" })).toBeTruthy()
+    expect(
+      within(modeling)
+        .getAllByRole("button")
+        .map((button) => button.ariaLabel),
+    ).toEqual(["Create sketch", "Extrude", "Revolve"])
+    for (const label of ["Create", "Modify", "Primitives", "Inspect"]) {
+      expect(screen.getByRole("button", { name: label }).textContent).toBe(label)
+    }
     expect(
       within(history)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["Undo", "Redo"])
+
+    await user.click(screen.getByRole("button", { name: "Create" }))
+    expect(screen.getByRole("menuitem", { name: "Datum plane" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "Loft" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "Sweep" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "Subtract" })).toBeNull()
+    await user.keyboard("{Escape}")
+    await user.click(screen.getByRole("button", { name: "Modify" }))
+    expect(screen.getByRole("menuitem", { name: "Subtract" })).toBeTruthy()
+    await user.keyboard("{Escape}")
+    await user.click(screen.getByRole("button", { name: "Inspect" }))
+    expect(screen.getByRole("menuitem", { name: "Measure" })).toBeTruthy()
   })
 
   it("exposes all basic primitives through the shared command handlers", async () => {
@@ -403,9 +424,98 @@ describe("CommandToolbar", () => {
         createTorus: "Torus",
         createPyramid: "Pyramid",
       }[key]
-      await user.click(screen.getByRole("button", { name: label }))
+      await user.click(screen.getByRole("button", { name: "Primitives" }))
+      await user.click(screen.getByRole("menuitem", { name: label }))
       expect(actions[key]).toHaveBeenCalledTimes(1)
     }
+  })
+
+  it("preserves every visible model command exactly once through its shared handler", async () => {
+    const user = userEvent.setup()
+    const modelCommands = commands()
+      .filter(
+        ({ descriptor, toolbarVisible }) =>
+          toolbarVisible &&
+          ["model-primary", "model-primitives", "model-inspection"].includes(
+            descriptor.toolbarGroup ?? "",
+          ),
+      )
+      .map((command) => ({
+        ...command,
+        eligibility: { enabled: true as const },
+        invoke: vi.fn(),
+      }))
+    renderToolbar(modelCommands)
+
+    for (const name of ["Create sketch", "Extrude", "Revolve"]) {
+      await user.click(screen.getByRole("button", { name }))
+    }
+    for (const name of ["Create", "Modify", "Primitives", "Inspect"]) {
+      await user.click(screen.getByRole("button", { name }))
+      const labels = screen.getAllByRole("menuitem").map((item) => item.ariaLabel ?? "")
+      for (const [index, label] of labels.entries()) {
+        if (index > 0) await user.click(screen.getByRole("button", { name }))
+        await user.click(screen.getByRole("menuitem", { name: label }))
+      }
+    }
+    for (const command of modelCommands) {
+      expect(command.invoke).toHaveBeenCalledTimes(1)
+    }
+  }, 15_000)
+
+  it("keeps unclassified model commands reachable in Modify", async () => {
+    const user = userEvent.setup()
+    renderToolbar(
+      commands().map((command) =>
+        command.descriptor.id === editorCommandIds.createBox
+          ? {
+              ...command,
+              descriptor: { ...command.descriptor, toolbarGroup: "model-primary" as const },
+            }
+          : command,
+      ),
+    )
+    await user.click(screen.getByRole("button", { name: "Modify" }))
+    await user.click(screen.getByRole("menuitem", { name: "Box" }))
+    expect(actions.createBox).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows disabled prerequisites in the named menu and prevents invocation", async () => {
+    const user = userEvent.setup()
+    renderToolbar()
+    await user.click(screen.getByRole("button", { name: "Create" }))
+    const loft = screen.getByRole("menuitem", { name: "Loft" })
+    expect(loft.getAttribute("aria-disabled")).toBe("true")
+    expect(document.getElementById(loft.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      "Create and save a sketch first.",
+    )
+    fireEvent.click(loft)
+    expect(actions.createLoft).not.toHaveBeenCalled()
+  })
+
+  it("opens labeled menus by keyboard, invokes the command, and restores focus", async () => {
+    const user = userEvent.setup()
+    renderToolbar()
+    const create = screen.getByRole("button", { name: "Create" })
+    create.focus()
+    await user.keyboard("{ArrowDown}")
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Datum plane" }))
+    await user.keyboard("{Enter}")
+    expect(actions.createDatumPlane).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(document.activeElement).toBe(create))
+    await user.keyboard("{ArrowDown}{Escape}")
+    await waitFor(() => expect(document.activeElement).toBe(create))
+  })
+
+  it("indicates an active command on its menu trigger and item", async () => {
+    const user = userEvent.setup()
+    renderToolbar(commands({ activePartDesignCommand: "loft" }))
+    const create = screen.getByRole("button", { name: "Create" })
+    expect(create.getAttribute("aria-current")).toBe("true")
+    expect(screen.getByRole("button", { name: "Modify" }).hasAttribute("aria-current")).toBe(false)
+    await user.click(create)
+    expect(screen.getByRole("menuitem", { name: "Loft" }).getAttribute("aria-current")).toBe("true")
+    expect(screen.getByRole("menuitem", { name: "Loft" }).querySelectorAll("svg")).toHaveLength(2)
   })
 
   it("shows committed history only in idle model mode", () => {

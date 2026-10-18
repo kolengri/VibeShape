@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
+import { cloudflareResponseHeaders } from "../tests/e2e/cloudflare-header-support"
 import { vi } from "../tests/unit/support/bun-test"
 
 const originalModule1 = { ...(await import("node:fs")) }
@@ -63,6 +64,28 @@ function fixture(overrides: Record<string, string | Uint8Array> = {}) {
 }
 
 describe("Cloudflare static staging", () => {
+  it("allows anonymous CORS only for the public UI runtime while retaining global CORP", () => {
+    const { source, output } = fixture()
+    prepareCloudflareSite(source, output, "https://vibeshape-mcp.example.com/mcp")
+    const config = readFileSync(join(output, "_headers"), "utf8")
+    const initial = { "Access-Control-Allow-Origin": "https://default.invalid" }
+    const runtime = cloudflareResponseHeaders(config, "/assets/ui-panel-runtime-abc123.js", initial)
+    expect(runtime["cross-origin-resource-policy"]).toBe("same-origin")
+    expect(runtime["access-control-allow-origin"]).toBe("*")
+    for (const path of [
+      "/",
+      "/assets/index-abc123.js",
+      "/assets/kernel.wasm",
+      "/sources/index.html",
+    ]) {
+      const headers = cloudflareResponseHeaders(config, path, initial)
+      expect(headers["cross-origin-resource-policy"]).toBe("same-origin")
+      expect(headers["access-control-allow-origin"]).toBeUndefined()
+    }
+    expect(cloudflareResponseHeaders(config, "/")["content-security-policy"]).toContain(
+      "frame-src 'self' https://challenges.cloudflare.com",
+    )
+  })
   it("allows only the configured relay and Turnstile on editor documents", () => {
     const { source, output } = fixture()
     prepareCloudflareSite(source, output, "https://vibeshape-mcp.example.com/mcp")
@@ -72,7 +95,7 @@ describe("Cloudflare static staging", () => {
     expect(editor).toContain(
       "connect-src 'self' https://vibeshape-mcp.example.com wss://vibeshape-mcp.example.com",
     )
-    expect(editor).toContain("frame-src https://challenges.cloudflare.com")
+    expect(editor).toContain("frame-src 'self' https://challenges.cloudflare.com")
     expect(
       sections.find((section) => section.startsWith("/assets/worker-entry-*\n")),
     ).not.toContain("example.com")

@@ -1,5 +1,28 @@
+import type { SketchId } from "@vibeshape/domain"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { DocumentControllerState } from "../document/document-controller"
+
+/** Null means full authority; -1 is the explicit boundary before the first item. */
+export function effectiveHistoryBoundaryIndex(
+  controller: DocumentControllerState,
+  items: readonly HistoryItemRef[],
+  editingSketchId?: SketchId | null,
+  graphFailed = false,
+): number | null {
+  const report = controller.report
+  if (!report || graphFailed) return null
+  const cursor = controller.historyInsertion
+  if (cursor && cursor.documentId === report.snapshot.id) {
+    if (!cursor.historyAfter) return -1
+    const anchor = cursor.historyAfter
+    const index = items.findIndex((item) => item.kind === anchor.kind && item.id === anchor.id)
+    if (index >= 0) return index
+  }
+  if (!editingSketchId || !report.snapshot.sketches.some(({ id }) => id === editingSketchId))
+    return null
+  const index = items.findIndex((item) => item.kind === "sketch" && item.id === editingSketchId)
+  return index < 0 ? null : index
+}
 
 /** The insertion boundary limits input picking and preview, while full History stays visible. */
 export function historyInsertionContext(

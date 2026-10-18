@@ -4,6 +4,11 @@ The Model/Assembly controls switch geometry workspaces within one project. Assem
 committed Undo/Redo and native Save/Open; Model authoring shortcuts and the Model export dialog are
 unavailable while Assembly is active.
 
+The Assembly browser groups instances, joints and frozen definitions. Filter by component,
+definition or joint type; section disclosure preserves selection. Instance rows distinguish grounded,
+joint-connected and free occurrences. Joint rows name both endpoints and open their existing editor;
+movable joints also expose **Drive** directly.
+
 Create a definition from an available Part to freeze its selected body and source dependency
 closure. Reuse that definition through independent named instances with UUIDs and rigid world
 poses. Editing or deleting the original Part does not change the frozen source. Explicit relinking
@@ -29,6 +34,22 @@ limits are checked after solving, never clamped; change an initial pose or lock 
 an out-of-limit branch. No physical dynamics or collision response is claimed. See
 [ADR-0080](../adr/0080-general-assembly-mates-and-topology-bound-frames.md) for the mathematical and
 failure contract.
+
+## Joint motion
+
+Choose Drive for a revolute, prismatic or cylindrical joint. Select rotation or translation where the
+joint supports both, enter a coordinate in project display units, and choose **Preview coordinate**.
+The ordinary frozen-source worker solves the actual constraints, including general closed loops.
+Out-of-range values, conflicts and nonconvergence show an error without substituting approximate
+transforms. The saved assembly remains authoritative for export and interference.
+
+**Play one sweep** samples an increasing range within authored limits and solves one disposable preview
+at a time. **Pause** stops the sweep, **Reset preview** restores the saved pose, and **Cancel** discards
+the motion session. The camera stays stable between samples. No sample creates a document command.
+**Apply** saves the displayed successfully solved coordinate through one ordinary guarded joint update
+and one Undo checkpoint; applying a passive coordinate explicitly locks it as a drive. A cylindrical
+joint's other coordinate keeps its authored constraint. Project/revision changes and leaving Assembly
+dispose pending previews. This is a kinematic preview, without dynamics or collision response.
 
 The viewport renders already placed occurrence meshes and selects instances independently of Model
 Parts. Interference checks use native transformed exact solids; bounds only reject separated pairs.

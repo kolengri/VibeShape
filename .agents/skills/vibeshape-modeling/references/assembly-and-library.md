@@ -32,6 +32,14 @@ draft; ordinary CAD `create_draft` and its command IDs do not apply to this work
 Use `discard_assembly_draft` for unwanted proposals. Definition/instance removals expose explicit
 `cascade` intent; inspect dependent instances and mates before requesting it.
 
+## Visible motion preview
+
+The Assembly browser lists joints by endpoint and exposes Drive for revolute, prismatic and cylindrical
+coordinates. The visible motion panel runs a bounded disposable sweep through the real solver; Apply
+saves one solved coordinate and locks that coordinate as a drive. Export and interference use the saved
+assembly. These MCP tools do not provide playback. For saved coordinate authoring use the named owned
+joint-update, preview and manual-review flow above, with canonical millimeters/radians.
+
 ## Select topology frames
 
 Use `inspect_assembly` at the committed revision with an explicit `topology` occurrence/source page.

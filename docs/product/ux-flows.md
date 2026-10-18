@@ -4,7 +4,7 @@ The cross-product interaction, visual, accessibility, and content rules are defi
 
 ## Interface frame
 
-Desktop layout:
+Desktop Model workspace layout:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────┐
@@ -13,14 +13,20 @@ Desktop layout:
 │ Model tree   │                                   │ Properties /    │
 │              │            Viewport               │ active command  │
 │ Sketches     │                                   │                 │
-│ Features     │                                   │ Parameters      │
+│ Parts        │                                   │ Parameters      │
 │ Bodies       │                                   │ Diagnostics     │
 ├──────────────┴───────────────────────────────────┴─────────────────┤
+│ History: ordered feature icons · edit point · Details             │
+├────────────────────────────────────────────────────────────────────┤
 │ Status: units · selection filter · solver/rebuild · warnings       │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
 In sketch mode, the right panel shows constraints and dimensions while the viewport preserves the current camera, orbit, pan, and zoom. Normal to sketch explicitly aligns the view to the support plane. Orbit 3D view and its standard-view menu preserve sketch editing on the same support plane, including in isometric view. Primary input draws or selects, middle drag orbits, secondary drag pans, and wheel zooms. A near-edge-on plane requires a different viewing angle before placement; Normal to sketch is the explicit return path. In print mode, the model tree remains visible and the right panel becomes the analysis and export report.
+
+The browser heading shows the current project name. Variables remain directly accessible; Origin discloses the real XY/XZ/YZ selection and visibility controls. Parts, bodies, and sketches have distinct icons and counts. Empty Sketches offers the existing Create sketch command; its eye controls are grouped with sketches instead of masquerading as global model visibility.
+
+Each local project has a canonical `?project=<document UUID>` address. An explicit URL takes precedence over the last project preference. New/open/import and automation project switches update the address; reload and browser Back/Forward use the same guarded project transition. Active edits, saves, and AI work block navigation without losing their draft, and the address is restored to the actual project on rejection. Invalid IDs and missing local projects show a recoverable error rather than creating another project under that address. These URLs identify IndexedDB projects in the same browser profile; they are not cloud sharing links. Other query parameters and the hash are preserved.
 
 The shell uses Tailwind CSS v4 and source-owned shadcn/Radix primitives from `@vibeshape/ui`. Toolbar, command palette, menu, and shortcut invoke the same application command. The model tree and viewport overlays remain specialized accessible CAD components rather than being forced into generic `Card` or `Table` components.
 
@@ -178,7 +184,7 @@ The visible File control owns both the local-project library and the native-file
 
 Settings is one accessible modal with a scrollable body and visible Done action. Appearance selects Dark, Light, or System; Dark preserves the existing default, and System follows OS changes only while selected. Workspace reuses bounded panel width, opacity, show/hide, and reset controls plus browser-wide automatic consumed-sketch hiding, enabled by default. Project units retain their revision-checked Apply, validation, pending lock, and error recovery; an active editing/save/AI guard disables semantic unit changes while appearance remains available. Export preferences remember 3MF, STEP, or STL, with 3MF as the default, and display that format first in Export. Browser preferences use validated bounded local storage, recover safe defaults from corrupt or unavailable storage, and do not change authored geometry or grant export, printing, or AI authority. Camera alignment remains an explicit viewport action. Below 640px, the model tree is a closed-by-default temporary overlay opened with Show model tree above the task sheet; the task form and viewport use the full width. The tree and form stay mounted, and desktop width/collapse preferences are restored at wider sizes.
 
-Saved sketches and features expose Rename and Delete in a single ellipsis menu beside their model-tree labels. Focusing either tree item and pressing `F2` opens the identical dialog, so pointer and keyboard paths cannot diverge. A feature rename updates only its label through the ordinary revisioned feature-update command; a sketch rename updates only its label through the ordinary revisioned sketch-update command. Stable IDs, parameters, geometry, dependencies, and references remain unchanged. The currently edited sketch disables Rename until Finish or Cancel because committing its earlier draft would otherwise restore a stale label. Read-only documents disable all semantic rename actions with an explanatory tooltip. Validation, asynchronous locking, stale-revision recovery, and persistence-failure behavior are shared with project Rename. Every feature History row also separates transient eye visibility from persisted Suppress/Unsuppress intent. Suppression is available from the same actions menu with a pause/play icon and commits exactly one revision, participates in downstream rebuild and document undo/redo, disables meaningless visibility toggling while suppressed, and keeps the row present with muted, struck-through presentation so it can always be restored. Every History row can be dragged by its label or non-interactive surface, without a separate grip. Ordinary clicks still open the item, and nested action buttons never start dragging. Reordering uses pointer and touch dragging only, through the existing History command. Arrow keys navigate the tree, Enter opens the item, and F2 renames it. Moves are disabled while another task or move is active, in read-only mode, or when the selected position would place a dependency after its consumer. Cancelled, stale, and rejected drags leave the canonical order unchanged. An accepted move records stable item-and-anchor intent as one versioned event, rebuilds once, participates in document undo/redo, and retains the exact interleaving after reload; feature and sketch storage-array order remains irrelevant.
+Saved sketches expose Rename and Delete in the left Sketches folder; the bottom feature timeline offers the same sketch actions and feature actions through an ellipsis menu. Compact timeline controls appear on hover or keyboard focus; Details keeps labels, visibility controls, source links, and dependency summaries visible. Focusing either tree item and pressing `F2` opens the identical dialog, so pointer and keyboard paths cannot diverge. A feature rename updates only its label through the ordinary revisioned feature-update command; a sketch rename updates only its label through the ordinary revisioned sketch-update command. Stable IDs, parameters, geometry, dependencies, and references remain unchanged. The currently edited sketch disables Rename until Finish or Cancel because committing its earlier draft would otherwise restore a stale label. Read-only documents disable all semantic rename actions with an explanatory tooltip. Validation, asynchronous locking, stale-revision recovery, and persistence-failure behavior are shared with project Rename. Every feature History row also separates transient eye visibility from persisted Suppress/Unsuppress intent. Suppression is available from the same actions menu with a pause/play icon and commits exactly one revision, participates in downstream rebuild and document undo/redo, disables meaningless visibility toggling while suppressed, and keeps the row present with muted, struck-through presentation so it can always be restored. Every History row can be dragged by its label or non-interactive surface, without a separate grip. Ordinary clicks still open the item, and nested action buttons never start dragging. Reordering uses pointer and touch dragging only, through the existing History command. Left/Right navigate the horizontal timeline, Up/Down navigate disclosure groups, Enter opens the item, and F2 renames it. Moves are disabled while another task or move is active, in read-only mode, or when the selected position would place a dependency after its consumer. Cancelled, stale, and rejected drags leave the canonical order unchanged. An accepted move records stable item-and-anchor intent as one versioned event, rebuilds once, participates in document undo/redo, and retains the exact interleaving after reload; feature and sketch storage-array order remains irrelevant.
 
 ## Flow 2: edit an early parameter
 
@@ -191,10 +197,12 @@ preview remains disposable until Apply, and reopening restores authored expressi
 Pyramid defaults to four base sides and accepts integers from 3 to 64; its radius measures from the
 base center to a vertex, with the first vertex along +X and the apex along +Z. Centered height and
 placement follow Cone.
-The model toolbar groups modeling operations, direct primitives, and inspection separately.
+The model toolbar keeps Create sketch, Extrude, and Revolve directly accessible. Labeled Create, Modify, Primitives, and Inspect menus retain every other registered modeling command, its icon, shortcut, active state, and disabled explanation. Selected-part actions remain a separate group.
 Undo and Redo occupy a separate History block that remains visible while the command area scrolls.
 
-1. Double-click a feature or dimension in the tree or viewport.
+The left browser contains Parts, unmanaged terminal Bodies, and Sketches; it does not duplicate the feature sequence. The bottom History strip scrolls horizontally and can collapse without closing a task. Its Details toggle exposes rich metadata. Hovering a feature preselects its geometry, while viewport body/face selection highlights its owning operation. **Find in browser** selects and reveals an available terminal result, including reopening a collapsed browser or object group. Consumed, suppressed, unavailable, or rolled-back outputs do not advertise that action. The divider and compact transport show the current History position; no insertion alert obscures the workspace. Layout changes preserve the mounted viewport, camera, active form, and document revision.
+
+1. Activate a feature in the bottom History timeline or a dimension in the viewport.
 2. Enter a new value and show a debounced preview.
 3. Rebuild in the worker while keeping the UI responsive.
 4. Commit atomically on success.
@@ -365,20 +373,33 @@ Thread captures one selected part's exact current body and previews a custom ext
 
 Clicking a different History item saves the current feature or sketch before opening the chosen editor. Validation and persistence failures keep the current editor and draft open. Rapid clicks share one save and open the last selected item. Unchanged committed previews reuse their cached geometry; disposable preview rebuilds run one at a time and discard superseded pending requests.
 
-A row's context menu offers **Insert above** and **Insert below**. The insertion boundary limits the viewport and input selectors to earlier History items while keeping the complete tree visible. Creating a feature or sketch commits it directly at that position in one Undo step. Inserting after a folder member extends that folder; inserting before its first member stays outside. **Return to end** saves an active edit and clears the insertion boundary.
+A row's context menu offers **Insert above** and **Insert below**. The insertion boundary limits the viewport and input selectors to earlier History items while keeping the complete tree visible. Creating a feature or sketch commits it directly at that position in one Undo step. Inserting after a folder member extends that folder; inserting before its first member stays outside. **Return to the full model** saves an active edit and clears the insertion boundary.
 
 **Delete** remains available when later History items use the selected item. It removes the selected item, retains downstream operations, and disconnects their affected inputs. A missing-reference status identifies operations that need repair. Opening one restores its authored parameters for selecting replacement inputs; successful repair can restore downstream operations whose original inputs become valid again. Undo restores the removed item and its references. The repair state survives browser reload and native Save/Open.
 
-History selection boxes and Ctrl/Cmd-click toggle individual rows; Shift-click selects a contiguous range from the last selection anchor. **Add selection to folder** is available beside History and in the selected rows' context menu, and asks only for a folder name. **New folder** also accepts an explicit first and last History item. Selection cannot create a folder across a gap or overlap another folder. A row's context menu can add the selection to an existing folder only when the combined membership remains contiguous and does not overlap another folder; no History items move. Folders show their member count and support expand/collapse, Rename, Edit items, and Ungroup. Collapse and selection are presentation state; saved names and contiguous membership are organizational metadata. Ungroup removes only the folder. It never deletes or reorders geometry. Part names, visibility, folders, and feature history survive native Save/Open as a fresh document copy.
+Ctrl/Cmd-click toggles individual History rows; Shift-click selects a contiguous range from the last selection anchor. A normal click establishes an anchor while opening the editor. With a row focused, Shift+Space establishes or extends a range without opening the editor. **Add selection to folder** is available beside History and in the selected rows' context menu, and asks only for a folder name. **New folder** also accepts an explicit first and last History item. Selection cannot create a folder across a gap or overlap another folder. A row's context menu can add the selection to an existing folder only when the combined membership remains contiguous and does not overlap another folder; no History items move. Folders show their member count and support expand/collapse, Rename, Edit items, and Ungroup. Collapse and selection are presentation state; saved names and contiguous membership are organizational metadata. Ungroup removes only the folder. It never deletes or reorders geometry. Part names, visibility, folders, and feature history survive native Save/Open as a fresh document copy.
 
 Export scope chooses All parts or one named part, including hidden parts. STL exports the selected current solid; multipart 3MF retains names and positions. Opening Export resets the scope to All parts. Print preparation is available for All parts and creates a disposable print copy; it does not modify the authored model. A changed document or unavailable selected body produces an error instead of silently exporting another body.
 
 Import inspects local STEP/BREP exact solids or STL/3MF triangle meshes in a detached read-only preview. STEP/BREP/STL require explicit known source units; 3MF uses declared units without an override. STEP units are converted by the reader, while BREP/STL scale once. Cancel publishes nothing. Apply atomically captures immutable source bytes, exact signatures or mesh source node keys, and independently owned Parts; stale inspection, reader failure and unreadable preview block it. Undo/Redo and portable Save/Open share ordinary authority. Exact imported Parts support Placement and STEP export. Mesh Parts support selection, metadata, print preparation and STL/3MF export; exact operations and Placement are disabled, and STEP explains that an exact solid is required. See [Source geometry imports](exact-source-imports.md).
 
+The History transport moves to the start, steps backward or forward through the interleaved sketch
+and feature order, and returns to the full model. A vertical divider moves directly across the operation track. Dragging previews its target position;
+release navigates once. The focused divider also supports Left/Right and Home/End, with Escape to cancel. Navigation uses the same save/validation guard as
+opening another History item. A rejected edit keeps its draft and cursor. Moving the insertion boundary
+is transient: complete History and saved geometry authority remain intact, and navigation adds no Undo
+checkpoint. New features created while rolled back are inserted at that boundary.
+
+## Local UI plugins
+
+**VibeShape → Plugins…** installs a local declarative package after capability review, invokes its
+commands in an isolated calculator panel, and offers Disable/Remove. Reload retains installations
+without opening a panel. See [UI plugins](ui-plugins.md) for the supported profile and limits.
+
 ## Assembly and reusable components
 
 [Assembly workspace](assembly-workspace.md) describes frozen definitions, independently placed
-occurrences, static joints, exact interference and scoped STEP/STL/3MF export. The
+occurrences, constraint-solved joint motion preview, exact interference and scoped STEP/STL/3MF export. The
 [local component library](local-component-library.md) provides immutable local versions and explicit
 copy/reference insertion, update and detach. These workflows use ordinary document History and
 portable native source closure.
@@ -443,7 +464,7 @@ without repeating FEM. Settings/source changes invalidate the entire study; Appl
 renderer readiness, atomic import, source hiding, and Undo behavior. See
 [the study contract](generative-design.md) for scope and limitations.
 
-Structural and quick lightweighting use direct toolbar commands and the responsive right task
+Structural and quick lightweighting use the toolbar **Modify** menu and the responsive right task
 panel. The selected exact solid is prefilled. Structural inputs select support, load, and optional
 preserved faces in the canvas; quick inputs select lattice cells and slider values. Required action
 reasons remain visible in task forms, with accessible disclosure on compact toolbar controls.

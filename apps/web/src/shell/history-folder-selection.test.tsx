@@ -2,6 +2,7 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { documentIdSchema, historyFolderIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -14,6 +15,7 @@ import {
   HistoryFolderSelectableRow,
   HistoryFolderSelection,
   HistoryFolderSelectionControls,
+  useHistoryFolderSelectionDescription,
 } from "./history-folder-selection"
 
 beforeAll(() =>
@@ -27,6 +29,38 @@ beforeAll(() =>
   ),
 )
 afterEach(cleanup)
+
+function SelectionTreeItem({
+  item,
+  label,
+  active = false,
+  onActivate,
+}: {
+  item: HistoryItemRef
+  label: string
+  active?: boolean
+  onActivate?: (() => void) | undefined
+}) {
+  const description = useHistoryFolderSelectionDescription(item)
+  return (
+    <>
+      <button
+        type="button"
+        role="treeitem"
+        aria-selected={active}
+        aria-describedby={description?.id}
+        onClick={onActivate}
+      >
+        {label}
+      </button>
+      {description && (
+        <span id={description.id} className="sr-only">
+          {description.text}
+        </span>
+      )}
+    </>
+  )
+}
 
 function selectionFixture(authority = authoredTreeFixture().authority) {
   const { rows } = authoredTreeFixture()
@@ -45,9 +79,12 @@ function selectionFixture(authority = authoredTreeFixture().authority) {
           <HistoryFolderSelectionControls />
           {rows.map((row) => (
             <HistoryFolderSelectableRow key={row.ref.id} row={row} onInsert={onInsert}>
-              <button type="button" role="treeitem" onClick={() => onActivate(row.ref.id)}>
-                {row.record.label}
-              </button>
+              <SelectionTreeItem
+                item={row.ref}
+                label={row.record.label ?? "Unnamed feature"}
+                active={row.record.label === "Box 1"}
+                onActivate={() => onActivate(row.ref.id)}
+              />
             </HistoryFolderSelectableRow>
           ))}
         </HistoryFolderSelection>
@@ -56,6 +93,10 @@ function selectionFixture(authority = authoredTreeFixture().authority) {
   )
   const view = render(content(authority))
   return { authority, onCommit, onActivate, onInsert, view, content }
+}
+
+function folderSelected(name: string) {
+  return screen.getByRole("treeitem", { name }).closest('[data-folder-selected="true"]') !== null
 }
 
 async function createSelectedFolder(name: string) {
@@ -75,19 +116,69 @@ describe("History folder selection", () => {
       <I18nProvider i18n={i18n} initialLocale="en">
         <TooltipProvider>
           <HistoryFolderSelectableRow row={row} onInsert={onInsert}>
-            <button type="button" role="treeitem">
-              Box 1
-            </button>
+            <SelectionTreeItem item={row.ref} label="Box 1" />
           </HistoryFolderSelectableRow>
         </TooltipProvider>
       </I18nProvider>,
     )
+    expect(
+      screen.getByRole("treeitem", { name: "Box 1" }).getAttribute("aria-describedby"),
+    ).toBeNull()
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Box 1" }))
     expect(screen.queryByRole("menuitem", { name: "Add selection to folder" })).toBeNull()
     await userEvent.click(screen.getByRole("menuitem", { name: "Insert above" }))
     expect(onInsert).toHaveBeenCalledTimes(1)
     expect(onInsert).toHaveBeenCalledWith("above")
   })
+  it("describes folder selection independently from active editing through keyboard ranges and modifier toggles", async () => {
+    const user = userEvent.setup()
+    const { onActivate } = selectionFixture()
+    const first = screen.getByRole("treeitem", { name: "Box 1" })
+    const second = screen.getByRole("treeitem", { name: "Box 2" })
+    const third = screen.getByRole("treeitem", { name: "Box 3" })
+    for (const item of [first, second, third]) {
+      expect(
+        screen.getByRole("treeitem", {
+          name: item.textContent ?? "",
+          description: "Not selected for folder grouping.",
+        }),
+      ).toBe(item)
+    }
+    act(() => first.focus())
+    await user.keyboard("{Shift>} {/Shift}")
+    expect(
+      screen.getByRole("treeitem", {
+        name: first.textContent ?? "",
+        description: "Selected for folder grouping.",
+      }),
+    ).toBe(first)
+    expect(first.getAttribute("aria-selected")).toBe("true")
+    act(() => third.focus())
+    await user.keyboard("{Control>}{Shift>} {/Shift}{/Control}")
+    expect(
+      screen.getByRole("treeitem", {
+        name: second.textContent ?? "",
+        description: "Selected for folder grouping.",
+      }),
+    ).toBe(second)
+    expect(
+      screen.getByRole("treeitem", {
+        name: third.textContent ?? "",
+        description: "Selected for folder grouping.",
+      }),
+    ).toBe(third)
+    expect(second.getAttribute("aria-selected")).toBe("false")
+    fireEvent.click(first, { ctrlKey: true })
+    expect(
+      screen.getByRole("treeitem", {
+        name: first.textContent ?? "",
+        description: "Not selected for folder grouping.",
+      }),
+    ).toBe(first)
+    expect(first.getAttribute("aria-selected")).toBe("true")
+    expect(onActivate).not.toHaveBeenCalled()
+  })
+
   it("opens the shared row context menu with Shift+F10 and invokes insertion by keyboard", async () => {
     const { onInsert } = selectionFixture()
     screen.getByRole("treeitem", { name: "Box 2" }).focus()
@@ -134,12 +225,7 @@ describe("History folder selection", () => {
     fireEvent.click(screen.getByRole("treeitem", { name: "Box 3" }), { shiftKey: true })
     expect(onActivate).not.toHaveBeenCalled()
     expect(screen.getByRole("status").textContent).toBe("3 History items selected")
-    for (const name of ["Box 1", "Box 2", "Box 3"])
-      expect(
-        screen
-          .getByRole("button", { name: `Select ${name} for a folder` })
-          .getAttribute("aria-pressed"),
-      ).toBe("true")
+    for (const name of ["Box 1", "Box 2", "Box 3"]) expect(folderSelected(name)).toBe(true)
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Box 2" }))
     await userEvent.click(screen.getByRole("menuitem", { name: "Add selection to folder" }))
     await createSelectedFolder("Housing")
@@ -162,16 +248,71 @@ describe("History folder selection", () => {
     expect(onActivate).toHaveBeenCalledTimes(1)
   })
 
-  it("provides single-pointer selection and blocks gaps and existing-folder overlap", async () => {
+  it("anchors the first Shift-click and extends the range with the next Shift-click", () => {
+    const { onActivate, onCommit } = selectionFixture()
+    expect(screen.queryByRole("checkbox")).toBeNull()
+    expect(screen.queryByRole("button", { name: /^Select .* for a folder$/ })).toBeNull()
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 1" }), { shiftKey: true })
+    expect(screen.getByRole("status").textContent).toBe("1 History item selected")
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 3" }), { shiftKey: true })
+    expect(screen.getByRole("status").textContent).toBe("3 History items selected")
+    for (const name of ["Box 1", "Box 2", "Box 3"]) expect(folderSelected(name)).toBe(true)
+    expect(onActivate).not.toHaveBeenCalled()
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it("lets a normal click establish the range anchor while preserving edit activation", async () => {
+    const { onActivate, onCommit } = selectionFixture()
+    await userEvent.click(screen.getByRole("treeitem", { name: "Box 1" }))
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("status")).toBeNull()
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 3" }), { shiftKey: true })
+    expect(screen.getByRole("status").textContent).toBe("3 History items selected")
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it("anchors and extends a range with Shift+Space without activating the focused row", async () => {
+    const { onActivate, onCommit } = selectionFixture()
+    const first = screen.getByRole("treeitem", { name: "Box 1" })
+    first.focus()
+    await userEvent.keyboard("{Shift>} {/Shift}")
+    expect(screen.getByRole("status").textContent).toBe("1 History item selected")
+    expect(document.activeElement).toBe(first)
+    const last = screen.getByRole("treeitem", { name: "Box 3" })
+    last.focus()
+    await userEvent.keyboard("{Shift>} {/Shift}")
+    expect(screen.getByRole("status").textContent).toBe("3 History items selected")
+    expect(document.activeElement).toBe(last)
+    for (const name of ["Box 1", "Box 2", "Box 3"]) expect(folderSelected(name)).toBe(true)
+    expect(onActivate).not.toHaveBeenCalled()
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it("keeps modifier selection presentational while metadata writes are disabled", () => {
+    const { authority, onCommit, onActivate, view, content } = selectionFixture()
+    view.rerender(content(authority, true))
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 1" }), { shiftKey: true })
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 3" }), { shiftKey: true })
+    expect(screen.getByRole("status").textContent).toBe("3 History items selected")
+    const create = screen.getByRole("button", { name: "Add selection to folder" })
+    expect((create as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(create)
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(onActivate).not.toHaveBeenCalled()
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it("toggles individual rows with modifiers and blocks gaps and existing-folder overlap", async () => {
     const { authority, view, content, onCommit } = selectionFixture()
-    await userEvent.click(screen.getByRole("button", { name: "Select Box 1 for a folder" }))
-    await userEvent.click(screen.getByRole("button", { name: "Select Box 3 for a folder" }))
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 1" }), { ctrlKey: true })
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 3" }), { ctrlKey: true })
     expect(
       (screen.getByRole("button", { name: "Add selection to folder" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
     expect(screen.getByRole("status").textContent).toMatch(/contiguous range/)
-    await userEvent.click(screen.getByRole("button", { name: "Select Box 3 for a folder" }))
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 3" }), { ctrlKey: true })
     const folder = {
       schemaVersion: 0 as const,
       id: historyFolderIdSchema.parse(authoredTestId(300)),
@@ -211,9 +352,9 @@ describe("History folder selection", () => {
       items: original.history.slice(0, 2),
     }
     const { authority, onCommit } = selectionFixture({ ...original, folders: [folder] })
-    const selectThird = screen.getByRole("button", { name: "Select Box 3 for a folder" })
-    fireEvent.contextMenu(screen.getByRole("treeitem", { name: "Box 3" }))
-    expect(selectThird.getAttribute("aria-pressed")).toBe("true")
+    const row = screen.getByRole("treeitem", { name: "Box 3" })
+    fireEvent.contextMenu(row)
+    expect(row.closest('[data-folder-selected="true"]')).not.toBeNull()
     await userEvent.click(screen.getByRole("menuitem", { name: "Add to Housing" }))
     await waitFor(() => {
       expect(onCommit).toHaveBeenCalledTimes(1)
@@ -241,11 +382,7 @@ describe("History folder selection", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/Could not update the folder/),
     )
     expect(onCommit).toHaveBeenCalledTimes(1)
-    expect(
-      screen
-        .getByRole("button", { name: "Select Box 3 for a folder" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true")
+    expect(folderSelected("Box 3")).toBe(true)
   })
 
   it("blocks a stale open context menu before appending membership", async () => {
@@ -302,7 +439,7 @@ describe("History folder selection", () => {
 
   it("rejects a stale creation and retains the folder name without writing", async () => {
     const { authority, onCommit, view, content } = selectionFixture()
-    await userEvent.click(screen.getByRole("button", { name: "Select Box 2 for a folder" }))
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 2" }), { ctrlKey: true })
     await userEvent.click(screen.getByRole("button", { name: "Add selection to folder" }))
     const dialog = screen.getByRole("dialog", { name: "New folder" })
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Folder name" }), "Housing")
@@ -317,7 +454,7 @@ describe("History folder selection", () => {
 
   it("blocks a form opened before editing starts and clears selection on a document switch", async () => {
     const { authority, onCommit, view, content } = selectionFixture()
-    await userEvent.click(screen.getByRole("button", { name: "Select Box 1 for a folder" }))
+    fireEvent.click(screen.getByRole("treeitem", { name: "Box 1" }), { ctrlKey: true })
     await userEvent.click(screen.getByRole("button", { name: "Add selection to folder" }))
     const dialog = screen.getByRole("dialog", { name: "New folder" })
     view.rerender(content(authority, true))
@@ -333,10 +470,6 @@ describe("History folder selection", () => {
       }),
     )
     expect(screen.queryByRole("dialog")).toBeNull()
-    expect(
-      screen
-        .getByRole("button", { name: "Select Box 1 for a folder" })
-        .getAttribute("aria-pressed"),
-    ).toBe("false")
+    expect(folderSelected("Box 1")).toBe(false)
   })
 })

@@ -11,6 +11,7 @@ import {
   saveProject,
 } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function verifyCompoundReorder(page: Page, testInfo: TestInfo) {
   const parts = page.locator("[data-part-id]")
@@ -64,10 +65,7 @@ async function verifyCompoundReorder(page: Page, testInfo: TestInfo) {
 }
 
 async function createUnion(page: Page) {
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box", exact: true })
     .getByRole("button", { name: "Create box", exact: true })

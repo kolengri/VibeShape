@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.describe("Cylinder parameters", () => {
   test("creates, edits, renders, and reopens a variable-driven Cylinder", async ({ page }) => {
@@ -10,10 +11,7 @@ test.describe("Cylinder parameters", () => {
     await page.getByRole("combobox", { name: "Variable expression" }).fill("12 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
 
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Cylinder", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Cylinder")
     const createForm = page.getByRole("form", { name: "Create cylinder" })
     await expect(createForm).toBeVisible()
     await createForm.getByRole("combobox", { name: "Radius" }).fill("#radius")

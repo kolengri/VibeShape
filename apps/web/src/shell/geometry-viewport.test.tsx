@@ -1748,7 +1748,7 @@ describe("GeometryViewport", () => {
         .getAttribute("data-rendered-feature-count"),
     ).toBe("1")
     expect(port.fit).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole("img", { name: "World axes" })).toBeTruthy()
+    expect(screen.getByRole("img", { name: "World axes" }).textContent).toBe("")
     expect(screen.getByText("XYZ · mm")).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "Fit view" }))

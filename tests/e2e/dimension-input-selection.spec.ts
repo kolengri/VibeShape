@@ -1,12 +1,10 @@
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("steps focused dimensions with arrows and retains authored units", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box" })
   const width = form.getByRole("combobox", { name: "Width", exact: true })
   await width.fill("0.1 cm")
@@ -27,10 +25,7 @@ test("steps focused dimensions with arrows and retains authored units", async ({
 test("replaces the number on first click and Tab while retaining units", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box" })
   const width = form.getByRole("combobox", { name: "Width", exact: true })
   const depth = form.getByRole("combobox", { name: "Depth", exact: true })

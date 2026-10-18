@@ -4,6 +4,7 @@ import { extrusionFeatureParametersV5Schema } from "../../packages/domain/src/pa
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 type BrowserRequest<Result> = {
@@ -175,10 +176,7 @@ test.describe("native project file", () => {
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
@@ -352,10 +350,7 @@ test.describe("native project file", () => {
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
@@ -455,10 +450,7 @@ async function saveNativeProject(page: Page) {
 }
 
 async function extrusionVolume(page: Page) {
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Measure", exact: true })
-    .click()
+  await invokeModelCommand(page, "Inspect", "Measure")
   const panel = page.getByRole("complementary", { name: "Measure", exact: true })
   const metric = panel
     .locator("dt", { hasText: /^Volume$/ })

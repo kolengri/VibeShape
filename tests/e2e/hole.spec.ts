@@ -3,6 +3,7 @@ import type { Browser, Download, Page } from "@playwright/test"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 async function clickFirstHoleCenter(page: Page) {
@@ -95,9 +96,10 @@ for (const theme of ["light", "dark"] as const) {
       .evaluate((element, dark) => element.classList.toggle("dark", dark), theme === "dark")
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    const hole = toolbar.getByRole("button", { name: "Hole", exact: true })
-    await expect(hole).toBeDisabled()
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    const hole = page.getByRole("menuitem", { name: "Hole", exact: true })
+    await expect(await openModelCommand(page, "Modify", "Hole")).toBeDisabled()
+    await page.keyboard.press("Escape")
+    await invokeModelCommand(page, "Primitives", "Box")
     const box = page.getByRole("form", { name: "Create box" })
     for (const name of ["Width", "Depth"])
       await box.getByRole("combobox", { name, exact: true }).fill("200 mm")
@@ -105,12 +107,13 @@ for (const theme of ["light", "dark"] as const) {
     await box.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(box).toHaveCount(0)
     await expect(viewport).toHaveAttribute("data-preview-status", "idle")
-    await expect(hole).toBeDisabled()
+    await expect(await openModelCommand(page, "Modify", "Hole")).toBeDisabled()
+    await page.keyboard.press("Escape")
     await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
     await confirmSketchPlane(page)
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-    await expect(hole).toBeEnabled()
+    await expect(await openModelCommand(page, "Modify", "Hole")).toBeEnabled()
     await hole.click()
     const form = page.getByRole("form", { name: "Hole", exact: true })
     const apply = form.getByRole("button", { name: "Create hole", exact: true })

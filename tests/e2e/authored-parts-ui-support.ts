@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 export async function saved(page: Page, timeout = 30_000) {
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached({
@@ -10,9 +11,8 @@ export async function saved(page: Page, timeout = 30_000) {
   })
 }
 export async function createSolids(page: Page) {
-  const commands = page.getByRole("toolbar", { name: "Model commands" })
   for (const name of ["Box", "Cylinder"]) {
-    await commands.getByRole("button", { name, exact: true }).click()
+    await invokeModelCommand(page, "Primitives", name)
     const form = page.getByRole("form", { name: `Create ${name.toLowerCase()}`, exact: true })
     await form.getByRole("button", { name: `Create ${name.toLowerCase()}`, exact: true }).click()
     await expect(page.getByRole("treeitem", { name: `Part ${name} 1`, exact: true })).toBeVisible({
@@ -32,8 +32,13 @@ export async function saveProject(page: Page) {
   const bytes = await readFile(path)
   const decoded = await readAuthoredVShape(new Uint8Array(bytes))
   if (!decoded.ok) throw new Error(JSON.stringify(decoded.diagnostic))
-  if (decoded.value.version !== 3 && decoded.value.version !== 4 && decoded.value.version !== 5)
-    throw new Error("Current authored Save must retain V3, V4 or V5 authority.")
+  if (
+    decoded.value.version !== 3 &&
+    decoded.value.version !== 4 &&
+    decoded.value.version !== 5 &&
+    decoded.value.version !== 6
+  )
+    throw new Error("Current authored Save must retain V3, V4, V5 or V6 authority.")
   await expect(projects).not.toBeVisible()
   return { bytes, filename: download.suggestedFilename(), project: decoded.value.project }
 }

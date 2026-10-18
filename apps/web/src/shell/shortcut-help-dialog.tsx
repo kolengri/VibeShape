@@ -99,7 +99,7 @@ export function ShortcutHelpDialog({
             returnFocusRef.current.focus()
             return
           }
-          document.querySelector<HTMLElement>("[data-shortcut-help-trigger]")?.focus()
+          document.querySelector<HTMLElement>("[data-application-menu-trigger]")?.focus()
         }}
       >
         <DialogHeader>

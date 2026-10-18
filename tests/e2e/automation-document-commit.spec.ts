@@ -6,6 +6,7 @@ import type { CommandActor } from "../../packages/domain/src/commands"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 
 type BrowserAutomationFactory = {
   renameActiveProject: (revision: number, name: string) => Promise<{ ok: boolean }>
@@ -275,15 +276,17 @@ async function expectFailedAutomationCommit(
   await expect(box).toHaveCount(0)
   await expect(cylinder).toHaveCount(0)
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
-  if (mode === "lease")
-    await expect(toolbar.getByRole("button", { name: "Box", exact: true })).toBeDisabled()
+  if (mode === "lease") {
+    await expect(await openModelCommand(page, "Primitives", "Box")).toBeDisabled()
+    await page.keyboard.press("Escape")
+  }
   if (mode !== "stale")
     await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
   if (mode === "failure") {
     const review = page.getByRole("region", { name: "Review AI changes", exact: true })
     await expect(review.getByRole("status")).toContainText("save could not be confirmed")
     await review.getByRole("button", { name: "Close", exact: true }).click()
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box", exact: true })

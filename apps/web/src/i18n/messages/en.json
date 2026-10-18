@@ -746,7 +746,8 @@
         "stopAi": "Stop AI",
         "stopAiDescription": "Stop AI ends the entire paired AI session and turns auto-apply off immediately. An edit already saving may finish; use Undo to revert it.",
         "aiConnectionFailed": "AI connection interrupted. An approved local session reconnects automatically while its approval remains valid.",
-        "aiRecovering": "Reconnecting AI…"
+        "aiRecovering": "Reconnecting AI…",
+        "projectUnavailable": "Project unavailable"
       },
       "remoteAi": {
         "trigger": "Remote AI…",
@@ -805,7 +806,10 @@
         "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace",
         "inspectionLabel": "Inspection",
-        "partActionsLabel": "Selected part actions"
+        "partActionsLabel": "Selected part actions",
+        "modelCreateLabel": "Create",
+        "modelModifyLabel": "Modify",
+        "modelInspectLabel": "Inspect"
       },
       "sketchShortcutToolbar": {
         "ariaLabel": "Sketch shortcuts"
@@ -829,7 +833,7 @@
         "unsuppressFeature": "Unsuppress {feature}",
         "reorderHistory": "Reorder {item}",
         "moveHistoryEarlier": "Move {item} earlier",
-        "historyDragInstructions": "Drag a row in {item} to reorder it. Escape cancels. Arrow keys navigate the tree; Enter opens the item.",
+        "historyDragInstructions": "Drag an item in {item} to reorder it. Escape cancels. Left and Right navigate the timeline; Enter opens the item.",
         "historyDropPosition": "Move {item} to position {position}",
         "historyMovePicker": "Move {item}",
         "historyMoveToPosition": "Move to position",
@@ -858,7 +862,7 @@
         "deleteSketchFailed": "The sketch could not be deleted. The model history was not changed.",
         "deleteSketchInUse": "Remove dependent features or external sketch references before deleting this sketch.",
         "deleteSketchReadOnly": "Open the document with write access to delete sketches.",
-        "title": "Model tree",
+        "title": "Model",
         "unnamedFeature": "Unnamed feature",
         "bodyLabel": "Body {number}",
         "bodySource": "Result of {feature}",
@@ -881,7 +885,17 @@
         "supportedByFeature": "Supported by {feature}",
         "supportedByPlane": "Supported by {plane} plane",
         "rollbackMarker": "Edit point in History: later items are rolled back. Use Show final result for display-only context.",
-        "repairRequired": "Missing references — open this item to select replacement inputs."
+        "repairRequired": "Missing references — open this item to select replacement inputs.",
+        "timelineLabel": "Feature history",
+        "timelineDetails": "Details",
+        "editSketch": "Edit {sketch}",
+        "emptyHistory": "Create a sketch or solid to start the feature history.",
+        "noSketches": "No sketches yet.",
+        "findInBrowser": "Find in browser",
+        "createSketch": "Create sketch",
+        "documentObjects": "Parts, bodies, and sketches",
+        "originPlanes": "Origin planes",
+        "projectNameFallback": "Untitled project"
       },
       "statusBar": {
         "filter": "Filter: {filter}",
@@ -1800,7 +1814,8 @@
         "faq": "FAQ and MCP setup…",
         "importGeometry": "Import geometry…",
         "importSketch": "Import sketch…",
-        "library": "Library…"
+        "library": "Library…",
+        "extensions": "Plugins…"
       }
     },
     "sketch": {
@@ -2100,8 +2115,7 @@
       "addToExistingFolder": "Add to existing folder",
       "addToFolder": "Add to {name}",
       "clearSelection": "Clear selection",
-      "selectHistoryItem": "Select {name} for a folder",
-      "folderSelectionInstructions": "Use the selection boxes, Ctrl/Cmd-click, or Shift-click to select History items for a folder.",
+      "folderSelectionInstructions": "Shift-click the first and last History items to select a range. Ctrl/Cmd-click toggles individual items; Shift+Space selects from the keyboard.",
       "selectedItems": "{count, plural, one {# History item selected} other {# History items selected}}",
       "invalidSelection": "Select a contiguous range outside existing folders. Ungroup a folder before grouping its items again.",
       "folderName": "Folder name",
@@ -2128,7 +2142,9 @@
       "compound": "Compound",
       "union": "Union",
       "combinationSiblingRestriction": "Choose at least two distinct exact bodies to combine.",
-      "meshOperationsUnavailable": "Triangle mesh: print preparation and STL/3MF export are available. Placement and exact solid operations require an exact solid."
+      "meshOperationsUnavailable": "Triangle mesh: print preparation and STL/3MF export are available. Placement and exact solid operations require an exact solid.",
+      "folderSelectionSelected": "Selected for folder grouping.",
+      "folderSelectionNotSelected": "Not selected for folder grouping."
     },
     "bodyCombination": {
       "compoundTitle": "Create Compound",
@@ -2560,7 +2576,7 @@
       "modelMode": "Model",
       "assemblyMode": "Assembly",
       "workspaceTitle": "Assembly",
-      "tree": "Assembly definitions and instances",
+      "tree": "Assembly browser",
       "instances": "Instances",
       "definitions": "Definitions",
       "emptyInstances": "Create a definition from an available Part to place its first instance.",
@@ -2677,7 +2693,38 @@
       "removeGeneralExplanation": "Removing an instance removes its incident mates. Other instances stay in the graph. Removing a used definition requires explicitly removing its instances. Undo restores the change.",
       "cascadeGeneralRemoval": "Also remove instances of this definition and their incident mates",
       "initialFrame": "Initial pose",
-      "generalFreePoseExplanation": "The solver retains this authored starting pose to select the assembly branch. Free motion remains visible in the degrees of freedom."
+      "generalFreePoseExplanation": "The solver retains this authored starting pose to select the assembly branch. Free motion remains visible in the degrees of freedom.",
+      "driveJoint": "Drive joint",
+      "motionTitle": "Joint motion",
+      "motionDescription": "Constraint-solved preview. Apply saves the displayed coordinate once. Export and interference use the saved assembly.",
+      "motionCoordinate": "Coordinate",
+      "motionAngle": "Rotation",
+      "motionTranslation": "Translation",
+      "motionValue": "Coordinate ({unit})",
+      "motionLimits": "Authored limits: {min} to {max} {unit}",
+      "motionRangeStart": "Sweep start ({unit})",
+      "motionRangeEnd": "Sweep end ({unit})",
+      "motionPreview": "Preview coordinate",
+      "motionPlay": "Play one sweep",
+      "motionPause": "Pause",
+      "motionReset": "Reset preview",
+      "motionInvalid": "Enter finite coordinates and an increasing sweep within the authored limits.",
+      "motionSolving": "Solving motion preview…",
+      "motionPosition": "Preview: {value} {unit}",
+      "motionDriveNotice": "Applying locks this coordinate as a drive. Other coordinates keep their authored constraints.",
+      "motionPreviewBadge": "Unsaved motion preview",
+      "filterBrowser": "Filter components and joints",
+      "joints": "Joints",
+      "emptyJoints": "Add a joint to connect component instances. Select it here to edit its frames or drive its motion.",
+      "emptyDefinitions": "Create a definition from a Part to reuse its frozen geometry in the assembly.",
+      "noBrowserMatches": "No matches.",
+      "freeInstance": "Free instance",
+      "instanceDefinition": "Definition: {name}",
+      "definitionOccurrences": "{count, plural, one {# instance} other {# instances}}",
+      "unknownInstance": "Unavailable instance",
+      "jointBetween": "{kind}: {parent} → {child}",
+      "jointEndpoints": "{parent} → {child}",
+      "driveJointBetween": "Drive {parent} → {child}"
     },
     "import": {
       "trigger": "Import…",
@@ -3229,13 +3276,6 @@
       "noRemovable": "No usable material removal was found. Try a thinner skin, smaller removal target, or different cell size.",
       "mainPreview": "The candidate is shown in the main viewport. Use Section view to inspect enclosed cells. Apply saves a mesh Part and hides the editable source; Undo restores it."
     },
-    "historyInsertion": {
-      "after": "Insert after {item}",
-      "start": "Insert at the start of History",
-      "description": "New sketches and features are added here. Later items are excluded from input selection and preview.",
-      "returnToEnd": "Return to end",
-      "unnamed": "unnamed item"
-    },
     "generativeDesign": {
       "title": "Generative Design",
       "description": "Choose a material, pick the fixed and loaded faces, and enter the force to generate a lighter design. Results are preliminary voxel meshes.",
@@ -3309,6 +3349,78 @@
       "checkSettings": "Review the settings",
       "setupReady": "Ready to generate. The current material and visible print settings will be used.",
       "materialRequired": "Choose a material preset, or enter custom values in Material properties and references."
+    },
+    "projectNavigation": {
+      "invalid-project-url": "This project URL is invalid. Use a URL with one valid project ID.",
+      "document-not-found": "This project is not stored in this browser. Project links only open projects saved in the same browser; import a .vshape backup to use a project from another browser.",
+      "project-action-blocked": "Finish the active edit, save, or AI operation before switching projects. The current project and URL have been retained.",
+      "project-open-failed": "The requested project could not be opened. The current project was retained when possible.",
+      "project-url-unavailable": "The browser could not update the URL to match the active project.",
+      "recover": "Open last local project",
+      "dismiss": "Dismiss",
+      "label": "Project navigation"
+    },
+    "historyNavigation": {
+      "label": "History navigation",
+      "first": "Roll back to the start",
+      "previous": "Step back one item",
+      "next": "Step forward one item",
+      "last": "Return to the full model",
+      "position": "{position} of {total}",
+      "positionLabel": "History position",
+      "positionDescription": "{position} of {total}: {item}",
+      "start": "Start of History",
+      "end": "Full model",
+      "failed": "Could not move through History. Resolve the active edit and try again.",
+      "pending": "Moving through History…",
+      "cursorLabel": "History rollback divider",
+      "cursorInstructions": "Drag the divider across History. Use Left/Right, Home/End, or Escape to cancel."
+    },
+    "extensions": {
+      "title": "Plugins",
+      "description": "Install local declarative UI plugins for commands and interactive calculators. Plugins have no access to projects or the network.",
+      "close": "Close plugins",
+      "loading": "Loading installed plugins…",
+      "empty": "No plugins installed. Download the example to try a fit-clearance calculator.",
+      "installFile": "Install plugin…",
+      "fileLabel": "Choose plugin package (.vsui.json)",
+      "reviewTitle": "Review plugin",
+      "reviewDescription": "This plugin can add commands and display an isolated panel. Installation is local to this browser.",
+      "permissions": "Capabilities",
+      "capabilityCommand": "Add commands",
+      "capabilityPanel": "Display an isolated panel",
+      "installAndEnable": "Install and enable",
+      "cancel": "Cancel",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "enable": "Enable",
+      "disable": "Disable",
+      "remove": "Remove",
+      "openPanel": "Open panel",
+      "panelLoading": "Starting plugin panel…",
+      "panelFailed": "The plugin panel could not start. Close it and try again.",
+      "closePanel": "Close panel",
+      "reloadPanel": "Reload panel",
+      "compute": "Calculate",
+      "invalidInputs": "Enter finite values within the displayed bounds.",
+      "results": "Results",
+      "sampleDownload": "Download example plugin",
+      "resetStore": "Clear installed plugins",
+      "resetStoreDescription": "Remove local plugin packages and permissions to recover the plugin store. Projects stay unchanged.",
+      "version": "Version {version}",
+      "errors": {
+        "invalidPackage": "This is not a supported declarative UI plugin package.",
+        "packageTooLarge": "The plugin package exceeds the 64 KiB limit.",
+        "invalidUtf8": "The plugin file must contain valid UTF-8 text.",
+        "integrityMismatch": "The saved plugin package failed its integrity check. Reinstall the original file.",
+        "invalidStore": "Installed plugin data is unreadable. Clear installed plugins and reinstall the packages.",
+        "storageUnavailable": "Plugin storage or cross-tab locking is unavailable. Close the manager and try again.",
+        "storeFull": "Plugin storage is full. Remove a package or choose a smaller package.",
+        "identityConflict": "A different package already uses this plugin ID and version. Choose a new version or remove the existing package.",
+        "notInstalled": "This plugin is no longer installed.",
+        "permissionDenied": "This plugin is disabled or its capabilities have not been approved.",
+        "staleStore": "Plugins changed in another tab. Review the current list and try again."
+      }
     }
   }
 }

@@ -17,6 +17,7 @@ import {
 } from "../../packages/domain/src/units"
 import { enableLocalAi } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { openModelCommand } from "./model-command-support"
 
 const id = (n: number) => `0195b5ac-b290-7a2c-8c33-${String(n).padStart(12, "0")}`
 function success<T>(
@@ -132,9 +133,7 @@ test("repairs and applies exact-body Subtract/Revolve through MCP and restores s
       ).geometry.status,
     ).toBe("valid")
     await commit(initial.draftId)
-    const subtract = page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Subtract", exact: true })
+    const subtract = await openModelCommand(page, "Modify", "Subtract")
     await expect(subtract).toBeEnabled()
     await subtract.click()
     const form = page.getByRole("form", { name: "Subtract solids" })

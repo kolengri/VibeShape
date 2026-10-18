@@ -11,12 +11,13 @@ import {
 import { ChevronDown, CircleAlert, Cuboid, Eye, EyeOff } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { selectedAuthoredBody } from "./authored-tree-state"
 
 type PartsProps = {
+  revealRequest?: Readonly<{ featureId: FeatureId; sequence: number }> | null
   parts: readonly ResolvedAuthoredPart[]
   revision: number
   selectedPartId: PartId | null
@@ -105,6 +106,7 @@ function AuthoredPartRow({
       <div
         role="none"
         data-part-id={part.id}
+        data-feature-id={highlight?.featureId}
         data-part-status={status}
         data-part-visible={part.visible}
         onPointerEnter={() => props.onPreselect?.(highlight)}
@@ -207,6 +209,9 @@ function PartTextureContext({
 export function AuthoredPartsGroup(props: PartsProps) {
   const t = useTranslations("app.authoredTree")
   const [expanded, setExpanded] = useState(true)
+  useEffect(() => {
+    if (props.revealRequest) setExpanded(true)
+  }, [props.revealRequest])
   return (
     <div role="none">
       <Button
@@ -223,7 +228,11 @@ export function AuthoredPartsGroup(props: PartsProps) {
           aria-hidden="true"
           className={cn("size-4 shrink-0", !expanded && "-rotate-90")}
         />
+        <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
         {t("parts")}
+        <span aria-hidden="true" className="ml-auto text-xs tabular-nums text-muted-foreground">
+          {props.parts.length}
+        </span>
       </Button>
       {expanded && (
         <fieldset className="contents">

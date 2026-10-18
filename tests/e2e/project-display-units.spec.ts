@@ -1,5 +1,6 @@
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.describe("project display units", () => {
   test("applies project units to input, resolved values, viewport copy, and reload", async ({
@@ -29,10 +30,7 @@ test.describe("project display units", () => {
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Model", exact: true })
       .click()
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await expect(createBox.getByRole("combobox", { name: "Width" })).toHaveValue(
       "0.787401574803 in",

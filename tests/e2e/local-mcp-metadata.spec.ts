@@ -10,6 +10,7 @@ import {
   openAutoApplySetup,
 } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 function success<Value>(
@@ -19,9 +20,8 @@ function success<Value>(
   return result.value
 }
 async function createBoxes(page: Page) {
-  const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   for (let n = 0; n < 2; n += 1) {
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const form = page.getByRole("form", { name: "Create box", exact: true })
     await form.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(page.locator("[data-part-id]")).toHaveCount(n + 1, { timeout: 30_000 })

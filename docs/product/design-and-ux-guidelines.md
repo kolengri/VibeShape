@@ -41,13 +41,14 @@ These are acceptance targets, not marketing claims. They require task testing an
 
 ### Stable Application Regions
 
-The desktop authoring shell has six persistent regions:
+The desktop authoring shell has seven persistent regions:
 
 | Region | Responsibility | Must not contain |
 |---|---|---|
 | Application bar | Project identity, save/export state, undo/redo, global commands | Feature-specific parameter forms |
 | Command toolbar | High-frequency creation, modeling, view, and analysis commands | Project settings or destructive project actions |
-| Model tree | Ordered feature presentation, bodies, sketches, visibility, failure ownership | Arbitrary file navigation or log output |
+| Model tree | Authored parts, terminal bodies, sketches, visibility, object selection | Feature chronology or log output |
+| Feature history | Ordered operations, edit/insertion point, suppression, dependencies, feature diagnostics | Object organization or unrelated undo checkpoints |
 | Viewport | Geometry, selections, sketching, dimensions, manipulators, transient previews | Long-form diagnostics or settings forms |
 | Task panel | Active command parameters, properties, contextual help, diagnostics | Global navigation or the primary path for spatial selection and annotation placement |
 | Status bar | Units, selection filter, solver/rebuild state, progress summary | Primary actions or critical errors that require a decision |
@@ -75,6 +76,8 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Status bar | 24 px | 24–28 px |
 | Model tree | 240 px | 200–420 px |
 | Task panel | 320 px | 280–480 px |
+| Side-panel background opacity | 94% | 0–100%; compact sheets stay opaque |
+| Feature history | Compact bottom strip | Collapsible; Details reveals labels and source links |
 | Panel resize hit area | 8 px | At least 8 px |
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
@@ -451,7 +454,9 @@ The table has these columns:
 
 ## Model Tree
 
-The model tree is a dedicated accessible tree, not a styled table.
+The left model tree is a dedicated accessible object browser. Parts, terminal bodies, and sketches remain separate from the horizontal feature history below the workspace. Object folders and History collapse independently. The heading names the project; section icons/counts and a contextual empty-sketch action support discovery. Origin expands to real plane selection and visibility controls. A body click selects the object when the selection callback is available; feature-history activation opens the existing editor.
+
+History uses compact, named feature icons by default. **Details** reveals labels, visibility, source links, and dependency summaries. Left/Right navigate chronological items; Up/Down navigate disclosure hierarchy. Home/End, Enter, F2, context menus, and dependency-validated dragging retain their existing commands. Repair badges and the edit-point marker remain visible in compact mode. **Find in browser** is offered only for an available terminal result and reveals its part/body without editing it. Hover and selected geometry are reflected in the owning timeline feature.
 
 - `Up` and `Down` move through visible nodes; `Left` collapses or moves to the parent; `Right` expands or moves to the first child.
 - `Enter` activates the primary edit action; `Space` toggles selection when supported; `F2` renames.

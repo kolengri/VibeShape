@@ -16,6 +16,7 @@ import {
   createAssemblyTransaction,
   groundAssemblyInstanceChanges,
 } from "./assembly-model"
+import { type AssemblyMotionCoordinate, assemblyMotionCoordinates } from "./assembly-motion"
 import type { AssemblyRemoval } from "./assembly-remove-dialog"
 import { useAssemblyInspection } from "./use-assembly-inspection"
 
@@ -29,6 +30,12 @@ export type AssemblyTask = {
     | "addJoint"
     | "editJoint"
   id: string | null
+  revision: number
+}
+type AssemblyMotionTask = {
+  id: string
+  coordinate: AssemblyMotionCoordinate["kind"]
+  documentKey: string
   revision: number
 }
 function reviewedBase(
@@ -121,6 +128,34 @@ function selectionRecords(
 function inspectionContext(context: AssemblyDocumentContext | null) {
   return context?.authorityVersion === 4 || context?.authorityVersion === 5 ? context : null
 }
+function useAssemblyMotionTask(
+  context: AssemblyDocumentContext | null,
+  assembly: AssemblyAuthority,
+  blocked: boolean,
+) {
+  const [task, setTask] = useState<AssemblyMotionTask | null>(null)
+  const documentKey = context ? `${context.documentId}:${context.revision}` : "unavailable"
+  const motion = task?.documentKey === documentKey ? task : null
+  const openMotion = (id: string) => {
+    if (!context || blocked || motion) return
+    const joint = assembly.joints.find((joint) => joint.id === id)
+    const coordinate = joint ? assemblyMotionCoordinates(joint)[0] : null
+    if (coordinate)
+      setTask({ id, coordinate: coordinate.kind, documentKey, revision: context.revision })
+  }
+  const closeMotion = (expectedKey?: string) =>
+    setTask((previous) => (expectedKey && previous?.documentKey !== expectedKey ? previous : null))
+  const setMotionCoordinate = (coordinate: AssemblyMotionCoordinate["kind"]) => {
+    if (!blocked && motion) setTask({ ...motion, coordinate })
+  }
+  return { motion, documentKey, openMotion, closeMotion, setMotionCoordinate }
+}
+function assemblyPanelState(task: AssemblyTask | null, motion: AssemblyMotionTask | null) {
+  return {
+    idle: task === null && motion === null,
+    panelKey: task ? `${task.kind}:${task.id}` : motion ? `motion:${motion.id}` : "assembly",
+  }
+}
 export function useAssemblyWorkspace(controller: DocumentControllerState) {
   const context = assemblyDocumentContext(controller)
   const assembly = activeAssembly(controller)
@@ -135,6 +170,14 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
   const inspection = useAssemblyInspection(inspectionContext(context))
   const selected = selectionRecords(assembly, instanceId, definitionId)
   const disabled = !writable || mutations.pending
+  const { motion, documentKey, openMotion, closeMotion, setMotionCoordinate } =
+    useAssemblyMotionTask(
+      context,
+      assembly,
+      disabled || inspection.pending || task !== null || removal !== null,
+    )
+  const panelState = assemblyPanelState(task, motion)
+  const taskActionsDisabled = disabled || inspection.pending || !panelState.idle || removal !== null
   const selectInstance = useCallback((id: string | null) => {
     setInstanceId(id)
     setDefinitionId(null)
@@ -144,6 +187,7 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     setInstanceId(null)
   }, [])
   const openTask = (kind: AssemblyTask["kind"], id: string | null = null) => {
+    if (disabled || motion) return
     if (context) setTask({ kind, id, revision: context.revision })
   }
   const onRemove = (kind: AssemblyRemoval["kind"], id: string, name: string) => {
@@ -158,7 +202,7 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
   }
   return {
     assembly,
-    documentKey: context ? `${context.documentId}:${context.revision}` : "unavailable",
+    documentKey,
     sources,
     task,
     setTask,
@@ -172,6 +216,12 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     selectInstance,
     selectDefinition,
     openTask,
+    motion,
+    ...panelState,
+    taskActionsDisabled,
+    openMotion,
+    closeMotion,
+    setMotionCoordinate,
     onRemove,
     ground,
     upgrade: async () =>

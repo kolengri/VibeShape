@@ -1922,13 +1922,7 @@ function WorldAxesLegend() {
         SAFE_VIEWPORT_LEFT,
       )}
       role="img"
-    >
-      <div className="absolute bottom-1 right-1 flex gap-1 rounded-sm bg-background/75 px-1 font-mono text-[10px] font-semibold">
-        <span className="text-axis-x">X</span>
-        <span className="text-axis-y">Y</span>
-        <span className="text-axis-z">Z</span>
-      </div>
-    </div>
+    />
   )
 }
 

@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function expectContained(dialog: Locator, page: Page) {
   const viewport = page.viewportSize()
@@ -83,10 +84,7 @@ test("keeps the model tree inside its column after a long feature rename", async
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
   })
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box" })
     .getByRole("button", { name: "Create box", exact: true })

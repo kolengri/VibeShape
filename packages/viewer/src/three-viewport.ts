@@ -1,6 +1,5 @@
 import {
   AmbientLight,
-  AxesHelper,
   Box3,
   BufferAttribute,
   BufferGeometry,
@@ -40,6 +39,7 @@ import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysi
 import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
 import { ModelMeshPresentation } from "./model-meshes"
 import { orientationInsetPlacement } from "./orientation-inset"
+import { OrientationMarker } from "./orientation-marker"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -1139,7 +1139,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #surfaceTextureControlsEnabled = true
   readonly #orientationScene = new Scene()
   readonly #orientationCamera = new PerspectiveCamera(35, 1, 0.1, 10)
-  readonly #orientationAxes = new AxesHelper(1.05)
+  readonly #orientationMarker = new OrientationMarker()
   #controls: OrbitControls
   readonly #translationControls: TransformControls
   readonly #translationObject = new Object3D()
@@ -1522,12 +1522,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#faceSelectionGroup)
     this.#scene.add(this.#translationObject)
     this.#scene.add(this.#angularGizmoGroup)
-    this.#orientationAxes.setColors(
-      new Color("#e15b64"),
-      new Color("#35a66f"),
-      new Color("#4c8dff"),
-    )
-    this.#orientationScene.add(this.#orientationAxes)
+    this.#orientationScene.add(this.#orientationMarker.group)
     this.#scene.add(new AmbientLight(0xffffff, 1.6))
     const keyLight = new DirectionalLight(0xffffff, 2.8)
     keyLight.position.set(3, -4, 6)
@@ -2210,11 +2205,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#angularGizmoHandleMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()
     for (const material of this.#originPlaneEdgeMaterials) material.dispose()
-    this.#orientationAxes.geometry.dispose()
-    const orientationMaterials = Array.isArray(this.#orientationAxes.material)
-      ? this.#orientationAxes.material
-      : [this.#orientationAxes.material]
-    for (const material of orientationMaterials) material.dispose()
+    this.#orientationMarker.dispose()
     this.#originPlaneEdgeMaterials.length = 0
     this.#originPlaneMaterials.clear()
     this.#originPlaneMeshes.clear()
@@ -3344,6 +3335,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#orientationCamera.up.copy(this.#camera.up)
     this.#orientationCamera.lookAt(0, 0, 0)
     this.#orientationCamera.updateMatrixWorld()
+    this.#orientationMarker.alignLabels(this.#orientationCamera.quaternion)
     this.#renderer.setScissorTest(true)
     this.#renderer.setScissor(insetX, insetY, insetSize, insetSize)
     this.#renderer.setViewport(insetX, insetY, insetSize, insetSize)

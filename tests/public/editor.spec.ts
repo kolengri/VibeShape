@@ -4,6 +4,7 @@ import { unzipSync } from "fflate"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "../e2e/application-menu-support"
 import { expect, test } from "../e2e/fixtures"
+import { invokeModelCommand } from "../e2e/model-command-support"
 
 async function downloadExport(page: Page, info: TestInfo, format: "STEP" | "STL" | "3MF") {
   await openApplicationMenuItem(page, "Export geometry…")
@@ -54,10 +55,7 @@ test("the public editor loads WASM, edits, restores a native project and exports
   })
   await page.goto("/")
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const create = page.getByRole("form", { name: "Create box", exact: true })
   for (const [name, value] of [
     ["Width", "30 mm"],

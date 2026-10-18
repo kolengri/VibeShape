@@ -41,8 +41,8 @@ type StorageLike = Pick<Storage, "getItem" | "setItem">
 const defaults = {
   treeWidth: 240,
   taskWidth: 320,
-  treeOpacity: 100,
-  taskOpacity: 100,
+  treeOpacity: 94,
+  taskOpacity: 94,
   treeCollapsed: false,
   taskCollapsed: false,
 }

@@ -82,6 +82,30 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly viewport occurrence identity", () => {
+  it("updates solved preview meshes without fitting the camera or replacing the renderer", async () => {
+    const select = vi.fn()
+    const View = ({ value, autoFit }: { value: AssemblyInspection; autoFit: boolean }) => (
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <ViewerPreferencesProvider>
+          <AssemblyViewport
+            inspection={value}
+            selectedId={null}
+            onSelect={select}
+            autoFit={autoFit}
+          />
+        </ViewerPreferencesProvider>
+      </I18nProvider>
+    )
+    const view = render(<View value={inspection()} autoFit />)
+    await waitFor(() => expect(ports.meshes).toHaveBeenCalledTimes(1))
+    expect(ports.fit).toHaveBeenCalledTimes(1)
+    view.rerender(<View value={inspection()} autoFit={false} />)
+    await waitFor(() => expect(ports.meshes).toHaveBeenCalledTimes(2))
+    view.rerender(<View value={inspection()} autoFit={false} />)
+    await waitFor(() => expect(ports.meshes).toHaveBeenCalledTimes(3))
+    expect(ports.fit).toHaveBeenCalledTimes(1)
+    expect(ports.create).toHaveBeenCalledTimes(1)
+  })
   it("renders world meshes once, picks independent instances and highlights every source of the selected occurrence", async () => {
     const value = inspection(),
       select = vi.fn()

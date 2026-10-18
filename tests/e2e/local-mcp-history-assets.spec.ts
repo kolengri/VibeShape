@@ -5,6 +5,7 @@ import { readImportedFeatureParameters } from "../../packages/domain/src/part-de
 import { enableLocalAi } from "./application-menu-support"
 import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import {
   chooseImportSource,
   exportGeometry,
@@ -29,10 +30,7 @@ test("previews and reapplies historical exact source bytes through MCP Redo afte
   try {
     await page.goto(local.origin)
     await saved(page)
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const box = page.getByRole("form", { name: "Create box", exact: true })
     await box.getByRole("combobox", { name: "Width", exact: true }).fill("12 mm")
     await box.getByRole("combobox", { name: "Depth", exact: true }).fill("8 mm")

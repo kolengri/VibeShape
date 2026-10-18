@@ -1,5 +1,6 @@
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 import {
   confirmSketchPlane,
   drawRectangle,
@@ -18,10 +19,17 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("toolbar", { name: "Model commands" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Model tree" })).toBeVisible()
     await expect(page.getByRole("tree", { name: "Project features" })).toBeVisible()
-    await expect(page.getByRole("treeitem")).toHaveCount(4)
+    await expect(
+      page.getByRole("tree", { name: "Project features", exact: true }).getByRole("treeitem"),
+    ).toHaveCount(4)
+    await expect(
+      page
+        .getByRole("tree", { name: "Feature history", exact: true })
+        .getByRole("treeitem", { name: "History", exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
-    await expect(page.locator("footer[role='status']")).toContainText("Ready")
+    await expect(page.locator("main > footer")).toContainText("Ready")
   })
 
   test("orbits the 3D viewport with primary drag without accepting a sketch plane", async ({
@@ -68,7 +76,7 @@ test.describe("foundation CAD shell", () => {
 
     const xzPick = await selectIdleOriginPlaneInViewport(page, "xz")
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(page.locator("footer[role='status']")).toContainText("Selection: XZ plane")
+    await expect(page.locator("main > footer")).toContainText("Selection: XZ plane")
     await viewport.getByRole("button", { name: "Hide XZ plane" }).click()
     await expect(viewport).not.toHaveAttribute("data-origin-plane-selection")
     await page.mouse.click(xzPick.x, xzPick.y)
@@ -85,7 +93,7 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("xz")
 
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("xz")
   })
@@ -95,10 +103,7 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -129,9 +134,15 @@ test.describe("foundation CAD shell", () => {
   test("keeps primary commands in a predictable keyboard order", async ({ browserName, page }) => {
     await page.goto("/")
 
-    const lastHeaderButton = page.getByRole("button", { name: /^Rename / })
-    const modelButton = page.getByRole("button", { name: "Model", exact: true })
-    const sketchButton = page.getByRole("button", { name: "Sketch", exact: true })
+    const lastHeaderButton = page
+      .getByRole("group", { name: "Geometry workspace", exact: true })
+      .getByRole("button", { name: "Assembly", exact: true })
+    const modelButton = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Model", exact: true })
+    const sketchButton = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Sketch", exact: true })
     // Safari uses Option+Tab to include every control in keyboard navigation.
     const enterToolbar = browserName === "webkit" ? "Alt+Tab" : "Tab"
 
@@ -217,10 +228,7 @@ test.describe("foundation CAD shell", () => {
       timeout: 30_000,
     })
 
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const form = page.getByRole("form", { name: "Create box" })
     const width = form.getByRole("combobox", { name: "Width" })
     await expect(form).toBeVisible()

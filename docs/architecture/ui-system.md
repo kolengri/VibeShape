@@ -122,6 +122,29 @@ VibeShape is a dense tool, not a marketing dashboard:
 - consistent Lucide icon size and stroke, with accessible names or tooltips where needed;
 - the viewport remains visually dominant.
 
+## Browser and feature timeline
+
+The Model workspace composes two presentations of the same document command callbacks: an object browser on the left and a chronological timeline below the resizable workspace. The timeline owns compact/Details disclosure and horizontal keyboard navigation; existing History rows retain graph validation, drag revisions, folder selection, deletion, suppression, source previews, and insertion guards. Object selection and timeline editing remain distinct actions.
+
+A transient reveal request connects a terminal feature result to its browser row, expands the browser and object group, and restores focus there. It never changes geometry or becomes saved document data. Origin plane controls and object-folder actions remain application commands and view preferences. Sidebar backgrounds default to 94% opacity without overriding saved preferences. The orientation inset labels its actual camera-aligned positive axis endpoints and distinguishes negative endpoints; it reuses the existing render schedule and owns/disposes its glyph resources.
+
+The viewport and active task stay mounted when History collapses or Details changes. Toolbar grouping composes the resolved editor commands rather than installing another registry or eligibility path.
+
+The History transport resolves positions against the complete interleaved order and reuses guarded
+History insertion actions. Its draggable vertical divider commits on release and shares one navigation lock with the
+transport buttons. The divider derives positions from visible row/folder bounds, supports keyboard
+navigation, and cancels transient gestures on Escape, lost capture or document/revision changes. The transient cursor filters visible geometry and inputs, never the saved authority.
+Per-row folder grouping descriptions supplement edit selection without adding checkbox controls.
+
+The Assembly browser owns local filtering/disclosure and delegates all selection, edit and motion
+commands. Motion sessions solve disposable frozen-source previews sequentially, abort their worker on
+cancellation, keep the camera stable, and commit one guarded joint update only on Apply. Project/revision
+identity invalidates a session. Export and interference retain the saved assembly as authority.
+
+The Plugins dialog composes a feature-owned local package manager through a translated shell adapter.
+Strict declarative packages remain data; only a bundled first-party iframe renderer executes. See
+[Extension architecture](extensions.md) for capabilities and isolation.
+
 ## Semantic tokens
 
 Extend the base shadcn tokens with CAD-specific tokens:
@@ -238,7 +261,7 @@ rollback, read-only state, and stale revisions remain blocked by the owning comm
 
 The whole History row is the pointer activation surface; nested action controls are excluded by the
 sensor's interactive-element policy, while the treeitem label is explicitly eligible. Reordering has
-no keyboard adapter or position menu. Arrow keys navigate the tree, Enter activates an item, and F2
+no keyboard adapter or position menu. Arrow keys navigate the object tree; Left/Right navigate the horizontal History timeline. Enter activates an item, and F2
 renames it. Each row exposes one actions menu for its semantic operations. See the
 [interaction contract](../product/direct-manipulation-and-shortcuts.md) for thresholds and gestures.
 The tree owns localized drag instructions and live announcements instead of the generic accessibility

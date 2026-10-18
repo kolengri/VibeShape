@@ -3,6 +3,7 @@ import { readShellFeatureParameters } from "../../packages/domain/src/part-desig
 import { openApplicationMenuItem } from "./application-menu-support"
 import { createSolids, openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 function shellParameters(project: Awaited<ReturnType<typeof saveProject>>, featureId: string) {
   const feature = project.project.snapshot.features.find(({ id }) => id === featureId)
@@ -119,7 +120,7 @@ test("selects opening faces in 3D and switches to a persisted closed cavity", as
   await page.goto("/")
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box", exact: true })
     .getByRole("button", { name: "Create box", exact: true })

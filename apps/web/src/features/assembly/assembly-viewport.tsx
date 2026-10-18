@@ -56,6 +56,7 @@ function useAssemblyViewportRenderer(
   inspection: AssemblyInspection | null,
   selectedId: string | null,
   onSelect: (id: string | null) => void,
+  autoFit: boolean,
 ) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const viewport = useRef<GeometryViewport | null>(null)
@@ -105,8 +106,8 @@ function useAssemblyViewportRenderer(
   useEffect(() => {
     if (!ready) return
     viewport.current?.setMeshes(meshes)
-    if (meshes.length) viewport.current?.fit()
-  }, [meshes, ready])
+    if (autoFit && meshes.length) viewport.current?.fit()
+  }, [autoFit, meshes, ready])
   useEffect(() => {
     if (ready) viewport.current?.setFeatureSelection(highlight)
   }, [highlight, ready])
@@ -125,13 +126,15 @@ export function AssemblyViewport({
   inspection,
   selectedId,
   onSelect,
+  autoFit = true,
 }: {
   inspection: AssemblyInspection | null
   selectedId: string | null
   onSelect: (id: string | null) => void
+  autoFit?: boolean
 }) {
   const t = useTranslations("app.assembly")
-  const view = useAssemblyViewportRenderer(inspection, selectedId, onSelect)
+  const view = useAssemblyViewportRenderer(inspection, selectedId, onSelect, autoFit)
   return (
     <section className="relative h-full min-h-0" aria-label={t("viewportRegion")}>
       <canvas

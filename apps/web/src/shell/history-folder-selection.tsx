@@ -10,7 +10,6 @@ import {
   ContextMenuLabel,
   ContextMenuTrigger,
 } from "@vibeshape/ui/components/context-menu"
-import { Check } from "@vibeshape/ui/components/icons"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   createContext,
@@ -19,6 +18,7 @@ import {
   type ReactNode,
   type RefObject,
   useContext,
+  useId,
   useRef,
   useState,
 } from "react"
@@ -63,6 +63,7 @@ type FolderSelectionContext = {
   keys: readonly string[]
   selected: ReadonlySet<string>
   select: (key: string, gesture: SelectionGesture) => void
+  anchor: (key: string) => void
   create: (key?: string, focusTarget?: HTMLElement | null) => void
   add: (folder: HistoryFolder, baseRevision: number, key: string) => void
   rows: readonly HistoryViewRow[]
@@ -72,6 +73,21 @@ type FolderSelectionContext = {
   error: string | null
 }
 const SelectionContext = createContext<FolderSelectionContext | null>(null)
+
+export function useHistoryFolderSelectionDescription(item: HistoryItemRef) {
+  const context = useContext(SelectionContext)
+  const t = useTranslations("app.authoredTree")
+  const id = useId()
+  if (!context) return undefined
+  return {
+    id,
+    text: t(
+      context.selected.has(historyItemKey(item))
+        ? "folderSelectionSelected"
+        : "folderSelectionNotSelected",
+    ),
+  }
+}
 
 type HistoryInsertionSide = "above" | "below"
 function useHistoryInsertion(
@@ -215,6 +231,7 @@ function HistoryFolderSelectionScope({
         keys,
         selected: selectedKeys,
         select,
+        anchor: (key) => setSelection((previous) => ({ ...previous, anchor: key })),
         create,
         add: (folder, revision, key) => {
           void append.add(folder, revision, keysForRow(key))
@@ -256,13 +273,13 @@ function HistoryFolderSelectionScope({
   )
 }
 
-export function HistoryFolderSelectionControls() {
+export function HistoryFolderSelectionControls({ compact = false }: { compact?: boolean }) {
   const context = useContext(SelectionContext)
   const t = useTranslations("app.authoredTree")
   if (!context) return null
   const items = selectedFolderItems(context.authority, context.keys)
   return (
-    <div ref={context.controlsRef} className="space-y-1 px-2 pb-1">
+    <div ref={context.controlsRef} className={compact ? "min-w-0" : "space-y-1 px-2 pb-1"}>
       <div className="flex flex-wrap items-center gap-1">
         <HistoryFolderDialog
           authority={context.authority}
@@ -286,7 +303,9 @@ export function HistoryFolderSelectionControls() {
           </>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{t("folderSelectionInstructions")}</p>
+      <p className={compact ? "sr-only" : "text-xs text-muted-foreground"}>
+        {t("folderSelectionInstructions")}
+      </p>
       {context.keys.length > 0 && (
         <p role="status" className="text-xs text-muted-foreground">
           {items ? t("selectedItems", { count: context.keys.length }) : t("invalidSelection")}
@@ -308,10 +327,26 @@ function captureHistorySelection(
 ) {
   if (!(event.target instanceof Element) || !event.target.closest('[role="treeitem"]')) return
   const additive = event.metaKey || event.ctrlKey
-  if (!additive && !event.shiftKey) return
+  if (!additive && !event.shiftKey) {
+    context.anchor(key)
+    return
+  }
   event.preventDefault()
   event.stopPropagation()
   context.select(key, { additive, range: event.shiftKey })
+}
+
+function captureHistoryKeyboardSelection(
+  event: KeyboardEvent<HTMLDivElement>,
+  context: FolderSelectionContext,
+  key: string,
+) {
+  if (event.key !== " " || !event.shiftKey) return
+  if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "treeitem")
+    return
+  event.preventDefault()
+  event.stopPropagation()
+  context.select(key, { additive: event.metaKey || event.ctrlKey, range: true })
 }
 
 function openHistoryMenuFromKeyboard(event: KeyboardEvent<HTMLDivElement>) {
@@ -472,7 +507,6 @@ export function HistoryFolderSelectableRow({
   insertionDisabled?: boolean | undefined
 }) {
   const context = useContext(SelectionContext)
-  const t = useTranslations("app.authoredTree")
   const [menuRevision, setMenuRevision] = useState<number | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const openingDialogRef = useRef(false)
@@ -481,7 +515,6 @@ export function HistoryFolderSelectableRow({
     return <HistoryInsertionOnlyRow insertion={insertion}>{children}</HistoryInsertionOnlyRow>
   const key = historyItemKey(row.ref)
   const selected = context.selected.has(key)
-  const label = row.record.label || t("unnamedItem")
   return (
     <ContextMenu onOpenChange={(open) => setMenuRevision(open ? context.authority.revision : null)}>
       <ContextMenuTrigger asChild>
@@ -490,35 +523,16 @@ export function HistoryFolderSelectableRow({
           role="none"
           data-folder-selected={selected ? "true" : undefined}
           className={cn(
-            "flex min-w-0 items-start",
+            "relative flex min-w-0 shrink-0 items-start",
             selected && "bg-accent ring-1 ring-primary ring-inset",
           )}
           onContextMenuCapture={() => {
             if (!selected) context.select(key, { additive: false, range: false })
           }}
           onClickCapture={(event) => captureHistorySelection(event, context, key)}
+          onKeyDownCapture={(event) => captureHistoryKeyboardSelection(event, context, key)}
           onKeyDown={openHistoryMenuFromKeyboard}
         >
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            aria-label={t("selectHistoryItem", { name: label })}
-            aria-pressed={selected}
-            onClick={(event) =>
-              context.select(key, { additive: !event.shiftKey, range: event.shiftKey })
-            }
-            className="shrink-0"
-          >
-            <span
-              className={cn(
-                "flex size-3.5 items-center justify-center rounded-sm border border-border",
-                selected && "border-primary text-primary",
-              )}
-            >
-              {selected && <Check aria-hidden="true" className="size-3" />}
-            </span>
-          </Button>
           <div className="min-w-0 flex-1">
             {children}
             <HistoryInsertionFeedback insertion={insertion} />

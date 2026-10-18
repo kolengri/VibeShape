@@ -58,4 +58,6 @@ These three named tools share the same review and correlation contract over loca
 
 ## Editor source links
 
-In the visible History tree, hover or focus a feature source link to preview its sketch profile. Clicking it locates and opens the linked sketch through the ordinary History action, including its edit-point rollback and draft guards. Use Finish sketch or Cancel to leave that editor before unrelated work. This UI navigation does not add an MCP source-link tool.
+In the visible editor, objects live in the left browser and ordered features live in the bottom History timeline. Enable **Details** to expose source links, visibility, and dependency summaries; hover or focus a feature source link to preview its sketch profile. Clicking it locates and opens the linked sketch through the ordinary History action, including its edit-point rollback and draft guards. Use Finish sketch or Cancel to leave that editor before unrelated work. This UI navigation does not add an MCP source-link tool.
+
+**Find in browser** in an available terminal feature's actions menu selects and reveals its resulting part/body, expanding a collapsed browser or object group. It does not enter the feature editor. Compact History preserves repair badges and the edit-point marker; use its context menu for existing insertion actions. These presentation changes add no MCP tools, rollback authority, or History-reorder support to this operator contract.

@@ -230,3 +230,7 @@ v1 includes:
 Compatibility is defined by automated and manual test matrices, never by user-agent-only branches.
 
 The recorded Playwright WebKit 26.5 runtime exposes `getDirectory()` but fails to open the OPFS root. Capability probing therefore invokes the API and reports a cache-disabled degraded state rather than relying on method presence.
+
+## Browser project addresses
+
+The web composition layer reads an optional `project` query parameter as a schema-validated document ID before opening a session. Explicit targets override the last-active preference; malformed IDs and missing projects fail visibly without a fallback create. Successful initial activation replaces the current address, while later UI/MCP activation pushes a project address. Browser history navigation invokes the same guarded transition, serializes requests, and restores the actual active address on rejection. URL changes never add document revisions or own editor drafts. The same profile's IndexedDB and existing writer lease remain authoritative; a copied URL is not a cloud-transfer mechanism.

@@ -10,6 +10,7 @@ import { createDefaultSurfaceTextureLayer } from "../../packages/domain/src/surf
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 type Call = (name: string, args: Record<string, unknown>) => Promise<unknown>
 const layerId = "0195b5ac-b290-7a2c-8c33-000000000001"
@@ -89,10 +90,7 @@ test("authors full packed relief maps and exact faces through manual MCP review,
     )
     await page.goto(local.origin)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Box", exact: true })
-      .click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const form = page.getByRole("form", { name: "Create box" })
     for (const field of ["Width", "Depth", "Height"])
       await form.getByRole("combobox", { name: field, exact: true }).fill("10 mm")

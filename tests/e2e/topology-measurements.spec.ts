@@ -1,5 +1,6 @@
 import { createSolids, saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("measures revision-bound analytical edges, faces and explicit point pairs", async ({
   page,
@@ -10,7 +11,7 @@ test("measures revision-bound analytical edges, faces and explicit point pairs",
   await saved(page)
   await createSolids(page)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
-  await page.getByRole("button", { name: "Measure", exact: true }).click()
+  await invokeModelCommand(page, "Inspect", "Measure")
   const topology = page.getByRole("region", { name: "Topology measurements", exact: true })
   await expect(topology.getByLabel("Element", { exact: true })).toBeVisible()
   const element = topology.getByLabel("Element", { exact: true })

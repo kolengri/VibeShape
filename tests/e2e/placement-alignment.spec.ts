@@ -7,6 +7,7 @@ import type { BodyReference } from "../../packages/domain/src/body-reference"
 import type { DocumentSnapshot } from "../../packages/domain/src/document"
 import { saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 // Browser modules are loaded in page.evaluate; keep their inspection types DOM-independent.
 type InspectionState = Readonly<{ report: PersistentDocumentSessionReport | null }>
@@ -43,7 +44,7 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   await page.goto("/")
   await saved(page)
   const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box", exact: true })
     .getByRole("button", { name: "Create box", exact: true })
@@ -72,7 +73,7 @@ test("picks a committed moving face and saves one exact face alignment with Undo
   await form.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Placement 1", exact: true })).toHaveCount(0)
 
-  await commands.getByRole("button", { name: "Cylinder", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Cylinder")
   await page
     .getByRole("form", { name: "Create cylinder", exact: true })
     .getByRole("button", { name: "Create cylinder", exact: true })

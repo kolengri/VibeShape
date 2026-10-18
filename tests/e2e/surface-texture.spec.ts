@@ -4,6 +4,7 @@ import type { SurfaceTextureMask } from "../../packages/domain/src/surface-textu
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test.setTimeout(60_000)
 
@@ -12,10 +13,7 @@ async function createBox(page: Page) {
   await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
     timeout: 30_000,
   })
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box" })
   for (const name of ["Width", "Depth", "Height"])
     await box.getByRole("combobox", { name, exact: true }).fill("10 mm")
@@ -27,10 +25,7 @@ async function createBox(page: Page) {
 }
 
 async function openTexture(page: Page) {
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Surface texture", exact: true })
-    .click()
+  await invokeModelCommand(page, "Modify", "Surface texture")
   const panel = page.getByRole("complementary", { name: "Surface texture" })
   await panel.getByRole("combobox", { name: "Body", exact: true }).selectOption({ label: "Box 1" })
   await expect(panel.getByText("Relief preview ready.", { exact: true })).toBeVisible({
@@ -184,10 +179,7 @@ test("erasing a raised image stores brush dabs on the original body surface", as
 test("a hidden draft target requires a visible preview before Apply", async ({ page }) => {
   await createBox(page)
   await page.getByRole("button", { name: "Hide part Box 1", exact: true }).click()
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Surface texture", exact: true })
-    .click()
+  await invokeModelCommand(page, "Modify", "Surface texture")
   const panel = page.getByRole("complementary", { name: "Surface texture" })
   await panel.getByRole("combobox", { name: "Body", exact: true }).selectOption({ label: "Box 1" })
   await expect(panel.getByText(/Relief preview is unavailable/)).toBeVisible({ timeout: 30_000 })

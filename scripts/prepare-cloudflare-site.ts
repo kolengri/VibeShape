@@ -124,7 +124,7 @@ function remoteEditorHeaders(headers: string, remoteMcpUrl: string | undefined) 
         )
         .replace(
           "connect-src 'self'",
-          `connect-src 'self' ${endpoint.origin} wss://${endpoint.host}; frame-src https://challenges.cloudflare.com`,
+          `connect-src 'self' ${endpoint.origin} wss://${endpoint.host}; frame-src 'self' https://challenges.cloudflare.com`,
         )
     })
     .join("\n\n")

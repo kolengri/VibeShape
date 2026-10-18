@@ -12,12 +12,14 @@ import { useAutomationConnections } from "./automation-status"
 function saveStatusMessage(
   controller: DocumentControllerState,
   messages: {
+    error: string
     loading: string
     saved: string
     saving: string
     "save-error": string
   },
 ) {
+  if (controller.status === "error") return messages.error
   const loadingStatuses = new Set<DocumentControllerState["status"]>(["idle", "loading"])
   const messageKey = loadingStatuses.has(controller.status) ? "loading" : controller.saveStatus
   return messages[messageKey]
@@ -45,6 +47,7 @@ export function ApplicationBar({
     getProjectActiveWorkBlock() !== null
   const documentName = controller.report?.snapshot.name ?? t("untitledProject")
   const saveStatus = saveStatusMessage(controller, {
+    error: t("projectUnavailable"),
     loading: t("loading"),
     saved: t("savedInBrowser"),
     saving: t("saving"),

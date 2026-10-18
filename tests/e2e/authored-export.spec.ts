@@ -4,12 +4,10 @@ import { unzipSync } from "fflate"
 import { readVShapeV3 } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function createBox(page: Page, values: Record<string, string>) {
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Box", exact: true })
-    .click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box", exact: true })
   for (const [name, value] of Object.entries(values))
     await form.getByRole("combobox", { name, exact: true }).fill(value)

@@ -3,6 +3,7 @@ import type { Download } from "@playwright/test"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 for (const operation of ["fillet", "chamfer"] as const) {
   test(`keeps selected ${operation} edges through upstream edits, undo, reopen and native backup`, async ({
@@ -14,14 +15,14 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     for (const name of ["Width", "Depth", "Height"])
       await boxForm.getByRole("combobox", { name, exact: true }).fill("20 mm")
     await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     const title = operation === "fillet" ? "Fillet" : "Chamfer"
-    await toolbar.getByRole("button", { name: title, exact: true }).click()
+    await invokeModelCommand(page, "Modify", title)
     const form = page.getByRole("form", { name: `Create ${operation}` })
     await form.getByRole("radio", { name: "Selected edges", exact: true }).check()
     await expect(

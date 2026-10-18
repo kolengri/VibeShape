@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import { resultOperationLabels, selectResultOperation } from "./result-operation-helpers"
 import {
   clickSavedProfileInViewport,
@@ -179,8 +180,7 @@ test.describe("selector-backed extrusion", () => {
       await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
         timeout: 120_000,
       })
-      const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-      await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+      await invokeModelCommand(page, "Primitives", "Box")
       const boxForm = page.getByRole("form", { name: "Create box" })
       if (operation === "add") {
         await boxForm.getByRole("combobox", { name: "Origin Z" }).fill("-20 mm")
@@ -235,14 +235,19 @@ test.describe("selector-backed extrusion", () => {
       ).toHaveText("Box 1 · result")
 
       await editForm.getByRole("button", { name: "Cancel" }).click()
-      await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
+      await page
+        .getByRole("complementary", { name: "Model tree", exact: true })
+        .getByRole("button", { name: "Show Sketch 1", exact: true })
+        .click()
       await viewport
         .getByRole("combobox", { name: "Select saved profile" })
         .selectOption({ label: "Sketch 1 · Profile 1" })
       await extrudeCommand(page).click()
       const downstreamForm = page.getByRole("form", { name: "Extrude profile" })
+      await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Hide Extrusion 1", exact: true }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Extrusion 1", exact: true }).click()
       await selectResultOperation(page, downstreamForm, operation)
       await expect(
@@ -429,9 +434,15 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport.locator('[data-plane-symbol="XY"]')).toBeVisible()
     await expect(viewport.locator('[data-plane-symbol="XZ"]')).toBeVisible()
     await expect(viewport.locator('[data-plane-symbol="YZ"]')).toBeVisible()
-    await page.getByRole("button", { name: "Hide Sketch 1" }).click()
+    await page
+      .getByRole("complementary", { name: "Model tree", exact: true })
+      .getByRole("button", { name: "Hide Sketch 1" })
+      .click()
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
-    await page.getByRole("button", { name: "Show Sketch 1" }).click()
+    await page
+      .getByRole("complementary", { name: "Model tree", exact: true })
+      .getByRole("button", { name: "Show Sketch 1" })
+      .click()
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
     await page
       .getByRole("combobox", { name: "Select saved profile" })
@@ -557,8 +568,7 @@ test.describe("selector-backed extrusion", () => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     await boxForm.getByRole("button", { name: "Create box" }).click()
 
@@ -617,8 +627,10 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
 
+    await expandHistoryDetails(page)
     await page.getByRole("button", { name: "Hide Box 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await expandHistoryDetails(page)
     await page.getByRole("button", { name: "Show Box 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
 
@@ -628,8 +640,10 @@ test.describe("selector-backed extrusion", () => {
     const sketchContext = page.locator("section[data-sketch-context-mode='normal']")
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(page.getByTestId("sketch-rollback-guidance")).toHaveCount(0)
+    await expandHistoryDetails(page)
     await page.getByRole("button", { name: "Hide Box 1" }).click()
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "0")
+    await expandHistoryDetails(page)
     await page.getByRole("button", { name: "Show Box 1" }).click()
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
@@ -732,7 +746,10 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
     await fitIsometricView(page)
-    await page.getByRole("button", { name: "Show Sketch 1", exact: true }).click()
+    await page
+      .getByRole("complementary", { name: "Model tree", exact: true })
+      .getByRole("button", { name: "Show Sketch 1", exact: true })
+      .click()
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
@@ -811,9 +828,8 @@ test.describe("selector-backed extrusion", () => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -877,8 +893,7 @@ test.describe("selector-backed extrusion", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
@@ -892,7 +907,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Finish sketch" }).click()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-    await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Cylinder")
     await page
       .getByRole("form", { name: "Create cylinder" })
       .getByRole("button", { name: "Create cylinder" })

@@ -20,15 +20,24 @@ import {
   Cuboid,
   Eye,
   EyeOff,
+  Grid2X2,
   Layers3,
+  ListFilter,
   PenLine,
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
+import type {
+  ViewerOriginPlane,
+  ViewerOriginPlaneVisibility,
+} from "@vibeshape/viewer/origin-planes"
 import {
+  createContext,
   type FocusEvent,
   type KeyboardEvent,
   type ReactNode,
+  useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -53,18 +62,25 @@ import {
   selectedAuthoredBody,
 } from "./authored-tree-state"
 import { HistoryFeatureActions } from "./history-feature-actions"
+import { HistoryFeatureIcon } from "./history-feature-icon"
 import { HistoryFolderGroup } from "./history-folder-group"
 import {
   HistoryFolderSelectableRow,
   HistoryFolderSelection,
   HistoryFolderSelectionControls,
+  useHistoryFolderSelectionDescription,
 } from "./history-folder-selection"
-import { historyInsertionContext } from "./history-insertion-context"
+import { effectiveHistoryBoundaryIndex, historyInsertionContext } from "./history-insertion-context"
+import { HistoryNavigationControls, HistoryNavigationProvider } from "./history-navigation"
 import { HistoryProfileSources } from "./history-profile-sources"
+import { HistoryTimelineCursor } from "./history-timeline-cursor"
+import { ModelBrowserOrigin } from "./model-browser-origin"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
 import { proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
 import type { EditorWorkspaceName } from "./workspace"
+
+const HistoryPresentation = createContext({ timeline: false, detailed: true })
 
 const HISTORY_POINTER_SENSOR = PointerSensor.configure({
   preventActivation: (event, source) =>
@@ -174,6 +190,8 @@ function FeatureVisibilityAction({
   visible: boolean
 }) {
   const t = useTranslations("app.shell.modelTree")
+  const { timeline, detailed } = useContext(HistoryPresentation)
+  if (timeline && !detailed) return null
   const visibilityLabel = t(visible ? "hideFeature" : "showFeature", { feature: label })
   return (
     <Tooltip>
@@ -195,6 +213,24 @@ function FeatureVisibilityAction({
   )
 }
 
+function useHistoryRowLabel(item: HistoryItemRef) {
+  const { timeline, detailed } = useContext(HistoryPresentation)
+  const selection = useHistoryFolderSelectionDescription(item)
+  return {
+    timeline,
+    compact: timeline && !detailed,
+    describedBy:
+      [timeline ? "history-drag-instructions" : undefined, selection?.id]
+        .filter(Boolean)
+        .join(" ") || undefined,
+    selectionDescription: selection ? (
+      <span id={selection.id} className="sr-only">
+        {selection.text}
+      </span>
+    ) : null,
+  }
+}
+
 function FeatureTreeLabel({
   active,
   feature,
@@ -212,38 +248,62 @@ function FeatureTreeLabel({
   onRenameOpen: () => void
   renameDisabled: boolean
 }) {
+  const { compact, describedBy, selectionDescription } = useHistoryRowLabel({
+    kind: "feature",
+    id: feature.id,
+  })
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="xs"
-      className={cn(
-        "min-w-0 flex-1 justify-start pl-6 font-normal",
-        active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-        feature.suppressed && "text-muted-foreground line-through decoration-dotted",
-      )}
-      role="treeitem"
-      tabIndex={-1}
-      aria-selected={active}
-      aria-describedby="history-drag-instructions"
-      onClick={(event) => {
-        if (!event.defaultPrevented) onActivate(feature.id)
-      }}
-      onFocus={() => onPreselectionChange(feature.id)}
-      onBlur={() => onPreselectionChange(null)}
-      onKeyDown={(event) => {
-        if (event.key !== "F2" || renameDisabled) return
-        event.preventDefault()
-        onRenameOpen()
-      }}
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        className={cn(
+          "min-w-0 flex-1 font-normal",
+          compact ? "size-8 justify-center p-0" : "justify-start pl-2",
+          active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+          feature.suppressed && "text-muted-foreground line-through decoration-dotted",
+        )}
+        role="treeitem"
+        tabIndex={-1}
+        aria-selected={active}
+        aria-describedby={describedBy}
+        title={label}
+        onClick={(event) => {
+          if (!event.defaultPrevented) onActivate(feature.id)
+        }}
+        onFocus={() => onPreselectionChange(feature.id)}
+        onBlur={() => onPreselectionChange(null)}
+        onKeyDown={(event) => {
+          if (event.key !== "F2" || renameDisabled) return
+          event.preventDefault()
+          onRenameOpen()
+        }}
+      >
+        {readDatumPlaneFeatureParameters(feature) ? (
+          <Layers3 aria-hidden="true" className="mr-1 size-4 shrink-0" />
+        ) : (
+          <HistoryFeatureIcon feature={feature} />
+        )}
+        <span className={compact ? "sr-only" : "truncate"}>{label}</span>
+      </Button>
+      {selectionDescription}
+    </>
+  )
+}
+
+function HistoryItemActions({ children }: { children: ReactNode }) {
+  const { timeline, detailed } = useContext(HistoryPresentation)
+  return (
+    <div
+      className={
+        timeline && !detailed
+          ? "absolute -right-2 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100"
+          : "contents"
+      }
     >
-      {readDatumPlaneFeatureParameters(feature) ? (
-        <Layers3 aria-hidden="true" className="mr-1 size-4 shrink-0" />
-      ) : (
-        <Cuboid aria-hidden="true" className="mr-1 size-4 shrink-0" />
-      )}
-      <span className="truncate">{label}</span>
-    </Button>
+      {children}
+    </div>
   )
 }
 
@@ -254,6 +314,7 @@ function FeatureTreeItem({
   feature,
   onActivate,
   onFeatureRename,
+  onFindInBrowser,
   onPreselectionChange,
   onSuppressionChange,
   onVisibilityChange,
@@ -271,6 +332,7 @@ function FeatureTreeItem({
   feature: FeatureRecord
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onFindInBrowser?: (() => void) | undefined
   onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onSuppressionChange: FeatureSuppressionHandler
   onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
@@ -284,7 +346,10 @@ function FeatureTreeItem({
   const renameDisabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
   return (
     <div
-      className={cn("flex min-w-0 items-center gap-0.5", feature.suppressed && "opacity-60")}
+      className={cn(
+        "group/history-item relative flex min-w-0 items-center gap-0.5",
+        feature.suppressed && "opacity-60",
+      )}
       data-feature-suppressed={feature.suppressed ? "true" : undefined}
       onPointerEnter={() => onPreselectionChange(feature.id)}
       onPointerLeave={() => onPreselectionChange(null)}
@@ -304,19 +369,22 @@ function FeatureTreeItem({
         onRenameOpen={() => setRenameOpen(true)}
         renameDisabled={renameDisabled}
       />
-      <HistoryFeatureActions
-        controller={controller}
-        deleteDisabled={historyActions.disabled}
-        feature={feature}
-        label={label}
-        onDeleted={historyActions.onDeleted}
-        onRemove={historyActions.onRemove}
-        onRename={() => setRenameOpen(true)}
-        onSuppressionChange={onSuppressionChange}
-        renameDisabled={renameDisabled}
-        renameOpen={renameOpen}
-        triggerRef={actionsTriggerRef}
-      />
+      <HistoryItemActions>
+        <HistoryFeatureActions
+          onFindInBrowser={onFindInBrowser}
+          controller={controller}
+          deleteDisabled={historyActions.disabled}
+          feature={feature}
+          label={label}
+          onDeleted={historyActions.onDeleted}
+          onRemove={historyActions.onRemove}
+          onRename={() => setRenameOpen(true)}
+          onSuppressionChange={onSuppressionChange}
+          renameDisabled={renameDisabled}
+          renameOpen={renameOpen}
+          triggerRef={actionsTriggerRef}
+        />
+      </HistoryItemActions>
       <ModelTreeRenameDialog
         showTrigger={false}
         onCloseAutoFocus={(event) => {
@@ -413,6 +481,8 @@ function SketchVisibilityAction({
   t: ReturnType<typeof useTranslations>
   visible: boolean
 }) {
+  const { timeline, detailed } = useContext(HistoryPresentation)
+  if (timeline && !detailed) return null
   const visibilityLabel = t(visible ? "hideSketch" : "showSketch", { sketch: label })
   return (
     <Tooltip>
@@ -435,42 +505,55 @@ function SketchVisibilityAction({
 
 function SketchTreeLabelButton({
   active,
+  sketchId,
   label,
   onActivate,
   onRenameOpen,
   renameDisabled,
 }: {
   active: boolean
+  sketchId: SketchId
   label: string
   onActivate: () => void
   onRenameOpen: () => void
   renameDisabled: boolean
 }) {
+  const { timeline, compact, describedBy, selectionDescription } = useHistoryRowLabel({
+    kind: "sketch",
+    id: sketchId,
+  })
+  const t = useTranslations("app.shell.modelTree")
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="xs"
-      className={cn(
-        "min-w-0 flex-1 justify-start pl-6 font-normal",
-        active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-      )}
-      role="treeitem"
-      tabIndex={-1}
-      aria-selected={active}
-      aria-describedby="history-drag-instructions"
-      onClick={(event) => {
-        if (!event.defaultPrevented) onActivate()
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== "F2" || renameDisabled) return
-        event.preventDefault()
-        onRenameOpen()
-      }}
-    >
-      <PenLine aria-hidden="true" className="mr-1 size-4 shrink-0" />
-      <span className="truncate">{label}</span>
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        className={cn(
+          "min-w-0 flex-1 font-normal",
+          compact ? "size-8 justify-center p-0" : "justify-start pl-2",
+          active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+        )}
+        role="treeitem"
+        tabIndex={-1}
+        aria-selected={active}
+        aria-label={timeline ? t("editSketch", { sketch: label }) : undefined}
+        aria-describedby={describedBy}
+        title={label}
+        onClick={(event) => {
+          if (!event.defaultPrevented) onActivate()
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "F2" || renameDisabled) return
+          event.preventDefault()
+          onRenameOpen()
+        }}
+      >
+        <PenLine aria-hidden="true" className="mr-1 size-4 shrink-0" />
+        <span className={compact ? "sr-only" : "truncate"}>{label}</span>
+      </Button>
+      {selectionDescription}
+    </>
   )
 }
 
@@ -514,7 +597,7 @@ function SketchTreeItem({
   const activateSketch = () => onActivate(sketch.id)
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5">
+    <div className="group/history-item relative flex min-w-0 items-center gap-0.5">
       <SketchVisibilityAction
         label={label}
         onChange={() => onVisibilityChange(sketch.id, !visible)}
@@ -523,6 +606,7 @@ function SketchTreeItem({
       />
       <SketchTreeLabelButton
         active={active}
+        sketchId={sketch.id}
         label={label}
         onActivate={activateSketch}
         onRenameOpen={() => setRenameOpen(true)}
@@ -536,19 +620,21 @@ function SketchTreeItem({
         onSupportRepair={() => onSketchSupportRepair(sketch.id)}
         t={t}
       />
-      <SketchTreeActions
-        controller={controller}
-        deletionBlocked={deletionBlocked}
-        onRenameOpenChange={setRenameOpen}
-        onFeatureRename={onFeatureRename}
-        onSketchDeleted={onSketchDeleted}
-        onSketchRemove={onSketchRemove}
-        onSketchRename={onSketchRename}
-        renameBlocked={renameBlocked}
-        renameOpen={renameOpen}
-        sketch={sketch}
-        unnamedSketch={unnamedSketch}
-      />
+      <HistoryItemActions>
+        <SketchTreeActions
+          controller={controller}
+          deletionBlocked={deletionBlocked}
+          onRenameOpenChange={setRenameOpen}
+          onFeatureRename={onFeatureRename}
+          onSketchDeleted={onSketchDeleted}
+          onSketchRemove={onSketchRemove}
+          onSketchRename={onSketchRename}
+          renameBlocked={renameBlocked}
+          renameOpen={renameOpen}
+          sketch={sketch}
+          unnamedSketch={unnamedSketch}
+        />
+      </HistoryItemActions>
     </div>
   )
 }
@@ -677,16 +763,27 @@ function ModelTreeRootItem({
       disabled={disabled}
       onClick={() => onWorkspaceChange(targetWorkspace)}
     >
+      {targetWorkspace === "variables" ? (
+        <Grid2X2 aria-hidden="true" className="size-4 text-muted-foreground" />
+      ) : (
+        <Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />
+      )}
       {title}
     </Button>
   )
 }
 
 function ModelTreeGroupItem({
+  className,
+  count,
+  icon,
   expanded,
   onExpandedChange,
   title,
 }: {
+  className?: string
+  count?: number
+  icon?: ReactNode
   expanded: boolean
   onExpandedChange: (expanded: boolean) => void
   title: string
@@ -696,7 +793,7 @@ function ModelTreeGroupItem({
       type="button"
       variant="ghost"
       size="sm"
-      className="w-full justify-start font-normal"
+      className={cn("w-full justify-start font-normal", className)}
       role="treeitem"
       tabIndex={-1}
       aria-expanded={expanded}
@@ -706,12 +803,34 @@ function ModelTreeGroupItem({
         aria-hidden="true"
         className={cn("mr-1 size-4 shrink-0 transition-transform", !expanded && "-rotate-90")}
       />
+      {icon}
       {title}
+      {count !== undefined && (
+        <span aria-hidden="true" className="ml-auto text-xs tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      )}
     </Button>
   )
 }
 
 type ModelTreeProps = {
+  onCreateSketch?: (() => void) | undefined
+  origin?:
+    | Readonly<{
+        selected: ViewerOriginPlane | null
+        visibility: ViewerOriginPlaneVisibility
+        onSelect: (plane: ViewerOriginPlane) => void
+        onVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
+        disabled: boolean
+      }>
+    | undefined
+  highlightedFeatureId?: FeatureRecord["id"] | null | undefined
+  selectedResultFeatureId?: string | null | undefined
+  revealRequest?: Readonly<{ featureId: FeatureRecord["id"]; sequence: number }> | null
+  onRevealFeature?: ((featureId: FeatureRecord["id"]) => void) | undefined
+  surface?: "browser" | "timeline"
+  onHistoryReturnToEnd?: (() => Promise<boolean>) | undefined
   onHistoryInsert?:
     | ((item: HistoryItemRef, side: "above" | "below") => Promise<boolean>)
     | undefined
@@ -769,8 +888,9 @@ function ModelTreeWorkspaceItems({
   activeWorkspace,
   controller,
   onWorkspaceChange,
+  origin,
   t,
-}: Pick<ModelTreeProps, "activeWorkspace" | "controller" | "onWorkspaceChange"> & {
+}: Pick<ModelTreeProps, "activeWorkspace" | "controller" | "onWorkspaceChange" | "origin"> & {
   t: ReturnType<typeof useTranslations>
 }) {
   const workspaceUnavailable = controller.status !== "ready"
@@ -784,12 +904,16 @@ function ModelTreeWorkspaceItems({
         disabled={workspaceUnavailable}
         onWorkspaceChange={onWorkspaceChange}
       />
-      <ModelTreeRootItem
-        targetWorkspace="model"
-        title={t("items.origin")}
-        disabled={workspaceUnavailable}
-        onWorkspaceChange={onWorkspaceChange}
-      />
+      {origin ? (
+        <ModelBrowserOrigin {...origin} disabled={workspaceUnavailable || origin.disabled} />
+      ) : (
+        <ModelTreeRootItem
+          targetWorkspace="model"
+          title={t("items.origin")}
+          disabled={workspaceUnavailable}
+          onWorkspaceChange={onWorkspaceChange}
+        />
+      )}
     </>
   )
 }
@@ -862,18 +986,13 @@ function rollbackHistoryIndex(
   view: ReturnType<typeof selectModelTreeHistory>,
   props: ModelTreeProps,
 ) {
-  const cursor = props.controller.historyInsertion
-  if (cursor) {
-    return cursor.historyAfter
-      ? view.rows.findIndex(
-          (row) =>
-            row.ref.kind === cursor.historyAfter?.kind && row.ref.id === cursor.historyAfter.id,
-        )
-      : -1
-  }
-  if (view.graphFailed || props.activeWorkspace !== "sketch" || !props.activeSketchId) return -1
-  return view.rows.findIndex(
-    (row) => row.ref.kind === "sketch" && row.ref.id === props.activeSketchId,
+  return (
+    effectiveHistoryBoundaryIndex(
+      props.controller,
+      view.rows.map(({ ref }) => ref),
+      props.activeWorkspace === "sketch" ? props.activeSketchId : null,
+      view.graphFailed,
+    ) ?? view.rows.length - 1
   )
 }
 
@@ -913,8 +1032,8 @@ function historyRowInsertionClass(
     ? rows.findIndex((candidate) => historyRefKey(candidate.ref) === dragSourceKey)
     : -1
   return sourceIndex >= 0 && dragDestinationIndex !== null && sourceIndex < dragDestinationIndex
-    ? "border-b-2"
-    : "border-t-2"
+    ? "border-r-2"
+    : "border-l-2"
 }
 
 function historyRowDropFeedback(
@@ -1002,6 +1121,7 @@ type HistoryRowFrameProps = Pick<
   | "view"
 > & {
   content: ReactNode
+  repairRequired?: boolean | undefined
   details?: ReactNode
   sourcePresentation: { summary: ReactNode; highlighted: boolean }
   controller: DocumentControllerState
@@ -1024,11 +1144,56 @@ function historyRowStateData(
   }
 }
 
+function HistoryRowDetails({
+  compact,
+  details,
+  marker,
+  repairRequired,
+  summary,
+  t,
+}: Pick<HistoryRowFrameProps, "details" | "marker" | "repairRequired" | "t"> & {
+  compact: boolean
+  summary: ReactNode
+}) {
+  return (
+    <>
+      <div hidden={compact}>
+        {summary}
+        {details}
+      </div>
+      {compact && repairRequired && (
+        <span
+          role="img"
+          aria-label={t("repairRequired")}
+          className="absolute bottom-0 right-0 text-destructive"
+        >
+          <CircleAlert aria-hidden="true" className="size-3" />
+        </span>
+      )}
+      {marker && (
+        <div
+          role="status"
+          className={compact ? "sr-only" : "px-2 text-[11px] text-muted-foreground"}
+        >
+          <span className={compact ? "sr-only" : undefined}>{t("rollbackMarker")}</span>
+        </div>
+      )}
+    </>
+  )
+}
+
+function historyRowLayout(timeline: boolean, compact: boolean) {
+  if (!timeline) return undefined
+  return compact ? "relative w-12 shrink-0 px-2 py-1" : "relative w-64 shrink-0 border-r px-2 py-2"
+}
+
 function HistoryRowPresentation({
   content,
   details,
   feedback,
+  index,
   marker,
+  repairRequired,
   reorderLocked,
   rolledBack,
   row,
@@ -1038,13 +1203,23 @@ function HistoryRowPresentation({
   t,
 }: Pick<
   HistoryRowFrameProps,
-  "content" | "details" | "sourcePresentation" | "marker" | "rolledBack" | "row" | "t"
+  | "content"
+  | "details"
+  | "index"
+  | "sourcePresentation"
+  | "marker"
+  | "repairRequired"
+  | "rolledBack"
+  | "row"
+  | "t"
 > & {
   feedback: ReturnType<typeof historyRowDropFeedback>
   reorderLocked: boolean
   sortableRef: (element: Element | null) => void
   summaryLabels: ReturnType<typeof selectModelTreeHistory>["labelsByRef"]
 }) {
+  const { timeline, detailed } = useContext(HistoryPresentation)
+  const compact = timeline && !detailed
   return (
     <div
       ref={sortableRef}
@@ -1056,8 +1231,10 @@ function HistoryRowPresentation({
       }}
       data-history-kind={row.kind}
       data-history-id={row.ref.id}
+      data-history-index={index}
       {...historyRowStateData(feedback, rolledBack, reorderLocked, sourcePresentation.highlighted)}
       className={cn(
+        historyRowLayout(timeline, compact),
         feedback.className,
         sourcePresentation.highlighted && "bg-accent ring-1 ring-primary ring-inset",
         !reorderLocked &&
@@ -1067,13 +1244,18 @@ function HistoryRowPresentation({
       <div className="flex min-w-0 items-start">
         <div className="min-w-0 flex-1">{content}</div>
       </div>
-      {sourcePresentation.summary ?? <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />}
-      {details}
-      {marker && (
-        <div role="status" className="px-2 text-[11px] text-muted-foreground">
-          {t("rollbackMarker")}
-        </div>
-      )}
+      <HistoryRowDetails
+        compact={compact}
+        details={details}
+        marker={marker}
+        repairRequired={repairRequired}
+        summary={
+          sourcePresentation.summary ?? (
+            <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />
+          )
+        }
+        t={t}
+      />
     </div>
   )
 }
@@ -1126,6 +1308,12 @@ function SketchHistoryRow({
   const sketch = row.record as SketchRecord
   return (
     <HistoryRowFrame
+      repairRequired={
+        props.repairRequired ||
+        brokenReferenceCount(row.referenceHealth) > 0 ||
+        row.supportHealth?.status === "missing" ||
+        row.supportHealth?.status === "ambiguous"
+      }
       sourcePresentation={{
         highlighted: props.sourcePreviewSketchId === sketch.id,
         summary: undefined,
@@ -1204,8 +1392,29 @@ function FeatureHistoryRow({
 }: ModelTreeHistoryRowProps) {
   const feature = row.record as FeatureRecord
   const profiles = readExtrusionProfileSet(feature) ?? readRevolveProfileSet(feature)
+  const result = view.modelBodies.find((body) => body.geometry.featureId === feature.id)
+  const revealResult =
+    result && props.onRevealFeature && !rolledBack
+      ? () => {
+          const part = currentAuthoredParts(props.controller).find(
+            ({ body }) =>
+              body?.featureId === result.geometry.featureId &&
+              body.outputRole === result.geometry.outputRole,
+          )
+          if (part && props.onPartSelect) props.onPartSelect(part.part.id)
+          else
+            props.onBodyActivate?.({
+              featureId: result.geometry.featureId,
+              ...(result.geometry.outputRole === undefined
+                ? {}
+                : { outputRole: result.geometry.outputRole }),
+            })
+          props.onRevealFeature?.(feature.id)
+        }
+      : undefined
   return (
     <HistoryRowFrame
+      repairRequired={props.repairRequired}
       activeFeatureId={props.activeFeatureId}
       activeSketchId={props.activeSketchId}
       busy={busy}
@@ -1213,9 +1422,9 @@ function FeatureHistoryRow({
       dragDestinationIndex={dragDestinationIndex}
       dragSourceKey={dragSourceKey}
       index={index}
-      marker={false}
+      marker={props.marker}
       sourcePresentation={{
-        highlighted: false,
+        highlighted: row.ref.id === props.highlightedFeatureId,
         summary: profiles ? (
           <HistoryProfileSources
             profiles={profiles.profiles}
@@ -1242,7 +1451,10 @@ function FeatureHistoryRow({
       view={view}
       content={
         <FeatureTreeItem
-          active={row.ref.id === props.activeFeatureId}
+          onFindInBrowser={revealResult}
+          active={
+            row.ref.id === props.activeFeatureId || row.ref.id === props.selectedResultFeatureId
+          }
           controller={props.controller}
           historyActions={{
             disabled: historyFeatureDeleteIsUnavailable(props, busy, rolledBack, view),
@@ -1266,15 +1478,18 @@ function FeatureHistoryRow({
 
 function HistoryGroup({
   expanded,
+  onDetailedChange,
   onExpandedChange,
   rollbackIndex,
   ...props
 }: ModelTreeHistoryBranchProps & {
   expanded: boolean
+  onDetailedChange: () => void
   onExpandedChange: (expanded: boolean) => void
   rollbackIndex: number
 }) {
   const { t, view } = props
+  const { detailed } = useContext(HistoryPresentation)
   const { authority, repairIds, insertionDisabled, folderGroups } = useMemo(
     () => authoredHistoryTreeState(props.controller, view.rows),
     [props.controller, view.rows],
@@ -1368,21 +1583,39 @@ function HistoryGroup({
   }
   return (
     <div role="none">
-      <ModelTreeGroupItem
-        expanded={expanded}
-        onExpandedChange={onExpandedChange}
-        title={t("items.history")}
-      />
       <HistoryFolderSelection
         authority={authority}
         rows={view.rows}
         disabled={metadataDisabled || !completeGraph || busy}
         onCommit={props.onAuthoredMetadata}
       >
+        <div className="flex min-w-0 flex-wrap items-center gap-1 border-b px-2">
+          <ModelTreeGroupItem
+            className="w-auto shrink-0"
+            expanded={expanded}
+            onExpandedChange={onExpandedChange}
+            title={t("items.history")}
+          />
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {view.rows.length}
+          </span>
+          <HistoryNavigationControls />
+          <div className="min-w-0 flex-1" />
+          {expanded && <HistoryFolderSelectionControls compact />}
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-pressed={detailed}
+            disabled={!expanded}
+            onClick={onDetailedChange}
+          >
+            <ListFilter aria-hidden="true" className="size-3.5" />
+            {t("timelineDetails")}
+          </Button>
+        </div>
         {expanded && (
           <fieldset className="contents">
             <legend className="sr-only">{t("items.history")}</legend>
-            <HistoryFolderSelectionControls />
             <p id="history-drag-instructions" className="sr-only">
               {t("historyDragInstructions", { item: t("items.history") })}
             </p>
@@ -1456,52 +1689,62 @@ function HistoryGroup({
               }}
               onDragEnd={handleDragEnd}
             >
-              {folderGroups.map((group) => {
-                const rows = group.rows.map(({ row, index }) => {
-                  const insert = props.onHistoryInsert
-                  const rowProps = {
-                    ...props,
-                    busy,
-                    dragDestinationIndex,
-                    dragSourceKey,
-                    index,
-                    row,
-                    repairRequired: repairIds.has(historyRefKey(row.ref)),
-                    rolledBack:
-                      (Boolean(props.controller.historyInsertion) || rollbackIndex >= 0) &&
-                      index > rollbackIndex,
-                    marker: rollbackIndex === index && index < view.rows.length - 1,
-                  }
-                  return (
-                    <HistoryFolderSelectableRow
-                      key={historyRefKey(row.ref)}
-                      row={row}
-                      insertionDisabled={insertionDisabled}
-                      onInsert={insert ? (side) => insert(row.ref, side) : undefined}
+              <div
+                className="relative flex min-w-0 items-start overflow-auto pl-2 pr-8"
+                data-history-track
+              >
+                {folderGroups.map((group) => {
+                  const rows = group.rows.map(({ row, index }) => {
+                    const insert = props.onHistoryInsert
+                    const rowProps = {
+                      ...props,
+                      busy,
+                      dragDestinationIndex,
+                      dragSourceKey,
+                      index,
+                      row,
+                      repairRequired: repairIds.has(historyRefKey(row.ref)),
+                      rolledBack:
+                        (Boolean(props.controller.historyInsertion) || rollbackIndex >= 0) &&
+                        index > rollbackIndex,
+                      marker: rollbackIndex === index && index < view.rows.length - 1,
+                    }
+                    return (
+                      <HistoryFolderSelectableRow
+                        key={historyRefKey(row.ref)}
+                        row={row}
+                        insertionDisabled={insertionDisabled}
+                        onInsert={insert ? (side) => insert(row.ref, side) : undefined}
+                      >
+                        {row.kind === "sketch" ? (
+                          <SketchHistoryRow {...rowProps} />
+                        ) : (
+                          <FeatureHistoryRow {...rowProps} />
+                        )}
+                      </HistoryFolderSelectableRow>
+                    )
+                  })
+                  return group.folder && authority && props.onAuthoredMetadata ? (
+                    <HistoryFolderGroup
+                      key={group.folder.id}
+                      folder={group.folder}
+                      horizontal
+                      authority={authority}
+                      rows={view.rows}
+                      disabled={metadataDisabled || !completeGraph || busy}
+                      onCommit={props.onAuthoredMetadata}
                     >
-                      {row.kind === "sketch" ? (
-                        <SketchHistoryRow {...rowProps} />
-                      ) : (
-                        <FeatureHistoryRow {...rowProps} />
-                      )}
-                    </HistoryFolderSelectableRow>
+                      {rows}
+                    </HistoryFolderGroup>
+                  ) : (
+                    rows
                   )
-                })
-                return group.folder && authority && props.onAuthoredMetadata ? (
-                  <HistoryFolderGroup
-                    key={group.folder.id}
-                    folder={group.folder}
-                    authority={authority}
-                    rows={view.rows}
-                    disabled={metadataDisabled || !completeGraph || busy}
-                    onCommit={props.onAuthoredMetadata}
-                  >
-                    {rows}
-                  </HistoryFolderGroup>
-                ) : (
-                  rows
-                )
-              })}
+                })}
+                {view.rows.length === 0 && (
+                  <p className="px-2 py-2 text-xs text-muted-foreground">{t("emptyHistory")}</p>
+                )}
+                <HistoryTimelineCursor />
+              </div>
             </DragDropProvider>
           </fieldset>
         )}
@@ -1530,6 +1773,8 @@ function BodiesGroup({
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         title={authority ? authoredT("otherBodies") : t("items.bodies")}
+        count={bodies.length}
+        icon={<Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />}
       />
       {expanded && (
         <fieldset className="contents">
@@ -1584,7 +1829,7 @@ function BodiesGroup({
                   aria-label={label}
                   aria-describedby={sourceId}
                   onClick={() =>
-                    namedBody
+                    props.onBodyActivate
                       ? props.onBodyActivate?.(selection)
                       : props.onFeatureActivate(feature.id)
                   }
@@ -1614,10 +1859,75 @@ function BodiesGroup({
   )
 }
 
+function SketchesGroup(props: ModelTreeHistoryBranchProps) {
+  const [sketchesExpanded, setSketchesExpanded] = useState(true)
+  const sketches = props.view.rows.filter((row) => row.kind === "sketch")
+  return (
+    <div role="none">
+      <div className="flex min-w-0 items-center">
+        <ModelTreeGroupItem
+          className="min-w-0 flex-1"
+          count={sketches.length}
+          icon={<PenLine aria-hidden="true" className="size-4 text-muted-foreground" />}
+          expanded={sketchesExpanded}
+          onExpandedChange={setSketchesExpanded}
+          title={props.t("items.sketches")}
+        />
+        <AllSketchVisibilityAction {...props} />
+      </div>
+      {sketchesExpanded && (
+        <fieldset className="contents">
+          <legend className="sr-only">{props.t("items.sketches")}</legend>
+          {sketches.map((row) => (
+            <SketchTreeItem
+              key={historyRefKey(row.ref)}
+              active={row.ref.id === props.activeSketchId}
+              controller={props.controller}
+              deletionBlocked={props.view.graphFailed || props.view.reorderUnavailable}
+              onActivate={props.onSketchActivate}
+              onSketchSupportRepair={props.onSketchSupportRepair}
+              onFeatureRename={props.onFeatureRename}
+              onSketchDeleted={props.onSketchDeleted}
+              onSketchRemove={props.onSketchRemove}
+              onSketchRename={props.onSketchRename}
+              onVisibilityChange={props.onSketchVisibilityChange}
+              renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+              row={row}
+              unnamedSketch={props.t("unnamedSketch")}
+              visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
+            />
+          ))}
+          {sketches.length === 0 && (
+            <div className="grid gap-2 px-6 py-2">
+              <p className="text-xs text-muted-foreground">{props.t("noSketches")}</p>
+              {props.onCreateSketch && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={
+                    props.controller.status !== "ready" ||
+                    props.controller.report?.mode !== "read-write" ||
+                    Boolean(props.authoredMetadataBlocked)
+                  }
+                  onClick={props.onCreateSketch}
+                >
+                  <PenLine aria-hidden="true" className="size-3.5" />
+                  {props.t("createSketch")}
+                </Button>
+              )}
+            </div>
+          )}
+        </fieldset>
+      )}
+    </div>
+  )
+}
+
 function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
-  const rollbackIndex = rollbackHistoryIndex(props.view, props)
-  const [historyExpanded, setHistoryExpanded] = useState(true)
   const [bodiesExpanded, setBodiesExpanded] = useState(true)
+  useEffect(() => {
+    if (props.revealRequest) setBodiesExpanded(true)
+  }, [props.revealRequest])
   const bodyController = useMemo(
     () => historyInsertionContext(props.controller),
     [props.controller],
@@ -1636,16 +1946,11 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
   }, [bodyController, props.controller, props.view])
   return (
     <>
-      <HistoryGroup
-        {...props}
-        expanded={historyExpanded}
-        onExpandedChange={setHistoryExpanded}
-        rollbackIndex={rollbackIndex}
-      />
       {currentAuthoredSnapshot(props.controller) &&
         props.onAuthoredMetadata &&
         props.onPartSelect && (
           <AuthoredPartsGroup
+            revealRequest={props.revealRequest ?? null}
             parts={parts}
             revision={props.controller.report?.snapshot.revision ?? 0}
             selectedPartId={props.selectedPartId ?? null}
@@ -1668,6 +1973,7 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
         expanded={bodiesExpanded}
         onExpandedChange={setBodiesExpanded}
       />
+      <SketchesGroup {...props} />
       {props.onSurfaceTexture && (
         <SurfaceTextureTreeGroup
           controller={props.controller}
@@ -1728,16 +2034,98 @@ function hierarchicalTreeTarget(key: string, current: HTMLElement) {
   return undefined
 }
 
-function moveTreeFocus(event: KeyboardEvent<HTMLElement>) {
+function moveTreeFocus(event: KeyboardEvent<HTMLElement>, horizontal = false) {
   if (event.defaultPrevented || !treeNavigationKeys.has(event.key)) return
   const current = (event.target as HTMLElement).closest<HTMLElement>('[role="treeitem"]')
   if (!current) return
   const items = visibleTreeItems(event.currentTarget)
+  const key = horizontal
+    ? ({
+        ArrowLeft: "ArrowUp",
+        ArrowRight: "ArrowDown",
+        ArrowUp: "ArrowLeft",
+        ArrowDown: "ArrowRight",
+      }[event.key] ?? event.key)
+    : event.key
   const next =
-    linearTreeTarget(event.key, items, items.indexOf(current)) ??
-    hierarchicalTreeTarget(event.key, current)
+    linearTreeTarget(key, items, items.indexOf(current)) ?? hierarchicalTreeTarget(key, current)
   event.preventDefault()
   next?.focus()
+}
+
+function findModelTreeRow(
+  root: HTMLElement | null,
+  attribute: "data-feature-id" | "data-history-id",
+  id: string,
+) {
+  if (!root) return undefined
+  return [...root.querySelectorAll<HTMLElement>(`[${attribute}]`)].find(
+    (item) => item.getAttribute(attribute) === id,
+  )
+}
+
+function ensureTreeTabStop(root: HTMLElement | null) {
+  if (!root) return
+  const items = [...root.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+  const first = items[0]
+  if (first && !items.some((item) => item.tabIndex === 0)) first.tabIndex = 0
+}
+
+function ModelTimeline(props: ModelTreeHistoryBranchProps) {
+  const [expanded, setExpanded] = useState(true)
+  const [detailed, setDetailed] = useState(false)
+  const orderedRefs = useMemo(() => props.view.rows.map((row) => row.ref), [props.view.rows])
+  const root = useRef<HTMLElement>(null)
+  useEffect(() => {
+    ensureTreeTabStop(root.current)
+    const activeId = props.activeSketchId ?? props.activeFeatureId ?? props.selectedResultFeatureId
+    if (!activeId) return
+    const row = findModelTreeRow(root.current, "data-history-id", activeId)
+    row?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+  }, [
+    expanded,
+    props.activeFeatureId,
+    props.activeSketchId,
+    props.selectedResultFeatureId,
+    props.view.rows,
+  ])
+  return (
+    <HistoryNavigationProvider
+      key={props.controller.report?.snapshot.id}
+      controller={props.controller}
+      activeWorkspace={props.activeWorkspace}
+      activeSketchId={props.activeSketchId}
+      orderedRefs={orderedRefs}
+      graphFailed={props.view.graphFailed}
+      onInsert={props.onHistoryInsert}
+      onReturnToEnd={props.onHistoryReturnToEnd}
+    >
+      <HistoryPresentation value={{ timeline: true, detailed }}>
+        <section
+          ref={root}
+          aria-label={props.t("timelineLabel")}
+          className="max-h-56 min-w-0 shrink-0 overflow-y-auto border-t bg-panel"
+          data-feature-timeline
+        >
+          <div
+            role="tree"
+            aria-label={props.t("timelineLabel")}
+            aria-orientation="horizontal"
+            onFocusCapture={updateTreeTabStop}
+            onKeyDown={(event) => moveTreeFocus(event, true)}
+          >
+            <HistoryGroup
+              {...props}
+              expanded={expanded}
+              onExpandedChange={setExpanded}
+              onDetailedChange={() => setDetailed((value) => !value)}
+              rollbackIndex={rollbackHistoryIndex(props.view, props)}
+            />
+          </div>
+        </section>
+      </HistoryPresentation>
+    </HistoryNavigationProvider>
+  )
 }
 
 function updateTreeTabStop(event: FocusEvent<HTMLElement>) {
@@ -1747,8 +2135,57 @@ function updateTreeTabStop(event: FocusEvent<HTMLElement>) {
     item.tabIndex = item === current ? 0 : -1
 }
 
+function AllSketchVisibilityAction(props: ModelTreeHistoryBranchProps) {
+  const { t, view } = props
+  const sketchIds = view.rows
+    .filter((row) => row.kind === "sketch")
+    .map((row) => row.ref.id as SketchId)
+  const allSketchesHidden =
+    sketchIds.length > 0 && sketchIds.every((id) => props.hiddenSketchIds.includes(id))
+  const visibleSketchCount = sketchIds.filter((id) => !props.hiddenSketchIds.includes(id)).length
+  const sketchVisibilityPressed =
+    visibleSketchCount === 0
+      ? false
+      : visibleSketchCount === sketchIds.length
+        ? true
+        : ("mixed" as const)
+  const sketchVisibilityLabel = t(allSketchesHidden ? "showAllSketches" : "hideAllSketches")
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={sketchVisibilityLabel}
+          aria-pressed={sketchVisibilityPressed}
+          disabled={sketchIds.length === 0}
+          onClick={props.onAllSketchVisibilityToggle}
+        >
+          {allSketchesHidden ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {t("sketchVisibilityShortcut", { action: sketchVisibilityLabel })}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function ModelTree(props: ModelTreeProps) {
   const t = useTranslations("app.shell.modelTree")
+  const browser = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const request = props.revealRequest
+    if (!request || props.surface === "timeline") return
+    const frame = requestAnimationFrame(() => {
+      const target = findModelTreeRow(browser.current, "data-feature-id", request.featureId)
+      target?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+      target?.querySelector<HTMLElement>('[role="treeitem"]')?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [props.revealRequest, props.surface])
   const report = props.controller.report
   const snapshot = report?.snapshot
   const rebuild = report?.rebuild
@@ -1767,42 +2204,26 @@ export function ModelTree(props: ModelTreeProps) {
       ),
     [modelReferenceEvidence, rebuiltResponse, report?.historyItems, snapshot],
   )
-  const sketchIds = historyView.rows
-    .filter((row) => row.kind === "sketch")
-    .map((row) => row.ref.id as SketchId)
-  const allSketchesHidden =
-    sketchIds.length > 0 && sketchIds.every((id) => props.hiddenSketchIds.includes(id))
-  const visibleSketchCount = sketchIds.filter((id) => !props.hiddenSketchIds.includes(id)).length
-  const sketchVisibilityPressed =
-    visibleSketchCount === 0
-      ? false
-      : visibleSketchCount === sketchIds.length
-        ? true
-        : ("mixed" as const)
-  const sketchVisibilityLabel = t(allSketchesHidden ? "showAllSketches" : "hideAllSketches")
+  if (props.surface === "timeline") return <ModelTimeline {...props} t={t} view={historyView} />
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-r bg-panel p-2">
+    <aside
+      ref={browser}
+      aria-label={t("ariaLabel")}
+      className="min-h-0 overflow-auto border-r bg-panel p-2"
+    >
       <div className="flex items-center justify-between gap-2 px-2 py-1">
-        <h2 className="text-sm font-medium">{t("title")}</h2>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={sketchVisibilityLabel}
-              aria-pressed={sketchVisibilityPressed}
-              disabled={sketchIds.length === 0}
-              onClick={props.onAllSketchVisibilityToggle}
-            >
-              {allSketchesHidden ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t("sketchVisibilityShortcut", { action: sketchVisibilityLabel })}
-          </TooltipContent>
-        </Tooltip>
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-medium">
+            <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
+            {t("title")}
+          </h2>
+          {snapshot?.name && (
+            <p className="mt-1 truncate text-xs text-muted-foreground" title={snapshot.name}>
+              {snapshot.name}
+            </p>
+          )}
+        </div>
       </div>
       <div
         className="mt-1 grid grid-cols-1 gap-0.5"

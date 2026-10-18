@@ -2,10 +2,10 @@ import { readFile } from "node:fs/promises"
 import { unzipSync } from "fflate"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 async function createBox(page: import("@playwright/test").Page) {
-  const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box" })
     .getByRole("button", { name: "Create box" })
@@ -25,14 +25,13 @@ test.describe("document export", () => {
     await expect(dialog.getByRole("button", { name: "Export STEP" })).toBeDisabled()
     await dialog.getByRole("button", { name: "Close", exact: true }).click()
 
-    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
       .click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
-    await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+    await invokeModelCommand(page, "Primitives", "Cylinder")
     await page
       .getByRole("form", { name: "Create cylinder" })
       .getByRole("button", { name: "Create cylinder" })

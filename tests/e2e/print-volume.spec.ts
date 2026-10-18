@@ -1,6 +1,7 @@
 import { openApplicationMenuItem } from "./application-menu-support"
 import { saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 test("checks current CAD placement and a rotated print copy against a persistent printer profile", async ({
   page,
@@ -16,7 +17,7 @@ test("checks current CAD placement and a rotated print copy against a persistent
   await expect(settings.getByLabel("Show printer bed and height envelope")).toBeChecked()
   await settings.getByRole("button", { name: "Done", exact: true }).click()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box" })
   await box.getByRole("combobox", { name: "Width", exact: true }).fill("40 mm")
   await box.getByRole("combobox", { name: "Depth", exact: true }).fill("20 mm")

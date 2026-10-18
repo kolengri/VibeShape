@@ -1,10 +1,10 @@
 import type { Page } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 
 async function createBox(page: Page) {
-  const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box" })
     .getByRole("button", { name: "Create box", exact: true })
@@ -79,9 +79,9 @@ test("navigates History with the keyboard without reordering it", async ({ page 
   const rows = page.locator('[data-history-kind="feature"] [role="treeitem"]')
   const row = page.getByRole("treeitem", { name: "Box 2", exact: true })
   await row.focus()
-  await page.keyboard.press("ArrowUp")
+  await page.keyboard.press("ArrowLeft")
   await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeFocused()
-  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("ArrowRight")
   await expect(row).toBeFocused()
   await page.keyboard.press("Space")
   await expect(page.getByRole("form", { name: "Edit box" })).toBeVisible()
@@ -112,6 +112,7 @@ test("keeps row clicks, small pointer movement, rename, and visibility independe
   const row = page.getByRole("treeitem", { name: "Box 2", exact: true })
   await expect(page.getByRole("button", { name: "Reorder Box 2", exact: true })).toHaveCount(0)
 
+  await expandHistoryDetails(page)
   const visibility = page.getByRole("button", { name: "Hide Box 2", exact: true })
   const control = await visibility.boundingBox()
   if (!control) throw new Error("Expected a visible visibility control")
@@ -122,6 +123,7 @@ test("keeps row clicks, small pointer movement, rename, and visibility independe
   await expect(rows).toHaveText(["Box 1", "Box 2"])
   await expect(page.getByText(/Picked up Box 2/)).toHaveCount(0)
   await visibility.click()
+  await expandHistoryDetails(page)
   await expect(page.getByRole("button", { name: "Show Box 2", exact: true })).toBeVisible()
 
   await page.getByRole("button", { name: "Actions for Box 2", exact: true }).click()
@@ -149,10 +151,7 @@ test("rejects moving a dependent feature before its source without leaving a vis
     timeout: 30_000,
   })
   await createBox(page)
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Fillet", exact: true })
-    .click()
+  await invokeModelCommand(page, "Modify", "Fillet")
   const form = page.getByRole("form", { name: "Create fillet" })
   await form.getByRole("radio", { name: "All edges", exact: true }).check()
   await form.getByRole("button", { name: "Create fillet", exact: true }).click()
@@ -185,7 +184,7 @@ test("reorders a History row after a touch long press", async ({ page, browserNa
   await expect(page.getByText(/^(Picked up )?Box 2, position 2 of 2$/)).toBeAttached()
   await client.send("Input.dispatchTouchEvent", {
     type: "touchMove",
-    touchPoints: [{ x, y: target.y + target.height / 2 }],
+    touchPoints: [{ x: target.x + target.width / 2, y: target.y + target.height / 2 }],
   })
   await expect(page.getByText("Box 2, position 1 of 2", { exact: true })).toBeAttached()
   await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
@@ -235,5 +234,5 @@ test("transfers focus from command palette to shortcut help and back to a visibl
   await expect(help.getByRole("textbox", { name: "Search shortcuts…" })).toBeFocused()
   await page.keyboard.press("Escape")
   await expect(help).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Keyboard shortcuts", exact: true })).toBeFocused()
+  await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeFocused()
 })

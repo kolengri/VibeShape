@@ -1,4 +1,6 @@
+import { saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test("previews a hidden source region and opens its sketch from History", async ({
@@ -20,11 +22,16 @@ test("previews a hidden source region and opens its sketch from History", async 
   await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
 
-  const hideSketch = page.getByRole("button", { name: "Hide Sketch 1", exact: true })
+  const hideSketch = page
+    .getByRole("complementary", { name: "Model tree", exact: true })
+    .getByRole("button", { name: "Hide Sketch 1", exact: true })
   if (await hideSketch.count()) await hideSketch.click()
-  const showSketch = page.getByRole("button", { name: "Show Sketch 1", exact: true })
+  const showSketch = page
+    .getByRole("complementary", { name: "Model tree", exact: true })
+    .getByRole("button", { name: "Show Sketch 1", exact: true })
   await expect(showSketch).toBeVisible()
   await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
+  await expandHistoryDetails(page)
   const source = page.getByRole("button", { name: "Source region 1 from Sketch 1", exact: true })
   await expect(source).toHaveText("Sketch 1")
   await expect(page.getByText("Profile from Sketch 1", { exact: true })).toHaveCount(0)
@@ -43,7 +50,7 @@ test("previews a hidden source region and opens its sketch from History", async 
     selectedProfiles ?? "0",
   )
   await page.screenshot({ path: testInfo.outputPath("source-preview.png") })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).hover()
+  await toolbar.getByRole("button", { name: "Primitives", exact: true }).hover()
   await expect(viewport).not.toHaveAttribute("data-source-profile-preview", /.+/)
   await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
 
@@ -53,19 +60,23 @@ test("previews a hidden source region and opens its sketch from History", async 
   await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeFocused()
   await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
   await source.click()
-  await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeFocused()
+  await expect(page.getByRole("treeitem", { name: "Edit Sketch 1", exact: true })).toBeFocused()
   await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
-  await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("treeitem", { name: "Edit Sketch 1", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
   )
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   await expect(showSketch).toBeVisible()
   await page.reload()
+  await expandHistoryDetails(page)
   await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
   await expect(source).toHaveText("Sketch 1")
   await page.setViewportSize({ width: 1024, height: 768 })
-  await page.getByRole("button", { name: "Actions for Sketch 1", exact: true }).click()
+  await page
+    .getByRole("region", { name: "Feature history", exact: true })
+    .getByRole("button", { name: "Actions for Sketch 1", exact: true })
+    .click()
   await page.getByRole("menuitem", { name: "Rename Sketch 1…", exact: true }).click()
   const rename = page.getByRole("dialog", { name: "Rename sketch", exact: true })
   const longName = "Mounting bracket base with four clearance holes and alignment references"
@@ -79,9 +90,9 @@ test("previews a hidden source region and opens its sketch from History", async 
   await renamedSource.hover()
   const sourceBounds = await renamedSource.boundingBox()
   const treeBounds = await page
-    .getByRole("complementary", { name: "Model tree", exact: true })
+    .getByRole("region", { name: "Feature history", exact: true })
     .boundingBox()
-  if (!sourceBounds || !treeBounds) throw new Error("Expected visible source and model tree")
+  if (!sourceBounds || !treeBounds) throw new Error("Expected visible source and feature history")
   expect(sourceBounds.x + sourceBounds.width).toBeLessThanOrEqual(treeBounds.x + treeBounds.width)
   await page.screenshot({
     path: testInfo.outputPath("source-preview-compact-dark.png"),
@@ -92,18 +103,33 @@ test("previews a hidden source region and opens its sketch from History", async 
     path: testInfo.outputPath("source-preview-compact-light.png"),
     animations: "disabled",
   })
-  await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+  await invokeModelCommand(page, "Primitives", "Box")
   const boxForm = page.getByRole("form", { name: "Create box", exact: true })
   await expect(boxForm).toBeVisible()
+  const width = boxForm.getByRole("combobox", { name: "Width", exact: true })
+  const createBox = boxForm.getByRole("button", { name: "Create box", exact: true })
+  await width.fill("-5 mm")
+  await width.blur()
+  await expect(createBox).toBeDisabled()
   await renamedSource.hover()
   await expect(viewport).not.toHaveAttribute("data-source-profile-preview", /.+/)
   await renamedSource.click()
-  await expect(boxForm).toHaveCount(0)
-  await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
-  await expect(page.getByRole("treeitem", { name: longName, exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
+  await expect(page.getByRole("alert")).toHaveText(
+    "The current edit could not be saved. Resolve its errors before opening this source sketch.",
   )
+  await expect(boxForm).toBeVisible()
+  await expect(width).toHaveValue("-5 mm")
+  await width.fill("20 mm")
+  await width.blur()
+  await expect(createBox).toBeEnabled()
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
+  await renamedSource.click()
+  await expect(boxForm).toHaveCount(0)
+  await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+  await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+  await expect(
+    page.getByRole("treeitem", { name: `Edit ${longName}`, exact: true }),
+  ).toHaveAttribute("aria-selected", "true")
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   await page.setViewportSize({ width: 2048, height: 1536 })
   await page.evaluate("document.documentElement.style.zoom = '2'")
@@ -111,7 +137,7 @@ test("previews a hidden source region and opens its sketch from History", async 
   await expect(renamedSource).toBeFocused()
   const zoomedSource = await renamedSource.boundingBox()
   const zoomedTree = await page
-    .getByRole("complementary", { name: "Model tree", exact: true })
+    .getByRole("region", { name: "Feature history", exact: true })
     .boundingBox()
   if (!zoomedSource || !zoomedTree) throw new Error("Expected the source at 200% CSS zoom")
   expect(zoomedSource.x + zoomedSource.width).toBeLessThanOrEqual(zoomedTree.x + zoomedTree.width)
@@ -121,7 +147,7 @@ test("previews a hidden source region and opens its sketch from History", async 
   })
 })
 
-test("preserves an unsaved sketch and its undo history when activating a History source", async ({
+test("autosaves an unsaved sketch and preserves local undo when reactivating the same History source", async ({
   page,
 }) => {
   test.setTimeout(120_000)
@@ -140,6 +166,7 @@ test("preserves an unsaved sketch and its undo history when activating a History
     { timeout: 30_000 },
   )
   await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
+  await expandHistoryDetails(page)
   const source = page.getByRole("button", { name: "Source region 1 from Sketch 1", exact: true })
   await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xy")
@@ -147,26 +174,46 @@ test("preserves an unsaved sketch and its undo history when activating a History
   const lines = drawing.locator('[data-sketch-entity-type="line"]')
   const addLine = async () => {
     await page.getByRole("button", { name: "Line", exact: true }).click()
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("Missing editable sketch geometry.")
-    await page.mouse.click(bounds.x + bounds.width * 0.75, bounds.y + bounds.height * 0.75)
-    await page.mouse.click(bounds.x + bounds.width * 0.85, bounds.y + bounds.height * 0.85)
+    const [drawingBounds, centerBounds] = await Promise.all([
+      drawing.boundingBox(),
+      page.locator("#workspace-center").boundingBox(),
+    ])
+    if (!drawingBounds || !centerBounds) throw new Error("Missing visible sketch modeling area.")
+    const left = Math.max(drawingBounds.x, centerBounds.x)
+    const top = Math.max(drawingBounds.y, centerBounds.y)
+    const width =
+      Math.min(drawingBounds.x + drawingBounds.width, centerBounds.x + centerBounds.width) - left
+    const height =
+      Math.min(drawingBounds.y + drawingBounds.height, centerBounds.y + centerBounds.height) - top
+    if (width <= 0 || height <= 0) throw new Error("The sketch modeling area is obscured.")
+    await page.mouse.click(left + width * 0.75, top + height * 0.75)
+    await page.mouse.click(left + width * 0.85, top + height * 0.85)
     await page.keyboard.press("Escape")
   }
   await addLine()
   await expect(lines).toHaveCount(1)
-  await source.click()
-  await expect(page.getByRole("alert")).toHaveText(
-    "Finish or cancel the current sketch before opening another source sketch.",
+  const draftLineIds = await lines.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-sketch-entity-id")),
   )
-  await expect(lines).toHaveCount(1)
   const undo = toolbar.getByRole("button", { name: "Undo", exact: true })
+  const redo = toolbar.getByRole("button", { name: "Redo", exact: true })
   await expect(undo).toBeEnabled()
   await undo.click()
   await expect(lines).toHaveCount(0)
-  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(redo).toBeEnabled()
+  await redo.click()
+  await expect(lines).toHaveCount(1)
+  expect(
+    await lines.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-sketch-entity-id")),
+    ),
+  ).toEqual(draftLineIds)
   await source.click()
   await expect(lines).toHaveCount(4)
+  await expect(page.getByRole("treeitem", { name: "Edit Sketch 1", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
   await addLine()
   await expect(lines).toHaveCount(5)
   await source.click()
@@ -174,4 +221,15 @@ test("preserves an unsaved sketch and its undo history when activating a History
   await expect(undo).toBeEnabled()
   await undo.click()
   await expect(lines).toHaveCount(4)
+  await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+  const saved = await saveProject(page)
+  const secondSketch = saved.project.snapshot.sketches.find(({ label }) => label === "Sketch 2")
+  expect(secondSketch?.entities.filter(({ type }) => type === "line").map(({ id }) => id)).toEqual(
+    draftLineIds,
+  )
+  expect(
+    saved.project.snapshot.sketches
+      .find(({ label }) => label === "Sketch 1")
+      ?.entities.filter(({ type }) => type === "line"),
+  ).toHaveLength(4)
 })
