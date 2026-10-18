@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { assemblyJointRecordSchema } from "@vibeshape/domain/assembly-mates"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { useMemo, useState } from "react"
+import { useLayoutEffect, useMemo, useState } from "react"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
@@ -35,7 +35,7 @@ const joint = assemblyJointRecordSchema.parse({
   translationLimits: { min: -100, max: 100 },
   translationDriven: false,
 })
-function Harness() {
+function Harness({ resetOnPreview = false }: { resetOnPreview?: boolean }) {
   const [kind, setKind] = useState<AssemblyMotionCoordinate["kind"]>("translation")
   const coordinate = useMemo(
     () => assemblyMotionCoordinates(joint).find((item) => item.kind === kind),
@@ -50,6 +50,10 @@ function Harness() {
     disabled: false,
     onApply: ports.apply,
   })
+  useLayoutEffect(() => {
+    if (resetOnPreview && motion.value !== null)
+      (screen.getByRole("button", { name: "Reset preview" }) as HTMLButtonElement).click()
+  }, [resetOnPreview, motion.value])
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
       <DocumentDisplayUnitsProvider displayUnits={{ length: "in", angle: "rad" }}>
@@ -76,6 +80,64 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 describe("Assembly motion controls", () => {
+  it("keeps Reset authoritative when a solved preview commits before passive effects", async () => {
+    render(<Harness resetOnPreview />)
+    const value = screen.getByRole("spinbutton", { name: "Coordinate (in)" }) as HTMLInputElement
+    fireEvent.change(value, { target: { value: "1" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Preview coordinate" }))
+    })
+    expect(ports.preview).toHaveBeenCalledTimes(1)
+    expect(value.value).toBe("0.25")
+    expect(screen.queryByText("Preview: 1 in")).toBeNull()
+    expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
+  it("retains the visible coordinate through a pending sweep, pause and range edits without replacing manual raw input", async () => {
+    render(<Harness />)
+    const value = screen.getByRole("spinbutton", { name: "Coordinate (in)" }) as HTMLInputElement
+    fireEvent.change(value, { target: { value: "0.75" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Preview coordinate" }))
+    })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Sweep start (in)" }), {
+      target: { value: "-0.5" },
+    })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Sweep end (in)" }), {
+      target: { value: "0.5" },
+    })
+    expect(value.value).toBe("0.75")
+    let solve!: () => void
+    ports.preview.mockReturnValueOnce(
+      new Promise((resolve) => {
+        solve = () => resolve({ ok: true, inspection: { occurrences: [], interference: [] } })
+      }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Play one sweep" }))
+    expect(value.value).toBe("0.75")
+    expect(screen.getByText("Solving motion preview…")).toBeTruthy()
+    await act(async () => solve())
+    expect(value.value).toBe("-0.5")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }))
+    })
+    expect(value.value).toBe("-0.5")
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Sweep end (in)" }), {
+      target: { value: "1" },
+    })
+    expect(value.value).toBe("-0.5")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Preview coordinate" }))
+    })
+    expect(ports.preview.mock.calls.at(-1)?.[0]).toMatchObject([
+      { kind: "joint.update", joint: { translation: -12.7 } },
+    ])
+    fireEvent.change(value, { target: { value: "0.750" } })
+    expect(value.value).toBe("0.750")
+    expect(screen.queryByText("Preview: -0.5 in")).toBeNull()
+    expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
   it("uses project units, preserves passive cylinder rotation, resets and applies only the solved coordinate", async () => {
     render(<Harness />)
     const value = screen.getByRole("spinbutton", { name: "Coordinate (in)" })

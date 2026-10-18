@@ -3,7 +3,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
-import { useEffect, useId, useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
@@ -58,18 +58,17 @@ function useMotionInputs(coordinate: AssemblyMotionCoordinate, motion: AssemblyM
   const units = useDocumentDisplayUnits()
   const unit = useMemo(() => assemblyMotionUnits(coordinate, units), [coordinate, units])
   const display = (value: number) => String(unit.display(value))
-  const [value, setValue] = useState(() => display(coordinate.value))
+  const [rawValue, setValue] = useState(() => display(coordinate.value))
+  const value = motion.value === null ? rawValue : display(motion.value)
   const radius = coordinate.kind === "angle" ? Math.PI / 4 : 10
   const [start, setStart] = useState(() =>
     display(Math.max(coordinate.min, coordinate.value - radius)),
   )
   const [end, setEnd] = useState(() => display(Math.min(coordinate.max, coordinate.value + radius)))
-  useEffect(() => {
-    if (motion.value !== null) setValue(String(unit.display(motion.value)))
-  }, [motion.value, unit.unit, unit.display])
   const parse = (raw: string) => (raw.trim() ? unit.canonical(Number(raw)) : Number.NaN)
   const edit = (setter: (value: string) => void) => (raw: string) => {
     motion.reset()
+    setValue(value)
     setter(raw)
   }
   const reset = () => {
@@ -86,8 +85,14 @@ function useMotionInputs(coordinate: AssemblyMotionCoordinate, motion: AssemblyM
     editStart: edit(setStart),
     editEnd: edit(setEnd),
     reset,
-    preview: () => motion.preview(parse(value)),
-    play: () => motion.play(parse(start), parse(end)),
+    preview: () => {
+      setValue(value)
+      return motion.preview(parse(value))
+    },
+    play: () => {
+      setValue(value)
+      return motion.play(parse(start), parse(end))
+    },
   }
 }
 type MotionInputs = ReturnType<typeof useMotionInputs>
