@@ -2,6 +2,11 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/v3.14.0/schema.json",
   // Vite and Playwright load these files through secondary CLI/HTML entry points.
   "entry": [
+    // Bun scripts bundle/package the native main process; Playwright owns its native test config.
+    "apps/desktop/build.ts",
+    "apps/desktop/package.ts",
+    "apps/desktop/src/main.ts",
+    "playwright.desktop.config.ts",
     "apps/web/public/persistence-spike-sw.js",
     "apps/web/src/spikes/geometry-worker.ts",
     "apps/web/src/spikes/body-selection.tsx",

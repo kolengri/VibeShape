@@ -9,6 +9,13 @@ Production VibeShape is a set of static files, but it cannot run through `file:/
 
 ## Modes
 
+### macOS application
+
+The [desktop host](desktop-macos.md) packages the same production editor into `VibeShape.app`,
+serves it on a dedicated loopback origin and provides native menus and GitHub release downloads.
+It retains browser document/worker authority and does not add a production HTTP MCP transport.
+See [ADR-0110](adr/0110-macos-desktop-host.md) for signing, profile and release boundaries.
+
 ### Verified local MCP delivery
 
 The external agent owns natural-language reasoning. VibeShape exposes typed CAD tools over stdio;
@@ -60,7 +67,7 @@ release gates below and in [Licensing](licensing.md).
 | Installable PWA | Desktop-like launch and offline use | Core works offline after the first successful installation |
 | Public static host | Convenient delivery | Project files are still processed locally |
 
-A Tauri or Electron wrapper is unnecessary for v1. A later wrapper MAY package the same web build but cannot create a separate product-logic path.
+The Electron desktop wrapper packages this same web build; it does not create a separate product-logic path.
 
 ## Required server behavior
 

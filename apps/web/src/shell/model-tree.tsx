@@ -75,6 +75,13 @@ import { HistoryNavigationControls, HistoryNavigationProvider } from "./history-
 import { HistoryProfileSources } from "./history-profile-sources"
 import { HistoryTimelineCursor } from "./history-timeline-cursor"
 import { ModelBrowserOrigin } from "./model-browser-origin"
+import {
+  modelBrowserChildRow,
+  modelBrowserCount,
+  modelBrowserGroupRow,
+  modelBrowserItem,
+  modelBrowserSelectedRow,
+} from "./model-browser-styles"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
 import { proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
@@ -528,11 +535,15 @@ function SketchTreeLabelButton({
       <Button
         type="button"
         variant="ghost"
-        size="xs"
+        size={timeline ? "xs" : "sm"}
         className={cn(
           "min-w-0 flex-1 font-normal",
-          compact ? "size-8 justify-center p-0" : "justify-start pl-2",
-          active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+          timeline
+            ? compact
+              ? "size-8 justify-center p-0"
+              : "justify-start pl-2"
+            : modelBrowserChildRow,
+          timeline && active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
         )}
         role="treeitem"
         tabIndex={-1}
@@ -549,11 +560,36 @@ function SketchTreeLabelButton({
           onRenameOpen()
         }}
       >
-        <PenLine aria-hidden="true" className="mr-1 size-4 shrink-0" />
+        <PenLine aria-hidden="true" className={cn("size-4 shrink-0", timeline && "mr-1")} />
         <span className={compact ? "sr-only" : "truncate"}>{label}</span>
       </Button>
       {selectionDescription}
     </>
+  )
+}
+
+function SketchTreeRow({
+  active,
+  children,
+  visibilityAction,
+}: {
+  active: boolean
+  children: ReactNode
+  visibilityAction: ReactNode
+}) {
+  const { timeline } = useContext(HistoryPresentation)
+  return (
+    <div
+      className={cn(
+        "group/history-item relative",
+        timeline ? "flex min-w-0 items-center gap-0.5" : modelBrowserItem,
+        !timeline && active && modelBrowserSelectedRow,
+      )}
+    >
+      {timeline && visibilityAction}
+      {children}
+      {!timeline && visibilityAction}
+    </div>
   )
 }
 
@@ -595,15 +631,17 @@ function SketchTreeItem({
   const renameDisabled =
     renameBlocked || controller.status !== "ready" || controller.report?.mode !== "read-write"
   const activateSketch = () => onActivate(sketch.id)
+  const visibilityAction = (
+    <SketchVisibilityAction
+      label={label}
+      onChange={() => onVisibilityChange(sketch.id, !visible)}
+      t={t}
+      visible={visible}
+    />
+  )
 
   return (
-    <div className="group/history-item relative flex min-w-0 items-center gap-0.5">
-      <SketchVisibilityAction
-        label={label}
-        onChange={() => onVisibilityChange(sketch.id, !visible)}
-        t={t}
-        visible={visible}
-      />
+    <SketchTreeRow active={active} visibilityAction={visibilityAction}>
       <SketchTreeLabelButton
         active={active}
         sketchId={sketch.id}
@@ -635,7 +673,7 @@ function SketchTreeItem({
           unnamedSketch={unnamedSketch}
         />
       </HistoryItemActions>
-    </div>
+    </SketchTreeRow>
   )
 }
 
@@ -756,7 +794,7 @@ function ModelTreeRootItem({
       type="button"
       variant="ghost"
       size="sm"
-      className="w-full justify-start font-normal"
+      className={cn(modelBrowserChildRow, "w-full", current && modelBrowserSelectedRow)}
       role="treeitem"
       tabIndex={tabIndex}
       aria-current={current}
@@ -788,12 +826,16 @@ function ModelTreeGroupItem({
   onExpandedChange: (expanded: boolean) => void
   title: string
 }) {
+  const { timeline } = useContext(HistoryPresentation)
   return (
     <Button
       type="button"
       variant="ghost"
       size="sm"
-      className={cn("w-full justify-start font-normal", className)}
+      className={cn(
+        timeline ? "w-full justify-start font-normal" : modelBrowserGroupRow,
+        className,
+      )}
       role="treeitem"
       tabIndex={-1}
       aria-expanded={expanded}
@@ -801,12 +843,16 @@ function ModelTreeGroupItem({
     >
       <ChevronDown
         aria-hidden="true"
-        className={cn("mr-1 size-4 shrink-0 transition-transform", !expanded && "-rotate-90")}
+        className={cn(
+          "size-4 shrink-0 transition-transform",
+          timeline && "mr-1",
+          !expanded && "-rotate-90",
+        )}
       />
       {icon}
-      {title}
+      <span className="truncate">{title}</span>
       {count !== undefined && (
-        <span aria-hidden="true" className="ml-auto text-xs tabular-nums text-muted-foreground">
+        <span aria-hidden="true" className={modelBrowserCount}>
           {count}
         </span>
       )}
@@ -1818,10 +1864,11 @@ function BodiesGroup({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="xs"
+                  size="sm"
                   className={cn(
-                    "w-full justify-start pl-6 font-normal text-muted-foreground",
-                    active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+                    modelBrowserChildRow,
+                    "w-full text-muted-foreground",
+                    active && modelBrowserSelectedRow,
                   )}
                   role="treeitem"
                   tabIndex={-1}
@@ -1844,10 +1891,10 @@ function BodiesGroup({
                       : props.onFeaturePreselectionChange(null)
                   }
                 >
-                  <Cuboid aria-hidden="true" className="mr-1 size-4 shrink-0" />
+                  <Cuboid aria-hidden="true" className="size-4 shrink-0" />
                   <span className="truncate">{label}</span>
                 </Button>
-                <p id={sourceId} className="ml-8 truncate px-2 text-[10px] text-muted-foreground">
+                <p id={sourceId} className="ml-14 truncate pr-2 text-xs text-muted-foreground">
                   {source}
                 </p>
               </div>
@@ -1864,9 +1911,9 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
   const sketches = props.view.rows.filter((row) => row.kind === "sketch")
   return (
     <div role="none">
-      <div className="flex min-w-0 items-center">
+      <div className="flex min-w-0 items-center pr-1">
         <ModelTreeGroupItem
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 pr-2"
           count={sketches.length}
           icon={<PenLine aria-hidden="true" className="size-4 text-muted-foreground" />}
           expanded={sketchesExpanded}
@@ -1898,7 +1945,7 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
             />
           ))}
           {sketches.length === 0 && (
-            <div className="grid gap-2 px-6 py-2">
+            <div className="grid gap-2 py-2 pl-14 pr-2">
               <p className="text-xs text-muted-foreground">{props.t("noSketches")}</p>
               {props.onCreateSketch && (
                 <Button
@@ -2212,21 +2259,21 @@ export function ModelTree(props: ModelTreeProps) {
       aria-label={t("ariaLabel")}
       className="min-h-0 overflow-auto border-r bg-panel p-2"
     >
-      <div className="flex items-center justify-between gap-2 px-2 py-1">
+      <div className="mb-1 flex items-center gap-2 border-b px-2 pb-3 pt-1">
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-medium">
+          <h2 className="flex h-8 items-center gap-2 pl-6 text-sm font-medium">
             <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
             {t("title")}
           </h2>
           {snapshot?.name && (
-            <p className="mt-1 truncate text-xs text-muted-foreground" title={snapshot.name}>
+            <p className="truncate pl-12 text-xs text-muted-foreground" title={snapshot.name}>
               {snapshot.name}
             </p>
           )}
         </div>
       </div>
       <div
-        className="mt-1 grid grid-cols-1 gap-0.5"
+        className="grid grid-cols-1"
         role="tree"
         aria-label={t("projectFeatures")}
         onFocusCapture={updateTreeTabStop}

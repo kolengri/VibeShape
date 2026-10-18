@@ -7,11 +7,19 @@ import {
   CirclePlay,
   ConstraintFixedIcon,
   Cuboid,
+  Layers3,
   Link2,
 } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useId, useState } from "react"
+import {
+  modelBrowserChildRow,
+  modelBrowserCount,
+  modelBrowserGroupRow,
+  modelBrowserItem,
+  modelBrowserSelectedRow,
+} from "../../shell/model-browser-styles"
 
 type AssemblyTreeProps = {
   assembly: AssemblyAuthority
@@ -27,10 +35,12 @@ type AssemblyTreeProps = {
 function AssemblySection({
   title,
   count,
+  icon,
   children,
 }: {
   title: string
   count: number
+  icon: ReactNode
   children: ReactNode
 }) {
   const [expanded, setExpanded] = useState(true)
@@ -41,22 +51,23 @@ function AssemblySection({
         <Button
           size="sm"
           variant="ghost"
-          className="w-full justify-start gap-2"
+          className={modelBrowserGroupRow}
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded((value) => !value)}
         >
           <ChevronDown
             aria-hidden="true"
-            className={cn("size-3.5 shrink-0", !expanded && "-rotate-90")}
+            className={cn("size-4 shrink-0", !expanded && "-rotate-90")}
           />
-          {title}
-          <span aria-hidden="true" className="ml-auto text-xs tabular-nums text-muted-foreground">
+          {icon}
+          <span className="truncate">{title}</span>
+          <span aria-hidden="true" className={modelBrowserCount}>
             {count}
           </span>
         </Button>
       </h2>
-      <div id={id} hidden={!expanded} className="min-w-0 px-1">
+      <div id={id} hidden={!expanded} className="min-w-0">
         {children}
       </div>
     </section>
@@ -82,8 +93,12 @@ function AssemblyInstances({
     ),
   )
   return (
-    <AssemblySection title={t("instances")} count={instances.length}>
-      <ul className="grid gap-1">
+    <AssemblySection
+      title={t("instances")}
+      count={instances.length}
+      icon={<Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />}
+    >
+      <ul className="grid">
         {instances.map((instance) => {
           const definition = assembly.definitions.find(({ id }) => id === instance.definitionId)
           const connected = assembly.joints.some(
@@ -95,20 +110,27 @@ function AssemblyInstances({
             <li key={instance.id}>
               <Button
                 size="content"
-                variant={instance.id === selectedId ? "secondary" : "ghost"}
-                className="w-full justify-start gap-2 text-left"
+                variant="ghost"
+                className={cn(
+                  modelBrowserChildRow,
+                  "h-auto min-h-12 w-full py-1 text-left",
+                  instance.id === selectedId && modelBrowserSelectedRow,
+                )}
                 aria-pressed={instance.id === selectedId}
                 onClick={() => onSelectInstance(instance.id)}
+                title={definition ? t("instanceDefinition", { name: definition.name }) : undefined}
                 data-assembly-instance-id={instance.id}
               >
                 <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                <span className="grid min-w-0 gap-0.5">
-                  <span className="break-words">{instance.name}</span>
-                  <span className="text-xs text-muted-foreground">
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate" title={instance.name}>
+                    {instance.name}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
                     {t(instance.grounded ? "grounded" : connected ? "attached" : "freeInstance")}
                   </span>
                   {definition && (
-                    <span className="break-words text-xs text-muted-foreground">
+                    <span className="sr-only">
                       {t("instanceDefinition", { name: definition.name })}
                     </span>
                   )}
@@ -119,7 +141,7 @@ function AssemblyInstances({
         })}
       </ul>
       {!instances.length && (
-        <p className="px-2 py-2 text-xs text-muted-foreground">
+        <p className="py-2 pl-14 pr-2 text-xs text-muted-foreground">
           {t(filter ? "noBrowserMatches" : "emptyInstances")}
         </p>
       )}
@@ -138,30 +160,42 @@ function AssemblyDefinitions({
   const t = useTranslations("app.assembly")
   const definitions = assembly.definitions.filter(({ name }) => matchesFilter(filter, name))
   return (
-    <AssemblySection title={t("definitions")} count={definitions.length}>
-      <ul className="grid gap-1">
+    <AssemblySection
+      title={t("definitions")}
+      count={definitions.length}
+      icon={<Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />}
+    >
+      <ul className="grid">
         {definitions.map((definition) => (
           <li key={definition.id}>
             <Button
               size="content"
-              variant={definition.id === selectedDefinitionId ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2 text-left"
+              variant="ghost"
+              className={cn(
+                modelBrowserChildRow,
+                "h-auto min-h-12 w-full py-1 text-left",
+                definition.id === selectedDefinitionId && modelBrowserSelectedRow,
+              )}
               aria-pressed={definition.id === selectedDefinitionId}
               onClick={() => onSelectDefinition(definition.id)}
               data-assembly-definition-id={definition.id}
             >
               <Cuboid aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-              <span className="grid min-w-0 gap-0.5">
-                <span className="break-words">{definition.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t("pinRevision", { revision: definition.pinRevision })}
+              <span className="grid min-w-0 flex-1 gap-0.5">
+                <span className="truncate" title={definition.name}>
+                  {definition.name}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("definitionOccurrences", {
-                    count: assembly.instances.filter(
-                      ({ definitionId }) => definitionId === definition.id,
-                    ).length,
-                  })}
+                <span className="flex min-w-0 gap-2 text-xs text-muted-foreground">
+                  <span className="truncate">
+                    {t("pinRevision", { revision: definition.pinRevision })}
+                  </span>
+                  <span className="truncate">
+                    {t("definitionOccurrences", {
+                      count: assembly.instances.filter(
+                        ({ definitionId }) => definitionId === definition.id,
+                      ).length,
+                    })}
+                  </span>
                 </span>
               </span>
             </Button>
@@ -169,7 +203,7 @@ function AssemblyDefinitions({
         ))}
       </ul>
       {!definitions.length && (
-        <p className="px-2 py-2 text-xs text-muted-foreground">
+        <p className="py-2 pl-14 pr-2 text-xs text-muted-foreground">
           {t(filter ? "noBrowserMatches" : "emptyDefinitions")}
         </p>
       )}
@@ -199,33 +233,33 @@ function AssemblyJoints({
     })
     .filter(({ parent, child, kind }) => matchesFilter(filter, parent, child, kind))
   return (
-    <AssemblySection title={t("joints")} count={joints.length}>
-      <ul className="grid gap-1">
+    <AssemblySection
+      title={t("joints")}
+      count={joints.length}
+      icon={<Link2 aria-hidden="true" className="size-4 text-muted-foreground" />}
+    >
+      <ul className="grid">
         {joints.map(({ joint, parent, child, kind }) => (
-          <li
-            key={joint.id}
-            className="flex min-w-0 items-center gap-1"
-            data-assembly-joint-id={joint.id}
-          >
+          <li key={joint.id} className={modelBrowserItem} data-assembly-joint-id={joint.id}>
             <Button
               size="content"
               variant="ghost"
-              className="min-w-0 flex-1 justify-start gap-2 text-left"
+              className={cn(modelBrowserChildRow, "h-auto min-h-12 flex-1 py-1 text-left")}
               disabled={!onSelectJoint || motionDisabled}
               onClick={() => onSelectJoint?.(joint.id)}
               aria-label={t("jointBetween", { kind, parent, child })}
             >
               <Link2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-              <span className="grid min-w-0 gap-0.5">
+              <span className="grid min-w-0 flex-1 gap-0.5">
                 <span>{kind}</span>
-                <span className="break-words text-xs text-muted-foreground">
+                <span className="truncate text-xs text-muted-foreground">
                   {t("jointEndpoints", { parent, child })}
                 </span>
               </span>
             </Button>
             {onDriveJoint && joint.kind !== "fixed" && joint.kind !== "ball" && (
               <Button
-                size="icon-sm"
+                size="icon-xs"
                 variant="ghost"
                 disabled={motionDisabled}
                 aria-label={t("driveJointBetween", { parent, child })}
@@ -238,7 +272,7 @@ function AssemblyJoints({
         ))}
       </ul>
       {!joints.length && (
-        <p className="px-2 py-2 text-xs text-muted-foreground">
+        <p className="py-2 pl-14 pr-2 text-xs text-muted-foreground">
           {t(filter ? "noBrowserMatches" : "emptyJoints")}
         </p>
       )}
@@ -251,8 +285,12 @@ export function AssemblyTree(props: AssemblyTreeProps) {
   const [query, setQuery] = useState("")
   const filter = query.trim().toLocaleLowerCase()
   return (
-    <aside className="grid h-full content-start gap-3 overflow-y-auto p-2" aria-label={t("tree")}>
+    <aside
+      className="grid h-full content-start gap-1 overflow-y-auto bg-panel p-2"
+      aria-label={t("tree")}
+    >
       <Input
+        className="mb-2 h-8"
         type="search"
         value={query}
         onChange={(event) => setQuery(event.currentTarget.value)}

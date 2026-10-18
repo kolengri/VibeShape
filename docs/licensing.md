@@ -50,6 +50,9 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | is-what | MIT | Include a third-party notice; it is a zero-runtime-dependency ESM guard library shipped only by importing workspaces |
 | fflate | MIT | Include a third-party notice; the browser-shipped 3MF writer and private extension package validator import it for ZIP processing |
 | Bun | MIT | Pin the toolchain and link its source; it is normally not part of the browser distribution |
+| Electron 44.9.0 | MIT plus Chromium/Node bundled third-party terms | Desktop-only runtime; preserve its full `LICENSE` and `LICENSES.chromium.html` in the app's corresponding-source/notice directory |
+| semver 7.8.5 | ISC | Desktop main-process version comparison; preserve its exact notice |
+| `@electron/packager` 20.3.0 | BSD-2-Clause | Desktop build tool; inventory its locked signing, archive and download dependencies; it is not bundled into the app |
 | Tailwind CSS / Vite plugin | MIT | Include a third-party notice |
 | shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
 | react-resizable-panels 4.13.2 | MIT | Preserve its notice and locked dependency notices; shared source-owned UI wrappers retain upstream keyboard and separator accessibility behavior |

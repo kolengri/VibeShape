@@ -7,6 +7,12 @@ import type {
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
 import { useState } from "react"
+import {
+  modelBrowserChildRow,
+  modelBrowserGroupRow,
+  modelBrowserItem,
+  modelBrowserSelectedRow,
+} from "./model-browser-styles"
 
 export function ModelBrowserOrigin({
   disabled,
@@ -32,7 +38,7 @@ export function ModelBrowserOrigin({
         aria-expanded={expanded}
         variant="ghost"
         size="sm"
-        className="w-full justify-start font-normal"
+        className={modelBrowserGroupRow}
         onClick={() => setExpanded(!expanded)}
       >
         <ChevronDown aria-hidden="true" className={cn("size-4", !expanded && "-rotate-90")} />
@@ -40,24 +46,24 @@ export function ModelBrowserOrigin({
         {t("items.origin")}
       </Button>
       {expanded && (
-        <fieldset className="ml-3 border-l pl-2">
+        <fieldset className="min-w-0">
           <legend className="sr-only">{t("originPlanes")}</legend>
           {(["xy", "xz", "yz"] as const).map((plane) => (
-            <div key={plane} className="flex min-w-0 items-center gap-1">
+            <div
+              key={plane}
+              className={cn(modelBrowserItem, selected === plane && modelBrowserSelectedRow)}
+            >
               <Button
                 role="treeitem"
                 tabIndex={-1}
                 aria-selected={selected === plane}
                 disabled={disabled}
-                size="xs"
+                size="sm"
                 variant="ghost"
-                className={cn(
-                  "min-w-0 flex-1 justify-start font-normal",
-                  selected === plane && "bg-accent text-accent-foreground",
-                )}
+                className={cn(modelBrowserChildRow, "flex-1")}
                 onClick={() => onSelect(plane)}
               >
-                <Layers3 aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                <Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />
                 {plane.toUpperCase()}
               </Button>
               <Button
