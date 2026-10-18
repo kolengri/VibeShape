@@ -130,7 +130,13 @@ async function createApp(
     prune: false,
     icon: await createIcon(stage),
     extraResource: [files.editor],
-    osxSign: { identity: "-", identityValidation: false, continueOnError: false },
+    osxSign: {
+      identity: "-",
+      identityValidation: false,
+      continueOnError: false,
+      // Ad-hoc binaries have no Team ID for Hardened Runtime's library validation.
+      optionsForFile: () => ({ hardenedRuntime: false }),
+    },
     extendInfo: { NSHumanReadableCopyright: "VibeShape — GPL-3.0-or-later" },
   })
   const packaged = paths[0]

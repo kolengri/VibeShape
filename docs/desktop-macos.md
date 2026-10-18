@@ -32,7 +32,10 @@ The same script accepts `x64`; that target requires its own actual Mac acceptanc
 release. The local Apple Silicon artifact does not establish Intel compatibility.
 
 Open the disk image, copy `VibeShape.app` to Applications and launch it. The current local artifact
-is ad-hoc signed and verified, without Developer ID or notarization. Do not disable Gatekeeper or
+is ad-hoc signed and verified, without Developer ID or notarization. Local ad-hoc signing leaves
+Hardened Runtime off because it has no Team ID for library validation; the Chromium renderer
+sandbox and context isolation remain enabled. A public signed/notarized release must use the
+appropriate Hardened Runtime signing policy with its Developer ID identity. Do not disable Gatekeeper or
 remove quarantine as part of the application workflow. Public distribution remains gated on
 signing/notarization and the repository's release compliance review.
 
