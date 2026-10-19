@@ -44,6 +44,7 @@ test("every documentation article supports direct links and return navigation", 
   for (const [id, title] of topics) {
     await page.goto(`/#docs/${id}`)
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(title)
+    await expect(page).toHaveTitle(`${title} — VibeShape`)
     await expect(page.getByRole("link", { name: "Full reference on GitHub" })).toHaveAttribute(
       "href",
       /^https:\/\/github\.com\/kolengri\/VibeShape\/blob\/main\/docs\//,
@@ -57,6 +58,7 @@ test("every documentation article supports direct links and return navigation", 
   await page.keyboard.press("Enter")
   await expect(page.locator("#documentation")).toBeInViewport()
   await expect(page.locator("#documentation h2")).toBeFocused()
+  await expect(page).toHaveTitle("VibeShape — CAD for things you can make")
   await expect(page.getByRole("heading", { level: 1 })).toContainText("CAD for things")
 })
 

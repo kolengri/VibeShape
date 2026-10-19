@@ -724,8 +724,8 @@ export function App() {
   const article = articles.find(({ id }) => hash === `#docs/${id}`)
   useEffect(() => {
     document.title = article
-      ? `${t(`articles.${article.id}.title`)} — VibeShape`
-      : "VibeShape — CAD for things you can make"
+      ? t("metadata.articleTitle", { title: t(`articles.${article.id}.title`) })
+      : t("metadata.landingTitle")
   }, [article, t])
   useEffect(() => {
     if (article || hash === "#overview") {
