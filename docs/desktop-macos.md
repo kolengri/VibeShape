@@ -84,11 +84,15 @@ partial image. HTTPS and GitHub's asset digest do not replace Developer ID authe
 bun run --cwd apps/desktop typecheck
 bun test apps/desktop/src apps/mcp-server/src/static-editor.test.ts
 bun run test:desktop
+VIBESHAPE_PACKAGED_APP=/absolute/path/to/VibeShape.app bun run test:desktop:packaged
 ```
 
 The native Playwright workflow launches Electron with an isolated development profile and exercises
 the real editor, worker geometry, project persistence, backup download, window lifecycle, navigation
 restrictions and menu integration. Update transport fixtures cover release selection and verified
-streaming failure/success without publishing a GitHub release. Packaged-app verification must also
-check the actual `.app`, its code signature and controlled assets. These local checks do not prove
+streaming failure/success without publishing a GitHub release. The guarded packaged-app command
+reuses the CAD, backup, persistence, restart and OS-sandbox checks against the actual bundle with no
+Bun on its runtime `PATH`; it catches signing/loader failures that a development Electron launch or
+signature verification alone cannot establish. It also checks the packaged license endpoints.
+Packaged-app verification must also check its code signature and controlled assets. These local checks do not prove
 Gatekeeper acceptance of a downloaded public binary or notarization.

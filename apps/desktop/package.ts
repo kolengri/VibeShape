@@ -53,14 +53,17 @@ async function stageSources(editor: string, commit: string) {
   const dependencyRoot = join(root, "apps/desktop/node_modules")
   run(process.execPath, [join(dependencyRoot, "electron/install.js")])
   for (const name of ["LICENSE", "LICENSES.chromium.html"])
-    await cp(join(dependencyRoot, "electron/dist", name), join(sources, `Electron-${name}`))
+    await cp(
+      join(dependencyRoot, "electron/dist", name),
+      join(sources, `Electron-${name === "LICENSE" ? "LICENSE.txt" : name}`),
+    )
   for (const name of ["desktop-licenses.txt", "metafile.json"])
     await cp(join(root, "apps/desktop/dist", name), join(sources, name))
   await writeFile(
     join(sources, "index.html"),
     `${await readFile(join(sources, "index.html"), "utf8")}\n<h2>Desktop host</h2><ul>
 <li><a href="desktop-licenses.txt">Native main-process dependency notices</a></li>
-<li><a href="Electron-LICENSE">Electron license</a></li>
+<li><a href="Electron-LICENSE.txt">Electron license</a></li>
 <li><a href="Electron-LICENSES.chromium.html">Chromium and bundled runtime notices</a></li>
 <li><a href="vibeshape-source.tar">Exact VibeShape application source</a></li>
 <li><a href="desktop-macos.md">Desktop build and replacement instructions</a></li></ul>\n`,

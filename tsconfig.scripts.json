@@ -16,6 +16,7 @@
     "playwright.config.ts",
     "playwright.distribution.config.ts",
     "playwright.desktop.config.ts",
+    "playwright.desktop-packaged.config.ts",
     "playwright.public.config.ts",
     "playwright.performance.config.ts",
     "playwright.topology.config.ts",

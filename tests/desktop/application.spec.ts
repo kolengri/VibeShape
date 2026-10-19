@@ -9,7 +9,10 @@ import { invokeModelCommand } from "../e2e/model-command-support"
 
 const root = resolve(import.meta.dirname, "../..")
 const require = createRequire(join(root, "apps/desktop/package.json"))
-const executablePath = z.string().parse(require("electron"))
+const packagedApp = process.env.VIBESHAPE_PACKAGED_APP
+const executablePath = packagedApp
+  ? join(resolve(packagedApp), "Contents/MacOS/VibeShape")
+  : z.string().parse(require("electron"))
 
 test("native launch preserves CAD, backups and the profile across window close and app restart", async () => {
   const testInfo = test.info()
@@ -19,11 +22,12 @@ test("native launch preserves CAD, backups and the profile across window close a
     .record(z.string(), z.string())
     .parse({ ...process.env, ELECTRON_ENABLE_SECURITY_WARNINGS: "true" })
   delete environment.ELECTRON_RUN_AS_NODE
+  if (packagedApp) environment.PATH = "/usr/bin:/bin"
   let native: ElectronApplication | undefined
   const launch = () =>
     _electron.launch({
       executablePath,
-      args: [join(root, "apps/desktop"), `--user-data-dir=${profile}`],
+      args: [...(packagedApp ? [] : [join(root, "apps/desktop")]), `--user-data-dir=${profile}`],
       env: environment,
     })
   try {
@@ -33,6 +37,19 @@ test("native launch preserves CAD, backups and the profile across window close a
     page.on("pageerror", (error) => errors.push(error.message))
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     expect(await native.evaluate(({ app }) => app.getPath("userData"))).toBe(profile)
+    expect(await native.evaluate(({ app }) => app.isPackaged)).toBe(Boolean(packagedApp))
+    if (packagedApp) {
+      for (const asset of [
+        "desktop-licenses.txt",
+        "Electron-LICENSE.txt",
+        "Electron-LICENSES.chromium.html",
+        "desktop-macos.md",
+      ]) {
+        const response = await fetch(`http://127.0.0.1:43115/sources/${asset}`)
+        expect(response.status).toBe(200)
+        await response.body?.cancel()
+      }
+    }
     expect(new URL(page.url()).origin).toBe("http://127.0.0.1:43115")
     expect(
       await native.evaluate(({ app, BrowserWindow }) => {
