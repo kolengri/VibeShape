@@ -128,6 +128,14 @@ test("every documentation article supports direct links and return navigation", 
       "aria-current",
       "page",
     )
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport()
+    await page
+      .getByRole("link", { name: title, exact: true })
+      .evaluate((element: HTMLAnchorElement) => element.focus({ preventScroll: true }))
+    await page.keyboard.press("Enter")
+    await expect(page.getByRole("heading", { level: 1 })).toBeInViewport()
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused()
   }
   await page.getByRole("link", { name: "Back to overview" }).focus()
   await page.keyboard.press("Enter")

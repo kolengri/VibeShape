@@ -628,9 +628,9 @@ function Article({ article }: { article: (typeof articles)[number] }) {
       <article className="min-w-0 md:col-span-3">
         <Eyebrow>{t(`articles.${id}.category`)}</Eyebrow>
         <h1
-          id="main-heading"
+          id={`docs/${id}`}
           tabIndex={-1}
-          className="text-4xl font-medium leading-tight tracking-tight outline-none sm:text-5xl"
+          className="scroll-mt-24 text-4xl font-medium leading-tight tracking-tight outline-none sm:text-5xl"
         >
           {t(`articles.${id}.title`)}
         </h1>
@@ -721,7 +721,7 @@ export function App() {
   useEffect(() => {
     if (article || hash === "#overview") {
       window.scrollTo(0, 0)
-      document.getElementById("main-heading")?.focus({ preventScroll: true })
+      document.querySelector<HTMLHeadingElement>("main h1")?.focus({ preventScroll: true })
     } else if (hash) {
       focusSection(hash)
     }
