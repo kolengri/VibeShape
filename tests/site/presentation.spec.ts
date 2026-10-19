@@ -7,13 +7,19 @@ test("the hero follows scroll in both directions while the video stays paused", 
   await page.goto("/")
   const video = page.locator("#overview video")
   await expect(video).toHaveCSS("opacity", "1")
-  await expect.poll(() => video.evaluate((element) => element.currentTime)).toBeLessThan(0.1)
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
+    .toBeLessThan(0.1)
   await page.evaluate(() => window.scrollTo({ top: 540, behavior: "instant" }))
-  await expect.poll(() => video.evaluate((element) => element.currentTime)).toBeGreaterThan(3)
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
+    .toBeGreaterThan(3)
   await expect(page.locator(".hero-visual")).toBeInViewport({ ratio: 1 })
-  expect(await video.evaluate((element) => element.paused)).toBe(true)
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
-  await expect.poll(() => video.evaluate((element) => element.currentTime)).toBeLessThan(0.1)
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
+    .toBeLessThan(0.1)
   await page.locator("#features").scrollIntoViewIfNeeded()
   await expect(page.locator("#features h2")).toBeInViewport()
 })
@@ -41,18 +47,18 @@ test("the hero follows mobile scrolling without pinning or horizontal overflow",
   await page.goto("/")
   const video = page.locator("#overview video")
   await expect(video).toHaveCSS("opacity", "1")
-  const initialTime = await video.evaluate((element) => element.currentTime)
+  const initialTime = await video.evaluate((element: HTMLVideoElement) => element.currentTime)
   await page
     .locator(".hero-visual")
     .evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }))
   await expect
-    .poll(() => video.evaluate((element) => element.currentTime))
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
     .toBeGreaterThan(initialTime + 1)
   await expect(page.locator(".hero-scroll-frame")).toHaveCSS("position", "static")
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
   await expect
-    .poll(() => video.evaluate((element) => element.currentTime))
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
     .toBeLessThan(initialTime + 0.1)
 })
 
@@ -62,9 +68,11 @@ test("a failed hero video leaves a decoded poster visible", async ({ page }) => 
   await expect(page.locator("#overview video")).toHaveCount(0)
   const poster = page.locator(".hero-visual img")
   await expect(poster).toBeVisible()
-  expect(await poster.evaluate((element) => element.complete && element.naturalWidth > 0)).toBe(
-    true,
-  )
+  expect(
+    await poster.evaluate(
+      (element: HTMLImageElement) => element.complete && element.naturalWidth > 0,
+    ),
+  ).toBe(true)
 })
 
 test("the presentation explains the workflow and links to the real editor", async ({ page }) => {
