@@ -537,6 +537,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (outcome !== "startedNewTurn" || !pending) return
     if (pending.completed) return finishExternalTurn(owner, pending.completed)
     owner.externalTurn = { active: pending.sawActive }
+    // A reserved fallback owns a new logical turn before its active notification arrives.
+    if (!pending.sawActive) owner.threadStatus = null
     owner.snapshot.status = "prompting"
     owner.externalTimer = setTimeout(
       () => stop(owner, "timeout"),
@@ -646,6 +648,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (!prepared.ok) return prepared
     const { connection, sessionId } = prepared
     owner.busy = true
+    // Terminal metadata from a previous prompt cannot seed this turn's steering lifecycle.
+    owner.threadStatus = null
     owner.eventBytes = 0
     owner.eventCount = 0
     owner.acceptingUpdates = true

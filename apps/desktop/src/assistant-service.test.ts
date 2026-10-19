@@ -20,6 +20,16 @@ let sessionId = "fake-session";
 const update = value => send({method:"session/update",params:{sessionId,update:value}});
 const text = value => update({sessionUpdate:"agent_message_chunk",content:{type:"text",text:value}});
 const threadStatus = type => update({sessionUpdate:"session_info_update",_meta:{codex:{threadStatus:{type}}}});
+const afterSignal = (name, action) => {
+ const fs = require("node:fs"), path = require("node:path").join(__dirname,name);
+ const check = () => { if (fs.existsSync(path)) { watcher.close(); action(); } };
+ const watcher = fs.watch(__dirname,check);
+ check();
+};
+const gatedFallback = prefix => afterSignal(prefix+"-start",()=>{
+ threadStatus("active"); text(prefix+" output");
+ afterSignal(prefix+"-end",()=>{text(prefix+" finished");threadStatus("idle");});
+});
 const configs = (value, effort = value === "large" ? "extreme" : "brief") => [
  {id:"model",name:"Model",category:"model",type:"select",currentValue:value,options:[{value:"small",name:"Small"},{value:"large",name:"Large"}]},
  ...(scenario.startsWith("config") ? [
@@ -86,6 +96,36 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    text(JSON.stringify({steerCalls,prompt:params.prompt}));
    if (scenario === "steer-failed") return reply(id,{outcome:"failed"});
    if (scenario === "steer-malformed") return reply(id,{outcome:"unknown"});
+   if (scenario === "steer-new-prior-idle") {
+     afterSignal("current-turn",()=>{
+       threadStatus("active"); text("second turn active");
+       threadStatus("idle"); reply(pending,{stopReason:"end_turn"}); pending = undefined;
+       afterSignal("steer-ack",()=>{
+         reply(id,{outcome:"startedNewTurn"});
+         afterSignal("fallback-start",()=>{
+           threadStatus("active"); text("actual fallback output");
+           afterSignal("fallback-end",()=>{text("actual fallback finished");threadStatus("idle");});
+         });
+       });
+     });
+     return;
+   }
+   if (scenario === "steer-new-current-idle") {
+     reply(pending,{stopReason:"end_turn"}); pending = undefined;
+     gatedFallback("current-idle-fallback");
+     afterSignal("current-idle-ack",()=>reply(id,{outcome:"startedNewTurn"}));
+     return;
+   }
+   if (scenario === "steer-new-repeated-reserved") {
+     if (steerCalls === 1) {
+       reply(pending,{stopReason:"end_turn"}); pending = undefined;
+       reply(id,{outcome:"startedNewTurn"}); gatedFallback("first-fallback");
+     } else {
+       afterSignal("second-steer-ack",()=>reply(id,{outcome:"startedNewTurn"}));
+       gatedFallback("second-fallback");
+     }
+     return;
+   }
    if (scenario.startsWith("steer-new")) {
      const start = () => {
        if (pending !== undefined) { reply(pending,{stopReason:"end_turn"}); pending = undefined; }
@@ -115,7 +155,14 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    questionPrompt = id;
    return send({id:"question-input",method:"elicitation/create",params:{sessionId,mode:"form",message:"Choose a size",requestedSchema:{type:"object",properties:prompt === "unsupported-question" ? {count:{type:"integer"}} : {size:{type:"string",title:"Size",oneOf:[{const:"Small",title:"Small"},{const:"Other",title:"Other"}]},note:{type:"string",title:"Custom size",maxLength:100}},required:["size"]}}});
  }
- if (prompt === "hold") { pending = id; if (scenario.startsWith("steer")) threadStatus("active"); text("started"); return; }
+ if (scenario === "steer-new-prior-idle" && prompt === "first") {
+   threadStatus("active"); text("first turn finished"); threadStatus("idle");
+   return reply(id,{stopReason:"end_turn"});
+ }
+ if ((scenario === "steer-new-current-idle" || scenario === "steer-new-repeated-reserved") && prompt === "hold") {
+   pending = id; threadStatus("active"); threadStatus("idle"); text("current turn idle before steering"); return;
+ }
+ if (prompt === "hold") { pending = id; if (scenario.startsWith("steer") && scenario !== "steer-new-prior-idle") threadStatus("active"); text(scenario === "steer-new-prior-idle" ? "second turn awaiting active" : "started"); return; }
  if (prompt === "crash") { process.stderr.write("private provider credential"); process.exit(3); }
  if (prompt === "malformed") return process.stdout.write('[{"jsonrpc":"2.0","method":"invalid-batch"}]\n');
  if (prompt === "invalid-json") return process.stdout.write("not-json\n");
@@ -169,6 +216,7 @@ async function host(overrides: Partial<AssistantServiceOptions> = {}) {
   return {
     service,
     events,
+    signal: (name: string) => writeFile(join(directory, name), ""),
     connect: (scenario = "normal", projectId = "project-a", resumeSessionId?: string) =>
       service.handle({
         operation: "connect",
@@ -382,6 +430,220 @@ describe("native active-turn steering", () => {
         input: { ...scope(context.session), text: "Next turn" },
       }),
     ).toMatchObject({ ok: true })
+  })
+
+  it("ignores a previous prompt's idle status when steering precedes the next prompt's active notification", async () => {
+    const context = await host(),
+      session = ready(await context.connect("steer-new-prior-idle"))
+    const input = scope(session)
+    expect(
+      await context.service.handle({ operation: "prompt", input: { ...input, text: "first" } }),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
+    const active = context.service.handle({
+      operation: "prompt",
+      input: { ...input, text: "hold" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "second turn awaiting active",
+    )
+    const steeringAt = context.events.length
+    const steering = context.service.handle({
+      operation: "steer",
+      input: { ...input, requestId: "second-prompt-steer", text: "Fallback direction" },
+    })
+    await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+    await context.signal("current-turn")
+    await active
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(2)
+    await context.signal("steer-ack")
+    expect(await steering).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "prompting" },
+    })
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(2)
+    const concurrent = () =>
+      context.service.handle({ operation: "prompt", input: { ...input, text: "Must wait" } })
+    expect(await concurrent()).toEqual({ ok: false, code: "agent-busy" })
+    await context.signal("fallback-start")
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "actual fallback output",
+    )
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(2)
+    expect(
+      context.events
+        .slice(steeringAt)
+        .some((event) => event.type === "snapshot" && event.snapshot.status === "ready"),
+    ).toBe(false)
+    expect(await concurrent()).toEqual({ ok: false, code: "agent-busy" })
+    const endingAt = context.events.length
+    await context.signal("fallback-end")
+    await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= endingAt &&
+        event.type === "snapshot" &&
+        event.snapshot.status === "ready" &&
+        context.events.filter((value) => value.type === "completed").length === 3,
+    )
+    expect(context.events.filter((event) => event.type === "completed")).toEqual([
+      expect.objectContaining({ stopReason: "end_turn" }),
+      expect.objectContaining({ stopReason: "end_turn" }),
+      expect.objectContaining({ stopReason: "end_turn" }),
+    ])
+    expect(
+      context.events.some(
+        (event) => event.type === "text" && event.text === "actual fallback finished",
+      ),
+    ).toBe(true)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...input, text: "Next prompt" },
+      }),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
+  })
+
+  it.each(["before", "after"] as const)(
+    "recognizes current-prompt idle before dispatch when the fallback completes %s acknowledgement",
+    async (completion) => {
+      const context = await host(),
+        session = ready(await context.connect("steer-new-current-idle"))
+      const input = scope(session)
+      const active = context.service.handle({
+        operation: "prompt",
+        input: { ...input, text: "hold" },
+      })
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "current turn idle before steering",
+      )
+      const steering = context.service.handle({
+        operation: "steer",
+        input: { ...input, requestId: "current-idle-steer", text: "Fallback direction" },
+      })
+      await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+      await active
+      expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+      if (completion === "after") {
+        await context.signal("current-idle-ack")
+        expect(await steering).toMatchObject({
+          ok: true,
+          steerOutcome: "startedNewTurn",
+          value: { status: "prompting" },
+        })
+      }
+      await context.signal("current-idle-fallback-start")
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "current-idle-fallback output",
+      )
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...input, text: "Must wait" },
+        }),
+      ).toEqual({ ok: false, code: "agent-busy" })
+      expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+      const endingAt = context.events.length
+      await context.signal("current-idle-fallback-end")
+      if (completion === "before") {
+        await context.waitFor(
+          (event) => event.type === "text" && event.text === "current-idle-fallback finished",
+        )
+        expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+        await context.signal("current-idle-ack")
+        expect(await steering).toMatchObject({
+          ok: true,
+          steerOutcome: "startedNewTurn",
+          value: { status: "ready" },
+        })
+      }
+      await context.waitFor(
+        (event) =>
+          context.events.indexOf(event) >= endingAt &&
+          event.type === "snapshot" &&
+          event.snapshot.status === "ready" &&
+          context.events.filter((value) => value.type === "completed").length === 2,
+      )
+      expect(context.events.filter((event) => event.type === "completed")).toEqual([
+        expect.objectContaining({ stopReason: "end_turn" }),
+        expect.objectContaining({ stopReason: "end_turn" }),
+      ])
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...input, text: "Next prompt" },
+        }),
+      ).toMatchObject({ ok: true, value: { status: "ready" } })
+    },
+  )
+
+  it("does not reuse the predecessor idle when steering an acknowledged fallback that has not become active", async () => {
+    const context = await host(),
+      session = ready(await context.connect("steer-new-repeated-reserved"))
+    const input = scope(session)
+    const active = context.service.handle({
+      operation: "prompt",
+      input: { ...input, text: "hold" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "current turn idle before steering",
+    )
+    const steer = (requestId: string) =>
+      context.service.handle({
+        operation: "steer",
+        input: { ...input, requestId, text: "Fallback direction" },
+      })
+    expect(await steer("first-reserved-steer")).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "prompting" },
+    })
+    await active
+    const second = steer("second-reserved-steer")
+    await context.waitFor((event) => event.type === "text" && event.text.includes('"steerCalls":2'))
+    const firstEndAt = context.events.length
+    await context.signal("first-fallback-start")
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "first-fallback output",
+    )
+    await context.signal("first-fallback-end")
+    await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= firstEndAt &&
+        event.type === "completed" &&
+        context.events.filter((value) => value.type === "completed").length === 2,
+    )
+    await context.signal("second-steer-ack")
+    expect(await second).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "prompting" },
+    })
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(2)
+    expect(
+      await context.service.handle({ operation: "prompt", input: { ...input, text: "Must wait" } }),
+    ).toEqual({ ok: false, code: "agent-busy" })
+    await context.signal("second-fallback-start")
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "second-fallback output",
+    )
+    const secondEndAt = context.events.length
+    await context.signal("second-fallback-end")
+    await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= secondEndAt &&
+        event.type === "snapshot" &&
+        event.snapshot.status === "ready" &&
+        context.events.filter((value) => value.type === "completed").length === 3,
+    )
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(3)
+    expect(context.events.some((event) => event.type === "error")).toBe(false)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...input, text: "Next prompt" },
+      }),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
   })
 
   it("recognizes a complete fallback lifecycle before its acknowledgement without inventing another active turn", async () => {
