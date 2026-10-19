@@ -298,8 +298,8 @@ export function createApiChatController(options: ApiChatOptions) {
   function failTurn(turn: ActiveTurn, finishTools: (status: "failed" | "cancelled") => void) {
     finishTools(turn.canceled ? "cancelled" : "failed")
     releaseTools()
-    context = rememberedContext(state.messages)
     if (turn.queued) queued.unshift(turn.queued)
+    else context = rememberedContext(state.messages)
     publishQueue()
   }
   function finishTurn(

@@ -390,6 +390,9 @@ describe("browser API project chat", () => {
     expect(await chat.resumeQueue()).toBe(true)
     await until(chat, () => api.requests.length === 3)
     expect(api.content(2)).toContain("retained queued bytes")
+    expect(
+      api.requests[2]?.messages.filter(({ role }) => role === "user").map(({ content }) => content),
+    ).toEqual(["First", api.content(1)])
     for (const item of chat.getSnapshot().queuedMessages) chat.removeQueued(item.id)
     api.respond(2, completion("Retry done"))
     await idle(chat)
