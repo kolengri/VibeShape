@@ -12,8 +12,7 @@
   },
   "hero": {
     "eyebrow": "LOCAL-FIRST. OPEN SOURCE. YOURS.",
-    "title": "CAD for things",
-    "accent": "you can make.",
+    "title": "CAD for things <accent>you can make.</accent>",
     "description": "Turn a sketch into a precise, editable part. VibeShape brings parametric modeling to your browser, with a workflow built around 3D printing.",
     "primary": "Start designing",
     "secondary": "Explore the docs",

@@ -4,7 +4,9 @@ test("the presentation explains the workflow and links to the real editor", asyn
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.goto("/")
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("CAD for thingsyou can make.")
+  await expect(page.getByRole("heading", { level: 1 })).toHaveAccessibleName(
+    "CAD for things you can make.",
+  )
   await expect(page.getByRole("link", { name: "Start designing" })).toHaveAttribute(
     "href",
     "https://cad.hello-world.cz",
@@ -51,8 +53,10 @@ test("every documentation article supports direct links and return navigation", 
       "page",
     )
   }
-  await page.getByRole("link", { name: "Back to overview" }).click()
+  await page.getByRole("link", { name: "Back to overview" }).focus()
+  await page.keyboard.press("Enter")
   await expect(page.locator("#documentation")).toBeInViewport()
+  await expect(page.locator("#documentation h2")).toBeFocused()
   await expect(page.getByRole("heading", { level: 1 })).toContainText("CAD for things")
 })
 
@@ -78,13 +82,25 @@ test("mobile navigation and long documentation fit a narrow viewport", async ({ 
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   const menu = page.getByRole("button", { name: "Toggle navigation" })
-  await menu.click()
+  await menu.focus()
+  await page.keyboard.press("Enter")
   await expect(menu).toHaveAttribute("aria-expanded", "true")
   await page
     .locator("#mobile-navigation")
     .getByRole("link", { name: "Documentation", exact: true })
-    .click()
+    .focus()
+  await page.keyboard.press("Enter")
   await expect(menu).toHaveAttribute("aria-expanded", "false")
+  await expect(page.locator("#documentation h2")).toBeFocused()
+  await menu.focus()
+  await page.keyboard.press("Enter")
+  await page
+    .locator("#mobile-navigation")
+    .getByRole("link", { name: "Documentation", exact: true })
+    .focus()
+  await page.keyboard.press("Enter")
+  await expect(menu).toHaveAttribute("aria-expanded", "false")
+  await expect(page.locator("#documentation h2")).toBeFocused()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
@@ -107,4 +123,31 @@ test("skip to content preserves the current documentation route", async ({ page 
   await expect(page).toHaveURL(/#docs\/local-installation$/)
   await expect(page.getByRole("main")).toBeFocused()
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run VibeShape locally")
+})
+
+test("keyboard section navigation focuses the destination after leaving an article", async ({
+  page,
+}) => {
+  await page.goto("/#docs/getting-started")
+  await page.getByRole("link", { name: "Features", exact: true }).focus()
+  await page.keyboard.press("Enter")
+  await expect(page).toHaveURL(/#features$/)
+  await expect(page.locator("#features h2")).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("link", { name: "Read the feature matrix" })).toBeFocused()
+})
+
+test("modified section navigation preserves native new-tab activation", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/#features")
+  const newPage = context.waitForEvent("page")
+  await page.getByRole("link", { name: "Features", exact: true }).click({
+    modifiers: ["ControlOrMeta"],
+  })
+  const destination = await newPage
+  await expect(destination).toHaveURL(/#features$/)
+  await expect(page).toHaveURL(/#features$/)
+  await destination.close()
 })

@@ -18,7 +18,7 @@ import {
   Ruler,
   X,
 } from "lucide-react"
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
+import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
 import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`
@@ -27,6 +27,13 @@ const subscribeToHash = (notify: () => void) => {
   return () => window.removeEventListener("hashchange", notify)
 }
 const getHash = () => window.location.hash
+
+function focusSection(hash: string) {
+  const section = document.getElementById(hash.slice(1))
+  if (!section) return
+  section.scrollIntoView()
+  section.querySelector<HTMLHeadingElement>("h2")?.focus({ preventScroll: true })
+}
 
 function ActionLink({
   href,
@@ -65,6 +72,16 @@ function Header() {
     { href: "#documentation", label: t("nav.docs") },
     { href: "#downloads", label: t("nav.downloads") },
   ]
+  const closeNavigation = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
+    const modified = [event.metaKey, event.ctrlKey, event.shiftKey, event.altKey].includes(true)
+    if (event.button !== 0 || modified) return
+    setMenuOpen(false)
+    if (window.location.hash !== href) return
+    event.preventDefault()
+    requestAnimationFrame(() => {
+      if (window.location.hash === href) focusSection(href)
+    })
+  }
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-xl">
       <div className="mx-auto flex min-h-20 max-w-7xl items-center justify-between gap-5 px-6 lg:px-12">
@@ -81,6 +98,7 @@ function Header() {
             <a
               key={href}
               href={href}
+              onClick={(event) => closeNavigation(event, href)}
               className="py-3 text-muted-foreground transition-colors hover:text-foreground"
             >
               {label}
@@ -124,7 +142,7 @@ function Header() {
             <a
               key={href}
               href={href}
-              onClick={() => setMenuOpen(false)}
+              onClick={(event) => closeNavigation(event, href)}
               className="rounded-lg py-3 text-sm hover:text-primary"
             >
               {label}
@@ -148,9 +166,9 @@ function Hero() {
             tabIndex={-1}
             className="max-w-xl text-5xl font-medium leading-[1.06] tracking-[-0.055em] outline-none sm:text-6xl lg:text-7xl xl:text-8xl"
           >
-            {t("title")}
-            <br />
-            <span className="text-primary">{t("accent")}</span>
+            {t.rich("title", {
+              accent: (chunks) => <span className="block text-primary">{chunks}</span>,
+            })}
           </h1>
           <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
             {t("description")}
@@ -248,7 +266,10 @@ function Features() {
       <div className="mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
         <Eyebrow>{t("label")}</Eyebrow>
         <div className="flex flex-wrap items-end justify-between gap-6">
-          <h2 className="whitespace-pre-line text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+          <h2
+            tabIndex={-1}
+            className="whitespace-pre-line text-4xl font-medium leading-tight tracking-tight sm:text-5xl"
+          >
             {t("title")}
           </h2>
           <p className="max-w-sm text-base leading-relaxed text-muted-foreground">
@@ -285,7 +306,9 @@ function Workflow() {
   return (
     <section id="workflow" className="mx-auto max-w-7xl scroll-mt-24 px-6 py-20 lg:px-12 lg:py-28">
       <Eyebrow>{t("label")}</Eyebrow>
-      <h2 className="text-3xl font-medium tracking-tight sm:text-4xl">{t("title")}</h2>
+      <h2 tabIndex={-1} className="text-3xl font-medium tracking-tight sm:text-4xl">
+        {t("title")}
+      </h2>
       <p className="mt-4 text-muted-foreground">{t("description")}</p>
       <div className="mt-10 grid overflow-hidden rounded-xl border border-border md:grid-cols-2">
         <div className="p-6 sm:p-9">
@@ -435,7 +458,10 @@ function Documentation() {
     >
       <Eyebrow>{t("docs.label")}</Eyebrow>
       <div className="flex flex-wrap items-end justify-between gap-5">
-        <h2 className="whitespace-pre-line text-3xl font-medium leading-tight tracking-tight sm:text-4xl">
+        <h2
+          tabIndex={-1}
+          className="whitespace-pre-line text-3xl font-medium leading-tight tracking-tight sm:text-4xl"
+        >
           {t("docs.title")}
         </h2>
         <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
@@ -488,7 +514,10 @@ function Downloads() {
     <section id="downloads" className="scroll-mt-24 border-y border-border bg-panel/60">
       <div className="mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
         <Eyebrow>{t("label")}</Eyebrow>
-        <h2 className="whitespace-pre-line text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+        <h2
+          tabIndex={-1}
+          className="whitespace-pre-line text-4xl font-medium leading-tight tracking-tight sm:text-5xl"
+        >
           {t("title")}
         </h2>
         <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground">
@@ -703,7 +732,7 @@ export function App() {
       window.scrollTo(0, 0)
       document.getElementById("main-heading")?.focus({ preventScroll: true })
     } else if (hash) {
-      document.getElementById(hash.slice(1))?.scrollIntoView()
+      focusSection(hash)
     }
   }, [article, hash])
   return (

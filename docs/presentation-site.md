@@ -33,7 +33,7 @@ editor's `CLOUDFLARE_PAGES_PROJECT` variable remains `vibeshape-greg` and is not
 No browser upload, additional token, artifact-storage transfer, or CAD kernel build is required.
 
 Before publication, the job requires frozen installation, scoped Biome and typechecks, a production
-build, five Chromium browser scenarios, the expected personal account, and a source commit that
+build, the focused Chromium browser scenarios, the expected personal account, and a source commit that
 still matches current `main`. It compares the deployed HTML with the built HTML after upload.
 Concurrency serializes presentation deployments. The existing environment allows deployment only
 from `main`; the workflow cannot publish this task branch or be initially dispatched until merged.
