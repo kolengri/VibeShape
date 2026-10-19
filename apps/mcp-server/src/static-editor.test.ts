@@ -17,6 +17,11 @@ describe("local static editor boundary", () => {
     await writeFile(join(root, "index.html"), "<html><head></head><body>Editor</body></html>")
     await writeFile(join(root, "assets/ui-panel-runtime-Abc123_-.js"), "void 0")
     await writeFile(join(root, "assets/ui-panel-runtime-lookalike.js"), "void 0")
+    await writeFile(join(root, "assets/untrusted.js"), "void 0")
+    await symlink(
+      join(root, "assets/untrusted.js"),
+      join(root, "assets/ui-panel-runtime-Alias123.js"),
+    )
     await writeFile(join(root, "assets/kernel.wasm"), new Uint8Array([0, 97, 115, 109]))
     const fileBody = vi.fn(() => new Blob([new Uint8Array([0, 97, 115, 109])]).stream())
     const origin = "http://127.0.0.1:43115"
@@ -32,6 +37,10 @@ describe("local static editor boundary", () => {
     expect(panel.status).toBe(200)
     expect(panel.headers.get("access-control-allow-origin")).toBe("*")
     expect(panel.headers.get("cross-origin-resource-policy")).toBe("cross-origin")
+    const alias = await get("/assets/ui-panel-runtime-Alias123.js")
+    expect(alias.status).toBe(200)
+    expect(alias.headers.get("access-control-allow-origin")).toBeNull()
+    expect(alias.headers.get("cross-origin-resource-policy")).toBe("same-origin")
     expect(
       (await get("/assets/ui-panel-runtime-Abc123_-.js", "https://attacker.invalid")).status,
     ).toBe(403)

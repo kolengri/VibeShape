@@ -12,6 +12,21 @@ const maximumAssetSize = 1024 * 1024 * 1024
 const maximumMetadataSize = 2 * 1024 * 1024
 const redirects = new Set([301, 302, 303, 307, 308])
 
+type DesktopUpdateFailure =
+  | { kind: "http"; status: number }
+  | { kind: "network" | "invalid-response" | "integrity" | "destination" }
+
+export class DesktopUpdateError extends Error {
+  constructor(
+    readonly failure: DesktopUpdateFailure,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+    this.name = "DesktopUpdateError"
+  }
+}
+
 function isStableVersion(version: string): boolean {
   const parsed = parse(version)
   return (
@@ -88,6 +103,19 @@ export type DesktopUpdateTransport = (
   },
 ) => Promise<Response>
 
+async function requestUpdate(
+  transport: DesktopUpdateTransport,
+  url: string,
+  options: Parameters<DesktopUpdateTransport>[1],
+) {
+  try {
+    return await transport(url, options)
+  } catch (cause) {
+    if (options.signal.aborted) throw cause
+    throw new DesktopUpdateError({ kind: "network" }, "Desktop update request failed.", { cause })
+  }
+}
+
 function operationSignal(signal: AbortSignal | undefined, milliseconds: number) {
   const deadline = AbortSignal.timeout(milliseconds)
   return signal ? AbortSignal.any([signal, deadline]) : deadline
@@ -97,26 +125,48 @@ async function discardBody(response: Response) {
   await response.body?.cancel().catch(() => undefined)
 }
 
+async function destinationOperation<T>(operation: () => Promise<T>) {
+  try {
+    return await operation()
+  } catch (cause) {
+    throw new DesktopUpdateError(
+      { kind: "destination" },
+      "Desktop update destination could not be written.",
+      { cause },
+    )
+  }
+}
+
 function declaredLength(response: Response): number | null {
   const value = response.headers.get("content-length")
   if (value === null) return null
   if (!/^(0|[1-9]\d*)$/.test(value)) {
-    throw new Error("Desktop update response has an invalid content length.")
+    throw new DesktopUpdateError(
+      { kind: "invalid-response" },
+      "Desktop update response has an invalid content length.",
+    )
   }
   const length = Number(value)
   if (!Number.isSafeInteger(length)) {
-    throw new Error("Desktop update response has an invalid content length.")
+    throw new DesktopUpdateError(
+      { kind: "invalid-response" },
+      "Desktop update response has an invalid content length.",
+    )
   }
   return length
 }
 
 async function readMetadata(response: Response, signal: AbortSignal): Promise<unknown> {
-  if (!response.body) throw new Error("Desktop update metadata is empty.")
+  if (!response.body)
+    throw new DesktopUpdateError({ kind: "invalid-response" }, "Desktop update metadata is empty.")
   const reader = response.body.getReader()
   try {
     const length = declaredLength(response)
     if (length !== null && length > maximumMetadataSize) {
-      throw new Error("Desktop update metadata exceeds its size limit.")
+      throw new DesktopUpdateError(
+        { kind: "invalid-response" },
+        "Desktop update metadata exceeds its size limit.",
+      )
     }
     const chunks: Uint8Array[] = []
     let size = 0
@@ -126,7 +176,10 @@ async function readMetadata(response: Response, signal: AbortSignal): Promise<un
       if (chunk.done) break
       size += chunk.value.byteLength
       if (size > maximumMetadataSize) {
-        throw new Error("Desktop update metadata exceeds its size limit.")
+        throw new DesktopUpdateError(
+          { kind: "invalid-response" },
+          "Desktop update metadata exceeds its size limit.",
+        )
       }
       chunks.push(chunk.value)
     }
@@ -134,7 +187,10 @@ async function readMetadata(response: Response, signal: AbortSignal): Promise<un
     try {
       return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)))
     } catch {
-      throw new Error("Desktop update metadata is not valid JSON.")
+      throw new DesktopUpdateError(
+        { kind: "invalid-response" },
+        "Desktop update metadata is not valid JSON.",
+      )
     }
   } finally {
     await reader.cancel().catch(() => undefined)
@@ -167,7 +223,11 @@ function desktopReleaseCandidate(candidate: unknown, arch: "arm64" | "x64"): Des
 
 function selectRelease(metadata: unknown, currentVersion: string, arch: "arm64" | "x64") {
   const releases = githubReleasesSchema.safeParse(metadata)
-  if (!releases.success) throw new Error("Desktop update release list is invalid.")
+  if (!releases.success)
+    throw new DesktopUpdateError(
+      { kind: "invalid-response" },
+      "Desktop update release list is invalid.",
+    )
   let selected: DesktopRelease | null = null
   for (const candidate of releases.data) {
     const release = desktopReleaseCandidate(candidate, arch)
@@ -183,13 +243,19 @@ function selectRelease(metadata: unknown, currentVersion: string, arch: "arm64" 
 
 function redirectedAssetUrl(location: string | null, from: string): string {
   if (location === null || location.length > 8192) {
-    throw new Error("Desktop update download has an invalid redirect.")
+    throw new DesktopUpdateError(
+      { kind: "invalid-response" },
+      "Desktop update download has an invalid redirect.",
+    )
   }
   let url: URL
   try {
     url = new URL(location, from)
   } catch {
-    throw new Error("Desktop update download has an invalid redirect.")
+    throw new DesktopUpdateError(
+      { kind: "invalid-response" },
+      "Desktop update download has an invalid redirect.",
+    )
   }
   if (
     url.origin !== "https://release-assets.githubusercontent.com" ||
@@ -197,7 +263,10 @@ function redirectedAssetUrl(location: string | null, from: string): string {
     url.password !== "" ||
     url.hash !== ""
   ) {
-    throw new Error("Desktop update download redirected outside GitHub release assets.")
+    throw new DesktopUpdateError(
+      { kind: "invalid-response" },
+      "Desktop update download redirected outside GitHub release assets.",
+    )
   }
   return url.href
 }
@@ -213,21 +282,28 @@ async function assetResponse(
     redirect: "manual",
     credentials: "omit",
   } satisfies Parameters<DesktopUpdateTransport>[1]
-  let response = await transport(release.url, options)
+  let response = await requestUpdate(transport, release.url, options)
   if (redirects.has(response.status)) {
     await discardBody(response)
     const url = redirectedAssetUrl(response.headers.get("location"), release.url)
-    response = await transport(url, options)
+    response = await requestUpdate(transport, url, options)
   }
   try {
     if (response.status !== 200) {
-      throw new Error(`Desktop update download failed (HTTP ${response.status}).`)
+      throw new DesktopUpdateError(
+        { kind: "http", status: response.status },
+        `Desktop update download failed (HTTP ${response.status}).`,
+      )
     }
     const length = declaredLength(response)
     if (length !== null && length !== release.size) {
-      throw new Error("Desktop update download size does not match release metadata.")
+      throw new DesktopUpdateError(
+        { kind: "integrity" },
+        "Desktop update download size does not match release metadata.",
+      )
     }
-    if (!response.body) throw new Error("Desktop update download is empty.")
+    if (!response.body)
+      throw new DesktopUpdateError({ kind: "integrity" }, "Desktop update download is empty.")
     return response
   } catch (error) {
     await discardBody(response)
@@ -242,7 +318,8 @@ async function writeVerifiedDownload(
   signal: AbortSignal,
   onProgress: DownloadOptions["onProgress"],
 ) {
-  if (!response.body) throw new Error("Desktop update download is empty.")
+  if (!response.body)
+    throw new DesktopUpdateError({ kind: "integrity" }, "Desktop update download is empty.")
   const partial = join(dirname(destination), `.${basename(destination)}.${randomUUID()}.partial`)
   const hash = createHash("sha256")
   const reader = response.body.getReader()
@@ -255,7 +332,10 @@ async function writeVerifiedDownload(
       if (chunk.done) return
       received += chunk.value.byteLength
       if (received > release.size) {
-        throw new Error("Desktop update download exceeds its advertised size.")
+        throw new DesktopUpdateError(
+          { kind: "integrity" },
+          "Desktop update download exceeds its advertised size.",
+        )
       }
       hash.update(chunk.value)
       yield chunk.value
@@ -263,28 +343,34 @@ async function writeVerifiedDownload(
     }
   }
   try {
-    const file = await open(partial, "wx", 0o600)
+    const file = await destinationOperation(() => open(partial, "wx", 0o600))
     ownsPartial = true
     try {
       await pipeline(Readable.from(chunks(), { objectMode: false }), file.createWriteStream(), {
         signal,
       })
     } finally {
-      await file.close()
+      await destinationOperation(() => file.close())
     }
     signal.throwIfAborted()
     if (received !== release.size) {
-      throw new Error("Desktop update download size does not match release metadata.")
+      throw new DesktopUpdateError(
+        { kind: "integrity" },
+        "Desktop update download size does not match release metadata.",
+      )
     }
     if (hash.digest("hex") !== release.sha256.toLowerCase()) {
-      throw new Error("Desktop update download failed SHA-256 verification.")
+      throw new DesktopUpdateError(
+        { kind: "integrity" },
+        "Desktop update download failed SHA-256 verification.",
+      )
     }
     // A same-directory hard link publishes verified bytes atomically and refuses every existing path.
-    await link(partial, destination)
+    await destinationOperation(() => link(partial, destination))
   } finally {
     await reader.cancel().catch(() => undefined)
     reader.releaseLock()
-    if (ownsPartial) await rm(partial, { force: true })
+    if (ownsPartial) await destinationOperation(() => rm(partial, { force: true }))
   }
 }
 
@@ -304,7 +390,7 @@ export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
       }
       const boundedSignal = operationSignal(signal, 15_000)
       boundedSignal.throwIfAborted()
-      const response = await transport(releasesUrl, {
+      const response = await requestUpdate(transport, releasesUrl, {
         signal: boundedSignal,
         redirect: "manual",
         credentials: "omit",
@@ -316,7 +402,10 @@ export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
       })
       if (response.status !== 200) {
         await discardBody(response)
-        throw new Error(`Desktop update check failed (HTTP ${response.status}).`)
+        throw new DesktopUpdateError(
+          { kind: "http", status: response.status },
+          `Desktop update check failed (HTTP ${response.status}).`,
+        )
       }
       return selectRelease(await readMetadata(response, boundedSignal), currentVersion, arch)
     },
@@ -326,9 +415,16 @@ export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
       options: DownloadOptions = {},
     ): Promise<void> {
       const descriptor = releaseSchema.safeParse(release)
-      if (!descriptor.success) throw new Error("Desktop update metadata is invalid.")
+      if (!descriptor.success)
+        throw new DesktopUpdateError(
+          { kind: "invalid-response" },
+          "Desktop update metadata is invalid.",
+        )
       if (!destinationSchema.safeParse(destination).success) {
-        throw new Error("The desktop update destination is invalid.")
+        throw new DesktopUpdateError(
+          { kind: "destination" },
+          "The desktop update destination is invalid.",
+        )
       }
       const signal = operationSignal(options.signal, 10 * 60_000)
       signal.throwIfAborted()

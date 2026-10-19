@@ -20,7 +20,17 @@ const messages = {
     showInFinder: "Show in Finder",
     done: "Done",
     updateErrorTitle: "VibeShape could not complete the update",
-    updateErrorDetail: "{error} Check your internet connection and try Check for Updates again.",
+    updateErrorUnknown: "The update could not be completed. Try Check for Updates again.",
+    updateErrorNetwork:
+      "The update service could not be reached. Check your internet connection and try again.",
+    updateErrorHttp:
+      "The update service returned HTTP {status, number, ::group-off}. Try Check for Updates again later.",
+    updateErrorResponse:
+      "The update service returned an invalid response. Try Check for Updates again later.",
+    updateErrorIntegrity:
+      "The downloaded update failed its integrity check and was not saved. Try downloading it again.",
+    updateErrorDestination:
+      "The update could not be saved. Choose a writable folder and a new file name, then try again.",
     checkForUpdates: "Check for Updates…",
     viewMenu: "View",
     licensesAndSourceCode: "Licenses and Source Code",

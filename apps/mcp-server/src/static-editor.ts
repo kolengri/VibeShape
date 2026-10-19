@@ -1,5 +1,5 @@
 import { readFile, realpath, stat } from "node:fs/promises"
-import { basename, extname, resolve, sep } from "node:path"
+import { basename, extname, relative, resolve, sep } from "node:path"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 
 type StaticFileBody = NonNullable<ConstructorParameters<typeof Response>[0]>
@@ -101,7 +101,8 @@ export async function createStaticEditor(input: {
         headers: fileHeaders(
           file.path,
           file.mimeType,
-          isPanelRuntime(url.pathname) && isPanelRuntime(`/${file.path.slice(root.length + 1)}`),
+          isPanelRuntime(url.pathname) &&
+            isPanelRuntime(`/${relative(root, file.path).split(sep).join("/")}`),
         ),
       })
     } catch {

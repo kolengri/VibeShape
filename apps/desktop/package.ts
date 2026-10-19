@@ -103,7 +103,7 @@ async function createIcon(stage: string) {
         "-z",
         pixels,
         pixels,
-        join(root, "apps/web/public/brand/logo-mark.png"),
+        join(root, "apps/web/public/brand/app-icon.png"),
         "--out",
         join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`),
       ])

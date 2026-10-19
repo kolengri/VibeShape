@@ -14,7 +14,12 @@ import {
 } from "electron"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
 import { desktopMessage as t } from "./messages"
-import { type DesktopRelease, downloadDesktopUpdate, findDesktopUpdate } from "./updates"
+import {
+  type DesktopRelease,
+  DesktopUpdateError,
+  downloadDesktopUpdate,
+  findDesktopUpdate,
+} from "./updates"
 
 app.setName("VibeShape")
 const commandLineProfile = app.commandLine.getSwitchValue("user-data-dir")
@@ -44,7 +49,8 @@ function ownsUrl(value: string) {
   }
 }
 
-function ownsEditorNavigation(value: string) {
+function ownsEditorNavigation(value: string | undefined) {
+  if (value === undefined) return false
   return ownsUrl(value) && value.startsWith(`${DESKTOP_EDITOR_ORIGIN}/`)
 }
 
@@ -198,8 +204,20 @@ async function reportUpdateFailure(error: unknown) {
   await dialog.showMessageBox({
     type: "error",
     message: t("updateErrorTitle"),
-    detail: t("updateErrorDetail", { error: errorMessage(error) }),
+    detail: updateFailureDetail(error),
   })
+}
+
+function updateFailureDetail(error: unknown) {
+  if (!(error instanceof DesktopUpdateError)) return t("updateErrorUnknown")
+  if (error.failure.kind === "http") return t("updateErrorHttp", { status: error.failure.status })
+  const keys = {
+    network: "updateErrorNetwork",
+    "invalid-response": "updateErrorResponse",
+    integrity: "updateErrorIntegrity",
+    destination: "updateErrorDestination",
+  } as const
+  return t(keys[error.failure.kind])
 }
 
 async function lookupRelease(quiet: boolean, signal: AbortSignal) {
@@ -299,11 +317,26 @@ function ownsDownload(item: DownloadItem) {
   return item.getInitiatorOrigin() === DESKTOP_EDITOR_ORIGIN && ownsUrl(item.getURL())
 }
 
+function trustedClipboardFrame(
+  contents: WebContents | null,
+  details: { isMainFrame: boolean; requestingUrl?: string },
+) {
+  if (!mainWindow || contents !== mainWindow.webContents || !details.isMainFrame) return false
+  return ownsEditorNavigation(details.requestingUrl)
+}
+
 function restrictSession() {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-    callback(false),
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(
+      permission === "clipboard-sanitized-write" && trustedClipboardFrame(contents, details),
+    ),
   )
-  session.defaultSession.setPermissionCheckHandler(() => false)
+  session.defaultSession.setPermissionCheckHandler(
+    (contents, permission, origin, details) =>
+      permission === "clipboard-sanitized-write" &&
+      origin === DESKTOP_EDITOR_ORIGIN &&
+      trustedClipboardFrame(contents, details),
+  )
   session.defaultSession.setDevicePermissionHandler(() => false)
   session.defaultSession.on("will-download", (event, item, contents, frame) => {
     if (!isOwnedMainFrame(contents, frame) || !ownsDownload(item)) event.preventDefault()

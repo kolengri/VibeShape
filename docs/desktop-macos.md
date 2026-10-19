@@ -31,6 +31,10 @@ Packaging also uses macOS `sips`, `iconutil`, `codesign` and `hdiutil`. It emits
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
 
+The generated application icon master is `apps/web/public/brand/app-icon.png` (1024 px).
+Packaging exports all standard macOS icon sizes into the app's `.icns` resource. The browser
+favicon and Apple touch icon use the same artwork.
+
 Open the disk image, copy `VibeShape.app` to Applications and launch it. The current local artifact
 is ad-hoc signed and verified, without Developer ID or notarization. Local ad-hoc signing leaves
 Hardened Runtime off because it has no Team ID for library validation; the Chromium renderer
@@ -55,6 +59,8 @@ Core modeling works without network access. The desktop host does not expose a n
 transport or an Enable AI session button. For agent authoring use the existing
 [local stdio delivery](mcp-quickstart.md), with its browser-owned review and separate storage origin.
 The experimental declarative panel plugins retain their existing sandbox and capability limits.
+Only the owned editor's main frame may write text to the system clipboard. Clipboard reads,
+subframe writes and unrelated permissions remain denied.
 
 ## Release checks and downloads
 
@@ -77,6 +83,8 @@ The checker considers stable desktop tags, compares SemVer and selects the archi
 asset. It ignores the separate OCCT source-release channel. Missing digests, invalid metadata,
 unapproved redirects, oversized/interrupted downloads and hash mismatches fail without publishing a
 partial image. HTTPS and GitHub's asset digest do not replace Developer ID authentication.
+Update dialogs select typed catalog messages for network, HTTP, metadata, integrity and destination
+failures; raw transport and filesystem diagnostics are never interpolated into their product copy.
 
 ## Verification
 

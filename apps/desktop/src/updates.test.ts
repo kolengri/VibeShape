@@ -98,6 +98,26 @@ async function metadataFixture(metadata: unknown) {
 }
 
 describe("desktop release selection", () => {
+  test("classifies transport failures without promoting their diagnostics into product copy", async () => {
+    const cause = new TypeError("Private transport diagnostic")
+    const client = createDesktopUpdateClient(async () => {
+      throw cause
+    })
+    await expect(client.findDesktopUpdate("1.0.0", "arm64")).rejects.toMatchObject({
+      name: "DesktopUpdateError",
+      failure: { kind: "network" },
+      cause,
+    })
+    const controller = new AbortController()
+    const abort = new Error("Explicit cancellation")
+    const cancelled = createDesktopUpdateClient(async () => {
+      controller.abort(abort)
+      throw abort
+    })
+    await expect(cancelled.findDesktopUpdate("1.0.0", "arm64", controller.signal)).rejects.toBe(
+      abort,
+    )
+  })
   test("skips unrelated source releases and the latest wrong architecture, then compares semver", async () => {
     const source = { ...githubRelease("900.0.0"), tag_name: "cloudflare-occt-0c007be" }
     const draft = { ...githubRelease("50.0.0"), draft: true }
@@ -229,7 +249,9 @@ describe("desktop release selection", () => {
       response.writeHead(302, { Location: "http://127.0.0.1/private" })
       response.end()
     })
-    await expect(context.client.findDesktopUpdate("1.0.0", "arm64")).rejects.toThrow("HTTP 302")
+    await expect(context.client.findDesktopUpdate("1.0.0", "arm64")).rejects.toMatchObject({
+      failure: { kind: "http", status: 302 },
+    })
     expect(context.requests).toHaveLength(1)
   })
 })
@@ -346,9 +368,16 @@ describe("verified desktop downloads", () => {
           setTimeout(() => response.destroy(), 5)
         }
       })
-      await expect(
-        context.client.downloadDesktopUpdate(desktopRelease(), context.destination),
-      ).rejects.toThrow()
+      const failureResult = await context.client
+        .downloadDesktopUpdate(desktopRelease(), context.destination)
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+      expect(failureResult).toBeInstanceOf(Error)
+      if (failure === "interrupted connection")
+        expect(failureResult).not.toMatchObject({ failure: { kind: "destination" } })
+      else expect(failureResult).toMatchObject({ failure: { kind: "integrity" } })
       expect(await readdir(context.directory)).toEqual([])
     },
   )
@@ -395,7 +424,10 @@ describe("verified desktop downloads", () => {
     await writeFile(context.destination, "the user's existing file")
     await expect(
       context.client.downloadDesktopUpdate(desktopRelease(), context.destination),
-    ).rejects.toThrow("EEXIST")
+    ).rejects.toMatchObject({
+      failure: { kind: "destination" },
+      cause: { code: "EEXIST" },
+    })
     expect(await readFile(context.destination, "utf8")).toBe("the user's existing file")
     expect(await readdir(context.directory)).toEqual(["update.dmg"])
   })
