@@ -85,7 +85,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    return reply(id,{configOptions:configs(selectedModel,selectedEffort)});
  }
  if (method === "session/cancel") {
-   if (scenario === "ignore-cancel") return;
+   if (scenario === "ignore-cancel" || scenario === "steer-new-prompt-pending") return;
    text("late cancelled output");
    if (pending !== undefined) { reply(pending,{stopReason:"cancelled"}); pending = undefined; }
    if (scenario.startsWith("steer")) threadStatus("idle");
@@ -96,6 +96,20 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    text(JSON.stringify({steerCalls,prompt:params.prompt}));
    if (scenario === "steer-failed") return reply(id,{outcome:"failed"});
    if (scenario === "steer-malformed") return reply(id,{outcome:"unknown"});
+   if (scenario === "steer-new-prompt-pending") {
+     threadStatus("idle");
+     gatedFallback("pending-prompt-fallback");
+     afterSignal("pending-prompt-ack",()=>reply(id,{outcome:"startedNewTurn"}));
+     const settle = failed => {
+       text("original prompt RPC settling");
+       if (failed) send({id:pending,error:{code:-32603,message:"Fixture prompt failed"}});
+       else reply(pending,{stopReason:"end_turn"});
+       pending = undefined;
+     };
+     afterSignal("original-prompt-settle",()=>settle(false));
+     afterSignal("original-prompt-fail",()=>settle(true));
+     return;
+   }
    if (scenario === "steer-new-prior-idle") {
      afterSignal("current-turn",()=>{
        threadStatus("active"); text("second turn active");
@@ -183,7 +197,10 @@ afterEach(async () => {
   for (const close of cleanups.splice(0).reverse()) await close()
 })
 
-async function host(overrides: Partial<AssistantServiceOptions> = {}) {
+async function host(
+  overrides: Partial<AssistantServiceOptions> = {},
+  observe?: (event: AssistantEvent) => void,
+) {
   const directory = await mkdtemp(join(tmpdir(), "vibeshape-acp-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
   const script = join(directory, "fake-agent.cjs")
@@ -206,6 +223,7 @@ async function host(overrides: Partial<AssistantServiceOptions> = {}) {
     onEvent(event) {
       events.push(event)
       for (const waiter of waiters) waiter(event)
+      observe?.(event)
     },
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     requestTimeoutMs: 3000,
@@ -667,6 +685,206 @@ describe("native active-turn steering", () => {
         input: { ...scope(context.session), text: "Next turn" },
       }),
     ).toMatchObject({ ok: true })
+  })
+
+  it.each(["before", "after"] as const)(
+    "retains original prompt ownership when the fallback completes %s acknowledgement",
+    async (completion) => {
+      const context = await steeringHost("steer-new-prompt-pending")
+      const at = context.events.length
+      let originalSettled = false
+      void context.active.then(() => {
+        originalSettled = true
+      })
+      const steering = context.steer()
+      await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+      if (completion === "after") {
+        await context.signal("pending-prompt-ack")
+        expect(await steering).toMatchObject({ ok: true, value: { status: "prompting" } })
+      }
+      await context.signal("pending-prompt-fallback-start")
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "pending-prompt-fallback output",
+      )
+      await context.signal("pending-prompt-fallback-end")
+      if (completion === "before") {
+        await context.waitFor(
+          (event) => event.type === "text" && event.text === "pending-prompt-fallback finished",
+        )
+        await context.signal("pending-prompt-ack")
+      }
+      expect(await steering).toMatchObject({ ok: true, steerOutcome: "startedNewTurn" })
+      await context.waitFor((event) => event.type === "completed")
+      expect(originalSettled).toBe(false)
+      expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+      expect(
+        context.events
+          .slice(at)
+          .filter((event) => event.type === "snapshot")
+          .every((event) => event.snapshot.status === "prompting"),
+      ).toBe(true)
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...scope(context.session), text: "Must wait for original RPC" },
+        }),
+      ).toEqual({ ok: false, code: "agent-busy" })
+      await context.signal("original-prompt-settle")
+      expect(await context.active).toMatchObject({ ok: true, value: { status: "ready" } })
+      expect(context.events.filter((event) => event.type === "completed")).toHaveLength(2)
+      expect(
+        context.events.some(
+          (event) => event.type === "text" && event.text === "original prompt RPC settling",
+        ),
+      ).toBe(true)
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...scope(context.session), text: "Next prompt" },
+        }),
+      ).toMatchObject({ ok: true, value: { status: "ready" } })
+    },
+  )
+
+  it.each(["settle", "fail"] as const)(
+    "retains fallback ownership when the original prompt RPC completes with %s",
+    async (outcome) => {
+      const context = await steeringHost("steer-new-prompt-pending")
+      const steering = context.steer()
+      await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+      await context.signal("pending-prompt-ack")
+      expect(await steering).toMatchObject({ ok: true, value: { status: "prompting" } })
+      await context.signal("pending-prompt-fallback-start")
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "pending-prompt-fallback output",
+      )
+      const at = context.events.length
+      await context.signal(`original-prompt-${outcome}`)
+      expect(await context.active).toMatchObject(
+        outcome === "settle"
+          ? { ok: true, value: { status: "prompting" } }
+          : { ok: false, code: "request-failed" },
+      )
+      expect(
+        context.events
+          .slice(at)
+          .filter((event) => event.type === "snapshot")
+          .every((event) => event.snapshot.status === "prompting"),
+      ).toBe(true)
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...scope(context.session), text: "Must wait for fallback" },
+        }),
+      ).toEqual({ ok: false, code: "agent-busy" })
+      expect(
+        await context.service.handle({
+          operation: "setMode",
+          input: { ...scope(context.session), modeId: "code" },
+        }),
+      ).toEqual({ ok: false, code: "agent-busy" })
+      const endingAt = context.events.length
+      await context.signal("pending-prompt-fallback-end")
+      await context.waitFor(
+        (event) =>
+          context.events.indexOf(event) >= endingAt &&
+          event.type === "snapshot" &&
+          event.snapshot.status === "ready",
+      )
+      expect(context.events.filter((event) => event.type === "completed")).toHaveLength(
+        outcome === "settle" ? 2 : 1,
+      )
+      expect(
+        context.events.some(
+          (event) => event.type === "text" && event.text === "pending-prompt-fallback finished",
+        ),
+      ).toBe(true)
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...scope(context.session), text: "Next prompt" },
+        }),
+      ).toMatchObject({ ok: true, value: { status: "ready" } })
+    },
+  )
+
+  it.each(["original", "fallback"] as const)(
+    "retains the Stop deadline while the %s owner has not settled",
+    async (remaining) => {
+      const context = await steeringHost("steer-new-prompt-pending", {
+        cancelTimeoutMs: 100,
+        promptTimeoutMs: 10_000,
+      })
+      const steering = context.steer()
+      await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+      await context.signal("pending-prompt-ack")
+      await steering
+      await context.signal("pending-prompt-fallback-start")
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "pending-prompt-fallback output",
+      )
+      const at = context.events.length
+      expect(
+        await context.service.handle({ operation: "cancel", input: scope(context.session) }),
+      ).toMatchObject({ ok: true, value: { status: "cancelling" } })
+      if (remaining === "original") {
+        await context.signal("pending-prompt-fallback-end")
+        await context.waitFor(
+          (event) =>
+            context.events.indexOf(event) >= at &&
+            event.type === "completed" &&
+            event.stopReason === "cancelled",
+        )
+      } else {
+        await context.signal("original-prompt-settle")
+        await context.active
+      }
+      expect(
+        context.events
+          .slice(at)
+          .filter((event) => event.type === "snapshot")
+          .every((event) => event.snapshot.status === "cancelling"),
+      ).toBe(true)
+      await context.waitFor((event) => event.type === "error" && event.code === "timeout")
+      if (remaining === "original")
+        expect(await context.active).toEqual({ ok: false, code: "timeout" })
+      expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+      expect(context.events.slice(at).some((event) => event.type === "text")).toBe(false)
+    },
+  )
+
+  it("admits a reentrant prompt on ready without the previous prompt clearing its ownership", async () => {
+    let next: Promise<AssistantResult> | undefined
+    let nextResult: AssistantResult | undefined
+    let armed = false
+    const context = await host({}, (event) => {
+      if (!armed || event.type !== "snapshot" || event.snapshot.status !== "ready") return
+      armed = false
+      next = context.service.handle({
+        operation: "prompt",
+        input: { ...scope(event.snapshot), text: "hold" },
+      })
+      void next.then((result) => {
+        nextResult = result
+      })
+    })
+    const session = ready(await context.connect())
+    armed = true
+    await context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "First prompt" },
+    })
+    expect(next).toBeDefined()
+    expect(nextResult).toBeUndefined()
+    await context.waitFor((event) => event.type === "text" && event.text === "started")
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "Concurrent prompt" },
+      }),
+    ).toEqual({ ok: false, code: "agent-busy" })
+    await context.service.handle({ operation: "cancel", input: scope(session) })
+    expect(await next).toMatchObject({ ok: true, value: { status: "ready" } })
   })
 
   it("cancels a late provider-started turn after Stop and suppresses its subsequent output", async () => {
