@@ -159,7 +159,7 @@ function ProjectTabActions({
         <TooltipTrigger asChild>
           <Button
             type="button"
-            size="icon-xs"
+            size="icon-sm"
             variant="ghost"
             disabled={disabled || Boolean(tabs.blocked)}
             aria-label={copy.newProject}
@@ -174,7 +174,7 @@ function ProjectTabActions({
         <TooltipTrigger asChild>
           <Button
             type="button"
-            size="icon-xs"
+            size="icon-sm"
             variant="ghost"
             disabled={disabled}
             aria-label={copy.openProjects}

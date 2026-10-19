@@ -42,6 +42,7 @@ type Owner = {
 
 export type AssistantServiceOptions = {
   cwd: string
+  applicationVersion: string
   getMcpSetup: (projectId: string) => Promise<DesktopMcpSetup>
   onEvent: (event: AssistantEvent) => void
   isMcpClientAttached?: () => boolean | Promise<boolean>
@@ -293,7 +294,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       owner,
       connection.agent.request(acp.methods.agent.initialize, {
         protocolVersion: acp.PROTOCOL_VERSION,
-        clientInfo: { name: "vibeshape", version: "0.1.0" },
+        clientInfo: { name: "vibeshape", version: options.applicationVersion },
         clientCapabilities: {},
       }),
     )

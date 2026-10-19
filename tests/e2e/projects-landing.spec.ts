@@ -84,13 +84,29 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
     animations: "disabled",
     path: info.outputPath("project-chooser-dark.png"),
   })
-  await page
-    .getByRole("button", { name: /^Open Landing bracket, revision / })
-    .getByText("Landing bracket", { exact: true })
-    .click()
+  const card = page.getByRole("listitem").filter({ hasText: "Landing bracket" })
+  const open = card.getByRole("button", { name: /^Open Landing bracket, revision / })
+  const cardBounds = await card.boundingBox()
+  const openBounds = await open.boundingBox()
+  expect(cardBounds).not.toBeNull()
+  expect(openBounds).not.toBeNull()
+  if (!cardBounds || !openBounds) throw new Error("The saved project card has no bounds.")
+  expect(Math.abs(cardBounds.width - openBounds.width)).toBeLessThanOrEqual(2)
+  expect(Math.abs(cardBounds.height - openBounds.height)).toBeLessThanOrEqual(2)
+  await open.click({ position: { x: 3, y: 3 } })
   await saved(page)
   expect(projectId(page)).toBe(originalId)
   await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+  await page.screenshot({
+    animations: "disabled",
+    path: info.outputPath("editor-controls.png"),
+  })
+  await openChooser(page)
+  const footerBounds = await open.boundingBox()
+  if (!footerBounds) throw new Error("The project card footer has no bounds.")
+  await open.click({ position: { x: 12, y: footerBounds.height - 12 } })
+  await saved(page)
+  expect(projectId(page)).toBe(originalId)
   await page.goto(`/?project=${originalId}`)
   await saved(page)
   await expect(chooser(page)).toHaveCount(0)

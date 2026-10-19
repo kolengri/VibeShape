@@ -79,6 +79,14 @@ subframe writes and unrelated permissions remain denied.
 
 ## AI connections
 
+The built-in **AI chat** starts an installed ACP adapter. **Codex** selects `codex-acp`, which is
+separate from the Codex CLI; `codex app-server` speaks Codex's own protocol rather than ACP.
+VibeShape preserves inherited command precedence and adds `~/.local/bin`, `~/.bun/bin`,
+`/opt/homebrew/bin`, and `/usr/local/bin` for Finder launches. It does not run shell startup files
+or install adapters. Use **Advanced connection** to provide an absolute executable path and a JSON
+argument array for another installation. Connection failures produce one operational notification
+with recovery guidance; reconnect after correcting the command or authentication.
+
 Open **Settings → Connections → Connect an MCP client**, copy the configuration, and add it to the
 external client's MCP settings. It launches the app's bundled stdio forwarder with Electron's own
 runtime and attaches to this open application. It does not launch another editor or require Bun.

@@ -337,22 +337,7 @@ function modelTreeWriteUnavailable(controller: DocumentControllerState) {
   return controller.status !== "ready" || controller.report?.mode !== "read-write"
 }
 
-function FeatureTreeItem({
-  active,
-  controller,
-  historyActions,
-  feature,
-  onActivate,
-  onFeatureRename,
-  onFindInBrowser,
-  onPreselectionChange,
-  onSuppressionChange,
-  onVisibilityChange,
-  onSketchRename,
-  unnamedFeature,
-  visible,
-  selectionKey,
-}: {
+type FeatureTreeItemProps = {
   active: boolean
   controller: DocumentControllerState
   historyActions: {
@@ -371,28 +356,49 @@ function FeatureTreeItem({
   unnamedFeature: string
   visible: boolean
   selectionKey?: string | undefined
-}) {
+}
+
+function FeatureTreeItem({
+  active,
+  controller,
+  historyActions,
+  feature,
+  onActivate,
+  onFeatureRename,
+  onFindInBrowser,
+  onPreselectionChange,
+  onSuppressionChange,
+  onVisibilityChange,
+  onSketchRename,
+  unnamedFeature,
+  visible,
+  selectionKey,
+}: FeatureTreeItemProps) {
   const [renameOpen, setRenameOpen] = useState(false)
+  const { timeline } = useContext(HistoryPresentation)
   const actionsTriggerRef = useRef<HTMLButtonElement>(null)
   const label = feature.label ?? unnamedFeature
   const renameDisabled = modelTreeWriteUnavailable(controller)
+  const visibilityAction = (
+    <FeatureVisibilityAction
+      feature={feature}
+      label={label}
+      visible={visible}
+      onChange={() => onVisibilityChange(feature.id, !visible)}
+    />
+  )
+  const [leadingVisibilityAction, trailingVisibilityAction] = timeline
+    ? [visibilityAction, null]
+    : [null, visibilityAction]
   return (
     <div
-      className={cn(
-        "group/history-item relative flex min-w-0 items-center gap-0.5",
-        feature.suppressed && "opacity-60",
-      )}
-      data-feature-suppressed={feature.suppressed ? "true" : undefined}
+      className="group/history-item relative flex min-w-0 items-center gap-0.5 data-[feature-suppressed=true]:opacity-60"
+      data-feature-suppressed={feature.suppressed}
       onPointerEnter={() => onPreselectionChange(feature.id)}
       onPointerLeave={() => onPreselectionChange(null)}
       onPointerCancel={() => onPreselectionChange(null)}
     >
-      <FeatureVisibilityAction
-        feature={feature}
-        label={label}
-        visible={visible}
-        onChange={() => onVisibilityChange(feature.id, !visible)}
-      />
+      {leadingVisibilityAction}
       <FeatureTreeLabel
         active={active}
         feature={feature}
@@ -419,6 +425,7 @@ function FeatureTreeItem({
           triggerRef={actionsTriggerRef}
         />
       </HistoryItemActions>
+      {trailingVisibilityAction}
       <ModelTreeRenameDialog
         showTrigger={false}
         onCloseAutoFocus={(event) => {

@@ -32,6 +32,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    if (scenario === "init-hang") return;
    if (scenario === "init-fail") return send({id,error:{code:-32603,message:"private initialization secret"}});
    if (scenario === "bad-version") return reply(id,{protocolVersion:999});
+   if (scenario === "client-version" && params.clientInfo.version !== "9.8.7") return send({id,error:{code:-32603,message:"Incorrect host version"}});
    if (process.env.ELECTRON_RUN_AS_NODE || params.clientCapabilities.fs || params.clientCapabilities.terminal) return process.exit(9);
    return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario === "resume"},authMethods:[{id:"login",name:"Log in"}]});
  }
@@ -82,6 +83,7 @@ async function host(overrides: Partial<AssistantServiceOptions> = {}) {
   const waiters = new Set<(event: AssistantEvent) => void>()
   const service = createAssistantService({
     cwd: directory,
+    applicationVersion: "9.8.7",
     getMcpSetup: async () => ({
       protocolVersion: 1,
       mcpServers: {
@@ -144,6 +146,11 @@ function scope(snapshot: AssistantSnapshot) {
 }
 
 describe("native ACP service", () => {
+  it("reports the host application version during ACP initialization", async () => {
+    const context = await host()
+    expect(ready(await context.connect("client-version")).status).toBe("ready")
+  })
+
   it("streams text, thoughts and tools through a real stdio agent with no filesystem or terminal client capabilities", async () => {
     const context = await host()
     const session = ready(await context.connect())

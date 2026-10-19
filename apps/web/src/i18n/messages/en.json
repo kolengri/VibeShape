@@ -3653,7 +3653,7 @@
       "errors": {
         "invalid-request": "The agent settings or message are invalid. Check the executable and arguments.",
         "forbidden": "This window cannot access the local agent. Reopen VibeShape and try again.",
-        "launch-failed": "The agent could not start. Check that the executable is installed and can run.",
+        "launch-failed": "The ACP adapter could not start. For Codex, install codex-acp separately from the Codex CLI. Check the executable or set its absolute path in Advanced connection.",
         "initialization-failed": "The agent did not complete ACP initialization. Check its arguments and ACP support.",
         "protocol-error": "The agent sent an invalid ACP response. Reconnect or update the agent.",
         "agent-exited": "The agent exited. Reconnect to continue.",

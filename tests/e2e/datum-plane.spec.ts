@@ -108,6 +108,12 @@ test.describe("datum plane reference geometry", () => {
     for (const name of ["XY", "XZ", "YZ"])
       await expect(browser.getByRole("treeitem", { name, exact: true })).toBeVisible()
     await expect(plane).toBeVisible()
+    const rowBounds = await plane.boundingBox()
+    const visibilityBounds = await browser
+      .getByRole("button", { name: "Hide Datum plane 1", exact: true })
+      .boundingBox()
+    if (!rowBounds || !visibilityBounds) throw new Error("The datum plane row has no bounds.")
+    expect(visibilityBounds.x).toBeGreaterThanOrEqual(rowBounds.x + rowBounds.width)
     const created = await saveProject(page)
     const feature = created.project.snapshot.features.find(({ label }) => label === "Datum plane 1")
     if (!feature) throw new Error("The saved project is missing its datum plane.")
