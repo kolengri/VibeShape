@@ -27,7 +27,6 @@ import {
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { Button } from "@vibeshape/ui/components/button"
 import { Scan } from "@vibeshape/ui/components/icons"
-import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -38,6 +37,7 @@ import {
   normalizeExpressionWithDisplayUnit,
   positiveDirectManipulationAngleExpression,
 } from "../../document/document-display-units"
+import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
 import { submitFeatureMutation } from "../part-design/primitive-form"
@@ -46,6 +46,7 @@ import {
   revolveAxesEqual,
   topologyReferencesEqual,
 } from "../part-design/profile-feature-selection"
+import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
@@ -650,28 +651,27 @@ function RevolveTargetField({ controller }: { controller: RevolveFormController 
         operation === "new" ? null : (
           <form.Field name="targetFeatureId">
             {(field) => (
-              <NativeSelectField
+              <ReferencePickField
+                id="revolve-target-body"
                 name={field.name}
                 value={field.state.value}
                 label={controller.copy.target}
+                placeholder={controller.copy.missingTarget}
+                options={controller.targetOptions.map((option) => ({
+                  value: option.id,
+                  label: option.label,
+                }))}
+                candidates={exactBodyPickCandidates(controller.targetOptions)}
                 description={controller.copy.targetDescription}
                 error={controller.issues.targetFeatureId}
                 disabled={controller.disabled}
                 required
-                onChange={(event) => {
+                onBlur={field.handleBlur}
+                onValueChange={(value) => {
                   controller.clearSubmissionErrors()
-                  field.handleChange(event.currentTarget.value)
+                  field.handleChange(value)
                 }}
-              >
-                {!controller.targetOptions.some(({ id }) => id === field.state.value) ? (
-                  <option value={field.state.value}>{controller.copy.missingTarget}</option>
-                ) : null}
-                {controller.targetOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </NativeSelectField>
+              />
             )}
           </form.Field>
         )

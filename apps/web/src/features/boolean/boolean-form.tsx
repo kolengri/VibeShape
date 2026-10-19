@@ -2,8 +2,10 @@ import type { FeatureRecord } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { featureSubmissionMessage } from "../part-design/primitive-form"
+import { TanStackReferencePickField } from "../part-design/tanstack-reference-pick-field"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import {
@@ -114,22 +116,17 @@ export function BooleanForm({
 
   const inputField = (fieldName: InputField, label: string, description: string) => (
     <form.AppField name={fieldName}>
-      {(field) => (
-        <field.NativeSelectField
+      {() => (
+        <TanStackReferencePickField
+          id={`boolean-${fieldName}`}
           label={label}
           description={description}
+          placeholder={copy.missingInput}
+          options={options.map((option) => ({ value: option.id, label: option.label }))}
+          candidates={exactBodyPickCandidates(options)}
           required
           onValueChange={() => setMessage(null)}
-        >
-          {!options.some(({ id }) => id === field.state.value) && (
-            <option value={field.state.value}>{copy.missingInput}</option>
-          )}
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </field.NativeSelectField>
+        />
       )}
     </form.AppField>
   )

@@ -1705,7 +1705,58 @@ describe("GeometryViewport", () => {
     expect(onSelect).toHaveBeenLastCalledWith(modelCurveCandidate)
   })
 
-  it("routes planar-face intersection selection through normal face picking in orbit mode", async () => {
+  it("uses exact transient reference eligibility for curved hits and consumes background clicks", async () => {
+    const selected = { featureId: boxId, outputRole: "right", faceId: 42, faceOrdinal: 1 }
+    const onSelect = vi.fn()
+    const allowed = (hit: ViewerSelection) =>
+      hit.featureId === boxId && hit.outputRole === "right" && hit.faceId === 42
+    const committed = { featureId: boxId, outputRole: "right", ...mesh }
+    const disposable = { featureId: booleanId, appearance: "preview" as const, ...mesh }
+    const { createViewport, onSelectionChange, port, rerenderSketchContext } = renderViewport(
+      readyController(
+        [{ id: boxId, dependencies: [] }],
+        [{ featureId: boxId, geometry: { mesh } }],
+      ),
+      null,
+      undefined,
+      { status: "ready", kind: "extrusion", meshes: [disposable] },
+      undefined,
+      undefined,
+      {
+        frame: null,
+        mode: "orbit",
+        faceIntersectionSelection: {
+          consumeBackground: true,
+          isCandidateEligible: allowed,
+          selectionMeshes: [committed],
+          status: "Select an end face",
+          onSelect,
+        },
+      },
+    )
+    await waitFor(() => expect(port.setMeshes).toHaveBeenLastCalledWith([committed]))
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("face-select")
+    const options = createViewport.mock.calls[0]?.[1]
+    expect(options?.isSelectionCandidateEligible?.(selected)).toBe(true)
+    expect(options?.isSelectionCandidateEligible?.({ ...selected, outputRole: "left" })).toBe(false)
+    act(() => {
+      options?.onSelectionChange?.({ ...selected, outputRole: "left" })
+      options?.onSelectionChange?.(null)
+    })
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+    act(() => options?.onSelectionChange?.(selected))
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledWith(selected)
+    expect(screen.getByText("Select an end face")).toBeTruthy()
+    rerenderSketchContext({ frame: null, mode: "orbit" })
+    await waitFor(() => expect(port.setMeshes).toHaveBeenLastCalledWith([disposable]))
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.fit).toHaveBeenCalledTimes(1)
+    expect(port.dispose).not.toHaveBeenCalled()
+  })
+
+  it("routes planar-face intersection selection through eligible face-only picking in orbit mode", async () => {
     const selection = { featureId: boxId, faceId: 17, faceOrdinal: 3 }
     const onSelect = vi.fn()
     const { createViewport, onSelectionChange, port } = renderViewport(
@@ -1725,7 +1776,7 @@ describe("GeometryViewport", () => {
       },
     )
 
-    await waitFor(() => expect(port.setInteractionMode).toHaveBeenLastCalledWith("select"))
+    await waitFor(() => expect(port.setInteractionMode).toHaveBeenLastCalledWith("face-select"))
     expect(screen.getByText("Intersection · Select one planar model face")).toBeTruthy()
     const options = createViewport.mock.calls[0]?.[1]
     options?.onSelectionChange?.(selection)

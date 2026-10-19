@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createAngleQuantity,
@@ -19,10 +19,14 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import { useLayoutEffect } from "react"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import type { DocumentControllerState } from "../../document/document-controller"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
-import { collectedExtrusionOptions } from "./extrusion-body-test-fixtures"
+import { ReferencePickProvider, useReferencePicking } from "../../shell/reference-pick-context"
+import { collectedExtrusionOptions, extrusionBodyFixture } from "./extrusion-body-test-fixtures"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import { ExtrusionForm, type ExtrusionFormMode, type ExtrusionTargetOption } from "./extrusion-form"
 
@@ -127,6 +131,16 @@ function deferred() {
   return { promise, resolve }
 }
 
+function ReferencePickerProbe({
+  onChange,
+}: {
+  onChange: (picker: ReturnType<typeof useReferencePicking>) => void
+}) {
+  const picker = useReferencePicking()
+  useLayoutEffect(() => onChange(picker), [onChange, picker])
+  return null
+}
+
 function renderForm(
   onSave = vi.fn(async () => ({ ok: true as const })),
   onSaved = vi.fn(),
@@ -145,28 +159,58 @@ function renderForm(
       label: "Box 1",
     },
   ],
+  pickingController?: DocumentControllerState,
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update extrusion" } : copy
+  let picker: ReturnType<typeof useReferencePicking> = null
+  const form = (
+    <ExtrusionForm
+      baseRevision={4}
+      copy={formCopy}
+      distanceRequest={distanceRequest}
+      mode={mode}
+      options={options}
+      profileLabel="Sketch 1"
+      variables={variables}
+      onCancel={vi.fn()}
+      onPreviewChange={onPreviewChange}
+      onSave={onSave}
+      onSaved={onSaved}
+    />
+  )
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <DocumentDisplayUnitsProvider displayUnits={{ length: "mm", angle: angleUnit }}>
-        <ExtrusionForm
-          baseRevision={4}
-          copy={formCopy}
-          distanceRequest={distanceRequest}
-          mode={mode}
-          options={options}
-          profileLabel="Sketch 1"
-          variables={variables}
-          onCancel={vi.fn()}
-          onPreviewChange={onPreviewChange}
-          onSave={onSave}
-          onSaved={onSaved}
-        />
+        {pickingController ? (
+          <ReferencePickProvider
+            controller={pickingController}
+            activityKey="extrusion:create"
+            hiddenFeatureIds={[]}
+          >
+            <ReferencePickerProbe
+              onChange={(value) => {
+                picker = value
+              }}
+            />
+            {form}
+          </ReferencePickProvider>
+        ) : (
+          form
+        )}
       </DocumentDisplayUnitsProvider>
     </I18nProvider>,
   )
-  return { formCopy, onPreviewChange, onSave, onSaved }
+  return {
+    formCopy,
+    onPreviewChange,
+    onSave,
+    onSaved,
+    pick: (selection: ViewerSelection) => {
+      const select = picker?.viewportContext?.faceIntersectionSelection?.onSelect
+      if (!select) throw new Error("Expected an active viewport reference field.")
+      act(() => select(selection))
+    },
+  }
 }
 
 beforeAll(() => {
@@ -174,6 +218,79 @@ beforeAll(() => {
 })
 
 afterEach(cleanup)
+
+it.each(["up-to-body", "up-to-face"] as const)(
+  "selects an exact sibling output through the %s viewport field",
+  async (kind) => {
+    const fixture = extrusionBodyFixture(undefined, true, "SPHERE")
+    const target = fixture.options[1]
+    const face = target?.faces?.[0]
+    if (!target?.outputRole || face?.meshFaceId === undefined)
+      throw new Error("Expected a current curved face on the second body.")
+    const controller: DocumentControllerState = {
+      status: "ready",
+      saveStatus: "saved",
+      diagnostic: null,
+      report: {
+        status: "created",
+        mode: "read-write",
+        snapshot: fixture.snapshot,
+        historyItems: null,
+        rebuild: fixture.rebuild,
+        lostRevisionCount: 0,
+        corruptRecords: [],
+        migration: null,
+        writeAccessDiagnostic: null,
+      },
+    }
+    const { onSave, pick } = renderForm(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "deg",
+      fixture.options,
+      controller,
+    )
+    fireEvent.change(screen.getByLabelText("End condition"), { target: { value: kind } })
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: kind === "up-to-face" ? "Select End face in 3D" : "Select End support body in 3D",
+      }),
+    )
+    pick({
+      featureId: target.id,
+      outputRole: target.outputRole,
+      faceId: face.meshFaceId,
+      faceOrdinal: 1,
+    })
+    expect((screen.getByLabelText("End support body") as HTMLSelectElement).value).toBe(
+      `${target.id}:${target.outputRole}`,
+    )
+    if (kind === "up-to-face") {
+      expect((screen.getByLabelText("End face") as HTMLSelectElement).value).toBe(
+        JSON.stringify(face.reference),
+      )
+    }
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          endCondition: expect.objectContaining({
+            kind,
+            targetBody: { schemaVersion: 0, featureId: target.id, outputRole: target.outputRole },
+            sourceContentHash: target.contentHash,
+            ...(kind === "up-to-face" ? { face: face.reference } : {}),
+          }),
+        }),
+      }),
+    )
+    expect(JSON.stringify(onSave.mock.calls)).not.toContain("meshFaceId")
+  },
+)
 
 it("authors v7 when choosing a current finite curved face from the real body collector", async () => {
   const options = collectedExtrusionOptions(undefined, false, "SPHERE")
@@ -354,7 +471,7 @@ describe("ExtrusionForm", () => {
     await userEvent.type(offset, "2 mm")
     await userEvent.click(screen.getByRole("button", { name: "Update extrusion" }))
     expect(onSave).not.toHaveBeenCalled()
-    expect(screen.getByText(copy.missingTarget)).toBeTruthy()
+    expect(screen.getByText(copy.missingTarget, { selector: "[role='alert']" })).toBeTruthy()
   })
   it("authors signed offset and draft using the project's angle display unit", async () => {
     const { onSave } = renderForm(undefined, undefined, undefined, undefined, undefined, "rad")

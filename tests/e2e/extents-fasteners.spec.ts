@@ -24,9 +24,6 @@ test("selects an exact planar extrusion endpoint and saves its captured body rev
   await drawRectangle(page)
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   const viewport = page.getByRole("region", { name: "3D viewport" })
-  await viewport
-    .getByRole("combobox", { name: "Select saved profile" })
-    .selectOption({ label: "Sketch 1 · Profile 1" })
   await commands.getByRole("button", { name: "Extrude", exact: true }).click()
   const form = page.getByRole("form", { name: "Extrude profile", exact: true })
   await form
@@ -71,9 +68,6 @@ test("authors start offset and draft through the exact extrusion preview and reo
   await drawRectangle(page)
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   const viewport = page.getByRole("region", { name: "3D viewport" })
-  await viewport
-    .getByRole("combobox", { name: "Select saved profile" })
-    .selectOption({ label: "Sketch 1 · Profile 1" })
   await page
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Extrude", exact: true })

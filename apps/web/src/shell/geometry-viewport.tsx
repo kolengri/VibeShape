@@ -122,6 +122,10 @@ export type GeometryViewportSketchContext = Readonly<{
     sourceMesh?: ViewerMesh
     excludedFeatureIds?: readonly string[]
     selectedFaces?: readonly ViewerSelection[]
+    isCandidateEligible?: (selection: ViewerSelection) => boolean
+    selectionMeshes?: readonly ViewerMesh[]
+    consumeBackground?: boolean
+    status?: string
   }>
 }>
 
@@ -401,7 +405,9 @@ async function initializeViewport(
     const viewport = await createViewport(canvas, {
       orientationInsetOffsetElement: orientationInsetOffsetElement(canvas),
       isSelectionCandidateEligible: (selection) => {
-        const source = latestSketchContextRef.current?.faceIntersectionSelection?.sourceMesh
+        const faceSelection = latestSketchContextRef.current?.faceIntersectionSelection
+        if (faceSelection?.isCandidateEligible) return faceSelection.isCandidateEligible(selection)
+        const source = faceSelection?.sourceMesh
         return source
           ? selection.featureId === source.featureId && selection.outputRole === source.outputRole
           : selectedSketchSupportFromController(latestControllerRef.current, selection) !== null
@@ -580,8 +586,12 @@ function routeViewportFaceSelection(
   onSelectionChange: (selection: ViewerSelection | null) => void,
 ) {
   const faceSelection = orbitFaceIntersectionSelection(context)
-  if (faceSelection && (selection || faceSelection.sourceMesh)) {
-    if (selection) faceSelection.onSelect(selection)
+  if (faceSelection && (selection || faceSelection.sourceMesh || faceSelection.consumeBackground)) {
+    if (
+      selection &&
+      (!faceSelection.isCandidateEligible || faceSelection.isCandidateEligible(selection))
+    )
+      faceSelection.onSelect(selection)
     return
   }
   onSelectionChange(selection)
@@ -593,7 +603,7 @@ function viewportInteractionMode(
   faceIntersectionSelectionActive: boolean,
 ) {
   if (referenceSelectionActive) return "sketch-reference-select"
-  if (faceIntersectionSelectionActive) return "select"
+  if (faceIntersectionSelectionActive) return "face-select"
   return context ? "camera-only" : "select"
 }
 
@@ -1571,6 +1581,7 @@ function facePickingPresentation(context: GeometryViewportSketchContext | undefi
   return {
     sourceMesh: context?.faceIntersectionSelection?.sourceMesh,
     excludedFeatureIds: context?.faceIntersectionSelection?.excludedFeatureIds ?? EMPTY_IDS,
+    selectionMeshes: context?.faceIntersectionSelection?.selectionMeshes,
   }
 }
 
@@ -1620,11 +1631,11 @@ function useViewportMeshPresentation({
     const authored = currentAuthoredSnapshot(controller)
     return authored ? authoredBodyKeys(authored, true, partVisibilityOverrides) : new Set<string>()
   }, [authority, partVisibilityOverrides])
-  const { sourceMesh, excludedFeatureIds } = facePickingPresentation(sketchContext)
+  const { sourceMesh, excludedFeatureIds, selectionMeshes } = facePickingPresentation(sketchContext)
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)
     const presented = withFacePickingSource(
-      previewMeshes(featurePreview, committedMeshes),
+      selectionMeshes ?? previewMeshes(featurePreview, committedMeshes),
       sourceMesh,
       excludedFeatureIds,
       featurePreview?.status === "ready",
@@ -1639,10 +1650,11 @@ function useViewportMeshPresentation({
     excludedFeatureIds,
     featurePreview,
     sourceMesh,
+    selectionMeshes,
     hiddenBodies,
   ])
   const texturedMeshes = useTexturedMeshes(controller, meshes)
-  const presentedMeshes = useTaskMeshes(texturedMeshes)
+  const presentedMeshes = useTaskMeshes(texturedMeshes, selectionMeshes !== undefined)
   const visibleMeshes = useMemo(
     () => presentedMeshes.filter((mesh) => !hiddenBodies.has(authoredBodyKey(mesh))),
     [presentedMeshes, hiddenBodies],
@@ -1650,13 +1662,16 @@ function useViewportMeshPresentation({
   return { allCommittedMeshes, allHiddenFeatureIds, hiddenBodies, meshes: visibleMeshes }
 }
 
-function useTaskMeshes(meshes: readonly ViewerMesh[]) {
+function useTaskMeshes(meshes: readonly ViewerMesh[], referencePicking = false) {
   const task = useWorkspaceTask()
   const source = task?.interaction?.sourceMesh
   const preview = task?.interaction?.picking ? null : task?.preview
   return useMemo(
-    () => preview?.meshes ?? withFacePickingSource(meshes, source, EMPTY_IDS, false),
-    [meshes, source, preview],
+    () =>
+      referencePicking
+        ? meshes
+        : (preview?.meshes ?? withFacePickingSource(meshes, source, EMPTY_IDS, false)),
+    [meshes, source, preview, referencePicking],
   )
 }
 
@@ -2906,6 +2921,26 @@ function SketchReferenceKeyboardPicker({
   )
 }
 
+function FaceIntersectionSelectionStatus({
+  selection,
+}: {
+  selection: NonNullable<GeometryViewportSketchContext["faceIntersectionSelection"]>
+}) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_LEFT,
+      )}
+      role="status"
+    >
+      {selection.status ??
+        t(selection.sourceMesh ? "shellOpeningSelection" : "sketchIntersectionSelection")}
+    </div>
+  )
+}
+
 function SketchContextChrome({
   viewControls,
   context,
@@ -2946,19 +2981,7 @@ function SketchContextChrome({
       <SketchReferenceSelectOtherOverlay selection={selectOther} />
       {referenceSelection ? <SketchReferenceSelectionStatus purpose={referencePurpose} /> : null}
       {context.faceIntersectionSelection ? (
-        <div
-          className={cn(
-            "pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
-            SAFE_VIEWPORT_LEFT,
-          )}
-          role="status"
-        >
-          {t(
-            context.faceIntersectionSelection.sourceMesh
-              ? "shellOpeningSelection"
-              : "sketchIntersectionSelection",
-          )}
-        </div>
+        <FaceIntersectionSelectionStatus selection={context.faceIntersectionSelection} />
       ) : null}
       {preselection ? (
         <SketchReferencePreselectionStatus preselection={preselection} purpose={referencePurpose} />

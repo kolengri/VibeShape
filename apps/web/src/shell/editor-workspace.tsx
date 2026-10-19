@@ -35,10 +35,11 @@ import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
-import type {
-  ViewerSelection,
-  ViewerSketchProfileSelectionIntent,
-  ViewerSketchReferenceCandidate,
+import {
+  type ViewerSelection,
+  type ViewerSketchProfileSelectionIntent,
+  type ViewerSketchReferenceCandidate,
+  viewerSketchProfileKey,
 } from "@vibeshape/viewer/three-viewport"
 import {
   type ComponentProps,
@@ -70,6 +71,11 @@ import type {
 } from "../editor-session/part-visibility"
 import { useEdgeTreatmentPicking } from "../features/edge-treatment/use-edge-treatment-picking"
 import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
+import {
+  createExtrusionManipulator,
+  type ExtrusionManipulator,
+  extrusionProfileCentroid,
+} from "../features/extrusion/extrusion-manipulator"
 import { useHolePointPicking } from "../features/hole/use-hole-point-picking"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import {
@@ -155,6 +161,7 @@ import {
 import { historyInsertionContext } from "./history-insertion-context"
 import { ModelTree } from "./model-tree"
 import type { ModelTreeSelection } from "./model-tree-selection"
+import { ReferencePickProvider, useReferencePicking } from "./reference-pick-context"
 import { TaskPanel } from "./task-panel"
 import { useViewerPreferences } from "./viewer-preferences"
 import type { EditorWorkspaceName } from "./workspace"
@@ -235,15 +242,6 @@ function featurePreviewCandidate(
 type PrimitiveManipulator = Readonly<{
   featureId: FeatureId
   position: PrimitivePlacement
-}>
-
-type ExtrusionManipulator = Readonly<{
-  direction: PrimitivePlacement
-  distance: number
-  distanceScale: number
-  featureId: FeatureId
-  origin: PrimitivePlacement
-  secondDistance: number | null
 }>
 
 type RevolveManipulator = Readonly<{
@@ -404,18 +402,7 @@ function extrusionManipulatorParameters(
   return readExtrusionFeatureParameters(candidate)
 }
 
-function extrusionManipulatorDistance(
-  featureId: FeatureId,
-  parameterDistance: number,
-  distanceRequest: ExtrusionDistanceRequest | null,
-  side: "first" | "second" = "first",
-) {
-  return distanceRequest?.featureId === featureId && (distanceRequest.side ?? "first") === side
-    ? distanceRequest.distance
-    : parameterDistance
-}
-
-function extrusionManipulator(
+function useExtrusionManipulator(
   activeTool: ActivePartDesignTool | null,
   candidate: FeatureRecord | null,
   distanceRequest: ExtrusionDistanceRequest | null,
@@ -423,33 +410,23 @@ function extrusionManipulator(
   readOnly: boolean,
 ): ExtrusionManipulator | null {
   const parameters = extrusionManipulatorParameters(activeTool, candidate, readOnly)
+  const sketch = parameters
+    ? sketches.find(({ sketchId }) => sketchId === parameters.profile.sketchId)
+    : undefined
+  const profileKey = parameters ? viewerSketchProfileKey(parameters.profile) : null
+  // Immutable display identity keeps depth-only edits out of profile tessellation.
+  const centroid = useMemo(
+    () => (sketch ? extrusionProfileCentroid(viewerSketchDisplay(sketch), profileKey) : null),
+    [sketch, profileKey],
+  )
   if (!parameters || !candidate) return null
-  const sketch = sketches.find(({ sketchId }) => sketchId === parameters.profile.sketchId)
-  if (!sketch) return null
-  const distance = extrusionManipulatorDistance(
+  return createExtrusionManipulator(
     candidate.id,
-    parameters.distance.value,
+    parameters,
+    centroid,
+    sketch?.frame,
     distanceRequest,
   )
-  if (!Number.isFinite(distance) || distance <= 0) return null
-  const distanceScale = parameters.symmetric ? 2 : 1
-  const sign = parameters.reversed ? -1 : 1
-  const normal = sketch.frame.normal
-  return {
-    direction: [normal[0] * sign, normal[1] * sign, normal[2] * sign],
-    distance: distance / distanceScale,
-    distanceScale,
-    featureId: candidate.id,
-    origin: sketch.frame.origin,
-    secondDistance: parameters.secondDistance
-      ? extrusionManipulatorDistance(
-          candidate.id,
-          parameters.secondDistance.value,
-          distanceRequest,
-          "second",
-        )
-      : null,
-  }
 }
 
 function primitiveManipulator(
@@ -745,6 +722,44 @@ function modelingSketchContextProps(
   }
 }
 
+function modelingFeatureInteractionProps(
+  { actions, model, sketch }: Pick<WorkspaceContentProps, "actions" | "model" | "sketch">,
+  referencePicking: boolean,
+): Pick<
+  ComponentProps<typeof GeometryViewport>,
+  | "featurePreview"
+  | "axialGizmo"
+  | "angularGizmo"
+  | "translationGizmo"
+  | "toolPlane"
+  | "axialGizmoPending"
+  | "sketchProfilePreview"
+  | "idleOriginPlaneSelection"
+  | "sketchProfileSelection"
+> {
+  if (referencePicking) return { axialGizmoPending: false }
+  return {
+    featurePreview: model.featurePreview,
+    ...extrusionAxialGizmoProps(model.extrusionManipulator, actions.onExtrusionDistanceChange),
+    ...revolveAngularGizmoProps(model.revolveManipulator, actions.onRevolveAngleChange),
+    ...primitiveTranslationGizmoProps(
+      model.primitiveManipulator,
+      actions.onPrimitivePlacementChange,
+    ),
+    ...(model.placementManipulator ?? {}),
+    ...(model.splitManipulator ?? {}),
+    axialGizmoPending: model.axialGizmoPending,
+    sketchProfilePreview: model.historyProfilePreview,
+    idleOriginPlaneSelection: idleOriginPlaneSelection(model, sketch, actions),
+    sketchProfileSelection: {
+      excludedSketchIds: model.ineligibleProfileSketchIds,
+      keyboardPickerActive: model.savedProfilePickerActive,
+      selectedProfiles: sketch.activeTool ? [] : sketch.selectedProfiles,
+      onSelect: actions.onSavedSketchProfileSelect,
+    },
+  }
+}
+
 function ModelingWorkspaceContent({
   viewControls,
   actions,
@@ -765,6 +780,7 @@ function ModelingWorkspaceContent({
   sketchContext?: GeometryViewportSketchContext | undefined
 }) {
   const printPreferences = useViewerPreferences((state) => state)
+  const referencePicking = sketchContext?.faceIntersectionSelection?.selectionMeshes !== undefined
   const projectedSketchIds = useMemo(
     () =>
       sketch.cameraMode === "normal"
@@ -790,37 +806,20 @@ function ModelingWorkspaceContent({
       printerProfile={printPreferences.printerProfile}
       printBedVisible={printPreferences.printBedVisible}
       groundGridVisible={printPreferences.groundGridVisible}
-      featurePreview={model.featurePreview}
-      {...extrusionAxialGizmoProps(model.extrusionManipulator, actions.onExtrusionDistanceChange)}
-      axialGizmoPending={model.axialGizmoPending}
-      {...revolveAngularGizmoProps(model.revolveManipulator, actions.onRevolveAngleChange)}
-      {...primitiveTranslationGizmoProps(
-        model.primitiveManipulator,
-        actions.onPrimitivePlacementChange,
-      )}
-      {...(model.placementManipulator ?? {})}
-      {...(model.splitManipulator ?? {})}
+      {...modelingFeatureInteractionProps({ actions, model, sketch }, referencePicking)}
       contextualHiddenFeatureIds={editVisibility.featureIds}
       hiddenFeatureIds={model.hiddenFeatureIds}
       partVisibilityOverrides={model.partVisibilityOverrides}
       hiddenSketchIds={hiddenSketchIds}
-      sketchProfilePreview={model.historyProfilePreview}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
         onChange: actions.onOriginPlaneVisibilityChange,
       }}
       preselectedFeatureId={model.preselectedFeatureId}
       {...workspaceBodySelectionProps(model, actions)}
-      idleOriginPlaneSelection={idleOriginPlaneSelection(model, sketch, actions)}
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
-      sketchProfileSelection={{
-        excludedSketchIds: model.ineligibleProfileSketchIds,
-        keyboardPickerActive: model.savedProfilePickerActive,
-        selectedProfiles: sketch.activeTool ? [] : sketch.selectedProfiles,
-        onSelect: actions.onSavedSketchProfileSelect,
-      }}
       {...modelingSketchContextProps(actions, sketch, activeSketchDisplay, sketchContext)}
     />
   )
@@ -1762,6 +1761,7 @@ function useRevolveAxisReferenceSelection(props: WorkspaceContentProps) {
 }
 
 function WorkspaceContent(props: WorkspaceContentProps) {
+  const referencePicking = useReferencePicking()
   const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
   const sketchGeometry = useWorkspaceSketchGeometry(props)
   const modelGeometry = useWorkspaceModelGeometry({
@@ -1798,7 +1798,10 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   })
   const revolveAxisContext = useRevolveAxisReferenceSelection(props)
   const sketchContext =
-    sketchReferenceContext ?? revolveAxisContext ?? props.model.featureSelectionContext
+    referencePicking?.viewportContext ??
+    sketchReferenceContext ??
+    revolveAxisContext ??
+    props.model.featureSelectionContext
   return (
     <WorkspaceContentView
       activeSketchDisplay={activeSketchDisplay}
@@ -2354,6 +2357,13 @@ function EditorContent({
   props: EditorWorkspaceProps
 }) {
   const { actions, activeSketchId, activeSketchTool, controller, selection, workspace } = props
+  const extrusion = useExtrusionManipulator(
+    props.activeTool,
+    manipulatorFeature,
+    props.extrusionDistanceRequest,
+    rebuiltSketchDisplays(controller),
+    controller.report?.mode === "read-only",
+  )
   const selectedSketch =
     controller.report?.snapshot.sketches.find(({ id }) => id === activeSketchId) ?? null
   const { selectedBodies, preselectedBodies } = workspaceBodyHighlights(props)
@@ -2395,13 +2405,7 @@ function EditorContent({
         historyProfilePreview,
         featureSelectionContext,
         axialGizmoPending: isExtrusionPartDesignTool(props.activeTool),
-        extrusionManipulator: extrusionManipulator(
-          props.activeTool,
-          manipulatorFeature,
-          props.extrusionDistanceRequest,
-          rebuiltSketchDisplays(props.controller),
-          props.controller.report?.mode === "read-only",
-        ),
+        extrusionManipulator: extrusion,
         featurePreview,
         placementManipulator,
         splitManipulator,
@@ -2842,74 +2846,86 @@ function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
   } = useWorkspaceFeatureSelection(props)
   return (
     <SketchProjectionProvider>
-      <WorkspacePanels
-        revealTreeRequest={revealRequest?.sequence}
-        allowTransparency={props.workspace !== "variables"}
-        modelTree={
-          <EditorModelTree
-            surface="browser"
-            revealRequest={revealRequest}
-            onRevealFeature={revealFeature}
-            props={fullProps}
-            profilePreview={historySourcePreview.profile}
-            onProfilePreview={historySourcePreview.onPreview}
-          />
+      <ReferencePickProvider
+        controller={props.controller}
+        activityKey={
+          !review && props.activeTool && !props.activeSketchTool
+            ? taskPanelActivityKey(props, review)
+            : null
         }
-        history={
-          <EditorModelTree
-            surface="timeline"
-            revealRequest={revealRequest}
-            onRevealFeature={revealFeature}
-            props={fullProps}
-            profilePreview={historySourcePreview.profile}
-            onProfilePreview={historySourcePreview.onPreview}
-          />
-        }
-        taskPanel={
-          <WorkspaceTaskPanel
-            activeTaskKey={taskPanelActivityKey(props, review)}
-            autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
-            collapseLabel={taskPanelT("collapsePanel")}
-            expandLabel={taskPanelT("expandPanel")}
-          >
-            <EditorTaskPanel
-              preview={preview}
-              holePicking={holePicking}
-              edgeTreatmentPicking={edgeTreatmentPicking}
-              shellPicking={shellPicking}
-              featureProfileSelections={featureProfileSelection.value}
-              onFeatureProfileRemove={removeFeatureProfile}
-              onFeatureProfilesClear={clearFeatureProfiles}
-              onPlacementManipulatorChange={placementBinding.onChange}
-              onSplitManipulatorChange={splitBinding.onChange}
-              onRevolveAxisChange={revolveAxisSelection.setValue}
-              onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
-              props={props}
-              revolveAxisCandidates={revolveAxisCandidates}
-              revolveAxisSelection={revolveAxisSelection.value}
-              revolveSelectionPurpose={revolveSelectionPurpose.value}
-              review={review}
-            />
-          </WorkspaceTaskPanel>
-        }
+        editingFeatureId={props.activeTool ? (activeFeatureId(props.activeTool) ?? null) : null}
+        hiddenFeatureIds={props.hiddenFeatureIds}
+        partVisibilityOverrides={props.partVisibility?.overrides}
       >
-        <EditorContent
-          historyProfilePreview={historySourcePreview.profile}
-          featureSelectionContext={viewportContext}
-          featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
-          featureProfileSelections={featureProfileSelection.value}
-          featurePreview={featurePreview}
-          manipulatorFeature={manipulatorFeature}
-          placementManipulator={placement}
-          splitManipulator={split}
-          onFeatureProfileChange={selectFeatureProfile}
-          onRevolveAxisChange={revolveAxisSelection.setValue}
-          props={props}
-          revolveAxisCandidates={revolveAxisCandidates}
-          revolveAxisSelection={revolveAxisSelection.value}
-          revolveSelectionPurpose={revolveSelectionPurpose.value}
-        />
-      </WorkspacePanels>
+        <WorkspacePanels
+          revealTreeRequest={revealRequest?.sequence}
+          allowTransparency={props.workspace !== "variables"}
+          modelTree={
+            <EditorModelTree
+              surface="browser"
+              revealRequest={revealRequest}
+              onRevealFeature={revealFeature}
+              props={fullProps}
+              profilePreview={historySourcePreview.profile}
+              onProfilePreview={historySourcePreview.onPreview}
+            />
+          }
+          history={
+            <EditorModelTree
+              surface="timeline"
+              revealRequest={revealRequest}
+              onRevealFeature={revealFeature}
+              props={fullProps}
+              profilePreview={historySourcePreview.profile}
+              onProfilePreview={historySourcePreview.onPreview}
+            />
+          }
+          taskPanel={
+            <WorkspaceTaskPanel
+              activeTaskKey={taskPanelActivityKey(props, review)}
+              autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
+              collapseLabel={taskPanelT("collapsePanel")}
+              expandLabel={taskPanelT("expandPanel")}
+            >
+              <EditorTaskPanel
+                preview={preview}
+                holePicking={holePicking}
+                edgeTreatmentPicking={edgeTreatmentPicking}
+                shellPicking={shellPicking}
+                featureProfileSelections={featureProfileSelection.value}
+                onFeatureProfileRemove={removeFeatureProfile}
+                onFeatureProfilesClear={clearFeatureProfiles}
+                onPlacementManipulatorChange={placementBinding.onChange}
+                onSplitManipulatorChange={splitBinding.onChange}
+                onRevolveAxisChange={revolveAxisSelection.setValue}
+                onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
+                props={props}
+                revolveAxisCandidates={revolveAxisCandidates}
+                revolveAxisSelection={revolveAxisSelection.value}
+                revolveSelectionPurpose={revolveSelectionPurpose.value}
+                review={review}
+              />
+            </WorkspaceTaskPanel>
+          }
+        >
+          <EditorContent
+            historyProfilePreview={historySourcePreview.profile}
+            featureSelectionContext={viewportContext}
+            featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
+            featureProfileSelections={featureProfileSelection.value}
+            featurePreview={featurePreview}
+            manipulatorFeature={manipulatorFeature}
+            placementManipulator={placement}
+            splitManipulator={split}
+            onFeatureProfileChange={selectFeatureProfile}
+            onRevolveAxisChange={revolveAxisSelection.setValue}
+            props={props}
+            revolveAxisCandidates={revolveAxisCandidates}
+            revolveAxisSelection={revolveAxisSelection.value}
+            revolveSelectionPurpose={revolveSelectionPurpose.value}
+          />
+        </WorkspacePanels>
+      </ReferencePickProvider>
       <VariablesDialog
         controller={props.controller}
         open={props.workspace === "variables"}

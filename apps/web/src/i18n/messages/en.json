@@ -1805,7 +1805,8 @@
         "holePreviewReady": "Hole preview ready.",
         "featurePreviewFailed": "The unsaved feature could not be previewed. Adjust its dimensions or placement.",
         "featurePreviewLoading": "Rebuilding unsaved feature preview…",
-        "featurePreviewReady": "Unsaved feature preview"
+        "featurePreviewReady": "Unsaved feature preview",
+        "referenceSelection": "Select {field} in 3D · Escape cancels selection"
       },
       "faq": {
         "trigger": "FAQ",
@@ -3116,6 +3117,10 @@
         "hole": "Hole {number}",
         "remove": "Remove hole track {number}",
         "add": "Add hole track"
+      },
+      "referencePick": {
+        "pick": "Select {field} in 3D",
+        "help": "Select geometry in 3D, or use the adjacent list. Escape cancels selection."
       }
     },
     "extrusionExtent": {
