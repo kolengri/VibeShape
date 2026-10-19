@@ -55,6 +55,8 @@ The desktop authoring shell has seven persistent regions:
 
 The active command may change the task panel and viewport overlays, but it MUST NOT move global project actions or silently replace the model tree.
 
+An idle workspace has no onboarding task panel: Create sketch and the modeling toolbar are the starting actions. The viewport reclaims the task panel's width or compact-sheet height until a task or saved-sketch selection needs parameters. Automatic hiding preserves the saved panel width and collapse preference, mounted viewport, and active form. A toolbar menu with exactly one remaining command becomes that command's direct icon, with the same accessible name, prerequisites, shortcut, and handler.
+
 ### Primary Workspaces
 
 VibeShape uses explicit workspaces rather than hidden modes:
@@ -541,7 +543,7 @@ Status changes that do not move focus use the appropriate live-region semantics.
 - Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
-- Otherwise show one horizontal indeterminate indicator in place of the complete VibeShape wordmark, preserving its width and height. No other animated loaders appear on buttons, tabs, panels, or dialogs. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion uses a static progress segment.
+- Otherwise animate a printing shimmer through the complete VibeShape wordmark, preserving its text, width, and height. No other animated loaders appear on buttons, tabs, panels, or dialogs. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark.
 - Keep camera navigation and unaffected document inspection responsive.
 - Distinguish `Cancel requested` from `Canceled`; logical cancellation may wait for the active kernel call to return.
 - Discard stale worker generations and state this in diagnostics only when relevant.

@@ -28,7 +28,7 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.1-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.2-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
@@ -58,14 +58,20 @@ signing/notarization and the repository's release compliance review.
 The application uses `http://127.0.0.1:43115` and its own Chromium profile under
 `~/Library/Application Support/VibeShape`. A second launch focuses the existing application. A busy
 port produces a startup error; the app never opens an existing listener or chooses different storage.
-The normal macOS window-close action keeps the app available in the Dock and stops its chat agent;
+The normal macOS window-close action keeps the app available in the Dock and stops its chat agents;
 Quit stops its server. Native traffic lights share the editor header. System menus invoke the same
 eligible commands as the toolbar; focused text fields retain ordinary native editing behavior.
 
 A bare launch opens the project chooser without creating or restoring a model. Choose a saved card,
-create a project, or import a `.vshape` backup. Open-project tabs switch using ordinary draft/save/AI
-guards; closing a tab does not delete a project. Explicit `?project=<UUID>` links open that profile's
-matching project directly. Tabs remember open IDs, not separate mutable model copies.
+create a project, or import a `.vshape` backup. Open-project tabs retain their document sessions and
+switch the visible editor without stopping background project chat. Unfinished human editing still
+blocks navigation; an agent turn or its project-owned review does not. Closing a tab does not delete
+a project. Explicit `?project=<UUID>` links open that profile's matching project directly. Saved tab
+IDs are distinct from the retained in-memory document sessions.
+Each retained project consumes its own document worker and, when connected, ACP subprocess. Closing
+an idle tab releases its session and chat resources; a tab with a running turn, queued message or
+pending review must finish or cancel that work before closing. Ordinary tab switching keeps it alive.
+Page exit closes the retained runtimes and native chat owners.
 
 Browser profiles do not automatically become desktop projects. Save `.vshape` backups from the
 browser with **Save project (.vshape)**, then import them from the Projects page in the app. Saved document
@@ -87,30 +93,69 @@ or install adapters. Use **Advanced connection** to provide an absolute executab
 argument array for another installation. Connection failures produce one operational notification
 with recovery guidance; reconnect after correcting the command or authentication.
 
+The composer footer shows the connected agent's advertised session configuration, including
+model-specific reasoning effort when provided. Choices and effective values come from ACP;
+changing a model may replace the available reasoning levels. Legacy mode/model controls are
+fallbacks, so the same setting is not shown twice. Project-access and MCP-attachment status belong
+to the global footer rather than a repeated chat summary. An ACP connection alone does not prove
+that its MCP client has attached or that the person has granted access to the model.
+
+Attachments send actual UTF-8 text as embedded ACP resources and supported PNG/JPEG/WebP/GIF
+images as ACP image blocks, only when advertised by the agent. Limits are five files, 2 MiB per
+text file, 5 MiB per image, and 12 MiB combined per message. PDF and other binary formats are not
+silently treated as readable documents. File contents stay in memory; saved transcripts retain
+their names, not a durable attachment archive. Attachment content is task data, never application
+instructions or permission to read an arbitrary filesystem path.
+
+Structured questions originate from ACP form elicitation, not parsed assistant prose. The current
+form UI supports string fields and advertised choices, including a separate custom-answer field
+when the agent supplies one. Unsupported form types are declined. Replies validate the original
+request and project/session scope; expiration, cancellation, and disconnect release pending forms.
+
+Sending while a turn is running queues the message rather than silently canceling or steering it.
+The controller accepts up to eight queued messages with a bounded memory budget and sends them in
+order after successful turns. Failure, Stop, or disconnect pauses the queue; Resume is explicit.
+Pending queued messages can be removed, and New chat does not discard them implicitly. Queued
+attachment bytes remain in memory and are not a durable job store. Accepted turn text is saved in
+the transcript so an asynchronous provider failure does not overwrite a newly edited composer.
+
+Every native prompt identifies its project and instructs the agent to establish live project
+identity and geometry through the supplied VibeShape MCP tools before modeling. The private agent
+working directory is not the model. These instructions preserve the existing access, preview,
+review, and commit authority; they do not grant auto-apply or substitute filesystem CAD generation.
+
 Open **Settings → Connections → Connect an MCP client**, copy the configuration, and add it to the
 external client's MCP settings. It launches the app's bundled stdio forwarder with Electron's own
 runtime and attaches to this open application. It does not launch another editor or require Bun.
-Only one native MCP client attaches at a time. Select a project, then enable its AI session before
+The copied configuration permits one external native MCP client at a time. Select a project, then enable its AI session before
 the client can inspect or modify it; disabling access revokes its drafts. The private credential is
 not included in the copied configuration. Quit/restart creates a new native descriptor.
 
 The **AI chat** panel connects an installed ACP executable with explicit arguments and uses the
-person's own agent account. Messages and tool progress stay tied to the current project. Stop cancels
+person's own agent account. Its configured executable becomes available in each project without
+manual reconnection. Each project has its own ACP process, conversation, queue, MCP credential,
+document authority and review state. Switching tabs retains an ongoing turn in its source project;
+returning shows that project's accumulated updates and pending review. Embedded agents cannot use
+project-management tools or redirect their tools to another project. Messages and tool progress stay
+tied to that project. Stop cancels
 the response; New chat starts a new conversation. Transcripts persist locally per project and are not included in `.vshape` backups. Native
 context restoration depends on the agent's advertised support. CAD changes retain preview and the
 person's existing MCP approval policy, including any explicit auto-apply consent. The chat cannot
 grant that consent to itself. Browser API chat always requires manual Apply. The local agent has ordinary user OS privileges even though
 VibeShape advertises no ACP filesystem or terminal capabilities.
 
-Replacing or disconnecting an ACP agent waits for bounded cleanup of its process and captured MCP
+Replacing or disconnecting a project's ACP agent waits for bounded cleanup of its process and captured MCP
 connection. Reopening a closed window preserves that cleanup barrier; Quit drains cleanup before
-stopping the native server. A different MCP client is never disconnected to make room for chat; if
-a client remains attached, the connection reports the existing client conflict.
+stopping the native server. Other projects' agents and the external MCP attachment have separate
+leases. Discovery and ACP readiness still do not grant model access: each broker retains the existing
+explicit project consent, remembered-client policy and CAD approval checks.
 
 The static web application instead connects directly to a user-provided compatible model API. No
 VibeShape AI server or hosted worker is needed. The provider must allow the browser origin through
 CORS. API credentials remain in runtime memory, and model calls happen only after an explicit Send.
 Existing CAD WebWorkers continue to compute geometry on the person's device.
+Browser chat discovers and executes CAD through `discover_cad_tools` and `call_cad_tool`; its separate
+`ask_user_question` function requests bounded non-secret form answers and settles on response or Stop.
 
 ## Mesh handoff
 
@@ -137,9 +182,9 @@ the installed app. The checker never silently installs or opens downloaded softw
 Release owners prepare a source-matched, reviewed build and complete signing/notarization and
 compliance checks before publishing a stable GitHub Release:
 
-- Tag: `desktop-v0.1.1` for desktop package version `0.1.1`.
-- Apple Silicon asset: `VibeShape-0.1.1-mac-arm64.dmg`.
-- Intel asset, only after target verification: `VibeShape-0.1.1-mac-x64.dmg`.
+- Tag: `desktop-v0.1.2` for desktop package version `0.1.2`.
+- Apple Silicon asset: `VibeShape-0.1.2-mac-arm64.dmg`.
+- Intel asset, only after target verification: `VibeShape-0.1.2-mac-x64.dmg`.
 - Upload the image as a GitHub release asset with an advertised `sha256:` digest and matching size.
 - Include checksums and corresponding-source provenance with the release.
 

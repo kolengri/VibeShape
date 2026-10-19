@@ -61,6 +61,97 @@ afterEach(() => {
 })
 
 describe("assistant connection settings", () => {
+  it("renders each advertised configuration once and keeps the confirmed reasoning value while a change is pending", async () => {
+    const pending = deferred()
+    const chat = {
+      setMode: vi.fn().mockResolvedValue(undefined),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setConfigOption: vi.fn().mockReturnValue(pending.promise),
+    }
+    const snapshot: AssistantSnapshot = {
+      projectId: "project",
+      sessionToken: "session",
+      sessionId: "agent-session",
+      status: "ready",
+      canResume: false,
+      modes: [{ id: "legacy", name: "Legacy mode" }],
+      currentModeId: "legacy",
+      models: [{ id: "legacy-model", name: "Legacy model" }],
+      currentModelId: "legacy-model",
+      authMethods: [],
+      attachmentCapabilities: { text: false, images: false },
+      configOptions: [
+        {
+          id: "access",
+          category: "mode",
+          name: "Access",
+          currentValue: "read-only",
+          options: [{ id: "read-only", name: "Read only" }],
+        },
+        {
+          id: "model",
+          category: "model",
+          name: "Model",
+          currentValue: "small",
+          options: [{ id: "small", name: "Small" }],
+        },
+        {
+          id: "opaque-reasoning",
+          category: "thought_level",
+          name: "Reasoning effort",
+          currentValue: "brief",
+          options: [
+            { id: "brief", name: "Brief" },
+            { id: "deep", name: "Deep" },
+          ],
+        },
+      ],
+    }
+    const view = show(<NativeSessionControls chat={chat} snapshot={snapshot} busy={false} />)
+    expect(screen.getAllByRole("combobox")).toHaveLength(3)
+    expect(screen.queryByRole("combobox", { name: "Agent mode" })).toBeNull()
+    await choose("Reasoning effort", "Deep")
+    expect(chat.setConfigOption).toHaveBeenCalledWith("opaque-reasoning", "deep")
+    expect(screen.getByRole("combobox", { name: "Reasoning effort" }).textContent).toContain(
+      "Brief",
+    )
+    expect(
+      screen.getAllByRole("combobox").every((element) => element.hasAttribute("disabled")),
+    ).toBe(true)
+    await act(async () => {
+      pending.resolve()
+      await pending.promise
+    })
+    expect(
+      screen.getAllByRole("combobox").every((element) => !element.hasAttribute("disabled")),
+    ).toBe(true)
+    view.unmount()
+    show(
+      <NativeSessionControls
+        chat={chat}
+        snapshot={{
+          ...snapshot,
+          configOptions: [
+            {
+              id: "opaque-reasoning",
+              name: "Reasoning effort",
+              currentValue: "extreme",
+              options: [{ id: "extreme", name: "Extreme" }],
+            },
+          ],
+          modes: [],
+          models: [],
+        }}
+        busy={false}
+      />,
+    )
+    expect(screen.getByRole("combobox", { name: "Reasoning effort" }).textContent).toContain(
+      "Extreme",
+    )
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Reasoning effort" }), { key: "Enter" })
+    expect(screen.queryByRole("option", { name: "Deep" })).toBeNull()
+  })
+
   it("selects a known installed-command preset without launching or installing until Connect", async () => {
     const chat = {
       connect: vi.fn().mockResolvedValue(undefined),
@@ -197,6 +288,7 @@ describe("assistant connection settings", () => {
     const chat = {
       setModel: vi.fn().mockReturnValue(pending.promise),
       setMode: vi.fn().mockResolvedValue(undefined),
+      setConfigOption: vi.fn().mockResolvedValue(undefined),
     }
     const snapshot: AssistantSnapshot = {
       projectId: "0195b5ac-b250-7a2c-8c33-000000000101",
@@ -208,6 +300,8 @@ describe("assistant connection settings", () => {
       currentModeId: "review",
       models: [{ id: "advertised-model", name: "Advertised model" }],
       currentModelId: null,
+      configOptions: [],
+      attachmentCapabilities: { text: false, images: false },
       authMethods: [],
     }
     const view = show(<NativeSessionControls chat={chat} snapshot={snapshot} busy={false} />)
@@ -245,6 +339,8 @@ describe("compact chat actions", () => {
       currentModeId: null,
       models: [],
       currentModelId: null,
+      configOptions: [],
+      attachmentCapabilities: { text: false, images: false },
       authMethods: [],
     }
     show(
@@ -258,7 +354,11 @@ describe("compact chat actions", () => {
           configuration={null}
           sessionControls={
             <NativeSessionControls
-              chat={{ setMode: async () => {}, setModel: async () => {} }}
+              chat={{
+                setMode: async () => {},
+                setModel: async () => {},
+                setConfigOption: async () => {},
+              }}
               snapshot={failed}
               busy={false}
             />

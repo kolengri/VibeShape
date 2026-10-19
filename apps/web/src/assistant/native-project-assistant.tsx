@@ -5,12 +5,13 @@ import { Button } from "@vibeshape/ui/components/button"
 import { useEffect, useState, useSyncExternalStore } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { registerProjectActionGuard } from "../document/document-controller"
-import { useAutomationConnections } from "../shell/automation-status"
-import { LocalAutomationStatus } from "../shell/local-automation-status"
 import { AssistantPanel } from "./assistant-panel"
-import { assistantStorage } from "./assistant-preferences"
 import { NativeAgentConfiguration } from "./native-agent-configuration"
-import { createNativeChatController } from "./native-chat-controller"
+import type { createNativeChatController } from "./native-chat-controller"
+import {
+  getNativeProjectChatController,
+  getNativeProjectChatRegistry,
+} from "./native-project-chat-registry"
 import { NativeSessionControls } from "./native-session-controls"
 
 type NativeChat = ReturnType<typeof createNativeChatController>
@@ -27,6 +28,9 @@ export function NativeProjectAssistant({
   open: boolean
   onClose: () => void
 }) {
+  const registry = getNativeProjectChatRegistry(bridge)
+  const busy = useSyncExternalStore(registry.subscribe, registry.isBusy, registry.isBusy)
+  useReportActivity(busy)
   const project = controller.report?.snapshot
   if (!project) return null
   return (
@@ -65,6 +69,14 @@ function NativeProjectChat({
       canSend={canSend}
       onClose={onClose}
       onSend={chat.send}
+      onQueue={chat.enqueue}
+      {...(state.snapshot ? { attachmentCapabilities: state.snapshot.attachmentCapabilities } : {})}
+      question={state.question}
+      onAnswer={chat.respondQuestion}
+      queuedMessages={state.queuedMessages}
+      queuePaused={state.queuePaused}
+      onRemoveQueued={chat.removeQueued}
+      onResumeQueue={chat.resumeQueue}
       onCancel={chat.cancel}
       onReset={chat.reset}
       storageFailed={state.storageFailed}
@@ -83,19 +95,19 @@ function NativeProjectChat({
 }
 
 function useNativeChat(projectId: string, bridge: AssistantBridge) {
-  const [chat] = useState(() =>
-    createNativeChatController({ projectId, bridge, storage: assistantStorage() }),
-  )
+  const [chat] = useState(() => getNativeProjectChatController(bridge, projectId))
   const state = useSyncExternalStore(chat.subscribe, chat.getSnapshot, chat.getSnapshot)
-  useReportActivity(state.connecting || state.busy)
   useEffect(() => {
     chat.start()
-    return () => chat.dispose()
   }, [chat])
   useEffect(
     () =>
       registerProjectActionGuard(() =>
-        chat.getSnapshot().busy || chat.getSnapshot().connecting ? "automation-busy" : null,
+        chat.getSnapshot().busy ||
+        chat.getSnapshot().connecting ||
+        chat.getSnapshot().queuedMessages.length > 0
+          ? "automation-busy"
+          : null,
       ),
     [chat],
   )
@@ -141,15 +153,8 @@ function AgentAuthentication({
 
 function AgentPermission({ chat, state }: { chat: NativeChat; state: NativeChatState }) {
   const t = useTranslations("app.assistant")
-  const { current, connection } = useAutomationConnections()
   return (
     <>
-      {state.snapshot && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>{t("modelAccess")}</span>
-          <LocalAutomationStatus current={current} connection={connection} />
-        </div>
-      )}
       {state.permission && (
         <fieldset className="space-y-2 rounded-md border p-2">
           <legend className="sr-only">{t("permission")}</legend>

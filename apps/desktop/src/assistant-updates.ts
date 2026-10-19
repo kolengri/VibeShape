@@ -12,20 +12,25 @@ export function applySessionOptions(
       .map(({ id, name }) => ({ id, name: name.slice(0, 512) }))
     snapshot.currentModeId = modes.currentModeId
   }
-  const model = configs?.find((option) => option.category === "model" && option.type === "select")
-  if (model?.type === "select") {
-    snapshot.models = model.options
-      .flatMap((option) => ("options" in option ? option.options : [option]))
-      .slice(0, 100)
-      .map(({ value, name }) => ({ id: value, name: name.slice(0, 512) }))
-    snapshot.currentModelId = model.currentValue
-    return model.id
-  }
   if (configs) {
-    snapshot.models = []
-    snapshot.currentModelId = null
+    snapshot.configOptions = configs
+      .filter((option) => option.type === "select")
+      .slice(0, 32)
+      .map((option) => ({
+        id: option.id,
+        name: option.name.slice(0, 512),
+        ...(option.category ? { category: option.category } : {}),
+        ...(option.description ? { description: option.description.slice(0, 512) } : {}),
+        currentValue: option.currentValue,
+        options: option.options
+          .flatMap((entry) => ("options" in entry ? entry.options : [entry]))
+          .slice(0, 100)
+          .map(({ value, name }) => ({ id: value, name: name.slice(0, 512) })),
+      }))
+    const model = snapshot.configOptions.find((option) => option.category === "model")
+    snapshot.models = model?.options ?? []
+    snapshot.currentModelId = model?.currentValue ?? null
   }
-  return undefined
 }
 
 export function sessionUpdateEvent(

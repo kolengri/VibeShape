@@ -9,6 +9,7 @@ import {
   type LightweightingSource,
   sameLightweightingSource,
 } from "../features/lightweighting/lightweighting-model"
+import { automationReviews } from "./automation-review-controller"
 import { createImportAutomationSession } from "./import-automation-session"
 import type { ImportReviewInput, ImportSessionConfiguration } from "./import-upload-session"
 
@@ -17,16 +18,21 @@ export function createBrowserLightweightingSnapshotSession(
   configuration: Omit<ImportSessionConfiguration, "inspect" | "review"> & {
     readSource: (partId: string) => LightweightingSource | null
   },
+  reviews = automationReviews,
 ) {
   let captured: LightweightingSource | null = null
   let evidence: Pick<ImportReviewInput, "lightweighting" | "quickLightweighting"> | undefined
-  const imports = createImportAutomationSession({
-    ...configuration,
-    isActive: () =>
-      configuration.isActive() &&
-      (!captured || sameLightweightingSource(configuration.readSource(captured.partId), captured)),
-    reviewContext: () => evidence,
-  })
+  const imports = createImportAutomationSession(
+    {
+      ...configuration,
+      isActive: () =>
+        configuration.isActive() &&
+        (!captured ||
+          sameLightweightingSource(configuration.readSource(captured.partId), captured)),
+      reviewContext: () => evidence,
+    },
+    reviews,
+  )
   return {
     async request(
       actor: CommandActor,

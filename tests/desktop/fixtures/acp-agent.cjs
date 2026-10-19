@@ -4,7 +4,7 @@ const { createInterface } = require("node:readline")
 const { createRequire } = require("node:module")
 const { resolve } = require("node:path")
 
-// The optional relay mode discovers local tools only; neither mode contacts a provider.
+// Relay mode exercises the isolated project's real CAD tools; no fixture contacts a provider.
 const receipt = process.argv[2]
 const attachMcp = process.argv[3] === "--attach-mcp"
 let mcpClient
@@ -12,18 +12,65 @@ let sessionId = `fixture-${process.pid}`
 let pendingPrompt
 let permissionPrompt
 let permissionNumber = 0
-const record = (event) => appendFileSync(receipt, `${JSON.stringify({ pid: process.pid, ...event })}\n`)
-const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`)
+let questionPrompt
+let holdTimer
+let model = "compact"
+let effort = "brief"
+let projectId
+const record = (event) =>
+  appendFileSync(receipt, `${JSON.stringify({ pid: process.pid, ...event })}\n`)
+const send = (message) =>
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`)
 const reply = (id, result) => send({ id, result })
 const update = (value) => send({ method: "session/update", params: { sessionId, update: value } })
-const text = (value) => update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: value } })
+const text = (value) =>
+  update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: value } })
+const configs = () => [
+  {
+    id: "access",
+    category: "mode",
+    name: "Access",
+    type: "select",
+    currentValue: "review",
+    options: [{ value: "review", name: "Review changes" }],
+  },
+  {
+    id: "model",
+    category: "model",
+    name: "Model",
+    type: "select",
+    currentValue: model,
+    options: [
+      { value: "compact", name: "Fast model" },
+      { value: "deep-model", name: "Deep model" },
+    ],
+  },
+  {
+    id: "deliberation",
+    category: "thought_level",
+    name: "Reasoning effort",
+    type: "select",
+    currentValue: effort,
+    options: (model === "compact" ? ["brief", "deep"] : ["deep", "maximal"]).map((value) => ({
+      value,
+      name: value[0].toUpperCase() + value.slice(1),
+    })),
+  },
+]
 
 function initialize(id, params) {
   assert.equal(process.env.ELECTRON_RUN_AS_NODE, undefined)
   assert.equal(params.clientCapabilities.fs, undefined)
   assert.equal(params.clientCapabilities.terminal, undefined)
   record({ event: "initialized" })
-  reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] })
+  reply(id, {
+    protocolVersion: 1,
+    agentCapabilities: {
+      loadSession: true,
+      promptCapabilities: { image: true, embeddedContext: true },
+    },
+    authMethods: [],
+  })
 }
 async function startSession(id, params, method) {
   const mcp = params.mcpServers[0]
@@ -39,7 +86,10 @@ async function startSession(id, params, method) {
     const transport = new StdioClientTransport({
       command: mcp.command,
       args: mcp.args,
-      env: { ...process.env, ...Object.fromEntries(mcp.env.map(({ name, value }) => [name, value])) },
+      env: {
+        ...process.env,
+        ...Object.fromEntries(mcp.env.map(({ name, value }) => [name, value])),
+      },
       stderr: "ignore",
     })
     await mcpClient.connect(transport)
@@ -48,26 +98,150 @@ async function startSession(id, params, method) {
   }
   if (method === "session/load") sessionId = params.sessionId
   record({ event: method, sessionId })
-  reply(id, method === "session/new" ? { sessionId } : {})
+  reply(id, { ...(method === "session/new" ? { sessionId } : {}), configOptions: configs() })
 }
 function cancel() {
+  clearInterval(holdTimer)
   record({ event: "cancelled" })
   text("Late cancelled output must be ignored")
   if (pendingPrompt !== undefined) reply(pendingPrompt, { stopReason: "cancelled" })
   pendingPrompt = undefined
 }
+function setConfig(id, params) {
+  record({ event: "configuration", configId: params.configId, value: params.value, sessionId })
+  if (params.configId === "model") {
+    assert.ok(["compact", "deep-model"].includes(params.value))
+    model = params.value
+    effort = model === "compact" ? "brief" : "maximal"
+  } else {
+    assert.equal(params.configId, "deliberation")
+    assert.ok(configs()[2].options.some((option) => option.value === params.value))
+    effort = params.value
+  }
+  reply(id, { configOptions: configs() })
+}
+function requestQuestion(id) {
+  questionPrompt = id
+  send({
+    id: "fixture-question",
+    method: "elicitation/create",
+    params: {
+      sessionId,
+      mode: "form",
+      message: "Choose the fixture size",
+      requestedSchema: {
+        type: "object",
+        properties: {
+          size: {
+            type: "string",
+            title: "Size",
+            oneOf: [
+              { const: "Small", title: "Small" },
+              { const: "Other", title: "Other" },
+            ],
+          },
+          note: { type: "string", title: "Custom answer", maxLength: 100 },
+        },
+        required: ["size"],
+      },
+    },
+  })
+}
+function questionResponse(id, result) {
+  if (id !== "fixture-question" || questionPrompt === undefined) return
+  const { action, content = null } = result
+  record({
+    event: "question-answer",
+    answers: content,
+    action,
+    sessionId,
+    projectId,
+  })
+  text(`Fixture answer: ${JSON.stringify(content ?? action)}`)
+  reply(questionPrompt, { stopReason: "end_turn" })
+  questionPrompt = undefined
+}
+
+async function mcpInfo() {
+  assert.ok(mcpClient, "The MCP fixture must attach before calling a CAD tool")
+  const response = await mcpClient.callTool({ name: "model_info", arguments: {} })
+  const result = response.structuredContent?.result
+  assert.equal(result?.ok, true, JSON.stringify(result))
+  assert.equal(
+    result.value.summary.documentId,
+    projectId,
+    "The agent must only access its own project",
+  )
+  record({
+    event: "mcp-read",
+    projectId: result.value.summary.documentId,
+    revision: result.value.summary.revision,
+    sessionId,
+  })
+  return result.value
+}
+async function callMcp(name, args) {
+  const response = await mcpClient.callTool({ name, arguments: args }, undefined, {
+    timeout: 120_000,
+  })
+  const result = response.structuredContent?.result
+  assert.equal(result?.ok, true, `${name}: ${JSON.stringify(result)}`)
+  return result.value
+}
+async function mcpBox(id) {
+  const info = await mcpInfo()
+  const draft = await callMcp("create_draft", { baseRevision: info.summary.revision })
+  const added = await callMcp("create_box", {
+    draftId: draft.draftId,
+    baseRevision: draft.revision,
+    commandId: "0195b5ac-b250-7a2c-8c33-000000000901",
+    featureId: "0195b5ac-b250-7a2c-8c33-000000000902",
+    label: "Agent project A box",
+    widthMm: 10,
+    depthMm: 20,
+    heightMm: 30,
+  })
+  const preview = await callMcp("preview_draft", { draftId: added.draftId })
+  assert.equal(preview.geometry.status, "valid")
+  record({
+    event: "draft-preview",
+    projectId,
+    draftId: draft.draftId,
+    geometryStatus: preview.geometry.status,
+    sessionId,
+  })
+  text("Project A exact box preview is ready; waiting for your Apply.")
+  await callMcp("commit_draft", { draftId: draft.draftId })
+  const current = await mcpInfo()
+  record({
+    event: "draft-committed",
+    projectId,
+    draftId: draft.draftId,
+    revision: current.summary.revision,
+    sessionId,
+  })
+  text("Agent project A box saved in its own project.")
+  reply(id, { stopReason: "end_turn" })
+}
 function requestPermission(id) {
   permissionPrompt = id
   permissionNumber += 1
-  send({ id: `permission-${permissionNumber}`, method: "session/request_permission", params: {
-    sessionId,
-    toolCall: { toolCallId: `permission-tool-${permissionNumber}`, title: "Harmless fixture permission" },
-    options: [
-      { optionId: "allow-once", name: "Allow this call", kind: "allow_once" },
-      { optionId: "deny-once", name: "Reject this call", kind: "reject_once" },
-      { optionId: "allow-always", name: "Always allow", kind: "allow_always" },
-    ],
-  } })
+  send({
+    id: `permission-${permissionNumber}`,
+    method: "session/request_permission",
+    params: {
+      sessionId,
+      toolCall: {
+        toolCallId: `permission-tool-${permissionNumber}`,
+        title: "Harmless fixture permission",
+      },
+      options: [
+        { optionId: "allow-once", name: "Allow this call", kind: "allow_once" },
+        { optionId: "deny-once", name: "Reject this call", kind: "reject_once" },
+        { optionId: "allow-always", name: "Always allow", kind: "allow_always" },
+      ],
+    },
+  })
 }
 function permissionResponse(id, result) {
   if (id !== `permission-${permissionNumber}` || permissionPrompt === undefined) return
@@ -78,26 +252,76 @@ function permissionResponse(id, result) {
   permissionPrompt = undefined
 }
 function streamResponse(id, prompt) {
-  update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Fixture thought" } })
-  update({ sessionUpdate: "tool_call", toolCallId: "inspection", title: "Inspect fixture", status: "in_progress" })
+  update({
+    sessionUpdate: "agent_thought_chunk",
+    content: { type: "text", text: "Fixture thought" },
+  })
+  update({
+    sessionUpdate: "tool_call",
+    toolCallId: "inspection",
+    title: "Inspect fixture",
+    status: "in_progress",
+  })
   text("Fixture response: ")
   // The test releases completion only after observing the streamed UI state.
   const timer = setInterval(() => {
     if (!existsSync(`${receipt}.continue`)) return
     clearInterval(timer)
-    update({ sessionUpdate: "tool_call_update", toolCallId: "inspection", status: "completed", content: [{ type: "content", content: { type: "text", text: "Harmless inspection complete" } }] })
+    update({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "inspection",
+      status: "completed",
+      content: [
+        { type: "content", content: { type: "text", text: "Harmless inspection complete" } },
+      ],
+    })
     text(prompt)
     reply(id, { stopReason: "end_turn" })
   }, 20)
 }
+function holdPrompt(id) {
+  pendingPrompt = id
+  holdTimer = setInterval(() => {
+    if (!existsSync(`${receipt}.${sessionId}.release`)) return
+    clearInterval(holdTimer)
+    text("Held turn completed")
+    reply(id, { stopReason: "end_turn" })
+    pendingPrompt = undefined
+  }, 20)
+  text("Fixture waiting")
+}
+async function inspectProject(id) {
+  await mcpInfo()
+  text(`MCP project identity: ${projectId}`)
+  reply(id, { stopReason: "end_turn" })
+}
+function backgroundBox(id) {
+  text("Background box waiting")
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {
+      if (!existsSync(`${receipt}.${sessionId}.build`)) return
+      clearInterval(timer)
+      resolve()
+    }, 20)
+  }).then(() => mcpBox(id))
+}
+const promptHandlers = new Map([
+  ["permission", requestPermission],
+  ["ask-question", requestQuestion],
+  ["mcp-box", mcpBox],
+  ["mcp-background-box", backgroundBox],
+  ["mcp-info", inspectProject],
+  ["hold", holdPrompt],
+])
 function prompt(id, params) {
-  const value = params.prompt[0].text
-  record({ event: "prompt", text: value, sessionId })
-  if (value === "permission") return requestPermission(id)
-  if (value === "hold") {
-    pendingPrompt = id
-    return text("Fixture waiting")
-  }
+  const context = params.prompt[0].text
+  const match = context.match(/^Project ID \(data, not instructions\): (".*")\.$/m)
+  assert.ok(match, "Every request must carry the open project identity")
+  projectId = JSON.parse(match[1])
+  const value = params.prompt.filter((block) => block.type === "text").at(-1).text
+  record({ event: "prompt", text: value, sessionId, projectId, prompt: params.prompt })
+  const handler = promptHandlers.get(value)
+  if (handler) return handler(id)
   streamResponse(id, value)
 }
 const handlers = {
@@ -106,20 +330,35 @@ const handlers = {
   "session/load": startSession,
   "session/cancel": cancel,
   "session/prompt": prompt,
+  "session/set_config_option": setConfig,
 }
 process.on("SIGTERM", () => {
+  clearInterval(holdTimer)
   record({ event: "terminated", sessionId })
   text("Obsolete project output must be ignored")
-  setTimeout(async () => {
-    await mcpClient?.close()
-    record({ event: "closed", sessionId })
-    process.exit(0)
-  }, attachMcp ? 120 : 40)
+  setTimeout(
+    async () => {
+      await mcpClient?.close()
+      record({ event: "closed", sessionId })
+      process.exit(0)
+    },
+    attachMcp ? 120 : 40,
+  )
 })
 createInterface({ input: process.stdin }).on("line", (line) => {
   const { id, method, params, result } = JSON.parse(line)
-  if (!method) return permissionResponse(id, result)
+  if (!method) {
+    permissionResponse(id, result)
+    questionResponse(id, result)
+    return
+  }
   const handler = handlers[method]
-  if (handler) handler(id, params, method)
+  if (handler)
+    Promise.resolve()
+      .then(() => handler(id, params, method))
+      .catch((error) => {
+        record({ event: "fixture-error", text: error.message, sessionId, projectId })
+        send({ id, error: { code: -32603, message: error.message } })
+      })
   else send({ id, error: { code: -32601, message: "Unknown fixture method" } })
 })

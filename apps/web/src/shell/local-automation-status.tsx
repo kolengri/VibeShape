@@ -103,20 +103,12 @@ export function LocalAutomationStatus({
                   {t("automaticApproval")}
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={current.projectManagement}
-                disabled={current.busy}
-                aria-describedby={projectScopeId}
-                onCheckedChange={(enabled) => {
-                  setFailed(!connection.setProjectManagement(enabled === true))
-                }}
-              >
-                {t("allowProjectManagement")}
-              </DropdownMenuCheckboxItem>
-              <p id={projectScopeId} className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">
-                {t("projectManagementScope")}
-              </p>
+              <ProjectManagementControl
+                current={current}
+                connection={connection}
+                scopeId={projectScopeId}
+                onFailure={setFailed}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
           <AutoApplyConsentContent
@@ -148,6 +140,36 @@ export function LocalAutomationStatus({
         </span>
       ) : null}
     </div>
+  )
+}
+function ProjectManagementControl({
+  current,
+  connection,
+  scopeId,
+  onFailure,
+}: {
+  current: ReturnType<Connection["getSnapshot"]>
+  connection: Pick<Connection, "setProjectManagement">
+  scopeId: string
+  onFailure: (failed: boolean) => void
+}) {
+  const t = useTranslations("app.shell.applicationBar")
+  if (current.projectBound) return null
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuCheckboxItem
+        checked={current.projectManagement}
+        disabled={current.busy}
+        aria-describedby={scopeId}
+        onCheckedChange={(enabled) => onFailure(!connection.setProjectManagement(enabled === true))}
+      >
+        {t("allowProjectManagement")}
+      </DropdownMenuCheckboxItem>
+      <p id={scopeId} className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">
+        {t("projectManagementScope")}
+      </p>
+    </>
   )
 }
 function InactiveConnectionStatus({

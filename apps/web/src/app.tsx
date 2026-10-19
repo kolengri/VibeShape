@@ -55,6 +55,7 @@ import {
   assemblyModeCommands,
   useAssemblyMode,
 } from "./features/assembly/assembly-mode"
+import { edgeTreatmentCreateTool } from "./features/edge-treatment/edge-treatment-activation"
 import { LightweightingWorkspace } from "./features/lightweighting/lightweighting-workspace"
 import { useLightweightingCommand } from "./features/lightweighting/use-lightweighting-command"
 import {
@@ -64,6 +65,7 @@ import {
 import {
   activePartDesignCommand,
   editPartDesignTool,
+  modifyingSolidTargetFeatures,
 } from "./features/part-design/part-design-tool"
 import { initialProfileFeatureSelection } from "./features/part-design/profile-feature-selection"
 import {
@@ -361,6 +363,14 @@ function useSketchCreationActions(
   return { createSketch, createDatumPlane }
 }
 
+function selectedEdgeTreatmentSource(
+  parts: Parameters<typeof selectedPlacementPart>[0],
+  current: Pick<EditorSessionState, "selectedBody" | "selectedPartId" | "selection">,
+) {
+  const body = current.selectedBody ?? current.selection
+  return selectedPlacementPart(parts, current.selectedPartId, body)?.body ?? body
+}
+
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
   const sessionStore = useEditorSessionStoreApi()
   const historyInsertionActions = useHistoryInsertionActions()
@@ -462,6 +472,19 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
   const { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature } =
     useFeatureActivationActions(controller, sessionActions)
   const setSketchEditorTool = useSketchEditorToolActivation(sessionActions)
+  const createEdgeTreatment = useCallback(
+    (kind: "create-fillet" | "create-chamfer") => {
+      const current = sessionStore.getState()
+      const context = historyInsertionContext(controller)
+      const selected = selectedEdgeTreatmentSource(currentAuthoredParts(context), current)
+      const report = context.report
+      const targets = report
+        ? modifyingSolidTargetFeatures(report.snapshot.features, undefined, report.rebuild)
+        : []
+      sessionActions.startPartDesignTool(edgeTreatmentCreateTool(kind, selected, targets))
+    },
+    [controller, sessionActions, sessionStore],
+  )
 
   return useMemo(
     () =>
@@ -474,8 +497,8 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
         createFdm: () => sessionActions.startPartDesignTool({ kind: "create-fdm" }),
         createHole: () => sessionActions.startPartDesignTool({ kind: "create-hole" }),
-        createFillet: () => sessionActions.startPartDesignTool({ kind: "create-fillet" }),
-        createChamfer: () => sessionActions.startPartDesignTool({ kind: "create-chamfer" }),
+        createFillet: () => createEdgeTreatment("create-fillet"),
+        createChamfer: () => createEdgeTreatment("create-chamfer"),
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
         createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
         createSphere: () => sessionActions.startPartDesignTool({ kind: "create-sphere" }),
@@ -546,6 +569,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       }) satisfies EditorWorkspaceActions,
     [
       historyInsertionActions,
+      createEdgeTreatment,
       createDatumPlane,
       createExtrusion,
       createRevolve,

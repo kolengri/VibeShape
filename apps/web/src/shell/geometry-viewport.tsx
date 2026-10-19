@@ -1403,7 +1403,7 @@ function highlightedFeatureMesh(
   preview: FeaturePreviewState | undefined,
 ) {
   if (!featureId || hiddenFeatureIds.includes(featureId)) return null
-  if (preview?.status === "ready" && preview.candidateMesh?.featureId === featureId) {
+  if (hasFeaturePreviewGeometry(preview) && preview?.candidateMesh?.featureId === featureId) {
     return preview.candidateMesh
   }
   return viewerFeatureMesh(controller, featureId)
@@ -1422,11 +1422,15 @@ function useHighlightedFeatureMesh(
   }, [controller, featureId, hiddenFeatureIds, preview, hiddenBodies])
 }
 
+function hasFeaturePreviewGeometry(preview: FeaturePreviewState | undefined) {
+  return preview?.status === "ready" || (preview?.status === "loading" && preview.retained === true)
+}
+
 function previewMeshes(
   preview: FeaturePreviewState | undefined,
   committedMeshes: readonly ViewerMesh[],
 ) {
-  return preview?.status === "ready" ? preview.meshes : committedMeshes
+  return hasFeaturePreviewGeometry(preview) && preview ? preview.meshes : committedMeshes
 }
 
 function selectedOriginPlane(
@@ -1638,7 +1642,7 @@ function useViewportMeshPresentation({
       selectionMeshes ?? previewMeshes(featurePreview, committedMeshes),
       sourceMesh,
       excludedFeatureIds,
-      featurePreview?.status === "ready",
+      hasFeaturePreviewGeometry(featurePreview),
     )
     return presented.filter(
       (mesh) => !hidden.has(mesh.featureId) && !hiddenBodies.has(authoredBodyKey(mesh)),

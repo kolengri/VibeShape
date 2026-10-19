@@ -6,6 +6,20 @@ directly and executes tools through the same browser-owned automation sessions. 
 a hosted AI worker or bypasses reviewed commands. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
 and the [desktop connection workflow](../desktop-macos.md#ai-connections).
 
+Desktop embedded chat retains one document-controller runtime and ACP owner per project. The visible
+editor projects only the selected runtime; each automation handle captures its own persistent
+document session, geometry worker, revision checks and review controller. Selecting another tab does
+not exchange authority under asynchronous work. Manual reviews remain with their project until that
+tab is selected. Each embedded native MCP attachment uses its own private credential and broker,
+which rejects a foreign document during consent and rejects project-management operations. The
+separately copied external MCP configuration retains its existing single-client, active-project
+scope. ACP readiness, MCP attachment, project access and auto-apply approval remain distinct states.
+
+Pending solid-feature CAD reviews present their exact draft geometry in the owning project's viewport before
+Apply. This presentation is disposable: it does not create a saved revision, grant selection
+authority to draft topology, or appear in another project's viewport. Returning to a project restores
+its pending review; approval still uses the existing revision-checked commit path.
+
 ## Revision-bound visual inspection
 
 `render_preview` is a read-only tool shared by local and remote MCP. Its explicit `source` selects
@@ -90,8 +104,9 @@ the saved revision to the editor and create one undo checkpoint; typed failures 
 and reconcile lost writer access. An unexpected rejection means the commit could not be confirmed,
 not proof that no write occurred.
 
-The browser handle cancels private calculations when the committed revision changes and disposes
-them on close, project change, or page exit. It is an internal composition boundary, not an exposed
+The browser handle cancels private calculations when its committed revision changes and disposes
+them when its owning document session closes or the page exits. An external transport replaces its
+handle on project navigation; retained embedded chat keeps its source project's handle. It is an internal composition boundary, not an exposed
 MCP endpoint by itself. The local adapter now pairs it explicitly and exposes named tools, including the CAD authoring and inspection expansion in
 [ADR-0044](../adr/0044-local-mcp-cad-authoring-and-inspection.md) and variable/Chamfer tools in
 [ADR-0045](../adr/0045-local-mcp-variables-and-chamfer.md), followed by selected-edge inspection and authoring in

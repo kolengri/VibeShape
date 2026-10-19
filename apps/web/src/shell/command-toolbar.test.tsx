@@ -169,6 +169,28 @@ afterEach(() => {
 })
 
 describe("CommandToolbar", () => {
+  it("turns the last Create command into a direct icon and keeps it unique through resize", async () => {
+    const size = measuredToolbar(1200)
+    const user = userEvent.setup()
+    renderToolbar(
+      commands().map((command) => ({ ...command, eligibility: { enabled: true as const } })),
+    )
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull()
+    const direct = screen.getByRole("button", { name: "Generative Design" })
+    expect(direct.getAttribute("aria-haspopup")).toBeNull()
+    await user.click(direct)
+    expect(actions.generativeDesign).toHaveBeenCalledTimes(1)
+    act(() => direct.focus())
+    await size.resize(480)
+    const menu = screen.getByRole("button", { name: "Create" })
+    expect(document.activeElement).toBe(menu)
+    expect(screen.queryByRole("button", { name: "Generative Design" })).toBeNull()
+    await user.click(menu)
+    expect(screen.getAllByRole("menuitem", { name: "Generative Design" })).toHaveLength(1)
+    await user.keyboard("{Escape}")
+    await size.resize(1200)
+    expect(screen.getAllByRole("button", { name: "Generative Design" })).toHaveLength(1)
+  })
   it("promotes frequent commands only when they fit and moves disappearing focus into its group menu", async () => {
     const size = measuredToolbar(1200)
     const user = userEvent.setup()
@@ -205,7 +227,7 @@ describe("CommandToolbar", () => {
       eligibility: { enabled: true as const },
     }))
     renderToolbar(all)
-    const create = screen.getByRole("button", { name: "Create" })
+    const create = screen.getByRole("button", { name: "Modify" })
     await user.click(create)
     await size.resize(100)
     expect(screen.getByRole("menu")).toBeTruthy()
@@ -241,7 +263,7 @@ describe("CommandToolbar", () => {
   it("shows tooltips only for icon-only command menu triggers", async () => {
     const user = userEvent.setup()
     renderToolbar()
-    for (const name of ["Primitives", "Modify", "Create", "Inspect"]) {
+    for (const name of ["Primitives", "Modify", "Create"]) {
       const trigger = screen.getByRole("button", { name })
       expect(trigger.textContent).toContain(name)
       expect(trigger.getAttribute("title")).toBeNull()
@@ -532,9 +554,11 @@ describe("CommandToolbar", () => {
         .getAllByRole("button")
         .map((button) => button.ariaLabel),
     ).toEqual(["Create sketch", "Extrude", "Revolve"])
-    for (const label of ["Create", "Modify", "Primitives", "Inspect"]) {
+    for (const label of ["Create", "Modify", "Primitives"]) {
       expect(screen.getByRole("button", { name: label }).textContent).toBe(label)
     }
+    expect(screen.queryByRole("button", { name: "Inspect" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Measure" })).toBeTruthy()
     expect(
       within(history)
         .getAllByRole("button")
@@ -550,8 +574,8 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Modify" }))
     expect(screen.getByRole("menuitem", { name: "Subtract" })).toBeTruthy()
     await user.keyboard("{Escape}")
-    await user.click(screen.getByRole("button", { name: "Inspect" }))
-    expect(screen.getByRole("menuitem", { name: "Measure" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Measure" }))
+    expect(actions.measure).toHaveBeenCalledTimes(1)
   })
 
   it("exposes all basic primitives through the shared command handlers", async () => {
@@ -587,11 +611,13 @@ describe("CommandToolbar", () => {
       }))
     renderToolbar(modelCommands)
 
-    for (const name of ["Create sketch", "Extrude", "Revolve"]) {
-      await user.click(screen.getByRole("button", { name }))
+    for (const button of screen.getAllByRole("button")) {
+      if (button.dataset.responsiveCommand) await user.click(button)
     }
     for (const name of ["Create", "Modify", "Primitives", "Inspect"]) {
-      await user.click(screen.getByRole("button", { name }))
+      const menu = screen.queryByRole("button", { name })
+      if (!menu) continue
+      await user.click(menu)
       const labels = screen.getAllByRole("menuitem").map((item) => item.ariaLabel ?? "")
       for (const [index, label] of labels.entries()) {
         if (index > 0) await user.click(screen.getByRole("button", { name }))

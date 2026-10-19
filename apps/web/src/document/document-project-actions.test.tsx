@@ -37,6 +37,10 @@ mock.module("../automation/automation-review-controller", () => {
   return {
     ...actual,
     automationReviews: { ...actual.automationReviews, getSnapshot: mocks.review },
+    getActiveAutomationReviews: () => ({
+      ...actual.getActiveAutomationReviews(),
+      getSnapshot: mocks.review,
+    }),
   }
 })
 
@@ -88,7 +92,7 @@ function deferred<T>() {
 let moduleRevision = 0
 beforeEach(async () => {
   moduleRevision += 1
-  vi.clearAllMocks()
+  for (const port of Object.values(mocks)) port.mockReset()
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   localStorage.clear()
   vi.stubGlobal("sessionStorage", createTestBrowserStorage())
@@ -124,6 +128,7 @@ async function ready(authoredSnapshot?: AuthoredDocumentSnapshot) {
     close: mocks.close,
     commitDraft: vi.fn(),
   }
+  mocks.list.mockResolvedValue({ ok: true, value: [{ documentId: session.snapshot.id }] })
   mocks.open.mockResolvedValue({
     ok: true,
     session,
@@ -141,6 +146,9 @@ async function ready(authoredSnapshot?: AuthoredDocumentSnapshot) {
   })
   await waitFor(() => expect(hook.result.current.status).toBe("ready"))
   expect(hook.result.current.report?.snapshot.id).toBe(session.snapshot.id)
+  const runtime = controller.getProjectRuntime(session.snapshot.id)
+  if (!runtime) throw new Error("Expected scoped document runtime.")
+  vi.spyOn(runtime.reviews, "getSnapshot").mockImplementation(mocks.review)
   return { controller, source, session }
 }
 async function archive(source: ReturnType<typeof sourceProject>) {
@@ -227,14 +235,13 @@ describe("project file identity and active-work guards", () => {
     expect(mocks.copyProject).not.toHaveBeenCalled()
     expect(mocks.close).not.toHaveBeenCalled()
   })
-  it("blocks project replacement and downloads while manual AI review is ready or applying", async () => {
+  it("blocks downloads while manual AI review is ready or applying and allows tab navigation", async () => {
     const { controller } = await ready()
     for (const status of ["ready", "applying"]) {
       mocks.review.mockReturnValue({ status })
       expect(controller.getProjectActionBlock()).toBe("automation-busy")
       expect(await controller.exportActiveProjectBackup()).toMatchObject({ ok: false })
-      expect(await controller.createNewLocalProject()).toMatchObject({ ok: false })
-      expect(await controller.activateLocalProject(id)).toMatchObject({ ok: false })
+      expect(await controller.activateProjectTab(id)).toEqual({ ok: true })
     }
     expect(mocks.close).not.toHaveBeenCalled()
     expect(mocks.exportProject).not.toHaveBeenCalled()

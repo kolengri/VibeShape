@@ -7,6 +7,7 @@ import {
 } from "@vibeshape/structural-optimization/client"
 import { encodeStructuralStl } from "@vibeshape/structural-optimization/mesh"
 import type { LightweightingSource } from "../features/lightweighting/lightweighting-model"
+import { automationReviews } from "./automation-review-controller"
 import type { ImportSessionConfiguration } from "./import-upload-session"
 import { createBrowserLightweightingSnapshotSession } from "./lightweighting-snapshot-session"
 
@@ -15,8 +16,9 @@ export function createBrowserLightweightingAutomationSession(
   configuration: Omit<ImportSessionConfiguration, "inspect" | "review"> & {
     readSource: (partId: string) => LightweightingSource | null
   },
+  reviews = automationReviews,
 ) {
-  const snapshots = createBrowserLightweightingSnapshotSession(configuration)
+  const snapshots = createBrowserLightweightingSnapshotSession(configuration, reviews)
   const coordinator = createLightweightingProposalCoordinator({
     describeFailure(error) {
       return error instanceof StructuralOptimizationError

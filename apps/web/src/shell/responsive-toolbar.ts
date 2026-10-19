@@ -14,11 +14,12 @@ const initialFit: ToolbarFit = { compact: false, inline: [] }
 
 function groupWidth(group: ToolbarFitGroup, selected: ReadonlySet<string>, sizes: FitSizes) {
   const count = group.commands.filter((id) => selected.has(id)).length
-  const menu = count < group.commands.length
+  const remaining = group.commands.length - count
+  const menu = remaining > 0
   const items = count + Number(menu)
   return (
     count * sizes.icon +
-    (menu ? (sizes.menus.get(group.id) ?? 0) : 0) +
+    (menu ? (remaining === 1 ? sizes.icon : (sizes.menus.get(group.id) ?? 0)) : 0) +
     Math.max(0, items - 1) * sizes.gap
   )
 }

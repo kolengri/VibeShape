@@ -9,6 +9,7 @@ import type {
   DraftReviewInput,
 } from "@vibeshape/automation-host/host"
 import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surface-texture-proposal-contract"
+import type { AutomationDraftViewport } from "./automation-draft-viewport"
 import type { ImportReviewInput } from "./import-upload-session"
 import type { PlanarImportReviewInput } from "./planar-import-upload-session"
 
@@ -41,6 +42,7 @@ export type AutomationReviewState = Readonly<{
   input: AutomationReviewInput
   status: "ready" | "applying" | "error"
   diagnostic: string | null
+  draftViewport?: AutomationDraftViewport | null
 }>
 
 type PendingReview = {
@@ -79,11 +81,15 @@ export function createAutomationReviewController() {
     if (!pending || pending.owner !== owner) return
     settle(pending, "cancelled")
     pending.finish()
-    if (state) publish({ ...state, status: "error", diagnostic })
+    if (state) publish({ ...state, status: "error", diagnostic, draftViewport: null })
     pending = null
   }
 
-  function request(owner: symbol, input: AutomationReviewInput): Promise<Decision> {
+  function request(
+    owner: symbol,
+    input: AutomationReviewInput,
+    draftViewport: AutomationDraftViewport | null = null,
+  ): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
     const expiresIn = hasReviewDeadline(input) ? Date.parse(expiresAt(input)) - Date.now() : null
     if (expiresIn !== null && (!Number.isFinite(expiresIn) || expiresIn <= 0))
@@ -105,7 +111,13 @@ export function createAutomationReviewController() {
           expiresIn === null ? null : setTimeout(() => cancel(owner, "draft-expired"), expiresIn),
       }
       pending = record
-      publish({ id, input: structuredClone(input), status: "ready", diagnostic: null })
+      publish({
+        id,
+        input: structuredClone(input),
+        status: "ready",
+        diagnostic: null,
+        draftViewport,
+      })
     })
   }
 
@@ -136,7 +148,13 @@ export function createAutomationReviewController() {
     pending.finish()
     pending = null
     if (result.ok) publish(null)
-    else if (state) publish({ ...state, status: "error", diagnostic: result.diagnostic.code })
+    else if (state)
+      publish({
+        ...state,
+        status: "error",
+        diagnostic: result.diagnostic.code,
+        draftViewport: null,
+      })
   }
 
   return {
@@ -144,6 +162,10 @@ export function createAutomationReviewController() {
     decide,
     cancel,
     complete,
+    clearDraftViewport(owner: symbol) {
+      if (pending?.owner === owner && state?.draftViewport)
+        publish({ ...state, draftViewport: null })
+    },
     dismiss(id: string) {
       if (state?.id === id && state.status === "error") publish(null)
     },

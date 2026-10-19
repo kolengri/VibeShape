@@ -90,6 +90,7 @@ describe("direct Chat Completions transport", () => {
     expect(body.tools.map((tool: { function: { name: string } }) => tool.function.name)).toEqual([
       "discover_cad_tools",
       "call_cad_tool",
+      "ask_user_question",
     ])
     expect(body).toMatchObject({
       model: "user-model",

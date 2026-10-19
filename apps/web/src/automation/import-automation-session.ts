@@ -8,6 +8,7 @@ import { createImportUploadSession, type ImportSessionConfiguration } from "./im
 /** Native inspection and its manual review belong to the captured paired session. */
 export function createImportAutomationSession(
   configuration: Omit<ImportSessionConfiguration, "inspect" | "review">,
+  reviews = automationReviews,
 ) {
   const owner = Symbol("browser-import-review")
   let worker: ReturnType<typeof createDocumentWorkerSession> | null = null
@@ -31,13 +32,13 @@ export function createImportAutomationSession(
         if (worker === current) worker = null
       }
     },
-    review: (input) => automationReviews.request(owner, input),
+    review: (input) => reviews.request(owner, input),
   })
   function cancel(reason?: AutomationHostDiagnosticCode) {
     uploads.cancel()
     worker?.terminate()
     worker = null
-    if (!uploads.isPersisting()) automationReviews.cancel(owner, reason)
+    if (!uploads.isPersisting()) reviews.cancel(owner, reason)
   }
   return {
     async execute(actor: unknown, operation: LocalImportOperation, signal?: AbortSignal) {
@@ -46,7 +47,7 @@ export function createImportAutomationSession(
       try {
         const result = await uploads.execute(actor, operation, signal)
         if (operation.tool === "commit_import_upload")
-          automationReviews.complete(
+          reviews.complete(
             owner,
             result.ok
               ? result

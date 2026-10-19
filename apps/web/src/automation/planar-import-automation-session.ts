@@ -10,6 +10,7 @@ import {
 /** Planar inspection and its manual review belong to the captured paired session. */
 export function createPlanarImportAutomationSession(
   configuration: Omit<PlanarImportSessionConfiguration, "inspect" | "review">,
+  reviews = automationReviews,
 ) {
   const owner = Symbol("browser-planar-import-review")
   let worker: AbortController | null = null
@@ -26,13 +27,13 @@ export function createPlanarImportAutomationSession(
         if (worker === current) worker = null
       }
     },
-    review: (input) => automationReviews.request(owner, input),
+    review: (input) => reviews.request(owner, input),
   })
   function cancel(reason?: AutomationHostDiagnosticCode) {
     uploads.cancel()
     worker?.abort()
     worker = null
-    if (!uploads.isPersisting()) automationReviews.cancel(owner, reason)
+    if (!uploads.isPersisting()) reviews.cancel(owner, reason)
   }
   return {
     async execute(actor: unknown, operation: LocalPlanarImportOperation, signal?: AbortSignal) {
@@ -41,7 +42,7 @@ export function createPlanarImportAutomationSession(
       try {
         const result = await uploads.execute(actor, operation, signal)
         if (operation.tool === "commit_planar_import_upload")
-          automationReviews.complete(
+          reviews.complete(
             owner,
             result.ok
               ? result

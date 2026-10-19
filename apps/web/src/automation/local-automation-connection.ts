@@ -8,13 +8,16 @@ import {
 } from "@vibeshape/automation-api/local-session"
 import { localFailure, localToolOutputs } from "@vibeshape/automation-api/local-tools"
 import { z } from "zod"
-import { createActiveDocumentAutomationSession } from "../document/document-controller"
+import { createActiveDocumentAutomationSession as createVisibleDocumentAutomationSession } from "../document/document-controller"
 import { automationReviews } from "./automation-review-controller"
-import { LocalAutomationTransportError, localAutomationRequest } from "./local-automation-http"
+import {
+  LocalAutomationTransportError,
+  localAutomationRequest as visibleAutomationRequest,
+} from "./local-automation-http"
 import { createLocalToolExecutor } from "./local-tool-executor"
 import { createProjectToolPort } from "./project-tool-port"
 
-type Handle = Extract<ReturnType<typeof createActiveDocumentAutomationSession>, { ok: true }>
+type Handle = Extract<ReturnType<typeof createVisibleDocumentAutomationSession>, { ok: true }>
 type Identity = ReturnType<Handle["readIdentity"]>
 type Snapshot = Readonly<{
   available: boolean
@@ -22,6 +25,7 @@ type Snapshot = Readonly<{
   recovering: boolean
   autoApply: boolean
   projectManagement: boolean
+  projectBound?: boolean
   busy: boolean
   client: LocalConnection["client"] | null
   error: boolean
@@ -48,27 +52,29 @@ const preferenceSchema = z
     autoApply: z.boolean(),
   })
   .strict()
-function readPreference() {
+function savedReadPreference(key = preferenceKey) {
   try {
-    const value = preferenceSchema.safeParse(
-      JSON.parse(window.localStorage.getItem(preferenceKey) ?? "null"),
-    )
+    const value = preferenceSchema.safeParse(JSON.parse(window.localStorage.getItem(key) ?? "null"))
     return value.success ? value.data : null
   } catch {
     return null
   }
 }
-function writePreference(client: LocalConnection["client"], autoApply: boolean) {
+function savedWritePreference(
+  client: LocalConnection["client"],
+  autoApply: boolean,
+  key = preferenceKey,
+) {
   try {
-    window.localStorage.setItem(preferenceKey, JSON.stringify({ client, autoApply }))
+    window.localStorage.setItem(key, JSON.stringify({ client, autoApply }))
     return true
   } catch {
     return false
   }
 }
-function clearPreference() {
+function savedClearPreference(key = preferenceKey) {
   try {
-    window.localStorage.removeItem(preferenceKey)
+    window.localStorage.removeItem(key)
   } catch {
     /* Storage can be unavailable. */
   }
@@ -87,9 +93,9 @@ const resumeSchema = z
     autoApply: z.boolean().default(false),
   })
   .strict()
-function readResume() {
+function savedReadResume(key = resumeKey) {
   try {
-    const value = resumeSchema.safeParse(JSON.parse(sessionStorage.getItem(resumeKey) ?? "null"))
+    const value = resumeSchema.safeParse(JSON.parse(sessionStorage.getItem(key) ?? "null"))
     return value.success &&
       Math.min(value.data.expiresAt, value.data.resumeUntil ?? value.data.expiresAt) > Date.now()
       ? value.data
@@ -98,9 +104,9 @@ function readResume() {
     return null
   }
 }
-function clearResume() {
+function savedClearResume(key = resumeKey) {
   try {
-    sessionStorage.removeItem(resumeKey)
+    sessionStorage.removeItem(key)
   } catch {
     /* Storage can be unavailable. */
   }
@@ -112,13 +118,36 @@ function requireSessionCredential(response: { status: number }) {
 }
 const acknowledgement = z.object({ ok: z.literal(true) }).strict()
 
-export function createLocalAutomationConnection() {
+export function createLocalAutomationConnection(
+  options: {
+    projectId?: string
+    createDocumentSession?: typeof createVisibleDocumentAutomationSession
+    reviews?: typeof automationReviews
+  } = {},
+) {
+  const reviews = options.reviews ?? automationReviews
+  const createActiveDocumentAutomationSession =
+    options.createDocumentSession ?? createVisibleDocumentAutomationSession
+  const scopedPreferenceKey = preferenceKey
+  const scopedResumeKey = options.projectId ? `${resumeKey}:${options.projectId}` : resumeKey
+  const readPreference = () => savedReadPreference(scopedPreferenceKey)
+  const writePreference = (client: LocalConnection["client"], autoApply: boolean) =>
+    savedWritePreference(client, autoApply, scopedPreferenceKey)
+  const clearPreference = () => savedClearPreference(scopedPreferenceKey)
+  const readResume = () => savedReadResume(scopedResumeKey)
+  const clearResume = () => savedClearResume(scopedResumeKey)
+  const localAutomationRequest: typeof visibleAutomationRequest = options.projectId
+    ? (path, body, token, keepalive) =>
+        visibleAutomationRequest(path, body, token, keepalive, options.projectId)
+    : visibleAutomationRequest
+
   let snapshot: Snapshot = {
     available: false,
     connected: false,
     recovering: false,
     autoApply: false,
     projectManagement: false,
+    ...(options.projectId ? { projectBound: true } : {}),
     busy: false,
     client: null,
     error: false,
@@ -146,7 +175,7 @@ export function createLocalAutomationConnection() {
     if (!info) return false
     try {
       sessionStorage.setItem(
-        resumeKey,
+        scopedResumeKey,
         JSON.stringify({
           documentId: info.id,
           token: current.credential.token,
@@ -442,7 +471,7 @@ export function createLocalAutomationConnection() {
       "update_surface_texture",
       "remove_surface_texture",
     ].includes(active.work.operation.tool)
-      ? automationReviews.getSnapshot()
+      ? reviews.getSnapshot()
       : null
     const stage =
       review?.status === "applying"
@@ -530,6 +559,7 @@ export function createLocalAutomationConnection() {
   function publishConnection(current: Pair, restoreAutoApply: boolean) {
     const autoApply = restoreAutoApply && current.handle.enableAutoApply(current.credential.actor)
     publish({
+      ...snapshot,
       available: true,
       connected: true,
       recovering: false,
@@ -744,17 +774,19 @@ export function createLocalAutomationConnection() {
     void status()
   }
   return {
+    disconnect,
     enable: () => enable(),
     validateDocumentScope,
     isProjectActionPending: () =>
       pair !== null && snapshot.projectManagement && isProjectChange(pair),
     setProjectManagement(enabled: boolean) {
+      if (options.projectId) return false
       const current = pair
       if (
         !current ||
         !snapshot.connected ||
         current.active ||
-        automationReviews.getSnapshot() ||
+        reviews.getSnapshot() ||
         !current.handle.readIdentity()
       )
         return false
@@ -780,12 +812,7 @@ export function createLocalAutomationConnection() {
     },
     disableAutoApply() {
       const current = pair
-      if (
-        !current ||
-        snapshot.busy ||
-        automationReviews.getSnapshot() ||
-        !current.handle.disableAutoApply()
-      )
+      if (!current || snapshot.busy || reviews.getSnapshot() || !current.handle.disableAutoApply())
         return false
       publish({ ...snapshot, autoApply: false })
       if (!writePreference(current.credential.client, false) || !saveResume(current)) void disable()

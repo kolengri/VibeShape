@@ -12,7 +12,7 @@ import { Check, ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type RefObject, useEffect, useId, useState } from "react"
+import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import {
   type EditorCommandId,
   type EditorCommandSketchFamilyId,
@@ -31,11 +31,13 @@ import { useResponsiveToolbar } from "./responsive-toolbar"
 
 function ToolbarAction({
   buttonClassName,
+  buttonRef,
   command,
   disabledReason,
   label,
 }: {
   buttonClassName?: string
+  buttonRef?: RefObject<HTMLButtonElement | null>
   command: ResolvedEditorCommand
   disabledReason: string | null
   label: string
@@ -54,6 +56,7 @@ function ToolbarAction({
           <TooltipTrigger asChild>
             <ToolbarButton asChild>
               <Button
+                ref={buttonRef}
                 type="button"
                 size="icon-sm"
                 variant={command.active ? "secondary" : "ghost"}
@@ -198,6 +201,14 @@ function ToolbarCommandFamilyAction({
     commands.find(({ descriptor }) => descriptor.sketchPresentation?.familyDefault) ??
     commands[0]
   if (!primaryCommand) return null
+  if (commands.length === 1)
+    return (
+      <ToolbarAction
+        command={primaryCommand}
+        disabledReason={disabledReason(primaryCommand)}
+        label={label(primaryCommand)}
+      />
+    )
   return (
     <span className="inline-flex">
       <ToolbarAction
@@ -300,15 +311,21 @@ function ToolbarCommandGroup({
   )
 }
 
-function ToolbarCommandMenu({
-  commands,
-  getDisabledReason,
-  getLabel,
-  label,
-  showLabel = false,
-  focusId,
-  onOpenChange,
-}: {
+function useMenuTriggerFocus(direct: boolean) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const restoreFocus = useRef(false)
+  useLayoutEffect(() => {
+    if (restoreFocus.current) triggerRef.current?.focus()
+    restoreFocus.current = false
+    return () => {
+      restoreFocus.current =
+        triggerRef.current !== null && triggerRef.current === document.activeElement
+    }
+  }, [direct])
+  return triggerRef
+}
+
+type ToolbarCommandMenuProps = {
   commands: readonly ResolvedEditorCommand[]
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
@@ -316,14 +333,45 @@ function ToolbarCommandMenu({
   showLabel?: boolean
   focusId?: string
   onOpenChange?: (open: boolean) => void
-}) {
+}
+
+function ToolbarCommandMenu(props: ToolbarCommandMenuProps) {
+  const direct = props.commands.length === 1
+  const triggerRef = useMenuTriggerFocus(direct)
+  useEffect(() => {
+    if (props.commands.length < 2) props.onOpenChange?.(false)
+  }, [props.commands.length, props.onOpenChange])
+  const first = props.commands[0]
+  if (!first) return null
+  if (direct)
+    return (
+      <ToolbarAction
+        buttonRef={triggerRef}
+        command={first}
+        disabledReason={props.getDisabledReason(first)}
+        label={props.getLabel(first)}
+      />
+    )
+  return <ToolbarCommandDropdown {...props} triggerRef={triggerRef} />
+}
+
+function ToolbarCommandDropdown({
+  triggerRef,
+  commands,
+  getDisabledReason,
+  getLabel,
+  label,
+  showLabel = false,
+  focusId,
+  onOpenChange,
+}: ToolbarCommandMenuProps & { triggerRef: RefObject<HTMLButtonElement | null> }) {
   const menuId = useId()
   const hasActiveCommand = commands.some(({ active }) => active)
-  if (commands.length === 0) return null
   const trigger = (
     <ToolbarButton asChild>
       <DropdownMenuTrigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           size={showLabel ? "sm" : "icon-sm"}
           variant={hasActiveCommand ? "secondary" : "ghost"}
@@ -457,10 +505,19 @@ function ModelToolbarProbe({
         <span
           key={group.id}
           data-fit-menu={group.id}
-          className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
+          className={cn(
+            buttonVariants({
+              size: group.commands.length === 1 ? "icon-sm" : "sm",
+              variant: "ghost",
+            }),
+          )}
         >
-          {group.label}
-          <ChevronDown aria-hidden="true" />
+          {group.commands.length > 1 && (
+            <>
+              {group.label}
+              <ChevronDown aria-hidden="true" />
+            </>
+          )}
         </span>
       ))}
     </div>

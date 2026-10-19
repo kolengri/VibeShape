@@ -8,8 +8,13 @@ import {
   useState,
   useSyncExternalStore,
 } from "react"
+import { getNativeAssistant } from "../assistant/native-assistant-bridge"
 import { automationReviews } from "../automation/automation-review-controller"
 import { createLocalAutomationConnection } from "../automation/local-automation-connection"
+import {
+  getNativeProjectAutomationConnection,
+  startNativeProjectAutomationConnection,
+} from "../automation/native-project-automation"
 import { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
 import {
   type DocumentControllerState,
@@ -40,8 +45,33 @@ export function AutomationStatus({ controller }: { controller: DocumentControlle
   )
 }
 
+function useNativeAutomationConnection(
+  controller: DocumentControllerState,
+  externalConnection: ReturnType<typeof createLocalAutomationConnection>,
+  external: ReturnType<ReturnType<typeof createLocalAutomationConnection>["getSnapshot"]>,
+) {
+  const projectId = getNativeAssistant() ? controller.report?.snapshot.id : undefined
+  const nativeConnection = useMemo(
+    () => (projectId ? getNativeProjectAutomationConnection(projectId) : null),
+    [projectId],
+  )
+  const candidate = nativeConnection ?? externalConnection
+  const native = useSyncExternalStore(
+    candidate.subscribe,
+    candidate.getSnapshot,
+    candidate.getSnapshot,
+  )
+  useEffect(() => {
+    if (projectId) startNativeProjectAutomationConnection(projectId)
+  }, [projectId])
+  const available = native.available || native.connected || native.recovering
+  return nativeConnection && available
+    ? { connection: nativeConnection, current: native }
+    : { connection: externalConnection, current: external }
+}
+
 function useCreateAutomationConnections(controller: DocumentControllerState) {
-  const [connection] = useState(createLocalAutomationConnection)
+  const [externalConnection] = useState(() => createLocalAutomationConnection())
   const [remoteConnection] = useState(() =>
     createRemoteAutomationConnection(import.meta.env.VITE_REMOTE_MCP_URL),
   )
@@ -50,10 +80,15 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     remoteConnection.getSnapshot,
     remoteConnection.getSnapshot,
   )
-  const current = useSyncExternalStore(
-    connection.subscribe,
-    connection.getSnapshot,
-    connection.getSnapshot,
+  const external = useSyncExternalStore(
+    externalConnection.subscribe,
+    externalConnection.getSnapshot,
+    externalConnection.getSnapshot,
+  )
+  const { connection, current } = useNativeAutomationConnection(
+    controller,
+    externalConnection,
+    external,
   )
   useSyncExternalStore(
     automationReviews.subscribe,
@@ -61,10 +96,10 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     automationReviews.getSnapshot,
   )
   useEffect(() => {
-    connection.start()
-    void connection.status()
-    return connection.dispose
-  }, [connection])
+    externalConnection.start()
+    void externalConnection.status()
+    return externalConnection.dispose
+  }, [externalConnection])
   useEffect(() => {
     remoteConnection.start()
     return remoteConnection.dispose
@@ -74,8 +109,12 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     remoteConnection.validateDocumentScope()
   }, [connection, remoteConnection, controller.status, controller.report?.snapshot.id])
   const stopAll = useCallback(async () => {
-    await Promise.all([connection.disable(), remoteConnection.disable()])
-  }, [connection, remoteConnection])
+    await Promise.all([
+      connection.disable(),
+      ...(connection === externalConnection ? [] : [externalConnection.disable()]),
+      remoteConnection.disable(),
+    ])
+  }, [connection, externalConnection, remoteConnection])
   const controls = useMemo(
     () => ({
       connection: { ...connection, disable: stopAll },

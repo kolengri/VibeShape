@@ -19,6 +19,7 @@ type BrowserTextureConfiguration = Omit<
 
 export function createBrowserSurfaceTextureAutomationSession(
   configuration: BrowserTextureConfiguration,
+  reviews = automationReviews,
 ) {
   const owner = Symbol("browser-surface-texture-review")
   let closed = false
@@ -28,12 +29,12 @@ export function createBrowserSurfaceTextureAutomationSession(
     ...configuration,
     isActive: () => !closed && configuration.isActive(),
     preview: (input) => configuration.preview(input, cancellation?.signal ?? AbortSignal.abort()),
-    review: (input) => automationReviews.request(owner, input),
+    review: (input) => reviews.request(owner, input),
   })
   function cancel(reason?: AutomationHostDiagnosticCode) {
     coordinator.cancel()
     cancellation?.abort()
-    if (!coordinator.isPersisting()) automationReviews.cancel(owner, reason)
+    if (!coordinator.isPersisting()) reviews.cancel(owner, reason)
   }
   return {
     async execute(
@@ -49,7 +50,7 @@ export function createBrowserSurfaceTextureAutomationSession(
       try {
         if (signal?.aborted) onAbort()
         const result = await coordinator.execute(actor, operation, signal)
-        if (operation.tool !== "model_surface_textures") automationReviews.complete(owner, result)
+        if (operation.tool !== "model_surface_textures") reviews.complete(owner, result)
         return result
       } finally {
         busy = false
@@ -63,7 +64,7 @@ export function createBrowserSurfaceTextureAutomationSession(
       closed = true
       coordinator.dispose()
       cancellation?.abort()
-      if (!coordinator.isPersisting()) automationReviews.cancel(owner)
+      if (!coordinator.isPersisting()) reviews.cancel(owner)
     },
   }
 }

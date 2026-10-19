@@ -1,7 +1,6 @@
 import "../../../../tests/unit/support/dom"
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
-import type { PersistentDocumentSessionOpenResult } from "@vibeshape/application/persistent-document-session"
 import type { DocumentSnapshot } from "@vibeshape/domain"
 import { vi } from "../../../../tests/unit/support/bun-test"
 
@@ -51,6 +50,10 @@ mock.module("../automation/automation-review-controller", () => {
   return {
     ...actual,
     automationReviews: { ...actual.automationReviews, getSnapshot: ports.review },
+    getActiveAutomationReviews: () => ({
+      ...actual.getActiveAutomationReviews(),
+      getSnapshot: ports.review,
+    }),
   }
 })
 mock.module("../automation/document-automation-session", () => ({
@@ -61,13 +64,18 @@ mock.module("../automation/history-automation-session", () => ({
 }))
 
 const { cleanup, renderHook, waitFor } = await import("@testing-library/react")
-const { boxFeatureType, createLengthQuantity, documentSnapshotSchema, featureRecordSchema } =
-  await import("@vibeshape/domain")
+const {
+  boxFeatureType,
+  createLengthQuantity,
+  documentIdSchema,
+  documentSnapshotSchema,
+  featureRecordSchema,
+} = await import("@vibeshape/domain")
 const { applyDocumentCommand, commandActorSchema } = await import("@vibeshape/domain/commands")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 
-const initialId = "0195b5ac-b250-7a2c-8c33-000000000101"
-const targetId = "0195b5ac-b250-7a2c-8c33-000000000102"
+const initialId = documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000101")
+const targetId = documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000102")
 const featureId = "0195b5ac-b250-7a2c-8c33-000000000103"
 const storageKey = "vibeshape-active-document-id"
 
@@ -143,7 +151,7 @@ function deferred<T>() {
 let moduleRevision = 0
 beforeEach(() => {
   moduleRevision += 1
-  vi.clearAllMocks()
+  for (const port of Object.values(ports)) port.mockReset()
   ports.initializeRepository.mockImplementation(() => {})
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.stubGlobal("sessionStorage", createTestBrowserStorage())
@@ -320,7 +328,7 @@ describe("in-place automation project management", () => {
     expect(first).toMatchObject({ ok: true, value: { name: "Project A", revision: 1 } })
     if (!first.ok) throw new Error("Expected project A.")
     expect(localStorage.getItem(storageKey)).toBe(first.value.projectId)
-    expect(source.session.close).toHaveBeenCalledTimes(1)
+    expect(source.session.close).not.toHaveBeenCalled()
     expect(oldHandle.readIdentity()).toBeNull()
     expect(ports.disposeAutomation).toHaveBeenCalledTimes(1)
     expect(await controller.addFeature(1, box)).toMatchObject({ ok: true })
@@ -458,7 +466,7 @@ describe("in-place automation project management", () => {
       report: { mode: "read-only", snapshot: { id: targetId } },
       diagnostic: { code: "write-access-unavailable", sourceCode: "lease-held" },
     })
-    expect(source.session.close).toHaveBeenCalledTimes(1)
+    expect(source.session.close).not.toHaveBeenCalled()
     expect(viewingTarget.session.close).not.toHaveBeenCalled()
     expect(localStorage.getItem(storageKey)).toBe(targetId)
     expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({
@@ -466,7 +474,7 @@ describe("in-place automation project management", () => {
       diagnostic: { code: "lease-held", retryable: true },
     })
     expect(await controller.activateLocalProject(initialId, expected())).toEqual({ ok: true })
-    expect(viewingTarget.session.close).toHaveBeenCalledTimes(1)
+    expect(viewingTarget.session.close).not.toHaveBeenCalled()
     expect(controller.getDocumentControllerState().report).toMatchObject({
       mode: "read-write",
       snapshot: { id: initialId },
@@ -474,10 +482,15 @@ describe("in-place automation project management", () => {
     expect(localStorage.getItem(storageKey)).toBe(initialId)
   })
 
-  it("reopens the saved source when close fails and disposes its old automation handle", async () => {
+  it("retains source authority on switch and invalidates it on an explicit failed close", async () => {
     const { controller, source, expected } = await ready()
-    const oldHandle = controller.createActiveDocumentAutomationSession()
-    if (!oldHandle.ok) throw new Error("Expected an initial automation handle.")
+    const runtime = controller.getProjectRuntime(initialId)
+    if (!runtime) throw new Error("Expected the retained source runtime.")
+    const handle = runtime.createActiveDocumentAutomationSession()
+    if (!handle.ok) throw new Error("Expected scoped automation.")
+    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({ ok: true })
+    expect(handle.readIdentity()?.id).toBe(initialId)
+    expect(source.session.close).not.toHaveBeenCalled()
     source.session.close.mockResolvedValueOnce({
       ok: false,
       diagnostic: {
@@ -487,107 +500,77 @@ describe("in-place automation project management", () => {
         sourceCode: "storage-unavailable",
       },
     })
-    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({
+    expect(await controller.closeProjectRuntime(initialId)).toMatchObject({
       ok: false,
       diagnostic: { code: "close-failed", retryable: true },
     })
-    expect(localStorage.getItem(storageKey)).toBe(initialId)
-    expect(controller.getDocumentControllerState()).toMatchObject({
-      status: "ready",
-      saveStatus: "saved",
-      report: { snapshot: { id: initialId } },
-    })
+    expect(handle.readIdentity()).toBeNull()
+    expect(controller.getProjectRuntime(initialId)).toBeUndefined()
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(targetId)
+    expect(await controller.activateLocalProject(initialId)).toEqual({ ok: true })
     expect(ports.open.mock.lastCall?.[1].documentId).toBe(initialId)
-    expect(oldHandle.readIdentity()).toBeNull()
-    const replacement = controller.createActiveDocumentAutomationSession()
-    if (!replacement.ok) throw new Error("Expected a recovered automation handle.")
-    expect(replacement.readIdentity()?.id).toBe<unknown>(initialId)
-    replacement.dispose()
   })
 
-  it("cancels before activation and restores the source after cancellation during close", async () => {
+  it("cancels before activation and disposes a prepared destination without touching the source", async () => {
     const { controller, source, expected } = await ready()
     const cancelled = new AbortController()
     cancelled.abort()
     expect(
       await controller.createAutomationProject("Cancelled", expected(), cancelled.signal),
-    ).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { code: "cancelled" },
+    })
     expect(ports.create).not.toHaveBeenCalled()
     const target = openResult(snapshot(targetId))
     const preparation = deferred<ReturnType<typeof openResult>>()
     ports.open.mockReturnValueOnce(preparation.promise)
-    const duringPreparation = new AbortController()
-    const pending = controller.openAutomationProject(targetId, expected(), duringPreparation.signal)
+    const cancellation = new AbortController()
+    const pending = controller.openAutomationProject(targetId, expected(), cancellation.signal)
     await waitFor(() => expect(ports.open).toHaveBeenCalledTimes(2))
-    duringPreparation.abort()
+    cancellation.abort()
     preparation.resolve(target)
     expect(await pending).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
     expect(target.session.close).toHaveBeenCalledTimes(1)
+    expect(controller.getProjectRuntime(targetId)).toBeUndefined()
     expect(source.session.close).not.toHaveBeenCalled()
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
+    expect(localStorage.getItem(storageKey)).toBe(initialId)
+    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({ ok: true })
+  })
+
+  it("refuses activation while a retained project is closing", async () => {
+    const { controller, source, expected } = await ready()
+    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({ ok: true })
     const closing = deferred<{ ok: true; value: undefined }>()
     source.session.close.mockReturnValueOnce(closing.promise)
-    const duringClose = new AbortController()
-    const switching = controller.openAutomationProject(targetId, expected(), duringClose.signal)
+    const pending = controller.closeProjectRuntime(initialId)
     await waitFor(() => expect(source.session.close).toHaveBeenCalledTimes(1))
-    duringClose.abort()
+    expect(await controller.activateLocalProject(initialId)).toMatchObject({ ok: false })
+    expect(await controller.openAutomationProject(initialId, expected())).toMatchObject({
+      ok: false,
+    })
     closing.resolve({ ok: true, value: undefined })
-    expect(await switching).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
-    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(initialId)
-    expect(localStorage.getItem(storageKey)).toBe(initialId)
+    expect(await pending).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(targetId)
+    expect(controller.getProjectRuntime(initialId)).toBeUndefined()
   })
 
-  it("reports recovery failure without claiming the terminated source is writable", async () => {
+  it("revokes visible-project automation even if an adapter disposal subscriber throws", async () => {
     const { controller, source, expected } = await ready()
-    const target = openResult(snapshot(targetId))
-    ports.open.mockResolvedValueOnce(target)
-    source.session.close.mockResolvedValueOnce({
-      ok: false,
-      diagnostic: {
-        code: "close-failed",
-        message: "Close failed.",
-        retryable: true,
-        sourceCode: null,
-      },
-    })
-    ports.open.mockResolvedValueOnce({
-      ok: false,
-      diagnostic: {
-        code: "persistence-failed",
-        message: "Recovery unavailable.",
-        retryable: true,
-        sourceCode: "storage-unavailable",
-      },
-    } satisfies PersistentDocumentSessionOpenResult)
-    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({
-      ok: false,
-      diagnostic: { code: "project-recovery-failed", retryable: true },
-    })
-    expect(controller.getDocumentControllerState().status).toBe("error")
-    expect(controller.createActiveDocumentAutomationSession()).toMatchObject({ ok: false })
-    expect(localStorage.getItem(storageKey)).toBe(initialId)
-  })
-
-  it("restores source identity and selection when an old automation disposal subscriber throws", async () => {
-    const { controller, expected } = await ready()
-    const target = openResult(snapshot(targetId))
-    ports.open.mockResolvedValueOnce(target)
     const oldHandle = controller.createActiveDocumentAutomationSession()
-    if (!oldHandle.ok) throw new Error("Expected an initial automation handle.")
+    if (!oldHandle.ok) throw new Error("Expected initial automation.")
     ports.disposeAutomation.mockImplementationOnce(() => {
       throw new Error("Disposal failed.")
     })
-    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({
-      ok: false,
-      diagnostic: { code: "persistence-failed" },
-    })
-    expect(target.session.close).toHaveBeenCalledTimes(1)
-    expect(controller.getDocumentControllerState()).toMatchObject({
-      status: "ready",
-      saveStatus: "saved",
-      report: { snapshot: { id: initialId } },
-    })
-    expect(localStorage.getItem(storageKey)).toBe(initialId)
+    expect(await controller.openAutomationProject(targetId, expected())).toMatchObject({ ok: true })
     expect(oldHandle.readIdentity()).toBeNull()
+    expect(source.session.close).not.toHaveBeenCalled()
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(targetId)
+    expect(localStorage.getItem(storageKey)).toBe(targetId)
+    const replacement = controller.createActiveDocumentAutomationSession()
+    if (!replacement.ok) throw new Error("Expected destination automation.")
+    expect(replacement.readIdentity()?.id).toBe(targetId)
   })
 })
 
@@ -680,52 +663,42 @@ describe("sessionless project library", () => {
     expect(await controller.activateLocalProject(targetId)).toEqual({ ok: true })
     expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(targetId)
   })
-  it("opens an explicit project link while preserving guards before returning to the library", async () => {
+  it("preserves human edit guards and retains project authority while the library is visible", async () => {
     const { controller, source, expected } = await ready()
-    expect(ports.open).toHaveBeenCalledTimes(1)
-    expect(ports.create).not.toHaveBeenCalled()
     const captured = expected()
-    const factory = controller.createActiveDocumentAutomationSession()
-    if (!factory.ok) throw new Error("Expected active automation.")
+    const runtime = controller.getProjectRuntime(initialId)
+    if (!runtime) throw new Error("Expected retained project.")
+    const factory = runtime.createActiveDocumentAutomationSession()
+    if (!factory.ok) throw new Error("Expected scoped automation.")
     const release = controller.registerProjectActionGuard(() => "editor-draft")
     expect(await controller.showProjectLibrary()).toMatchObject({
       ok: false,
       diagnostic: { code: "project-action-blocked" },
     })
     release()
-    ports.review.mockReturnValue({ status: "ready" })
-    expect(await controller.showProjectLibrary()).toMatchObject({ ok: false })
-    expect(source.session.close).not.toHaveBeenCalled()
-    expect(ports.disposeAutomation).not.toHaveBeenCalled()
-    ports.review.mockReturnValue(null)
     const cancelled = new AbortController()
     cancelled.abort()
     expect(await controller.showProjectLibrary(cancelled.signal)).toMatchObject({
       ok: false,
       diagnostic: { code: "cancelled" },
     })
-    expect(source.session.close).not.toHaveBeenCalled()
-    const closing = deferred<{ ok: true; value: undefined }>()
-    source.session.close.mockReturnValueOnce(closing.promise)
-    const pending = controller.showProjectLibrary()
-    expect(controller.getDocumentControllerState().saveStatus).toBe("saving")
-    expect(await controller.showProjectLibrary()).toMatchObject({ ok: false })
-    expect(ports.disposeAutomation).not.toHaveBeenCalled()
-    closing.resolve({ ok: true, value: undefined })
-    expect(await pending).toEqual({ ok: true })
+    ports.review.mockReturnValue({ status: "ready" })
+    expect(await controller.showProjectLibrary()).toEqual({ ok: true })
     expect(controller.getDocumentControllerState()).toMatchObject({
       status: "library",
       report: null,
     })
-    expect(source.session.close).toHaveBeenCalledTimes(1)
-    expect(ports.disposeAutomation).toHaveBeenCalledTimes(1)
-    factory.dispose()
-    expect(ports.disposeAutomation).toHaveBeenCalledTimes(1)
-    expect(ports.create).not.toHaveBeenCalled()
+    expect(factory.readIdentity()?.id).toBe(initialId)
+    expect(source.session.close).not.toHaveBeenCalled()
+    expect(ports.disposeAutomation).not.toHaveBeenCalled()
     expect(await controller.activateLocalProject(targetId, captured)).toMatchObject({
       ok: false,
       diagnostic: { code: "stale-revision" },
     })
+    ports.review.mockReturnValue(null)
+    expect(await controller.activateLocalProject(initialId)).toEqual({ ok: true })
+    expect(factory.readIdentity()?.id).toBe(initialId)
+    expect(ports.open).toHaveBeenCalledTimes(1)
   })
   it("cancels a pending deep-link open from the library before publishing destination authority", async () => {
     const { controller } = await ready(snapshot(), true)
@@ -750,28 +723,8 @@ describe("sessionless project library", () => {
     expect(new URL(window.location.href).searchParams.has("project")).toBe(false)
   })
 
-  it("recovers the saved editor if close or URL clearing fails", async () => {
+  it("leaves the saved editor active if clearing the library URL fails", async () => {
     const { controller, source, projects } = await ready()
-    source.session.close.mockResolvedValueOnce({
-      ok: false,
-      diagnostic: {
-        code: "close-failed",
-        message: "Could not write clean marker.",
-        retryable: true,
-        sourceCode: "storage-unavailable",
-      },
-    })
-    expect(await controller.showProjectLibrary()).toMatchObject({
-      ok: false,
-      diagnostic: { code: "storage-unavailable" },
-    })
-    expect(controller.getDocumentControllerState()).toMatchObject({
-      status: "ready",
-      report: { snapshot: { id: initialId } },
-    })
-    const sourceAfterRecovery = ports.open.mock.results.at(-1)?.value
-    const opened = await sourceAfterRecovery
-    expect(opened.ok).toBe(true)
     const write = vi.spyOn(window.history, "pushState").mockImplementation(() => {
       throw new Error("History unavailable.")
     })
@@ -780,7 +733,8 @@ describe("sessionless project library", () => {
       diagnostic: { code: "project-url-unavailable" },
     })
     write.mockRestore()
-    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(initialId)
+    expect(source.session.close).not.toHaveBeenCalled()
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
     expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
     expect(projects.size).toBe(2)
     expect(ports.create).not.toHaveBeenCalled()

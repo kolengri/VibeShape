@@ -209,8 +209,9 @@ export const DatumPlaneIcon = cadIcon(
 )
 export const SketchIcon = cadIcon(
   <>
-    <path d="m2 18 5-10h9l-5 10H2Z" />
-    <path d="m10 13 9-10 3 3-9 10-4 1 1-4Zm7-8 3 3" fill="currentColor" fillOpacity="0.12" />
+    <path d="M12 5H4v15h15v-8" />
+    <path d="m9 15 1-4 9-9 3 3-9 9-4 1Z" fill="currentColor" fillOpacity="0.12" />
+    <path d="m17 4 3 3" />
   </>,
 )
 export const SketchLineIcon = cadIcon(

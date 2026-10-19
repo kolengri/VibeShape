@@ -135,6 +135,47 @@ function rebuiltResponse(
 }
 
 describe("feature preview worker lifetime", () => {
+  it("retains the last exact Placement pose while rebuilding and clears it when the draft is invalidated", async () => {
+    const response = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
+      { featureId: independentId, contentHash: hash("independent"), geometry: { mesh } },
+      { featureId: candidateId, contentHash: hash("moved"), geometry: { mesh } },
+    ])
+    let complete: ((value: DocumentWorkerResponse) => void) | undefined
+    const session = {
+      rebuild: vi
+        .fn()
+        .mockResolvedValueOnce(response)
+        .mockImplementation(
+          () =>
+            new Promise<DocumentWorkerResponse>((resolve) => {
+              complete = resolve
+            }),
+        ),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const geometry: readonly { featureId: string; contentHash: string }[] = []
+    const candidate = feature(candidateId)
+    const { result, rerender } = renderHook(
+      ({ value }: { value: FeatureRecord | null }) =>
+        useFeaturePreview(snapshot, value, geometry, true, null, true),
+      { initialProps: { value: candidate as FeatureRecord | null } },
+    )
+    await act(async () => {})
+    expect(result.current.status).toBe("ready")
+    const lastPose = result.current.meshes
+    expect(lastPose).toHaveLength(3)
+    rerender({ value: { ...candidate, parameters: { translationX: 20 } } })
+    expect(result.current.status).toBe("loading")
+    expect(result.current.meshes).toBe(lastPose)
+    expect(result.current.retained).toBe(true)
+    rerender({ value: null })
+    expect(result.current.status).toBe("idle")
+    expect(result.current.meshes).toHaveLength(0)
+    await act(async () => complete?.(response))
+    expect(result.current.status).toBe("idle")
+  })
   it("does not start kernel workers while untouched History forms debounce between items", () => {
     const response = rebuiltResponse([
       { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
@@ -150,6 +191,35 @@ describe("feature preview worker lifetime", () => {
       rerender({ candidate: null })
     }
     expect(createSession).not.toHaveBeenCalled()
+  })
+  it("does not retain geometry from another feature or committed revision", async () => {
+    const response = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
+      { featureId: independentId, contentHash: hash("independent"), geometry: { mesh } },
+      { featureId: candidateId, contentHash: hash("moved"), geometry: { mesh } },
+    ])
+    createSession.mockReturnValue({
+      rebuild: vi
+        .fn()
+        .mockResolvedValueOnce(response)
+        .mockImplementation(() => new Promise(() => {})),
+      terminate: vi.fn(),
+    })
+    const geometry: readonly { featureId: string; contentHash: string }[] = []
+    const candidate = feature(candidateId)
+    const { result, rerender } = renderHook(
+      ({ source, value }) => useFeaturePreview(source, value, geometry, true, null, true),
+      { initialProps: { source: snapshot, value: candidate } },
+    )
+    await act(async () => {})
+    expect(result.current.meshes).toHaveLength(3)
+    rerender({ source: snapshot, value: feature(datumId) })
+    expect(result.current.status).toBe("loading")
+    expect(result.current.meshes).toHaveLength(0)
+    expect(result.current.retained).toBeUndefined()
+    rerender({ source: { ...snapshot, revision: snapshot.revision + 1 }, value: candidate })
+    expect(result.current.meshes).toHaveLength(0)
+    expect(result.current.retained).toBeUndefined()
   })
   it("uses correlated committed geometry for untouched History edits and rebuilds actual changes", () => {
     const response = rebuiltResponse([

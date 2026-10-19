@@ -1,6 +1,6 @@
 import { createLocalAutomationActor } from "@vibeshape/automation-api/local-session"
 import { createLocalToolExecutor } from "../automation/local-tool-executor"
-import { createActiveDocumentAutomationSession } from "../document/document-controller"
+import { getProjectRuntime } from "../document/document-controller"
 import { createApiCadGateway } from "./api-cad-tools"
 import { ApiAssistantError } from "./api-errors"
 
@@ -11,8 +11,8 @@ export type BrowserToolSession = Readonly<{
 }>
 
 export function createBrowserToolSession(projectId: string): BrowserToolSession {
-  const session = createActiveDocumentAutomationSession()
-  if (!session.ok) throw new ApiAssistantError("tools-unavailable")
+  const session = getProjectRuntime(projectId)?.createActiveDocumentAutomationSession()
+  if (!session?.ok) throw new ApiAssistantError("tools-unavailable")
   if (session.documentId !== projectId) {
     session.dispose()
     throw new ApiAssistantError("stale-project")

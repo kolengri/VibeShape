@@ -24,15 +24,22 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await page.getByRole("textbox", { name: "Variable name" }).fill("edgeSize")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("1 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
+    const variables = page.getByRole("dialog", { name: "Variables", exact: true })
+    await variables
+      .locator('[data-slot="dialog-footer"]')
+      .getByRole("button", { name: "Done", exact: true })
+      .click()
+    await expect(variables).toHaveCount(0)
     await invokeModelCommand(page, "Primitives", "Box")
     const box = page.getByRole("form", { name: "Create box" })
     for (const name of ["Width", "Depth", "Height"]) {
       await box.getByRole("combobox", { name }).fill("20 mm")
     }
     await box.getByRole("button", { name: "Create box" }).click()
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await invokeModelCommand(page, "Modify", title)
     const form = page.getByRole("form", { name: `Create ${operation}` })
+    await form.getByRole("radio", { name: "All edges", exact: true }).check()
     const size = form.getByRole("combobox", { name: dimension, exact: true })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await size.fill("100 mm")
@@ -50,6 +57,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await form.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: `${title} 1`, exact: true })).toHaveCount(0)
     await invokeModelCommand(page, "Modify", title)
+    await form.getByRole("radio", { name: "All edges", exact: true }).check()
     await size.fill("#edgeSize")
     await form.getByRole("button", { name: `Create ${operation}` }).dblclick()
     const item = page.getByRole("treeitem", { name: `${title} 1`, exact: true })
@@ -72,17 +80,21 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(edit.getByRole("combobox", { name: "Target body", exact: true })).toContainText(
       "Box 1",
     )
-    await page
-      .locator("html")
-      .evaluate((element, dark) => element.classList.toggle("dark", dark), operation === "fillet")
+    await page.locator("html").evaluate((element, dark) => {
+      const root = element as unknown as {
+        classList: { toggle: (token: string, force: boolean) => boolean }
+      }
+      root.classList.toggle("dark", dark)
+    }, operation === "fillet")
     await expect(edit.getByRole("button", { name: `Update ${operation}` })).toBeEnabled()
     await expect(page.getByRole("button", { name: "Delete feature", exact: true })).toBeEnabled()
     await page.screenshot({ path: test.info().outputPath(`${operation}-editor.png`) })
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
     await openApplicationMenuItem(page, "Export geometry…")
     const dialog = page.getByRole("dialog", { name: "Export model" })
+    await dialog.getByRole("combobox", { name: "File format", exact: true }).selectOption("step")
     const downloadPromise = page.waitForEvent("download")
-    await dialog.getByRole("button", { name: /Export STEP/ }).click()
+    await dialog.getByRole("button", { name: "Save STEP file", exact: true }).click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toMatch(/\.step$/)
     expect(await download.failure()).toBeNull()

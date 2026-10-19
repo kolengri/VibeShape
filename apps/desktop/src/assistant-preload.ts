@@ -2,7 +2,6 @@ import {
   ASSISTANT_EVENT_CHANNEL,
   ASSISTANT_REQUEST_CHANNEL,
   type AssistantBridge,
-  type AssistantRequest,
   type AssistantResult,
   assistantEventSchema,
   assistantRequestSchema,
@@ -20,7 +19,7 @@ export function exposeAssistantBridge(
     ): unknown
   },
 ) {
-  async function invoke(request: AssistantRequest): Promise<AssistantResult> {
+  async function invoke(request: unknown): Promise<AssistantResult> {
     const parsed = assistantRequestSchema.safeParse(request)
     if (!parsed.success) return { ok: false, code: "invalid-request" }
     try {
@@ -41,6 +40,8 @@ export function exposeAssistantBridge(
     respondPermission: (input) => invoke({ operation: "respondPermission", input }),
     setMode: (input) => invoke({ operation: "setMode", input }),
     setModel: (input) => invoke({ operation: "setModel", input }),
+    setConfigOption: (input) => invoke({ operation: "setConfigOption", input }),
+    respondQuestion: (input) => invoke({ operation: "respondQuestion", input }),
     authenticate: (input) => invoke({ operation: "authenticate", input }),
     onEvent(callback) {
       const listener = (_event: IpcRendererEvent, payload: unknown) => {

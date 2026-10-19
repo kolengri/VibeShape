@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   type AutomationProjectExpectation,
-  activateLocalProject,
+  activateProjectTab,
+  closeProjectRuntime,
   createNewLocalProject,
   type DocumentControllerState,
   getDocumentControllerState,
-  getProjectActionBlock,
+  getProjectCloseBlock,
+  getProjectNavigationBlock,
   listLocalProjects,
   type ProjectSwitchResult,
   showProjectLibrary,
@@ -15,11 +17,7 @@ import { useProjectTabs, useProjectTabsStore } from "./project-tabs-provider"
 type ProjectTabsFeedback = "blocked" | "switchFailed" | "listFailed" | null
 
 function projectTransitionExpectation(controller: DocumentControllerState) {
-  if (
-    controller.status !== "ready" ||
-    controller.saveStatus !== "saved" ||
-    getProjectActionBlock()
-  ) {
+  if (controller.status !== "ready" || getProjectNavigationBlock()) {
     return null
   }
   const snapshot = controller.report?.snapshot
@@ -39,7 +37,7 @@ export function useProjectTabsController(
   const activeId = snapshot?.id
   const activeName = snapshot?.name
   const ready = controller.status === "ready"
-  const blocked = getProjectActionBlock()
+  const blocked = getProjectNavigationBlock()
 
   useEffect(() => {
     if (ready && activeId && activeName) {
@@ -105,7 +103,14 @@ export function useProjectTabsController(
         )
         return
       }
-      if (closingId) store.getState().actions.remove(closingId)
+      if (closingId) {
+        const closed = await closeProjectRuntime(closingId)
+        if (!closed.ok) {
+          setFeedback("switchFailed")
+          return
+        }
+        store.getState().actions.remove(closingId)
+      }
       if (focusAfter) store.getState().actions.requestFocus()
     } catch {
       setFeedback("switchFailed")
@@ -118,18 +123,33 @@ export function useProjectTabsController(
     if (documentId === activeId) return
     return transition(
       (expected) =>
-        documentId ? activateLocalProject(documentId, expected) : createNewLocalProject(),
+        documentId ? activateProjectTab(documentId, expected) : createNewLocalProject(),
       closingId,
     )
   }
 
   const openLibrary = (closingId?: string) => transition(onOpenProjects, closingId, false)
 
-  const close = (documentId: string) => {
+  const close = async (documentId: string) => {
     if (state.pending) return
+    if (getProjectCloseBlock(documentId)) {
+      setFeedbackAttempt((attempt) => attempt + 1)
+      setFeedback("blocked")
+      return
+    }
     if (documentId !== activeId) {
-      store.getState().actions.remove(documentId)
-      store.getState().actions.requestFocus()
+      if (!store.getState().actions.beginTransition()) return
+      try {
+        const result = await closeProjectRuntime(documentId)
+        if (!result.ok) {
+          setFeedback("switchFailed")
+          return
+        }
+        store.getState().actions.remove(documentId)
+        store.getState().actions.requestFocus()
+      } finally {
+        store.getState().actions.endTransition()
+      }
       return
     }
     if (!projectTransitionExpectation(controller)) {

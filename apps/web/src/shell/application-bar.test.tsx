@@ -138,6 +138,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  delete window.vibeshapeDesktop
   vi.unstubAllGlobals()
 })
 
@@ -257,11 +258,47 @@ it("keeps the saved idle status quiet while announcing loading, saving, and fail
   expect(
     screen.getByRole("status", { name: "Project save status" }).classList.contains("sr-only"),
   ).toBe(true)
-  expect(saving.container.querySelector("[data-global-loader]")).not.toBeNull()
+  expect(saving.container.querySelectorAll("[data-global-loader]")).toHaveLength(1)
+  const wordmark = saving.container.querySelector("[data-application-wordmark]")
+  expect(wordmark?.textContent).toBe("VibeShape")
+  expect(wordmark?.getAttribute("aria-busy")).toBe("true")
+  expect(saving.container.querySelector("[data-global-loader]")?.textContent).toBe("VibeShape")
   saving.unmount()
   const failed = renderHeader(undefined, undefined, false, { saveStatus: "save-error" })
   expect(screen.getByText("Could not save")).toBeTruthy()
   expect(failed.container.querySelector("[data-global-loader]")).toBeNull()
+})
+
+it("releases the native traffic-light inset only while the macOS window reports fullscreen", async () => {
+  let update: ((fullScreen: boolean) => void) | undefined
+  const unsubscribe = vi.fn()
+  window.vibeshapeDesktop = {
+    protocolVersion: 1,
+    platform: "darwin",
+    windowChrome: "unified",
+    getMcpSetup: async () => {
+      throw new Error("Not used")
+    },
+    onCommand: () => () => {},
+    updateCommandState: async () => {},
+    editText: async () => {},
+    onFullScreenChange: (listener) => {
+      update = listener
+      listener(false)
+      return unsubscribe
+    },
+  }
+  const header = renderHeader()
+  const bar = header.container.querySelector("header.application-bar")
+  expect(bar?.hasAttribute("data-unified-chrome")).toBe(true)
+  expect(bar?.getAttribute("data-full-screen")).toBe("false")
+  const { act } = await import("@testing-library/react")
+  act(() => update?.(true))
+  expect(bar?.getAttribute("data-full-screen")).toBe("true")
+  act(() => update?.(false))
+  expect(bar?.getAttribute("data-full-screen")).toBe("false")
+  header.unmount()
+  expect(unsubscribe).toHaveBeenCalledTimes(1)
 })
 
 it("reports an unavailable project instead of a saved document after opening fails", () => {

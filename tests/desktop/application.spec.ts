@@ -5,6 +5,43 @@ import { invokeModelCommand } from "../e2e/model-command-support"
 
 import { createNativeFixture, openNativeEditor } from "./native-fixture"
 
+test("native full-screen bridge delivers initial state, transitions and unsubscribe", async () => {
+  const fixture = await createNativeFixture()
+  try {
+    const native = await fixture.launch()
+    const page = await openNativeEditor(native)
+    const header = page.locator(".application-bar")
+    await expect(header).toHaveAttribute("data-full-screen", "false")
+    await page.evaluate(`(() => {
+      globalThis.fullScreenStates = [];
+      globalThis.stopFullScreenStates = window.vibeshapeDesktop.onFullScreenChange(value => {
+        globalThis.fullScreenStates.push(value);
+      });
+    })()`)
+    await expect.poll(() => page.evaluate("globalThis.fullScreenStates")).toEqual([false])
+    await native.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setFullScreen(true),
+    )
+    await expect(header).toHaveAttribute("data-full-screen", "true")
+    await expect.poll(() => page.evaluate("globalThis.fullScreenStates")).toEqual([false, true])
+    await page.evaluate(`(() => {
+      globalThis.fullScreenInitial = [];
+      window.vibeshapeDesktop.onFullScreenChange(value => globalThis.fullScreenInitial.push(value));
+      globalThis.stopFullScreenStates();
+    })()`)
+    await expect.poll(() => page.evaluate("globalThis.fullScreenInitial")).toEqual([true])
+    await native.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setFullScreen(false),
+    )
+    await expect(header).toHaveAttribute("data-full-screen", "false")
+    await expect.poll(() => page.evaluate("globalThis.fullScreenInitial")).toEqual([true, false])
+    expect(await page.evaluate("globalThis.fullScreenStates")).toEqual([false, true])
+    await page.screenshot({ path: test.info().outputPath("native-full-screen-returned.png") })
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
 test("native launch preserves CAD, backups and the profile across window close and app restart", async () => {
   const testInfo = test.info()
   const fixture = await createNativeFixture()

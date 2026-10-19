@@ -2,23 +2,35 @@
 @source "../../../packages/ui/src";
 
 /* A single shell indicator preserves the complete wordmark footprint. */
-.application-progress-segment {
-  animation: application-progress 1.1s ease-in-out infinite alternate;
+.application-wordmark-ink {
+  color: transparent;
+  background-image: linear-gradient(
+    110deg,
+    var(--muted-foreground) 30%,
+    var(--primary) 45%,
+    var(--foreground) 50%,
+    var(--primary) 55%,
+    var(--muted-foreground) 70%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  animation: application-print 2.4s ease-in-out infinite;
 }
 
-@keyframes application-progress {
+@keyframes application-print {
   from {
-    transform: translateX(-50%);
+    background-position: 100% 0;
   }
   to {
-    transform: translateX(150%);
+    background-position: -100% 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .application-progress-segment {
+  .application-wordmark-ink {
     animation: none;
-    transform: translateX(50%);
+    background: none;
+    color: var(--primary);
   }
 }
 
@@ -84,6 +96,10 @@
   padding-left: 88px;
 }
 
+.application-bar[data-unified-chrome][data-full-screen="true"] {
+  padding-left: 0.5rem;
+}
+
 .application-bar[data-unified-chrome]
   :is(button, a, input, textarea, select, [role="tablist"], [role="status"]) {
   -webkit-app-region: no-drag;
@@ -108,10 +124,18 @@
   min-width: 0;
 }
 
+.cad-workspace-grid[data-task-active="false"] .workspace-viewport {
+  right: 0;
+}
+
 .cad-workspace-grid[data-transparent="true"] .workspace-viewport {
   --workspace-chrome-left: calc(var(--workspace-tree-size) + 8px);
   --workspace-chrome-right: calc(var(--workspace-task-size) + 8px);
   inset: 0;
+}
+
+.cad-workspace-grid[data-task-active="false"] .workspace-viewport {
+  --workspace-chrome-right: 0px;
 }
 
 .workspace-panel {
@@ -174,8 +198,12 @@
     --workspace-sheet-height: min(50%, 32rem);
   }
 
-  .cad-workspace-grid:has(.responsive-task-panel[data-expanded="false"]) {
+  .cad-workspace-grid[data-task-active="true"]:has(.responsive-task-panel[data-expanded="false"]) {
     --workspace-sheet-height: 2.25rem;
+  }
+
+  .cad-workspace-grid[data-task-active="false"] {
+    --workspace-sheet-height: 0px;
   }
 
   .workspace-viewport {

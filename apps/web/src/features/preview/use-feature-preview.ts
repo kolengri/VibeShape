@@ -74,9 +74,42 @@ export type FeaturePreviewState = Readonly<{
   kind?: FeaturePreviewKind
   meshes: readonly ViewerMesh[]
   status: "idle" | "loading" | "ready" | "error"
+  retained?: true
   diagnostic?: string
   diagnostics?: ModelDiagnosticsEvidence["entries"]
 }>
+
+type ExactPreview = {
+  snapshot: DocumentSnapshot
+  featureId: FeatureRecord["id"]
+  preview: FeaturePreviewState
+}
+
+function pendingPreview(
+  previous: ExactPreview | null,
+  snapshot: DocumentSnapshot,
+  candidate: FeatureRecord,
+  retainPrevious: boolean,
+): FeaturePreviewState {
+  const kind = featurePreviewKind(candidate)
+  if (retainPrevious && previous?.snapshot === snapshot && previous.featureId === candidate.id)
+    return { ...previous.preview, status: "loading", kind, retained: true }
+  return { status: "loading", meshes: [], kind }
+}
+
+function failedPreview(candidate: FeatureRecord, error: unknown): FeaturePreviewState {
+  return {
+    status: "error",
+    meshes: [],
+    kind: featurePreviewKind(candidate),
+    ...(error instanceof FeaturePreviewFailure && error.diagnostics.length > 0
+      ? { diagnostics: error.diagnostics }
+      : {}),
+    ...(readLoftFeatureParametersV3(candidate) && isError(error)
+      ? { diagnostic: error.message }
+      : {}),
+  }
+}
 
 function createFeaturePreviewCandidateMesh(
   geometry: readonly (PreviewGeometryIdentity &
@@ -232,7 +265,7 @@ function committedPreview(
   snapshot: DocumentSnapshot | null,
   candidate: FeatureRecord | null,
   response: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> | null,
-) {
+): ExactPreview | null {
   if (!snapshot || !candidate || !response) return null
   if (!matchesCommittedRevision(snapshot, response)) return null
   const saved = snapshot.features.find(({ id }) => id === candidate.id)
@@ -240,10 +273,14 @@ function committedPreview(
   if (!currentFeatureGeometry(response, candidate.id)) return null
   const candidateMesh = createFeaturePreviewCandidateMesh(response.geometry, candidate.id)
   return {
-    status: "ready" as const,
-    kind: featurePreviewKind(candidate),
-    ...(candidateMesh ? { candidateMesh } : {}),
-    meshes: createFeaturePreviewMeshes(snapshot, response, response.geometry),
+    snapshot,
+    featureId: candidate.id,
+    preview: {
+      status: "ready",
+      kind: featurePreviewKind(candidate),
+      ...(candidateMesh ? { candidateMesh } : {}),
+      meshes: createFeaturePreviewMeshes(snapshot, response, response.geometry),
+    },
   }
 }
 
@@ -253,9 +290,11 @@ export function useFeaturePreview(
   committedGeometry: readonly PreviewGeometryIdentity[],
   sessionActive = candidate !== null,
   committedResponse: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> | null = null,
+  retainPreviousGeometry = false,
 ) {
   const [state, setState] = useState<FeaturePreviewState>({ status: "idle", meshes: [] })
   const sequenceRef = useRef(0)
+  const lastReadyRef = useRef<ExactPreview | null>(null)
   const sessionRef = useRef<{ worker: PreviewSession; queue: PreviewQueue } | null>(null)
   const previewDocumentId = useMemo(
     () => (snapshot ? createBrowserDocumentId() : null),
@@ -283,10 +322,12 @@ export function useFeaturePreview(
     sequenceRef.current = sequence
     if (sessionRef.current) sessionRef.current.queue.pending = null
     if (cached) {
-      setState(cached)
+      lastReadyRef.current = cached
+      setState(cached.preview)
       return
     }
     if (!snapshot || !candidate || !previewDocumentId || !sessionActive) {
+      lastReadyRef.current = null
       setState({ status: "idle", meshes: [] })
       return
     }
@@ -300,7 +341,15 @@ export function useFeaturePreview(
     }
     sessionRef.current = session
     const kind = featurePreviewKind(candidate)
-    setState({ status: "loading", meshes: [], kind })
+    // Placement keeps its last exact pose while the next exact result is pending.
+    const pending = pendingPreview(
+      lastReadyRef.current,
+      snapshot,
+      candidate,
+      retainPreviousGeometry,
+    )
+    if (!pending.retained) lastReadyRef.current = null
+    setState(pending)
     enqueuePreview(session.queue, () =>
       rebuildPreview(
         session.worker,
@@ -311,22 +360,21 @@ export function useFeaturePreview(
       ).then(
         ({ candidateMesh, meshes }) => {
           if (sequenceRef.current === sequence) {
-            setState({ status: "ready", meshes, kind, ...(candidateMesh ? { candidateMesh } : {}) })
+            const preview = {
+              status: "ready" as const,
+              meshes,
+              kind,
+              ...(candidateMesh ? { candidateMesh } : {}),
+            }
+            lastReadyRef.current = { snapshot, featureId: candidate.id, preview }
+            setState(preview)
           }
         },
         (error: unknown) => {
-          if (sequenceRef.current === sequence)
-            setState({
-              status: "error",
-              meshes: [],
-              kind,
-              ...(error instanceof FeaturePreviewFailure && error.diagnostics.length > 0
-                ? { diagnostics: error.diagnostics }
-                : {}),
-              ...(readLoftFeatureParametersV3(candidate) && isError(error)
-                ? { diagnostic: error.message }
-                : {}),
-            })
+          if (sequenceRef.current === sequence) {
+            lastReadyRef.current = null
+            setState(failedPreview(candidate, error))
+          }
         },
       ),
     )
@@ -334,7 +382,15 @@ export function useFeaturePreview(
       sequenceRef.current += 1
       session.queue.pending = null
     }
-  }, [candidateKey, cached, committedGeometry, previewDocumentId, snapshot, sessionActive])
+  }, [
+    candidateKey,
+    cached,
+    committedGeometry,
+    previewDocumentId,
+    snapshot,
+    sessionActive,
+    retainPreviousGeometry,
+  ])
 
   return state
 }

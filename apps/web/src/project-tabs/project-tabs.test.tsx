@@ -28,13 +28,17 @@ const actions = {
   create: vi.fn(),
   list: vi.fn(),
   openProjects: vi.fn(),
+  close: vi.fn(),
 }
 const original = { ...(await import("../document/document-controller")) }
 mock.module("../document/document-controller", () => ({
   ...original,
   getDocumentControllerState: () => current,
   getProjectActionBlock: () => blocked,
-  activateLocalProject: actions.activate,
+  getProjectNavigationBlock: () => (blocked === "automation-busy" ? null : blocked),
+  getProjectCloseBlock: () => blocked,
+  closeProjectRuntime: actions.close,
+  activateProjectTab: actions.activate,
   createNewLocalProject: actions.create,
   listLocalProjects: actions.list,
   showProjectLibrary: actions.openProjects,
@@ -155,6 +159,7 @@ beforeEach(() => {
     return { ok: true }
   })
   actions.list.mockReset().mockResolvedValue({ ok: true, projects: projectList() })
+  actions.close.mockReset().mockResolvedValue({ ok: true })
 })
 afterEach(() => {
   cleanup()
@@ -163,6 +168,18 @@ afterEach(() => {
 })
 
 describe("project tabs", () => {
+  it("switches while an agent works but refuses to close its busy project", async () => {
+    setup()
+    blocked = "automation-busy"
+    await userEvent.click(await screen.findByRole("button", { name: "Close Bracket" }))
+    expect(actions.close).not.toHaveBeenCalled()
+    expect(screen.getAllByRole("tab")).toHaveLength(2)
+    await userEvent.click(screen.getByRole("tab", { name: "Enclosure" }))
+    await waitFor(() =>
+      expect(actions.activate).toHaveBeenCalledWith(secondId, { documentId: firstId, revision: 3 }),
+    )
+  })
+
   it("uses manual arrow-key activation and the revision-guarded existing project action", async () => {
     setup()
     const first = await screen.findByRole("tab", { name: "Bracket" })

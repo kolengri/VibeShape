@@ -50,6 +50,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react"
+import { automationDraftViewportPreview } from "../automation/automation-draft-viewport"
 import { automationReviews } from "../automation/automation-review-controller"
 import { AutomationReviewPanel } from "../automation/automation-review-panel"
 import {
@@ -1957,6 +1958,7 @@ function useEditorFeaturePreview(
     committedGeometry(controller),
     isPreviewedFeatureToolActive(activeTool),
     controller.report?.rebuild.ok ? controller.report.rebuild.response : null,
+    activeTool?.kind === "create-placement" || activeTool?.kind === "edit-placement",
   )
   return { featurePreview, setPreviewFeature }
 }
@@ -2636,8 +2638,11 @@ function useHistorySourcePreview(props: EditorWorkspaceProps) {
   return { profile: enabled ? profile : null, onPreview: enabled ? setProfile : undefined }
 }
 
-function useWorkspaceFeaturePreview(props: EditorWorkspaceProps) {
-  const { featurePreview, setPreviewFeature } = useEditorFeaturePreview(
+function useWorkspaceFeaturePreview(
+  props: EditorWorkspaceProps,
+  review: ReturnType<typeof automationReviews.getSnapshot>,
+) {
+  const { featurePreview: formPreview, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
   )
@@ -2662,6 +2667,8 @@ function useWorkspaceFeaturePreview(props: EditorWorkspaceProps) {
   )
   const manipulatorFeature =
     manipulatorCandidate?.tool === activeTool ? manipulatorCandidate.feature : null
+  const featurePreview: ReturnType<typeof useFeaturePreview> =
+    automationDraftViewportPreview(review, props.controller.report?.snapshot ?? null) ?? formPreview
   return { featurePreview, manipulatorFeature, onFeaturePreviewChange }
 }
 
@@ -2829,7 +2836,7 @@ function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
   const { holePicking, edgeTreatmentPicking, shellPicking, viewportContext } =
     useModelFeaturePicking(props)
   const taskPanelT = useTranslations("app.shell.taskPanel")
-  const preview = useWorkspaceFeaturePreview(props)
+  const preview = useWorkspaceFeaturePreview(props, review)
   const { featurePreview, manipulatorFeature } = preview
   const { placementBinding, splitBinding, placement, split } =
     useWorkspaceManipulatorBindings(props)
@@ -2858,6 +2865,7 @@ function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
         partVisibilityOverrides={props.partVisibility?.overrides}
       >
         <WorkspacePanels
+          taskPanelActive={taskPanelActivityKey(props, review) !== null}
           revealTreeRequest={revealRequest?.sequence}
           allowTransparency={props.workspace !== "variables"}
           modelTree={

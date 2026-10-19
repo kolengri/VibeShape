@@ -7,19 +7,14 @@ export function ApplicationWordmark({ busy = false }: { busy?: boolean }) {
       className="relative inline-flex items-center text-sm"
       data-application-wordmark
       data-loading={pending || undefined}
+      aria-busy={pending || undefined}
     >
-      <span className={pending ? "invisible" : undefined} aria-hidden={pending || undefined}>
+      <span
+        className={pending ? "application-wordmark-ink" : undefined}
+        data-global-loader={pending || undefined}
+      >
         VibeShape
       </span>
-      {pending && (
-        <span
-          aria-hidden="true"
-          data-global-loader
-          className="absolute inset-x-0 h-1 overflow-hidden rounded-full bg-primary/20"
-        >
-          <span className="application-progress-segment block h-full w-1/2 rounded-full bg-primary" />
-        </span>
-      )}
     </strong>
   )
 }

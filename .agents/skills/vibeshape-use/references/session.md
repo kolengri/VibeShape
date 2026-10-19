@@ -11,12 +11,19 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 For an already open Mac app, use **Settings → Connections → Connect an MCP client** and copy its
 configuration. The bundled Electron stdio forwarder attaches to the app's existing editor and storage
 origin; no external Bun or Node runtime is needed. Do not substitute the standalone stdio server,
-which opens a separate editor profile. Native attachment allows one client; disconnect an external
-client before using the in-app ACP agent. Select a project in the chooser, discover tools, and obtain
+which opens a separate editor profile. The copied configuration permits one external client. The
+in-app ACP agent instead receives a separate project-bound MCP attachment. Select a project in the chooser, discover tools, and obtain
 explicit **Enable AI session** approval. A copied configuration or successful tool discovery alone
-provides no model authority. A project switch revokes the previous scope.
+provides no model authority. Manual project navigation replaces the external client's document scope.
 
-The app's ACP chat uses the same MCP authority and ordinary review workflow. Saved transcript text
+The app's ACP chat retains its own document session, tool authority, transcript and queue when another
+project tab is selected. Background tools remain bound to their original project, including exact
+preview, revisions, persistence and approval policy. A pending manual review waits in that project's
+tab; selecting that project shows exact solid-feature draft geometry in its viewport before Apply
+without saving it.
+It never becomes another project's review. Embedded agents cannot list, create or open projects
+through their MCP attachment. The configured executable connects automatically for each project;
+explicitly disconnecting one project does not disconnect the others. Saved transcript text
 is not proof that the agent's native context resumed. Static web chat uses a direct compatible API;
 it does not spawn a local stdio agent or publish the browser's project as a reachable MCP server.
 

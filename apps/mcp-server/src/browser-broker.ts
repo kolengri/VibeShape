@@ -485,11 +485,13 @@ export function createBrowserBroker({
   now = Date.now,
   onRevoke,
   recovery,
+  projectId,
 }: {
   origin: string
   now?: () => number
   onRevoke?: () => void
   recovery?: LocalRecoveryStore
+  projectId?: string
 }) {
   const allowedOrigin = new URL(origin).origin
   let client: Client | null = null
@@ -689,6 +691,11 @@ export function createBrowserBroker({
     const parsed = localConnectRequestSchema.safeParse(body)
     if (!parsed.success)
       return response(400, failure("invalid-connect", "The connect request is invalid."))
+    if (projectId && parsed.data.document.id !== projectId)
+      return response(
+        409,
+        failure("project-target-mismatch", "This assistant is bound to another project."),
+      )
     if (!canConnect() || !client)
       return response(
         409,
@@ -935,6 +942,10 @@ export function createBrowserBroker({
     expire()
     const input = validateOperationInput(operation, options.signal)
     if (!input.ok) return Promise.resolve(input)
+    if (projectId && isProjectOperation(input.operation))
+      return Promise.resolve(
+        failure("project-management-disabled", "This assistant can only work in its own project."),
+      )
     if (!pair || pair.suspendedUntil !== null)
       return Promise.resolve(failure("not-paired", "The browser is not paired."))
     const activePair = pair

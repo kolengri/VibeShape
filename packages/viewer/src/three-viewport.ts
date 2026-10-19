@@ -35,6 +35,9 @@ import {
 } from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 import { TransformControls } from "three/addons/controls/TransformControls.js"
+import { LineMaterial } from "three/addons/lines/LineMaterial.js"
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
 import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysis-overlays"
 import { InfiniteGridDecoration } from "./infinite-grid"
 import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
@@ -1322,6 +1325,20 @@ class ThreeGeometryViewport implements GeometryViewport {
     color: new Color("#f59e0b"),
     depthTest: false,
   })
+  readonly #selectedReferenceEdgeMaterial = new LineMaterial({
+    color: new Color("#f59e0b"),
+    linewidth: 4,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  })
+  readonly #hoveredReferenceEdgeMaterial = new LineMaterial({
+    color: new Color("#65a9ee"),
+    linewidth: 6,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  })
   readonly #previewSurfaceMaterial = new MeshBasicMaterial({
     color: new Color("#4c8dff"),
     transparent: true,
@@ -1905,14 +1922,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     }
     for (const candidate of candidates) {
       if (!isViewerSketchLineCandidate(candidate)) continue
-      const line = new LineSegments(
-        createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
-        this.#sketchReferenceLineMaterial(candidate),
-      )
-      line.name = `sketch-reference-${candidate.kind}:${sketchReferenceEntityId(candidate)}`
-      line.renderOrder = 8
-      this.#sketchLineObjects.set(line, candidate)
-      this.#sketchPointCandidateGroup.add(line)
+      this.#addSketchReferenceLine(candidate)
     }
     this.#render()
   }
@@ -1920,6 +1930,36 @@ class ThreeGeometryViewport implements GeometryViewport {
   setSketchReferencePreselection(candidate: ViewerSketchReferenceCandidate | null) {
     if (this.#disposed) return
     this.#setSketchPointPreselection(candidate)
+  }
+
+  #addSketchReferenceLine(candidate: Parameters<typeof sketchReferenceLinePositions>[0]) {
+    const line = new LineSegments(
+      createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
+      this.#sketchReferenceLineMaterial(candidate),
+    )
+    line.name = `sketch-reference-${candidate.kind}:${sketchReferenceEntityId(candidate)}`
+    line.renderOrder = 8
+    this.#sketchLineObjects.set(line, candidate)
+    this.#sketchPointCandidateGroup.add(line)
+    if (candidate.kind === "model-curve" && candidate.sourceType === "edge" && candidate.selected)
+      this.#addReferenceEdgeStroke(
+        this.#sketchPointCandidateGroup,
+        candidate,
+        this.#selectedReferenceEdgeMaterial,
+      )
+  }
+
+  #addReferenceEdgeStroke(
+    group: Group,
+    candidate: Extract<ViewerSketchReferenceCandidate, { kind: "model-curve" }>,
+    material: LineMaterial,
+  ) {
+    const geometry = new LineSegmentsGeometry().setPositions(
+      sketchReferenceLinePositions(candidate),
+    )
+    const stroke = new LineSegments2(geometry, material)
+    stroke.renderOrder = 10
+    group.add(stroke)
   }
 
   setSketchProfilePreselection(profile: ViewerSketchProfile | null) {
@@ -2351,6 +2391,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#featurePreselectionEdgeMaterial.dispose()
     this.#featureSelectionMaterial.dispose()
     this.#featureSelectionEdgeMaterial.dispose()
+    this.#selectedReferenceEdgeMaterial.dispose()
+    this.#hoveredReferenceEdgeMaterial.dispose()
     this.#angularGizmoLineMaterial.dispose()
     this.#angularGizmoHandleMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()
@@ -2641,6 +2683,13 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchPointPreselection = candidate
     disposeModelGroup(this.#sketchPointPreselectionGroup)
     if (candidate && isViewerSketchLineCandidate(candidate)) {
+      if (candidate.kind === "model-curve" && candidate.sourceType === "edge") {
+        this.#addReferenceEdgeStroke(
+          this.#sketchPointPreselectionGroup,
+          candidate,
+          this.#hoveredReferenceEdgeMaterial,
+        )
+      }
       const line = new LineSegments(
         createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
         this.#sketchLinePreselectionMaterial,
