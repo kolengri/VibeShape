@@ -351,6 +351,12 @@ type RenderTreeOptions = Partial<
     | "origin"
     | "activeSketchId"
     | "activeFeatureId"
+    | "modelTreeSelection"
+    | "onModelTreeSelectionChange"
+    | "onSketchPreselectionChange"
+    | "highlightedBody"
+    | "highlightedFeatureId"
+    | "activeBody"
     | "activeWorkspace"
     | "controller"
     | "onFeatureActivate"
@@ -610,6 +616,97 @@ describe("ModelTree insertion body boundary", () => {
 })
 
 describe("ModelTree History presentation", () => {
+  it("selects authored planes with modifiers without opening edit and excludes locked rows", () => {
+    const secondPlane = { ...datumFeature, id: featureId, label: "Second plane" }
+    const datumController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [datumFeature, secondPlane], revision: 7, sketches: [] },
+      },
+    } as unknown as DocumentControllerState
+    const onModelTreeSelectionChange = vi.fn()
+    const onFeatureActivate = vi.fn()
+    const first = { kind: "feature" as const, id: datumFeature.id }
+    const second = { kind: "feature" as const, id: secondPlane.id }
+    const rendered = renderTree({
+      controller: datumController,
+      activeFeatureId: null,
+      onFeatureActivate,
+      onModelTreeSelectionChange,
+    })
+    fireEvent.click(browser().getByRole("treeitem", { name: "Offset plane" }), { ctrlKey: true })
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([first])
+    rendered.rerenderTree({ modelTreeSelection: [first] })
+    fireEvent.click(browser().getByRole("treeitem", { name: "Second plane" }), { shiftKey: true })
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([first, second])
+    rendered.rerenderTree({ modelTreeSelection: [first, second] })
+    expect(
+      browser().getByRole("treeitem", { name: "Second plane" }).getAttribute("aria-selected"),
+    ).toBe("true")
+    fireEvent.click(browser().getByRole("treeitem", { name: "Offset plane" }), { metaKey: true })
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([second])
+    expect(onFeatureActivate).not.toHaveBeenCalled()
+    rendered.rerenderTree({ controller: { ...datumController, saveStatus: "saving" } })
+    onModelTreeSelectionChange.mockClear()
+    fireEvent.click(browser().getByRole("treeitem", { name: "Offset plane" }), { ctrlKey: true })
+    expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("toggles an exact body and a sketch without editing the sketch on a modified click", () => {
+    const onModelTreeSelectionChange = vi.fn()
+    const onSketchActivate = vi.fn()
+    const body = { kind: "body" as const, featureId }
+    const rendered = renderTree({ onModelTreeSelectionChange, onSketchActivate })
+    fireEvent.click(browser().getByRole("treeitem", { name: "Body 1" }))
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([body])
+    rendered.rerenderTree({ modelTreeSelection: [body] })
+    fireEvent.click(browser().getByRole("treeitem", { name: "Profile" }), { ctrlKey: true })
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([
+      body,
+      { kind: "sketch", id: sketchId },
+    ])
+    expect(onSketchActivate).not.toHaveBeenCalled()
+  })
+
+  it("preselects an exact legacy body and clears it on cancellation", () => {
+    const onBodyPreselectionChange = vi.fn()
+    const onFeaturePreselectionChange = vi.fn()
+    renderTree({ onBodyPreselectionChange, onFeaturePreselectionChange })
+    const body = browser().getByRole("treeitem", { name: "Body 1" })
+    fireEvent.pointerEnter(body)
+    expect(onBodyPreselectionChange).toHaveBeenLastCalledWith({ featureId })
+    fireEvent.pointerCancel(body)
+    expect(onBodyPreselectionChange).toHaveBeenLastCalledWith(null)
+    expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+  })
+
+  it("preselects saved sketches without changing committed visibility or opening editing", () => {
+    const onSketchPreselectionChange = vi.fn()
+    const onSketchActivate = vi.fn()
+    const onSketchVisibilityChange = vi.fn()
+    renderTree({ onSketchPreselectionChange, onSketchActivate, onSketchVisibilityChange })
+    const sketch = browser().getByRole("treeitem", { name: "Profile" })
+    fireEvent.pointerEnter(sketch)
+    expect(onSketchPreselectionChange).toHaveBeenLastCalledWith(sketchId)
+    fireEvent.pointerLeave(sketch)
+    expect(onSketchPreselectionChange).toHaveBeenLastCalledWith(null)
+    expect(onSketchActivate).not.toHaveBeenCalled()
+    expect(onSketchVisibilityChange).not.toHaveBeenCalled()
+  })
+
+  it("keeps native label hints only in compact icon-only History", () => {
+    renderTree({}, false)
+    const feature = timeline().getByRole("treeitem", { name: "Box 1" })
+    const sketch = timeline().getByRole("treeitem", { name: "Edit Profile" })
+    expect(feature.getAttribute("title")).toBe("Box 1")
+    expect(sketch.getAttribute("title")).toBe("Profile")
+    expect(browser().getByRole("treeitem", { name: "Profile" }).getAttribute("title")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Details" }))
+    expect(feature.getAttribute("title")).toBeNull()
+    expect(sketch.getAttribute("title")).toBeNull()
+  })
+
   it.each([false, true])(
     "distinguishes missing sources from unnamed existing sketches (%s)",
     async (exists) => {
@@ -1742,6 +1839,60 @@ describe("ModelTree visibility and deletion", () => {
     await user.click(screen.getByRole("button", { name: "Actions for Box 1" }))
     await user.click(screen.getByRole("menuitem", { name: "Unsuppress Box 1" }))
     expect(onFeatureSuppressionChange).toHaveBeenLastCalledWith(7, featureId, false)
+  })
+
+  it("toggles all Origin planes from one accessible group action without changing selection or the model", async () => {
+    const onVisibilityChange = vi.fn()
+    const onSelect = vi.fn()
+    const onAuthoredMetadata = vi.fn()
+    const origin = {
+      disabled: false,
+      selected: null,
+      visibility: { xy: true, xz: true, yz: true },
+      onSelect,
+      onVisibilityChange,
+    }
+    const { rerenderTree } = renderTree({ origin, onAuthoredMetadata })
+    const group = browser().getByRole("treeitem", { name: "Planes" })
+    const hide = browser().getByRole("button", { name: "Hide all origin planes" })
+    expect(hide.getAttribute("aria-pressed")).toBe("true")
+    await userEvent.hover(hide)
+    expect(await screen.findByRole("tooltip", { name: "Hide all origin planes" })).toBeTruthy()
+    await userEvent.click(hide)
+    expect(onVisibilityChange.mock.calls).toEqual([
+      ["xy", false],
+      ["xz", false],
+      ["yz", false],
+    ])
+    expect(group.getAttribute("aria-expanded")).toBe("false")
+
+    onVisibilityChange.mockClear()
+    rerenderTree({ origin: { ...origin, visibility: { xy: false, xz: false, yz: false } } })
+    const show = browser().getByRole("button", { name: "Show all origin planes" })
+    expect(show.getAttribute("aria-pressed")).toBe("false")
+    show.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(onVisibilityChange.mock.calls).toEqual([
+      ["xy", true],
+      ["xz", true],
+      ["yz", true],
+    ])
+
+    onVisibilityChange.mockClear()
+    rerenderTree({ origin: { ...origin, visibility: { xy: true, xz: false, yz: false } } })
+    const mixed = browser().getByRole("button", { name: "Hide all origin planes" })
+    expect(mixed.getAttribute("aria-pressed")).toBe("mixed")
+    await userEvent.click(mixed)
+    expect(onVisibilityChange.mock.calls).toEqual([["xy", false]])
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onAuthoredMetadata).not.toHaveBeenCalled()
+
+    onVisibilityChange.mockClear()
+    rerenderTree({ origin: { ...origin, visibility: { xy: false, xz: false, yz: false } } })
+    await userEvent.click(group)
+    await userEvent.click(browser().getByRole("button", { name: "Show XZ" }))
+    expect(onVisibilityChange.mock.calls).toEqual([["xz", true]])
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it("toggles terminal feature visibility from an icon-only accessible action", async () => {

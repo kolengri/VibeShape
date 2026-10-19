@@ -1,7 +1,7 @@
 import "../../../../tests/unit/support/dom"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import type { ReactNode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
-
 import type { DocumentControllerState } from "./document-controller"
 
 const activeDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
@@ -28,7 +28,6 @@ const controllerMocks = (() => ({
   createNewLocalProject: vi.fn(),
   deleteLocalProject: vi.fn(),
   duplicateLocalProject: vi.fn(),
-  exportActiveProjectBackup: vi.fn(),
   importProjectBackup: vi.fn(),
   listLocalProjects: vi.fn(),
   showProjectLibrary: vi.fn(),
@@ -42,37 +41,35 @@ mock.module("./document-controller", () => ({
   ...controllerMocks,
 }))
 
-mock.module("./document-project-file", () => ({
-  downloadProjectBackup: vi.fn(),
-}))
-
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { i18n } = await import("../i18n")
-const { DocumentProjectDialog } = await import("./document-project-dialog")
-const { downloadProjectBackup } = await import("./document-project-file")
+const { ViewerPreferencesProvider } = await import("../shell/viewer-preferences")
+const { WorkspaceLayoutPreferencesProvider } = await import("../shell/workspace-layout-preferences")
+const { DocumentProjectPage } = await import("./document-project-page")
 
 beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
 afterAll(() => vi.unstubAllGlobals())
 
-function renderDialog(
-  state = controller,
-  blockedReason: string | null = null,
-  presentation: "dialog" | "page" = "dialog",
-) {
-  return render(
+function ProjectPageProviders({ children }: { children: ReactNode }) {
+  return (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
-        <DocumentProjectDialog
-          controller={state}
-          blockedReason={blockedReason}
-          presentation={presentation}
-          {...(presentation === "page" ? { open: true, showTrigger: false } : {})}
-        />
+        <ViewerPreferencesProvider>
+          <WorkspaceLayoutPreferencesProvider>{children}</WorkspaceLayoutPreferencesProvider>
+        </ViewerPreferencesProvider>
       </TooltipProvider>
-    </I18nProvider>,
+    </I18nProvider>
+  )
+}
+
+function renderPage(state = controller, blockedReason: string | null = null) {
+  return render(
+    <ProjectPageProviders>
+      <DocumentProjectPage controller={state} blockedReason={blockedReason} />
+    </ProjectPageProviders>,
   )
 }
 
@@ -96,6 +93,11 @@ function dropPayload(files: File[]) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
   controllerMocks.getProjectActionBlock.mockReturnValue(null)
   controllerMocks.showProjectLibrary.mockResolvedValue({ ok: true })
   controllerMocks.activateLocalProject.mockResolvedValue({ ok: true })
@@ -142,9 +144,8 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe("DocumentProjectDialog", () => {
+describe("DocumentProjectPage", () => {
   it("displays binary PNG previews without decoding them as text", async () => {
-    const user = userEvent.setup()
     const result = await controllerMocks.listLocalProjects()
     result.projects[1].thumbnail = {
       revision: 2,
@@ -153,38 +154,11 @@ describe("DocumentProjectDialog", () => {
       generatedAt: "2026-08-08T00:02:00Z",
     }
     controllerMocks.listLocalProjects.mockResolvedValue(result)
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     expect(await screen.findByRole("img", { name: "3D preview of Fixture" })).toHaveProperty(
       "src",
       "data:image/png;base64,iVBORw0KGgo=",
     )
-  })
-
-  it("guards an asynchronous backup against double activation and exposes loading", async () => {
-    const user = userEvent.setup()
-    let finish: ((value: unknown) => void) | undefined
-    controllerMocks.exportActiveProjectBackup.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
-    renderDialog()
-    const projectTrigger = screen.getByRole("button", { name: "File" })
-    expect(projectTrigger.textContent).toBe("File")
-    await user.click(projectTrigger)
-    const backup = screen.getByRole("button", { name: "Save project (.vshape)" })
-
-    await user.dblClick(backup)
-
-    expect(controllerMocks.exportActiveProjectBackup).toHaveBeenCalledTimes(1)
-    expect(backup.getAttribute("aria-busy")).toBe("true")
-    finish?.({
-      ok: true,
-      documentName: "Bracket",
-      file: new Uint8Array([1, 2, 3]),
-    })
-    await waitFor(() => expect(downloadProjectBackup).toHaveBeenCalledTimes(1))
   })
 
   it("lists local projects and guards project switching against double activation", async () => {
@@ -195,12 +169,11 @@ describe("DocumentProjectDialog", () => {
         finish = resolve
       }),
     )
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     expect(await screen.findByText(/Revision 3/)).toBeTruthy()
     expect(screen.getByText("Current")).toBeTruthy()
     expect(screen.getByRole("img", { name: "3D preview of Fixture" })).toBeTruthy()
-    expect(screen.getByRole("img", { name: "No 3D preview is available for Bracket" })).toBeTruthy()
+    expect(screen.getByRole("img", { name: "3D preview of Bracket" })).toBeTruthy()
     const open = screen.getByRole("button", { name: "Open Fixture, revision 2" })
 
     await user.dblClick(open)
@@ -214,8 +187,7 @@ describe("DocumentProjectDialog", () => {
 
   it("renames the current project from the local project library", async () => {
     const user = userEvent.setup()
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
 
     await user.click(await screen.findByRole("button", { name: "Rename Bracket" }))
     const name = screen.getByRole("textbox", { name: "Project name" })
@@ -223,6 +195,7 @@ describe("DocumentProjectDialog", () => {
     await user.type(name, "Named bracket")
     await user.click(screen.getByRole("button", { name: /^Rename project$/ }))
 
+    expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
     expect(controllerMocks.renameActiveProject).toHaveBeenCalledWith(3, "Named bracket")
     await waitFor(() => expect(controllerMocks.listLocalProjects).toHaveBeenCalledTimes(2))
     expect(screen.queryByRole("button", { name: "Rename Fixture" })).toBeNull()
@@ -236,14 +209,14 @@ describe("DocumentProjectDialog", () => {
         finish = resolve
       }),
     )
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     const duplicate = await screen.findByRole("button", {
       name: "Duplicate Fixture, revision 2",
     })
 
     await user.dblClick(duplicate)
 
+    expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
     expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledTimes(1)
     expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledWith(
       otherDocumentId,
@@ -268,8 +241,7 @@ describe("DocumentProjectDialog", () => {
         finish = resolve
       }),
     )
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     const currentDelete = await screen.findByRole("button", {
       name: "Delete Bracket, revision 3",
     })
@@ -280,6 +252,7 @@ describe("DocumentProjectDialog", () => {
 
     await user.dblClick(confirm)
 
+    expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
     expect(controllerMocks.deleteLocalProject).toHaveBeenCalledTimes(1)
     expect(controllerMocks.deleteLocalProject).toHaveBeenCalledWith(otherDocumentId, 2)
     expect(confirm.getAttribute("aria-busy")).toBe("true")
@@ -295,8 +268,7 @@ describe("DocumentProjectDialog", () => {
       ok: false,
       diagnostic: { code: "lease-held", message: "Project open elsewhere." },
     })
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     await user.click(await screen.findByRole("button", { name: "Delete Fixture, revision 2" }))
     await user.click(screen.getByRole("button", { name: "Delete project" }))
 
@@ -312,8 +284,7 @@ describe("DocumentProjectDialog", () => {
       ok: false,
       diagnostic: { code: "document-already-exists", message: "collision" },
     })
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
     const file = projectFile()
 
@@ -330,8 +301,7 @@ describe("DocumentProjectDialog", () => {
   it("imports a selected .vshape file and activates it through the validated project flow", async () => {
     const user = userEvent.setup()
     controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
 
     await user.upload(input, projectFile())
@@ -345,9 +315,8 @@ describe("DocumentProjectDialog", () => {
 
   it("imports a dropped .vshape file through the same validation and activation flow", async () => {
     controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
-    renderDialog()
-    await userEvent.setup().click(screen.getByRole("button", { name: "File" }))
-    const dropArea = screen.getByRole("group", { name: "Drop a .vshape project" })
+    renderPage()
+    const dropArea = screen.getByRole("button", { name: "Drop a .vshape project" })
 
     fireEvent.drop(dropArea, {
       dataTransfer: dropPayload([projectFile()]),
@@ -362,8 +331,7 @@ describe("DocumentProjectDialog", () => {
 
   it("rejects unsupported extensions and multiple dropped files without partial import", async () => {
     const user = userEvent.setup()
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
 
     await user.upload(input, projectFile("notes.zip"))
@@ -372,7 +340,7 @@ describe("DocumentProjectDialog", () => {
     )
     expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
 
-    fireEvent.drop(screen.getByRole("group", { name: "Drop a .vshape project" }), {
+    fireEvent.drop(screen.getByRole("button", { name: "Drop a .vshape project" }), {
       dataTransfer: dropPayload([projectFile("one.vshape"), projectFile("two.vshape")]),
     })
     expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
@@ -390,9 +358,8 @@ describe("DocumentProjectDialog", () => {
       }),
     })
     controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
-    renderDialog()
-    await userEvent.setup().click(screen.getByRole("button", { name: "File" }))
-    const dropArea = screen.getByRole("group", { name: "Drop a .vshape project" })
+    renderPage()
+    const dropArea = screen.getByRole("button", { name: "Drop a .vshape project" })
     fireEvent.drop(dropArea, { dataTransfer: dropPayload([pendingFile]) })
 
     await waitFor(() => expect(pendingFile.arrayBuffer).toHaveBeenCalledTimes(1))
@@ -410,12 +377,11 @@ describe("DocumentProjectDialog", () => {
       configurable: true,
       value: vi.fn(() => new Promise<ArrayBuffer>((resolve) => (finishRead = resolve))),
     })
-    renderDialog()
-    await user.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
 
     await user.upload(input, pendingFile)
-    fireEvent.drop(screen.getByRole("group", { name: "Drop a .vshape project" }), {
+    fireEvent.drop(screen.getByRole("button", { name: "Drop a .vshape project" }), {
       dataTransfer: dropPayload([projectFile()]),
     })
     expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
@@ -434,21 +400,15 @@ describe("DocumentProjectDialog", () => {
     expect(oversizedFile.arrayBuffer).not.toHaveBeenCalled()
     expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1)
   })
-  it("keeps Save/Open first and refuses replacing actions while an edit is active", async () => {
-    renderDialog(controller, "editor-draft")
-    await userEvent.click(screen.getByRole("button", { name: "File" }))
-    const save = screen.getByRole("button", { name: "Save project (.vshape)" }) as HTMLButtonElement
-    const open = screen.getByRole("button", { name: "Open project (.vshape)" }) as HTMLButtonElement
-    expect(save.disabled).toBe(true)
-    expect(open.disabled).toBe(true)
+  it("keeps Open first and refuses replacing actions while an edit is active", async () => {
+    renderPage(controller, "editor-draft")
+    const open = screen.getByRole("button", { name: "Drop a .vshape project" })
+    expect(open.getAttribute("aria-disabled")).toBe("true")
     expect(
-      (screen.getByRole("button", { name: "New project" }) as HTMLButtonElement).disabled,
+      ((await screen.findByRole("button", { name: "New project" })) as HTMLButtonElement).disabled,
     ).toBe(true)
     expect(screen.getByText(/Finish or cancel the current edit/)).toBeTruthy()
     const headings = screen.getAllByRole("heading").map((heading) => heading.textContent)
-    expect(headings.indexOf("Save project (.vshape)")).toBeLessThan(
-      headings.indexOf("Local projects"),
-    )
     expect(headings.indexOf("Open project (.vshape)")).toBeLessThan(
       headings.indexOf("Local projects"),
     )
@@ -463,8 +423,7 @@ describe("DocumentProjectDialog", () => {
           finish = resolve
         }),
     })
-    const result = renderDialog()
-    await userEvent.click(screen.getByRole("button", { name: "File" }))
+    const result = renderPage()
     await userEvent.upload(screen.getByLabelText("Choose VibeShape project file"), file)
     const replacement = {
       ...controller,
@@ -474,11 +433,9 @@ describe("DocumentProjectDialog", () => {
       },
     } as DocumentControllerState
     result.rerender(
-      <I18nProvider i18n={i18n} initialLocale="en">
-        <TooltipProvider>
-          <DocumentProjectDialog controller={replacement} />
-        </TooltipProvider>
-      </I18nProvider>,
+      <ProjectPageProviders>
+        <DocumentProjectPage controller={replacement} />
+      </ProjectPageProviders>,
     )
     finish(new ArrayBuffer(3))
     expect((await screen.findByRole("alert")).textContent).toContain("Finish or cancel")
@@ -491,8 +448,7 @@ describe("DocumentProjectDialog", () => {
       ok: false,
       diagnostic: { code: "checkpoint-read-only" },
     })
-    renderDialog()
-    await userEvent.click(screen.getByRole("button", { name: "File" }))
+    renderPage()
     await userEvent.upload(screen.getByLabelText("Choose VibeShape project file"), projectFile())
     expect((await screen.findByRole("alert")).textContent).toContain(
       "cannot be opened as a writable copy",
@@ -511,7 +467,7 @@ describe("full-page project chooser", () => {
   } as unknown as DocumentControllerState
 
   it("lists existing project cards without a modal or creating a blank project", async () => {
-    renderDialog(libraryController, null, "page")
+    renderPage(libraryController)
     expect(screen.getByRole("main")).toBeTruthy()
     expect(screen.getByRole("heading", { name: "Projects", level: 1 })).toBeTruthy()
     expect(await screen.findByRole("button", { name: "Open Bracket, revision 3" })).toBeTruthy()
@@ -521,8 +477,22 @@ describe("full-page project chooser", () => {
     expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
   })
 
+  it("opens the thumbnail and name through one keyboard-accessible card target", async () => {
+    renderPage(libraryController)
+    const open = await screen.findByRole("button", { name: "Open Fixture, revision 2" })
+    const preview = screen.getByRole("img", { name: "3D preview of Fixture" })
+    const name = screen.getByText("Fixture", { exact: true })
+    expect(open.contains(preview)).toBe(true)
+    expect(open.contains(name)).toBe(true)
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull()
+    expect(open.hasAttribute("title")).toBe(false)
+    open.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId)
+  })
+
   it("opens and creates projects only after explicit user actions", async () => {
-    renderDialog(libraryController, null, "page")
+    renderPage(libraryController)
     await userEvent.click(await screen.findByRole("button", { name: "Open Fixture, revision 2" }))
     expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId)
     await userEvent.click(screen.getByRole("button", { name: "New project" }))
@@ -532,7 +502,7 @@ describe("full-page project chooser", () => {
   it("imports from the sessionless chooser and activates only the verified copy", async () => {
     controllerMocks.getProjectActionBlock.mockReturnValue("unavailable")
     controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
-    renderDialog(libraryController, null, "page")
+    renderPage(libraryController)
     await userEvent.upload(screen.getByLabelText("Choose VibeShape project file"), projectFile())
     await waitFor(() =>
       expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId, undefined),
@@ -546,20 +516,13 @@ describe("full-page project chooser", () => {
       ok: false,
       diagnostic: { code: "persistence-failed" },
     })
-    const result = renderDialog({ ...libraryController, status: "loading" }, null, "page")
+    const result = renderPage({ ...libraryController, status: "loading" })
     expect(screen.getByRole("status").textContent).toContain("Loading")
     expect(controllerMocks.listLocalProjects).not.toHaveBeenCalled()
     result.rerender(
-      <I18nProvider i18n={i18n} initialLocale="en">
-        <TooltipProvider>
-          <DocumentProjectDialog
-            controller={libraryController}
-            presentation="page"
-            open
-            showTrigger={false}
-          />
-        </TooltipProvider>
-      </I18nProvider>,
+      <ProjectPageProviders>
+        <DocumentProjectPage controller={libraryController} />
+      </ProjectPageProviders>,
     )
     expect(await screen.findByRole("alert")).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Retry" }))
@@ -569,7 +532,7 @@ describe("full-page project chooser", () => {
 
   it("recovers a failed startup before retrying the catalog without creating a document", async () => {
     controllerMocks.showProjectLibrary.mockResolvedValueOnce({ ok: false })
-    const result = renderDialog({ ...libraryController, status: "error" }, null, "page")
+    const result = renderPage({ ...libraryController, status: "error" })
     expect(await screen.findByRole("alert")).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(await screen.findByRole("alert")).toBeTruthy()
@@ -578,16 +541,9 @@ describe("full-page project chooser", () => {
     await userEvent.click(screen.getByRole("button", { name: "Retry" }))
     await waitFor(() => expect(controllerMocks.showProjectLibrary).toHaveBeenCalledTimes(2))
     result.rerender(
-      <I18nProvider i18n={i18n} initialLocale="en">
-        <TooltipProvider>
-          <DocumentProjectDialog
-            controller={libraryController}
-            presentation="page"
-            open
-            showTrigger={false}
-          />
-        </TooltipProvider>
-      </I18nProvider>,
+      <ProjectPageProviders>
+        <DocumentProjectPage controller={libraryController} />
+      </ProjectPageProviders>,
     )
     expect(await screen.findByRole("button", { name: "Open Fixture, revision 2" })).toBeTruthy()
     expect(controllerMocks.createNewLocalProject).not.toHaveBeenCalled()
@@ -603,11 +559,25 @@ describe("full-page project chooser", () => {
           finish = resolve
         }),
     })
-    const result = renderDialog(libraryController, null, "page")
+    const result = renderPage(libraryController)
     await userEvent.upload(screen.getByLabelText("Choose VibeShape project file"), file)
     result.unmount()
     finish(new ArrayBuffer(3))
     await Promise.resolve()
     expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
   })
+})
+
+it("opens the file picker directly from the drop surface with pointer or keyboard", async () => {
+  renderPage()
+  const surface = screen.getByRole("button", { name: "Drop a .vshape project" })
+  const input = screen.getByLabelText("Choose VibeShape project file")
+  const choose = vi.spyOn(input, "click").mockImplementation(() => {})
+  const user = userEvent.setup()
+  await user.click(surface)
+  expect(choose).toHaveBeenCalledTimes(1)
+  surface.focus()
+  await user.keyboard("{Enter}")
+  expect(choose).toHaveBeenCalledTimes(2)
+  expect(surface.querySelector("button")).toBeNull()
 })

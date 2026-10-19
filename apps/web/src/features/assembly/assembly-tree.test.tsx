@@ -1,9 +1,10 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { assemblyInstanceSchema, assemblyJointSchema } from "@vibeshape/domain/assembly"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
@@ -11,6 +12,14 @@ import { identityAssemblyPose } from "./assembly-model"
 import { assemblyUiFixture } from "./assembly-test-fixture"
 import { AssemblyTree } from "./assembly-tree"
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
+afterAll(() => vi.unstubAllGlobals())
 afterEach(cleanup)
 
 function setup(motionDisabled = false) {
@@ -42,13 +51,15 @@ function setup(motionDisabled = false) {
   }
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <AssemblyTree
-        {...handlers}
-        assembly={{ ...f.assembly, instances: [f.parent, child], joints: [joint] }}
-        selectedId={child.id}
-        selectedDefinitionId={null}
-        motionDisabled={motionDisabled}
-      />
+      <TooltipProvider delayDuration={0}>
+        <AssemblyTree
+          {...handlers}
+          assembly={{ ...f.assembly, instances: [f.parent, child], joints: [joint] }}
+          selectedId={child.id}
+          selectedDefinitionId={null}
+          motionDisabled={motionDisabled}
+        />
+      </TooltipProvider>
     </I18nProvider>,
   )
   return { ...f, child, joint, ...handlers }
@@ -58,6 +69,19 @@ describe("Assembly browser", () => {
   it("exposes joint endpoints and independent edit and drive actions", async () => {
     const f = setup()
     const user = userEvent.setup()
+    const instance = screen.getByRole("button", { name: /Arm\s*Attached by joint/ })
+    const definition = screen.getByRole("button", { name: /Bracket\s*Source pin revision 1/ })
+    for (const row of [instance, definition]) {
+      expect(row.getAttribute("title")).toBeNull()
+      expect(row.querySelector("[title]")).toBeNull()
+    }
+    await user.hover(instance)
+    expect(screen.queryByRole("tooltip")).toBeNull()
+    await user.unhover(instance)
+    const drive = screen.getByRole("button", { name: "Drive Base → Arm" })
+    await user.hover(drive)
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Drive Base → Arm")
+    await user.unhover(drive)
     await user.click(screen.getByRole("button", { name: "Revolute: Base → Arm" }))
     expect(f.onSelectJoint).toHaveBeenCalledWith(f.joint.id)
     await user.click(screen.getByRole("button", { name: "Drive Base → Arm" }))

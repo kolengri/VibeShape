@@ -61,6 +61,166 @@ function selectedFeatureFaceSupport() {
   }
 }
 
+describe("Transient model tree selection", () => {
+  const partId = partIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+  const otherPartId = partIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3302")
+  const otherFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3204")
+  const otherSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3290")
+
+  it("keeps multiple items out of single-part command targeting and replaces them on viewport selection", () => {
+    const store = createEditorSessionStore()
+    store.getState().actions.setModelTreeSelection([
+      { kind: "part", id: partId },
+      { kind: "sketch", id: sketchId },
+    ])
+    expect(store.getState().modelTreeSelection).toHaveLength(2)
+    expect(store.getState().selectedPartId).toBeNull()
+    store.getState().actions.setSelectedPart(partId)
+    expect(store.getState().modelTreeSelection).toEqual([{ kind: "part", id: partId }])
+    store.getState().actions.setSelection({ featureId, faceId: 1, faceOrdinal: 0 })
+    expect(store.getState().modelTreeSelection).toEqual([])
+    expect(store.getState().selection?.featureId).toBe(featureId)
+  })
+
+  it("clears competing hover channels without touching committed visibility", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    const selected = [
+      { kind: "part", id: partId },
+      { kind: "sketch", id: sketchId },
+    ] as const
+    actions.setModelTreeSelection(selected)
+    actions.setBodyPreselection({ featureId, outputRole: "result" })
+    actions.setSketchPreselection(sketchId)
+    expect(store.getState().preselectedBody).toBeNull()
+    expect(store.getState().preselectedSketchId).toBe(sketchId)
+    actions.setFeaturePreselection(featureId)
+    expect(store.getState().preselectedSketchId).toBeNull()
+    actions.setFeaturePreselection(null)
+    expect(store.getState().preselectedFeatureId).toBeNull()
+    expect(store.getState().hiddenSketchIds).toEqual([])
+    expect(store.getState().partVisibilityOverrides).toEqual({})
+    expect(store.getState().modelTreeSelection).toEqual(selected)
+  })
+
+  it("replaces part selection with an origin plane and preserves tree selection on plane deselection", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    actions.setSelectedPart(partId)
+    actions.setSelectedOriginPlane("xy")
+    expect(store.getState().modelTreeSelection).toEqual([])
+    expect(store.getState().selectedPartId).toBeNull()
+    expect(store.getState().selectedOriginPlane).toBe("xy")
+
+    const selected = [
+      { kind: "part", id: partId },
+      { kind: "sketch", id: sketchId },
+    ] as const
+    actions.setModelTreeSelection(selected)
+    actions.setSelectedOriginPlane(null)
+    expect(store.getState().modelTreeSelection).toEqual(selected)
+  })
+
+  it("removes every hidden feature output without discarding unrelated selected identities", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    const retained = [
+      { kind: "body", featureId: otherFeatureId, outputRole: "pattern.instance.1" },
+      { kind: "part", id: partId },
+      { kind: "sketch", id: sketchId },
+    ] as const
+    actions.setModelTreeSelection([
+      { kind: "feature", id: featureId },
+      { kind: "body", featureId, outputRole: "pattern.instance.1" },
+      { kind: "body", featureId, outputRole: "pattern.instance.2" },
+      ...retained,
+    ])
+    actions.setFeatureVisibility(featureId, false)
+    expect(store.getState().modelTreeSelection).toEqual(retained)
+    actions.setFeatureVisibility(featureId, true)
+    expect(store.getState().modelTreeSelection).toEqual(retained)
+  })
+
+  it("removes only the hidden part from multiple selection and clears a hidden single part", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    const retained = [
+      { kind: "part", id: otherPartId },
+      { kind: "sketch", id: sketchId },
+    ] as const
+    actions.setModelTreeSelection([{ kind: "part", id: partId }, ...retained])
+    actions.setPartVisibilityOverride(partId, false)
+    expect(store.getState().modelTreeSelection).toEqual(retained)
+
+    actions.setPartVisibilityOverride(partId, true)
+    expect(store.getState().modelTreeSelection).toEqual(retained)
+    actions.setSelectedPart(partId)
+    actions.setPartVisibilityOverride(partId, false)
+    expect(store.getState().modelTreeSelection).toEqual([])
+    expect(store.getState().selectedPartId).toBeNull()
+  })
+
+  it("filters individual and bulk hidden sketches while retaining other selected items", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    const part = { kind: "part", id: partId } as const
+    const otherSketch = { kind: "sketch", id: otherSketchId } as const
+    const outsideSketch = {
+      kind: "sketch",
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3291"),
+    } as const
+    actions.setModelTreeSelection([
+      { kind: "sketch", id: sketchId },
+      otherSketch,
+      part,
+      outsideSketch,
+    ])
+    actions.setSketchVisibility(sketchId, false)
+    expect(store.getState().modelTreeSelection).toEqual([otherSketch, part, outsideSketch])
+    actions.setSketchVisibility(sketchId, true)
+    expect(store.getState().modelTreeSelection).toEqual([otherSketch, part, outsideSketch])
+
+    actions.toggleAllSketchVisibility([sketchId, otherSketchId])
+    expect(store.getState().modelTreeSelection).toEqual([part, outsideSketch])
+    actions.toggleAllSketchVisibility([sketchId, otherSketchId])
+    expect(store.getState().modelTreeSelection).toEqual([part, outsideSketch])
+  })
+
+  it.each(["setSelection", "setSelectedBody", "setSelectedPart"] as const)(
+    "clears all tree deletion targets through %s(null)",
+    (action) => {
+      const store = createEditorSessionStore()
+      const actions = store.getState().actions
+      actions.setModelTreeSelection([
+        { kind: "part", id: partId },
+        { kind: "body", featureId, outputRole: "pattern.instance.2" },
+        { kind: "sketch", id: sketchId },
+      ])
+      actions[action](null)
+      expect(store.getState().modelTreeSelection).toEqual([])
+      expect(store.getState().selectedPartId).toBeNull()
+      expect(store.getState().selectedBody).toBeNull()
+    },
+  )
+
+  it.each(["sketch", "variables"] as const)(
+    "clears tree deletion targets when leaving the model workspace for %s",
+    (workspace) => {
+      const store = createEditorSessionStore()
+      const actions = store.getState().actions
+      const selected = [
+        { kind: "part", id: partId },
+        { kind: "sketch", id: sketchId },
+      ] as const
+      actions.setModelTreeSelection(selected)
+      actions.switchWorkspace("model")
+      expect(store.getState().modelTreeSelection).toEqual(selected)
+      actions.switchWorkspace(workspace)
+      expect(store.getState().modelTreeSelection).toEqual([])
+    },
+  )
+})
+
 describe("editor session store", () => {
   it("keeps authored part identity distinct from topology and clears it on a new selection", () => {
     const store = createEditorSessionStore()
@@ -487,10 +647,12 @@ describe("editor session store", () => {
       },
     })
 
+    store.getState().actions.setSelectedBody({ featureId, outputRole: "result" })
     store.getState().actions.selectSketchPlane("xz")
 
     expect(store.getState()).toMatchObject({
       selection: null,
+      modelTreeSelection: [],
       workspace: "sketch",
       sketch: {
         activeSketchTool: { kind: "create-sketch" },
@@ -507,10 +669,12 @@ describe("editor session store", () => {
     const support = selectedFeatureFaceSupport()
 
     store.getState().actions.beginSketchCreate(sketch)
+    store.getState().actions.setSelectedBody({ featureId, outputRole: "result" })
     store.getState().actions.selectSketchSupport(support)
 
     expect(store.getState()).toMatchObject({
       selection: null,
+      modelTreeSelection: [],
       workspace: "sketch",
       sketch: {
         activeSketchTool: { kind: "create-sketch" },
@@ -527,9 +691,11 @@ describe("editor session store", () => {
 
     store.getState().actions.beginSketchEdit(sketch)
     store.getState().actions.setSketchEditorTool("circle")
+    store.getState().actions.setSelectedBody({ featureId, outputRole: "result" })
     store.getState().actions.beginSketchSupportReplacement()
     expect(store.getState()).toMatchObject({
       selection: null,
+      modelTreeSelection: [],
       workspace: "model",
       sketch: {
         activeSketchTool: {
@@ -976,11 +1142,13 @@ describe("editor session store", () => {
       outerBoundaryEntityIds: [secondBoundaryEntityId],
     } satisfies SketchProfileSelector
 
+    store.getState().actions.setSelectedBody({ featureId, outputRole: "pattern.instance.2" })
     store.getState().actions.selectSavedSketchProfile(secondProfile, [firstProfile, secondProfile])
 
     expect(store.getState()).toMatchObject({
       activePartDesignTool: null,
       selection: null,
+      modelTreeSelection: [],
       workspace: "model",
       sketch: {
         activeSketchId: sketchId,

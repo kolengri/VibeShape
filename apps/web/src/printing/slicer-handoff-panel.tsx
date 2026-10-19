@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { nativeMeshFormatSchema } from "@vibeshape/slicer-handoff/native"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { useReportApplicationError } from "../shell/application-notices"
 import { type SlicerHandoffActions, useSlicerHandoff } from "./use-slicer-handoff"
 
 type Handoff = ReturnType<typeof useSlicerHandoff>
@@ -55,12 +56,11 @@ function SlicerApplicationField({ handoff, disabled }: Controls) {
     </div>
   )
 }
-function SlicerHandoffButtons({ handoff, disabled }: Controls) {
+function SlicerSecondaryActions({ handoff, disabled }: Controls) {
   const t = useTranslations("app.export.slicer.native")
-  const { native, canSend, canReveal, sendLabel } = handoff
   return (
     <div className="flex flex-wrap gap-2">
-      {native ? (
+      {handoff.native ? (
         <Button
           type="button"
           variant="outline"
@@ -70,10 +70,7 @@ function SlicerHandoffButtons({ handoff, disabled }: Controls) {
           {t("choose")}
         </Button>
       ) : null}
-      <Button type="button" disabled={disabled || !canSend} onClick={handoff.send}>
-        {sendLabel}
-      </Button>
-      {canReveal ? (
+      {handoff.canReveal ? (
         <Button type="button" variant="outline" disabled={disabled} onClick={handoff.reveal}>
           {t("reveal")}
         </Button>
@@ -83,7 +80,8 @@ function SlicerHandoffButtons({ handoff, disabled }: Controls) {
 }
 function HandoffNotice({ status }: { status: Handoff["status"] }) {
   const t = useTranslations("app.export.slicer.native")
-  if (!status) return null
+  const appOwnsError = useReportApplicationError(status?.failed ? t(status.key) : null)
+  if (!status || (status.failed && appOwnsError)) return null
   return (
     <p
       role={status.failed ? "alert" : "status"}
@@ -91,6 +89,16 @@ function HandoffNotice({ status }: { status: Handoff["status"] }) {
     >
       {t(status.key)}
     </p>
+  )
+}
+
+export function SlicerHandoffOptions({ handoff, disabled }: Controls) {
+  return (
+    <div className="grid gap-3">
+      <SlicerApplicationField handoff={handoff} disabled={disabled} />
+      <SlicerSecondaryActions handoff={handoff} disabled={disabled} />
+      <HandoffNotice status={handoff.status} />
+    </div>
   )
 }
 export function SlicerHandoffPanel({
@@ -113,7 +121,12 @@ export function SlicerHandoffPanel({
         <MeshFormatField handoff={handoff} disabled={busy} />
         <SlicerApplicationField handoff={handoff} disabled={busy} />
       </div>
-      <SlicerHandoffButtons handoff={handoff} disabled={busy} />
+      <div className="flex flex-wrap gap-2">
+        <SlicerSecondaryActions handoff={handoff} disabled={busy} />
+        <Button type="button" disabled={busy || !handoff.canSend} onClick={handoff.send}>
+          {handoff.sendLabel}
+        </Button>
+      </div>
       <HandoffNotice status={handoff.status} />
     </section>
   )

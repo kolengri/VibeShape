@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { ModelBrowserPlanes } from "./model-browser-planes"
@@ -14,19 +15,62 @@ function renderOrigin(disabled = false) {
   const onVisibilityChange = vi.fn()
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <ModelBrowserPlanes
-        disabled={disabled}
-        onSelect={onSelect}
-        onVisibilityChange={onVisibilityChange}
-        selected="xz"
-        visibility={{ xy: true, xz: true, yz: false }}
-      />
+      <TooltipProvider>
+        <ModelBrowserPlanes
+          disabled={disabled}
+          onSelect={onSelect}
+          onVisibilityChange={onVisibilityChange}
+          selected="xz"
+          visibility={{ xy: true, xz: true, yz: false }}
+        />
+      </TooltipProvider>
     </I18nProvider>,
   )
   return { onSelect, onVisibilityChange }
 }
 
 describe("model browser planes", () => {
+  it("hides visible origin planes from the collapsed group without changing selection", async () => {
+    const user = userEvent.setup()
+    const { onSelect, onVisibilityChange } = renderOrigin(true)
+    const disclosure = screen.getByRole("treeitem", { name: "Planes" })
+    const visibility = screen.getByRole("button", { name: "Hide all origin planes" })
+    expect(visibility.getAttribute("aria-pressed")).toBe("mixed")
+    await user.click(visibility)
+    expect(onVisibilityChange.mock.calls).toEqual([
+      ["xy", false],
+      ["xz", false],
+    ])
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false")
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it("keeps authored planes visible without exposing unavailable origin actions", () => {
+    render(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TooltipProvider>
+          <ModelBrowserPlanes
+            authoredCount={1}
+            disabled={false}
+            selected={null}
+            showOriginPlanes={false}
+            visibility={{ xy: true, xz: true, yz: true }}
+          >
+            <button type="button" role="treeitem">
+              Angled plane
+            </button>
+          </ModelBrowserPlanes>
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+    expect(screen.getByRole("treeitem", { name: "Planes" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    )
+    expect(screen.getByRole("treeitem", { name: "Angled plane" })).toBeTruthy()
+    expect(screen.queryByRole("treeitem", { name: "XY" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Hide all origin planes" })).toBeNull()
+  })
+
   it("discloses origin planes without changing a selection and keeps visibility independent", async () => {
     const user = userEvent.setup()
     const { onSelect, onVisibilityChange } = renderOrigin()

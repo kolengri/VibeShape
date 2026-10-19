@@ -1,5 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
+import { Button, buttonVariants } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +12,7 @@ import { Check, ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useEffect, useId, useState } from "react"
+import { type RefObject, useEffect, useId, useState } from "react"
 import {
   type EditorCommandId,
   type EditorCommandSketchFamilyId,
@@ -27,6 +27,7 @@ import {
 import { ActionAvailability } from "../components/action-availability"
 import { NativeEditorCommandBridge } from "../desktop/native-editor-commands"
 import { SketchConstraintManagerToolbarSlot } from "../features/sketch/sketch-toolbar-portals"
+import { useResponsiveToolbar } from "./responsive-toolbar"
 
 function ToolbarAction({
   buttonClassName,
@@ -59,6 +60,7 @@ function ToolbarAction({
                 aria-label={label}
                 aria-describedby={describedBy}
                 aria-pressed={command.active}
+                data-responsive-command={command.descriptor.id}
                 aria-disabled={!command.eligibility.enabled || undefined}
                 className={cn("aria-disabled:pointer-events-auto", buttonClassName)}
                 onClick={(event) => {
@@ -304,51 +306,56 @@ function ToolbarCommandMenu({
   getLabel,
   label,
   showLabel = false,
+  focusId,
+  onOpenChange,
 }: {
   commands: readonly ResolvedEditorCommand[]
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
   label: string
   showLabel?: boolean
+  focusId?: string
+  onOpenChange?: (open: boolean) => void
 }) {
   const menuId = useId()
   const hasActiveCommand = commands.some(({ active }) => active)
   if (commands.length === 0) return null
+  const trigger = (
+    <ToolbarButton asChild>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size={showLabel ? "sm" : "icon-sm"}
+          variant={hasActiveCommand ? "secondary" : "ghost"}
+          aria-label={label}
+          aria-current={hasActiveCommand ? "true" : undefined}
+          data-toolbar-menu={focusId}
+        >
+          {showLabel ? (
+            <>
+              {label}
+              <ChevronDown aria-hidden="true" />
+            </>
+          ) : (
+            <Ellipsis aria-hidden="true" />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+    </ToolbarButton>
+  )
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <ToolbarButton asChild>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                size={showLabel ? "sm" : "icon-sm"}
-                variant={hasActiveCommand ? "secondary" : "ghost"}
-                aria-label={label}
-                aria-current={hasActiveCommand ? "true" : undefined}
-              >
-                {showLabel ? (
-                  <>
-                    {hasActiveCommand ? <Check aria-hidden="true" /> : null}
-                    {label}
-                    <ChevronDown aria-hidden="true" />
-                  </>
-                ) : (
-                  <Ellipsis aria-hidden="true" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-        </ToolbarButton>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+    <DropdownMenu {...(onOpenChange ? { onOpenChange } : {})}>
+      {showLabel ? (
+        trigger
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent>{label}</TooltipContent>
+        </Tooltip>
+      )}
       <DropdownMenuContent
         align="start"
-        className={
-          showLabel
-            ? "max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
-            : undefined
-        }
+        className="max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
       >
         {commands.map((command) => {
           const commandLabel = getLabel(command)
@@ -361,6 +368,7 @@ function ToolbarCommandMenu({
             <DropdownMenuItem
               key={command.descriptor.id}
               aria-label={commandLabel}
+              data-command-id={command.descriptor.id}
               aria-describedby={reasonId}
               aria-current={command.active ? "true" : undefined}
               disabled={!command.eligibility.enabled}
@@ -390,6 +398,168 @@ function ToolbarCommandMenu({
   )
 }
 
+type ModelToolbarGroup = Readonly<{
+  id: string
+  label: string
+  commands: readonly ResolvedEditorCommand[]
+}>
+const modelQuickCommands = [
+  editorCommandIds.createFillet,
+  editorCommandIds.createBox,
+  editorCommandIds.measure,
+  editorCommandIds.createDatumPlane,
+  editorCommandIds.createChamfer,
+  editorCommandIds.createCylinder,
+  editorCommandIds.createLoft,
+  editorCommandIds.createHole,
+  editorCommandIds.createSweep,
+] as const
+
+function ModelToolbarProbe({
+  groups,
+  partCommands,
+  directCommands,
+  partLabel,
+  probe,
+}: {
+  groups: readonly ModelToolbarGroup[]
+  partCommands: readonly ResolvedEditorCommand[]
+  directCommands: readonly ResolvedEditorCommand[]
+  partLabel: string
+  probe: RefObject<HTMLDivElement | null>
+}) {
+  const icon = (id: string) => (
+    <span key={id} className={cn(buttonVariants({ size: "icon-sm", variant: "ghost" }))} />
+  )
+  // Inert shapes keep the current visible command set out of the fit measurement.
+  return (
+    <div
+      ref={probe}
+      aria-hidden="true"
+      inert
+      className="pointer-events-none invisible absolute top-0 left-0 flex w-max items-center gap-1"
+      data-toolbar-measure
+    >
+      <span data-fit-leading className="flex items-center gap-1">
+        {partCommands.length > 0 && (
+          <span className="flex items-center gap-1 rounded-md border border-border px-1">
+            <span className="px-1 text-xs">{partLabel}</span>
+            {partCommands.map((command) => icon(command.descriptor.id))}
+          </span>
+        )}
+        {directCommands.map((command) => icon(command.descriptor.id))}
+      </span>
+      <span data-fit-icon>{icon("icon")}</span>
+      <span data-fit-separator className="inline-flex">
+        <span className="mx-1 h-5 w-px" />
+      </span>
+      {groups.map((group) => (
+        <span
+          key={group.id}
+          data-fit-menu={group.id}
+          className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
+        >
+          {group.label}
+          <ChevronDown aria-hidden="true" />
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function ModelToolbar({
+  groups: allGroups,
+  partCommands,
+  directCommands,
+  getDisabledReason,
+  getLabel,
+  partLabel,
+  directLabel,
+  overflowLabel,
+}: {
+  groups: readonly ModelToolbarGroup[]
+  partCommands: readonly ResolvedEditorCommand[]
+  directCommands: readonly ResolvedEditorCommand[]
+  getDisabledReason: (command: ResolvedEditorCommand) => string | null
+  getLabel: (command: ResolvedEditorCommand) => string
+  partLabel: string
+  directLabel: string
+  overflowLabel: string
+}) {
+  const groups = allGroups.filter((group) => group.commands.length > 0)
+  const layout = useResponsiveToolbar(
+    groups.map((group) => ({
+      id: group.id,
+      commands: group.commands.map((command) => command.descriptor.id),
+    })),
+    modelQuickCommands,
+  )
+  const inline = new Set(layout.fit.inline)
+  const shared = { getDisabledReason, getLabel }
+  return (
+    <div
+      ref={layout.container}
+      className="relative flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+      data-responsive-model-toolbar
+    >
+      <ModelToolbarProbe
+        groups={groups}
+        partCommands={partCommands}
+        directCommands={directCommands}
+        partLabel={partLabel}
+        probe={layout.probe}
+      />
+      {layout.fit.compact ? (
+        <ToolbarCommandMenu
+          {...shared}
+          focusId="all"
+          label={overflowLabel}
+          commands={[
+            ...partCommands,
+            ...directCommands,
+            ...groups.flatMap((group) => group.commands),
+          ]}
+          onOpenChange={layout.onMenuOpenChange}
+        />
+      ) : (
+        <>
+          <div className="flex shrink-0 items-center gap-1" data-model-group="leading">
+            {partCommands.length > 0 && (
+              <ToolbarCommandGroup {...shared} framed commands={partCommands} label={partLabel} />
+            )}
+            <ToolbarCommandGroup {...shared} commands={directCommands} label={directLabel} />
+          </div>
+          {groups.map((group) => (
+            <div key={group.id} className="contents">
+              <ToolbarSeparator />
+              <div className="flex shrink-0 items-center gap-1" data-model-group={group.id}>
+                {group.commands
+                  .filter((command) => inline.has(command.descriptor.id))
+                  .map((command) => (
+                    <ToolbarAction
+                      key={command.descriptor.id}
+                      command={command}
+                      disabledReason={getDisabledReason(command)}
+                      label={getLabel(command)}
+                    />
+                  ))}
+                <ToolbarCommandMenu
+                  {...shared}
+                  showLabel
+                  focusId={group.id}
+                  label={group.label}
+                  commands={group.commands.filter((command) => !inline.has(command.descriptor.id))}
+                  onOpenChange={layout.onMenuOpenChange}
+                />
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 export function CommandToolbar({ commands }: { commands: readonly ResolvedEditorCommand[] }) {
   const t = useTranslations("app.shell.commandToolbar")
   const copy = useEditorCommandCopy()
@@ -399,7 +569,6 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const visibleCommands = commands.filter(({ toolbarVisible }) => toolbarVisible)
   const group = (groupName: ResolvedEditorCommand["descriptor"]["toolbarGroup"]) =>
     visibleCommands.filter(({ descriptor }) => descriptor.toolbarGroup === groupName)
-  const workspaceCommands = group("workspace")
   const modelPartCommands = group("model-part")
   const modelPrimaryCommands = group("model-primary")
   const modelInspectionCommands = group("model-inspection")
@@ -455,22 +624,17 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
     <Toolbar
       asChild
       aria-label={t("ariaLabel")}
-      className="min-w-0 gap-2 border-b bg-toolbar px-2 py-1"
+      data-sketch-mode={sketchMode}
+      className={cn("min-w-0 gap-2 border-b bg-toolbar px-2 py-1", sketchMode && "items-start")}
     >
       <nav>
         <NativeEditorCommandBridge commands={commands} />
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {sketchMode ? null : (
-            <>
-              <ToolbarCommandGroup
-                commands={workspaceCommands}
-                getDisabledReason={getDisabledReason}
-                getLabel={getLabel}
-                label={t("workspaceLabel")}
-              />
-              <ToolbarSeparator />
-            </>
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-1",
+            sketchMode ? "overflow-x-auto pb-4 [scrollbar-width:thin]" : "overflow-hidden",
           )}
+        >
           {sketchMode ? (
             <>
               <ToolbarCommandGroup
@@ -564,62 +728,32 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               <SketchConstraintManagerToolbarSlot />
             </>
           ) : (
-            <>
-              {modelPartCommands.length > 0 ? (
-                <ToolbarCommandGroup
-                  framed
-                  commands={modelPartCommands}
-                  getDisabledReason={getDisabledReason}
-                  getLabel={getLabel}
-                  label={t("partActionsLabel")}
-                />
-              ) : null}
-              <ToolbarCommandGroup
-                commands={modelDirectCommands}
-                getDisabledReason={getDisabledReason}
-                getLabel={getLabel}
-                label={t("modelPrimaryLabel")}
-              />
-
-              <ToolbarCommandMenu
-                showLabel
-                commands={modelCreateCommands}
-                getDisabledReason={getDisabledReason}
-                getLabel={getLabel}
-                label={t("modelCreateLabel")}
-              />
-              <ToolbarCommandMenu
-                showLabel
-                commands={modelModifyCommands}
-                getDisabledReason={getDisabledReason}
-                getLabel={getLabel}
-                label={t("modelModifyLabel")}
-              />
-              <ToolbarCommandMenu
-                showLabel
-                commands={modelPrimitiveCommands}
-                getDisabledReason={getDisabledReason}
-                getLabel={getLabel}
-                label={t("primitives")}
-              />
-              <ToolbarCommandMenu
-                showLabel
-                commands={modelInspectionCommands}
-                getDisabledReason={getDisabledReason}
-                getLabel={getLabel}
-                label={t("modelInspectLabel")}
-              />
-            </>
+            <ModelToolbar
+              partCommands={modelPartCommands}
+              directCommands={modelDirectCommands}
+              partLabel={t("partActionsLabel")}
+              directLabel={t("modelPrimaryLabel")}
+              overflowLabel={t("modelPrimaryLabel")}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              groups={[
+                { id: "create", label: t("modelCreateLabel"), commands: modelCreateCommands },
+                { id: "modify", label: t("modelModifyLabel"), commands: modelModifyCommands },
+                { id: "primitives", label: t("primitives"), commands: modelPrimitiveCommands },
+                { id: "inspect", label: t("modelInspectLabel"), commands: modelInspectionCommands },
+              ]}
+            />
           )}
         </div>
         {historyCommands.length > 0 ? (
-          <ToolbarCommandGroup
-            showLabel
-            commands={historyCommands}
-            getDisabledReason={getDisabledReason}
-            getLabel={getLabel}
-            label={t("historyLabel")}
-          />
+          <div className="flex shrink-0 items-center gap-1">
+            <ToolbarCommandGroup
+              commands={historyCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("historyLabel")}
+            />
+          </div>
         ) : null}
       </nav>
     </Toolbar>

@@ -1,12 +1,12 @@
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
-import { Button } from "@vibeshape/ui/components/button"
 import type { ComponentType } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { useReportApplicationError } from "../../shell/application-notices"
 import { ResponsiveTaskPanel } from "../../shell/responsive-task-panel"
 import { WorkspacePanels } from "../../shell/workspace-panels"
+import { AssemblyAsBuiltJointForm, AssemblyRigidGroupForm } from "./assembly-as-built-form"
 import { AssemblyDefinitionForm } from "./assembly-definition-form"
-import { AssemblyExportDialog } from "./assembly-export-dialog"
 import { AssemblyTaskPanelContext } from "./assembly-forms"
 import { AssemblyInstanceForm } from "./assembly-instance-form"
 import { AssemblyInterference } from "./assembly-interference"
@@ -18,12 +18,12 @@ import {
   useAssemblyMotionSession,
 } from "./assembly-motion-session"
 import {
-  AssemblyMotionStudyActions,
   AssemblyMotionStudyPanel,
   type AssemblyMotionStudySession,
   useAssemblyMotionStudySession,
 } from "./assembly-motion-study-panel"
 import { AssemblyRemoveDialog } from "./assembly-remove-dialog"
+import { AssemblyToolbar } from "./assembly-toolbar"
 import { AssemblyTree } from "./assembly-tree"
 import { AssemblyViewport } from "./assembly-viewport"
 import {
@@ -69,7 +69,21 @@ function JointTask({ view, task }: TaskProps) {
     />
   ) : null
 }
+function CapturedPoseTask({ view, task }: TaskProps) {
+  if (!("capture" in task)) return null
+  const Form = task.kind === "asBuiltJoint" ? AssemblyAsBuiltJointForm : AssemblyRigidGroupForm
+  return (
+    <Form
+      assembly={view.assembly}
+      capture={task.capture}
+      selectedId={view.selected.activeId}
+      actions={assemblyTaskActions(view)}
+    />
+  )
+}
 const taskForms: Record<AssemblyTask["kind"], ComponentType<TaskProps>> = {
+  asBuiltJoint: CapturedPoseTask,
+  rigidGroup: CapturedPoseTask,
   createDefinition: ({ view, selectedPartId }) => (
     <AssemblyDefinitionForm
       mode="create"
@@ -93,102 +107,6 @@ const taskForms: Record<AssemblyTask["kind"], ComponentType<TaskProps>> = {
     />
   ),
   editJoint: JointTask,
-}
-function InstanceActions({ view }: { view: AssemblyWorkspaceView }) {
-  const t = useTranslations("app.assembly")
-  const instance = view.selected.instance
-  if (!instance) return null
-  const joints = view.assembly.joints.filter(
-    ({ childInstanceId, parentInstanceId }) =>
-      childInstanceId === instance.id ||
-      (view.assembly.schemaVersion === 2 && parentInstanceId === instance.id),
-  )
-  return (
-    <div className="grid gap-2">
-      <h3 className="break-words text-sm font-semibold">{instance.name}</h3>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={view.disabled}
-        onClick={() => view.openTask("editInstance", instance.id)}
-      >
-        {t("editInstance")}
-      </Button>
-      {joints.map((joint) => (
-        <Button
-          key={joint.id}
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={view.disabled}
-          onClick={() => view.openTask("editJoint", joint.id)}
-        >
-          {t("editJoint")}
-        </Button>
-      ))}
-      {!instance.grounded && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={view.disabled}
-          onClick={() => view.ground(instance)}
-        >
-          {t("groundInstance")}
-        </Button>
-      )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={view.disabled}
-        onClick={() => view.onRemove("instance", instance.id, instance.name)}
-      >
-        {t("removeInstance")}
-      </Button>
-    </div>
-  )
-}
-function DefinitionActions({ view }: { view: AssemblyWorkspaceView }) {
-  const t = useTranslations("app.assembly")
-  const definition = view.selected.definition
-  if (!definition) return null
-  return (
-    <div className="grid gap-2">
-      <h3 className="mt-2 break-words text-sm font-semibold">{definition.name}</h3>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={view.disabled}
-        onClick={() => view.openTask("editDefinition", definition.id)}
-      >
-        {t("editDefinition")}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={view.disabled}
-        onClick={() => view.openTask("relinkDefinition", definition.id)}
-      >
-        {t("relinkDefinition")}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={view.disabled}
-        onClick={() => view.onRemove("definition", definition.id, definition.name)}
-      >
-        {t("removeDefinition")}
-      </Button>
-      <p className="text-xs text-muted-foreground">
-        {t("pinRevision", { revision: definition.pinRevision })}
-      </p>
-    </div>
-  )
 }
 function AssemblySolveSummary({ kinematics }: { kinematics: AssemblyInspection["kinematics"] }) {
   const t = useTranslations("app.assembly")
@@ -214,56 +132,30 @@ function GeneralMateStatus({ view }: { view: AssemblyWorkspaceView }) {
   return (
     <>
       {view.assembly.schemaVersion === 1 && (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={view.disabled || view.inspection.pending}
-            onClick={() => void view.upgrade()}
-          >
-            {t("generalMates")}
-          </Button>
-          <p className="text-xs text-muted-foreground">{t("generalMatesExplanation")}</p>
-        </>
+        <p className="text-xs text-muted-foreground">{t("generalMatesExplanation")}</p>
       )}
       <AssemblySolveSummary kinematics={view.inspection.inspection?.kinematics} />
     </>
   )
 }
+function FrozenDefinitionReference({ selected }: { selected: AssemblyWorkspaceView["selected"] }) {
+  const t = useTranslations("app.assembly")
+  if (!selected.definition) return null
+  return (
+    <p className="break-words text-xs text-muted-foreground">
+      {selected.instance?.name ?? selected.definition.name} ·{" "}
+      {t("pinRevision", { revision: selected.definition.pinRevision })}
+    </p>
+  )
+}
 function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
   const t = useTranslations("app.assembly")
-  const available = {
-    createDefinition: Boolean(view.sources.length),
-    addInstance: Boolean(view.assembly.definitions.length),
-    addJoint: Boolean(view.assembly.instances.length),
-  }
   return (
     <>
-      <div className="grid gap-2">
-        {(["createDefinition", "addInstance", "addJoint"] as const).map((kind) => (
-          <Button
-            key={kind}
-            type="button"
-            variant="outline"
-            disabled={view.disabled || !available[kind]}
-            onClick={() => view.openTask(kind)}
-          >
-            {t(kind)}
-          </Button>
-        ))}
-      </div>
+      <AssemblyToolbar view={view} />
       <GeneralMateStatus view={view} />
-      <AssemblyMotionStudyActions view={view} />
-      <AssemblyExportDialog
-        key={view.documentKey}
-        instances={view.assembly.instances}
-        selectedId={view.selected.activeId}
-        inspection={view.inspection.inspection}
-        disabled={view.disabled || view.inspection.pending}
-      />
       <p className="text-xs text-muted-foreground">{t("frozenExplanation")}</p>
-      <InstanceActions view={view} />
-      <DefinitionActions view={view} />
+      <FrozenDefinitionReference selected={view.selected} />
       <AssemblyInterference
         assembly={view.assembly}
         inspection={view.inspection.inspection}
@@ -328,10 +220,11 @@ function AssemblyInspectionStatus({ view }: { view: AssemblyWorkspaceView }) {
 }
 function IdleAssemblyPanelHeading({ error }: { error: string | null }) {
   const t = useTranslations("app.assembly")
+  const appOwnsError = useReportApplicationError(error)
   return (
     <>
       <h2 className="text-base font-semibold">{t("workspaceTitle")}</h2>
-      {error && (
+      {error && !appOwnsError && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>

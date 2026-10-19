@@ -53,12 +53,12 @@ describe("local AI auto-apply controls", () => {
     const { connection, rerender } = setup({ ...manual, connected: false, client: null })
     const enable = screen.getByRole("button", { name: "Enable AI session" })
     expect(enable.textContent).toBe("AI access")
-    expect(enable.getAttribute("data-variant")).toBe("outline")
+    expect(enable.getAttribute("data-variant")).toBe("ghost")
     expect(enable.hasAttribute("disabled")).toBe(true)
     expect(
       document.getElementById(enable.getAttribute("aria-describedby") ?? "")?.textContent,
     ).toBe("MCP client not connected")
-    expect(enable.title).toBe("Connect an MCP client, then enable AI access to this project.")
+    expect(enable.hasAttribute("title")).toBe(false)
     await userEvent.click(enable)
     expect(connection.enable).not.toHaveBeenCalled()
 
@@ -71,13 +71,13 @@ describe("local AI auto-apply controls", () => {
     expect(connection.enable).toHaveBeenCalledTimes(1)
   })
 
-  it("keeps active AI access and Stop AI visibly styled as buttons", () => {
+  it("uses unobtrusive status-bar actions for active AI access and Stop AI", () => {
     setup()
     const settings = screen.getByRole("button", { name: "AI connection and approval mode" })
     expect(settings.textContent).toBe("AI access on · Approve each change")
-    expect(settings.getAttribute("data-variant")).toBe("outline")
+    expect(settings.getAttribute("data-variant")).toBe("ghost")
     expect(screen.getByRole("button", { name: "Stop AI" }).getAttribute("data-variant")).toBe(
-      "outline",
+      "ghost",
     )
   })
 

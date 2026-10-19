@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process"
-import { cp, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { packager } from "@electron/packager"
 import { valid } from "semver"
 import { z } from "zod"
 import { distributionHash } from "../../scripts/local-distribution-files"
 import { verifyControlledEditorBuild } from "../../scripts/local-editor-build"
+import { createDmgImage } from "./dmg-presentation"
 import manifest from "./package.json"
 import { withPackageOutput } from "./package-output"
 import { verifyRuntimeFiles } from "./runtime-consistency"
@@ -156,24 +157,18 @@ async function createApp(
   return appPath
 }
 
-async function createImage(stage: string, input: ReturnType<typeof packageInput>, appPath: string) {
-  const image = join(stage, "image")
-  await mkdir(image)
-  await cp(appPath, join(image, "VibeShape.app"), { recursive: true, verbatimSymlinks: true })
-  await symlink("/Applications", join(image, "Applications"))
-  const fileName = `VibeShape-${manifest.version}-mac-${input.arch}.dmg`
-  const dmg = join(input.output, fileName)
-  run("hdiutil", ["create", "-volname", "VibeShape", "-srcfolder", image, "-format", "UDZO", dmg])
-  const digest = distributionHash(await readFile(dmg))
-  await writeFile(join(input.output, "SHA256SUMS"), `${digest}  ${fileName}\n`)
-  return { dmg, digest }
-}
-
 const input = packageInput()
 await withPackageOutput(input.output, async (stage) => {
   const files = await stageApplication(stage, input)
   const appPath = await createApp(stage, input, files)
-  const image = await createImage(stage, input, appPath)
+  const image = await createDmgImage({
+    stage,
+    output: input.output,
+    appPath,
+    version: manifest.version,
+    arch: input.arch,
+    brandIcon: join(root, "apps/web/public/brand/app-icon.png"),
+  })
   if (
     verifyControlledEditorBuild(dist) !== input.editorHash ||
     run("git", ["status", "--porcelain"]) ||

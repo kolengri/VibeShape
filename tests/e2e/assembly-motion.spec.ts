@@ -119,14 +119,13 @@ test("previews real assembly drives without saving, pauses and resets, applies o
     timeout: 60_000,
   })
   const firstUrl = page.url()
-  await openApplicationMenuItem(page, "Files and projects…")
-  await page
-    .getByRole("dialog", { name: "Projects", exact: true })
-    .getByRole("button", { name: "New project", exact: true })
-    .click()
+  await openApplicationMenuItem(page, "Projects")
+  await page.getByRole("main").getByRole("button", { name: "New project", exact: true }).click()
   await saved(page)
   await expect(page).not.toHaveURL(firstUrl)
   await expect(page.getByText("Unsaved motion preview", { exact: true })).toHaveCount(0)
+  await page.goBack()
+  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible()
   await page.goBack()
   await expect(page).toHaveURL(firstUrl)
   await saved(page)

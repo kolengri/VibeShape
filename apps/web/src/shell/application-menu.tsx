@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
@@ -15,22 +16,20 @@ import {
   Keyboard,
   Settings,
 } from "@vibeshape/ui/components/icons"
-import { useRef, useState } from "react"
+import { type ReactNode, useRef, useState } from "react"
 import { NativeApplicationCommandBridge } from "../desktop/native-editor-commands"
-import type { DocumentControllerState } from "../document/document-controller"
-import { DocumentExportDialog } from "../document/document-export-dialog"
-import { DocumentProjectDialog } from "../document/document-project-dialog"
-import { ImportDialog } from "../features/import/import-dialog"
-import { LibraryDialog } from "../features/library/library-dialog"
-import { PlanarImportDialog } from "../features/planar-import/import-dialog"
+import {
+  type DocumentControllerState,
+  getProjectActionBlock,
+  showProjectLibrary,
+} from "../document/document-controller"
+import { useProjectBackup } from "../document/use-project-backup"
+import { useReportApplicationError } from "./application-notices"
 import { ApplicationWordmark } from "./application-wordmark"
-import { ExtensionsDialog } from "./extensions-dialog"
 import { FaqDialog } from "./faq-dialog"
 import { SettingsDialog } from "./settings-dialog"
-import { useViewerPreferences } from "./viewer-preferences"
 
 type MenuDialog =
-  | "projects"
   | "export"
   | "settings"
   | "faq"
@@ -39,28 +38,269 @@ type MenuDialog =
   | "library"
   | "extensions"
 
-export function ApplicationMenu({
+export type ApplicationMenuDialogProps = {
+  dialog: MenuDialog | null
+  onOpenChange: (open: boolean) => void
+  onCloseAutoFocus: (event: Event) => void
+}
+
+type ApplicationMenuProps = {
+  controller: DocumentControllerState
+  busy?: boolean
+  remoteEndpoint?: string | undefined
+} & (
+  | { scope: "library" }
+  | {
+      scope?: "editor"
+      hideModelExport?: boolean
+      unitChangesBlocked: boolean
+      onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
+      onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
+      renderDialogs: (props: ApplicationMenuDialogProps) => ReactNode
+    }
+)
+
+const libraryCommands = ["settings", "faq"] as const
+
+function useProjectLibraryNavigation(failureMessage: string) {
+  const [navigating, setNavigating] = useState(false)
+  const [navigationFailed, setNavigationFailed] = useState(false)
+  const [navigationAttempt, setNavigationAttempt] = useState(0)
+  const message = navigationFailed ? failureMessage : null
+  const centralized = useReportApplicationError(message, navigationAttempt)
+  const navigationPending = useRef(false)
+  useReportActivity(navigating)
+  const navigateProjects = async () => {
+    if (navigationPending.current) return
+    navigationPending.current = true
+    setNavigationAttempt((attempt) => attempt + 1)
+    setNavigating(true)
+    setNavigationFailed(false)
+    try {
+      const result = await showProjectLibrary()
+      if (!result.ok) setNavigationFailed(true)
+    } catch {
+      setNavigationFailed(true)
+    } finally {
+      navigationPending.current = false
+      setNavigating(false)
+    }
+  }
+  return { navigateProjects, navigating, error: centralized ? null : message }
+}
+
+function ApplicationProjectMenu({
   controller,
-  hideModelExport = false,
-  blockedReason,
   unitChangesBlocked,
-  remoteEndpoint,
-  onOpenCommandPalette,
-  onOpenShortcutHelp,
+  hideModelExport,
+  backup,
+  navigation,
+  launchDialog,
 }: {
   controller: DocumentControllerState
-  hideModelExport?: boolean
-  blockedReason: string | null
   unitChangesBlocked: boolean
-  remoteEndpoint?: string | undefined
-  onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
-  onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
+  hideModelExport: boolean
+  backup: ReturnType<typeof useProjectBackup>
+  navigation: ReturnType<typeof useProjectLibraryNavigation>
+  launchDialog: (next: MenuDialog) => void
+}) {
+  const t = useTranslations("app.shell.applicationMenu")
+  const backupT = useTranslations("app.projectFile.backup")
+  return (
+    <DropdownMenuGroup aria-label={t("project")}>
+      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("project")}</p>
+      <DropdownMenuItem
+        disabled={navigation.navigating}
+        onSelect={() => void navigation.navigateProjects()}
+      >
+        <FolderOpen aria-hidden="true" />
+        {t("files")}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        disabled={
+          backup.pending || controller.status !== "ready" || Boolean(getProjectActionBlock())
+        }
+        onSelect={() => void backup.save()}
+      >
+        <Download aria-hidden="true" />
+        {backupT("action")}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={unitChangesBlocked}
+        onSelect={() => launchDialog("source-import")}
+      >
+        {t("importGeometry")}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={unitChangesBlocked}
+        onSelect={() => launchDialog("planar-import")}
+      >
+        {t("importSketch")}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={controller.status !== "ready"}
+        onSelect={() => launchDialog("library")}
+      >
+        {t("library")}
+      </DropdownMenuItem>
+      {!hideModelExport && (
+        <DropdownMenuItem
+          aria-haspopup="dialog"
+          disabled={controller.status !== "ready" || controller.report === null}
+          onSelect={() => launchDialog("export")}
+        >
+          <Download aria-hidden="true" />
+          {t("export")}
+        </DropdownMenuItem>
+      )}
+    </DropdownMenuGroup>
+  )
+}
+
+function ApplicationWorkspaceMenu({
+  editor,
+  launchDialog,
+  onOpenCommandPalette,
+}: {
+  editor: boolean
+  launchDialog: (next: MenuDialog) => void
+  onOpenCommandPalette: () => void
 }) {
   const t = useTranslations("app.shell.applicationMenu")
   const commandsT = useTranslations("app.commands")
-  const preferredFormat = useViewerPreferences((state) => state.preferredExportFormat)
+  return (
+    <DropdownMenuGroup aria-label={t("workspace")} className="mt-1 border-t pt-1">
+      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("workspace")}</p>
+      <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("settings")}>
+        <Settings aria-hidden="true" />
+        {t("settings")}
+      </DropdownMenuItem>
+      {editor && (
+        <>
+          <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("extensions")}>
+            {t("extensions")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenCommandPalette}>
+            <CommandIcon aria-hidden="true" />
+            {commandsT("open")}
+            <kbd className="ml-auto text-xs text-muted-foreground">{commandsT("openShortcut")}</kbd>
+          </DropdownMenuItem>
+        </>
+      )}
+    </DropdownMenuGroup>
+  )
+}
+
+function ApplicationHelpMenu({
+  editor,
+  launchDialog,
+  onOpenShortcutHelp,
+}: {
+  editor: boolean
+  launchDialog: (next: MenuDialog) => void
+  onOpenShortcutHelp: () => void
+}) {
+  const t = useTranslations("app.shell.applicationMenu")
+  const commandsT = useTranslations("app.commands")
+  return (
+    <DropdownMenuGroup aria-label={t("help")} className="mt-1 border-t pt-1">
+      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("help")}</p>
+      <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("faq")}>
+        {t("faq")}
+      </DropdownMenuItem>
+      {editor && (
+        <DropdownMenuItem data-shortcut-help-trigger onSelect={onOpenShortcutHelp}>
+          <Keyboard aria-hidden="true" />
+          {commandsT("shortcutHelp.title")}
+          <kbd className="ml-auto text-xs text-muted-foreground">F1</kbd>
+        </DropdownMenuItem>
+      )}
+    </DropdownMenuGroup>
+  )
+}
+
+function ApplicationMenuDialogs({
+  controller,
+  editor,
+  dialog,
+  blocked,
+  remoteEndpoint,
+  onOpenChange,
+  onCloseAutoFocus,
+}: {
+  controller: DocumentControllerState
+  editor: Extract<ApplicationMenuProps, { unitChangesBlocked: boolean }> | null
+  dialog: MenuDialog | null
+  blocked: boolean
+  remoteEndpoint: string | undefined
+  onOpenChange: (open: boolean) => void
+  onCloseAutoFocus: (event: Event) => void
+}) {
+  return (
+    <>
+      {editor?.renderDialogs({
+        dialog,
+        onOpenChange: onOpenChange,
+        onCloseAutoFocus: onCloseAutoFocus,
+      })}
+      {dialog === "settings" && (
+        <SettingsDialog
+          controller={controller}
+          blocked={blocked}
+          showTrigger={false}
+          open={dialog === "settings"}
+          onOpenChange={onOpenChange}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      )}
+      {dialog === "faq" && (
+        <FaqDialog
+          endpoint={remoteEndpoint}
+          showTrigger={false}
+          open={dialog === "faq"}
+          onOpenChange={onOpenChange}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      )}
+    </>
+  )
+}
+
+function ApplicationMenuBrand({
+  busy,
+  controller,
+}: {
+  busy: boolean
+  controller: DocumentControllerState
+}) {
+  return (
+    <>
+      <ApplicationWordmark
+        busy={
+          busy ||
+          controller.status === "idle" ||
+          controller.status === "loading" ||
+          (controller.status === "ready" && controller.saveStatus === "saving")
+        }
+      />
+      <ChevronDown aria-hidden="true" />
+    </>
+  )
+}
+
+export function ApplicationMenu(props: ApplicationMenuProps) {
+  const { controller, busy = false, remoteEndpoint } = props
+  const editor = props.scope === "library" ? null : props
+  const hideModelExport = editor?.hideModelExport ?? false
+  const unitChangesBlocked = editor?.unitChangesBlocked ?? true
+  const t = useTranslations("app.shell.applicationMenu")
+  const backup = useProjectBackup(controller)
   const [open, setOpen] = useState(false)
   const [dialog, setDialog] = useState<MenuDialog | null>(null)
+  const navigation = useProjectLibraryNavigation(t("projectNavigationFailed"))
   const trigger = useRef<HTMLButtonElement>(null)
   const openingCommandDialog = useRef(false)
   const closeDialogMenu = (event: Event) => {
@@ -75,18 +315,39 @@ export function ApplicationMenu({
   const dialogOpenChange = (next: boolean) => {
     if (!next) setDialog(null)
   }
+  const openEditorCommand = (command: "palette" | "shortcuts") => {
+    if (!trigger.current || !editor) return
+    openingCommandDialog.current = true
+    const open = command === "palette" ? editor.onOpenCommandPalette : editor.onOpenShortcutHelp
+    open(trigger.current)
+  }
   return (
     <>
       <NativeApplicationCommandBridge
         exportAvailable={
-          !hideModelExport && controller.status === "ready" && controller.report !== null
+          editor !== null &&
+          !hideModelExport &&
+          controller.status === "ready" &&
+          controller.report !== null
         }
+        {...(!editor ? { allowedCommands: libraryCommands } : {})}
         onCommand={(command) => {
           if (command === "shortcuts") {
-            if (trigger.current) onOpenShortcutHelp(trigger.current)
-          } else launchDialog(command)
+            if (trigger.current) editor?.onOpenShortcutHelp(trigger.current)
+          } else if (command === "projects") void navigation.navigateProjects()
+          else launchDialog(command)
         }}
       />
+      {navigation.error && (
+        <p role="alert" className="sr-only">
+          {navigation.error}
+        </p>
+      )}
+      {backup.error && (
+        <p role="alert" className="sr-only">
+          {backup.error}
+        </p>
+      )}
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -97,10 +358,7 @@ export function ApplicationMenu({
             aria-label={t("trigger")}
             data-application-menu-trigger
           >
-            <ApplicationWordmark
-              saving={controller.status === "ready" && controller.saveStatus === "saving"}
-            />
-            <ChevronDown aria-hidden="true" />
+            <ApplicationMenuBrand busy={busy} controller={controller} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -113,150 +371,34 @@ export function ApplicationMenu({
             }
           }}
         >
-          <DropdownMenuGroup aria-label={t("project")}>
-            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("project")}</p>
-            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("projects")}>
-              <FolderOpen aria-hidden="true" />
-              {t("files")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              aria-haspopup="dialog"
-              disabled={unitChangesBlocked}
-              onSelect={() => launchDialog("source-import")}
-            >
-              {t("importGeometry")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              aria-haspopup="dialog"
-              disabled={unitChangesBlocked}
-              onSelect={() => launchDialog("planar-import")}
-            >
-              {t("importSketch")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              aria-haspopup="dialog"
-              disabled={controller.status !== "ready"}
-              onSelect={() => launchDialog("library")}
-            >
-              {t("library")}
-            </DropdownMenuItem>
-            {!hideModelExport && (
-              <DropdownMenuItem
-                aria-haspopup="dialog"
-                disabled={controller.status !== "ready" || controller.report === null}
-                onSelect={() => launchDialog("export")}
-              >
-                <Download aria-hidden="true" />
-                {t("export")}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-          <DropdownMenuGroup aria-label={t("workspace")} className="mt-1 border-t pt-1">
-            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-              {t("workspace")}
-            </p>
-            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("settings")}>
-              <Settings aria-hidden="true" />
-              {t("settings")}
-            </DropdownMenuItem>
-            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("extensions")}>
-              {t("extensions")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                if (trigger.current) {
-                  openingCommandDialog.current = true
-                  onOpenCommandPalette(trigger.current)
-                }
-              }}
-            >
-              <CommandIcon aria-hidden="true" />
-              {commandsT("open")}
-              <kbd className="ml-auto text-xs text-muted-foreground">
-                {commandsT("openShortcut")}
-              </kbd>
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuGroup aria-label={t("help")} className="mt-1 border-t pt-1">
-            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("help")}</p>
-            <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("faq")}>
-              {t("faq")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              data-shortcut-help-trigger
-              onSelect={() => {
-                if (trigger.current) {
-                  openingCommandDialog.current = true
-                  onOpenShortcutHelp(trigger.current)
-                }
-              }}
-            >
-              <Keyboard aria-hidden="true" />
-              {commandsT("shortcutHelp.title")}
-              <kbd className="ml-auto text-xs text-muted-foreground">F1</kbd>
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
+          {editor && (
+            <ApplicationProjectMenu
+              controller={controller}
+              unitChangesBlocked={unitChangesBlocked}
+              hideModelExport={hideModelExport}
+              backup={backup}
+              navigation={navigation}
+              launchDialog={launchDialog}
+            />
+          )}
+          <ApplicationWorkspaceMenu
+            editor={editor !== null}
+            launchDialog={launchDialog}
+            onOpenCommandPalette={() => openEditorCommand("palette")}
+          />
+          <ApplicationHelpMenu
+            editor={editor !== null}
+            launchDialog={launchDialog}
+            onOpenShortcutHelp={() => openEditorCommand("shortcuts")}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
-      <DocumentProjectDialog
+      <ApplicationMenuDialogs
         controller={controller}
-        blockedReason={blockedReason}
-        showTrigger={false}
-        open={dialog === "projects"}
-        onOpenChange={dialogOpenChange}
-        onCloseAutoFocus={closeDialogMenu}
-      />
-      {!hideModelExport && (
-        <DocumentExportDialog
-          controller={controller}
-          preferredFormat={preferredFormat}
-          showTrigger={false}
-          open={dialog === "export"}
-          onOpenChange={dialogOpenChange}
-          onCloseAutoFocus={closeDialogMenu}
-        />
-      )}
-      <ImportDialog
-        controller={controller}
+        editor={editor}
+        dialog={dialog}
         blocked={unitChangesBlocked}
-        showTrigger={false}
-        open={dialog === "source-import"}
-        onOpenChange={dialogOpenChange}
-        onCloseAutoFocus={closeDialogMenu}
-      />
-      <PlanarImportDialog
-        controller={controller}
-        blocked={unitChangesBlocked}
-        showTrigger={false}
-        open={dialog === "planar-import"}
-        onOpenChange={dialogOpenChange}
-        onCloseAutoFocus={closeDialogMenu}
-      />
-      <LibraryDialog
-        controller={controller}
-        blocked={unitChangesBlocked}
-        showTrigger={false}
-        open={dialog === "library"}
-        onOpenChange={dialogOpenChange}
-        onCloseAutoFocus={closeDialogMenu}
-      />
-      <SettingsDialog
-        controller={controller}
-        blocked={unitChangesBlocked}
-        showTrigger={false}
-        open={dialog === "settings"}
-        onOpenChange={dialogOpenChange}
-        onCloseAutoFocus={closeDialogMenu}
-      />
-      <ExtensionsDialog
-        open={dialog === "extensions"}
-        onOpenChange={dialogOpenChange}
-        onCloseAutoFocus={closeDialogMenu}
-      />
-      <FaqDialog
-        endpoint={remoteEndpoint}
-        showTrigger={false}
-        open={dialog === "faq"}
+        remoteEndpoint={remoteEndpoint}
         onOpenChange={dialogOpenChange}
         onCloseAutoFocus={closeDialogMenu}
       />

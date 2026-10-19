@@ -22,9 +22,11 @@ import {
   useRef,
   useState,
 } from "react"
+import type { DocumentControllerState } from "../document/document-controller"
 import type { AuthoredMetadataCommit } from "./authored-item-rename"
 import { folderItemsWithSelection, selectedFolderItems } from "./authored-tree-state"
 import { HistoryFolderDialog } from "./history-folder-dialog"
+import { useHistorySelectionDelete } from "./history-selection-delete"
 import type { HistoryViewRow } from "./model-tree-history"
 
 type FolderSelection = { keys: readonly string[]; anchor: string | null }
@@ -71,6 +73,7 @@ type FolderSelectionContext = {
   controlsRef: RefObject<HTMLDivElement | null>
   clear: () => void
   error: string | null
+  deleteKeyDown: (event: KeyboardEvent<HTMLElement>, key: string) => void
 }
 const SelectionContext = createContext<FolderSelectionContext | null>(null)
 
@@ -162,12 +165,14 @@ function useFolderAppend(
 }
 
 export function HistoryFolderSelection({
+  controller,
   authority,
   disabled,
   rows,
   onCommit,
   children,
 }: {
+  controller?: DocumentControllerState | undefined
   authority: AuthoredDocumentSnapshot | null
   disabled: boolean
   rows: readonly HistoryViewRow[]
@@ -178,6 +183,7 @@ export function HistoryFolderSelection({
   return (
     <HistoryFolderSelectionScope
       key={authority.id}
+      controller={controller}
       authority={authority}
       disabled={disabled}
       rows={rows}
@@ -189,12 +195,14 @@ export function HistoryFolderSelection({
 }
 
 function HistoryFolderSelectionScope({
+  controller,
   authority,
   disabled,
   rows,
   onCommit,
   children,
 }: {
+  controller: DocumentControllerState | undefined
   authority: AuthoredDocumentSnapshot
   disabled: boolean
   rows: readonly HistoryViewRow[]
@@ -214,6 +222,12 @@ function HistoryFolderSelectionScope({
   const selectedKeys = new Set(keys)
   const locked = disabled || append.pending
   const keysForRow = (key: string) => (selectedKeys.has(key) ? keys : [key])
+  const deletion = useHistorySelectionDelete({
+    controller,
+    targets: authority.history.filter((item) => selectedKeys.has(historyItemKey(item))),
+    disabled: locked || creation !== null,
+    onDeleted: clear,
+  })
   const select = (key: string, gesture: SelectionGesture) => {
     setSelection((previous) => nextSelection(authority, previous, key, gesture))
     append.clearError()
@@ -241,9 +255,17 @@ function HistoryFolderSelectionScope({
         controlsRef,
         clear,
         error: append.error,
+        deleteKeyDown: (event, key) => {
+          const selected = new Set(keysForRow(key))
+          deletion.onKeyDown(
+            event,
+            authority.history.filter((item) => selected.has(historyItemKey(item))),
+          )
+        },
       }}
     >
       {children}
+      {deletion.confirmation}
       {creation && (
         <HistoryFolderDialog
           authority={authority}
@@ -531,7 +553,10 @@ export function HistoryFolderSelectableRow({
           }}
           onClickCapture={(event) => captureHistorySelection(event, context, key)}
           onKeyDownCapture={(event) => captureHistoryKeyboardSelection(event, context, key)}
-          onKeyDown={openHistoryMenuFromKeyboard}
+          onKeyDown={(event) => {
+            context.deleteKeyDown(event, key)
+            openHistoryMenuFromKeyboard(event)
+          }}
         >
           <div className="min-w-0 flex-1">
             {children}

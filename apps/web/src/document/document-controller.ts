@@ -94,6 +94,7 @@ import {
   type DocumentCommand,
 } from "@vibeshape/domain/commands"
 import { documentNameInputSchema, documentSnapshotSchema } from "@vibeshape/domain/document"
+import { historyItemRefSchema } from "@vibeshape/domain/document-node"
 import type {
   AuthoredDocumentSnapshot,
   DocumentAuthoritySnapshot,
@@ -2534,6 +2535,79 @@ async function removeHistoryRecord(
     }),
   )
   return result.ok ? { ok: true } : result
+}
+
+/** Removes one selection through the existing atomic authored transaction and undo boundary. */
+export async function removeHistoryItems(
+  baseRevision: number,
+  targets: readonly HistoryItemRef[],
+  expectedDocumentId: DocumentSnapshot["id"],
+): Promise<DocumentMutationResult> {
+  const parsed = historyItemRefSchema.array().min(1).max(256).safeParse(targets)
+  const active = session
+  const authority = active?.authoredSnapshot
+  if (
+    !parsed.success ||
+    !active ||
+    !canWriteAuthoredMetadata(active) ||
+    getProjectActionBlock() !== null ||
+    !authority ||
+    authority.schemaVersion === 1 ||
+    authority.id !== expectedDocumentId ||
+    authority.revision !== baseRevision ||
+    active.snapshot.id !== expectedDocumentId ||
+    active.snapshot.revision !== baseRevision
+  )
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "Select up to 256 current History items in a writable, idle document.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    }
+  const selected = new Set(parsed.data.map((item) => `${item.kind}:${item.id}`))
+  const ordered = authority.history
+    .filter((item) => selected.has(`${item.kind}:${item.id}`))
+    .reverse()
+  if (ordered.length !== selected.size)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "The selection contains an unavailable History item.",
+        retryable: true,
+        sourceCode: "invalid-input",
+      },
+    }
+  const issuedAt = new Date().toISOString()
+  try {
+    return await commitAuthoredTransaction(baseRevision, {
+      transactionId: browserUuidV7(),
+      commands: ordered.map((target, index) =>
+        historyRemoveRetainingDependentsCommandSchema.parse({
+          kind: "org.vibeshape.history.remove-retaining-dependents",
+          schemaVersion: 5,
+          commandId: browserUuidV7(),
+          documentId: authority.id,
+          baseRevision: baseRevision + index,
+          issuedAt,
+          actor: { type: "user", userId: null },
+          payload: { target },
+        }),
+      ),
+    })
+  } catch {
+    const diagnostic = {
+      code: "command-rejected" as const,
+      message: "The selected History items could not be saved.",
+      retryable: true,
+      sourceCode: null,
+    }
+    if (session === active) publish({ ...state, saveStatus: "save-error", diagnostic })
+    return { ok: false, diagnostic }
+  }
 }
 
 export function removeFeature(baseRevision: number, featureId: FeatureRecord["id"]) {

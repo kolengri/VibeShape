@@ -25,12 +25,14 @@ An action control that observes a Promise-like handler result follows a single-f
 
 - suppress the second pointer activation in a native double-click before invoking the handler;
 - lock synchronously once a Promise-like result is returned so another event cannot enter before React renders;
-- expose the pending state through `disabled`, `aria-busy`, `data-loading`, and a visible spinner;
-- preserve the action's accessible name while the spinner is visible;
+- expose the pending state through `disabled`, `aria-busy`, and `data-loading`;
+- preserve the action's accessible name while pending;
 - release the lock after fulfillment or rejection;
 - accept an external `isLoading` state for form submissions, mutations, and command dispatchers that do not return their Promise from `onClick`;
 - preserve `aria-disabled` behavior and block activation when using `asChild` with a non-button element;
 - leave error presentation to the owning command or form; a spinner is not an error boundary or diagnostic surface.
+
+The application mounts one `ActivityProvider`. Pending Buttons and standalone Spinners register owned work with that scope; the application wordmark renders the only visual loading indicator. Concurrent owners keep it active until every owner settles or unmounts. `useReportActivity` connects work that has no Button or Spinner. Controls retain their action locks and accessible pending state; they do not insert spinners or change width. Isolated primitives outside the provider retain their inline-spinner fallback.
 
 The component detects the returned value instead of inspecting `Function.prototype.constructor`. Transpilation, wrappers, and ordinary functions that return a Promise make function-name checks unreliable.
 

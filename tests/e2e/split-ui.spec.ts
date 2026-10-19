@@ -153,7 +153,8 @@ test("previews, cancels, rejects missed and tangent planes, splits independent p
   await dialog.getByRole("combobox", { name: "Export scope", exact: true }).click()
   await page.getByRole("option", { name: negative.name, exact: true }).click()
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "Export STEP", exact: true }).click()
+  await dialog.getByRole("combobox", { name: "File format" }).selectOption("step")
+  await dialog.getByRole("button", { name: "Save STEP file", exact: true }).click()
   const download = await downloading
   expect(download.suggestedFilename()).toMatch(/\.step$/)
   expect(await download.path()).toBeTruthy()

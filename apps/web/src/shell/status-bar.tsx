@@ -86,9 +86,9 @@ function useSelectionLabel(
   selectedBody: ModelBodySelection | null,
 ) {
   const t = useTranslations("app.shell.statusBar")
+  if (selection) return selectedFaceLabel(controller, selection, t)
   if (selectedBody) return selectedBodyLabel(controller, selectedBody, null, t)
-  if (!selection) return selectedOriginPlaneLabel(t, selectedOriginPlane)
-  return selectedFaceLabel(controller, selection, t)
+  return selectedOriginPlaneLabel(t, selectedOriginPlane)
 }
 
 export function StatusBar({

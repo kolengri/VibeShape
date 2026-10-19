@@ -22,6 +22,24 @@ must be grounded. Passive coordinates remain free; locking a drive adds its equa
 The displayed degrees of freedom describe local mobility at the solved pose. Redundant-consistent
 mates can solve successfully. Conflicts and nonconvergence leave the proposed edit uncommitted.
 
+The Assembly task panel groups common actions into an icon toolbar and a **More assembly actions**
+menu. The menu keeps create/connect, motion and selected-item actions together, including saved
+studies. Icon controls have names and tooltips; labelled menu items retain visible text.
+
+**As-built joint** captures the inspected occurrence poses at the current project and revision. It
+uses the child origin and orientation as a shared frame, converts that frame to each endpoint, and
+preflights the complete edit with the ordinary worker before one guarded transaction. Version 1
+supports fixed, revolute and prismatic kinds; version 2 also supports cylindrical and ball kinds.
+The child becomes ungrounded; general-mate initial poses preserve the captured branch. A stale
+capture, invalid graph, unavailable source or failed solve leaves the design unchanged.
+
+**Rigid group** connects selected instances to an explicit anchor through fixed as-built joints.
+The anchor keeps its grounding; other members become ungrounded. The current assembly version
+continues to enforce inbound, cycle and anchoring rules. The group stores ordinary star joints in
+one atomic transaction, so one Undo restores the previous assembly without a new saved-file entity.
+These are UI conveniences over existing mutations; the MCP contract still uses explicit joint
+frames and does not advertise new named As-built Joint or Rigid Group tools.
+
 Parent and child frames can use explicit numeric poses or geometry from their frozen definition.
 Select a planar, cylindrical or spherical face, a circle/arc edge or a vertex. An origin hint and X
 direction establish a finite right-handed frame; numeric fields become offsets from that frame.

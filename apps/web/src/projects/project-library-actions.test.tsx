@@ -6,6 +6,8 @@ import type { DocumentControllerState } from "../document/document-controller"
 
 const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { default: userEvent } = await import("@testing-library/user-event")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { i18n } = await import("../i18n")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 const { ViewerPreferencesProvider } = await import("../shell/viewer-preferences")
@@ -65,17 +67,19 @@ afterEach(() => {
 function landing() {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <ViewerPreferencesProvider>
-        <WorkspaceLayoutPreferencesProvider>
-          <ProjectLibraryPageLayout
-            controller={controller}
-            title="Projects"
-            description="Local projects"
-          >
-            <p>Project chooser content</p>
-          </ProjectLibraryPageLayout>
-        </WorkspaceLayoutPreferencesProvider>
-      </ViewerPreferencesProvider>
+      <TooltipProvider>
+        <ViewerPreferencesProvider>
+          <WorkspaceLayoutPreferencesProvider>
+            <ProjectLibraryPageLayout
+              controller={controller}
+              title="Projects"
+              description="Local projects"
+            >
+              <p>Project chooser content</p>
+            </ProjectLibraryPageLayout>
+          </WorkspaceLayoutPreferencesProvider>
+        </ViewerPreferencesProvider>
+      </TooltipProvider>
     </I18nProvider>,
   )
 }
@@ -93,8 +97,12 @@ it("opens global Settings from the native menu on the project chooser without en
     fireEvent.click(screen.getByRole("button", { name: "Done" }))
   })
   expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull()
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
-  })
+  await userEvent.click(screen.getByRole("button", { name: "Application menu" }))
+  expect(screen.queryByRole("menuitem", { name: "Projects…" })).toBeNull()
+  expect(screen.queryByRole("menuitem", { name: "Export model…" })).toBeNull()
+  expect(screen.queryByRole("menuitem", { name: "Extensions…" })).toBeNull()
+  await userEvent.click(screen.getByRole("menuitem", { name: "Settings…" }))
   expect(screen.getByRole("dialog", { name: "Settings" })).not.toBeNull()
+  await userEvent.click(screen.getByRole("button", { name: "Done" }))
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" }))
 })

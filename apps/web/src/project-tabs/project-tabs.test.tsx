@@ -27,6 +27,7 @@ const actions = {
   activate: vi.fn(),
   create: vi.fn(),
   list: vi.fn(),
+  openProjects: vi.fn(),
 }
 const original = { ...(await import("../document/document-controller")) }
 mock.module("../document/document-controller", () => ({
@@ -36,11 +37,13 @@ mock.module("../document/document-controller", () => ({
   activateLocalProject: actions.activate,
   createNewLocalProject: actions.create,
   listLocalProjects: actions.list,
+  showProjectLibrary: actions.openProjects,
 }))
 const { act, cleanup, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { ApplicationNoticesProvider } = await import("../shell/application-notices")
 const { i18n } = await import("../i18n")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 const { ProjectTabsProvider } = await import("./project-tabs-provider")
@@ -84,7 +87,11 @@ function Shell({ onOpenProjects }: { onOpenProjects?: () => Promise<ProjectSwitc
     </div>
   )
 }
-function setup(open = [firstId, secondId], onOpenProjects?: () => Promise<ProjectSwitchResult>) {
+function setup(
+  open = [firstId, secondId],
+  onOpenProjects?: () => Promise<ProjectSwitchResult>,
+  withNotices = false,
+) {
   localStorage.setItem(
     "vibeshape.open-project-tabs.v1",
     JSON.stringify({
@@ -96,7 +103,13 @@ function setup(open = [firstId, secondId], onOpenProjects?: () => Promise<Projec
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
         <ProjectTabsProvider>
-          <Shell {...(onOpenProjects ? { onOpenProjects } : {})} />
+          {withNotices ? (
+            <ApplicationNoticesProvider>
+              <Shell {...(onOpenProjects ? { onOpenProjects } : {})} />
+            </ApplicationNoticesProvider>
+          ) : (
+            <Shell {...(onOpenProjects ? { onOpenProjects } : {})} />
+          )}
         </ProjectTabsProvider>
       </TooltipProvider>
     </I18nProvider>,
@@ -126,12 +139,19 @@ beforeEach(() => {
     },
   )
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.hasPointerCapture = () => false
+  HTMLElement.prototype.setPointerCapture = vi.fn()
+  HTMLElement.prototype.releasePointerCapture = vi.fn()
   actions.activate.mockReset().mockImplementation(async (documentId: string) => {
     publish(state(documentId))
     return { ok: true }
   })
   actions.create.mockReset().mockImplementation(async () => {
     publish(state(thirdId))
+    return { ok: true }
+  })
+  actions.openProjects.mockReset().mockImplementation(async () => {
+    publish({ ...current, status: "library", report: null })
     return { ok: true }
   })
   actions.list.mockReset().mockResolvedValue({ ok: true, projects: projectList() })
@@ -165,6 +185,17 @@ describe("project tabs", () => {
     expect(screen.getByRole("tabpanel", { name: "Enclosure" })).toBeTruthy()
   })
 
+  it("uses visible tab labels without redundant native titles and names every icon action", async () => {
+    setup()
+    const tab = await screen.findByRole("tab", { name: "Enclosure" })
+    expect(tab.hasAttribute("title")).toBe(false)
+    for (const name of ["Close Enclosure", copy.newProject, copy.openProjects]) {
+      const action = screen.getByRole("button", { name })
+      expect(action.getAttribute("aria-label")).toBe(name)
+      expect(action.hasAttribute("title")).toBe(false)
+    }
+  })
+
   it("closes an inactive tab without changing the current model", async () => {
     setup()
     const inactive = await screen.findByRole("tab", { name: "Enclosure" })
@@ -191,17 +222,15 @@ describe("project tabs", () => {
     )
   })
 
-  it("retains the final tab when the project picker is canceled and replaces it after choosing another project", async () => {
+  it("opens the Projects page through the default action when the final tab closes", async () => {
     setup([firstId])
     await userEvent.click(await screen.findByRole("button", { name: "Close Bracket" }))
-    expect(await screen.findByRole("dialog", { name: "Projects" })).toBeTruthy()
-    await userEvent.keyboard("{Escape}")
-    expect(screen.getByRole("tab", { name: "Bracket" })).toBeTruthy()
+    await screen.findByRole("main", { name: "Projects" })
+    expect(actions.openProjects).toHaveBeenCalledTimes(1)
     expect(actions.create).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole("button", { name: "Close Bracket" }))
-    await userEvent.click(await screen.findByRole("button", { name: "Open Enclosure, revision 3" }))
-    await waitFor(() => expect(screen.queryByRole("tab", { name: "Bracket" })).toBeNull())
-    expect(screen.getByRole("tab", { name: "Enclosure" })).toBeTruthy()
+    expect(screen.queryByRole("dialog")).toBeNull()
+    const remembered = JSON.parse(localStorage.getItem("vibeshape.open-project-tabs.v1") ?? "null")
+    expect(remembered.tabs).toHaveLength(0)
   })
 
   it("guards current drafts and failed saves without losing either project tab", async () => {
@@ -298,4 +327,20 @@ describe("project tabs", () => {
     })
     expect(actions.create).not.toHaveBeenCalled()
   })
+})
+
+it("reports blocked switches outside navigation and resurfaces a dismissed repeated attempt", async () => {
+  blocked = "editor-draft"
+  setup([firstId, secondId], undefined, true)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("tab", { name: "Enclosure" }))
+  const navigation = screen.getByRole("navigation", { name: "Open projects" })
+  expect(screen.getByRole("alert").textContent).toBe(copy.blocked)
+  expect(navigation.querySelector('[role="alert"]')).toBeNull()
+  await user.click(screen.getByRole("button", { name: "Dismiss notification" }))
+  expect(screen.queryByRole("alert")).toBeNull()
+  await user.click(screen.getByRole("tab", { name: "Enclosure" }))
+  expect(screen.getByRole("alert").textContent).toBe(copy.blocked)
+  expect(screen.getByRole("tab", { name: "Bracket" }).getAttribute("aria-selected")).toBe("true")
+  expect(actions.activate).not.toHaveBeenCalled()
 })

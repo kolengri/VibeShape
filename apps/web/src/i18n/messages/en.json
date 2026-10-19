@@ -211,7 +211,7 @@
       "originalExport": "Back to original model export",
       "trigger": "Export…",
       "title": "Export model",
-      "description": "Download the terminal solid bodies from the current rebuilt revision.",
+      "description": "Save your model as a file or open it in a slicer.",
       "closeLabel": "Close export dialog",
       "close": "Close",
       "noBodies": "Create a valid solid body before exporting.",
@@ -310,7 +310,15 @@
         "fine": "Fine",
         "description": "Controls curved-surface tessellation for STL, 3MF, and print copies. Finer meshes increase file size. Imported meshes retain their source resolution.",
         "tolerance": "Chord tolerance: {chord} mm; angular tolerance: {angle} rad."
-      }
+      },
+      "destination": {
+        "label": "Destination",
+        "file": "Save file",
+        "slicer": "Open in slicer",
+        "desktopRequired": "Direct handoff is available in the desktop app. Save a 3MF or STL file to open it in your slicer."
+      },
+      "formatLabel": "File format",
+      "saveFile": "Save {format} file"
     },
     "commands": {
       "shortcutHelp": {
@@ -918,7 +926,9 @@
         "createSketch": "Create sketch",
         "documentObjects": "Parts, bodies, and sketches",
         "originPlanes": "Origin planes",
-        "projectNameFallback": "Untitled project"
+        "projectNameFallback": "Untitled project",
+        "hideAllOriginPlanes": "Hide all origin planes",
+        "showAllOriginPlanes": "Show all origin planes"
       },
       "statusBar": {
         "filter": "Filter: {filter}",
@@ -1838,7 +1848,7 @@
       "applicationMenu": {
         "trigger": "Application menu",
         "project": "Project",
-        "files": "Files and projects…",
+        "files": "Projects",
         "export": "Export geometry…",
         "workspace": "Workspace",
         "settings": "Settings…",
@@ -1851,7 +1861,8 @@
         "importGeometry": "Import geometry…",
         "importSketch": "Import sketch…",
         "library": "Library…",
-        "extensions": "Plugins…"
+        "extensions": "Plugins…",
+        "projectNavigationFailed": "Finish or cancel the current edit and wait for saving to complete, then open Projects again."
       },
       "cadError": {
         "title": "Cannot evaluate this operation",
@@ -1886,6 +1897,25 @@
           "expression": "Correct the expression or its referenced variable, then try again.",
           "unknown": "Review its parameters and references. Technical details contain the original failure."
         }
+      },
+      "selectionDelete": {
+        "title": "{count, plural, one {Delete selected item?} other {Delete # selected items?}}",
+        "description": "The selected authored items will be removed in one undoable action. Other dependent items remain in History with repair diagnostics; their geometry may be unavailable until repaired.",
+        "selected": "Selected items",
+        "owners": "History features owning the selected parts",
+        "dependents": "Dependent items retained for repair",
+        "siblingsBlocked": "Select all parts owned by this feature before deleting: {names}. Individual outputs cannot be deleted separately.",
+        "unavailable": "This selection cannot be deleted because its authored items or dependency declarations are unavailable.",
+        "limit": "Select no more than 256 items to delete at once.",
+        "stale": "The document changed. Close this confirmation and select the items again.",
+        "failed": "The selected items could not be deleted. They remain in the document.",
+        "confirm": "Delete selection",
+        "cancel": "Keep selection",
+        "remaining": "{count} more items"
+      },
+      "notices": {
+        "title": "Notifications",
+        "dismiss": "Dismiss notification"
       }
     },
     "sketch": {
@@ -2052,7 +2082,8 @@
         "rename": "Rename",
         "confirmRename": "Rename variable",
         "cancelRename": "Cancel",
-        "apply": "Apply variables"
+        "apply": "Apply variables",
+        "close": "Done"
       },
       "states": {
         "valid": "Valid",
@@ -2157,7 +2188,8 @@
       "alignmentCalculated": "Placement values updated. Review the preview, then apply to save one placement.",
       "alignmentUnavailable": "Alignment requires current, unambiguous planar faces on two different exact solid parts and a transform within 100,000 mm.",
       "alignmentPickFaces": "Pick faces in viewport",
-      "alignmentPreviewPaused": "Preview paused for face picking. Calculate alignment or edit a placement value to resume."
+      "alignmentPreviewPaused": "Preview paused for face picking. Calculate alignment or edit a placement value to resume.",
+      "unavailable": "The source part is unavailable or is not one valid solid."
     },
     "authoredTree": {
       "parts": "Parts",
@@ -2843,7 +2875,26 @@
       "motionStudySaveFailed": "The study could not be saved. Check its tracks and joint limits, then retry.",
       "motionExportUnavailable": "The solved sequence could not be exported. Replay a smaller sample set and retry.",
       "motionTraceInvalid": "Choose a solved occurrence and enter three finite source coordinates in millimeters.",
-      "motionPngLimit": "PNG export supports up to 64 solved frames. Reduce the sample count and replay."
+      "motionPngLimit": "PNG export supports up to 64 solved frames. Reduce the sample count and replay.",
+      "actionsLabel": "Assembly actions",
+      "moreActions": "More assembly actions",
+      "createMenu": "Create and connect",
+      "motionMenu": "Motion",
+      "selectionMenu": "Selected item",
+      "asBuiltJoint": "As-built joint",
+      "asBuiltDescription": "Connect existing instances without changing their current placement. The child origin defines the joint frame.",
+      "asBuiltChild": "Child instance",
+      "asBuiltUnavailable": "The current solved placements are unavailable. Wait for assembly inspection, then reopen this task.",
+      "asBuiltInvalid": "Select distinct instances and a supported joint type. Captured local frames must remain within the supported coordinate range.",
+      "rigidGroup": "Rigid group",
+      "rigidGroupDescription": "Keep these instances in their current relative placement. The anchor keeps its existing grounding; the other members move with it.",
+      "rigidGroupAnchor": "Anchor instance",
+      "rigidGroupMembers": "Group members",
+      "rigidGroupMinimum": "Select at least two different instances, including the anchor.",
+      "capturedPlacement": "Placements are captured from the current rebuilt revision. Changing the project or revision requires reopening this task.",
+      "asBuiltFailed": "The assembled placement could not be connected. Check grounding, existing joints and selected members, then retry. The design is unchanged.",
+      "selectedItemActions": "Actions for {name}",
+      "editJointWith": "Edit {kind} joint with {instance}"
     },
     "import": {
       "trigger": "Import…",
@@ -3475,7 +3526,7 @@
       "project-action-blocked": "Finish the active edit, save, or AI operation before switching projects. The current project and URL have been retained.",
       "project-open-failed": "The requested project could not be opened. The current project was retained when possible.",
       "project-url-unavailable": "The browser could not update the URL to match the active project.",
-      "recover": "Open last local project",
+      "recover": "Open projects",
       "dismiss": "Dismiss",
       "label": "Project navigation"
     },
@@ -3547,7 +3598,7 @@
       "openProjects": "Open project…",
       "closeProject": "Close {name}",
       "blocked": "Finish or cancel the current edit, save, or AI operation before switching projects.",
-      "switchFailed": "Could not open the project. Try again or open Files and projects.",
+      "switchFailed": "Could not open the project. Try again or open Projects.",
       "listFailed": "Could not refresh open projects.",
       "storageFailed": "Open project tabs could not be remembered on this device."
     },
@@ -3641,7 +3692,27 @@
           "stale-project": "The active project changed. The old request was stopped. Connect again in the current project.",
           "invalid-tool": "The model requested an unavailable tool or invalid arguments. Its unfinished model changes were discarded. Try a more specific request.",
           "tool-failed": "A CAD tool returned an invalid result. Its unfinished model changes were discarded. Reconnect and try again."
+        },
+        "provider": "Provider",
+        "chooseProvider": "Choose a provider",
+        "customProvider": "Custom endpoint",
+        "advanced": "Advanced connection",
+        "providers": {
+          "ollama": "Ollama",
+          "lmstudio": "LM Studio",
+          "openai": "OpenAI"
         }
+      },
+      "settingsTitle": "AI settings",
+      "agent": "Agent",
+      "chooseAgent": "Choose an agent",
+      "advanced": "Advanced connection",
+      "presetNotice": "Choose an ACP adapter already installed on this computer. Advanced settings let you change its executable and arguments.",
+      "agents": {
+        "claude": "Claude Code",
+        "codex": "Codex",
+        "opencode": "OpenCode",
+        "custom": "Custom ACP agent"
       }
     }
   }

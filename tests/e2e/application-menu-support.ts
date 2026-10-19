@@ -1,7 +1,11 @@
 import { expect, type Page } from "@playwright/test"
 
 export async function openApplicationMenuItem(page: Page, name: string) {
-  await expect(page.locator("main > header")).not.toContainText("Opening local document…")
+  if (name !== "Settings…" && name !== "FAQ and MCP setup…") {
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
+  }
   await page.getByRole("button", { name: "Application menu", exact: true }).click()
   await page.getByRole("menuitem", { name, exact: true }).click()
 }

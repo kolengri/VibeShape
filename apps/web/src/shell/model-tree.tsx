@@ -35,6 +35,7 @@ import {
   createContext,
   type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   useContext,
   useEffect,
@@ -74,6 +75,10 @@ import {
 import { effectiveHistoryBoundaryIndex, historyInsertionContext } from "./history-insertion-context"
 import { HistoryNavigationControls, HistoryNavigationProvider } from "./history-navigation"
 import { HistoryProfileSources } from "./history-profile-sources"
+import {
+  type HistorySelectionDeleteTarget,
+  useHistorySelectionDelete,
+} from "./history-selection-delete"
 import { HistoryTimelineCursor } from "./history-timeline-cursor"
 import { ModelBrowserPlanes } from "./model-browser-planes"
 import {
@@ -86,6 +91,12 @@ import {
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
 import { proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
+import {
+  extendModelTreeSelection,
+  type ModelTreeSelection,
+  modelTreeSelectionKey,
+  partForModelBody,
+} from "./model-tree-selection"
 import type { EditorWorkspaceName } from "./workspace"
 
 const HistoryPresentation = createContext({ timeline: false, detailed: true })
@@ -239,6 +250,10 @@ function useHistoryRowLabel(item: HistoryItemRef) {
   }
 }
 
+function compactHistoryLabelHint(compact: boolean, label: string) {
+  return compact ? label : undefined
+}
+
 function FeatureTreeLabel({
   active,
   feature,
@@ -247,6 +262,7 @@ function FeatureTreeLabel({
   onPreselectionChange,
   onRenameOpen,
   renameDisabled,
+  selectionKey,
 }: {
   active: boolean
   feature: FeatureRecord
@@ -255,6 +271,7 @@ function FeatureTreeLabel({
   onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onRenameOpen: () => void
   renameDisabled: boolean
+  selectionKey?: string | undefined
 }) {
   const { compact, describedBy, selectionDescription } = useHistoryRowLabel({
     kind: "feature",
@@ -275,8 +292,9 @@ function FeatureTreeLabel({
         role="treeitem"
         tabIndex={-1}
         aria-selected={active}
+        data-model-tree-selection-key={selectionKey}
         aria-describedby={describedBy}
-        title={label}
+        title={compactHistoryLabelHint(compact, label)}
         onClick={(event) => {
           if (!event.defaultPrevented) onActivate(feature.id)
         }}
@@ -306,13 +324,17 @@ function HistoryItemActions({ children }: { children: ReactNode }) {
     <div
       className={
         timeline && !detailed
-          ? "absolute -right-2 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100"
+          ? "pointer-events-none absolute -right-2 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100 [&_button]:pointer-events-auto"
           : "contents"
       }
     >
       {children}
     </div>
   )
+}
+
+function modelTreeWriteUnavailable(controller: DocumentControllerState) {
+  return controller.status !== "ready" || controller.report?.mode !== "read-write"
 }
 
 function FeatureTreeItem({
@@ -329,6 +351,7 @@ function FeatureTreeItem({
   onSketchRename,
   unnamedFeature,
   visible,
+  selectionKey,
 }: {
   active: boolean
   controller: DocumentControllerState
@@ -347,11 +370,12 @@ function FeatureTreeItem({
   onSketchRename: SketchRenameHandler
   unnamedFeature: string
   visible: boolean
+  selectionKey?: string | undefined
 }) {
   const [renameOpen, setRenameOpen] = useState(false)
   const actionsTriggerRef = useRef<HTMLButtonElement>(null)
   const label = feature.label ?? unnamedFeature
-  const renameDisabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
+  const renameDisabled = modelTreeWriteUnavailable(controller)
   return (
     <div
       className={cn(
@@ -361,6 +385,7 @@ function FeatureTreeItem({
       data-feature-suppressed={feature.suppressed ? "true" : undefined}
       onPointerEnter={() => onPreselectionChange(feature.id)}
       onPointerLeave={() => onPreselectionChange(null)}
+      onPointerCancel={() => onPreselectionChange(null)}
     >
       <FeatureVisibilityAction
         feature={feature}
@@ -376,6 +401,7 @@ function FeatureTreeItem({
         onPreselectionChange={onPreselectionChange}
         onRenameOpen={() => setRenameOpen(true)}
         renameDisabled={renameDisabled}
+        selectionKey={selectionKey}
       />
       <HistoryItemActions>
         <HistoryFeatureActions
@@ -460,15 +486,12 @@ function SketchTreeActions({
         renameAction={{
           triggerRef: actionsTriggerRef,
           onSelect: () => onRenameOpenChange(true),
-          disabled:
-            renameBlocked ||
-            controller.status !== "ready" ||
-            controller.report?.mode !== "read-write",
+          disabled: renameBlocked || modelTreeWriteUnavailable(controller),
           open: renameOpen,
         }}
         baseRevision={controller.report?.snapshot.revision ?? 0}
         blocked={renameBlocked || deletionBlocked}
-        disabled={controller.status !== "ready" || controller.report?.mode !== "read-write"}
+        disabled={modelTreeWriteUnavailable(controller)}
         sketch={sketch}
         sketchName={label}
         onDeleted={onSketchDeleted}
@@ -522,12 +545,14 @@ function SketchTreeLabelButton({
   label,
   onActivate,
   onRenameOpen,
+  onPreselectionChange,
   renameDisabled,
 }: {
   active: boolean
   sketchId: SketchId
   label: string
   onActivate: () => void
+  onPreselectionChange?: ((id: SketchId | null) => void) | undefined
   onRenameOpen: () => void
   renameDisabled: boolean
 }) {
@@ -551,8 +576,14 @@ function SketchTreeLabelButton({
         tabIndex={-1}
         aria-selected={active}
         aria-label={timeline ? t("editSketch", { sketch: label }) : undefined}
+        data-model-tree-selection-key={`sketch:${sketchId}`}
         aria-describedby={describedBy}
-        title={label}
+        title={compactHistoryLabelHint(compact, label)}
+        onPointerEnter={() => onPreselectionChange?.(sketchId)}
+        onPointerLeave={() => onPreselectionChange?.(null)}
+        onPointerCancel={() => onPreselectionChange?.(null)}
+        onFocus={() => onPreselectionChange?.(sketchId)}
+        onBlur={() => onPreselectionChange?.(null)}
         onClick={(event) => {
           if (!event.defaultPrevented) onActivate()
         }}
@@ -608,6 +639,7 @@ function SketchTreeItem({
   onSketchDeleted,
   onSketchRemove,
   onSketchRename,
+  onSketchPreselectionChange,
   onVisibilityChange,
   renameBlocked,
   row,
@@ -622,6 +654,7 @@ function SketchTreeItem({
   onFeatureRename: FeatureRenameHandler
   onSketchDeleted: () => void
   onSketchRemove: SketchRemoveHandler
+  onSketchPreselectionChange?: ((id: SketchId | null) => void) | undefined
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
@@ -633,8 +666,7 @@ function SketchTreeItem({
   const [renameOpen, setRenameOpen] = useState(false)
   const sketch = row.record as SketchRecord
   const label = sketch.label || unnamedSketch
-  const renameDisabled =
-    renameBlocked || controller.status !== "ready" || controller.report?.mode !== "read-write"
+  const renameDisabled = renameBlocked || modelTreeWriteUnavailable(controller)
   const activateSketch = () => onActivate(sketch.id)
   const visibilityAction = (
     <SketchVisibilityAction
@@ -652,6 +684,7 @@ function SketchTreeItem({
         sketchId={sketch.id}
         label={label}
         onActivate={activateSketch}
+        onPreselectionChange={onSketchPreselectionChange}
         onRenameOpen={() => setRenameOpen(true)}
         renameDisabled={renameDisabled}
       />
@@ -803,6 +836,7 @@ function ModelTreeRootItem({
       className={cn(modelBrowserChildRow, "w-full", current && modelBrowserSelectedRow)}
       role="treeitem"
       tabIndex={tabIndex}
+      data-workspace={targetWorkspace}
       aria-current={current}
       disabled={disabled}
       onClick={() => onWorkspaceChange(targetWorkspace)}
@@ -867,6 +901,7 @@ function ModelTreeGroupItem({
 }
 
 type ModelTreeProps = {
+  onSketchPreselectionChange?: ((id: SketchId | null) => void) | undefined
   onCreateSketch?: (() => void) | undefined
   origin?:
     | Readonly<{
@@ -877,6 +912,9 @@ type ModelTreeProps = {
         disabled: boolean
       }>
     | undefined
+  highlightedBody?: ModelBodySelection | null | undefined
+  modelTreeSelection?: readonly ModelTreeSelection[] | undefined
+  onModelTreeSelectionChange?: ((items: readonly ModelTreeSelection[]) => void) | undefined
   highlightedFeatureId?: FeatureRecord["id"] | null | undefined
   selectedResultFeatureId?: string | null | undefined
   revealRequest?: Readonly<{ featureId: FeatureRecord["id"]; sequence: number }> | null
@@ -972,14 +1010,26 @@ function DatumPlaneBrowserItem({
   return (
     <fieldset
       data-feature-id={feature.id}
+      data-highlighted={feature.id === props.highlightedFeatureId ? "true" : undefined}
       disabled={busy || rolledBack}
-      className={cn("min-w-0 pl-6", rolledBack && "opacity-60")}
+      className={cn(
+        "min-w-0 pl-6",
+        rolledBack && "opacity-60",
+        feature.id === props.highlightedFeatureId && "bg-accent/60",
+      )}
     >
       <legend className="sr-only">{feature.label ?? t("unnamedFeature")}</legend>
       <FeatureTreeItem
         active={
-          feature.id === props.activeFeatureId || feature.id === props.selectedResultFeatureId
+          feature.id === props.activeFeatureId ||
+          feature.id === props.selectedResultFeatureId ||
+          Boolean(
+            props.modelTreeSelection?.some(
+              (item) => item.kind === "feature" && item.id === feature.id,
+            ),
+          )
         }
+        selectionKey={modelTreeSelectionKey({ kind: "feature", id: feature.id })}
         controller={controller}
         historyActions={{
           disabled: historyFeatureDeleteIsUnavailable(props, busy, rolledBack, view),
@@ -1052,7 +1102,7 @@ function HistorySummary({
   })
   if (!source && row.dependencies.length === 0 && row.dependents.length === 0) return null
   return (
-    <p className="ml-8 truncate px-2 text-[10px] text-muted-foreground" title={dependencies}>
+    <p className="ml-8 truncate px-2 text-[10px] text-muted-foreground">
       {source ?? dependencies}
       {source ? <span className="sr-only">. {dependencies}</span> : null}
     </p>
@@ -1535,19 +1585,12 @@ function historyFeatureDeleteIsUnavailable(
   )
 }
 
-function FeatureHistoryRow({
-  busy,
-  dragDestinationIndex,
-  dragSourceKey,
-  index,
-  rolledBack,
-  row,
-  t,
-  view,
-  ...props
-}: ModelTreeHistoryRowProps) {
-  const feature = row.record as FeatureRecord
-  const profiles = readExtrusionProfileSet(feature) ?? readRevolveProfileSet(feature)
+function featureResultRevealAction(
+  props: ModelTreeHistoryBranchProps,
+  feature: FeatureRecord,
+  rolledBack: boolean,
+) {
+  const { view } = props
   const result = view.modelBodies.find((body) => body.geometry.featureId === feature.id)
   const revealResult =
     result && props.onRevealFeature && !rolledBack
@@ -1568,6 +1611,23 @@ function FeatureHistoryRow({
           props.onRevealFeature?.(feature.id)
         }
       : undefined
+  return revealResult
+}
+
+function FeatureHistoryRow({
+  busy,
+  dragDestinationIndex,
+  dragSourceKey,
+  index,
+  rolledBack,
+  row,
+  t,
+  view,
+  ...props
+}: ModelTreeHistoryRowProps) {
+  const feature = row.record as FeatureRecord
+  const profiles = readExtrusionProfileSet(feature) ?? readRevolveProfileSet(feature)
+  const revealResult = featureResultRevealAction({ ...props, view, t }, feature, rolledBack)
   return (
     <HistoryRowFrame
       repairRequired={props.repairRequired}
@@ -1580,7 +1640,15 @@ function FeatureHistoryRow({
       index={index}
       marker={props.marker}
       sourcePresentation={{
-        highlighted: row.ref.id === props.highlightedFeatureId,
+        highlighted:
+          row.ref.id === props.highlightedFeatureId ||
+          Boolean(
+            props.highlightedBody &&
+              partForModelBody(
+                currentAuthoredParts(props.controller),
+                props.highlightedBody,
+              )?.part.bodyHistory.some((body) => body.featureId === row.ref.id),
+          ),
         summary: profiles ? (
           <HistoryProfileSources
             profiles={profiles.profiles}
@@ -1740,6 +1808,7 @@ function HistoryGroup({
   return (
     <div role="none">
       <HistoryFolderSelection
+        controller={props.controller}
         authority={authority}
         rows={view.rows}
         disabled={metadataDisabled || !completeGraph || busy}
@@ -1909,6 +1978,91 @@ function HistoryGroup({
   )
 }
 
+function modelBodyIsSelected(
+  props: ModelTreeHistoryBranchProps,
+  selection: ModelBodySelection,
+  namedBody: boolean,
+) {
+  const selectedKeys = props.modelTreeSelection?.map(modelTreeSelectionKey)
+  if (selectedKeys?.length)
+    return selectedKeys.includes(modelTreeSelectionKey({ kind: "body", ...selection }))
+  if (props.activeBody) return authoredBodyKey(props.activeBody) === authoredBodyKey(selection)
+  return !namedBody && selection.featureId === props.activeFeatureId
+}
+
+function UnownedBodyTreeItem({
+  body,
+  index,
+  props,
+}: {
+  body: ModelTreeHistoryBranchProps["view"]["modelBodies"][number]
+  index: number
+  props: ModelTreeHistoryBranchProps
+}) {
+  const { t } = props
+  const { feature, geometry } = body
+  const label = t("bodyLabel", { number: index + 1 })
+  const source = t("bodySource", {
+    feature: feature.label || t("unnamedFeature"),
+  })
+  const bodyKey = `${feature.id}\u0000${geometry.outputRole ?? ""}`
+  const bodyId = geometry.outputRole === undefined ? feature.id : encodeURIComponent(bodyKey)
+  const sourceId = `body-source-${bodyId}`
+  const selection: ModelBodySelection = {
+    featureId: feature.id,
+    ...(geometry.outputRole === undefined ? {} : { outputRole: geometry.outputRole }),
+  }
+  const namedBody = geometry.outputRole !== undefined
+  const preselect = (hovered: boolean) => {
+    if (props.onBodyPreselectionChange) props.onBodyPreselectionChange(hovered ? selection : null)
+    else props.onFeaturePreselectionChange(hovered ? feature.id : null)
+  }
+  const active = modelBodyIsSelected(props, selection, namedBody)
+  return (
+    <div
+      role="none"
+      data-body-id={bodyId}
+      data-feature-id={feature.id}
+      onPointerEnter={() => preselect(true)}
+      onPointerLeave={() => preselect(false)}
+      onPointerCancel={() => preselect(false)}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          modelBrowserChildRow,
+          "w-full text-muted-foreground",
+          active && modelBrowserSelectedRow,
+        )}
+        role="treeitem"
+        tabIndex={-1}
+        aria-selected={active}
+        aria-label={label}
+        data-model-tree-selection-key={modelTreeSelectionKey({
+          kind: "body",
+          ...selection,
+        })}
+        aria-describedby={sourceId}
+        onClick={() =>
+          props.onBodyActivate
+            ? props.onBodyActivate?.(selection)
+            : props.onFeatureActivate(feature.id)
+        }
+        onFocus={() => preselect(true)}
+        onBlur={() => preselect(false)}
+      >
+        <Cuboid aria-hidden="true" className="size-4 shrink-0" />
+        <span className="truncate">{label}</span>
+      </Button>
+      <p id={sourceId} className="ml-14 truncate pr-2 text-xs text-muted-foreground">
+        {source}
+      </p>
+    </div>
+  )
+}
+
 function BodiesGroup({
   expanded,
   onExpandedChange,
@@ -1935,81 +2089,14 @@ function BodiesGroup({
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("items.bodies")}</legend>
-          {bodies.map((body, index) => {
-            const { feature, geometry } = body
-            const label = t("bodyLabel", { number: index + 1 })
-            const source = t("bodySource", {
-              feature: feature.label || t("unnamedFeature"),
-            })
-            const bodyKey = `${feature.id}\u0000${geometry.outputRole ?? ""}`
-            const bodyId =
-              geometry.outputRole === undefined ? feature.id : encodeURIComponent(bodyKey)
-            const sourceId = `body-source-${bodyId}`
-            const selection: ModelBodySelection = {
-              featureId: feature.id,
-              ...(geometry.outputRole === undefined ? {} : { outputRole: geometry.outputRole }),
-            }
-            const namedBody = geometry.outputRole !== undefined
-            const active = props.activeBody
-              ? props.activeBody.featureId === selection.featureId &&
-                props.activeBody.outputRole === selection.outputRole
-              : !namedBody && feature.id === props.activeFeatureId
-            return (
-              <div
-                key={`body:${bodyKey}`}
-                role="none"
-                data-body-id={bodyId}
-                data-feature-id={feature.id}
-                onPointerEnter={() =>
-                  namedBody
-                    ? props.onBodyPreselectionChange?.(selection)
-                    : props.onFeaturePreselectionChange(feature.id)
-                }
-                onPointerLeave={() =>
-                  namedBody
-                    ? props.onBodyPreselectionChange?.(null)
-                    : props.onFeaturePreselectionChange(null)
-                }
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    modelBrowserChildRow,
-                    "w-full text-muted-foreground",
-                    active && modelBrowserSelectedRow,
-                  )}
-                  role="treeitem"
-                  tabIndex={-1}
-                  aria-selected={active}
-                  aria-label={label}
-                  aria-describedby={sourceId}
-                  onClick={() =>
-                    props.onBodyActivate
-                      ? props.onBodyActivate?.(selection)
-                      : props.onFeatureActivate(feature.id)
-                  }
-                  onFocus={() =>
-                    namedBody
-                      ? props.onBodyPreselectionChange?.(selection)
-                      : props.onFeaturePreselectionChange(feature.id)
-                  }
-                  onBlur={() =>
-                    namedBody
-                      ? props.onBodyPreselectionChange?.(null)
-                      : props.onFeaturePreselectionChange(null)
-                  }
-                >
-                  <Cuboid aria-hidden="true" className="size-4 shrink-0" />
-                  <span className="truncate">{label}</span>
-                </Button>
-                <p id={sourceId} className="ml-14 truncate pr-2 text-xs text-muted-foreground">
-                  {source}
-                </p>
-              </div>
-            )
-          })}
+          {bodies.map((body, index) => (
+            <UnownedBodyTreeItem
+              key={`body:${body.feature.id}\u0000${body.geometry.outputRole ?? ""}`}
+              body={body}
+              index={index}
+              props={props}
+            />
+          ))}
         </fieldset>
       )}
     </div>
@@ -2038,10 +2125,15 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
           {sketches.map((row) => (
             <SketchTreeItem
               key={historyRefKey(row.ref)}
-              active={row.ref.id === props.activeSketchId}
+              active={
+                props.modelTreeSelection?.some(
+                  (item) => item.kind === "sketch" && item.id === row.ref.id,
+                ) || row.ref.id === props.activeSketchId
+              }
               controller={props.controller}
               deletionBlocked={props.view.graphFailed || props.view.reorderUnavailable}
               onActivate={props.onSketchActivate}
+              onSketchPreselectionChange={props.onSketchPreselectionChange}
               onSketchSupportRepair={props.onSketchSupportRepair}
               onFeatureRename={props.onFeatureRename}
               onSketchDeleted={props.onSketchDeleted}
@@ -2121,6 +2213,16 @@ function AuthoredPartsBranch({
       parts={parts}
       revision={snapshot.revision}
       selectedPartId={selectedPartId}
+      selectedPartIds={props.modelTreeSelection
+        ?.filter((item) => item.kind === "part")
+        .map((item) => item.id)}
+      highlightedPartIds={parts
+        .filter((part) =>
+          props.highlightedBody
+            ? partForModelBody(parts, props.highlightedBody)?.part.id === part.part.id
+            : part.part.bodyHistory.some((body) => body.featureId === props.highlightedFeatureId),
+        )
+        .map((part) => part.part.id)}
       disabled={authoredTreeWriteBlocked(props)}
       visibility={props.partVisibility}
       presentationOnlyVisibility={Boolean(
@@ -2136,6 +2238,20 @@ function AuthoredPartsBranch({
   )
 }
 
+function modelBrowserBodyView(
+  controller: DocumentControllerState,
+  fallback: ReturnType<typeof selectModelTreeHistory>,
+) {
+  const report = controller.report
+  if (!report) return fallback
+  return selectModelTreeHistory(
+    report.snapshot,
+    report.rebuild.ok ? report.rebuild.response.modelReferenceEvidence : undefined,
+    report.rebuild.ok ? report.rebuild.response : undefined,
+    report.historyItems,
+  )
+}
+
 function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
   const [bodiesExpanded, setBodiesExpanded] = useState(true)
   useEffect(() => {
@@ -2146,17 +2262,13 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
     [props.controller],
   )
   const parts = useMemo(() => currentAuthoredParts(bodyController), [bodyController])
-  const bodyView = useMemo(() => {
-    if (bodyController === props.controller) return props.view
-    const report = bodyController.report
-    if (!report) return props.view
-    return selectModelTreeHistory(
-      report.snapshot,
-      report.rebuild.ok ? report.rebuild.response.modelReferenceEvidence : undefined,
-      report.rebuild.ok ? report.rebuild.response : undefined,
-      report.historyItems,
-    )
-  }, [bodyController, props.controller, props.view])
+  const bodyView = useMemo(
+    () =>
+      bodyController === props.controller
+        ? props.view
+        : modelBrowserBodyView(bodyController, props.view),
+    [bodyController, props.controller, props.view],
+  )
   return (
     <>
       <AuthoredPartsBranch props={props} parts={parts} bodyController={bodyController} />
@@ -2372,6 +2484,72 @@ function AllSketchVisibilityAction(props: ModelTreeHistoryBranchProps) {
   )
 }
 
+function modelTreeClickTarget(
+  event: MouseEvent<HTMLElement>,
+  byKey: ReadonlyMap<string, ModelTreeSelection>,
+) {
+  const button = (event.target as HTMLElement).closest<HTMLElement>(
+    '[role="treeitem"][data-model-tree-selection-key]',
+  )
+  if (!button || button.matches(":disabled")) return null
+  const target = byKey.get(button.dataset.modelTreeSelectionKey ?? "")
+  if (!target) return null
+  const ordered = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(
+      '[role="treeitem"][data-model-tree-selection-key]:not(:disabled)',
+    ),
+  ].flatMap((button) => {
+    const item = byKey.get(button.dataset.modelTreeSelectionKey ?? "")
+    return item ? [item] : []
+  })
+  return { target, ordered }
+}
+
+function useModelTreeSelection(
+  props: ModelTreeProps,
+  view: ReturnType<typeof selectModelTreeHistory>,
+) {
+  const anchor = useRef<string | null>(null)
+  const bodyController = historyInsertionContext(props.controller)
+  const parts = currentAuthoredParts(bodyController)
+  const bodyView =
+    bodyController === props.controller ? view : modelBrowserBodyView(bodyController, view)
+  const items: readonly ModelTreeSelection[] = [
+    ...view.rows
+      .filter((row) => row.datum)
+      .map((row) => ({ kind: "feature" as const, id: row.ref.id as FeatureRecord["id"] })),
+    ...parts.map(({ part }) => ({ kind: "part" as const, id: part.id })),
+    ...bodyView.modelBodies.map(({ geometry }) => ({
+      kind: "body" as const,
+      featureId: geometry.featureId,
+      ...(geometry.outputRole === undefined ? {} : { outputRole: geometry.outputRole }),
+    })),
+    ...view.rows
+      .filter((row) => row.kind === "sketch")
+      .map((row) => ({ kind: "sketch" as const, id: row.ref.id as SketchId })),
+  ]
+  const byKey = new Map(items.map((item) => [modelTreeSelectionKey(item), item]))
+  return (event: MouseEvent<HTMLElement>) => {
+    if (!props.onModelTreeSelectionChange) return
+    const click = modelTreeClickTarget(event, byKey)
+    if (!click) return
+    const { target, ordered } = click
+    const selected = extendModelTreeSelection(
+      props.modelTreeSelection ?? [],
+      ordered,
+      target,
+      anchor.current,
+      event,
+    )
+    if (!event.shiftKey) anchor.current = modelTreeSelectionKey(target)
+    props.onModelTreeSelectionChange(selected)
+    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+}
+
 export function ModelTree(props: ModelTreeProps) {
   const t = useTranslations("app.shell.modelTree")
   const browser = useRef<HTMLElement>(null)
@@ -2403,6 +2581,26 @@ export function ModelTree(props: ModelTreeProps) {
       ),
     [modelReferenceEvidence, rebuiltResponse, report?.historyItems, snapshot],
   )
+  const selectTreeItem = useModelTreeSelection(props, historyView)
+  const parts = currentAuthoredParts(historyInsertionContext(props.controller))
+  const deleteTargets = (props.modelTreeSelection ?? []).flatMap<HistorySelectionDeleteTarget>(
+    (item) => {
+      if (item.kind !== "body") return [item]
+      const owner = partForModelBody(parts, item)
+      return owner ? [{ kind: "part", id: owner.part.id }] : []
+    },
+  )
+  const deletion = useHistorySelectionDelete({
+    controller: props.controller,
+    targets: deleteTargets,
+    disabled: Boolean(
+      props.authoredMetadataBlocked ||
+        props.activeFeatureId ||
+        props.activeSketchId ||
+        deleteTargets.length !== (props.modelTreeSelection?.length ?? 0),
+    ),
+    onDeleted: () => props.onModelTreeSelectionChange?.([]),
+  })
   if (props.surface === "timeline") return <ModelTimeline {...props} t={t} view={historyView} />
 
   return (
@@ -2418,23 +2616,31 @@ export function ModelTree(props: ModelTreeProps) {
             {t("title")}
           </h2>
           {snapshot?.name && (
-            <p className="truncate pl-12 text-xs text-muted-foreground" title={snapshot.name}>
-              {snapshot.name}
-            </p>
+            <p className="truncate pl-12 text-xs text-muted-foreground">{snapshot.name}</p>
           )}
         </div>
       </div>
       <div
         className="grid grid-cols-1"
         role="tree"
+        aria-multiselectable="true"
+        onClickCapture={selectTreeItem}
         aria-label={t("projectFeatures")}
         onFocusCapture={updateTreeTabStop}
-        onKeyDown={moveTreeFocus}
+        onKeyDown={(event) => {
+          deletion.onKeyDown(event)
+          if (event.key === "Escape") {
+            props.onFeaturePreselectionChange(null)
+            props.onModelTreeSelectionChange?.([])
+          }
+          moveTreeFocus(event)
+        }}
       >
         <ModelTreeWorkspaceItems {...props} t={t} />
         <ModelTreePlanes {...props} t={t} view={historyView} />
         <ModelTreeHistoryBranch {...props} t={t} view={historyView} />
       </div>
+      {deletion.confirmation}
     </aside>
   )
 }

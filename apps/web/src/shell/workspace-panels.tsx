@@ -157,7 +157,7 @@ export function WorkspacePanels({
         toggle: () => setTreeOpen((open) => !open),
       }}
     >
-      <div className="flex min-h-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col">
         <div
           ref={root}
           className="cad-workspace-grid min-h-0 flex-1"

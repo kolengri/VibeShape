@@ -13,6 +13,7 @@ describe("print bed presentation", () => {
     expect(bounds.min.x).toBe(-100)
     expect(bounds.max.y).toBe(80)
     expect(bounds.max.z).toBe(250)
+    expect(decoration.bed.getObjectByName("ground-grid")).toBeInstanceOf(LineSegments)
     const usable = decoration.bed.getObjectByName("print-usable-area")
     expect(usable).toBeDefined()
     if (!usable) throw new Error("Missing usable area.")
@@ -22,20 +23,16 @@ describe("print bed presentation", () => {
     decoration.dispose()
   })
 
-  it("releases replaced bed resources and hides each decoration independently", () => {
+  it("releases removed print-bed resources", () => {
     const decoration = new PrintBedDecoration()
     decoration.setBed({ width: 200, depth: 200, height: 200, margin: 0 })
     const disposed = vi.fn()
     const surface = decoration.bed.getObjectByName("print-bed")
     if (!(surface instanceof Mesh)) throw new Error("Missing bed surface.")
     surface.geometry.addEventListener("dispose", disposed)
-    decoration.setGround(true)
     decoration.setBed(null)
     expect(disposed).toHaveBeenCalledTimes(1)
     expect(decoration.bed.children).toHaveLength(0)
-    expect(decoration.ground.children[0]).toBeInstanceOf(LineSegments)
-    decoration.setGround(false)
-    expect(decoration.ground.children).toHaveLength(0)
     decoration.dispose()
   })
 

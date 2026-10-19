@@ -132,7 +132,7 @@ const partCommandDescriptors = [
   ["placePart", "transform", "placement"],
   ["mirrorPart", "mirror", "mirror"],
   ["shellPart", "shell", "shell"],
-  ["splitPart", "split", "split"],
+  ["splitPart", "split", "split-body"],
   ["patternPart", "linear-pattern", "pattern"],
   ["threadPart", "thread", "thread"],
 ] as const

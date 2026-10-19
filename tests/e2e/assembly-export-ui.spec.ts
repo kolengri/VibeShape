@@ -24,7 +24,12 @@ async function choose(page: Page, dialog: Locator, name: string) {
 }
 async function downloadFile(page: Page, dialog: Locator, name: string) {
   const downloading = page.waitForEvent("download", { timeout: 60_000 })
-  await dialog.getByRole("button", { name, exact: true }).click()
+  const format = name.match(/^Download (3MF|STL|STEP)$/)?.[1]
+  if (format)
+    await dialog.getByRole("combobox", { name: "File format" }).selectOption(format.toLowerCase())
+  await dialog
+    .getByRole("button", { name: format ? `Save ${format} file` : name, exact: true })
+    .click()
   const download = await downloading
   const path = await download.path()
   if (!path) throw new Error("The assembly export must produce an authentic file download.")

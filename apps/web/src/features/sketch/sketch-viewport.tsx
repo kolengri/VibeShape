@@ -10948,25 +10948,20 @@ function SketchCreationPrecisionOverlay({
     const value = defaultSketchDimensionExpression(option.kind, option.value, displayUnits)
     const label = t("creationPrecisionSetExact", { kind: option.label, value })
     const affordance = (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            aria-label={label}
-            size="xs"
-            variant="outline"
-            className="absolute z-40 max-w-52 -translate-y-1/2 border-border/80 bg-popover/95 text-popover-foreground shadow-sm backdrop-blur-sm hover:border-primary/60"
-            data-sketch-creation-precision-trigger
-            style={position}
-            onClick={onActivate}
-          >
-            <Ruler aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">{option.label}</span>
-            <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{value}</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+      <Button
+        type="button"
+        aria-label={label}
+        size="xs"
+        variant="outline"
+        className="absolute z-40 max-w-52 -translate-y-1/2 border-border/80 bg-popover/95 text-popover-foreground shadow-sm backdrop-blur-sm hover:border-primary/60"
+        data-sketch-creation-precision-trigger
+        style={position}
+        onClick={onActivate}
+      >
+        <Ruler aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate">{option.label}</span>
+        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{value}</span>
+      </Button>
     )
     return typeof document === "undefined" ? affordance : createPortal(affordance, document.body)
   }

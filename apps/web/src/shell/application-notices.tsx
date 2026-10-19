@@ -1,0 +1,109 @@
+import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
+import { X } from "@vibeshape/ui/components/icons"
+import {
+  Notification,
+  NotificationClose,
+  NotificationProvider,
+  NotificationViewport,
+} from "@vibeshape/ui/components/notification"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vibeshape/ui/components/tooltip"
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useState,
+} from "react"
+
+type Notice = Readonly<{ message: string; attempt: number; dismissed: boolean }>
+type Report = (id: string, message: string | null, attempt: number) => void
+const ApplicationNoticesContext = createContext<Report | null>(null)
+
+function ApplicationNotices({
+  notices,
+  onDismiss,
+}: {
+  notices: ReadonlyMap<string, Notice>
+  onDismiss: (id: string) => void
+}) {
+  const t = useTranslations("app.shell.notices")
+  return (
+    <NotificationProvider label={t("title")}>
+      <TooltipProvider>
+        {[...notices]
+          .filter(([, notice]) => !notice.dismissed)
+          .map(([id, notice]) => (
+            <Notification
+              key={id}
+              open
+              onOpenChange={(open) => {
+                if (!open) onDismiss(id)
+              }}
+            >
+              <p className="min-w-0 flex-1 break-words text-sm">{notice.message}</p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <NotificationClose asChild>
+                    <Button type="button" size="icon-xs" variant="ghost" aria-label={t("dismiss")}>
+                      <X aria-hidden="true" />
+                    </Button>
+                  </NotificationClose>
+                </TooltipTrigger>
+                <TooltipContent>{t("dismiss")}</TooltipContent>
+              </Tooltip>
+            </Notification>
+          ))}
+      </TooltipProvider>
+      <NotificationViewport label={t("title")} />
+    </NotificationProvider>
+  )
+}
+
+export function ApplicationNoticesProvider({ children }: { children: ReactNode }) {
+  const [notices, setNotices] = useState<ReadonlyMap<string, Notice>>(() => new Map())
+  const report = useCallback<Report>((id, message, attempt) => {
+    setNotices((current) => {
+      const previous = current.get(id)
+      if (previous?.message === message && previous.attempt === attempt) return current
+      if (message === null && !previous) return current
+      const next = new Map(current)
+      if (message === null) next.delete(id)
+      else next.set(id, { message, attempt, dismissed: false })
+      return next
+    })
+  }, [])
+  const dismiss = useCallback((id: string) => {
+    setNotices((current) => {
+      const notice = current.get(id)
+      if (!notice) return current
+      const next = new Map(current)
+      next.set(id, { ...notice, dismissed: true })
+      return next
+    })
+  }, [])
+  return (
+    <ApplicationNoticesContext.Provider value={report}>
+      {children}
+      <ApplicationNotices notices={notices} onDismiss={dismiss} />
+    </ApplicationNoticesContext.Provider>
+  )
+}
+
+/** Returns whether the app owns presentation; standalone consumers may retain a fallback. */
+export function useReportApplicationError(message: string | null, attempt = 0) {
+  const report = useContext(ApplicationNoticesContext)
+  const id = useId()
+  useEffect(() => {
+    report?.(id, message, attempt)
+    return () => report?.(id, null, 0)
+  }, [id, message, attempt, report])
+  return report !== null
+}

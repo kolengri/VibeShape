@@ -27,14 +27,12 @@ async function renamePart(page: Page, from: string, to: string) {
   await expect(dialog).not.toBeVisible()
 }
 async function nativeSnapshot(page: Page) {
-  await openApplicationMenuItem(page, "Files and projects…")
-  const dialog = page.getByRole("dialog", { name: "Projects", exact: true })
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const download = await downloading
   const path = await download.path()
   if (!path) throw new Error("Native archive download was not retained.")
-  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole("menu")).not.toBeVisible()
   const result = await readVShapeV3(new Uint8Array(await readFile(path)))
   if (!result.ok) throw new Error(JSON.stringify(result.diagnostic))
   return result.value.snapshot
@@ -83,7 +81,8 @@ async function downloadExport(page: Page, format: "STL" | "3MF", part?: string) 
     await page.getByRole("option", { name: part, exact: true }).click()
   }
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: `Export ${format}`, exact: true }).click()
+  await dialog.getByRole("combobox", { name: "File format" }).selectOption(format.toLowerCase())
+  await dialog.getByRole("button", { name: `Save ${format} file`, exact: true }).click()
   const download = await downloading
   await expect(dialog).not.toBeVisible()
   return download

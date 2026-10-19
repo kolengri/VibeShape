@@ -1,6 +1,8 @@
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { LocalProjectSummary } from "@vibeshape/persistence"
 import { Button } from "@vibeshape/ui/components/button"
+import { Copy } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useId } from "react"
 import { type DocumentControllerState, deleteLocalProject } from "../document/document-controller"
@@ -28,21 +30,15 @@ function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"
   }
 }
 
-function ProjectPreview({
-  project,
-  presentation,
-}: {
-  project: LocalProjectSummary
-  presentation: "dialog" | "page"
-}) {
+function ProjectPreview({ project }: { project: LocalProjectSummary }) {
   const t = useTranslations("app.projectFile.library.preview")
   const source = project.thumbnail ? thumbnailDataUrl(project.thumbnail) : null
 
   return (
-    <div
+    <span
       className={cn(
         "grid shrink-0 place-items-center overflow-hidden rounded-sm border bg-viewport-background",
-        presentation === "page" ? "h-40 w-full" : "row-span-2 h-24 w-36",
+        "h-40 w-full",
       )}
     >
       {source ? (
@@ -52,15 +48,25 @@ function ProjectPreview({
           alt={t("alt", { name: project.name })}
         />
       ) : (
-        <span
-          className="px-4 text-center text-xs text-muted-foreground"
+        <svg
           role="img"
-          aria-label={t("unavailableLabel", { name: project.name })}
+          aria-label={t("alt", { name: project.name })}
+          viewBox="0 0 240 160"
+          className="size-full text-muted-foreground"
         >
-          {t("unavailable")}
-        </span>
+          <path
+            d="m20 105 100-50 100 50-100 50Z M45 92l100 50 M70 80l100 50 M95 67l100 50 M45 117l100-50 M70 130l100-50 M95 142l100-50"
+            fill="none"
+            stroke="currentColor"
+            opacity=".12"
+          />
+          <path d="M120 105V45" fill="none" className="stroke-axis-z" strokeWidth="1.5" />
+          <path d="m120 105 50 25" fill="none" className="stroke-axis-x" strokeWidth="1.5" />
+          <path d="m120 105-50 25" fill="none" className="stroke-axis-y" strokeWidth="1.5" />
+          <circle cx="120" cy="105" r="2" fill="currentColor" />
+        </svg>
       )}
-    </div>
+    </span>
   )
 }
 
@@ -81,18 +87,6 @@ type LocalProjectListProps = {
   onRenamed: () => void
   projects: readonly LocalProjectSummary[]
   switchingDocumentId: string | null
-  presentation?: "dialog" | "page"
-}
-
-const projectCardLayout = {
-  page: "flex min-w-0 flex-col",
-  dialog: "grid grid-cols-[auto_minmax(0,1fr)] items-center",
-}
-const projectHeadingTag = { page: "h2", dialog: "h3" } as const
-
-const projectGridLayout = {
-  page: "gap-4 md:grid-cols-2 xl:grid-cols-3",
-  dialog: "max-h-64 gap-2 overflow-y-auto pr-1",
 }
 
 function LocalProjectCard({
@@ -107,7 +101,6 @@ function LocalProjectCard({
   onOpen,
   onPendingDeleteChange,
   onRenamed,
-  presentation = "dialog",
   switchingDocumentId,
 }: Omit<LocalProjectListProps, "projects" | "onCreate"> & { project: LocalProjectSummary }) {
   const t = useTranslations("app.projectFile.library")
@@ -120,27 +113,40 @@ function LocalProjectCard({
   ) : null
   return (
     <li
-      className={cn("gap-3 rounded-md border bg-card p-3", projectCardLayout[presentation])}
+      className="flex min-w-0 flex-col gap-3 rounded-md border bg-card p-3"
       aria-current={isCurrent ? "page" : undefined}
     >
-      <ProjectPreview project={project} presentation={presentation} />
-      <div className="min-w-0 grid gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h4 className="truncate text-sm font-medium">{project.name}</h4>
-          {currentBadge}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t("revision", { revision: project.headRevision })}
-          {" · "}
-          {t("updated")}{" "}
-          <time dateTime={project.updatedAt}>
-            {formatter.dateTime(new Date(project.updatedAt), "shortTime")}
-          </time>
-        </p>
-        {isCurrent ? (
-          <p className="text-xs text-muted-foreground">{t("delete.currentBlocked")}</p>
-        ) : null}
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        disabled={disabled || isCurrent}
+        isLoading={switchingDocumentId === project.documentId}
+        aria-label={t("openLabel", { name: project.name, revision: project.headRevision })}
+        onClick={() => onOpen(project.documentId)}
+        className={cn(
+          "h-auto w-full justify-start gap-3 whitespace-normal p-0 text-left disabled:opacity-100",
+          "flex min-w-0 flex-col items-stretch",
+        )}
+      >
+        <ProjectPreview project={project} />
+        <span className="grid min-w-0 gap-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-medium">{project.name}</span>
+            {currentBadge}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("revision", { revision: project.headRevision })}
+            {" · "}
+            {t("updated")}{" "}
+            <time dateTime={project.updatedAt}>
+              {formatter.dateTime(new Date(project.updatedAt), "shortTime")}
+            </time>
+          </span>
+          {isCurrent ? (
+            <span className="text-xs text-muted-foreground">{t("delete.currentBlocked")}</span>
+          ) : null}
+        </span>
+      </Button>
       <ProjectCardActions
         project={project}
         isCurrent={isCurrent}
@@ -150,10 +156,8 @@ function LocalProjectCard({
         onDelete={onDelete}
         onDeleted={onDeleted}
         onDuplicate={onDuplicate}
-        onOpen={onOpen}
         onPendingDeleteChange={onPendingDeleteChange}
         onRenamed={onRenamed}
-        switchingDocumentId={switchingDocumentId}
       />
     </li>
   )
@@ -168,11 +172,19 @@ function ProjectCardActions({
   onDelete,
   onDeleted,
   onDuplicate,
-  onOpen,
   onPendingDeleteChange,
   onRenamed,
-  switchingDocumentId,
-}: Omit<LocalProjectListProps, "projects" | "onCreate" | "activeDocumentId" | "presentation"> & {
+}: Pick<
+  LocalProjectListProps,
+  | "controller"
+  | "disabled"
+  | "duplicatingDocumentId"
+  | "onDelete"
+  | "onDeleted"
+  | "onDuplicate"
+  | "onPendingDeleteChange"
+  | "onRenamed"
+> & {
   project: LocalProjectSummary
   isCurrent: boolean
 }) {
@@ -182,35 +194,27 @@ function ProjectCardActions({
       {isCurrent ? (
         <DocumentRenameDialog controller={controller} disabled={disabled} onRenamed={onRenamed} />
       ) : null}
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={disabled || isCurrent}
-        isLoading={switchingDocumentId === project.documentId}
-        aria-label={t("openLabel", {
-          name: project.name,
-          revision: project.headRevision,
-        })}
-        onClick={() => onOpen(project.documentId)}
-      >
-        {t("open")}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={disabled}
-        isLoading={duplicatingDocumentId === project.documentId}
-        aria-label={t("duplicate.actionLabel", {
-          name: project.name,
-          revision: project.headRevision,
-        })}
-        onClick={() => onDuplicate(project)}
-      >
-        {t("duplicate.action")}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            disabled={disabled}
+            isLoading={duplicatingDocumentId === project.documentId}
+            aria-label={t("duplicate.actionLabel", {
+              name: project.name,
+              revision: project.headRevision,
+            })}
+            onClick={() => onDuplicate(project)}
+          >
+            <Copy aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("duplicate.action")}</TooltipContent>
+      </Tooltip>
       <ProjectDeleteAction
+        iconOnly
         disabled={disabled}
         isCurrent={isCurrent}
         onDelete={onDelete}
@@ -236,22 +240,17 @@ function LocalProjectList({
   onRenamed,
   projects,
   switchingDocumentId,
-  presentation = "dialog",
 }: LocalProjectListProps) {
   const t = useTranslations("app.projectFile.library")
   const headingId = useId()
-  const Heading = projectHeadingTag[presentation]
 
   return (
     <section className="grid gap-3" aria-labelledby={headingId}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
-          <Heading id={headingId} className="text-sm font-medium">
+          <h2 id={headingId} className="text-sm font-medium">
             {t("title")}
-          </Heading>
-          <p hidden={presentation === "page"} className="text-xs text-muted-foreground">
-            {t("description")}
-          </p>
+          </h2>
         </div>
         <Button
           type="button"
@@ -268,7 +267,7 @@ function LocalProjectList({
           {t("empty")}
         </p>
       ) : (
-        <ul className={cn("grid", projectGridLayout[presentation])} aria-label={t("listLabel")}>
+        <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label={t("listLabel")}>
           {projects.map((project) => (
             <LocalProjectCard
               key={project.documentId}
@@ -283,7 +282,6 @@ function LocalProjectList({
               onOpen={onOpen}
               onPendingDeleteChange={onPendingDeleteChange}
               onRenamed={onRenamed}
-              presentation={presentation}
               switchingDocumentId={switchingDocumentId}
             />
           ))}
@@ -307,7 +305,6 @@ export function ProjectLibrary({
   onRenamed,
   onRetry,
   switchingDocumentId,
-  presentation = "dialog",
 }: {
   activeDocumentId: string | undefined
   controller: DocumentControllerState
@@ -322,7 +319,6 @@ export function ProjectLibrary({
   onRenamed: () => void
   onRetry: () => unknown
   switchingDocumentId: string | null
-  presentation?: "dialog" | "page"
 }) {
   const t = useTranslations("app.projectFile.library")
 
@@ -362,7 +358,6 @@ export function ProjectLibrary({
       onRenamed={onRenamed}
       projects={library.projects}
       switchingDocumentId={switchingDocumentId}
-      presentation={presentation}
     />
   )
 }

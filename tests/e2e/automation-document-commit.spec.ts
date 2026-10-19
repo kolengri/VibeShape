@@ -309,10 +309,8 @@ async function expectFailedAutomationCommit(
 }
 
 async function expectNativeAutomationTransaction(page: Page, draftId: string, actor: CommandActor) {
-  await openApplicationMenuItem(page, "Files and projects…")
-  const projects = page.getByRole("dialog", { name: "Projects" })
   const downloading = page.waitForEvent("download")
-  await projects.getByRole("button", { name: "Save project (.vshape)" }).click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const file = await (await downloading).path()
   if (!file) throw new Error("The native project backup was not retained.")
   const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))

@@ -5,6 +5,7 @@ import {
   type Material,
   Mesh,
   PerspectiveCamera,
+  Vector2,
   Vector3,
 } from "three"
 import { OrientationMarker } from "./orientation-marker"
@@ -22,6 +23,48 @@ function ownedResources(marker: OrientationMarker) {
 }
 
 describe("World orientation marker", () => {
+  it("picks visible signed axis endpoints, including the centers of hollow markers", () => {
+    const marker = new OrientationMarker()
+    const camera = new PerspectiveCamera(35, 1, 0.1, 10)
+    camera.position.set(2, -2, 2)
+    camera.up.set(0, 0, 1)
+    camera.lookAt(0, 0, 0)
+    camera.updateMatrixWorld()
+    marker.alignLabels(camera.quaternion)
+    try {
+      for (const axis of ["X", "-X", "Y", "-Y", "Z", "-Z"] as const) {
+        const endpoint = marker.group.getObjectByName(axis)
+        if (!endpoint) throw new Error(`The ${axis} endpoint is missing.`)
+        const projected = endpoint.position.clone().project(camera)
+        expect(marker.axisAt(new Vector2(projected.x, projected.y), camera)).toBe(axis)
+      }
+      expect(marker.axisAt(new Vector2(0.95, 0.95), camera)).toBeNull()
+    } finally {
+      marker.dispose()
+    }
+    expect(marker.axisAt(new Vector2(), camera)).toBeNull()
+  })
+
+  it("chooses the front endpoint when opposite axes overlap", () => {
+    const marker = new OrientationMarker()
+    const camera = new PerspectiveCamera(35, 1, 0.1, 10)
+    camera.position.set(3, 0, 0)
+    camera.up.set(0, 0, 1)
+    camera.lookAt(0, 0, 0)
+    camera.updateMatrixWorld()
+    marker.alignLabels(camera.quaternion)
+    try {
+      expect(marker.axisAt(new Vector2(), camera)).toBe("X")
+      camera.position.set(-3, 0, 0)
+      camera.lookAt(0, 0, 0)
+      camera.updateMatrixWorld()
+      marker.alignLabels(camera.quaternion)
+      expect(marker.axisAt(new Vector2(), camera)).toBe("-X")
+    } finally {
+      marker.dispose()
+    }
+  })
+
   it("places lettered discs at positive world endpoints and smaller hollow markers opposite them", () => {
     const marker = new OrientationMarker()
     try {

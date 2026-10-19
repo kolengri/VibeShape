@@ -3,6 +3,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { createContext, type ReactNode, useContext, useState } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
+import { useReportApplicationError } from "../../shell/application-notices"
 
 export const AssemblyTaskPanelContext = createContext<{
   title: string
@@ -18,14 +19,19 @@ export function AssemblyTaskForm({
   children,
   build,
   actions,
+  canApply = true,
+  invalidMessage,
 }: {
   children: ReactNode
   build: (data: FormData) => readonly AssemblyMutation[]
   actions: AssemblyFormActions
+  canApply?: boolean
+  invalidMessage?: string
 }) {
   const t = useTranslations("app.assembly")
   const panel = useContext(AssemblyTaskPanelContext)
   const [invalid, setInvalid] = useState(false)
+  const appOwnsError = useReportApplicationError(panel?.error ?? null)
   if (!panel) throw new Error("Assembly task forms require an assembly task panel context.")
   return (
     <form
@@ -38,7 +44,7 @@ export function AssemblyTaskForm({
       }}
       onSubmit={async (event) => {
         event.preventDefault()
-        if (actions.pending) return
+        if (actions.pending || !canApply) return
         const data = new FormData(event.currentTarget)
         let changes: readonly AssemblyMutation[]
         try {
@@ -58,7 +64,7 @@ export function AssemblyTaskForm({
             ariaLabel={panel.title}
             acceptLabel={t("apply")}
             acceptType="submit"
-            acceptDisabled={actions.pending}
+            acceptDisabled={actions.pending || !canApply}
             acceptLoading={actions.pending}
             cancelLabel={t("cancel")}
             cancelDisabled={actions.pending}
@@ -66,7 +72,7 @@ export function AssemblyTaskForm({
           />
         }
       />
-      {panel.error && (
+      {panel.error && !appOwnsError && (
         <p role="alert" className="text-sm text-destructive">
           {panel.error}
         </p>
@@ -76,7 +82,7 @@ export function AssemblyTaskForm({
       </fieldset>
       {invalid && (
         <p role="alert" className="text-sm text-destructive">
-          {t("invalidParameters")}
+          {invalidMessage ?? t("invalidParameters")}
         </p>
       )}
     </form>

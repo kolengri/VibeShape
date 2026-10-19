@@ -8,7 +8,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { CircleHelp, Copy } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useState } from "react"
 import { useDialogOpen } from "../components/use-dialog-open"
 import { getDesktopHost } from "../desktop/desktop-host"
@@ -50,11 +52,16 @@ export function FaqDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {showTrigger ? (
-        <DialogTrigger asChild>
-          <Button type="button" size="sm" variant="outline">
-            {t("trigger")}
-          </Button>
-        </DialogTrigger>
+        <Tooltip>
+          <DialogTrigger asChild>
+            <TooltipTrigger asChild>
+              <Button type="button" size="icon" variant="outline" aria-label={t("trigger")}>
+                <CircleHelp aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+          </DialogTrigger>
+          <TooltipContent>{t("trigger")}</TooltipContent>
+        </Tooltip>
       ) : null}
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
@@ -153,7 +160,30 @@ function CopyText({
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle")
   return (
     <div className="grid min-w-0 gap-2">
-      <span className="font-medium">{label}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">{label}</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              aria-label={t("copy", { label })}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(value)
+                  setStatus("copied")
+                } catch {
+                  setStatus("failed")
+                }
+              }}
+            >
+              <Copy aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("copy", { label })}</TooltipContent>
+        </Tooltip>
+      </div>
       {multiline ? (
         <textarea
           aria-label={label}
@@ -165,22 +195,6 @@ function CopyText({
       ) : (
         <Input aria-label={label} readOnly value={value} className="font-mono text-xs" />
       )}
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="w-fit"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(value)
-            setStatus("copied")
-          } catch {
-            setStatus("failed")
-          }
-        }}
-      >
-        {t("copy", { label })}
-      </Button>
       {status !== "idle" ? (
         <p role="status" className="text-xs text-muted-foreground">
           {t(status)}

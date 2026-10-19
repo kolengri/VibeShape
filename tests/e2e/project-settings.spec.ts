@@ -16,13 +16,17 @@ for (const width of [1440, 512, 390]) {
     )
     const trigger = page.getByRole("button", { name: "Application menu", exact: true })
     await expect(trigger).toBeInViewport({ ratio: 1 })
-    await openApplicationMenuItem(page, "Files and projects…")
-    const projects = page.getByRole("dialog", { name: "Projects", exact: true })
+    await trigger.click()
     await expect(
-      projects.getByRole("button", { name: "Save project (.vshape)", exact: true }),
+      page.getByRole("menuitem", { name: "Save project (.vshape)", exact: true }),
     ).toBeInViewport()
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click()
+    const projects = page.getByRole("main")
+    await expect(
+      projects.getByRole("heading", { level: 1, name: "Projects", exact: true }),
+    ).toBeVisible()
     const openProject = projects.getByRole("button", {
-      name: "Open project (.vshape)",
+      name: "Drop a .vshape project",
       exact: true,
     })
     await openProject.scrollIntoViewIfNeeded()
@@ -31,8 +35,6 @@ for (const width of [1440, 512, 390]) {
       animations: "disabled",
       path: test.info().outputPath(`file-${width}-dark.png`),
     })
-    await page.keyboard.press("Escape")
-    await expect(trigger).toBeFocused()
     await openApplicationMenuItem(page, "Settings…")
     const settings = page.getByRole("dialog", { name: "Settings", exact: true })
     await expect(page.getByRole("dialog")).toHaveCount(1)
@@ -51,6 +53,10 @@ for (const width of [1440, 512, 390]) {
     await page.getByRole("option", { name: "STEP", exact: true }).click()
     await settings.getByRole("button", { name: "Done", exact: true }).click()
     await expect(trigger).toBeFocused()
+    await projects.getByRole("button", { name: /^Open Untitled project, revision / }).click()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     await page.reload()
     await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
       "Saved",
@@ -79,17 +85,13 @@ for (const width of [1440, 512, 390]) {
     await settings.getByRole("button", { name: "Done", exact: true }).click()
     await openApplicationMenuItem(page, "Export geometry…")
     const exporting = page.getByRole("dialog", { name: "Export model", exact: true })
-    await expect(
-      exporting
-        .locator("section")
-        .filter({ has: page.getByText("Preferred", { exact: true }) })
-        .getByRole("heading"),
-    ).toContainText("STEP")
-    await expect(exporting.getByText("Preferred", { exact: true })).toBeVisible()
+    await expect(exporting.getByRole("combobox", { name: "File format", exact: true })).toHaveValue(
+      "step",
+    )
   })
 }
 
-test("keeps an active feature draft intact while File explains blocked actions", async ({
+test("keeps an active feature draft intact while Save and Projects guard blocked actions", async ({
   page,
 }) => {
   await page.goto("/")
@@ -102,16 +104,17 @@ test("keeps an active feature draft intact while File explains blocked actions",
   await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box", exact: true })
   await form.getByRole("combobox", { name: "Width", exact: true }).fill("23 mm")
-  await openApplicationMenuItem(page, "Files and projects…")
-  const projects = page.getByRole("dialog", { name: "Projects", exact: true })
+  await page.getByRole("button", { name: "Application menu", exact: true }).click()
   await expect(
-    projects.getByRole("button", { name: "Save project (.vshape)", exact: true }),
+    page.getByRole("menuitem", { name: "Save project (.vshape)", exact: true }),
   ).toBeDisabled()
+  await page.getByRole("menuitem", { name: "Projects", exact: true }).click()
   await expect(
-    projects.getByRole("button", { name: "Open project (.vshape)", exact: true }),
-  ).toBeDisabled()
-  await expect(projects.getByRole("button", { name: "New project", exact: true })).toBeDisabled()
-  await expect(projects.getByText(/Finish or cancel the current edit/)).toBeVisible()
-  await page.keyboard.press("Escape")
+    page.getByRole("alert").filter({ hasText: /Finish or cancel the current edit/ }),
+  ).toBeVisible()
+  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toHaveCount(
+    0,
+  )
+  await expect(page.getByLabel("Choose VibeShape project file")).toHaveCount(0)
   await expect(form.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("23 mm")
 })

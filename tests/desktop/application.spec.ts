@@ -67,8 +67,7 @@ test("native launch preserves CAD, backups and the profile across window close a
     await native.evaluate(({ session }, path) => {
       session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path))
     }, backup)
-    await openApplicationMenuItem(page, "Files and projects…")
-    await page.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+    await openApplicationMenuItem(page, "Save project (.vshape)")
     await expect
       .poll(async () =>
         readFile(backup)

@@ -78,10 +78,8 @@ test("adds and removes profiles from different sketch planes, previews once, and
   const edit = page.getByRole("form", { name: "Edit extrusion", exact: true })
   await expect(edit.getByRole("button", { name: /^Remove Sketch \d+ · Profile 1$/ })).toHaveCount(2)
   await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-  await openApplicationMenuItem(page, "Files and projects…")
-  const projects = page.getByRole("dialog", { name: "Projects", exact: true })
   const downloading = page.waitForEvent("download")
-  await projects.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const download = await downloading
   const file = testInfo.outputPath("multi-sketch.vshape")
   await download.saveAs(file)

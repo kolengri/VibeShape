@@ -75,6 +75,10 @@ async function ready(page: Page) {
   await expect(panel(page).getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
   await expect(panel(page).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
 }
+async function chooseCustomAgent(page: Page) {
+  await panel(page).getByRole("combobox", { name: "Agent", exact: true }).click()
+  await page.getByRole("option", { name: "Custom ACP agent", exact: true }).click()
+}
 
 test("native project chat streams ACP, reviews permissions, stops work and restores only its project history", async () => {
   test.skip(
@@ -94,6 +98,7 @@ test("native project chat streams ACP, reviews permissions, stops work and resto
         if (event.type === 'snapshot') globalThis.nativeChatSnapshot = event.snapshot;
       });
     })()`)
+    await chooseCustomAgent(page)
     await panel(page)
       .getByRole("textbox", { name: "ACP agent executable", exact: true })
       .fill("node")
@@ -222,6 +227,7 @@ test("native ACP reconnect waits for its real MCP relay and preserves an externa
       command: "node",
       args: [join(nativeTestRoot, "tests/desktop/fixtures/acp-agent.cjs"), receipt, "--attach-mcp"],
     }
+    await chooseCustomAgent(page)
     await panel(page)
       .getByRole("textbox", { name: "ACP agent executable", exact: true })
       .fill(agent.command)
@@ -251,9 +257,9 @@ test("native ACP reconnect waits for its real MCP relay and preserves an externa
     const reopened = native.waitForEvent("window")
     await page.close()
     await native.evaluate(({ app }) => app.emit("activate"))
-    page = await reopened
-    await page.waitForLoadState("domcontentloaded")
-    await page.goto(projectUrl)
+    await reopened
+    page = await openNativeEditor(native, { projectName: "Untitled project" })
+    await expect(page).toHaveURL(projectUrl)
     const recreated = assistantResultSchema.parse(
       await page.evaluate(
         async (input) => Reflect.get(globalThis, "vibeshapeAssistant").connect(input),

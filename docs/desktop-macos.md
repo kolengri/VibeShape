@@ -26,11 +26,20 @@ Packaging rebuilds the controlled editor from the current clean source; it never
 `dist` prepared before a later application commit. The third argument selects the verified OCCT
 bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
-Packaging also uses macOS `sips`, `iconutil`, `codesign` and `hdiutil`. It emits a runnable
+Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
+`osascript`/Finder. It emits a runnable
 `VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.0-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
+
+Every package generates a branded drag-to-Applications disk image. Its background reuses the
+calibration-tugboat artwork with an arrow between the app and Applications. The repository-owned
+AppKit renderer creates a 144 dpi background; Finder sets the mounted image to a fixed icon view.
+Automation targets only the uniquely mounted staging folder, closes its own window and detaches
+the image before compression and verification. It does not change global Finder settings. An
+interactive macOS session and normal Finder automation permission are required; failure refuses
+the package rather than shipping an unformatted installer.
 
 The generated application icon master is `apps/web/public/brand/app-icon.png` (1024 px).
 Packaging exports all standard macOS icon sizes into the app's `.icns` resource. The browser
@@ -59,7 +68,7 @@ guards; closing a tab does not delete a project. Explicit `?project=<UUID>` link
 matching project directly. Tabs remember open IDs, not separate mutable model copies.
 
 Browser profiles do not automatically become desktop projects. Save `.vshape` backups from the
-browser, then open them through the existing Files and projects dialog in the app. Saved document
+browser with **Save project (.vshape)**, then import them from the Projects page in the app. Saved document
 transactions survive restart. Uncommitted drafts and transient session Undo/Redo do not. Keep native
 backups before replacing or rolling back the application; rollback does not reverse data migrations.
 

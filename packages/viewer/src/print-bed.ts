@@ -25,7 +25,6 @@ export type ViewerPrintBed = Readonly<{
 /** Presentation only: the build envelope never participates in picking or export. */
 export class PrintBedDecoration {
   readonly bed = new Group()
-  readonly ground = new Group()
   #exceeded = false
   #themeObserver: MutationObserver | null = null
 
@@ -44,7 +43,6 @@ export class PrintBedDecoration {
   private refreshColors() {
     const bed = viewerSemanticColor(this.#exceeded ? "--diagnostic-error" : "--axis-z")
     recolor(this.bed, bed)
-    recolor(this.ground, viewerSemanticColor("--axis-z"))
   }
 
   setBed(volume: ViewerPrintBed | null) {
@@ -104,15 +102,9 @@ export class PrintBedDecoration {
     }
   }
 
-  setGround(enabled: boolean, size = 300) {
-    this.clear(this.ground)
-    if (enabled) this.addGrid(this.ground, size, size, viewerSemanticColor("--axis-z"), 0.2)
-  }
-
   dispose() {
     this.#themeObserver?.disconnect()
     this.clear(this.bed)
-    this.clear(this.ground)
   }
 
   private addGrid(group: Group, width: number, depth: number, color: Color, opacity: number) {

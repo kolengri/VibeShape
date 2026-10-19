@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -9,6 +9,7 @@ import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { SplitForm } from "./split-form"
 import { parseSplitForm, type SplitFormMode, splitFeatureRecord } from "./split-form-model"
+import type { SplitManipulator, SplitPlaneResolver } from "./split-manipulator"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7802")
 const targetId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7801")
@@ -27,6 +28,8 @@ function setup(
     onSave?: ReturnType<typeof save>
     status?: "ready" | "loading" | "error"
     unavailable?: boolean
+    onManipulatorChange?: (value: SplitManipulator | null) => void
+    resolvePlane?: SplitPlaneResolver
   } = {},
 ) {
   const onSave = options.onSave ?? save(),
@@ -46,6 +49,8 @@ function setup(
         onSaved={onSaved}
         onPreviewChange={onPreviewChange}
         previewStatus={options.status ?? "ready"}
+        onManipulatorChange={options.onManipulatorChange}
+        resolvePlane={options.resolvePlane}
       />
     </I18nProvider>,
   )
@@ -53,6 +58,44 @@ function setup(
 }
 afterEach(cleanup)
 describe("Split form", () => {
+  it("drags a signed plane offset without committing and releases callbacks on Cancel", async () => {
+    const changes = vi.fn((_value: SplitManipulator | null) => {})
+    const f = setup({ onManipulatorChange: changes })
+    const initial = changes.mock.calls.at(-1)?.[0]
+    expect(initial?.axialGizmo.distanceRange).toEqual({ min: -100_000, max: 100_000 })
+    expect(initial?.toolPlane.origin).toEqual([0, 0, 10])
+    act(() => initial?.axialGizmo.onDistanceChange(-3))
+    expect((screen.getByRole("combobox", { name: "Plane offset" }) as HTMLInputElement).value).toBe(
+      "-3 mm",
+    )
+    expect(f.onSave).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("radio", { name: "XZ" }))
+    const changed = changes.mock.calls.at(-1)?.[0]
+    expect(changed?.axialGizmo.direction).toEqual([0, 1, 0])
+    expect(changed?.toolPlane.origin).toEqual([0, -3, 10])
+    act(() => initial?.axialGizmo.onDistanceChange(99))
+    expect((screen.getByRole("combobox", { name: "Plane offset" }) as HTMLInputElement).value).toBe(
+      "-3 mm",
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(changes.mock.calls.at(-1)?.[0]).toBeNull()
+    act(() => changed?.axialGizmo.onDistanceChange(99))
+    expect((screen.getByRole("combobox", { name: "Plane offset" }) as HTMLInputElement).value).toBe(
+      "-3 mm",
+    )
+    expect(f.onSave).not.toHaveBeenCalled()
+  })
+  it("blocks unresolved support planes and hides both their guide and handle", async () => {
+    const changes = vi.fn((_value: SplitManipulator | null) => {})
+    const f = setup({ onManipulatorChange: changes, resolvePlane: () => null })
+    expect(changes.mock.calls.at(-1)?.[0]).toBeNull()
+    expect(
+      (screen.getByRole("button", { name: "Apply split" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Apply split" }))
+    expect(f.onSave).not.toHaveBeenCalled()
+    expect(f.onPreviewChange).not.toHaveBeenCalledWith(expect.objectContaining({ id: featureId }))
+  })
   it("previews the exact target at its midpoint, retains offset on plane changes and recenters only explicitly", async () => {
     const f = setup()
     const offset = screen.getByRole("combobox", { name: "Plane offset" }) as HTMLInputElement
@@ -106,7 +149,9 @@ describe("Split form", () => {
           reject = rejectPromise
         }),
     )
-    const f = setup({ mode: { kind: "edit", feature }, onSave })
+    const changes = vi.fn((_value: SplitManipulator | null) => {})
+    const f = setup({ mode: { kind: "edit", feature }, onSave, onManipulatorChange: changes })
+    const old = changes.mock.calls.at(-1)?.[0]
     expect((screen.getByRole("combobox", { name: "Plane offset" }) as HTMLInputElement).value).toBe(
       "1 cm",
     )
@@ -115,8 +160,14 @@ describe("Split form", () => {
     await userEvent.click(apply)
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(apply.disabled).toBe(true)
+    expect(changes.mock.calls.at(-1)?.[0]).toBeNull()
+    act(() => old?.axialGizmo.onDistanceChange(50))
+    expect((screen.getByRole("combobox", { name: "Plane offset" }) as HTMLInputElement).value).toBe(
+      "1 cm",
+    )
     reject?.(new Error("Storage unavailable"))
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
+    expect(changes.mock.calls.at(-1)?.[0]?.axialGizmo.distance).toBe(10)
     expect(apply.disabled).toBe(false)
     onSave.mockResolvedValue({ ok: true })
     await userEvent.click(apply)

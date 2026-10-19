@@ -4,6 +4,7 @@ import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
 async function expectContained(dialog: Locator, page: Page) {
+  await expect(dialog).toBeVisible()
   const viewport = page.viewportSize()
   const bounds = await dialog.boundingBox()
   if (!viewport || !bounds) throw new Error("The visible dialog must have measurable bounds.")
@@ -15,7 +16,7 @@ async function expectContained(dialog: Locator, page: Page) {
 }
 
 for (const theme of ["light", "dark"] as const) {
-  test(`keeps project dialogs and the command palette reachable at compact zoom-equivalent size in ${theme} theme`, async ({
+  test(`keeps the Projects page, confirmation dialogs, and command palette reachable at compact zoom-equivalent size in ${theme} theme`, async ({
     page,
   }) => {
     await page.goto("/")
@@ -47,12 +48,14 @@ for (const theme of ["light", "dark"] as const) {
     await expect(lastAvailableCommand).toBeInViewport()
     await page.screenshot({ path: test.info().outputPath("compact-command-palette.png") })
     await page.keyboard.press("Escape")
-    await openApplicationMenuItem(page, "Files and projects…")
-    const projects = page.getByRole("dialog", { name: "Projects", exact: true })
+    await openApplicationMenuItem(page, "Projects")
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible()
+    const projects = page.getByRole("main")
     await expectContained(projects, page)
     await projects
       .getByRole("listitem")
-      .filter({ hasText: "Current" })
+      .filter({ hasText: "Untitled project" })
+      .filter({ hasNotText: "copy" })
       .getByRole("button", { name: /^Duplicate / })
       .click()
     const copy = projects.getByRole("listitem").filter({ hasText: "Untitled project copy" })
@@ -69,7 +72,10 @@ for (const theme of ["light", "dark"] as const) {
     await confirmation.getByRole("button", { name: "Keep project", exact: true }).click()
     await expect(confirmation).not.toBeVisible()
     await expect(copy).toBeVisible()
-    await page.keyboard.press("Escape")
+    await projects.getByRole("button", { name: /^Open Untitled project, revision / }).click()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     await page.keyboard.press("F1")
     const help = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true })
     await expectContained(help, page)

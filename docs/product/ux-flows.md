@@ -193,9 +193,9 @@ An open sketch with at least one closed profile exposes separate direct Extrude 
 6. Open Print Check for units, solid validity, mesh validity, dimensions, overhang, and wall warnings.
 7. Export 3MF and optionally STEP or STL.
 
-The implemented Phase 1 export boundary is available from `Export…` in the application bar. The dialog trigger stays disabled until the active document has finished opening, so initial session replacement cannot dismiss a dialog opened against the loading shell. An opened empty document still exposes the explanation that solid geometry is required. The modal dialog offers a remembered preferred-slicer action, direct multi-object 3MF download, exact STEP exchange, and binary STL compatibility. All export actions remain disabled until the current rebuilt revision contains solid geometry and are single-flight while asynchronous worker work is pending. The slicer action sends the generated 3MF only through an explicitly paired local bridge; if that bridge is not configured, unreachable, or cannot start the chosen application, the dialog downloads the same 3MF and says that it downloaded instead. A successful bridge handoff and direct format downloads preserve localized status in the application bar after the dialog closes. Browser-local save, geometry exchange, bridge handoff, slicer import, and printing are distinct states and must never share success copy. Print checks, placement, configurable tolerance profiles, and a persistent export report remain later work.
+The application-level `Export…` dialog selects one destination, one file format, and one primary action. Save file starts with the preferred format and All parts; STEP uses exact solids, while STL and 3MF expose mesh quality. Export remains disabled until the committed rebuilt revision contains eligible geometry. Direct Open in slicer is a desktop-only STL/3MF handoff to a registered installed or explicitly chosen application. The browser explains this boundary and uses Save file for downloads. No local HTTP bridge or automatic fallback download is used. Prepare print stays a secondary disposable-copy workflow for All parts. Assembly Export similarly selects one format and exports the selected or all frozen poses; closing cancels its owned work and suppresses late output. Pending actions keep their original names and locks, while only the application wordmark displays a loader. Native backup, geometry download, slicer handoff, and printing remain distinct operations.
 
-The always-visible project identity in the application bar and the current row in File include the same icon-only, tooltip-labeled Rename action. Its shared TanStack Form composition preserves the current name, validates the domain's normalized 120-character boundary, and commits one ordinary `org.vibeshape.document.rename` command against the displayed revision. Submission is single-flight; a stale revision or storage failure preserves the edited name and adjacent diagnostic. A successful rename immediately updates the application bar, open local-project library, `.vshape` content, and generated export filenames without changing the stable document ID. Inactive library rows are not renamed implicitly because only the active document owns the live revisioned command session.
+Projects opens the full-page local project library rather than a modal. A project card's thumbnail and name share one keyboard-accessible open target; sibling rename, duplicate, and confirmed delete actions do not activate it. Empty previews show an origin grid instead of an unavailable-preview error. The same VibeShape application menu offers Settings and FAQ on the library and editor. Save project (.vshape) directly downloads an editable backup from the editor menu. The icon-only Rename action beside the current project identity uses the shared revision-checked form; inactive library rows are not renamed implicitly. Successful rename updates identity, tabs, backups, and geometry filenames without changing the project ID.
 
 Settings contains the project display-unit form alongside browser appearance, workspace, and export preferences. Length offers `um`, `mm`, `cm`, `m`, `in`, and `ft`; angle offers `deg` and `rad`. Apply dispatches one revision-checked `org.vibeshape.document.set-display-units` command and is single-flight. Success immediately converts derived results, profile measurements, orientation labels, status, and new dimensional-field defaults while leaving geometry and authored expressions unchanged. A bare numeric literal entered into a known length or angle field is persisted with the active unit explicitly. Reload and `.vshape` round-trip preserve the preference; read-only documents expose it without permitting a semantic change.
 
@@ -497,3 +497,39 @@ current sampling or validation-pass progress and offers **Cancel generation**. S
 mesh result in History opens its captured-source panel with ordinary **Delete feature** confirmation,
 dependency checks and Undo/Redo.
 See [the canonical workflows](lightweighting.md) for preview, Apply, cancellation, and limitations.
+
+
+## Shared interaction feedback
+
+The complete VibeShape wordmark becomes a horizontal indeterminate indicator without changing its dimensions while owned work is pending. Concurrent actions share this indicator; buttons, project tabs, panels, and dialogs keep their accessible pending states and action locks without local loaders. The upper bar stays fully visible. Reduced motion shows a static segment.
+
+Operational errors appear in a fixed notification region that does not change the shell or dialog layout. Messages persist until dismissed or their owning state clears; a new failed attempt may show the same message again. Notification dismissal preserves the active modal and its inputs. Field validation and required dependency decisions remain near their inputs. Icon-only controls have accessible names and bottom-positioned tooltips; directly labelled controls have no tooltip. Interactive labels do not start text selection, while text fields remain editable and selectable.
+
+The left tree supports Shift range selection and Ctrl/Cmd toggle selection for authored parts, bodies, and sketches. Selection in the viewport projects back to the exact current authored owner. Tree and History hover show exact related outputs and their corresponding rows without changing selection or visibility. Delete and Backspace on focused tree or History items open one confirmation for the complete selection. Accepted feature/sketch removals use one atomic revision-checked transaction and one Undo entry; downstream items remain for repair. A part can map to its creating feature only when every sibling output owned by that feature is selected. Generated or ambiguous ownership is blocked rather than guessed. Text entry, IME, modified shortcuts, active editing tasks, and modal interactions do not trigger this deletion shortcut.
+
+Variables opens a modal from its existing tree entry, retaining the model behind it and returning focus on close. Creating a sketch starts plane selection directly. Redundant Model/Sketch toolbar switches are omitted. Dragging the orientation inset orbits around the existing camera target; short axis clicks choose standard views. Cancellation restores ordinary navigation, and normal sketch-projection locks remain authoritative.
+
+### Direct part manipulation
+
+Placement exposes translation handles and an X/Y/Z rotation mode at the current draft pose. Split
+shows the actual resolved cutting plane and a signed normal-offset handle. Both update the same
+expression fields used by the forms; dragging replaces only that field with a literal in the current
+display unit. Invalid or unavailable references hide the controls and block Apply. Cancel discards
+the draft, while Apply keeps the ordinary single feature command and Undo boundary.
+
+The Model toolbar measures available space and shows frequent operation icons in separated groups.
+Each group keeps its remaining commands in a menu; at narrow widths, one Modeling actions menu
+keeps every operation reachable beside Undo/Redo. Sketch tool families keep their dedicated strip.
+The idle viewport does not show a saved-profile chooser. Active Extrude/Revolve profile selection
+exposes a compact native chooser with canonical eligible selectors, including hidden sketches. It
+keeps keyboard focus, additive/removal selection and dependency exclusions; Revolve axis selection
+hides it until the profile field is activated again.
+
+Fit view and explicit sketch bounds replace the complete visible camera span and reset accumulated
+wheel zoom. Ordinary wheel navigation, standard view changes and orientation-inset rotation preserve
+the current framing; returning from a sketch does not multiply an old zoom into its new bounds.
+
+Orbit captures the visible model or sketch bounds center for each gesture. Cursor zoom and panning
+keep their framing while subsequent rotation retains that stable pivot. Free sketch orbit starts
+with a fresh pointer anchor. Recovery links for invalid project URLs open the Projects page,
+preserving the other URL state; choosing a saved card opens its explicit project identity.

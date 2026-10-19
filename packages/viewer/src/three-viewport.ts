@@ -36,10 +36,13 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 import { TransformControls } from "three/addons/controls/TransformControls.js"
 import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysis-overlays"
+import { InfiniteGridDecoration } from "./infinite-grid"
 import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
 import { ModelMeshPresentation } from "./model-meshes"
+import { preserveOrbitPivot } from "./orbit-pivot"
 import { orientationInsetPlacement } from "./orientation-inset"
-import { OrientationMarker } from "./orientation-marker"
+import { OrientationInsetInteraction } from "./orientation-inset-interaction"
+import { OrientationMarker, type OrientationMarkerAxis } from "./orientation-marker"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -54,6 +57,10 @@ import {
   type ViewerSection,
 } from "./section-view"
 import { SectionViewDecoration } from "./section-view-decoration"
+import { ToolPlaneDecoration, type ViewerToolPlane } from "./tool-plane-decoration"
+
+export type { ViewerToolPlane } from "./tool-plane-decoration"
+
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 
 export type { ViewerAnalysisOverlay } from "./analysis-overlays"
@@ -77,6 +84,14 @@ const ORIGIN_PLANE_OPACITY = {
   preselected: { fill: 0.2, edge: 0.9 },
 } as const
 const MIN_AXIAL_GIZMO_DISTANCE = 0.01
+const orientationAxisViews = {
+  X: "right",
+  "-X": "left",
+  Y: "back",
+  "-Y": "front",
+  Z: "top",
+  "-Z": "bottom",
+} as const satisfies Record<OrientationMarkerAxis, ViewerStandardView>
 
 function isFiniteViewerVector3(position: ViewerVector3): boolean {
   return position.length === 3 && position.every((value) => Number.isFinite(value))
@@ -137,7 +152,15 @@ export type ViewerMesh = Readonly<{
   triangleFaceIds: Uint32Array
 }>
 
+export type ViewerFeatureHighlight = ViewerMesh | readonly ViewerMesh[] | null
+
+export function viewerHighlightMeshes(source: ViewerFeatureHighlight): readonly ViewerMesh[] {
+  return source === null ? [] : "featureId" in source ? [source] : source
+}
+
 export type ViewerSketch = Readonly<{
+  selected?: boolean
+  preselected?: boolean
   sketchId: string
   frame?: ViewerFrame
   profiles?: readonly ViewerSketchProfile[]
@@ -232,6 +255,7 @@ export type ViewerVector3 = readonly [number, number, number]
 export type ViewerAxialGizmo = Readonly<{
   direction: ViewerVector3
   distance: number
+  distanceRange?: Readonly<{ min: number; max: number }>
   origin: ViewerVector3
 }>
 
@@ -276,6 +300,19 @@ export function viewerAxialGizmoDistance(
   }
   const distance = new Vector3(...position).sub(new Vector3(...gizmo.origin)).dot(direction)
   return Number.isFinite(distance) ? distance : null
+}
+
+/** Extrusion retains its positive minimum unless a tool explicitly supplies a finite range. */
+export function viewerAxialGizmoDragDistance(
+  gizmo: Pick<ViewerAxialGizmo, "distanceRange">,
+  rawDistance: number,
+): number | null {
+  if (!Number.isFinite(rawDistance)) return null
+  const range = gizmo.distanceRange
+  if (!range) return Math.max(MIN_AXIAL_GIZMO_DISTANCE, rawDistance)
+  if (!Number.isFinite(range.min) || !Number.isFinite(range.max) || range.min >= range.max)
+    return null
+  return Math.min(range.max, Math.max(range.min, rawDistance))
 }
 
 function viewerAngularGizmoFrame(gizmo: ViewerAngularGizmo): ViewerAngularGizmoFrame | null {
@@ -345,7 +382,7 @@ function viewerAngularGizmoLinePositions(gizmo: ViewerAngularGizmo): Float32Arra
   const endPoint = new Vector3(...end)
   appendSegment(frame.origin, start)
   appendSegment(frame.origin, endPoint)
-  const segments = Math.max(12, Math.ceil((64 * gizmo.angle) / (Math.PI * 2)))
+  const segments = Math.max(12, Math.ceil((64 * Math.abs(gizmo.angle)) / (Math.PI * 2)))
   let previous = start
   for (let index = 1; index <= segments; index += 1) {
     const point = viewerAngularGizmoPoint(gizmo, gizmo.angle * (index / segments))
@@ -355,7 +392,10 @@ function viewerAngularGizmoLinePositions(gizmo: ViewerAngularGizmo): Float32Arra
     previous = current
   }
   const endRadial = endPoint.clone().sub(frame.origin).normalize()
-  const tangent = new Vector3().crossVectors(frame.axis, endRadial).normalize()
+  const tangent = new Vector3()
+    .crossVectors(frame.axis, endRadial)
+    .normalize()
+    .multiplyScalar(gizmo.angle < 0 ? -1 : 1)
   const arrowLength = frame.radius * 0.12
   const arrowBase = endPoint.clone().addScaledVector(tangent, -arrowLength)
   appendSegment(endPoint, arrowBase.clone().addScaledVector(endRadial, arrowLength * 0.45))
@@ -367,8 +407,7 @@ function normalizedViewerAngularGizmo(gizmo: ViewerAngularGizmo): ViewerAngularG
   const frame = viewerAngularGizmoFrame(gizmo)
   const minAngle = gizmo.minAngle ?? Math.PI / 180
   const maxAngle = gizmo.maxAngle ?? Math.PI * 2
-  const validRange =
-    Number.isFinite(minAngle) && Number.isFinite(maxAngle) && minAngle >= 0 && maxAngle > minAngle
+  const validRange = Number.isFinite(minAngle) && Number.isFinite(maxAngle) && maxAngle > minAngle
   if (!frame || !Number.isFinite(gizmo.angle) || !validRange) return null
   return {
     ...gizmo,
@@ -497,9 +536,10 @@ export type GeometryViewport = Readonly<{
   setSketchNavigationElement: (element: HTMLElement | SVGSVGElement | null) => void
   setPointerOrbit: (enabled: boolean) => void
   setInteractionMode: (mode: ViewerInteractionMode) => void
-  setFeaturePreselection: (mesh: ViewerMesh | null) => void
-  setFeatureSelection: (mesh: ViewerMesh | null) => void
+  setFeaturePreselection: (mesh: ViewerFeatureHighlight) => void
+  setFeatureSelection: (mesh: ViewerFeatureHighlight) => void
   setSection: (section: ViewerSection | null) => void
+  setToolPlane: (plane: ViewerToolPlane | null) => void
   setPrintBed: (bed: ViewerPrintBed | null) => void
   setGroundGrid: (enabled: boolean) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
@@ -1147,6 +1187,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #orientationScene = new Scene()
   readonly #orientationCamera = new PerspectiveCamera(35, 1, 0.1, 10)
   readonly #orientationMarker = new OrientationMarker()
+  readonly #orientationInteraction: OrientationInsetInteraction
   #controls: OrbitControls
   readonly #translationControls: TransformControls
   readonly #translationObject = new Object3D()
@@ -1167,7 +1208,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sectionPlanes: Plane[] | null = null
   #section: ViewerSection | null = null
   readonly #sectionDecoration: SectionViewDecoration
+  readonly #toolPlaneDecoration = new ToolPlaneDecoration()
   readonly #printDecoration = new PrintBedDecoration(() => this.#render())
+  readonly #infiniteGrid = new InfiniteGridDecoration(() => this.#render())
   readonly #analysisDecoration = new AnalysisOverlayDecoration(createFaceHighlightGeometry, () =>
     this.#render(),
   )
@@ -1409,6 +1452,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #angularAnglePublisher: ReturnType<typeof createLatestFramePublisher<number>>
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
+  #controlsNavigationOrientation: Quaternion | null = null
+  #controlsNavigationPivot: Vector3 | null = null
+  #pointerOrbitPivot: Vector3 | null = null
   #disposed = false
   #pointerDown: Readonly<{ x: number; y: number; pointerId: number }> | null = null
   #originPlaneSelection: ViewerOriginPlane | null = null
@@ -1416,8 +1462,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #originPlaneIdleSelectionEnabled = false
   #originPlanePreselection: ViewerOriginPlane | null = null
   #originPlaneVisibility: ViewerOriginPlaneVisibility = defaultViewerOriginPlaneVisibility
-  #featurePreselection: ViewerMesh | null = null
-  #featureSelection: ViewerMesh | null = null
+  #featurePreselection: ViewerFeatureHighlight = null
+  #featureSelection: ViewerFeatureHighlight = null
   #preselection: ViewerSelection | null = null
   #selectionCandidateStack: readonly ViewerSelection[] = []
   #selectionCandidateStackPreserved = false
@@ -1513,7 +1559,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.localClippingEnabled = true
     this.#renderer.setClearAlpha(0)
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
-    this.#scene.add(this.#printDecoration.bed, this.#printDecoration.ground)
+    this.#scene.add(this.#printDecoration.bed, this.#infiniteGrid.mesh)
     this.#scene.add(this.#analysisDecoration.group)
     this.#scene.add(this.#modelGroup)
     this.#scene.add(this.#sketchGroup)
@@ -1550,6 +1596,34 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationHelper.visible = false
     this.#scene.add(this.#translationHelper)
     this.#controls = this.#createOrbitControls(new Vector3(), true)
+    this.#orientationInteraction = new OrientationInsetInteraction({
+      canvas,
+      placement: () => this.#orientationInsetPlacement(),
+      canInteract: () =>
+        this.#controls.enableRotate &&
+        !this.#sketchProjection &&
+        (this.#interactionMode !== "camera-only" ||
+          !!this.#sketchPlaneFrame ||
+          this.#pointerOrbit) &&
+        !this.#translationGizmoInteracting &&
+        !this.#angularGizmoInteracting &&
+        this.#surfaceTexturePointer === null,
+      navigationEnabled: () => this.#controls.enabled,
+      setNavigationEnabled: (enabled) => {
+        this.#controls.enabled = enabled
+      },
+      onStart: () => {
+        this.#pointerOrbitPivot = this.#modelOrbitPivot()
+        this.#pointerDown = null
+        this.#onNavigationStart()
+      },
+      rotate: (dx, dy) => this.#rotatePointerOrbit(dx, dy),
+      activate: ({ x, y }) => {
+        this.#updateOrientationCamera()
+        const axis = this.#orientationMarker.axisAt(new Vector2(x, y), this.#orientationCamera)
+        if (axis) this.setStandardView(orientationAxisViews[axis])
+      },
+    })
     this.#sectionDecoration = new SectionViewDecoration({
       canvas,
       camera: this.#camera,
@@ -1570,6 +1644,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       render: this.#render,
     })
     this.#scene.add(this.#sectionDecoration.group)
+    this.#scene.add(this.#toolPlaneDecoration.group)
     this.#translationControls.addEventListener("change", this.#onTranslationControlsChange)
     this.#translationControls.addEventListener("objectChange", this.#onTranslationObjectChange)
     this.#translationControls.addEventListener("mouseDown", this.#onTranslationControlsMouseDown)
@@ -1579,6 +1654,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     canvas.addEventListener("pointerdown", this.#onPointerDown, true)
     canvas.addEventListener("pointermove", this.#onPointerMove)
     document.addEventListener("pointermove", this.#onPointerOrbitMove)
+    window.addEventListener("blur", this.#onNavigationBlur)
     window.addEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
@@ -1595,6 +1671,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #createOrbitControls(target: Vector3, enabled: boolean) {
+    this.#onControlsEnd()
     const position = this.#camera.position.clone()
     const controls = new OrbitControls(this.#camera, null)
     controls.enableDamping = false
@@ -1608,7 +1685,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     controls.connect(this.#canvas)
     controls.update()
     controls.addEventListener("change", this.#onControlsChange)
-    controls.addEventListener("start", this.#onNavigationStart)
+    controls.addEventListener("start", this.#onControlsStart)
+    controls.addEventListener("end", this.#onControlsEnd)
     return controls
   }
 
@@ -1619,7 +1697,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#removeSketchNavigationPointerGuard()
     const enabled = this.#controls.enabled
     this.#controls.removeEventListener("change", this.#onControlsChange)
-    this.#controls.removeEventListener("start", this.#onNavigationStart)
+    this.#controls.removeEventListener("start", this.#onControlsStart)
+    this.#controls.removeEventListener("end", this.#onControlsEnd)
     this.#controls.dispose()
     this.#camera.up.set(...up)
     // OrbitControls caches its orbit-axis transform at construction.
@@ -1639,6 +1718,12 @@ class ThreeGeometryViewport implements GeometryViewport {
       observer.observe(this.#orientationInsetOffsetElement)
     }
     return observer
+  }
+
+  setToolPlane(plane: ViewerToolPlane | null) {
+    if (this.#disposed) return
+    this.#toolPlaneDecoration.setPlane(plane)
+    this.#render()
   }
 
   setSection(section: ViewerSection | null) {
@@ -1661,7 +1746,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setGroundGrid(enabled: boolean) {
     if (this.#disposed) return
-    this.#printDecoration.setGround(enabled)
+    this.#infiniteGrid.setEnabled(enabled)
     this.#render()
   }
 
@@ -1685,26 +1770,21 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
-  setFeaturePreselection(mesh: ViewerMesh | null) {
+  setFeaturePreselection(mesh: ViewerFeatureHighlight) {
     if (this.#disposed) return
-    const visibleMesh =
-      mesh &&
-      this.#featureSelection &&
-      viewerBodyKey(mesh) === viewerBodyKey(this.#featureSelection)
-        ? null
-        : mesh
-    if (visibleMesh === this.#featurePreselection) return
-    this.#featurePreselection = visibleMesh
+    const selected = new Set(viewerHighlightMeshes(this.#featureSelection).map(viewerBodyKey))
+    const visible = viewerHighlightMeshes(mesh).filter((item) => !selected.has(viewerBodyKey(item)))
+    this.#featurePreselection = visible
     this.#replaceFeatureHighlight(
       this.#featurePreselectionGroup,
       this.#featurePreselectionMaterial,
       this.#featurePreselectionEdgeMaterial,
-      visibleMesh,
+      visible,
       2,
     )
   }
 
-  setFeatureSelection(mesh: ViewerMesh | null) {
+  setFeatureSelection(mesh: ViewerFeatureHighlight) {
     if (this.#disposed || mesh === this.#featureSelection) return
     this.#featureSelection = mesh
     this.#replaceFeatureHighlight(
@@ -1714,13 +1794,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       mesh,
       3,
     )
-    if (
-      mesh &&
-      this.#featurePreselection &&
-      viewerBodyKey(mesh) === viewerBodyKey(this.#featurePreselection)
-    ) {
-      this.setFeaturePreselection(null)
-    }
+    this.setFeaturePreselection(this.#featurePreselection)
   }
 
   setSketches(sketches: readonly ViewerSketch[]) {
@@ -1734,45 +1808,58 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchProfilePreselection(null, false)
     this.#setSketchProfileSelections([], false)
     for (const sketch of sketches) {
-      this.#addSketchLines(
-        sketch.sketchId,
-        "curves",
-        sketch.curvePositions,
-        this.#sketchCurveMaterial,
-      )
-      this.#addSketchLines(
-        sketch.sketchId,
-        "construction-curves",
-        sketch.constructionCurvePositions,
-        this.#sketchConstructionCurveMaterial,
-        true,
-      )
-      this.#addSketchPoints(
-        sketch.sketchId,
-        "points",
-        sketch.pointPositions,
-        this.#sketchPointMaterial,
-      )
-      this.#addSketchPoints(
-        sketch.sketchId,
-        "construction-points",
-        sketch.constructionPointPositions,
-        this.#sketchConstructionPointMaterial,
-      )
-      this.#addSketchControls(sketch)
-      if (sketch.frame && sketch.profiles) {
-        for (const profile of sketch.profiles) {
-          const geometry = createViewerSketchProfileGeometry(profile, sketch.frame)
-          if (!geometry) continue
-          const mesh = new Mesh(geometry, this.#sketchProfileMaterial)
-          mesh.name = `sketch-profile:${viewerSketchProfileKey(profile.selector)}`
-          mesh.renderOrder = 3
-          this.#sketchProfileGroup.add(mesh)
-          this.#sketchProfiles.set(mesh, profile)
-        }
-      }
+      this.#addSketchGeometry(sketch)
+      this.#addSketchProfiles(sketch)
     }
     this.#render()
+  }
+
+  #addSketchGeometry(sketch: ViewerSketch) {
+    const highlight = sketch.selected
+      ? this.#featureSelectionEdgeMaterial
+      : sketch.preselected
+        ? this.#featurePreselectionEdgeMaterial
+        : null
+    this.#addSketchLines(
+      sketch.sketchId,
+      "curves",
+      sketch.curvePositions,
+      highlight ?? this.#sketchCurveMaterial,
+    )
+    this.#addSketchLines(
+      sketch.sketchId,
+      "construction-curves",
+      sketch.constructionCurvePositions,
+      highlight ?? this.#sketchConstructionCurveMaterial,
+      true,
+    )
+    this.#addSketchPoints(
+      sketch.sketchId,
+      "points",
+      sketch.pointPositions,
+      highlight ? this.#sketchPointPreselectionMaterial : this.#sketchPointMaterial,
+    )
+    this.#addSketchPoints(
+      sketch.sketchId,
+      "construction-points",
+      sketch.constructionPointPositions,
+      this.#sketchConstructionPointMaterial,
+    )
+    this.#addSketchControls(sketch)
+  }
+
+  #addSketchProfiles(sketch: ViewerSketch) {
+    if (sketch.frame && sketch.profiles) {
+      for (const profile of sketch.profiles) {
+        const geometry = createViewerSketchProfileGeometry(profile, sketch.frame)
+        if (!geometry) continue
+        const mesh = new Mesh(geometry, this.#sketchProfileMaterial)
+        mesh.name = `sketch-profile:${viewerSketchProfileKey(profile.selector)}`
+        mesh.renderOrder = 3
+        this.#sketchProfileGroup.add(mesh)
+        this.#sketchProfiles.set(mesh, profile)
+      }
+    }
   }
 
   #sketchReferenceLineMaterial(candidate: ViewerSketchReferenceCandidate) {
@@ -1967,10 +2054,12 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setStandardView(view: ViewerStandardView) {
     if (this.#disposed) return
+    this.#onNavigationBlur()
     const target = this.#controls.target.toArray() as [number, number, number]
     const distance = this.#camera.position.distanceTo(this.#controls.target)
     const pose = viewerCameraPoseForStandardView(view, target, distance)
     if (!pose) return
+    this.#orientationInteraction.cancel()
     this.#clearSketchReferencePicking()
     this.#camera.position.set(...pose.position)
     this.#setCameraUp(pose.up)
@@ -1985,6 +2074,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     const distance = this.#camera.position.distanceTo(this.#controls.target)
     const pose = viewerCameraPoseForFrame(frame, distance)
     if (!pose) return false
+    this.#onNavigationBlur()
+    this.#orientationInteraction.cancel()
     this.#controls.target.set(...pose.target)
     this.#camera.position.set(...pose.position)
     this.#setCameraUp(pose.up)
@@ -2008,11 +2099,14 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setSketchNavigationElement(element: HTMLElement | SVGSVGElement | null) {
     if (this.#disposed || element === this.#sketchNavigationElement) return
+    this.#onNavigationBlur()
+    this.#orientationInteraction.cancel()
     this.#removeSketchNavigationPointerGuard()
     const target = this.#controls.target.clone()
     const enabled = this.#controls.enabled
     this.#controls.removeEventListener("change", this.#onControlsChange)
-    this.#controls.removeEventListener("start", this.#onNavigationStart)
+    this.#controls.removeEventListener("start", this.#onControlsStart)
+    this.#controls.removeEventListener("end", this.#onControlsEnd)
     // Rebinding during a drag must also discard OrbitControls' tracked pointers.
     this.#controls.dispose()
     this.#controls = this.#createOrbitControls(target, enabled)
@@ -2037,12 +2131,15 @@ class ThreeGeometryViewport implements GeometryViewport {
     const distance = this.#camera.position.distanceTo(this.#controls.target)
     const pose = viewerCameraPoseForFrame({ ...frame, origin: target }, distance)
     if (!pose) return false
+    this.#onNavigationBlur()
+    this.#orientationInteraction.cancel()
     this.#sketchProjection = { bounds }
     this.#controls.target.set(...pose.target)
     this.#camera.position.set(...pose.position)
     this.#setCameraUp(pose.up)
     const aspect = this.#canvas.clientWidth / Math.max(this.#canvas.clientHeight, 1)
     this.#viewHeight = viewerSketchProjectionViewHeight(bounds, aspect)
+    this.#camera.zoom = 1
     this.#updateProjection()
     this.#controls.update()
     this.#render()
@@ -2051,7 +2148,11 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setPointerOrbit(enabled: boolean) {
     if (this.#disposed || enabled === this.#pointerOrbit) return
+    this.#onNavigationBlur()
+    this.#orientationInteraction.cancel()
     this.#pointerOrbit = enabled
+    this.#pointerOrbitPosition = null
+    this.#pointerOrbitPivot = enabled ? this.#modelOrbitPivot() : null
     this.#pointerDown = null
     if (enabled) this.#onNavigationStart()
   }
@@ -2064,6 +2165,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setInteractionMode(mode: ViewerInteractionMode) {
     if (this.#disposed || mode === this.#interactionMode) return
+    this.#orientationInteraction.cancel()
     this.#interactionMode = mode
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
@@ -2082,12 +2184,16 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   fit() {
     if (this.#disposed) return
+    this.#onNavigationBlur()
+    this.#orientationInteraction.cancel()
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
     const bounds = new Box3()
       .setFromObject(this.#modelGroup)
       .expandByObject(this.#sketchGroup)
       .expandByObject(this.#printDecoration.bed)
+    // Fit supplies the complete visible span, independent of earlier wheel zoom.
+    this.#camera.zoom = 1
     if (bounds.isEmpty()) {
       this.#viewHeight = DEFAULT_VIEW_HEIGHT
       this.#controls.target.set(0, 0, 0)
@@ -2154,10 +2260,13 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   dispose() {
     this.#sectionDecoration.dispose()
+    this.#toolPlaneDecoration.dispose()
     this.#printDecoration.dispose()
+    this.#infiniteGrid.dispose()
     this.#analysisDecoration.dispose()
     if (this.#disposed) return
     this.#disposed = true
+    this.#orientationInteraction.dispose()
     this.#renderFrames.cancel()
     this.#textureSourceMeshes.clear()
     this.#finishSurfaceTextureStroke(true)
@@ -2169,6 +2278,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#canvas.removeEventListener("pointerdown", this.#onPointerDown, true)
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
     document.removeEventListener("pointermove", this.#onPointerOrbitMove)
+    window.removeEventListener("blur", this.#onNavigationBlur)
     window.removeEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
     this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
@@ -2181,7 +2291,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#angularAnglePublisher.cancel()
     this.#clearSketchReferencePicking()
     this.#controls.removeEventListener("change", this.#onControlsChange)
-    this.#controls.removeEventListener("start", this.#onNavigationStart)
+    this.#controls.removeEventListener("start", this.#onControlsStart)
+    this.#controls.removeEventListener("end", this.#onControlsEnd)
     this.#removeSketchNavigationPointerGuard()
     this.#controls.disconnect()
     this.#sketchNavigationElement = null
@@ -2284,8 +2395,9 @@ class ThreeGeometryViewport implements GeometryViewport {
       .expandByObject(this.#analysisDecoration.group)
       .expandByObject(this.#angularGizmoGroup)
       .expandByObject(this.#printDecoration.bed)
-      .expandByObject(this.#printDecoration.ground)
     if (this.#sectionDecoration.group.visible) bounds.expandByObject(this.#sectionDecoration.group)
+    if (this.#toolPlaneDecoration.group.visible)
+      bounds.expandByObject(this.#toolPlaneDecoration.group)
     for (const plane of this.#originPlaneGroup.children) {
       if (plane.visible) bounds.expandByObject(plane)
     }
@@ -2557,7 +2669,46 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchProfilePreselection(null)
   }
 
+  #modelOrbitPivot() {
+    const bounds = new Box3()
+      .setFromObject(this.#modelGroup)
+      .expandByObject(this.#sketchGroup)
+      .expandByObject(this.#sketchProfileGroup)
+    return bounds.isEmpty() ? null : bounds.getCenter(new Vector3())
+  }
+
+  #onControlsStart = () => {
+    this.#controlsNavigationOrientation = this.#camera.quaternion.clone()
+    this.#controlsNavigationPivot = null
+    this.#onNavigationStart()
+  }
+
+  #onControlsEnd = () => {
+    this.#controlsNavigationOrientation = null
+    this.#controlsNavigationPivot = null
+  }
+
+  #onNavigationBlur = () => {
+    this.#onControlsEnd()
+    this.#pointerOrbitPosition = null
+  }
+
   #onControlsChange = () => {
+    const orientation = this.#controlsNavigationOrientation
+    if (orientation) {
+      if (!orientation.equals(this.#camera.quaternion)) {
+        this.#controlsNavigationPivot ??= this.#modelOrbitPivot()
+        if (this.#controlsNavigationPivot) {
+          preserveOrbitPivot(
+            this.#camera,
+            this.#controls.target,
+            this.#controlsNavigationPivot,
+            orientation,
+          )
+        }
+      }
+      orientation.copy(this.#camera.quaternion)
+    }
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
@@ -2579,7 +2730,8 @@ class ThreeGeometryViewport implements GeometryViewport {
         position.z,
       ])
       if (rawDistance === null) return
-      const distance = Math.max(MIN_AXIAL_GIZMO_DISTANCE, rawDistance)
+      const distance = viewerAxialGizmoDragDistance(this.#axialGizmo, rawDistance)
+      if (distance === null) return
       if (distance !== rawDistance) {
         const clampedPosition = viewerAxialGizmoHandlePosition({
           ...this.#axialGizmo,
@@ -2929,18 +3081,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     group: Group,
     surfaceMaterial: MeshBasicMaterial,
     edgeMaterial: LineBasicMaterial,
-    source: ViewerMesh | null,
+    source: ViewerFeatureHighlight,
     renderOrder: number,
   ) {
     disposeModelGroup(group)
-    if (source) {
-      const geometry = createViewerGeometry(source)
+    for (const mesh of viewerHighlightMeshes(source)) {
+      const geometry = createViewerGeometry(mesh)
       const surface = new Mesh(geometry, surfaceMaterial)
-      surface.name = `${viewerBodyKey(source)}:feature-highlight`
+      surface.name = `${viewerBodyKey(mesh)}:feature-highlight`
       surface.renderOrder = renderOrder
       group.add(surface)
       const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
-      edges.name = `${viewerBodyKey(source)}:feature-highlight-edges`
+      edges.name = `${viewerBodyKey(mesh)}:feature-highlight-edges`
       edges.renderOrder = renderOrder
       group.add(edges)
     }
@@ -3162,6 +3314,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #rotatePointerOrbit(dx: number, dy: number) {
+    const orientation = this.#camera.quaternion.clone()
     const axis = new Quaternion().setFromUnitVectors(this.#camera.up, new Vector3(0, 1, 0))
     const offset = this.#camera.position.clone().sub(this.#controls.target).applyQuaternion(axis)
     const spherical = new Spherical().setFromVector3(offset)
@@ -3176,6 +3329,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     offset.setFromSpherical(spherical).applyQuaternion(axis.invert())
     this.#camera.position.copy(this.#controls.target).add(offset)
     this.#controls.update()
+    if (this.#pointerOrbitPivot) {
+      preserveOrbitPivot(this.#camera, this.#controls.target, this.#pointerOrbitPivot, orientation)
+    }
   }
 
   #onPointerUp = (event: PointerEvent) => {
@@ -3339,6 +3495,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#publishSketchPlaneProjection()
     this.#publishAxialGizmoAvailability()
     if (width <= 0 || height <= 0) return
+    this.#infiniteGrid.update(this.#camera, width, height, this.#renderer.getPixelRatio())
     this.#publishTranslationGizmoOrigin(width, height)
     const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
     if (angularHandle) {
@@ -3353,16 +3510,31 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setViewport(0, 0, width, height)
     this.#renderer.render(this.#scene, this.#camera)
 
-    const {
-      x: insetX,
-      y: insetY,
-      size: insetSize,
-    } = orientationInsetPlacement(width, height, this.#orientationInsetOffsetElement?.clientWidth)
+    const { x: insetX, y: insetY, size: insetSize } = this.#orientationInsetPlacement()
     const insetPlacement = `${insetX},${insetY},${insetSize}`
     if (this.#canvas.dataset.orientationInset !== insetPlacement) {
       this.#canvas.dataset.orientationInset = insetPlacement
     }
     if (insetSize <= 0) return
+    this.#updateOrientationCamera()
+    this.#renderer.setScissorTest(true)
+    this.#renderer.setScissor(insetX, insetY, insetSize, insetSize)
+    this.#renderer.setViewport(insetX, insetY, insetSize, insetSize)
+    this.#renderer.clearDepth()
+    this.#renderer.render(this.#orientationScene, this.#orientationCamera)
+    this.#renderer.setScissorTest(false)
+    this.#renderer.setViewport(0, 0, width, height)
+  }
+
+  #orientationInsetPlacement() {
+    return orientationInsetPlacement(
+      this.#canvas.clientWidth,
+      this.#canvas.clientHeight,
+      this.#orientationInsetOffsetElement?.clientWidth,
+    )
+  }
+
+  #updateOrientationCamera() {
     this.#orientationCamera.position
       .copy(this.#camera.position)
       .sub(this.#controls.target)
@@ -3372,13 +3544,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#orientationCamera.lookAt(0, 0, 0)
     this.#orientationCamera.updateMatrixWorld()
     this.#orientationMarker.alignLabels(this.#orientationCamera.quaternion)
-    this.#renderer.setScissorTest(true)
-    this.#renderer.setScissor(insetX, insetY, insetSize, insetSize)
-    this.#renderer.setViewport(insetX, insetY, insetSize, insetSize)
-    this.#renderer.clearDepth()
-    this.#renderer.render(this.#orientationScene, this.#orientationCamera)
-    this.#renderer.setScissorTest(false)
-    this.#renderer.setViewport(0, 0, width, height)
   }
 
   #publishAxialGizmoAvailability() {

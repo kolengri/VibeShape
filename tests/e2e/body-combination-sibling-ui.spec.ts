@@ -64,6 +64,7 @@ test("unions two exact sibling outputs through ordered body slots and preserves 
   await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model", exact: true })
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "Export STEP", exact: true }).click()
+  await dialog.getByRole("combobox", { name: "File format" }).selectOption("step")
+  await dialog.getByRole("button", { name: "Save STEP file", exact: true }).click()
   expect((await downloading).suggestedFilename()).toMatch(/\.step$/)
 })

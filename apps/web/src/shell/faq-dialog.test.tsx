@@ -2,14 +2,25 @@ import { setDomUrl } from "../../../../tests/unit/support/dom"
 
 setDomUrl("http://localhost:5291/projects/example?tab=cad")
 
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { FaqDialog } from "./faq-dialog"
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
 const endpoint = "https://relay.example/mcp"
 afterEach(() => {
   cleanup()
@@ -21,7 +32,9 @@ afterEach(() => {
 function setup(url?: string) {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <FaqDialog endpoint={url} />
+      <TooltipProvider>
+        <FaqDialog endpoint={url} />
+      </TooltipProvider>
     </I18nProvider>,
   )
 }

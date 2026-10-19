@@ -1986,10 +1986,7 @@ test.describe("full sketch editor", () => {
     ).toBeVisible({
       timeout: 30_000,
     })
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Create sketch", exact: true })
-      .click()
+    await invokeModelCommand(page, "Create", "Create sketch")
     await selectOriginPlaneInViewport(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2036,7 +2033,10 @@ test.describe("full sketch editor", () => {
     const sketchSurface = page.locator("[data-sketch-shortcut-surface]")
     const sketchSurfaceBounds = await sketchSurface.boundingBox()
     if (!sketchSurfaceBounds) throw new Error("The sketch orbit surface is not measurable.")
-    await page.mouse.move(sketchSurfaceBounds.x + 16, sketchSurfaceBounds.y + 16)
+    await page.mouse.move(
+      sketchSurfaceBounds.x + sketchSurfaceBounds.width / 4,
+      sketchSurfaceBounds.y + 16,
+    )
     await page.keyboard.press("s")
 
     const orbitShortcutBounds = await page
@@ -3827,10 +3827,12 @@ test.describe("full sketch editor", () => {
     await page.getByRole("combobox", { name: "Variable expression" }).fill("48 mm")
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
 
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Model", exact: true })
+    const variables = page.getByRole("dialog", { name: "Variables", exact: true })
+    await variables
+      .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
       .click()
+    await expect(variables).toHaveCount(0)
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xz")
     const drawing = await drawRectangle(page)
@@ -3865,6 +3867,11 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Rename variable" }).dblclick()
 
     await expect(page.getByRole("button", { name: "Rename variable" })).toHaveCount(0)
+    await variables
+      .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
+      .click()
+    await expect(variables).toHaveCount(0)
     await expect(
       page
         .getByRole("status", { name: "Project save status", exact: true })
@@ -3921,7 +3928,10 @@ test.describe("full sketch editor", () => {
       "1",
     )
 
-    await page.getByRole("button", { name: "Actions for Sketch 1" }).click()
+    await page
+      .getByRole("complementary", { name: "Model tree", exact: true })
+      .getByRole("button", { name: "Actions for Sketch 1", exact: true })
+      .click()
     await page.getByRole("menuitem", { name: "Rename Sketch 1…" }).click()
     const renameSketch = page.getByRole("dialog", { name: "Rename sketch" })
     await renameSketch.getByRole("textbox", { name: "Sketch name" }).fill("Mounting profile")

@@ -26,10 +26,8 @@ export async function createSolids(page: Page) {
   await saved(page)
 }
 export async function saveProject(page: Page) {
-  await openApplicationMenuItem(page, "Files and projects…")
-  const projects = page.getByRole("dialog", { name: "Projects", exact: true })
   const downloading = page.waitForEvent("download")
-  await projects.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const download = await downloading
   const path = await download.path()
   if (!path) throw new Error("Native archive download must be retained.")
@@ -43,7 +41,7 @@ export async function saveProject(page: Page) {
     decoded.value.version !== 6
   )
     throw new Error("Current authored Save must retain V3, V4, V5 or V6 authority.")
-  await expect(projects).not.toBeVisible()
+  await expect(page.getByRole("menu")).not.toBeVisible()
   return { bytes, filename: download.suggestedFilename(), project: decoded.value.project }
 }
 
@@ -52,15 +50,12 @@ export async function openProject(
   source: Awaited<ReturnType<typeof saveProject>>,
   timeout = 30_000,
 ) {
-  await openApplicationMenuItem(page, "Files and projects…")
-  await page
-    .getByRole("dialog", { name: "Projects", exact: true })
-    .getByLabel("Choose VibeShape project file")
-    .setInputFiles({
-      name: source.filename,
-      mimeType: "application/octet-stream",
-      buffer: source.bytes,
-    })
+  await openApplicationMenuItem(page, "Projects")
+  await page.getByRole("main").getByLabel("Choose VibeShape project file").setInputFiles({
+    name: source.filename,
+    mimeType: "application/octet-stream",
+    buffer: source.bytes,
+  })
   await expect(
     page
       .locator("header")

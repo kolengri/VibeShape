@@ -14,6 +14,7 @@ import { Input } from "@vibeshape/ui/components/input"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { isInteger, isString } from "is-what"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
+import { ActionAvailability } from "../../components/action-availability"
 import type { ApplyVariableTableResult } from "../../document/document-controller"
 import {
   formatDisplayAngle,
@@ -150,22 +151,30 @@ function VariableRowActions({
     )
   }
   return (
-    <div className="flex justify-end gap-1">
+    <div className="flex flex-wrap justify-end gap-1">
       {canRename ? (
         <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onStartRename}>
           {copy.rename}
         </Button>
       ) : null}
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        disabled={disabled || removeDisabled}
-        title={removeDisabledReason}
-        onClick={onRemove}
+      <ActionAvailability
+        disabledReason={removeDisabledReason}
+        presentation="persistent"
+        reasonClassName="basis-full text-right"
       >
-        {copy.remove}
-      </Button>
+        {({ describedBy }) => (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={disabled || removeDisabled}
+            aria-describedby={describedBy}
+            onClick={onRemove}
+          >
+            {copy.remove}
+          </Button>
+        )}
+      </ActionAvailability>
     </div>
   )
 }

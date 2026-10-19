@@ -3,14 +3,17 @@ import type { Page, TestInfo } from "@playwright/test"
 import { unzipSync } from "fflate"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "../e2e/application-menu-support"
-import { createEditorProject, expect, test } from "../e2e/fixtures"
+import { expect, test } from "../e2e/fixtures"
 import { invokeModelCommand } from "../e2e/model-command-support"
 
 async function downloadExport(page: Page, info: TestInfo, format: "STEP" | "STL" | "3MF") {
   await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model", exact: true })
+  await dialog
+    .getByRole("combobox", { name: "File format", exact: true })
+    .selectOption(format.toLowerCase())
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: `Export ${format}`, exact: true }).click()
+  await dialog.getByRole("button", { name: `Save ${format} file`, exact: true }).click()
   const download = await downloading
   const path = info.outputPath(`public-part.${format.toLowerCase()}`)
   await download.saveAs(path)
@@ -79,9 +82,8 @@ test("the public editor loads WASM, edits, restores a native project and exports
   await page.reload()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
 
-  await openApplicationMenuItem(page, "Files and projects…")
   const downloading = page.waitForEvent("download")
-  await page.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const backup = info.outputPath("public-part.vshape")
   await (await downloading).saveAs(backup)
   const native = await readAuthoredVShape(new Uint8Array(await readFile(backup)))
@@ -96,8 +98,6 @@ test("the public editor loads WASM, edits, restores a native project and exports
   })
   try {
     await recovered.goto("/")
-    await createEditorProject(recovered)
-    await openApplicationMenuItem(recovered, "Files and projects…")
     await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
     await expect(recovered.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
       "data-rendered-feature-count",

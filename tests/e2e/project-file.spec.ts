@@ -179,11 +179,20 @@ test.describe("native project file", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "Variables", exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("dialog", { name: "Variables", exact: true })
+        .getByRole("heading", { name: "Variables", exact: true, level: 2 }),
+    ).toBeVisible()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
+    await page
+      .getByRole("dialog", { name: "Variables", exact: true })
+      .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
+      .click()
     await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
@@ -191,9 +200,10 @@ test.describe("native project file", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
-    await openApplicationMenuItem(page, "Files and projects…")
-    const projectsDialog = page.getByRole("dialog", { name: "Projects" })
-    await projectsDialog.getByRole("button", { name: "Rename Untitled project" }).click()
+    await page
+      .locator("header")
+      .getByRole("button", { name: "Rename Untitled project", exact: true })
+      .click()
     const renameDialog = page.getByRole("dialog", { name: "Rename project" })
     await renameDialog.getByRole("textbox", { name: "Project name" }).fill("Calibration bracket")
     await renameDialog.getByRole("button", { name: "Rename project", exact: true }).dblclick()
@@ -202,13 +212,8 @@ test.describe("native project file", () => {
       page.locator("header").first().getByText("Calibration bracket", { exact: true }),
     ).toBeVisible()
 
-    await expect(
-      projectsDialog.getByText("Calibration bracket", {
-        exact: true,
-      }),
-    ).toBeVisible()
     const backupDownload = page.waitForEvent("download")
-    await projectsDialog.getByRole("button", { name: "Save project (.vshape)" }).dblclick()
+    await openApplicationMenuItem(page, "Save project (.vshape)")
     const download = await backupDownload
     expect(download.suggestedFilename()).toBe("Calibration bracket.vshape")
     const backupPath = await download.path()
@@ -255,13 +260,13 @@ test.describe("native project file", () => {
       ),
     ).toHaveLength(4)
 
-    await openApplicationMenuItem(page, "Files and projects…")
-    const currentProjectDialog = page.getByRole("dialog", { name: "Projects" })
     const originalProjectId = await page.evaluate(() =>
       (
         globalThis as unknown as { localStorage: { getItem(key: string): string | null } }
       ).localStorage.getItem("vibeshape-active-document-id"),
     )
+    await openApplicationMenuItem(page, "Projects")
+    const currentProjectDialog = page.getByRole("main")
     await currentProjectDialog.getByLabel("Choose VibeShape project file").setInputFiles({
       name: download.suggestedFilename(),
       mimeType: "application/octet-stream",
@@ -277,8 +282,8 @@ test.describe("native project file", () => {
       ).localStorage.getItem("vibeshape-active-document-id"),
     )
     expect(copiedProjectId).not.toBe(originalProjectId)
-    await openApplicationMenuItem(page, "Files and projects…")
-    const copiedProjectDialog = page.getByRole("dialog", { name: "Projects" })
+    await openApplicationMenuItem(page, "Projects")
+    const copiedProjectDialog = page.getByRole("main")
     await expect(
       copiedProjectDialog.getByRole("listitem").filter({ hasText: "Calibration bracket imported" }),
     ).toHaveCount(1)
@@ -288,7 +293,10 @@ test.describe("native project file", () => {
         .filter({ hasText: "Calibration bracket" })
         .filter({ hasNotText: "imported" }),
     ).toHaveCount(1)
-    await copiedProjectDialog.getByRole("button", { name: "Close", exact: true }).click()
+    await copiedProjectDialog
+      .getByRole("button", { name: /^Open Calibration bracket imported, revision / })
+      .click()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
 
     const importedContext = await browser.newContext()
     const importedPage = await importedContext.newPage()
@@ -308,7 +316,7 @@ test.describe("native project file", () => {
       ).toBeVisible({
         timeout: 30_000,
       })
-      await openApplicationMenuItem(importedPage, "Files and projects…")
+      await openApplicationMenuItem(importedPage, "Projects")
       const transfer = await importedPage.evaluateHandle(
         (bytes) => {
           const browser = globalThis as unknown as {
@@ -340,6 +348,11 @@ test.describe("native project file", () => {
       await expect(importedPage.getByRole("combobox", { name: "Variable expression" })).toHaveValue(
         "24 mm",
       )
+      await importedPage
+        .getByRole("dialog", { name: "Variables", exact: true })
+        .getByRole("button", { name: "Done", exact: true })
+        .filter({ hasText: "Done" })
+        .click()
       await importedPage.getByRole("treeitem", { name: "Box 1", exact: true }).click()
       await expect(
         importedPage
@@ -367,6 +380,10 @@ test.describe("native project file", () => {
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
+    await page
+      .getByRole("dialog", { name: "Variables", exact: true })
+      .getByRole("button", { name: "Done", exact: true })
+      .click()
     await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
@@ -375,12 +392,13 @@ test.describe("native project file", () => {
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
     let projectNavigations = 0
-    page.on("framenavigated", (frame) => {
-      if (frame === page.mainFrame()) projectNavigations += 1
+    page.on("request", (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame())
+        projectNavigations += 1
     })
-    await openApplicationMenuItem(page, "Files and projects…")
+    await openApplicationMenuItem(page, "Projects")
     await page
-      .getByRole("dialog", { name: "Projects" })
+      .getByRole("main")
       .getByRole("button", {
         name: "New project",
       })
@@ -392,8 +410,8 @@ test.describe("native project file", () => {
     ).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
 
-    await openApplicationMenuItem(page, "Files and projects…")
-    const dialog = page.getByRole("dialog", { name: "Projects" })
+    await openApplicationMenuItem(page, "Projects")
+    const dialog = page.getByRole("main")
     const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 4" })
     await expect(previousProject).toHaveCount(1)
     await previousProject.getByRole("button", { name: /Open .*revision 4/ }).click()
@@ -402,8 +420,8 @@ test.describe("native project file", () => {
       timeout: 30_000,
     })
 
-    await openApplicationMenuItem(page, "Files and projects…")
-    const sourceDialog = page.getByRole("dialog", { name: "Projects" })
+    await openApplicationMenuItem(page, "Projects")
+    const sourceDialog = page.getByRole("main")
     const sourceProject = sourceDialog.getByRole("listitem").filter({ hasText: "Revision 4" })
     await sourceProject.getByRole("button", { name: /Duplicate .*revision 4/ }).click()
     const copiedProject = sourceDialog.getByRole("listitem").filter({
@@ -419,6 +437,10 @@ test.describe("native project file", () => {
     })
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("width")
+    await page
+      .getByRole("dialog", { name: "Variables", exact: true })
+      .getByRole("button", { name: "Done", exact: true })
+      .click()
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
@@ -429,8 +451,8 @@ test.describe("native project file", () => {
       .getByRole("button", { name: "Cancel", exact: true })
       .click()
 
-    await openApplicationMenuItem(page, "Files and projects…")
-    const copiedDialog = page.getByRole("dialog", { name: "Projects" })
+    await openApplicationMenuItem(page, "Projects")
+    const copiedDialog = page.getByRole("main")
     const originalProject = copiedDialog.getByRole("listitem").filter({ hasText: "Revision 4" })
     await expect(originalProject).toHaveCount(1)
     await originalProject.getByRole("button", { name: /Delete .*revision 4/ }).click()
@@ -442,6 +464,10 @@ test.describe("native project file", () => {
     await expect(copiedDialog.getByRole("listitem")).toHaveCount(2)
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
+    await copiedDialog
+      .getByRole("button", { name: /^Open Untitled project copy, revision / })
+      .click()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     expect(projectNavigations).toBe(0)
     await page.reload()
     await expect(
@@ -450,20 +476,14 @@ test.describe("native project file", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await expect(page.getByText("Untitled project copy", { exact: true })).toBeVisible()
-    await openApplicationMenuItem(page, "Files and projects…")
-    await expect(page.getByRole("dialog", { name: "Projects" }).getByRole("listitem")).toHaveCount(
-      2,
-    )
+    await openApplicationMenuItem(page, "Projects")
+    await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(2)
   })
 })
 
 async function saveNativeProject(page: Page) {
-  await openApplicationMenuItem(page, "Files and projects…")
   const downloading = page.waitForEvent("download")
-  await page
-    .getByRole("dialog", { name: "Projects", exact: true })
-    .getByRole("button", { name: "Save project (.vshape)", exact: true })
-    .click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const download = await downloading
   const path = await download.path()
   if (!path) throw new Error("Native project download must be retained.")
@@ -538,15 +558,12 @@ test("round trips reversed independent V5 extrusion depths through Save and a fr
     (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)) * 20
   expect(originalVolume).toBeCloseTo(expectedVolume, 3)
 
-  await openApplicationMenuItem(page, "Files and projects…")
-  await page
-    .getByRole("dialog", { name: "Projects", exact: true })
-    .getByLabel("Choose VibeShape project file")
-    .setInputFiles({
-      name: source.filename,
-      mimeType: "application/octet-stream",
-      buffer: source.bytes,
-    })
+  await openApplicationMenuItem(page, "Projects")
+  await page.getByRole("main").getByLabel("Choose VibeShape project file").setInputFiles({
+    name: source.filename,
+    mimeType: "application/octet-stream",
+    buffer: source.bytes,
+  })
   await expect(
     page
       .locator("header")
@@ -560,7 +577,25 @@ test("round trips reversed independent V5 extrusion depths through Save and a fr
     { timeout: 30_000 },
   )
   expect(await extrusionVolume(page)).toBeCloseTo(expectedVolume, 3)
-  await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
+  const extrusionHistory = page.getByRole("treeitem", { name: "Extrusion 1", exact: true })
+  await extrusionHistory.hover()
+  await page.getByRole("button", { name: "Actions for Extrusion 1", exact: true }).click()
+  await expect(
+    page.getByRole("menuitem", { name: "Rename Extrusion 1…", exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("menu")).toHaveCount(0)
+  expect(
+    await extrusionHistory.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const hit = element.ownerDocument.elementFromPoint(
+        bounds.x + bounds.width / 2,
+        bounds.y + bounds.height / 2,
+      )
+      return hit !== null && element.contains(hit)
+    }),
+  ).toBe(true)
+  await extrusionHistory.click()
   const reopened = page.getByRole("form", { name: "Edit extrusion", exact: true })
   await expect(reopened.getByRole("combobox", { name: "Distance", exact: true })).toHaveValue(
     "13 mm",

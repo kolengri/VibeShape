@@ -10,7 +10,35 @@ async function createBox(page: import("@playwright/test").Page) {
     .getByRole("form", { name: "Create box" })
     .getByRole("button", { name: "Create box" })
     .click()
-  await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+  await expect(page.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
+}
+
+async function reviewExportLayout(page: import("@playwright/test").Page) {
+  const dialog = page.getByRole("dialog", { name: "Export model" })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  for (const { width, dark } of [
+    { width: 1024, dark: false },
+    { width: 1024, dark: true },
+    { width: 512, dark: true },
+    { width: 390, dark: false },
+  ]) {
+    await page.setViewportSize({ width, height: 768 })
+    await page
+      .locator("html")
+      .evaluate((element, active) => element.classList.toggle("dark", active), dark)
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    )
+    await expect(dialog.getByRole("combobox", { name: "Destination" })).toBeVisible()
+    const save = dialog.getByRole("button", { name: "Save 3MF file" })
+    await save.scrollIntoViewIfNeeded()
+    await expect(save).toBeVisible()
+    await page.screenshot({
+      path: test.info().outputPath(`export-${width}-${dark ? "dark" : "light"}.png`),
+      animations: "disabled",
+    })
+  }
+  await page.setViewportSize({ width: 1024, height: 768 })
 }
 
 test.describe("document export", () => {
@@ -22,7 +50,7 @@ test.describe("document export", () => {
     const dialog = page.getByRole("dialog", { name: "Export model" })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByText("Create a valid solid body before exporting.")).toBeVisible()
-    await expect(dialog.getByRole("button", { name: "Export STEP" })).toBeDisabled()
+    await expect(dialog.getByRole("button", { name: "Save 3MF file" })).toBeDisabled()
     await dialog.getByRole("button", { name: "Close", exact: true }).click()
 
     await invokeModelCommand(page, "Primitives", "Box")
@@ -30,17 +58,18 @@ test.describe("document export", () => {
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
       .click()
-    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
     await invokeModelCommand(page, "Primitives", "Cylinder")
     await page
       .getByRole("form", { name: "Create cylinder" })
       .getByRole("button", { name: "Create cylinder" })
       .click()
-    await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })).toBeVisible()
 
     await openApplicationMenuItem(page, "Export geometry…")
+    await reviewExportLayout(page)
     const threeMfDownloadPromise = page.waitForEvent("download")
-    await dialog.getByRole("button", { name: "Export 3MF" }).click()
+    await dialog.getByRole("button", { name: "Save 3MF file" }).click()
     const threeMfDownload = await threeMfDownloadPromise
     expect(threeMfDownload.suggestedFilename()).toBe("Untitled project.3mf")
     const threeMfPath = await threeMfDownload.path()
@@ -55,7 +84,9 @@ test.describe("document export", () => {
 
     await openApplicationMenuItem(page, "Export geometry…")
     const stepDownloadPromise = page.waitForEvent("download")
-    await dialog.getByRole("button", { name: "Export STEP" }).click()
+    await dialog.getByRole("combobox", { name: "File format" }).selectOption("step")
+    await expect(dialog.getByRole("combobox", { name: "Mesh quality" })).toHaveCount(0)
+    await dialog.getByRole("button", { name: "Save STEP file" }).click()
     const stepDownload = await stepDownloadPromise
     expect(stepDownload.suggestedFilename()).toBe("Untitled project.step")
     const stepPath = await stepDownload.path()
@@ -66,7 +97,8 @@ test.describe("document export", () => {
 
     await openApplicationMenuItem(page, "Export geometry…")
     const stlDownloadPromise = page.waitForEvent("download")
-    await dialog.getByRole("button", { name: "Export STL" }).click()
+    await dialog.getByRole("combobox", { name: "File format" }).selectOption("stl")
+    await dialog.getByRole("button", { name: "Save STL file" }).click()
     const stlDownload = await stlDownloadPromise
     expect(stlDownload.suggestedFilename()).toBe("Untitled project.stl")
     const stlPath = await stlDownload.path()
@@ -78,92 +110,96 @@ test.describe("document export", () => {
     await expect(page.getByText("STL download started", { exact: true })).toBeVisible()
   })
 
-  test("downloads a 3MF fallback and remembers the preferred slicer", async ({ page }) => {
+  test("explains desktop-only handoff and keeps browser file download explicit", async ({
+    page,
+  }) => {
+    const bridgeRequests: string[] = []
+    page.on("request", (request) => {
+      if (request.url().startsWith("http://127.0.0.1:43113/")) bridgeRequests.push(request.url())
+    })
     await page.goto("/")
     await createBox(page)
-
     await openApplicationMenuItem(page, "Export geometry…")
     const dialog = page.getByRole("dialog", { name: "Export model" })
-    const slicer = dialog.getByLabel("Preferred slicer")
-    await slicer.selectOption("bambu-studio")
-
-    const downloadPromise = page.waitForEvent("download")
-    await dialog.getByRole("button", { name: "Open in Bambu Studio" }).click()
-    const download = await downloadPromise
-    expect(download.suggestedFilename()).toBe("Untitled project.3mf")
-    await expect(
-      dialog.getByText(
-        "The desktop bridge is not connected. The 3MF was downloaded for Bambu Studio instead.",
-      ),
-    ).toBeVisible()
-
-    await dialog.getByRole("button", { name: "Close", exact: true }).click()
-    await page.reload()
-    await openApplicationMenuItem(page, "Export geometry…")
-    await expect(
-      page.getByRole("dialog", { name: "Export model" }).getByLabel("Preferred slicer"),
-    ).toHaveValue("bambu-studio")
+    await dialog.getByRole("combobox", { name: "Destination" }).selectOption("slicer")
+    await expect(dialog.getByText(/Direct handoff is available in the desktop app/)).toBeVisible()
+    await expect(dialog.getByRole("button", { name: "Open in slicer", exact: true })).toBeDisabled()
+    await expect(dialog.getByRole("button", { name: "Choose slicer application…" })).toHaveCount(0)
+    await dialog.getByRole("combobox", { name: "Destination" }).selectOption("file")
+    const downloading = page.waitForEvent("download")
+    await dialog.getByRole("button", { name: "Save 3MF file" }).click()
+    expect((await downloading).suggestedFilename()).toBe("Untitled project.3mf")
+    expect(bridgeRequests).toEqual([])
   })
 
-  test("sends one authenticated 3MF to the paired local bridge", async ({ page }) => {
-    const bridgeToken = "a".repeat(43)
-    await page.addInitScript(
-      ({ token }) => {
-        localStorage.setItem("org.vibeshape.preferred-slicer.v1", "snapmaker-orca")
-        localStorage.setItem("org.vibeshape.slicer-bridge-token.v1", token)
-      },
-      { token: bridgeToken },
-    )
-
-    const observed: {
-      handoffCount: number
-      handoffBytes: Buffer | null
-      authorization: string | undefined
-    } = { handoffCount: 0, handoffBytes: null, authorization: undefined }
-    await page.route("http://127.0.0.1:43113/**", async (route) => {
-      const request = route.request()
-      if (request.method() === "OPTIONS") {
-        await route.fulfill({
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Headers": "authorization, content-type",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Origin": new URL(page.url()).origin,
-            "Access-Control-Allow-Private-Network": "true",
-          },
-        })
-        return
-      }
-      observed.handoffCount += 1
-      observed.handoffBytes = request.postDataBuffer()
-      observed.authorization = request.headers().authorization
-      const url = new URL(request.url())
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin },
-        body: JSON.stringify({
-          protocolVersion: 1,
-          ok: true,
-          requestId: url.searchParams.get("requestId"),
-          slicerId: url.searchParams.get("slicerId"),
-          filename: url.searchParams.get("filename"),
-        }),
-      })
+  test("hands an authentic mesh to an isolated desktop host and remembers its selected target and format", async ({
+    page,
+  }) => {
+    await page.addInitScript({
+      content: `(() => {
+      window.__exportTestHandoffs = [];
+      window.vibeshapeSlicer = {
+        protocolVersion: 1,
+        listApplications: async () => ({ ok: true, targets: [
+          { id: "orca-slicer", name: "OrcaSlicer" },
+          { id: "custom-00000000-0000-4000-8000-000000000002", name: "Custom Slicer" }
+        ] }),
+        chooseApplication: async () => ({ ok: true, target: { id: "custom-00000000-0000-4000-8000-000000000002", name: "Custom Slicer" } }),
+        send: async (request) => {
+          window.__exportTestHandoffs.push({ slicerId: request.slicerId, format: request.format,
+            filename: request.filename, bytes: request.file.byteLength, prefix: Array.from(request.file.slice(0, 4)) });
+          return { ok: true, fileId: "00000000-0000-4000-8000-000000000001", slicerName: "Custom Slicer" };
+        },
+        reveal: async () => true
+      };
+    })();`,
     })
-
+    let downloads = 0
+    page.on("download", () => {
+      downloads += 1
+    })
     await page.goto("/")
     await createBox(page)
     await openApplicationMenuItem(page, "Export geometry…")
-    await page
-      .getByRole("dialog", { name: "Export model" })
-      .getByRole("button", { name: "Open in Snapmaker Orca" })
-      .click()
-
-    await expect(page.getByText("3MF sent to Snapmaker Orca", { exact: true })).toBeVisible()
-    expect(observed.handoffCount).toBe(1)
-    expect(observed.authorization).toBe(`Bearer ${bridgeToken}`)
-    if (!observed.handoffBytes) throw new Error("The bridge request did not contain a body.")
-    expect(observed.handoffBytes.subarray(0, 4)).toEqual(Buffer.from([80, 75, 3, 4]))
+    const dialog = page.getByRole("dialog", { name: "Export model" })
+    await dialog.getByRole("combobox", { name: "Destination" }).selectOption("slicer")
+    await dialog.getByRole("button", { name: "Choose slicer application…" }).click()
+    await expect(dialog.getByRole("combobox", { name: "Slicer", exact: true })).toHaveValue(
+      "custom-00000000-0000-4000-8000-000000000002",
+    )
+    await dialog.getByRole("button", { name: "Open in slicer", exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+    await expect(
+      page.getByText("Sent to Custom Slicer. Verify the imported model in the slicer.", {
+        exact: true,
+      }),
+    ).toBeVisible()
+    const handoffs = await page.evaluate<
+      { slicerId: string; format: string; filename: string; bytes: number; prefix: number[] }[]
+    >("window.__exportTestHandoffs")
+    expect(handoffs).toHaveLength(1)
+    expect(handoffs[0]).toEqual({
+      slicerId: "custom-00000000-0000-4000-8000-000000000002",
+      format: "3mf",
+      filename: "Untitled project.3mf",
+      bytes: expect.any(Number),
+      prefix: [80, 75, 3, 4],
+    })
+    expect(handoffs[0]?.bytes).toBeGreaterThan(100)
+    expect(downloads).toBe(0)
+    await openApplicationMenuItem(page, "Export geometry…")
+    await dialog.getByRole("combobox", { name: "Destination" }).selectOption("slicer")
+    await dialog.getByRole("combobox", { name: "File format" }).selectOption("stl")
+    await dialog.getByRole("button", { name: "Close", exact: true }).click()
+    await page.reload()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
+    await openApplicationMenuItem(page, "Export geometry…")
+    await dialog.getByRole("combobox", { name: "Destination" }).selectOption("slicer")
+    await expect(dialog.getByRole("combobox", { name: "Slicer", exact: true })).toHaveValue(
+      "custom-00000000-0000-4000-8000-000000000002",
+    )
+    await expect(dialog.getByRole("combobox", { name: "File format" })).toHaveValue("stl")
   })
 })

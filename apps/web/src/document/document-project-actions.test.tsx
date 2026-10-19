@@ -1,7 +1,7 @@
 import "../../../../tests/unit/support/dom"
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
-import type { DocumentSnapshotV5 } from "@vibeshape/domain/document-v5"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { vi } from "../../../../tests/unit/support/bun-test"
 
 const mocks = (() => ({
@@ -109,7 +109,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function ready(authoredSnapshot?: DocumentSnapshotV5) {
+async function ready(authoredSnapshot?: AuthoredDocumentSnapshot) {
   window.history.replaceState(null, "", "/")
   const source = sourceProject()
   const session = {
@@ -117,8 +117,9 @@ async function ready(authoredSnapshot?: DocumentSnapshotV5) {
       ? projectAuthoredDocumentSnapshotToV1(authoredSnapshot)
       : source.snapshot,
     authoredSnapshot,
-    mode: undefined as "read-write" | undefined,
+    mode: undefined as "read-write" | "read-only" | undefined,
     commitAuthored: vi.fn(),
+    commitAuthoredTransaction: vi.fn(),
     history: { canUndo: false, canRedo: false },
     close: mocks.close,
     commitDraft: vi.fn(),
@@ -275,6 +276,165 @@ describe("project file identity and active-work guards", () => {
     expect(controller.getProjectActiveWorkBlock()).toBe("editor-draft")
     release()
     expect(await controller.exportActiveProjectBackup()).toMatchObject({ ok: false })
+  })
+})
+
+describe("atomic History selection removal", () => {
+  it("commits deduplicated mixed items once in reverse History order with one transaction identity", async () => {
+    const authority = historyRepairFixture()
+    const { controller, session } = await ready(authority)
+    session.mode = "read-write"
+    const { prepareAuthorityTransaction } = await import(
+      "../../../../packages/application/src/authority-transaction"
+    )
+    session.commitAuthoredTransaction.mockResolvedValue({
+      ok: false,
+      diagnostic: {
+        code: "persistence-failed",
+        message: "Fixture storage failure",
+        retryable: true,
+        sourceCode: null,
+      },
+    })
+    const sketch = authority.history[0]
+    const feature = authority.history[2]
+    if (!sketch || !feature) throw new Error("Mixed History fixture unavailable")
+    await act(async () => {
+      expect(
+        await controller.removeHistoryItems(
+          authority.revision,
+          [sketch, feature, feature],
+          authority.id,
+        ),
+      ).toMatchObject({ ok: false })
+    })
+    expect(session.commitAuthoredTransaction).toHaveBeenCalledTimes(1)
+    expect(session.commitAuthored).not.toHaveBeenCalled()
+    const input = session.commitAuthoredTransaction.mock.calls[0]?.[0]
+    const prepared = prepareAuthorityTransaction(authority, input, () => {
+      throw new Error("Removal must not allocate new parts")
+    })
+    expect(prepared.ok).toBe(true)
+    if (!prepared.ok) throw new Error(prepared.diagnostic.message)
+    expect(prepared.events).toHaveLength(2)
+    expect(new Set(prepared.events.map((event) => event.transactionId)).size).toBe(1)
+    expect(prepared.snapshot.features.some((item) => item.id === authority.features[0]?.id)).toBe(
+      false,
+    )
+    expect(prepared.snapshot.sketches.some((item) => item.id === authority.sketches[0]?.id)).toBe(
+      false,
+    )
+    expect(
+      input.commands.map((command: { baseRevision: number; payload: { target: unknown } }) => [
+        command.baseRevision,
+        command.payload.target,
+      ]),
+    ).toEqual([
+      [authority.revision, feature],
+      [authority.revision + 1, sketch],
+    ])
+    expect(controller.getDocumentControllerState().report?.snapshot.revision).toBe(
+      authority.revision,
+    )
+  })
+
+  it("rejects stale, wrong-document, unsupported, oversized, and task-owned selections without a transaction", async () => {
+    const authority = historyRepairFixture()
+    const { controller, session } = await ready(authority)
+    session.mode = "read-write"
+    const target = authority.history[0]
+    if (!target) throw new Error("History fixture unavailable")
+    expect(
+      await controller.removeHistoryItems(authority.revision - 1, [target], authority.id),
+    ).toMatchObject({ ok: false })
+    expect(
+      await controller.removeHistoryItems(
+        authority.revision,
+        [target],
+        sourceProject().snapshot.id,
+      ),
+    ).toMatchObject({ ok: false })
+    expect(await controller.removeHistoryItems(authority.revision, [], authority.id)).toMatchObject(
+      { ok: false },
+    )
+    expect(
+      await controller.removeHistoryItems(
+        authority.revision,
+        Array.from({ length: 257 }, () => target),
+        authority.id,
+      ),
+    ).toMatchObject({ ok: false })
+    expect(
+      await controller.removeHistoryItems(
+        authority.revision,
+        [
+          {
+            kind: "feature",
+            id: "0195b5ac-b250-7a2c-8c33-000000000110" as import("@vibeshape/domain").FeatureId,
+          },
+        ],
+        authority.id,
+      ),
+    ).toMatchObject({ ok: false })
+    const release = controller.registerProjectActionGuard(() => "editor-draft")
+    expect(
+      await controller.removeHistoryItems(authority.revision, [target], authority.id),
+    ).toMatchObject({ ok: false })
+    release()
+    session.mode = undefined
+    expect(
+      await controller.removeHistoryItems(authority.revision, [target], authority.id),
+    ).toMatchObject({ ok: false })
+    expect(session.commitAuthoredTransaction).not.toHaveBeenCalled()
+  })
+
+  it("releases saving state after an unexpectedly rejected transaction without advancing authority", async () => {
+    const authority = historyRepairFixture()
+    const { controller, session } = await ready(authority)
+    session.mode = "read-write"
+    session.commitAuthoredTransaction.mockRejectedValue(new Error("Fixture transport failure"))
+    const target = authority.history[0]
+    if (!target) throw new Error("History fixture unavailable")
+    await act(async () => {
+      expect(
+        await controller.removeHistoryItems(authority.revision, [target], authority.id),
+      ).toMatchObject({ ok: false })
+    })
+    expect(controller.getDocumentControllerState().saveStatus).toBe("save-error")
+    expect(controller.getDocumentControllerState().report?.snapshot.revision).toBe(
+      authority.revision,
+    )
+  })
+
+  it("locks competing removals synchronously while an atomic transaction is pending", async () => {
+    const authority = historyRepairFixture()
+    const { controller, session } = await ready(authority)
+    session.mode = "read-write"
+    const pending = deferred<{
+      ok: false
+      diagnostic: { code: string; message: string; retryable: boolean; sourceCode: null }
+    }>()
+    session.commitAuthoredTransaction.mockReturnValue(pending.promise)
+    const target = authority.history[0]
+    if (!target) throw new Error("History fixture unavailable")
+    const first = controller.removeHistoryItems(authority.revision, [target], authority.id)
+    expect(
+      await controller.removeHistoryItems(authority.revision, [target], authority.id),
+    ).toMatchObject({ ok: false })
+    expect(session.commitAuthoredTransaction).toHaveBeenCalledTimes(1)
+    pending.resolve({
+      ok: false,
+      diagnostic: {
+        code: "persistence-failed",
+        message: "Fixture storage failure",
+        retryable: true,
+        sourceCode: null,
+      },
+    })
+    await first
+    expect(controller.getDocumentControllerState().report?.snapshot.revision).toBe(
+      authority.revision,
+    )
   })
 })
 

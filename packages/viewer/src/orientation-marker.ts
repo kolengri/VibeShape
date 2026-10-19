@@ -1,6 +1,7 @@
 import {
   AxesHelper,
   BufferGeometry,
+  type Camera,
   CircleGeometry,
   Color,
   Float32BufferAttribute,
@@ -10,11 +11,18 @@ import {
   type Material,
   Mesh,
   MeshBasicMaterial,
+  type Object3D,
+  Plane,
   type Quaternion,
+  Raycaster,
   RingGeometry,
   Shape,
   ShapeGeometry,
+  type Vector2,
+  Vector3,
 } from "three"
+
+export type OrientationMarkerAxis = "X" | "-X" | "Y" | "-Y" | "Z" | "-Z"
 
 const AXIS_LENGTH = 0.62
 const axes = [
@@ -77,6 +85,8 @@ function glyphGeometry(label: keyof typeof glyphOutlines) {
 export class OrientationMarker {
   readonly group = new Group()
   readonly #labels: Group[] = []
+  readonly #axisTargets = new Map<Object3D, OrientationMarkerAxis>()
+  readonly #raycaster = new Raycaster()
   readonly #geometries = new Set<BufferGeometry>()
   readonly #materials = new Set<Material>()
   #disposed = false
@@ -140,6 +150,8 @@ export class OrientationMarker {
       negative.name = `-${label}`
       negative.position.copy(positive.position).negate()
       negative.add(new Mesh(negativeRing, axisMaterial))
+      this.#axisTargets.set(positive, label)
+      this.#axisTargets.set(negative, `-${label}`)
       this.#labels.push(positive, negative)
       this.group.add(positive, negative)
     }
@@ -154,6 +166,30 @@ export class OrientationMarker {
 
   alignLabels(cameraOrientation: Quaternion) {
     for (const label of this.#labels) label.quaternion.copy(cameraOrientation)
+  }
+
+  axisAt(point: Vector2, camera: Camera): OrientationMarkerAxis | null {
+    if (this.#disposed) return null
+    this.group.updateMatrixWorld(true)
+    this.#raycaster.setFromCamera(point, camera)
+    const normal = camera.getWorldDirection(new Vector3())
+    const plane = new Plane()
+    const intersection = new Vector3()
+    let closest = Number.POSITIVE_INFINITY
+    let axis: OrientationMarkerAxis | null = null
+    for (const label of this.#labels) {
+      const center = label.getWorldPosition(new Vector3())
+      plane.setFromNormalAndCoplanarPoint(normal, center)
+      if (!this.#raycaster.ray.intersectPlane(plane, intersection)) continue
+      const candidate = this.#axisTargets.get(label)
+      const radius = candidate?.startsWith("-") ? 0.085 : 0.215
+      const distance = this.#raycaster.ray.origin.distanceToSquared(intersection)
+      if (intersection.distanceToSquared(center) <= radius * radius && distance < closest) {
+        closest = distance
+        axis = candidate ?? null
+      }
+    }
+    return axis
   }
 
   dispose() {

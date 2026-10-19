@@ -115,7 +115,7 @@ VibeShape is a dense tool, not a marketing dashboard:
 - dark-first with a complete light theme;
 - `new-york` as the initial shadcn density/style with Radix base;
 - neutral or zinc surfaces with one restrained primary accent;
-- compact dimensions: 32–36 px toolbars, 28–32 px panel controls, 12–14 px body text;
+- compact dimensions: 32–36 px command rows, 28–32 px panel controls, 12–14 px body text; a horizontally scrolling sketch toolbar reserves a separate native scrollbar lane below its controls;
 - smaller radius than consumer cards, while following one radius scale;
 - panels separated by borders and resizable separators, not nested cards;
 - no gradients or glassmorphism in the working area;
@@ -177,6 +177,8 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 
 ## Composition rules
 
+The app root owns one scoped activity provider and one notification provider. Shared pending controls report activity without sharing command authority, cancellation, or persistence. The wordmark observes the aggregate while action owners retain their locks. Fixed notifications use the existing Radix Toast viewport branch so dismissing an error does not dismiss an active dialog. Registrations follow their source lifetime; repeated explicit attempts can resurface a dismissed error.
+
 - Follow the complete [UI component contracts](ui-component-contracts.md) for component layering, asynchronous actions, form adapters, state inventories, and verification.
 - Follow [Internationalization](internationalization.md) for all product copy, accessible names, validation, status, and diagnostic messages.
 - Build the native or state-agnostic primitive before its TanStack Form adapter; the adapter imports the primitive, never the reverse.
@@ -195,7 +197,15 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 - Layout state such as panel sizes and theme is a local UI preference, not domain state.
 - Add a visual harness or Storybook only if it pays for itself; command-flow E2E remains mandatory.
 
+The compact task sheet uses at most half of the available workspace height, with its contents
+scrolling inside that sheet. Header and History height are excluded from this budget so the drawing
+area remains usable on short windows.
+
 ## Direct manipulation and keyboard adapters
+
+Axial gizmos retain the positive Extrude minimum by default. A tool may explicitly supply finite
+distance bounds; Split uses its signed form bounds so dragging crosses zero without reversing the
+plane normal. The renderer clamps the handle and publishes the same bounded field value.
 
 History source links resolve canonical single- or multi-profile feature inputs, including hole identity,
 into existing viewport preselection. The workspace owns the disposable preview; tool, workspace, project,

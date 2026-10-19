@@ -55,7 +55,7 @@ export function LocalAutomationStatus({
                 ref={trigger}
                 type="button"
                 size="xs"
-                variant="outline"
+                variant="ghost"
                 className="text-foreground"
                 aria-label={t("approvalSettings")}
               >
@@ -169,11 +169,10 @@ function InactiveConnectionStatus({
       <Button
         type="button"
         size="xs"
-        variant="outline"
+        variant="ghost"
         className="text-foreground disabled:text-muted-foreground disabled:opacity-100"
         aria-label={t("enableAi")}
         aria-describedby={waitingForClient ? waitingDescriptionId : undefined}
-        title={t(waitingForClient ? "aiWaitingDescription" : "enableAi")}
         disabled={waitingForClient}
         onClick={connection.enable}
       >
@@ -184,7 +183,6 @@ function InactiveConnectionStatus({
           id={waitingDescriptionId}
           role="status"
           className="px-1 text-xs text-muted-foreground"
-          title={t("aiWaitingDescription")}
         >
           {t("aiWaitingForClient")}
         </span>
@@ -205,9 +203,8 @@ function StopConnectionControl({
     <Button
       type="button"
       size="xs"
-      variant="outline"
+      variant="ghost"
       className="text-foreground"
-      title={t("stopAiDescription")}
       onClick={connection.disable}
     >
       {t("stopAi")}
