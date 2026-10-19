@@ -35,7 +35,8 @@ seekable, and the site loads no Three.js or CAD runtime for this animation.
 
 ## Spatial illustrations
 
-The printer illustration reveals all 17 layers, then lifts and parks the head after eight seconds.
+The printer illustration takes 1.2 seconds per layer, revealing all 17 layers over 20.4 seconds.
+The head then lifts and parks over 1.6 seconds, completing the cycle in 22 seconds.
 It stays finished when revisited. Feature diagrams, workflow stages, and agent steps animate once
 when their block enters the viewport; selecting another workflow stage starts that stage's visual.
 Reduced-motion preferences show completed static illustrations and keep all content visible.

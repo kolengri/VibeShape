@@ -273,8 +273,14 @@ test("printing reveals every layer, parks the head, and stays finished", async (
   await expect(printer.locator(".printed-layer").last()).toHaveCSS("opacity", "0")
   await printer.scrollIntoViewIfNeeded()
   await expect(printer).toHaveAttribute("data-started", "true")
+  const head = printer.locator(".print-carriage")
+  expect(
+    await head.evaluate(
+      (element) => element.getAnimations()[0]?.effect?.getComputedTiming().duration,
+    ),
+  ).toBeGreaterThanOrEqual(1000)
   await expect(printer.locator(".printed-layer").last()).toHaveCSS("opacity", "1", {
-    timeout: 9000,
+    timeout: 23000,
   })
   await expect
     .poll(() =>
@@ -296,7 +302,6 @@ test("printing reveals every layer, parks the head, and stays finished", async (
   ).toBe(true)
   await expect(printer.locator(".print-rail, .print-rail-edge")).toHaveCount(0)
   await expect(printer.locator(".print-filament")).toHaveCSS("opacity", "0")
-  const head = printer.locator(".print-carriage")
   const parkedTransform = await head.evaluate((element) => getComputedStyle(element).transform)
   expect(
     await head.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).e),
