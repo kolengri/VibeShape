@@ -54,6 +54,18 @@ type SectionDecorationOptions = Readonly<{
   render: () => void
 }>
 
+type SectionWorldGeometry = Readonly<{
+  axis: ViewerSection["axis"]
+  offset: number
+  worldPerPixel: number
+  bounds: Box3
+}>
+
+function writeSectionPositions(attribute: BufferAttribute, points: readonly Vector3[]) {
+  for (const [index, point] of points.entries()) attribute.setXYZ(index, point.x, point.y, point.z)
+  attribute.needsUpdate = true
+}
+
 export class SectionViewDecoration {
   readonly group = new Group()
   readonly #caps = new Group()
@@ -75,17 +87,30 @@ export class SectionViewDecoration {
     depthTest: false,
     depthWrite: false,
   })
-  readonly #plane = new Mesh(new BufferGeometry(), this.#planeMaterial)
-  readonly #outline = new LineSegments(new BufferGeometry(), this.#lineMaterial)
+  readonly #planePositions = new BufferAttribute(new Float32Array(18), 3)
+  readonly #outlinePositions = new BufferAttribute(new Float32Array(24), 3)
+  readonly #stemPositions = new BufferAttribute(new Float32Array(6), 3)
+  readonly #plane = new Mesh(
+    new BufferGeometry().setAttribute("position", this.#planePositions),
+    this.#planeMaterial,
+  )
+  readonly #outline = new LineSegments(
+    new BufferGeometry().setAttribute("position", this.#outlinePositions),
+    this.#lineMaterial,
+  )
   readonly #stemMaterial = new LineBasicMaterial({
     color: "#e99b36",
     depthTest: false,
     depthWrite: false,
   })
-  readonly #stem = new LineSegments(new BufferGeometry(), this.#stemMaterial)
+  readonly #stem = new LineSegments(
+    new BufferGeometry().setAttribute("position", this.#stemPositions),
+    this.#stemMaterial,
+  )
   readonly #handle = new Mesh(new SphereGeometry(1, 16, 10), this.#handleMaterial)
   readonly #options: SectionDecorationOptions
   readonly #bounds = new Box3()
+  #worldGeometry: SectionWorldGeometry | null = null
   #section: ViewerSection | null = null
   #meshes: readonly ViewerMesh[] = []
   #drag: SectionDrag | null = null
@@ -178,12 +203,32 @@ export class SectionViewDecoration {
       delete canvas.dataset.sectionCapCount
       return
     }
-    const axis = { x: 0, y: 1, z: 2 }[this.#section.axis]
-    const [u = 0, v = 1] = [0, 1, 2].filter((value) => value !== axis)
     const worldPerPixel =
       (camera.top - camera.bottom) / (camera.zoom * Math.max(canvas.clientHeight, 1))
+    if (!this.#worldGeometryMatches(this.#section, worldPerPixel))
+      this.#updateWorldGeometry(this.#section, worldPerPixel)
+    const projected = this.#handle.position.clone().project(camera)
+    canvas.dataset.sectionGizmoHandle = `${((projected.x + 1) * canvas.clientWidth) / 2},${((1 - projected.y) * canvas.clientHeight) / 2}`
+    canvas.dataset.sectionOffset = String(this.#section.offset)
+    canvas.dataset.sectionCapCount = String(this.#caps.children.length)
+  }
+
+  #worldGeometryMatches(section: ViewerSection, worldPerPixel: number) {
+    const previous = this.#worldGeometry
+    if (!previous) return false
+    return (
+      previous.axis === section.axis &&
+      previous.offset === section.offset &&
+      previous.worldPerPixel === worldPerPixel &&
+      previous.bounds.equals(this.#bounds)
+    )
+  }
+
+  #updateWorldGeometry(section: ViewerSection, worldPerPixel: number) {
+    const axis = { x: 0, y: 1, z: 2 }[section.axis]
+    const [u = 0, v = 1] = [0, 1, 2].filter((value) => value !== axis)
     const padding = worldPerPixel * 18
-    const center = this.#bounds.getCenter(new Vector3()).setComponent(axis, this.#section.offset)
+    const center = this.#bounds.getCenter(new Vector3()).setComponent(axis, section.offset)
     const size = this.#bounds.getSize(new Vector3())
     const extentU = Math.max(size.getComponent(u) / 2 + padding, worldPerPixel * 30)
     const extentV = Math.max(size.getComponent(v) / 2 + padding, worldPerPixel * 30)
@@ -198,35 +243,29 @@ export class SectionViewDecoration {
         .setComponent(u, center.getComponent(u) + a * extentU)
         .setComponent(v, center.getComponent(v) + b * extentV),
     )
-    const triangles = [0, 1, 2, 0, 2, 3].flatMap((index) => corners[index]?.toArray() ?? [])
-    this.#plane.geometry.setAttribute(
-      "position",
-      new BufferAttribute(new Float32Array(triangles), 3),
+    writeSectionPositions(
+      this.#planePositions,
+      [0, 1, 2, 0, 2, 3].map((index) => corners[index] ?? center),
     )
-    const edges = corners.flatMap((point, index) => [
-      ...point.toArray(),
-      ...(corners[(index + 1) % 4]?.toArray() ?? []),
-    ])
-    this.#outline.geometry.setAttribute("position", new BufferAttribute(new Float32Array(edges), 3))
+    writeSectionPositions(
+      this.#outlinePositions,
+      corners.flatMap((point, index) => [point, corners[(index + 1) % 4] ?? center]),
+    )
     const anchor = corners[2] ?? center
-    this.#handle.position.copy(anchor).setComponent(axis, this.#section.offset + worldPerPixel * 30)
+    this.#handle.position.copy(anchor).setComponent(axis, section.offset + worldPerPixel * 30)
     this.#handle.scale.setScalar(worldPerPixel * 7)
-    this.#stem.geometry.setAttribute(
-      "position",
-      new BufferAttribute(
-        new Float32Array([...anchor.toArray(), ...this.#handle.position.toArray()]),
-        3,
-      ),
-    )
+    writeSectionPositions(this.#stemPositions, [anchor, this.#handle.position])
     // Bounds change when the section moves; refresh culling and camera-depth bounds.
     for (const geometry of [this.#plane.geometry, this.#outline.geometry, this.#stem.geometry]) {
       geometry.computeBoundingSphere()
       geometry.computeBoundingBox()
     }
-    const projected = this.#handle.position.clone().project(camera)
-    canvas.dataset.sectionGizmoHandle = `${((projected.x + 1) * canvas.clientWidth) / 2},${((1 - projected.y) * canvas.clientHeight) / 2}`
-    canvas.dataset.sectionOffset = String(this.#section.offset)
-    canvas.dataset.sectionCapCount = String(this.#caps.children.length)
+    this.#worldGeometry = {
+      axis: section.axis,
+      offset: section.offset,
+      worldPerPixel,
+      bounds: this.#bounds.clone(),
+    }
   }
 
   #hitsHandle(event: PointerEvent) {

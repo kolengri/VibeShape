@@ -105,9 +105,17 @@ export function useAssemblyMotion({
   const target = (): AssemblyMotionTarget | null => {
     if (disabled || applyLock.current) return null
     if (study)
-      return { revision, changes: (time) => assemblyMotionStudyChanges(study, joints, time) }
+      return {
+        revision,
+        sampleUnit: "seconds",
+        changes: (time) => assemblyMotionStudyChanges(study, joints, time),
+      }
     if (!joint || !coordinate) return null
-    return { revision, changes: (value) => assemblyMotionChanges(joint, coordinate, value) }
+    return {
+      revision,
+      sampleUnit: "joint-coordinate",
+      changes: (value) => assemblyMotionChanges(joint, coordinate, value),
+    }
   }
   const run = async (
     values: readonly number[],

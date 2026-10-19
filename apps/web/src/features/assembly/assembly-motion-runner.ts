@@ -10,6 +10,7 @@ import type { AssemblyPlaybackOptions } from "./use-assembly-motion"
 
 export type AssemblyMotionTarget = {
   revision: number
+  sampleUnit: "seconds" | "joint-coordinate"
   changes: (value: number) => readonly AssemblyMutation[]
 }
 type SolvedPose = {
@@ -26,7 +27,15 @@ export class AssemblyMotionPreviewFailure extends Error {
   }
 }
 
-function sampleDelay(signal: AbortSignal, milliseconds: number) {
+function sampleDelay(
+  signal: AbortSignal,
+  unit: AssemblyMotionTarget["sampleUnit"],
+  value: number,
+  next: number | undefined,
+  speed = 1,
+) {
+  if (next === undefined) return Promise.resolve()
+  const milliseconds = (unit === "seconds" ? Math.abs(next - value) * 1000 : 200) / speed
   return new Promise<void>((resolve) => {
     const finish = () => {
       clearTimeout(timer)
@@ -100,12 +109,13 @@ export async function solveAssemblyMotionSweep({
 }) {
   const cache: MotionCache = { poses: new Map(), bytes: 0 }
   do {
-    for (const value of values) {
+    for (const [index, value] of values.entries()) {
       if (signal.aborted) return
       const sample = await solveCachedPose(cache, target, value, signal, pending)
       if (!sample || signal.aborted) return
       publish(sample)
-      if (playing) await sampleDelay(signal, 200 / (options.speed ?? 1))
+      if (playing)
+        await sampleDelay(signal, target.sampleUnit, value, values[index + 1], options.speed)
     }
   } while (playing && options.loop && !signal.aborted)
 }
