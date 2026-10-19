@@ -100,7 +100,7 @@ part of the domain setup handoff.
 
 - `apps/site/src/messages/en.json` owns typed English copy and introductory articles.
 - `apps/site/src/links.ts` owns public destinations and each article's canonical repository reference.
-- `apps/site/public/brand` reuses the editor's existing brand assets. The hero labels its image as
+- `apps/site/public/brand` reuses the editor's Benchy wireframe-to-solid brand assets. The hero labels its image as
   an illustration rather than an editor screenshot.
 - Documentation uses `#docs/<topic>` links; section links and browser Back work on static hosts.
 - The canonical technical documents remain under `docs/`; update introductory copy when those
@@ -108,14 +108,15 @@ part of the domain setup handoff.
 
 ## Downloads and release maintenance
 
-As verified on October 19, 2026, the public GitHub release contains an OCCT corresponding-source
-archive, not VibeShape desktop installers. The site states that installers are not published and
-links to source installation, portable package preparation, and the release index. It must not
-present the OCCT archive as an application download or claim Windows installer availability.
+The downloads section links to the Apple Silicon macOS DMG for desktop v0.1.4 and to the
+GitHub release index for release notes, checksums, and source provenance. The package is ad-hoc
+signed and is not notarized by Apple; the site states this beside the download. Intel Mac,
+Windows, and Linux installers are not published. The separate OCCT source archive is not an
+application installer.
 
-When application installers are published, update the availability text and date, add the verified
-platform/architecture asset links to `links.ts`, and update the download browser test. Keep build
-instructions distinct from ready-to-run downloads. The site does not fetch GitHub on visitor load.
+When publishing a desktop release, update the version and asset URL in `links.ts`, the typed
+English availability copy, and the download browser test in the same task. Verify the asset
+exists before deploying the site. The site does not fetch GitHub on visitor load.
 
 ## Static handoff
 
