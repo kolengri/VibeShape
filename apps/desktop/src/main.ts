@@ -12,7 +12,7 @@ import {
   type WebContents,
   type WebFrameMain,
 } from "electron"
-import { reportEditorLoadFailure } from "./editor-load-error"
+import { reportDesktopStartupFailure, reportEditorLoadFailure } from "./editor-load-error"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
 import { desktopMessage as t } from "./messages"
 import {
@@ -392,7 +392,7 @@ else {
     })
     .catch((error: unknown) => {
       if (!quitting) {
-        dialog.showErrorBox(t("startupErrorTitle"), errorMessage(error))
+        reportDesktopStartupFailure(error, app.isPackaged, dialog.showErrorBox)
         app.quit()
       }
     })

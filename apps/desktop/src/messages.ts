@@ -5,6 +5,8 @@ const messages = {
     editorLoadFailed:
       "The editor could not be loaded. Quit VibeShape and open it again. If the problem continues, reinstall the app.",
     editorErrorTitle: "VibeShape could not open the editor",
+    startupFailed:
+      "The local editor could not be started. Quit VibeShape and open it again. If the problem continues, reinstall the app.",
     startupErrorTitle: "VibeShape could not start",
     unexpectedError: "An unexpected error occurred. Please try again.",
     upToDateTitle: "VibeShape is up to date",
