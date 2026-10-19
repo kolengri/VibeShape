@@ -190,7 +190,7 @@
       "category": "AUTOMATION",
       "intro": "VibeShape works with an external MCP client. The browser has no embedded chat: your client supplies the agent and model. Tool discovery is the authority for what that session can do. Remote MCP is not yet enabled at cad.hello-world.cz. For agent workflows, use the local MCP setup below.",
       "oneTitle": "Start the local MCP bridge",
-      "one": "For a source checkout, install dependencies and start the local MCP server through your client using bun run mcp:local. Configure the client according to the MCP quickstart, including the checkout working directory.",
+      "one": "For a source checkout, complete the controlled build prerequisites linked from the MCP quickstart, then run bun ci and bun run prepare:local to build the editor before starting the stdio MCP server. Configure your client according to the quickstart, using Bun with the absolute path to apps/mcp-server/src/index.ts. The bun run mcp:local shortcut requires the checkout working directory.",
       "twoTitle": "Pair the intended browser session",
       "two": "Use the URL and pairing flow described in the quickstart. Open or import the project, then explicitly enable the AI session. The pairing origin has separate browser storage from the ordinary development origin.",
       "threeTitle": "Inspect and control changes",
