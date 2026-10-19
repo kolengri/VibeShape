@@ -30,16 +30,19 @@ Read [draft transactions](references/transactions.md) before a CAD write. Organi
 
 ## Browser project identity
 
-The editor URL uses `?project=<document UUID>` for the active browser-local project. Explicit links override the last-active preference; reload and Back/Forward use ordinary project guards. A rejected navigation preserves the draft and restores the address to the actual project. An invalid ID or a missing project shows an error with recovery; do not assume another model opened. URLs identify storage within the same browser profile, not shared or uploaded projects, and never grant MCP authority. Re-establish document identity through the advertised session/model reads after a switch.
+A bare application URL opens the project library without restoring or creating a model. Select an existing project or explicitly create one in the visible UI before establishing document pairing; an unavailable `model_info` in the library is not an empty-model result. The editor URL uses `?project=<document UUID>` for the active browser-local project. Explicit links open that project directly; reload and Back/Forward use ordinary project guards, including guarded return to the sessionless library. A rejected navigation preserves the draft and restores the address to the actual project. An invalid ID or a missing project shows an error with recovery; do not assume another model opened. URLs identify storage within the same browser profile, not shared or uploaded projects, and never grant MCP authority. Re-establish document identity through the advertised session/model reads after a switch.
 
 ## UI-only workflows
 
 The bottom History transport and directly draggable vertical divider step through the model using a
 transient insertion boundary; complete
 saved History remains intact. Active edits must pass their ordinary save/validation guard. Shift-click
-or Shift+Space selects ranges for grouping without checkboxes. Assembly's Drive panel provides bounded
-constraint-solved motion preview and one explicit Apply; existing assembly MCP draft tools author saved
-coordinates but do not expose animation playback. Plugins installs data-only browser-local calculator
+or Shift+Space selects ranges for grouping without checkboxes. Assembly's Drive and Motion studies
+panels provide constraint-solved seek, reverse, relative speed and cached loop playback, with a separate
+pose Apply. Named assembly MCP draft tools author persisted multi-joint studies; the committed-study
+sampling tool returns bounded exact solved poses and point traces. Continuous playback and PNG/JSON/CSV
+downloads remain visible-UI workflows; no GIF encoding or physical simulation is implied. See the
+[assembly workflow](../vibeshape-modeling/references/assembly-and-library.md). Plugins installs data-only browser-local calculator
 panels through the visible UI. No MCP plugin-install or arbitrary execution tool is available, and
 installed plugins gain no project/session authority.
 

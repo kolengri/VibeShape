@@ -1,5 +1,11 @@
 # Automation and MCP architecture
 
+The desktop host attaches external MCP clients to its already open project and runs installed ACP
+agents through a narrow native bridge. Static web chat calls the person's compatible model API
+directly and executes tools through the same browser-owned automation sessions. Neither path adds
+a hosted AI worker or bypasses reviewed commands. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
+and the [desktop connection workflow](../desktop-macos.md#ai-connections).
+
 ## Revision-bound visual inspection
 
 `render_preview` is a read-only tool shared by local and remote MCP. Its explicit `source` selects

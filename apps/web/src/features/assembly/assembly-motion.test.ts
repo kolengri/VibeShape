@@ -84,13 +84,13 @@ describe("Assembly motion coordinate authority", () => {
       expect(() => assemblyMotionChanges(input, coordinate, value)).toThrow()
     for (const [start, end] of [
       [0, 0],
-      [1, -1],
       [-2, 0],
       [0, 2],
       [Number.NaN, 1],
     ] as const)
       expect(() => assemblyMotionSamples(coordinate, start, end)).toThrow()
     const values = assemblyMotionSamples(coordinate, -1, 1)
+    expect(assemblyMotionSamples(coordinate, 1, -1, 3)).toEqual([1, 0, -1])
     expect(values).toHaveLength(13)
     expect(values[0]).toBe(-1)
     expect(values.at(-1)).toBe(1)

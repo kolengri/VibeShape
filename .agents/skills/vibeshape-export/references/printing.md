@@ -10,10 +10,17 @@ The editor's **Export → Prepare print / breakaway fins…** creates a disposab
 
 Prepared-copy controls are not exposed as MCP tools. Exported 3MF records millimetres; it is not a native Bambu Studio project with an established printer, process, filament, and plate profile. Avoid interpreting geometric preparation as slicing evidence.
 
-## Desktop bridge
+## Native desktop handoff
 
-VibeShape's optional authenticated loopback bridge can hand a generated 3MF to an allowlisted installed slicer. Source setup, when requested, is documented in the repository's `docs/3d-printing.md`. Pair the exact editor origin; localhost and 127.0.0.1 are different origins. Keep the credential private and use the visible bridge setup controls.
+The Mac app's export dialog sends a generated STL or 3MF directly to an installed slicer, with
+remembered mesh format and target. Use the detected target or the native application chooser. This
+workflow requires no separate bridge process or pairing token. A launch failure preserves the mesh;
+use **Show mesh in Finder** for manual recovery. The static browser downloads the same mesh for
+manual opening. Discovery, a successful spawn, import, and physical printing are different outcomes.
 
-The bridge receives a bounded temporary 3MF and launches OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura. It does not choose a printer profile, slice, generate G-code, or print. If unavailable, the editor downloads the same 3MF and reports fallback. Verify which outcome occurred before reporting handoff.
+The legacy authenticated loopback bridge remains an explicit source CLI compatibility workflow,
+documented in `docs/3d-printing.md`; it is not required by the product UI. No native slicer-launch MCP
+tool is advertised. Use the visible supported handoff within the person's authorization and report
+which outcome actually occurred.
 
 When acceptance requires slicing, inspect the actual opened file, scale, orientation, printer/process/filament profile, and requested preview in the chosen slicer. Use an explicitly requested printer/slicer workflow for further operations; this skill itself grants no printer, upload, publication, or paid-service authority.

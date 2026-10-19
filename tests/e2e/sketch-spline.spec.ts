@@ -190,7 +190,11 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
@@ -279,7 +283,11 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
 
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   await expect(drawing).not.toBeVisible()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
@@ -288,7 +296,11 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
   )
   await page.screenshot({ path: test.info().outputPath("bezier-saved-preview.png") })
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()

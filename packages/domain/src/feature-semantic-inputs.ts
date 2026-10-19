@@ -17,6 +17,7 @@ import {
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -115,6 +116,7 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureTypeV5.type),
   featureTypeKey(extrusionFeatureTypeV6.type),
   featureTypeKey(extrusionFeatureTypeV7.type),
+  featureTypeKey(extrusionFeatureTypeV8.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),
@@ -249,7 +251,13 @@ export function projectFirstPartyFeatureSemanticInputs(
       ? {
           recognized: true,
           ok: true,
-          inputs: [{ kind: "sketch", id: parameters.profile.sketchId }],
+          inputs: [
+            ...new Set(
+              (parameters.profiles?.profiles ?? [parameters.profile]).map(
+                ({ sketchId }) => sketchId,
+              ),
+            ),
+          ].map((id) => ({ kind: "sketch" as const, id })),
         }
       : {
           recognized: true,

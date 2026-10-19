@@ -39,7 +39,11 @@ test("separates objects and feature order while preserving the mounted task and 
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box" })
@@ -97,7 +101,11 @@ for (const theme of ["dark", "light"] as const) {
     await page.setViewportSize({ width: 1024, height: 720 })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .locator("html")
       .evaluate((element, value) => element.classList.toggle("dark", value === "dark"), theme)

@@ -1,8 +1,10 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Scissors } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
 import { TextField } from "@vibeshape/ui/components/text-field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { ViewerMesh, ViewerSection } from "@vibeshape/viewer/three-viewport"
 import { useId, useState } from "react"
 
@@ -22,6 +24,26 @@ function modelMidpoint(meshes: readonly ViewerMesh[], axis: ViewerSection["axis"
   return Number.isFinite(min + max) ? (min + max) / 2 : 0
 }
 
+function useSectionControlDraft(section: ViewerSection | null) {
+  const initial: ViewerSection = section ?? { axis: "z", offset: 0, flipped: false }
+  const [axis, setAxis] = useState(initial.axis)
+  const [offset, setOffset] = useState(String(initial.offset))
+  const [flipped, setFlipped] = useState(initial.flipped)
+  const [previousSection, setPreviousSection] = useState(section)
+  if (section !== previousSection) {
+    setPreviousSection(section)
+    if (
+      section &&
+      (section.axis !== previousSection?.axis || section.offset !== previousSection?.offset)
+    ) {
+      setAxis(section.axis)
+      setOffset(String(section.offset))
+    }
+    if (section) setFlipped(section.flipped)
+  }
+  return { axis, setAxis, offset, setOffset, flipped, setFlipped }
+}
+
 export function SectionViewControls({
   disabled,
   section,
@@ -35,19 +57,28 @@ export function SectionViewControls({
 }) {
   const t = useTranslations("app.sectionView")
   const axisId = useId()
-  const [axis, setAxis] = useState<ViewerSection["axis"]>(section?.axis ?? "z")
-  const [offset, setOffset] = useState(String(section?.offset ?? 0))
-  const [flipped, setFlipped] = useState(section?.flipped ?? false)
+  const { axis, setAxis, offset, setOffset, flipped, setFlipped } = useSectionControlDraft(section)
   const invalid =
     offset.trim() === "" || !Number.isFinite(Number(offset)) || Math.abs(Number(offset)) > 100_000
   if (disabled || meshes.length === 0) return null
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button type="button" size="sm" variant={section ? "secondary" : "ghost"}>
-          {t("title")}
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={section ? "secondary" : "ghost"}
+              aria-label={t("title")}
+              aria-pressed={section !== null}
+            >
+              <Scissors aria-hidden="true" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t("title")}</TooltipContent>
+      </Tooltip>
       <PopoverContent align="end" className="grid w-56 gap-2 p-3 text-xs" aria-label={t("title")}>
         <label className="flex items-center gap-2">
           <input
@@ -110,6 +141,7 @@ export function SectionViewControls({
           />
           {t("flip")}
         </label>
+        <p className="text-muted-foreground">{t("dragHint")}</p>
         <p className="text-muted-foreground">{t("description")}</p>
       </PopoverContent>
     </Popover>

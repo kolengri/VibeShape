@@ -2,6 +2,12 @@ import { Plane, Vector3 } from "three"
 
 export type ViewerSection = Readonly<{ axis: "x" | "y" | "z"; offset: number; flipped: boolean }>
 
+export function sameViewerSection(left: ViewerSection | null, right: ViewerSection | null) {
+  if (left === right) return true
+  if (!left || !right) return false
+  return left.axis === right.axis && left.offset === right.offset && left.flipped === right.flipped
+}
+
 export function sectionClipPlanes(section: ViewerSection | null): Plane[] | null {
   if (!section) return null
   if (

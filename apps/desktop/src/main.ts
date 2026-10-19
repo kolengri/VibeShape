@@ -1,9 +1,26 @@
+import { chmodSync, lstatSync, mkdirSync } from "node:fs"
 import { join, resolve } from "node:path"
+import { ASSISTANT_EVENT_CHANNEL } from "@vibeshape/automation-api/assistant"
+import {
+  DESKTOP_COMMAND_CHANNEL,
+  DESKTOP_COMMAND_STATE_CHANNEL,
+  DESKTOP_MCP_DESCRIPTOR_NAME,
+  DESKTOP_MCP_SETUP_CHANNEL,
+  DESKTOP_TEXT_EDIT_CHANNEL,
+  type DesktopCommand,
+  desktopApplicationCommandSchema,
+  desktopCommandStateSchema,
+  desktopEditorCommandSchema,
+  desktopMcpSetupSchema,
+  desktopTextEditSchema,
+} from "@vibeshape/automation-api/desktop-host"
 import {
   app,
   BrowserWindow,
   type DownloadItem,
   dialog,
+  type IpcMainInvokeEvent,
+  ipcMain,
   Menu,
   type MenuItemConstructorOptions,
   session,
@@ -11,9 +28,15 @@ import {
   type WebContents,
   type WebFrameMain,
 } from "electron"
+import { registerAssistantIpc } from "./assistant-ipc"
+import { createAssistantService } from "./assistant-service"
 import { reportDesktopStartupFailure, reportEditorLoadFailure } from "./editor-load-error"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
+import { createDesktopMcpService } from "./mcp-service"
 import { desktopMessage as t } from "./messages"
+import { createNativeSlicerService } from "./native-slicer"
+import { registerNativeSlicerIpc } from "./native-slicer-ipc"
+import { canSendNativeEvent, chosenNativeFile } from "./native-window-policy"
 import { initializeDesktopProfile } from "./startup-profile"
 import { createPendingUpdateWork } from "./update-work"
 import {
@@ -31,7 +54,24 @@ const profile =
     : join(app.getPath("appData"), "VibeShape")
 app.enableSandbox()
 
+const testPort = !app.isPackaged ? process.env.VIBESHAPE_DESKTOP_TEST_PORT : undefined
+if (
+  testPort !== undefined &&
+  (!/^\d{4,5}$/.test(testPort) || Number(testPort) < 1024 || Number(testPort) > 65535)
+)
+  throw new Error("The desktop test port must be between 1024 and 65535.")
+const editorOrigin = testPort ? `http://127.0.0.1:${testPort}` : DESKTOP_EDITOR_ORIGIN
+const descriptorPath = join(profile, DESKTOP_MCP_DESCRIPTOR_NAME)
+const runtimeDirectory = app.isPackaged ? app.getAppPath() : join(app.getAppPath(), "dist")
 let editor: Awaited<ReturnType<typeof startEditorServer>> | undefined
+let nativeMcp: ReturnType<typeof createDesktopMcpService> | undefined
+let nativeSlicer: ReturnType<typeof createNativeSlicerService> | undefined
+let assistant: ReturnType<typeof createAssistantService> | undefined
+let assistantClosing = Promise.resolve()
+let unregisterAssistant: (() => void) | undefined
+let unregisterSlicer: (() => void) | undefined
+const nativeDirectory = join(profile, "native-workflows")
+const assistantDirectory = join(nativeDirectory, "assistant")
 let mainWindow: BrowserWindow | undefined
 let licensesWindow: BrowserWindow | undefined
 let quitting = false
@@ -41,10 +81,11 @@ let updateController: AbortController | undefined
 const updateWork = createPendingUpdateWork()
 let startup: Promise<void> = Promise.resolve()
 const ownedContents = new Set<WebContents>()
+const enabledNativeCommands = new Set<DesktopCommand>()
 
 function ownsUrl(value: string) {
   try {
-    return new URL(value).origin === DESKTOP_EDITOR_ORIGIN
+    return new URL(value).origin === editorOrigin
   } catch {
     return false
   }
@@ -52,10 +93,11 @@ function ownsUrl(value: string) {
 
 function ownsEditorNavigation(value: string | undefined) {
   if (value === undefined) return false
-  return ownsUrl(value) && value.startsWith(`${DESKTOP_EDITOR_ORIGIN}/`)
+  return ownsUrl(value) && value.startsWith(`${editorOrigin}/`)
 }
 
 function createWindow(url: string) {
+  const unified = process.platform === "darwin" && new URL(url).pathname === "/"
   const window = new BrowserWindow({
     title: "VibeShape",
     width: 1440,
@@ -64,7 +106,12 @@ function createWindow(url: string) {
     minHeight: 650,
     backgroundColor: "#17191c",
     show: false,
+    ...(unified
+      ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 20 } }
+      : {}),
     webPreferences: {
+      preload: join(runtimeDirectory, "preload.cjs"),
+      additionalArguments: unified ? ["--vibeshape-unified-chrome"] : [],
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -111,9 +158,13 @@ function focusWindow(window: BrowserWindow) {
 function focusEditor() {
   if (quitting || !editor) return
   if (!mainWindow) {
-    mainWindow = createWindow(`${DESKTOP_EDITOR_ORIGIN}/`)
+    installAssistant()
+    mainWindow = createWindow(`${editorOrigin}/`)
     mainWindow.on("closed", () => {
       mainWindow = undefined
+      closeAssistant()
+      enabledNativeCommands.clear()
+      refreshNativeCommandMenu()
     })
   }
   focusWindow(mainWindow)
@@ -122,7 +173,7 @@ function focusEditor() {
 function showLicenses() {
   if (quitting || !editor) return
   if (!licensesWindow) {
-    licensesWindow = createWindow(`${DESKTOP_EDITOR_ORIGIN}/sources/index.html`)
+    licensesWindow = createWindow(`${editorOrigin}/sources/index.html`)
     licensesWindow.on("closed", () => {
       licensesWindow = undefined
     })
@@ -157,26 +208,60 @@ async function showDownloadedUpdate(path: string) {
   if (finished.response === 0 && !quitting) shell.showItemInFolder(path)
 }
 
-async function downloadRelease(release: DesktopRelease, signal: AbortSignal) {
+async function chooseUpdateDestination(release: DesktopRelease) {
+  if (quitting) return undefined
   const destination = await dialog.showSaveDialog({
     title: t("downloadTitle", { version: release.version }),
     defaultPath: join(app.getPath("downloads"), release.fileName),
     filters: [{ name: t("diskImageType"), extensions: ["dmg"] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
-  if (destination.canceled || !destination.filePath || quitting) return
+  if (destination.canceled || quitting) return undefined
+  return destination.filePath
+}
+
+async function downloadToDestination(release: DesktopRelease, path: string, signal: AbortSignal) {
   const progressWindow = mainWindow
   try {
     setDownloadProgress(progressWindow, 0)
     await updateWork.run(() =>
-      downloadDesktopUpdate(release, destination.filePath, {
+      downloadDesktopUpdate(release, path, {
         signal,
         onProgress: (fraction) => setDownloadProgress(progressWindow, fraction),
       }),
     )
-    await showDownloadedUpdate(destination.filePath)
+    await showDownloadedUpdate(path)
   } finally {
     setDownloadProgress(progressWindow, -1)
+  }
+}
+
+async function retryUpdateDestination(error: unknown) {
+  if (quitting) return false
+  if (!(error instanceof DesktopUpdateError) || error.failure.kind !== "destination-exists")
+    throw error
+  const retry = await dialog.showMessageBox({
+    type: "error",
+    message: t("updateErrorTitle"),
+    detail: t("updateErrorDestinationExists"),
+    buttons: [t("chooseAnotherName"), t("cancel")],
+    defaultId: 0,
+    cancelId: 1,
+  })
+  return retry.response === 0
+}
+
+async function downloadRelease(release: DesktopRelease, signal: AbortSignal) {
+  let retry = true
+  while (retry) {
+    const path = await chooseUpdateDestination(release)
+    if (!path) return
+    try {
+      await downloadToDestination(release, path, signal)
+      return
+    } catch (error) {
+      retry = await retryUpdateDestination(error)
+    }
   }
 }
 
@@ -220,6 +305,7 @@ function updateFailureDetail(error: unknown) {
     "invalid-response": "updateErrorResponse",
     integrity: "updateErrorIntegrity",
     destination: "updateErrorDestination",
+    "destination-exists": "updateErrorDestinationExists",
   } as const
   return t(keys[error.failure.kind])
 }
@@ -265,6 +351,38 @@ async function checkForUpdates(quiet: boolean) {
   }
 }
 
+function refreshNativeCommandMenu() {
+  const menu = Menu.getApplicationMenu()
+  for (const id of [
+    ...desktopEditorCommandSchema.options,
+    ...desktopApplicationCommandSchema.options,
+  ]) {
+    const item = menu?.getMenuItemById(`native-${id}`)
+    if (item) item.enabled = enabledNativeCommands.has(id)
+  }
+}
+
+function nativeCommandItem(
+  id: DesktopCommand,
+  label: string,
+  accelerator?: string,
+): MenuItemConstructorOptions {
+  return {
+    id: `native-${id}`,
+    label,
+    enabled: false,
+    ...(accelerator ? { accelerator } : {}),
+    click() {
+      if (
+        enabledNativeCommands.has(id) &&
+        mainWindow &&
+        ownsEditorNavigation(mainWindow.webContents.getURL())
+      )
+        mainWindow.webContents.send(DESKTOP_COMMAND_CHANNEL, { id })
+    },
+  }
+}
+
 function installMenu() {
   app.setAboutPanelOptions({
     applicationName: "VibeShape",
@@ -275,6 +393,7 @@ function installMenu() {
     label: "VibeShape",
     submenu: [
       { role: "about" },
+      nativeCommandItem("settings", t("preferences"), "CmdOrCtrl+,"),
       {
         id: "check-for-updates",
         label: t("checkForUpdates"),
@@ -293,7 +412,29 @@ function installMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       application,
-      { role: "editMenu" },
+      {
+        label: t("fileMenu"),
+        submenu: [
+          nativeCommandItem("projects", t("projects"), "CmdOrCtrl+O"),
+          nativeCommandItem("export", t("export"), "CmdOrCtrl+Shift+E"),
+          { type: "separator" },
+          { role: "close" },
+        ],
+      },
+      {
+        label: t("editMenu"),
+        submenu: [
+          nativeCommandItem("undo", t("undo"), "CmdOrCtrl+Z"),
+          nativeCommandItem("redo", t("redo"), "CmdOrCtrl+Shift+Z"),
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "pasteAndMatchStyle" },
+          { role: "delete" },
+          { role: "selectAll" },
+        ],
+      },
       {
         label: t("viewMenu"),
         submenu: [
@@ -307,8 +448,30 @@ function installMenu() {
           { role: "togglefullscreen" },
         ],
       },
+      {
+        label: t("modelMenu"),
+        submenu: [
+          nativeCommandItem("createSketch", t("createSketch")),
+          nativeCommandItem("createBox", t("createBox")),
+          nativeCommandItem("createCylinder", t("createCylinder")),
+          { type: "separator" },
+          nativeCommandItem("createExtrusion", t("createExtrusion")),
+          nativeCommandItem("createRevolve", t("createRevolve")),
+          nativeCommandItem("createFillet", t("createFillet")),
+          nativeCommandItem("createChamfer", t("createChamfer")),
+          nativeCommandItem("measure", t("measure")),
+        ],
+      },
       { role: "windowMenu" },
-      { role: "help", submenu: [{ label: t("licensesAndSourceCode"), click: showLicenses }] },
+      {
+        role: "help",
+        submenu: [
+          nativeCommandItem("faq", t("faq")),
+          nativeCommandItem("shortcuts", t("shortcuts")),
+          { type: "separator" },
+          { label: t("licensesAndSourceCode"), click: showLicenses },
+        ],
+      },
     ]),
   )
 }
@@ -318,7 +481,7 @@ function isOwnedMainFrame(contents: WebContents, frame: WebFrameMain | null) {
 }
 
 function ownsDownload(item: DownloadItem) {
-  return item.getInitiatorOrigin() === DESKTOP_EDITOR_ORIGIN && ownsUrl(item.getURL())
+  return item.getInitiatorOrigin() === editorOrigin && ownsUrl(item.getURL())
 }
 
 function trustedClipboardFrame(
@@ -338,7 +501,7 @@ function restrictSession() {
   session.defaultSession.setPermissionCheckHandler(
     (contents, permission, origin, details) =>
       permission === "clipboard-sanitized-write" &&
-      origin === DESKTOP_EDITOR_ORIGIN &&
+      origin === editorOrigin &&
       trustedClipboardFrame(contents, details),
   )
   session.defaultSession.setDevicePermissionHandler(() => false)
@@ -350,6 +513,110 @@ function restrictSession() {
         title: t("saveTitle"),
         properties: ["createDirectory", "showOverwriteConfirmation"],
       })
+  })
+}
+
+function isEditorSender(event: IpcMainInvokeEvent) {
+  if (event.sender !== mainWindow?.webContents) return false
+  return (
+    isOwnedMainFrame(event.sender, event.senderFrame) &&
+    ownsEditorNavigation(event.sender.mainFrame.url)
+  )
+}
+function requireEditorSender(event: IpcMainInvokeEvent) {
+  if (!isEditorSender(event))
+    throw new Error("Native controls require the owned editor main frame.")
+}
+function mcpSetup() {
+  return desktopMcpSetupSchema.parse({
+    protocolVersion: 1,
+    mcpServers: {
+      vibeshape: {
+        command: process.execPath,
+        args: [join(runtimeDirectory, "mcp.cjs"), "--descriptor", descriptorPath],
+        env: { ELECTRON_RUN_AS_NODE: "1" },
+      },
+    },
+  })
+}
+function preparePrivateDirectory(path: string) {
+  mkdirSync(path, { recursive: true, mode: 0o700 })
+  if (!lstatSync(path).isDirectory())
+    throw new Error("Native workflows require a private directory.")
+  chmodSync(path, 0o700)
+}
+function closeAssistant() {
+  unregisterAssistant?.()
+  unregisterAssistant = undefined
+  const closing = assistant?.close() ?? Promise.resolve()
+  assistant = undefined
+  assistantClosing = Promise.allSettled([assistantClosing, closing]).then(() => undefined)
+  return assistantClosing
+}
+function installAssistant() {
+  if (assistant) return
+  assistant = createAssistantService({
+    cwd: assistantDirectory,
+    getMcpSetup: async () => mcpSetup(),
+    async isMcpClientAttached() {
+      await assistantClosing
+      return nativeMcp?.isClientAttached() ?? false
+    },
+    whenMcpClientReleased: () => nativeMcp?.whenClientReleased() ?? Promise.resolve(),
+    onEvent(event) {
+      const contents = mainWindow?.webContents
+      if (contents && canSendNativeEvent(contents, quitting, ownsEditorNavigation))
+        contents.send(ASSISTANT_EVENT_CHANNEL, event)
+    },
+  })
+  unregisterAssistant = registerAssistantIpc({
+    ipcMain,
+    isOwnedSender: isEditorSender,
+    service: assistant,
+  })
+}
+function installNativeSlicer() {
+  nativeSlicer = createNativeSlicerService({
+    directory: nativeDirectory,
+    async chooseApplication() {
+      const window = mainWindow
+      if (!window || window.isDestroyed()) return null
+      const result = await dialog.showOpenDialog(window, {
+        title: t("chooseSlicer"),
+        properties: ["openFile"],
+      })
+      return chosenNativeFile(result)
+    },
+    reveal: (path) => shell.showItemInFolder(path),
+  })
+  unregisterSlicer = registerNativeSlicerIpc({
+    ipcMain,
+    isOwnedSender: isEditorSender,
+    service: nativeSlicer,
+  })
+}
+
+function installNativeBridge() {
+  ipcMain.handle(DESKTOP_MCP_SETUP_CHANNEL, (event) => {
+    requireEditorSender(event)
+    return mcpSetup()
+  })
+  ipcMain.handle(DESKTOP_COMMAND_STATE_CHANNEL, (event, payload: unknown) => {
+    requireEditorSender(event)
+    const state = desktopCommandStateSchema.parse(payload)
+    const commands =
+      state.scope === "editor"
+        ? desktopEditorCommandSchema.options
+        : desktopApplicationCommandSchema.options
+    for (const id of commands) enabledNativeCommands.delete(id)
+    for (const id of state.enabled) enabledNativeCommands.add(id)
+    refreshNativeCommandMenu()
+  })
+  ipcMain.handle(DESKTOP_TEXT_EDIT_CHANNEL, (event, payload: unknown) => {
+    requireEditorSender(event)
+    const action = desktopTextEditSchema.parse(payload)
+    if (action === "undo") event.sender.undo()
+    else event.sender.redo()
   })
 }
 
@@ -376,7 +643,11 @@ else {
     void startup
       .catch(() => undefined)
       .then(async () => {
+        await closeAssistant()
+        unregisterSlicer?.()
+        nativeSlicer?.close()
         await editor?.close()
+        await nativeMcp?.close()
         session.defaultSession.flushStorageData()
       })
       .catch((error: unknown) => console.error("VibeShape shutdown failed:", errorMessage(error)))
@@ -394,9 +665,15 @@ else {
         : process.env.VIBESHAPE_DESKTOP_EDITOR
           ? resolve(process.env.VIBESHAPE_DESKTOP_EDITOR)
           : resolve(app.getAppPath(), "../web/dist")
-      editor = await startEditorServer(directory)
+      nativeMcp = createDesktopMcpService(editorOrigin)
+      editor = await startEditorServer(directory, { origin: editorOrigin, mcp: nativeMcp })
+      await nativeMcp.publish(descriptorPath)
       if (quitting) return
+      preparePrivateDirectory(nativeDirectory)
+      preparePrivateDirectory(assistantDirectory)
       restrictSession()
+      installNativeSlicer()
+      installNativeBridge()
       installMenu()
       focusEditor()
       mainWindow?.webContents.once("did-finish-load", () => void checkForUpdates(true))

@@ -58,7 +58,11 @@ test("selects unsaved Extrude faces for Shell, retains durable openings and repa
       expect.arrayContaining(["draft_body_measurements", "draft_body_topology", "create_shell"]),
     )
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const draft = success(

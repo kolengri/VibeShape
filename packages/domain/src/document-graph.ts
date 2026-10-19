@@ -26,6 +26,7 @@ import {
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   filletFeatureType,
   filletFeatureTypeV2,
   legacyExtrusionFeatureType,
@@ -275,6 +276,7 @@ const extrusionTypeKeys = new Set(
     extrusionFeatureTypeV5,
     extrusionFeatureTypeV6,
     extrusionFeatureTypeV7,
+    extrusionFeatureTypeV8,
   ].map(({ type }) => featureTypeKey(type)),
 )
 const multiProfileResultTypeKeys = new Set([
@@ -588,7 +590,8 @@ function featureRelationCount(feature: VersionedFeatureRecord) {
     feature.dependencies.length +
     feature.references.length +
     (declaredSemanticInputs(feature)?.length ?? 0) +
-    (hasProfileRelation(feature as FeatureRecord) ? 1 : 0)
+    (extrusionProfileCandidate(feature as FeatureRecord, 0).length ||
+      (hasProfileRelation(feature as FeatureRecord) ? 1 : 0))
   )
 }
 
@@ -679,19 +682,23 @@ function featureDependencyCandidates(feature: FeatureRecord, featureIndex: numbe
 function extrusionProfileCandidate(
   feature: FeatureRecord,
   featureIndex: number,
-): RelationCandidate | undefined {
+): RelationCandidate[] {
   const extrusion = readExtrusionFeatureParameters(feature)
-  if (!extrusion) return
-  return {
-    source: { kind: "sketch", id: extrusion.profile.sketchId },
-    target: { kind: "feature", id: feature.id },
-    relation: "extrusion-profile",
+  if (!extrusion) return []
+  return [
+    ...new Set(
+      (extrusion.profiles?.profiles ?? [extrusion.profile]).map(({ sketchId }) => sketchId),
+    ),
+  ].map((id, index) => ({
+    source: { kind: "sketch" as const, id },
+    target: { kind: "feature" as const, id: feature.id },
+    relation: "extrusion-profile" as const,
     missingMessage: "An extrusion profile references a missing sketch.",
     issue: {
-      path: `features.${featureIndex}.parameters.${extrusion.profiles ? "profiles.profiles.0" : "profile"}.sketchId`,
+      path: `features.${featureIndex}.parameters.${extrusion.profiles ? `profiles.profiles.${index}` : "profile"}.sketchId`,
       message: "Referenced sketch does not exist.",
     },
-  }
+  }))
 }
 
 function revolveProfileCandidate(
@@ -759,7 +766,7 @@ function featureCandidates(feature: VersionedFeatureRecord, featureIndex: number
   return [
     ...featureDependencyCandidates(feature as FeatureRecord, featureIndex),
     ...featureTopologyCandidates(feature as FeatureRecord, featureIndex),
-    ...(profile ? [profile] : []),
+    ...profile,
     ...(revolveProfile ? [revolveProfile] : []),
     ...(holeSketch ? [holeSketch] : []),
     ...semanticInputCandidates(feature, featureIndex),
@@ -865,6 +872,7 @@ function validateFeatureIntent(
     feature.schemaVersion === 1 ? validateFirstPartySemanticInputs(feature, index) : undefined
   return (
     semanticFailure ??
+    validateExtrusionSupportIntent(document, feature, index) ??
     validateRevolveSupportIntent(document, feature, index) ??
     validateHoleSupportIntent(document, feature, index) ??
     validateShellOpeningIntent(document, feature, index) ??
@@ -908,7 +916,7 @@ function validateFeatureSources(document: IndexedDocument): GraphFailure | undef
     const invalid = validateCandidates(document, [
       ...featureTopologyCandidates(feature as FeatureRecord, index),
       ...featureDependencyCandidates(feature as FeatureRecord, index),
-      ...(profile ? [profile] : []),
+      ...profile,
       ...(revolveProfile ? [revolveProfile] : []),
       ...(holeSketch ? [holeSketch] : []),
       ...semanticInputCandidates(feature, index),
@@ -992,6 +1000,34 @@ function validateHoleSupportIntent(
       },
     ],
   )
+}
+
+function validateExtrusionSupportIntent(
+  document: IndexedDocument,
+  feature: VersionedFeatureRecord,
+  index: number,
+): GraphFailure | undefined {
+  if (feature.type.schemaVersion !== 8) return
+  const extrusion = readExtrusionFeatureParameters(feature)
+  if (!extrusion) return
+  const references = (extrusion.profiles?.profiles ?? [extrusion.profile])
+    .flatMap(({ sketchId }) => {
+      const reference = document.sketches.find(({ id }) => id === sketchId)?.support?.reference
+      return reference ? [reference] : []
+    })
+    .filter(
+      (reference, position, values) =>
+        values.findIndex((candidate) => canonicalJson(candidate) === canonicalJson(reference)) ===
+        position,
+    )
+  if (canonicalJson(feature.references) === canonicalJson(references)) return
+  return diagnostic("invalid-feature", "Extrusion must retain every selected sketch support.", [
+    {
+      path: `features.${index}.references`,
+      message:
+        "Extrusion references must match all selected sketch supports in canonical selector order.",
+    },
+  ])
 }
 
 function validateRevolveSupportIntent(

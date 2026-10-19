@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { enableLocalAi, openAiConnections } from "./application-menu-support"
+import { createEditorProject } from "./fixtures"
 
 const commandId = "0195b5ac-b250-7a2c-8c33-000000000002"
 const featureId = "0195b5ac-b250-7a2c-8c33-000000000003"
@@ -38,6 +39,7 @@ for (const mode of ["client-abort", "browser-disable", "client-close"] as const)
     const local = await createMcpTestClient(43400 + testInfo.parallelIndex)
     try {
       await page.goto(local.origin)
+      await createEditorProject(page)
       await openAiConnections(page)
       await enableLocalAi(page)
       await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()

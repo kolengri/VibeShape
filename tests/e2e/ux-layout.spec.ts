@@ -19,7 +19,11 @@ for (const theme of ["light", "dark"] as const) {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page
@@ -81,7 +85,11 @@ test("keeps the model tree inside its column after a long feature rename", async
   test.setTimeout(60_000)
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await invokeModelCommand(page, "Primitives", "Box")

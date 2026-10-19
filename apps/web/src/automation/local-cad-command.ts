@@ -9,6 +9,7 @@ import {
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   revolveFeatureType,
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
@@ -138,6 +139,8 @@ const directCadFeatureTypes = {
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
+  if (isFaceExtentExtrudeOperation(operation))
+    return faceExtentExtrusionType(operation.arguments.parameters)
   if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
   if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
@@ -150,6 +153,28 @@ function cadFeatureType(
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
 }
+function isFaceExtentExtrudeOperation(
+  operation: CadOperation,
+): operation is Extract<
+  CadOperation,
+  { tool: "create_face_extent_extrude" | "update_face_extent_extrude" }
+> {
+  return (
+    operation.tool === "create_face_extent_extrude" ||
+    operation.tool === "update_face_extent_extrude"
+  )
+}
+function faceExtentExtrusionType(
+  parameters: Extract<
+    CadOperation,
+    { tool: "create_face_extent_extrude" | "update_face_extent_extrude" }
+  >["arguments"]["parameters"],
+) {
+  return new Set(parameters.profiles.profiles.map(({ sketchId }) => sketchId)).size > 1
+    ? extrusionFeatureTypeV8.type
+    : extrusionFeatureTypeV7.type
+}
+
 function loftCadFeatureType(
   parameters: Exclude<
     CadOperation,
@@ -213,17 +238,25 @@ function profileFeatureType(
     { tool: "create_extrude" | "update_extrude" | "create_revolve" | "update_revolve" }
   >,
 ) {
+  if (operation.tool === "create_extrude" || operation.tool === "update_extrude")
+    return extrudeProfileFeatureType(operation.arguments.parameters)
   const parameters = operation.arguments.parameters
-  if (operation.tool === "create_extrude" || operation.tool === "update_extrude") {
-    if ("endCondition" in parameters) return extrusionFeatureTypeV6.type
-    if ("reversed" in parameters) return extrusionFeatureTypeV5.type
-    if ("profile" in parameters) return extrusionFeatureType.type
-    return parameters.operation === "new"
-      ? extrusionFeatureTypeV3.type
-      : extrusionFeatureTypeV4.type
-  }
   if ("profile" in parameters) return revolveFeatureType.type
   return parameters.operation === "new" ? revolveFeatureTypeV5.type : revolveFeatureTypeV6.type
+}
+function extrudeProfileFeatureType(
+  parameters: Extract<
+    CadOperation,
+    { tool: "create_extrude" | "update_extrude" }
+  >["arguments"]["parameters"],
+) {
+  if ("endCondition" in parameters)
+    return new Set(parameters.profiles.profiles.map(({ sketchId }) => sketchId)).size > 1
+      ? extrusionFeatureTypeV8.type
+      : extrusionFeatureTypeV6.type
+  if ("reversed" in parameters) return extrusionFeatureTypeV5.type
+  if ("profile" in parameters) return extrusionFeatureType.type
+  return parameters.operation === "new" ? extrusionFeatureTypeV3.type : extrusionFeatureTypeV4.type
 }
 
 export function createLocalCadCommand(

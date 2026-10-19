@@ -10,7 +10,11 @@ for (const operation of ["fillet", "chamfer"] as const) {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1024, height: 900 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const title = operation === "fillet" ? "Fillet" : "Chamfer"
     const dimension = operation === "fillet" ? "Radius" : "Distance"
     await expect(await openModelCommand(page, "Modify", title)).toBeDisabled()

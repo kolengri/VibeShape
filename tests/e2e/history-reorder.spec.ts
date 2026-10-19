@@ -34,7 +34,11 @@ test("reorders independent History items with undo, redo, and reload persistence
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await createBox(page)
@@ -58,7 +62,11 @@ test("reorders independent History items with undo, redo, and reload persistence
   await expect(featureRows).toHaveText(["Box 2", "Box 1"])
 
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await expect(page.locator('[data-history-kind="feature"] [role="treeitem"]')).toHaveText([
     "Box 2",
     "Box 1",
@@ -71,7 +79,11 @@ test("reorders independent History items with undo, redo, and reload persistence
 
 test("navigates History with the keyboard without reordering it", async ({ page }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await createBox(page)
@@ -103,7 +115,11 @@ test("keeps row clicks, small pointer movement, rename, and visibility independe
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await createBox(page)
@@ -147,7 +163,11 @@ test("rejects moving a dependent feature before its source without leaving a vis
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await createBox(page)
@@ -167,7 +187,11 @@ test("rejects moving a dependent feature before its source without leaving a vis
 test("reorders a History row after a touch long press", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "Native touch input uses the Chromium input protocol")
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await createBox(page)
@@ -200,7 +224,11 @@ test("opens searchable shortcut help and keeps modeling shortcuts out of dialogs
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await page.keyboard.press("F1")
@@ -223,7 +251,11 @@ test("transfers focus from command palette to shortcut help and back to a visibl
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await openApplicationMenuItem(page, "Commands Ctrl/Cmd+K")

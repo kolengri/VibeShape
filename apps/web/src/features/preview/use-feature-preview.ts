@@ -1,3 +1,4 @@
+import { createModelDiagnosticsEvidence } from "@vibeshape/application/model-diagnostics"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
   canonicalJson,
@@ -8,6 +9,7 @@ import {
   readHoleFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain"
+import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
@@ -73,6 +75,7 @@ export type FeaturePreviewState = Readonly<{
   meshes: readonly ViewerMesh[]
   status: "idle" | "loading" | "ready" | "error"
   diagnostic?: string
+  diagnostics?: ModelDiagnosticsEvidence["entries"]
 }>
 
 function createFeaturePreviewCandidateMesh(
@@ -143,6 +146,15 @@ export function createFeaturePreviewMeshes(
   return [...modelMeshes, ...datumMeshes]
 }
 
+class FeaturePreviewFailure extends Error {
+  constructor(
+    message: string,
+    readonly diagnostics: ModelDiagnosticsEvidence["entries"],
+  ) {
+    super(message)
+  }
+}
+
 async function rebuildPreview(
   session: PreviewSession,
   snapshot: DocumentSnapshot,
@@ -161,8 +173,16 @@ async function rebuildPreview(
         ? candidateEvaluation.diagnostics.find(({ values }) => typeof values.message === "string")
             ?.values.message
         : null
-    if (typeof diagnostic === "string") throw new Error(diagnostic)
-    throw new Error("The feature preview could not be evaluated.")
+    const evidence = createModelDiagnosticsEvidence(document, { ok: true, response })
+    const diagnostics = evidence.ok
+      ? evidence.evidence.entries.filter(
+          (entry) => entry.entity.kind === "feature" && entry.entity.id === candidate.id,
+        )
+      : []
+    throw new FeaturePreviewFailure(
+      typeof diagnostic === "string" ? diagnostic : "The feature preview could not be evaluated.",
+      diagnostics,
+    )
   }
   return {
     candidateMesh: createFeaturePreviewCandidateMesh(response.geometry, candidate.id),
@@ -300,6 +320,9 @@ export function useFeaturePreview(
               status: "error",
               meshes: [],
               kind,
+              ...(error instanceof FeaturePreviewFailure && error.diagnostics.length > 0
+                ? { diagnostics: error.diagnostics }
+                : {}),
               ...(readLoftFeatureParametersV3(candidate) && isError(error)
                 ? { diagnostic: error.message }
                 : {}),

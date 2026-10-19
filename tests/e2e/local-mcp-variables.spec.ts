@@ -53,7 +53,11 @@ test("creates and repairs a variable-driven chamfer through real local MCP", asy
   const chamferId = id(3)
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
 
     const info = success(localToolOutputs.model_info.parse(await call("model_info", {})))
@@ -291,7 +295,11 @@ test("creates and repairs a variable-driven chamfer through real local MCP", asy
     expect(undone.summary.revision).toBeGreaterThan(changedCommit.revision)
     expect(volumeFor(undone, chamferId)).toBe(originalVolume)
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 30_000,
     })

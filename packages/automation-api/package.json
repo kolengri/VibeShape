@@ -6,6 +6,9 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
+    "./assistant": "./src/assistant.ts",
+    "./project-tools": "./src/project-tools.ts",
+    "./desktop-host": "./src/desktop-host.ts",
     "./project-result-context": "./src/project-result-context.ts",
     "./render-preview": "./src/render-preview.ts",
     ".": "./src/index.ts",

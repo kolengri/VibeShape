@@ -6,6 +6,7 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
+    "./local-host": "./src/local-host.ts",
     "./development-plugin": "./src/development-plugin.ts",
     "./static-editor": "./src/static-editor.ts"
   },
@@ -14,7 +15,7 @@
     "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@vibeshape/automation-api": "workspace:*",
     "zod": "catalog:"
   },

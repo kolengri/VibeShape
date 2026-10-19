@@ -6,8 +6,10 @@ import {
   deriveLegacyHistory,
   deriveLegacyHistoryWithPreferredOrder,
 } from "./document-graph"
-import { featureRecordV1Schema } from "./feature-graph"
-import { boxFeatureType } from "./part-design"
+import { documentNodeRefSchema } from "./document-node"
+import { featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
+import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
+import { boxFeatureType, extrusionFeatureTypeV8 } from "./part-design"
 import { threadFeatureTypeV2 } from "./part-design-thread"
 import { datumPlaneFeatureType } from "./reference-geometry"
 import { createAngleQuantity, createLengthQuantity, createScalarQuantity } from "./units"
@@ -1300,5 +1302,102 @@ describe("createDocumentDependencyGraph", () => {
         issues: [{ path: "features.2.dependencies" }],
       },
     })
+  })
+})
+
+describe("multi-sketch Extrude dependency intent", () => {
+  function multiSketchFeature(references: unknown[] = []) {
+    const original = extrusion("3", "1")
+    return featureRecordSchema.parse({
+      ...original,
+      type: extrusionFeatureTypeV8.type,
+      references,
+      dependencies: references.length ? [id("4"), id("5")] : [],
+      parameters: {
+        profiles: {
+          schemaVersion: 0,
+          profiles: [
+            original.parameters.profile,
+            { ...original.parameters.profile, sketchId: id("2") },
+          ],
+        },
+        distance: createLengthQuantity(8),
+        symmetric: false,
+        reversed: false,
+        secondDistance: null,
+        targetBody: null,
+        startOffset: createLengthQuantity(0),
+        draftAngle: createAngleQuantity(0),
+        operation: "new",
+        endCondition: { kind: "distance" },
+      },
+    })
+  }
+  it("declares both source sketches and protects both incoming relations", () => {
+    const record = multiSketchFeature()
+    expect(projectFirstPartyFeatureSemanticInputs(record)).toEqual<unknown>({
+      recognized: true,
+      ok: true,
+      inputs: [
+        { kind: "sketch", id: id("1") },
+        { kind: "sketch", id: id("2") },
+      ],
+    })
+    const graph = createDocumentDependencyGraph({
+      sketches: [sketch("1"), { ...sketch("2"), plane: "yz" }],
+      features: [record],
+      history: [
+        { kind: "sketch", id: id("1") },
+        { kind: "sketch", id: id("2") },
+        { kind: "feature", id: id("3") },
+      ],
+    })
+    if (!graph.ok) throw new Error(graph.diagnostic.message)
+    expect(
+      graph.graph.dependenciesOf(documentNodeRefSchema.parse({ kind: "feature", id: id("3") })),
+    ).toEqual<unknown>([
+      { kind: "sketch", id: id("1") },
+      { kind: "sketch", id: id("2") },
+    ])
+    expect(
+      graph.graph.dependentsOf(documentNodeRefSchema.parse({ kind: "sketch", id: id("2") })),
+    ).toEqual<unknown>([{ kind: "feature", id: id("3") }])
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [sketch("1")],
+        features: [record],
+        history: [
+          { kind: "sketch", id: id("1") },
+          { kind: "feature", id: id("3") },
+        ],
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "missing-node" } })
+  })
+  it("requires every support reference in canonical selector order and catches support cycles", () => {
+    const record = multiSketchFeature([faceReference("4"), faceReference("5")])
+    const input = {
+      sketches: [supportedSketch("1", "4"), supportedSketch("2", "5")],
+      features: [feature("4"), feature("5"), record],
+      history: [
+        { kind: "feature", id: id("4") },
+        { kind: "feature", id: id("5") },
+        { kind: "sketch", id: id("1") },
+        { kind: "sketch", id: id("2") },
+        { kind: "feature", id: id("3") },
+      ],
+    }
+    expect(createDocumentDependencyGraph(input)).toMatchObject({ ok: true })
+    expect(
+      createDocumentDependencyGraph({
+        ...input,
+        features: [feature("4"), feature("5"), { ...record, references: [faceReference("4")] }],
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature" } })
+    expect(
+      createDocumentDependencyGraph({
+        ...input,
+        features: [feature("4"), feature("5", ["3"]), record],
+      }),
+    ).toMatchObject({ ok: false })
   })
 })

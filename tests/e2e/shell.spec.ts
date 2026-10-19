@@ -36,7 +36,11 @@ test.describe("foundation CAD shell", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page
@@ -70,7 +74,11 @@ test.describe("foundation CAD shell", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
 
@@ -100,7 +108,11 @@ test.describe("foundation CAD shell", () => {
 
   test("zooms the 3D viewport toward the pointer", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await invokeModelCommand(page, "Primitives", "Box")
@@ -160,7 +172,11 @@ test.describe("foundation CAD shell", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
 
@@ -224,7 +240,11 @@ test.describe("foundation CAD shell", () => {
   test("keeps an active task form reachable and mounted at 200 percent zoom", async ({ page }) => {
     await page.setViewportSize({ width: 512, height: 360 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
 
@@ -253,7 +273,11 @@ test.describe("foundation CAD shell", () => {
     })
     await page.setViewportSize({ width: 512, height: 360 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
 

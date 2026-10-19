@@ -44,7 +44,8 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Immer | MIT | Include a third-party notice; it ships with the browser editor-state store |
 | Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
 | Zod | MIT | Include a third-party notice |
-| MCP TypeScript SDK 1.30.0 | MIT | Server-only runtime dependency; preserve the Anthropic notice and inventory its locked transitives |
+| MCP TypeScript SDK 1.31.0 | MIT | Local/remote server and desktop transport dependency; preserve the Anthropic notice and inventory its locked transitives |
+| Agent Client Protocol TypeScript SDK 1.9.0 | Apache-2.0 | Native agent-process integration; preserve its exact license and applicable notices in desktop bundles |
 | proxy-addr 2.0.8 | MIT | Compatible security override for MCP/CLI transitives; preserve its notice in distributions that include these server or development dependencies |
 | MCP/CLI transitives: qs 6.16.0 / fast-uri 3.1.6 | BSD-3-Clause / BSD-3-Clause | Compatible security overrides; include exact locked notices in the release bundle |
 | is-what | MIT | Include a third-party notice; it is a zero-runtime-dependency ESM guard library shipped only by importing workspaces |
@@ -170,3 +171,7 @@ VibeShape is described as an independent browser-based CAD application. Onshape 
 The bounded SVG/3MF parser bundles `saxes` 6.0.0. Its npm archive omits LICENSE; the exact
 upstream v6.0.0 notice is retained as `deployment/licenses/saxes-6.0.0-LICENSE.txt` and included
 in the generated worker notice. Source: [upstream v6.0.0 LICENSE](https://github.com/lddubeau/saxes/blob/v6.0.0/LICENSE).
+
+## MCP SDK security update
+
+The shared Bun catalog pins MCP TypeScript SDK 1.31.0, the minimum patched release for [GHSA-6qxp-vccf-f47h](https://github.com/modelcontextprotocol/typescript-sdk/security/advisories/GHSA-6qxp-vccf-f47h). The advisory affects the SDK OAuth client when connecting to an untrusted server with existing credentials. VibeShape's current server transports and private local desktop relay do not configure that OAuth client. The update keeps the MIT license and existing dependency ranges; corresponding-source and desktop notice generation read the resolved package. Audit evidence must state its severity threshold: the standard project command currently checks critical findings only.

@@ -220,7 +220,11 @@ test("creates, repairs, reviews, commits and exports a model through real local 
       diagnostic: { code: "not-paired" },
     })
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const info = localToolOutputs.model_info.parse(await call("model_info", {}))

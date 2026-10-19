@@ -6,8 +6,12 @@
     "apps/desktop/build.ts",
     "apps/desktop/package.ts",
     "apps/desktop/src/main.ts",
+    "apps/desktop/src/mcp.ts",
+    "apps/desktop/src/preload.ts",
     "playwright.desktop.config.ts",
     "playwright.desktop-packaged.config.ts",
+    // Electron integration tests spawn this harmless ACP protocol fixture by filename.
+    "tests/desktop/fixtures/acp-agent.cjs",
     "apps/web/public/persistence-spike-sw.js",
     "apps/web/src/spikes/geometry-worker.ts",
     "apps/web/src/spikes/body-selection.tsx",

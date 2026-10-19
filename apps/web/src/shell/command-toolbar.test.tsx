@@ -387,6 +387,8 @@ describe("CommandToolbar", () => {
     renderToolbar()
     const modeling = screen.getByRole("group", { name: "Modeling actions" })
     const history = screen.getByRole("group", { name: "History" })
+    expect(history.classList.contains("border")).toBe(false)
+    expect(within(history).getByText("History").classList.contains("sr-only")).toBe(false)
     expect(
       within(modeling)
         .getAllByRole("button")

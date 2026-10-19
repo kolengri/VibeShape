@@ -12,7 +12,11 @@ for (const operation of ["fillet", "chamfer"] as const) {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1024, height: 900 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await invokeModelCommand(page, "Primitives", "Box")

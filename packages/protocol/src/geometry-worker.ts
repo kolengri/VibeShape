@@ -809,6 +809,75 @@ export type ExtrusionFeatureContentParametersV7 = z.infer<
   typeof extrusionFeatureContentParametersV7Schema
 >
 
+const extrusionEndBodyContentV8Fields = {
+  ...extrusionEndBodyContentFields,
+  inputIndex: z.number().int().min(0).max(65),
+}
+export const extrusionEndConditionContentV8Schema = z.union([
+  extrusionEndConditionContentSchema.options[0],
+  extrusionEndConditionContentSchema.options[1].safeExtend(extrusionEndBodyContentV8Fields),
+  extrusionEndConditionContentSchema.options[2].safeExtend(extrusionEndBodyContentV8Fields),
+  extrusionEndConditionContentV7Schema.options[0].safeExtend(extrusionEndBodyContentV8Fields),
+  extrusionEndConditionContentV7Schema.options[1].safeExtend(extrusionEndBodyContentV8Fields),
+])
+export const extrusionFeatureContentParametersV8Schema = extrusionFeatureContentParametersV5Schema
+  .safeExtend({
+    startOffset: extrusionFeatureContentParametersV6Schema.shape.startOffset,
+    draftAngle: extrusionFeatureContentParametersV6Schema.shape.draftAngle,
+    supportFeatureId: z.never().optional(),
+    profiles: z
+      .array(
+        multiProfileSchema.safeExtend({
+          frame: extrusionFrameSchema,
+          distance: cadLengthSchema,
+          endCondition: extrusionEndConditionContentV8Schema,
+        }),
+      )
+      .min(1)
+      .max(64)
+      .refine(
+        (profiles) =>
+          profiles.reduce((total, profile) => total + profileSegmentCount(profile), 0) <= 2_000,
+        "Multi-profile content is limited to 2,000 aggregate segments.",
+      ),
+    sketchIds: z
+      .array(sketchIdSchema)
+      .min(1)
+      .max(64)
+      .refine((ids) => new Set(ids).size === ids.length, "Extrusion sketch IDs must be unique."),
+    supportFeatureIds: z
+      .array(featureIdSchema)
+      .max(64)
+      .refine((ids) => new Set(ids).size === ids.length, "Extrusion support IDs must be unique."),
+    endCondition: extrusionEndConditionContentV8Schema,
+  })
+  .refine(
+    ({ endCondition, symmetric, secondDistance }) =>
+      endCondition.kind === "distance" || (!symmetric && secondDistance === null),
+    "Dynamic end conditions require one directional extent.",
+  )
+  .refine(
+    ({ sketchId, sketchIds }) => sketchIds[0] === sketchId,
+    "The canonical frame must belong to the first selected sketch.",
+  )
+  .refine(
+    ({ profiles, endCondition }) =>
+      profiles.every((profile) => {
+        const end = profile.endCondition
+        if (end.kind !== endCondition.kind) return false
+        if (end.kind === "distance" || endCondition.kind === "distance") return true
+        return (
+          end.inputIndex === endCondition.inputIndex &&
+          end.sourceContentHash === endCondition.sourceContentHash &&
+          end.outputRole === endCondition.outputRole
+        )
+      }),
+    "Every profile must retain the shared end-support binding.",
+  )
+export type ExtrusionFeatureContentParametersV8 = z.infer<
+  typeof extrusionFeatureContentParametersV8Schema
+>
+
 const revolveMultiProfileFeatureContentBaseSchema = z
   .object({
     sketchId: sketchIdSchema,
@@ -1786,11 +1855,16 @@ const featureEvaluationInputFields = {
 const featureEvaluationInputBaseSchema = z.object(featureEvaluationInputFields)
 type FeatureEvaluationInput = z.infer<typeof featureEvaluationInputBaseSchema>
 
-const registeredLoftDependencyLimits = new Map(
+const registeredFeatureDependencyLimits = new Map<string, number>(
   [1, 2, 3].map((version) => [
     `org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.loft#${version}`,
     version === 3 ? 128 : MAX_ANALYTICAL_LOFT_SECTIONS,
   ]),
+)
+
+registeredFeatureDependencyLimits.set(
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#8",
+  66,
 )
 
 function validateFeatureEvaluationDependencyBudget(
@@ -1799,7 +1873,7 @@ function validateFeatureEvaluationDependencyBudget(
 ) {
   const type = request.content.feature.type
   const key = `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
-  const limit = registeredLoftDependencyLimits.get(key) ?? 8
+  const limit = registeredFeatureDependencyLimits.get(key) ?? 8
   if (request.dependencies.length > limit)
     context.addIssue({
       code: "custom",

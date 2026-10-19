@@ -55,7 +55,11 @@ for (const operation of ["fillet", "chamfer"] as const) {
     const updateCommand = id(offset + 7)
     try {
       await page.goto(local.origin)
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await enableLocalAi(page)
 
       const base = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
@@ -270,7 +274,11 @@ for (const operation of ["fillet", "chamfer"] as const) {
         )
         .toBeGreaterThan(repairedCommit.revision)
       await page.reload()
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
         timeout: 30_000,
       })

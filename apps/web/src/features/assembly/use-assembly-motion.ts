@@ -1,15 +1,21 @@
-import type { AssemblyMutation } from "@vibeshape/domain/assembly-authority"
+import {
+  type AssemblyMotionStudy,
+  type AssemblyMutation,
+  assemblyMotionStudyChanges,
+} from "@vibeshape/domain/assembly-authority"
 import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { previewAssemblyChanges } from "../../document/document-controller"
+import { type AssemblyMotionCoordinate, assemblyMotionChanges } from "./assembly-motion"
+import type { AssemblyMotionSolvedSample } from "./assembly-motion-export"
 import {
-  type AssemblyMotionCoordinate,
-  assemblyMotionChanges,
-  assemblyMotionSamples,
-} from "./assembly-motion"
+  AssemblyMotionPreviewFailure,
+  type AssemblyMotionTarget,
+  assemblyPlaybackValues,
+  solveAssemblyMotionSweep,
+} from "./assembly-motion-runner"
 
-type MotionError = { kind: "invalid" | "save" } | { kind: "solver"; reason: string }
+type MotionError = { kind: "invalid" | "save" } | { kind: "solver"; reason: string; code?: string }
 type MotionState = {
   key: string
   inspection: AssemblyInspection | null
@@ -19,6 +25,13 @@ type MotionState = {
   playing: boolean
   applying: boolean
   error: MotionError | null
+  samples: readonly AssemblyMotionSolvedSample[]
+}
+export type AssemblyPlaybackOptions = {
+  count?: number
+  speed?: number
+  reverse?: boolean
+  loop?: boolean
 }
 const idle = (key: string): MotionState => ({
   key,
@@ -29,49 +42,13 @@ const idle = (key: string): MotionState => ({
   playing: false,
   applying: false,
   error: null,
+  samples: [],
 })
-
-function sampleDelay(signal: AbortSignal) {
-  return new Promise<void>((resolve) => {
-    const finish = () => {
-      clearTimeout(timer)
-      signal.removeEventListener("abort", finish)
-      resolve()
-    }
-    const timer = setTimeout(finish, 200)
-    signal.addEventListener("abort", finish, { once: true })
-    if (signal.aborted) finish()
-  })
-}
-type MotionTarget = {
-  joint: AssemblyJointRecord
-  coordinate: AssemblyMotionCoordinate
-  revision: number
-}
-async function solveMotionSweep({
-  target,
-  values,
-  signal,
-  playing,
-  pending,
-  publish,
-}: {
-  target: MotionTarget
-  values: readonly number[]
-  signal: AbortSignal
-  playing: boolean
-  pending: () => void
-  publish: (sample: Pick<MotionState, "inspection" | "changes" | "value">) => void
-}) {
-  for (const value of values) {
-    if (signal.aborted) return
-    pending()
-    const changes = assemblyMotionChanges(target.joint, target.coordinate, value)
-    const result = await previewAssemblyChanges(changes, target.revision, [], signal)
-    if (signal.aborted) return
-    if (!result.ok) throw new Error(result.diagnostic.message)
-    publish({ inspection: result.inspection, changes, value })
-    if (playing) await sampleDelay(signal)
+function motionSolveError(error: unknown): MotionError {
+  return {
+    kind: "solver",
+    reason: error instanceof Error ? error.message : "Assembly preview failed.",
+    ...(error instanceof AssemblyMotionPreviewFailure ? { code: error.code } : {}),
   }
 }
 
@@ -82,6 +59,8 @@ export function useAssemblyMotion({
   revision,
   disabled,
   onApply,
+  study = null,
+  joints = [],
 }: {
   key: string
   joint: AssemblyJointRecord | null
@@ -89,11 +68,14 @@ export function useAssemblyMotion({
   revision: number
   disabled: boolean
   onApply: (changes: readonly AssemblyMutation[], revision: number) => Promise<boolean>
+  study?: AssemblyMotionStudy | null
+  joints?: readonly AssemblyJointRecord[]
 }) {
   const [state, setState] = useState<MotionState>(() => idle(key))
   const request = useRef<AbortController | null>(null)
   const generation = useRef(0)
   const applyLock = useRef(false)
+  const serial = useRef<Promise<void> | null>(null)
   const stop = useCallback(() => {
     generation.current += 1
     request.current?.abort()
@@ -120,38 +102,75 @@ export function useAssemblyMotion({
     // An interrupted sample is never shown as the coordinate of older geometry.
     setState((previous) => ({ ...previous, pending: false, playing: false }))
   }
-  const target = (): MotionTarget | null => {
-    if (disabled || applyLock.current || request.current || !joint || !coordinate) return null
-    return { joint, coordinate, revision }
+  const target = (): AssemblyMotionTarget | null => {
+    if (disabled || applyLock.current) return null
+    if (study)
+      return {
+        revision,
+        sampleUnit: "seconds",
+        changes: (time) => assemblyMotionStudyChanges(study, joints, time),
+      }
+    if (!joint || !coordinate) return null
+    return {
+      revision,
+      sampleUnit: "joint-coordinate",
+      changes: (value) => assemblyMotionChanges(joint, coordinate, value),
+    }
   }
-  const run = async (values: readonly number[], playing: boolean, target: MotionTarget) => {
+  const run = async (
+    values: readonly number[],
+    playing: boolean,
+    target: AssemblyMotionTarget,
+    options: AssemblyPlaybackOptions = {},
+  ) => {
     stop()
     const token = generation.current
     const abort = new AbortController()
+    const active = () => token === generation.current && !abort.signal.aborted
     request.current = abort
-    setState({ ...idle(key), pending: true, playing })
+    setState((previous) => ({ ...previous, pending: true, playing, error: null, samples: [] }))
+    const previous = serial.current
+    let finish!: () => void
+    const running = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    serial.current = running
     try {
-      await solveMotionSweep({
+      if (previous) await previous
+      if (!active()) return
+      await solveAssemblyMotionSweep({
         target,
         values,
         signal: abort.signal,
         playing,
-        pending: () => setState((previous) => ({ ...previous, pending: true })),
-        publish: (sample) => setState({ ...idle(key), ...sample, playing }),
+        pending: () => {
+          if (active()) setState((previous) => ({ ...previous, pending: true }))
+        },
+        publish: (sample) => {
+          if (active())
+            setState((previous) => ({
+              ...idle(key),
+              ...sample,
+              playing,
+              samples: [
+                ...previous.samples.filter(({ value }) => value !== sample.value),
+                { value: sample.value, inspection: sample.inspection },
+              ],
+            }))
+        },
+        options,
       })
-      if (token === generation.current)
-        setState((previous) => ({ ...previous, playing: false, pending: false }))
+      if (active()) setState((previous) => ({ ...previous, playing: false, pending: false }))
     } catch (error) {
-      if (token === generation.current && !abort.signal.aborted)
+      if (active())
         setState({
           ...idle(key),
-          error: {
-            kind: "solver",
-            reason: error instanceof Error ? error.message : "Assembly preview failed.",
-          },
+          error: motionSolveError(error),
         })
     } finally {
       if (request.current === abort) request.current = null
+      finish()
+      if (serial.current === running) serial.current = null
     }
   }
   const invalid = () => {
@@ -162,24 +181,24 @@ export function useAssemblyMotion({
     const active = target()
     if (!active) return
     try {
-      assemblyMotionChanges(active.joint, active.coordinate, value)
+      active.changes(value)
     } catch {
       invalid()
       return
     }
     return run([value], false, active)
   }
-  const play = (start: number, end: number) => {
+  const play = (start: number, end: number, options: AssemblyPlaybackOptions = {}) => {
     const active = target()
     if (!active) return
     let values: number[]
     try {
-      values = assemblyMotionSamples(active.coordinate, start, end)
+      values = assemblyPlaybackValues(study, coordinate, start, end, options)
     } catch {
       invalid()
       return
     }
-    return run(values, true, active)
+    return run(values, true, active, options)
   }
   const current = state.key === key ? state : idle(key)
   const apply = async () => {

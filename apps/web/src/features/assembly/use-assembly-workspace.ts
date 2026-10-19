@@ -128,13 +128,26 @@ function selectionRecords(
 function inspectionContext(context: AssemblyDocumentContext | null) {
   return context?.authorityVersion === 4 || context?.authorityVersion === 5 ? context : null
 }
+type StudyTask = { id: string | null; documentKey: string; revision: number }
+function assemblyDocumentKey(context: AssemblyDocumentContext | null) {
+  return context ? `${context.documentId}:${context.revision}` : "unavailable"
+}
+function useAssemblyStudyTask(context: AssemblyDocumentContext | null) {
+  const [selection, setSelection] = useState<StudyTask | null>(null)
+  const documentKey = assemblyDocumentKey(context)
+  const task = selection?.documentKey === documentKey ? selection : null
+  const open = (id: string | null) => {
+    if (context) setSelection({ id, documentKey, revision: context.revision })
+  }
+  return { task, open, close: () => setSelection(null) }
+}
 function useAssemblyMotionTask(
   context: AssemblyDocumentContext | null,
   assembly: AssemblyAuthority,
   blocked: boolean,
 ) {
   const [task, setTask] = useState<AssemblyMotionTask | null>(null)
-  const documentKey = context ? `${context.documentId}:${context.revision}` : "unavailable"
+  const documentKey = assemblyDocumentKey(context)
   const motion = task?.documentKey === documentKey ? task : null
   const openMotion = (id: string) => {
     if (!context || blocked || motion) return
@@ -150,10 +163,17 @@ function useAssemblyMotionTask(
   }
   return { motion, documentKey, openMotion, closeMotion, setMotionCoordinate }
 }
-function assemblyPanelState(task: AssemblyTask | null, motion: AssemblyMotionTask | null) {
+function assemblyPanelState(
+  task: AssemblyTask | null,
+  motion: AssemblyMotionTask | null,
+  study: StudyTask | null,
+) {
+  if (study)
+    return { idle: false, panelKey: `motion-study:${study.id ?? "new"}`, motionActive: true }
   return {
     idle: task === null && motion === null,
     panelKey: task ? `${task.kind}:${task.id}` : motion ? `motion:${motion.id}` : "assembly",
+    motionActive: motion !== null,
   }
 }
 export function useAssemblyWorkspace(controller: DocumentControllerState) {
@@ -164,6 +184,7 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
   const [definitionId, setDefinitionId] = useState<string | null>(null)
   const [task, setTask] = useState<AssemblyTask | null>(null)
   const [removal, setRemoval] = useState<AssemblyRemoval | null>(null)
+  const study = useAssemblyStudyTask(context)
   const writable =
     controller.status === "ready" && controller.saveStatus !== "saving" && context !== null
   const mutations = useAssemblyMutations(context, writable, assembly.schemaVersion === 2)
@@ -174,9 +195,10 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     useAssemblyMotionTask(
       context,
       assembly,
-      disabled || inspection.pending || task !== null || removal !== null,
+      disabled || inspection.pending || task !== null || removal !== null || study.task !== null,
     )
-  const panelState = assemblyPanelState(task, motion)
+  const studyTask = study.task
+  const panelState = assemblyPanelState(task, motion, studyTask)
   const taskActionsDisabled = disabled || inspection.pending || !panelState.idle || removal !== null
   const selectInstance = useCallback((id: string | null) => {
     setInstanceId(id)
@@ -187,7 +209,7 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     setInstanceId(null)
   }, [])
   const openTask = (kind: AssemblyTask["kind"], id: string | null = null) => {
-    if (disabled || motion) return
+    if (disabled || motion || studyTask) return
     if (context) setTask({ kind, id, revision: context.revision })
   }
   const onRemove = (kind: AssemblyRemoval["kind"], id: string, name: string) => {
@@ -217,6 +239,11 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     selectDefinition,
     openTask,
     motion,
+    studyTask,
+    openStudy: (id: string | null) => {
+      if (!taskActionsDisabled) study.open(id)
+    },
+    closeStudy: study.close,
     ...panelState,
     taskActionsDisabled,
     openMotion,

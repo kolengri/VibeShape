@@ -118,6 +118,11 @@
 
 | [0109](0109-local-declarative-ui-plugins.md) | Accepted with reduced scope | Installable local declarative UI plugins and isolated calculator panels |
 
+| [0110](0110-macos-desktop-host.md) | Accepted; native integration extended by 0111 | macOS desktop packaging and verified GitHub release downloads |
+| [0111](0111-native-project-assistant-and-handoffs.md) | Accepted | Native MCP attachment, local ACP project chat, direct API web chat and mesh handoff |
+| [0112](0112-multi-sketch-extrude.md) | Accepted | Multi-sketch Extrude with per-profile support frames and shared normal-relative extents |
+| [0113](0113-assembly-motion-studies.md) | Accepted | Persisted joint-key studies, exact timeline sampling, bounded cached playback and solved pose/image exports |
+
 Statuses:
 
 - `Proposed` — under discussion

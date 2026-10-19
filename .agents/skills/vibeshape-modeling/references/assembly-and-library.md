@@ -32,13 +32,38 @@ draft; ordinary CAD `create_draft` and its command IDs do not apply to this work
 Use `discard_assembly_draft` for unwanted proposals. Definition/instance removals expose explicit
 `cascade` intent; inspect dependent instances and mates before requesting it.
 
-## Visible motion preview
+## Motion studies and visible playback
 
 The Assembly browser lists joints by endpoint and exposes Drive for revolute, prismatic and cylindrical
 coordinates. The visible motion panel runs a bounded disposable sweep through the real solver; Apply
-saves one solved coordinate and locks that coordinate as a drive. Export and interference use the saved
-assembly. These MCP tools do not provide playback. For saved coordinate authoring use the named owned
-joint-update, preview and manual-review flow above, with canonical millimeters/radians.
+saves one solved coordinate and locks that coordinate as a drive. Seek, reverse, sample count, relative
+speed and cancellable loop controls do not imply real-time physics or a promised frame rate. A loop
+solves its first cycle and replays the cached solved poses, bounded to 256 poses and 64 MiB of meshes.
+Reset, project changes and revision changes discard disposable results. Interference uses the saved
+assembly and does not prove that an entire motion is collision-free.
+
+Use `model_assembly` to read saved `motionStudies`. In an owned assembly draft, stage
+`create_assembly_motion_study`, `update_assembly_motion_study` or `remove_assembly_motion_study`, then
+preview and request ordinary manual Apply. A study has stable UUIDv7 study/track IDs, a duration up to
+3600 seconds and 1–64 tracks. Each track selects a stable joint and `angle` (radians) or `translation`
+(millimeters), with 2–256 strictly increasing key times inside the duration. The document permits 32
+studies and 16384 keys in total. Track coordinates must be unique. Linear interpolation holds the
+first/last values outside their key interval. All tracks evaluate simultaneously; cylindrical angle
+and translation merge into one joint replacement. Missing joints, changed joint kinds or out-of-limit
+keys require repairing/removing tracks in the same transaction. Saving study intent does not apply
+its pose or upgrade a legacy assembly.
+
+Read `sample_assembly_motion_study` at the exact committed revision to solve 2–64 samples, optionally
+in reverse. Select 1–32 occurrence IDs to bound the response. An optional trace selects one source
+index and local point in millimeters; the returned point uses its actual solved geometry frame. Any
+solver, limit, cancellation, revision or response-budget failure returns no partial sample result.
+Reduce sample/occurrence counts when the 128 KiB response budget is exceeded. Sampling never saves a
+pose. Apply a desired pose through ordinary owned joint updates and browser review if requested.
+
+MCP exposes study authoring and exact sampling, not continuous UI playback or image downloads. The
+visible study panel exports actual solved JSON/CSV poses and optional point traces, or up to 64 PNG
+frames in a ZIP with one fixed camera and a manifest. GIF encoding, contact response, gears/cams and
+new mate types are outside this animation contract.
 
 ## Select topology frames
 

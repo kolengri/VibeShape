@@ -33,7 +33,11 @@ test("keeps projected geometry aligned through orbit, zoom, pan, point dragging,
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await page
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Create sketch", exact: true })
@@ -113,7 +117,11 @@ for (const plane of ["xy", "xz", "yz"] as const) {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -168,7 +176,11 @@ test("blocks placement on an edge-on plane and recovers without losing the drawi
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await page
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Create sketch", exact: true })

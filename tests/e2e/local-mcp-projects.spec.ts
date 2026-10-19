@@ -70,7 +70,11 @@ test("creates two projects, authors each, and returns to their saved models over
   }
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const denied = localToolOutputs.list_projects.parse(await call("list_projects", {}))
     expect(denied).toMatchObject({ ok: false, diagnostic: { code: "project-management-disabled" } })

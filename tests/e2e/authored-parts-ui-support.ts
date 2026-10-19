@@ -6,7 +6,11 @@ import { expect } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
 export async function saved(page: Page, timeout = 30_000) {
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeAttached({
     timeout,
   })
 }

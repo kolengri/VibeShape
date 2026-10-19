@@ -40,7 +40,7 @@ mock.module("../automation/automation-review-controller", () => {
   }
 })
 
-const { cleanup, renderHook, waitFor } = await import("@testing-library/react")
+const { act, cleanup, renderHook, waitFor } = await import("@testing-library/react")
 const { applyVersionedDocumentCommand } = await import("@vibeshape/domain")
 const { projectAuthoredDocumentSnapshotToV1 } = await import("@vibeshape/domain/document-v2")
 const { applyHistoryRemoveRetainingDependentsCommand } = await import(
@@ -110,6 +110,7 @@ afterEach(() => {
 })
 
 async function ready(authoredSnapshot?: DocumentSnapshotV5) {
+  window.history.replaceState(null, "", "/")
   const source = sourceProject()
   const session = {
     snapshot: authoredSnapshot
@@ -132,7 +133,13 @@ async function ready(authoredSnapshot?: DocumentSnapshotV5) {
     `./document-controller?test=${moduleRevision}`
   )) as typeof import("./document-controller")
   const hook = renderHook(() => controller.useDocumentController("Untitled"))
+  await waitFor(() => expect(hook.result.current.status).toBe("library"))
+  expect(mocks.open).not.toHaveBeenCalled()
+  await act(async () => {
+    expect(await controller.activateLocalProject(session.snapshot.id)).toEqual({ ok: true })
+  })
   await waitFor(() => expect(hook.result.current.status).toBe("ready"))
+  expect(hook.result.current.report?.snapshot.id).toBe(session.snapshot.id)
   return { controller, source, session }
 }
 async function archive(source: ReturnType<typeof sourceProject>) {

@@ -81,7 +81,7 @@ test("previews real assembly drives without saving, pauses and resets, applies o
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("46")
   await panel(page).getByRole("button", { name: "Play one sweep", exact: true }).click()
-  await expect(panel(page).getByRole("alert")).toContainText("within the authored limits")
+  await expect(panel(page).getByRole("alert")).toContainText("Check track coordinates")
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
 
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("-10")

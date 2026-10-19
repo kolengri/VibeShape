@@ -1,6 +1,7 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
+import { assemblyMotionStudySchema } from "@vibeshape/domain/assembly-authority"
 import { assemblyJointRecordSchema } from "@vibeshape/domain/assembly-mates"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import { vi } from "../../../../../tests/unit/support/bun-test"
@@ -64,6 +65,105 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 describe("Disposable assembly motion", () => {
+  it("serializes superseding seeks and ignores late results from the cancelled seek", async () => {
+    const first = deferred<{ ok: true; inspection: AssemblyInspection }>()
+    ports.preview.mockReturnValueOnce(first.promise)
+    const hook = renderHook(() => useAssemblyMotion(options))
+    let obsolete: Promise<void> | undefined, latest: Promise<void> | undefined
+    act(() => {
+      obsolete = hook.result.current.preview(-0.75)
+      latest = hook.result.current.preview(0.75)
+    })
+    expect(ports.preview).toHaveBeenCalledTimes(1)
+    const signal = ports.preview.mock.calls[0]?.[3] as AbortSignal | undefined
+    expect(signal?.aborted).toBe(true)
+    await act(async () => {
+      first.resolve({ ok: true, inspection })
+      await obsolete
+      await latest
+    })
+    expect(ports.preview).toHaveBeenCalledTimes(2)
+    expect(hook.result.current.value).toBe(0.75)
+    expect(hook.result.current.samples.map(({ value }) => value)).toEqual([0.75])
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
+  it("plays exact reverse endpoints at a bounded count and cancels a loop on Pause", async () => {
+    const hook = renderHook(() => useAssemblyMotion(options))
+    await act(async () => {
+      await hook.result.current.play(-1, 1, { count: 3, speed: 10, reverse: true })
+    })
+    expect(hook.result.current.samples.map(({ value }) => value)).toEqual([1, 0, -1])
+    expect(hook.result.current.value).toBe(-1)
+    let loop: Promise<void> | undefined
+    act(() => {
+      loop = hook.result.current.play(-1, 1, { count: 2, speed: 10, loop: true })
+    })
+    await waitFor(() => expect(ports.preview).toHaveBeenCalledTimes(5))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(ports.preview).toHaveBeenCalledTimes(5)
+    act(() => hook.result.current.pause())
+    const last = hook.result.current.value,
+      count = ports.preview.mock.calls.length
+    await act(async () => {
+      await loop
+    })
+    expect(ports.preview).toHaveBeenCalledTimes(count)
+    expect(hook.result.current.value).toBe(last)
+    expect(hook.result.current.playing).toBe(false)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
+  it("uses the selected study's seconds through playback without applying its solved poses", async () => {
+    const study = assemblyMotionStudySchema.parse({
+      schemaVersion: 1,
+      id: id(20),
+      name: "Sixty-second motion",
+      duration: 60,
+      tracks: [
+        {
+          id: id(21),
+          jointId: joint.id,
+          coordinate: "angle",
+          keys: [
+            { time: 0, value: -1 },
+            { time: 60, value: 1 },
+          ],
+        },
+      ],
+    })
+    vi.useFakeTimers({ now: 0 })
+    const hook = renderHook(() => useAssemblyMotion({ ...options, study, joints: [joint] }))
+    let playing: Promise<void> | undefined
+    let completed = false
+    try {
+      act(() => {
+        playing = hook.result.current.play(0, 60, { count: 3, speed: 2 })
+        void playing?.then(() => {
+          completed = true
+        })
+      })
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(hook.result.current.value).toBe(0)
+      await act(() => vi.advanceTimersByTimeAsync(14_999))
+      expect(hook.result.current.value).toBe(0)
+      expect(ports.preview).toHaveBeenCalledTimes(1)
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(hook.result.current.value).toBe(30)
+      expect(ports.preview.mock.calls[1]?.[0]).toMatchObject([
+        { kind: "joint.update", joint: { value: 0 } },
+      ])
+      await act(() => vi.advanceTimersByTimeAsync(15_000))
+      expect(hook.result.current.samples.map((sample) => sample.value)).toEqual([0, 30, 60])
+      expect(hook.result.current.playing).toBe(false)
+      expect(completed).toBe(true)
+      expect(ports.apply).not.toHaveBeenCalled()
+      await playing
+    } finally {
+      hook.unmount()
+      vi.useRealTimers()
+    }
+  })
   it("previews without saving and makes Apply single-flight with retry after failure", async () => {
     const save = deferred<boolean>()
     const hook = renderHook(() => useAssemblyMotion(options))
@@ -152,6 +252,7 @@ describe("Disposable assembly motion", () => {
     expect(hook.result.current.error).toEqual({
       kind: "solver",
       reason: "Closed loop is inconsistent.",
+      code: "unavailable",
     })
     expect(await hook.result.current.apply()).toBe(false)
   })
@@ -160,7 +261,7 @@ describe("Disposable assembly motion", () => {
       initialProps: { disabled: false },
     })
     act(() => {
-      void hook.result.current.play(1, -1)
+      void hook.result.current.play(1, 1)
     })
     expect(hook.result.current.error?.kind).toBe("invalid")
     expect(ports.preview).not.toHaveBeenCalled()

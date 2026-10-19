@@ -9,6 +9,7 @@ import {
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   featureIdSchema,
   featureRecordSchema,
   legacyExtrusionFeatureType,
@@ -672,6 +673,42 @@ describe("ExtrusionForm", () => {
     },
   )
 
+  it("previews and applies a multi-sketch v8 Extrude with every support reference", async () => {
+    const user = userEvent.setup()
+    const secondSupport = topoRefSchema.parse({
+      ...supportReference,
+      featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3699",
+    })
+    const { onSave, onPreviewChange } = renderForm(undefined, undefined, {
+      kind: "create",
+      createFeatureId: () => featureId,
+      featureLabel: "Extrusion 1",
+      profiles: [profile, replacementProfile],
+      supportReferences: [supportReference, secondSupport],
+    })
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: extrusionFeatureTypeV8.type,
+          parameters: expect.objectContaining({
+            profiles: { schemaVersion: 0, profiles: [profile, replacementProfile] },
+          }),
+          references: [supportReference, secondSupport],
+          dependencies: [supportReference.featureId, secondSupport.featureId],
+        }),
+      ),
+    )
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: extrusionFeatureTypeV8.type,
+        references: [supportReference, secondSupport],
+        dependencies: [supportReference.featureId, secondSupport.featureId],
+      }),
+    )
+  })
+
   it("persists a stable support reference and dependency for a face-supported sketch", async () => {
     const user = userEvent.setup()
     const mode: ExtrusionFormMode = {
@@ -679,7 +716,7 @@ describe("ExtrusionForm", () => {
       createFeatureId: () => featureId,
       featureLabel: "Extrusion 1",
       profiles: [profile],
-      supportReference,
+      supportReferences: [supportReference],
     }
     const { onSave } = renderForm(undefined, undefined, mode)
 
@@ -701,7 +738,7 @@ describe("ExtrusionForm", () => {
       kind: "edit",
       feature: existingFeature,
       profiles: [replacementProfile],
-      supportReference,
+      supportReferences: [supportReference],
     }
     const { onSave } = renderForm(undefined, undefined, mode, onPreviewChange)
 

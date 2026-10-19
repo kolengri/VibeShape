@@ -31,7 +31,7 @@
         "openLabel": "Open {name}, revision {revision}",
         "empty": "No local projects are available yet.",
         "loading": "Loading local projects…",
-        "loadFailed": "Local projects could not be loaded. The current project remains open.",
+        "loadFailed": "Local projects could not be loaded. Try again.",
         "retry": "Retry",
         "preview": {
           "alt": "3D preview of {name}",
@@ -248,6 +248,28 @@
           "save": "Connect bridge",
           "saved": "Bridge credential saved.",
           "saveFailed": "The bridge credential could not be saved in this browser."
+        },
+        "native": {
+          "description": "Send a 3MF or STL mesh directly to an installed slicer. Review the model in the slicer before slicing or printing.",
+          "targetLabel": "Slicer",
+          "targetDescription": "Installed applications and slicers you choose on this Mac.",
+          "choose": "Choose slicer application…",
+          "noApplications": "No supported slicer was found. Choose an installed slicer application.",
+          "formatLabel": "Mesh format",
+          "send": "Send to {slicer}",
+          "started": "Sent to {slicer}. Verify the imported model in the slicer.",
+          "reveal": "Show mesh in Finder",
+          "busy": "Another slicer handoff is running. Try again when it finishes.",
+          "notInstalled": "That slicer is no longer available. Choose another application.",
+          "writeFailed": "The mesh could not be saved. Check available disk space and try again.",
+          "launchFailed": "The slicer could not be opened. Your mesh is kept on this Mac; show it in Finder and open it manually.",
+          "invalidRequest": "The mesh could not be sent. Prepare it again and retry.",
+          "unavailable": "The native slicer connection is unavailable. Restart VibeShape and try again.",
+          "chooseFailed": "The selected application could not be added. Choose an installed slicer app or executable.",
+          "browserDescription": "Download a 3MF or STL mesh, then open it in your slicer.",
+          "download": "Download {format}",
+          "capacity": "Temporary mesh storage is full. Remove earlier handoff files in Finder and try again.",
+          "exportFailed": "The mesh could not be prepared. Try again after the model finishes rebuilding."
         }
       },
       "threeMf": {
@@ -718,7 +740,8 @@
         "loading": "Opening local document…",
         "saveFailed": "Could not save",
         "saving": "Saving…",
-        "savedInBrowser": "Saved in this browser",
+        "saved": "Saved",
+        "saveStatusLabel": "Project save status",
         "untitledProject": "Untitled project",
         "enableAi": "Enable AI session",
         "disableAi": "Disable AI session",
@@ -1108,7 +1131,10 @@
           "historyFeatureCount": "Features: {count}",
           "historyPartCount": "Parts: {count}",
           "historyGeometryCount": "Exact feature results: {succeeded} succeeded, {failed} failed or blocked.",
-          "historyGeometryInvalid": "The saved target contains geometry failures. Apply restores that state, including its diagnostics."
+          "historyGeometryInvalid": "The saved target contains geometry failures. Apply restores that state, including its diagnostics.",
+          "createAssemblyMotionStudy": "Create motion study",
+          "updateAssemblyMotionStudy": "Update motion study",
+          "removeAssemblyMotionStudy": "Remove motion study"
         },
         "collapsePanel": "Collapse task panel",
         "createBox": "Create box",
@@ -1314,7 +1340,9 @@
           "secondDirection": "Second direction",
           "secondDistance": "Second distance",
           "symmetricDescription": "Symmetric Distance is the total span, split equally about the sketch plane. Second direction uses a separate depth on the opposite side.",
-          "extentInvalidRange": "Each depth must be at least 0.001 mm; the total span must not exceed 100,000 mm."
+          "extentInvalidRange": "Each depth must be at least 0.001 mm; the total span must not exceed 100,000 mm.",
+          "selectProfiles": "Select profiles",
+          "profileSelectionDescription": "Click profiles to add or remove them. Each sketch extrudes along its own plane normal."
         },
         "selectedProfileLabel": "{sketch} · Profile {number}",
         "revolve": {
@@ -1816,6 +1844,40 @@
         "importSketch": "Import sketch…",
         "library": "Library…",
         "extensions": "Plugins…"
+      },
+      "cadError": {
+        "title": "Cannot evaluate this operation",
+        "technicalDetails": "Technical details",
+        "related": "Related: {labels}",
+        "viewportHint": "Preview unavailable. Open the task panel for details.",
+        "cause": {
+          "missingSketch": "A sketch used by this operation is no longer available.",
+          "missingSupport": "The sketch support face is no longer available.",
+          "missingProfile": "The selected sketch profile no longer exists.",
+          "ambiguousProfile": "The selected profile now matches more than one region.",
+          "invalidProfile": "The selected sketch profile cannot be used for this operation.",
+          "solveFailed": "The sketch could not be solved.",
+          "solverUnavailable": "The sketch solver is unavailable.",
+          "dependencyBlocked": "An earlier feature prevents this operation from being evaluated.",
+          "endCondition": "The selected extrusion end face or body is stale or cannot be reached.",
+          "bodyMissing": "A body required by this operation is unavailable.",
+          "expression": "A parameter expression could not be evaluated.",
+          "unknown": "The operation could not be evaluated."
+        },
+        "nextStep": {
+          "missingSketch": "Select a profile from an existing sketch, then try again.",
+          "missingSupport": "Edit the sketch, replace its support, then try again.",
+          "missingProfile": "Restore a closed region in the sketch, or select another profile.",
+          "ambiguousProfile": "Select the intended closed region again.",
+          "invalidProfile": "Check for open, overlapping or intersecting boundaries, then select the profile again.",
+          "solveFailed": "Edit the sketch and review its failed constraints before trying again.",
+          "solverUnavailable": "Try again. If it keeps failing, cancel and reopen the project.",
+          "dependencyBlocked": "Repair the indicated feature in History, then return to this operation.",
+          "endCondition": "Select the end face or body again, or change the end condition to Distance.",
+          "bodyMissing": "Select an available target body, or repair the earlier feature that produces it.",
+          "expression": "Correct the expression or its referenced variable, then try again.",
+          "unknown": "Review its parameters and references. Technical details contain the original failure."
+        }
       }
     },
     "sketch": {
@@ -2030,7 +2092,18 @@
         "system": "System"
       },
       "title": "Settings",
-      "workspace": "Workspace"
+      "workspace": "Workspace",
+      "desktopMcp": {
+        "title": "Connect an MCP client",
+        "description": "Attach an AI client to this open app. Enable its AI session for the current project before it can read or change a model.",
+        "configuration": "MCP client configuration",
+        "copy": "Copy configuration",
+        "copied": "Configuration copied.",
+        "failed": "The connection configuration could not be read. Try again.",
+        "copyFailed": "Select and copy the configuration above.",
+        "unavailable": "Native MCP connection settings are available in the Mac app."
+      },
+      "connections": "Connections"
     },
     "placement": {
       "title": "Place part",
@@ -2272,7 +2345,8 @@
       "offset": "Section offset (mm)",
       "invalid": "Enter a finite offset between −100,000 and 100,000 mm.",
       "flip": "Keep the opposite side",
-      "description": "View only. Cut surfaces are open; modeling history and exported geometry stay unchanged."
+      "description": "View only. Cut surfaces are open; modeling history and exported geometry stay unchanged.",
+      "dragHint": "Drag the plane handle to move the section."
     },
     "mirror": {
       "title": "Mirror part",
@@ -2724,7 +2798,44 @@
       "unknownInstance": "Unavailable instance",
       "jointBetween": "{kind}: {parent} → {child}",
       "jointEndpoints": "{parent} → {child}",
-      "driveJointBetween": "Drive {parent} → {child}"
+      "driveJointBetween": "Drive {parent} → {child}",
+      "motionStudies": "Motion studies",
+      "motionNewStudy": "New study",
+      "motionEditStudy": "Edit study",
+      "motionStudyName": "Study name",
+      "motionDuration": "Duration (s)",
+      "motionTracks": "Joint tracks",
+      "motionAddTrack": "Add track",
+      "motionRemoveTrack": "Remove track",
+      "motionAddKey": "Add key",
+      "motionRemoveKey": "Remove key",
+      "motionKeyTime": "Time (s)",
+      "motionKeyValue": "Value ({unit})",
+      "motionSaveStudy": "Save study",
+      "motionDeleteStudy": "Delete study",
+      "motionSeek": "Timeline (s)",
+      "motionReverse": "Reverse",
+      "motionLoop": "Loop",
+      "motionSpeed": "Playback speed",
+      "motionSampleCount": "Sample count",
+      "motionExportJson": "Export solved JSON",
+      "motionExportCsv": "Export solved CSV",
+      "motionExportPng": "Export PNG sequence",
+      "motionTraceInstance": "Trace occurrence",
+      "motionTracePoint": "Local source point (mm)",
+      "motionStudyDescription": "Drive joint tracks together. Saving the study and applying its preview pose are separate actions.",
+      "motionStudyInvalid": "The study is invalid: {reason}",
+      "motionExportFailed": "Motion export failed: {reason}",
+      "motionSampled": "Solved samples: {count}",
+      "motionStudyEmpty": "Add a movable joint before creating a study.",
+      "motionStudyInvalidDetails": "Check track coordinates, increasing key times, duration, and joint limits.",
+      "motionSolverConflict": "The tracks conflict with the assembly constraints. Adjust the keys or mates and preview again.",
+      "motionSolverUnavailable": "The assembly preview could not finish. Reset the preview and try a smaller sample set.",
+      "motionStudyStale": "The project changed. Reopen the motion study before previewing or saving.",
+      "motionStudySaveFailed": "The study could not be saved. Check its tracks and joint limits, then retry.",
+      "motionExportUnavailable": "The solved sequence could not be exported. Replay a smaller sample set and retry.",
+      "motionTraceInvalid": "Choose a solved occurrence and enter three finite source coordinates in millimeters.",
+      "motionPngLimit": "PNG export supports up to 64 solved frames. Reduce the sample count and replay."
     },
     "import": {
       "trigger": "Import…",
@@ -3420,6 +3531,109 @@
         "notInstalled": "This plugin is no longer installed.",
         "permissionDenied": "This plugin is disabled or its capabilities have not been approved.",
         "staleStore": "Plugins changed in another tab. Review the current list and try again."
+      }
+    },
+    "projectTabs": {
+      "label": "Open projects",
+      "newProject": "New project",
+      "openProjects": "Open project…",
+      "closeProject": "Close {name}",
+      "blocked": "Finish or cancel the current edit, save, or AI operation before switching projects.",
+      "switchFailed": "Could not open the project. Try again or open Files and projects.",
+      "listFailed": "Could not refresh open projects.",
+      "storageFailed": "Open project tabs could not be remembered on this device."
+    },
+    "assistant": {
+      "title": "AI chat",
+      "connection": "Connection",
+      "close": "Close chat",
+      "messages": "Project conversation",
+      "empty": "Discuss this project or ask the agent to help build it.",
+      "prompt": "Message",
+      "placeholder": "Ask about this project…",
+      "newChat": "New chat",
+      "stop": "Stop",
+      "send": "Send",
+      "storageFailed": "This conversation could not be saved on this device. Copy any messages you need before closing.",
+      "role": {
+        "user": "You",
+        "assistant": "Assistant",
+        "thought": "Thinking",
+        "tool": "Tool"
+      },
+      "mode": "Agent mode",
+      "model": "Model",
+      "authenticate": "Authenticate with {method}",
+      "modelAccess": "Current project access",
+      "permission": "Agent permission request",
+      "deny": "Deny",
+      "allowOnce": "Allow once",
+      "agentDescription": "Connect an installed ACP agent using your own account. The agent runs locally. Model changes use VibeShape’s preview and Apply workflow.",
+      "executable": "ACP agent executable",
+      "executablePlaceholder": "/absolute/path/to/agent",
+      "arguments": "Arguments (JSON array)",
+      "invalidAgent": "Enter an executable and a JSON array of arguments, for example [\"--acp\"].",
+      "settingsNotSaved": "The connection settings could not be remembered.",
+      "connect": "Connect agent",
+      "disconnect": "Disconnect",
+      "historyNotice": "Conversation history is saved for this project. Agent context resumes only when the selected agent supports it.",
+      "status": {
+        "connecting": "Starting agent…",
+        "ready": "Agent connected",
+        "prompting": "Agent working…",
+        "cancelling": "Stopping agent…",
+        "authentication-required": "Authentication required",
+        "disconnected": "Agent disconnected",
+        "error": "Agent connection failed"
+      },
+      "errors": {
+        "invalid-request": "The agent settings or message are invalid. Check the executable and arguments.",
+        "forbidden": "This window cannot access the local agent. Reopen VibeShape and try again.",
+        "launch-failed": "The agent could not start. Check that the executable is installed and can run.",
+        "initialization-failed": "The agent did not complete ACP initialization. Check its arguments and ACP support.",
+        "protocol-error": "The agent sent an invalid ACP response. Reconnect or update the agent.",
+        "agent-exited": "The agent exited. Reconnect to continue.",
+        "authentication-required": "Sign in to the agent using its authentication option, then try again.",
+        "agent-busy": "The agent is already working. Wait or stop the current response.",
+        "stale-session": "This agent session belongs to a previous project or connection. Reconnect here.",
+        "unsupported": "This agent does not support the requested action. Start a new chat or choose another agent.",
+        "permission-expired": "The permission request expired. Ask the agent to try again.",
+        "request-failed": "The agent request failed. Reconnect and try again.",
+        "timeout": "The agent did not respond in time. Stop it or reconnect.",
+        "mcp-client-conflict": "Another MCP client is attached to VibeShape. Disconnect it before connecting this agent."
+      },
+      "api": {
+        "label": "Direct user API",
+        "description": "Use your own OpenAI-compatible Chat Completions endpoint. Requests go directly from this browser to that endpoint. MCP and ACP connections run in the local app.",
+        "endpoint": "Chat Completions endpoint URL",
+        "model": "API model",
+        "apiKey": "API key (optional)",
+        "keyMemory": "The key stays in memory until this app is closed or reloaded. Endpoint and model settings are remembered on this device.",
+        "stream": "Stream responses (SSE)",
+        "connect": "Connect and enable project access",
+        "disconnect": "Disconnect API",
+        "connected": "API enabled for this project",
+        "disconnected": "API disconnected",
+        "grant": "Model access is enabled for this project. Proposed model changes still require review and Apply.",
+        "settingsNotSaved": "The API endpoint and model settings could not be remembered.",
+        "toolRunning": "Running {name}",
+        "toolCompleted": "Finished {name}",
+        "errors": {
+          "invalid-configuration": "Enter a full HTTPS Chat Completions URL, or a loopback HTTP URL, without credentials, a query or a fragment. Enter a model name.",
+          "network": "The browser could not reach this endpoint. Check the URL, network and endpoint CORS settings. The endpoint must allow requests from this app.",
+          "authentication": "The endpoint rejected authentication. Check the API key and its access to this model.",
+          "rate-limit": "The endpoint reached a request or usage limit. Check your account, then try again.",
+          "endpoint": "The endpoint rejected the request. Check Chat Completions and tool-calling support, the model and streaming settings. Redirects are not followed.",
+          "invalid-response": "The endpoint returned an invalid or incomplete Chat Completions response. Check its compatibility and streaming settings.",
+          "response-limit": "The response or tool output exceeded the chat limit. Ask for a smaller task or a narrower query.",
+          "context-limit": "This conversation is too large for a direct API request. Start a new chat or shorten the message.",
+          "turn-limit": "The assistant reached this message’s request or tool limit. Check the model and continue with a smaller task.",
+          "timeout": "The API request or pending turn timed out. Its unfinished model changes were discarded. Try again when ready.",
+          "tools-unavailable": "This project is unavailable for AI access. Finish loading it, then reconnect.",
+          "stale-project": "The active project changed. The old request was stopped. Connect again in the current project.",
+          "invalid-tool": "The model requested an unavailable tool or invalid arguments. Its unfinished model changes were discarded. Try a more specific request.",
+          "tool-failed": "A CAD tool returned an invalid result. Its unfinished model changes were discarded. Reconnect and try again."
+        }
       }
     }
   }

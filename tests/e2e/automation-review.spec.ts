@@ -48,7 +48,11 @@ for (const mode of ["discard", "human", "close", "approved-close"] as const) {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const committing = page.evaluate(
       async ({ paths, mode }) => {
         const app: BrowserController = await import(paths.controller)
@@ -189,7 +193,11 @@ for (const mode of ["discard", "human", "close", "approved-close"] as const) {
       await page.setViewportSize({ width: 1280, height: 720 })
     }
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Review box", exact: true })).toHaveCount(0)
     await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
       "data-rendered-feature-count",

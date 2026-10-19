@@ -1,20 +1,24 @@
 import {
   type BodyTopoRef,
+  canonicalJson,
   createAngleQuantity,
   createSketchProfileSet,
   evaluateExpression,
   evaluateVariableDefinitions,
   expectedExtrusionV6DependencyIds,
+  expectedExtrusionV8DependencyIds,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
   extrusionFeatureParametersV7Schema,
+  extrusionFeatureParametersV8Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
@@ -26,6 +30,7 @@ import {
   readExtrusionProfileSet,
   type SketchProfileSelector,
   type SketchProfileSet,
+  sketchProfileSetSchema,
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
@@ -49,10 +54,7 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
-import {
-  profileSelectorsEqual,
-  topologyReferencesEqual,
-} from "../part-design/profile-feature-selection"
+import { profileSelectorsEqual } from "../part-design/profile-feature-selection"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
@@ -96,6 +98,7 @@ type ExtrusionFormValues = Readonly<{
   startOffset: string
   draftAngle: string
   advanced: boolean
+  multipleSketches: boolean
   endKind: "distance" | "through-all" | "up-to-body" | "up-to-face"
   endTarget: string
   endSourceHash: string
@@ -107,7 +110,7 @@ type ExtrusionFormValues = Readonly<{
   secondDistance: string
   operation: string
   profiles: SketchProfileSet
-  supportReference: TopoRef | null
+  supportReferences: readonly TopoRef[]
   symmetric: boolean
   targetFeatureId: string
 }>
@@ -128,12 +131,13 @@ function defaultValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
   options: readonly ExtrusionTargetOption[],
   profiles: readonly SketchProfileSelector[],
-  supportReference: TopoRef | undefined,
+  supportReferences: readonly TopoRef[] | undefined,
 ): ExtrusionFormValues {
   return {
     startOffset: "0 mm",
     draftAngle: "0 deg",
     advanced: false,
+    multipleSketches: false,
     endKind: "distance",
     endTarget: options[0] ? extrusionBodyOptionKey(options[0]) : "",
     endSourceHash: options[0]?.contentHash ?? "",
@@ -145,7 +149,7 @@ function defaultValues(
     secondDistance: defaultLengthExpression(5, unit),
     operation: "new",
     profiles: createSketchProfileSet(profiles),
-    supportReference: supportReference ?? null,
+    supportReferences: supportReferences ?? [],
     symmetric: false,
     targetFeatureId: options[0] ? extrusionBodyOptionKey(options[0]) : "",
   }
@@ -157,14 +161,22 @@ export type ExtrusionFormMode =
       featureLabel: string
       kind: "create"
       profiles: readonly SketchProfileSelector[]
-      supportReference?: TopoRef
+      supportReferences?: readonly TopoRef[]
     }>
   | Readonly<{
       feature: FeatureRecord
       kind: "edit"
       profiles: readonly SketchProfileSelector[]
-      supportReference?: TopoRef
+      supportReferences?: readonly TopoRef[]
     }>
+
+function profilesSpanSketches(profiles: readonly SketchProfileSelector[]) {
+  return profiles.some(({ sketchId }) => sketchId !== profiles[0]?.sketchId)
+}
+
+function modeSupportReferences(mode: ExtrusionFormMode): readonly TopoRef[] {
+  return mode.supportReferences ?? []
+}
 
 function advancedValuesFromParameters(
   parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
@@ -195,13 +207,14 @@ function advancedValuesFromParameters(
 function valuesFromFeature(
   feature: FeatureRecord,
   profiles: readonly SketchProfileSelector[],
-  supportReference: TopoRef | undefined,
+  supportReferences: readonly TopoRef[] | undefined,
 ): ExtrusionFormValues {
   const parameters = readExtrusionFeatureParameters(feature)
   if (!parameters) throw new Error("Extrusion parameters are unavailable.")
   return {
     ...advancedValuesFromParameters(parameters),
-    advanced: feature.type.schemaVersion === 6 || feature.type.schemaVersion === 7,
+    advanced: feature.type.schemaVersion >= 6,
+    multipleSketches: feature.type.schemaVersion === 8,
     distance: quantityExpression(parameters.distance),
     extended: feature.type.schemaVersion >= 5,
     reversed: parameters.reversed,
@@ -211,7 +224,7 @@ function valuesFromFeature(
       : "5 mm",
     operation: parameters.operation,
     profiles: createSketchProfileSet(profiles),
-    supportReference: supportReference ?? null,
+    supportReferences: supportReferences ?? [],
     symmetric: parameters.symmetric,
     targetFeatureId: parameters.targetBody
       ? extrusionBodyOptionKey({
@@ -232,21 +245,15 @@ function extrusionRecord(
     | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>
     | ReturnType<typeof extrusionFeatureParametersV6Schema.parse>,
   targetFeatureId: FeatureId | null,
-  supportReference: TopoRef | null,
+  supportReferences: readonly TopoRef[],
 ) {
-  const references = supportReference ? [supportReference] : []
-  const dependencies =
-    "endCondition" in parameters
-      ? expectedExtrusionV6DependencyIds(
-          targetFeatureId,
-          supportReference?.featureId ?? null,
-          parameters.endCondition.kind === "distance"
-            ? null
-            : parameters.endCondition.targetBody.featureId,
-        )
-      : [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
-          (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
-        )
+  const references = supportReferences
+  const dependencies = extrusionDependencies(
+    parameters,
+    targetFeatureId,
+    references,
+    mode.kind === "edit" && mode.feature.type.schemaVersion === 8,
+  )
   if (mode.kind === "edit") {
     const preserved = preserveExtrusionSchema(mode.feature, parameters)
     return featureRecordSchema.parse({
@@ -268,10 +275,36 @@ function extrusionRecord(
   })
 }
 
+function extrusionDependencies(
+  parameters: Parameters<typeof extrusionType>[0],
+  targetFeatureId: FeatureId | null,
+  references: readonly TopoRef[],
+  preserveV8: boolean,
+) {
+  const supports = references.map(({ featureId }) => featureId)
+  if (!("endCondition" in parameters))
+    return expectedExtrusionV8DependencyIds(targetFeatureId, supports, null)
+  const end =
+    parameters.endCondition.kind === "distance"
+      ? null
+      : parameters.endCondition.targetBody.featureId
+  return preserveV8 || profilesSpanSketches(parameters.profiles.profiles)
+    ? expectedExtrusionV8DependencyIds(targetFeatureId, supports, end)
+    : expectedExtrusionV6DependencyIds(targetFeatureId, supports[0] ?? null, end)
+}
+
 function preserveExtrusionSchema(
   feature: FeatureRecord,
   parameters: Parameters<typeof extrusionType>[0],
 ) {
+  if (
+    feature.type.schemaVersion === 8 ||
+    ("profiles" in parameters && profilesSpanSketches(parameters.profiles.profiles))
+  )
+    return {
+      type: extrusionFeatureTypeV8.type,
+      parameters: extrusionFeatureParametersV8Schema.parse(parameters),
+    }
   if (
     feature.type.schemaVersion === 7 &&
     "endCondition" in parameters &&
@@ -312,6 +345,8 @@ function extrusionType(
     | ReturnType<typeof extrusionFeatureParametersV5Schema.parse>
     | ReturnType<typeof extrusionFeatureParametersV6Schema.parse>,
 ) {
+  if ("profiles" in parameters && profilesSpanSketches(parameters.profiles.profiles))
+    return extrusionFeatureTypeV8.type
   if ("endCondition" in parameters)
     return parameters.endCondition.kind === "up-to-face" &&
       parameters.endCondition.face.signature.geometryClass !== "PLANE"
@@ -355,7 +390,7 @@ function ExtrusionPreviewSync({
         ? valuesFromFeature(
             mode.feature,
             readExtrusionProfileSet(mode.feature)?.profiles ?? [],
-            mode.supportReference,
+            modeSupportReferences(mode),
           )
         : null,
       parsed.ok
@@ -364,7 +399,7 @@ function ExtrusionPreviewSync({
             featureId,
             parsed.parameters,
             parsed.targetFeatureId,
-            parsed.supportReference,
+            parsed.supportReferences,
           )
         : null,
     ),
@@ -387,6 +422,10 @@ function parseExtrusionDepth(
   )
 }
 
+const independentExtrusionDraftSchema = extrusionFeatureParametersV5Schema.safeExtend({
+  profiles: sketchProfileSetSchema,
+})
+
 function parseIndependentExtents(
   values: ExtrusionFormValues,
   distance: LengthQuantity,
@@ -399,7 +438,7 @@ function parseIndependentExtents(
     : null
   if (second && !second.ok)
     return { ok: false as const, issues: { secondDistance: second.message } }
-  const parameters = extrusionFeatureParametersV5Schema.safeParse({
+  const parameters = independentExtrusionDraftSchema.safeParse({
     profiles: values.profiles,
     distance,
     symmetric: values.symmetric,
@@ -470,6 +509,7 @@ function needsAdvancedExtents(
 ) {
   return (
     values.advanced ||
+    profilesSpanSketches(values.profiles.profiles) ||
     values.endKind !== "distance" ||
     values.startOffset !== "0 mm" ||
     values.draftAngle !== "0 deg" ||
@@ -506,10 +546,7 @@ function parseAdvancedExtents(
   if (!quantities.ok) return quantities
   const end = parseExtrusionEnd(values, options, copy)
   if (!end.ok) return end
-  const schema =
-    end.value.kind === "up-to-face" && end.value.face.signature.geometryClass !== "PLANE"
-      ? extrusionFeatureParametersV7Schema
-      : extrusionFeatureParametersV6Schema
+  const schema = advancedExtrusionDraftSchema(values, end.value)
   const parsed = schema.safeParse({
     ...basic.parameters,
     targetBody: targetBody.value,
@@ -519,6 +556,17 @@ function parseAdvancedExtents(
   return parsed.success
     ? { ok: true as const, parameters: parsed.data }
     : { ok: false as const, issues: { distance: copy.extentInvalidRange } }
+}
+
+function advancedExtrusionDraftSchema(
+  values: ExtrusionFormValues,
+  end: Extract<ReturnType<typeof parseExtrusionEnd>, { ok: true }>["value"],
+) {
+  if (profilesSpanSketches(values.profiles.profiles) || values.multipleSketches)
+    return extrusionFeatureParametersV8Schema
+  return end.kind === "up-to-face" && end.face.signature.geometryClass !== "PLANE"
+    ? extrusionFeatureParametersV7Schema
+    : extrusionFeatureParametersV6Schema
 }
 
 function advancedTargetBody(
@@ -584,7 +632,7 @@ function parseValues(
   return {
     ok: true as const,
     targetFeatureId: target.featureId,
-    supportReference: values.supportReference,
+    supportReferences: values.supportReferences,
     parameters: parsed.parameters,
   }
 }
@@ -605,15 +653,18 @@ function parseTarget(
 function ExtrusionProfileSelectionSync({
   onChange,
   profiles,
-  supportReference,
+  supportReferences,
 }: Readonly<{
-  onChange: (profiles: readonly SketchProfileSelector[], supportReference: TopoRef | null) => void
+  onChange: (
+    profiles: readonly SketchProfileSelector[],
+    supportReferences: readonly TopoRef[],
+  ) => void
   profiles: readonly SketchProfileSelector[]
-  supportReference: TopoRef | null
+  supportReferences: readonly TopoRef[]
 }>) {
   useLayoutEffect(
-    () => onChange(profiles, supportReference),
-    [onChange, profiles, supportReference],
+    () => onChange(profiles, supportReferences),
+    [onChange, profiles, supportReferences],
   )
   return null
 }
@@ -633,6 +684,7 @@ export type ExtrusionFormProps = Readonly<{
   profileLabels?: readonly string[] | undefined
   onProfileRemove?: ((index: number) => void) | undefined
   onProfilesClear?: (() => void) | undefined
+  onProfileSelectionRequest?: (() => void) | undefined
   previewStatus?: FeaturePreviewState["status"] | undefined
   variables: readonly VariableDefinition[]
 }>
@@ -654,12 +706,16 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
   const form = useAppForm({
     defaultValues:
       props.mode.kind === "edit"
-        ? valuesFromFeature(props.mode.feature, props.mode.profiles, props.mode.supportReference)
+        ? valuesFromFeature(
+            props.mode.feature,
+            props.mode.profiles,
+            modeSupportReferences(props.mode),
+          )
         : defaultValues(
             displayUnits.length,
             props.options,
             props.mode.profiles,
-            props.mode.supportReference,
+            modeSupportReferences(props.mode),
           ),
     onSubmit: async ({ value }) => {
       const parsed = parseValues(
@@ -700,7 +756,7 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
           featureId,
           parsed.parameters,
           parsed.targetFeatureId,
-          parsed.supportReference,
+          parsed.supportReferences,
         ),
         onSave: props.onSave,
         onSaved: props.onSaved,
@@ -730,7 +786,7 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
     props.distanceRequest,
   ])
   const applyProfileSelection = useCallback(
-    (profiles: readonly SketchProfileSelector[], supportReference: TopoRef | null) => {
+    (profiles: readonly SketchProfileSelector[], supportReferences: readonly TopoRef[]) => {
       const nextProfiles = createSketchProfileSet(profiles)
       const currentProfiles = form.getFieldValue("profiles")
       const matches =
@@ -741,8 +797,10 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
       if (!matches) {
         form.setFieldValue("profiles", nextProfiles)
       }
-      if (!topologyReferencesEqual(form.getFieldValue("supportReference"), supportReference)) {
-        form.setFieldValue("supportReference", supportReference)
+      if (
+        canonicalJson(form.getFieldValue("supportReferences")) !== canonicalJson(supportReferences)
+      ) {
+        form.setFieldValue("supportReferences", supportReferences)
       }
     },
     [form],
@@ -1088,7 +1146,7 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
     >
       <ExtrusionProfileSelectionSync
         profiles={controller.mode.profiles}
-        supportReference={controller.mode.supportReference ?? null}
+        supportReferences={modeSupportReferences(controller.mode)}
         onChange={controller.applyProfileSelection}
       />
       <ExtrusionPreviewField controller={controller} />
@@ -1107,6 +1165,7 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
         disabled={controller.disabled}
         message={controller.message}
         profileLabels={controller.profileLabels ?? [controller.profileLabel]}
+        onProfileSelectionRequest={controller.onProfileSelectionRequest}
         onProfileRemove={controller.onProfileRemove}
         onProfilesClear={controller.onProfilesClear}
         operationField={<ExtrusionOperationField controller={controller} />}

@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.2.1",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@vibeshape/automation-api": "workspace:*",
     "zod": "catalog:"
   },

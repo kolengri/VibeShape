@@ -33,6 +33,7 @@ import {
   renewedDraft,
 } from "./assembly-draft-support"
 import { executeLibraryOperation } from "./assembly-library-operations"
+import { sampleAssemblyMotion } from "./assembly-motion-sampling"
 import type { AssemblyCancellation } from "./assembly-session-contract"
 import {
   ASSEMBLY_DRAFT_TTL_MS,
@@ -334,12 +335,40 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
       }
     }
   }
+  async function sampleMotion(
+    operation: Extract<AssemblyOperation, { tool: "sample_assembly_motion_study" }>,
+    signal?: AssemblyCancellation,
+  ) {
+    const input = operation.arguments,
+      current = guard(input.revision, generation, signal)
+    const unavailable = current()
+    if (unavailable) return unavailable
+    const authority = snapshot()
+    if (authority.schemaVersion !== 4 && authority.schemaVersion !== 5)
+      return localFailure(
+        "assembly-operation-failed",
+        "The document has no persisted assembly study.",
+      )
+    const study = authority.assembly.motionStudies?.find(({ id }) => id === input.studyId)
+    if (!study) return localFailure("assembly-operation-failed", "The motion study is missing.")
+    if (
+      input.instanceIds.some(
+        (id) => !authority.assembly.instances.some((instance) => instance.id === id),
+      )
+    )
+      return localFailure("assembly-operation-failed", "A selected motion occurrence is missing.")
+    const result = await sampleAssemblyMotion({ configuration, authority, study, input, current })
+    return result.ok ? bounded(result.value) : result
+  }
+
   function executeAssembly(
     actor: CommandActor,
     operation: AssemblyOperation,
     signal?: AssemblyCancellation,
   ) {
     switch (operation.tool) {
+      case "sample_assembly_motion_study":
+        return sampleMotion(operation, signal)
       case "model_assembly":
         return guard(operation.arguments.revision)() ?? bounded(assemblyModelView(snapshot()))
       case "inspect_assembly":

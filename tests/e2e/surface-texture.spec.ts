@@ -10,7 +10,11 @@ test.setTimeout(60_000)
 
 async function createBox(page: Page) {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await invokeModelCommand(page, "Primitives", "Box")
@@ -77,7 +81,11 @@ test("surface relief previews, commits once, survives reopen, and changes the ex
   await toolbar.getByRole("button", { name: "Redo", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Surface textures", exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await page.getByRole("treeitem", { name: "Box 1 · 1 layer", exact: true }).click()
@@ -123,7 +131,11 @@ test("painting stays a cancellable draft and supports stroke undo", async ({ pag
   await panel.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Surface textures", exact: true })).toHaveCount(0)
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await expect(page.getByRole("treeitem", { name: "Surface textures", exact: true })).toHaveCount(0)

@@ -119,9 +119,9 @@ access to the library. See [ADR-0073](../adr/0073-immutable-local-assembly-libra
 
 ## Recovery
 
-At startup:
+When a project is explicitly opened:
 
-1. Find documents without a clean-close marker.
+1. Check the selected document’s clean-close marker.
 2. Verify snapshot and event checksums.
 3. Replay through the last complete event.
 4. Open the result as a recovery copy.
@@ -233,4 +233,8 @@ The recorded Playwright WebKit 26.5 runtime exposes `getDirectory()` but fails t
 
 ## Browser project addresses
 
-The web composition layer reads an optional `project` query parameter as a schema-validated document ID before opening a session. Explicit targets override the last-active preference; malformed IDs and missing projects fail visibly without a fallback create. Successful initial activation replaces the current address, while later UI/MCP activation pushes a project address. Browser history navigation invokes the same guarded transition, serializes requests, and restores the actual active address on rejection. URL changes never add document revisions or own editor drafts. The same profile's IndexedDB and existing writer lease remain authoritative; a copied URL is not a cloud-transfer mechanism.
+A bare application URL initializes the local repository and exposes a sessionless project library. It does not restore the last-active preference, create a blank project, acquire document authority, or rebuild geometry. Catalog listing and revision-checked import, duplication, and inactive-project deletion use the same repository contracts as the editor. New explicitly creates a project through the existing document-create command; opening a selected or imported project prepares its ordinary persisted session without fabricating a source document.
+
+An optional `project` query parameter remains a schema-validated document ID that opens the requested editor session directly. Malformed IDs and missing projects fail visibly without a fallback create. Successful initial activation replaces the current address, while later UI/MCP activation pushes a project address. Browser Back/Forward serializes guarded editor and library transitions and restores the actual active address on rejection.
+
+Returning to the library checks editor drafts, saves, save failures, and active AI work before closing the document or disposing its automation scopes. Success clears the `project` parameter and publishes sessionless library state without another document command. Close or URL-write failure reopens the saved source through the existing recovery path. An aborted destination open closes its prepared session before it can publish authority. URL changes never add document revisions or own editor drafts. The same profile's IndexedDB and existing writer lease remain authoritative; a copied URL is not a cloud-transfer mechanism.

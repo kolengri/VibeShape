@@ -8,7 +8,11 @@ test("offers both exact Split outputs as Hole targets after a real worker rebuil
 }) => {
   test.setTimeout(180_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeAttached({
     timeout: 90_000,
   })
   await createSolids(page)

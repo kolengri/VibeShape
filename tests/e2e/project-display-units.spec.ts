@@ -7,7 +7,11 @@ test.describe("project display units", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await openApplicationMenuItem(page, "Settings…")
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true })

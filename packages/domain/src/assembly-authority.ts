@@ -14,6 +14,24 @@ import {
   assemblyInstanceRecordSchema,
   assemblyJointRecordSchema,
 } from "./assembly-mates"
+import {
+  assemblyMotionStudiesSchema,
+  assemblyMotionStudyIdSchema,
+  assemblyMotionStudySchema,
+  validateAssemblyMotionStudies,
+} from "./assembly-motion-study"
+
+export {
+  type AssemblyMotionStudy,
+  type AssemblyMotionTrack,
+  assemblyMotionStudiesSchema,
+  assemblyMotionStudyChanges,
+  assemblyMotionStudyIdSchema,
+  assemblyMotionStudySchema,
+  assemblyMotionTimes,
+  assemblyMotionTrackValue,
+} from "./assembly-motion-study"
+
 import { type BodyReference, bodyReferenceSchema } from "./body-reference"
 import { canonicalJson } from "./canonical-json"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
@@ -245,7 +263,9 @@ function validatePinnedModel(
 }
 export function projectAssemblyAuthority(assembly: AssemblyAuthority) {
   return assemblyCollectionSchema.parse({
-    ...assembly,
+    schemaVersion: assembly.schemaVersion,
+    instances: assembly.instances,
+    joints: assembly.joints,
     definitions: assembly.definitions.map(
       ({
         pinRevision: _revision,
@@ -273,17 +293,49 @@ function validateDefinitions(definitions: readonly PinnedAssemblyDefinition[]) {
     }
   }
 }
+function validateMotionStudyAuthority(
+  studies: z.infer<typeof assemblyMotionStudiesSchema> | undefined,
+  joints: z.infer<typeof assemblyJointRecordSchema>[],
+  context: z.RefinementCtx,
+) {
+  try {
+    validateAssemblyMotionStudies(studies ?? [], joints)
+  } catch (error) {
+    context.addIssue({
+      code: "custom",
+      path: ["motionStudies"],
+      message: error instanceof Error ? error.message : "The motion study is invalid.",
+    })
+  }
+}
+function validateAssemblyIdentities(
+  records: readonly { id: string }[],
+  studies: z.infer<typeof assemblyMotionStudiesSchema> | undefined,
+  context: z.RefinementCtx,
+) {
+  const ids = [...records, ...(studies ?? []).flatMap((study) => [study, ...study.tracks])].map(
+    ({ id }) => id,
+  )
+  if (new Set(ids).size !== ids.length)
+    context.addIssue({
+      code: "custom",
+      message: "Assembly records require distinct stable identities across collections.",
+    })
+}
 export const assemblyAuthoritySchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
     definitions: z.array(pinnedAssemblyDefinitionSchema).max(256),
     instances: z.array(assemblyInstanceRecordSchema).max(256),
     joints: z.array(assemblyJointRecordSchema).max(1024),
+    motionStudies: assemblyMotionStudiesSchema.optional(),
   })
   .strict()
   .superRefine((authority, context) => {
     const pure = assemblyCollectionSchema.safeParse({
-      ...authority,
+      schemaVersion: authority.schemaVersion,
+      instances: authority.instances,
+      joints: authority.joints,
       definitions: authority.definitions.map(
         ({
           pinRevision: _revision,
@@ -305,14 +357,12 @@ export const assemblyAuthoritySchema = z
         message: error instanceof Error ? error.message : "The frozen assembly source is invalid.",
       })
     }
-    const ids = [...authority.definitions, ...authority.instances, ...authority.joints].map(
-      ({ id }) => id,
+    validateMotionStudyAuthority(authority.motionStudies, authority.joints, context)
+    validateAssemblyIdentities(
+      [...authority.definitions, ...authority.instances, ...authority.joints],
+      authority.motionStudies,
+      context,
     )
-    if (new Set(ids).size !== ids.length)
-      context.addIssue({
-        code: "custom",
-        message: "Assembly records require distinct stable identities across collections.",
-      })
     if (pure.success && pure.data.schemaVersion === 1 && !solveAssemblyKinematics(pure.data).ok)
       context.addIssue({
         code: "custom",
@@ -500,6 +550,11 @@ const metadata = z
   .strict()
   .refine((change) => change.name !== undefined || change.sourceFrame !== undefined)
 const referenceMutations = [
+  z.object({ kind: z.literal("motion-study.create"), study: assemblyMotionStudySchema }).strict(),
+  z.object({ kind: z.literal("motion-study.update"), study: assemblyMotionStudySchema }).strict(),
+  z
+    .object({ kind: z.literal("motion-study.remove"), studyId: assemblyMotionStudyIdSchema })
+    .strict(),
   z.object({ kind: z.literal("assembly.upgrade") }).strict(),
   z
     .object({
@@ -704,11 +759,40 @@ export function upgradeAssemblyAuthority(assembly: AssemblyAuthority): AssemblyA
     })),
   })
 }
+function isMotionStudyMutation(
+  change: CapturedAssemblyMutation,
+): change is Extract<CapturedAssemblyMutation, { kind: `motion-study.${string}` }> {
+  return change.kind.startsWith("motion-study.")
+}
+function changeMotionStudy(
+  assembly: AssemblyAuthority,
+  change: Extract<CapturedAssemblyMutation, { kind: `motion-study.${string}` }>,
+): AssemblyAuthority {
+  if (change.kind === "motion-study.create" || change.kind === "motion-study.update")
+    return {
+      ...assembly,
+      motionStudies: upsert(
+        assembly.motionStudies ?? [],
+        change.study,
+        change.kind === "motion-study.create",
+      ),
+    }
+  if (change.kind === "motion-study.remove") {
+    if (!assembly.motionStudies?.some(({ id }) => id === change.studyId))
+      throw new Error("The motion study is missing.")
+    return {
+      ...assembly,
+      motionStudies: assembly.motionStudies.filter(({ id }) => id !== change.studyId),
+    }
+  }
+  throw new Error("The motion study operation is unavailable.")
+}
 function changeAssembly(
   current: AssemblyAuthority,
   change: CapturedAssemblyMutation,
 ): AssemblyAuthority {
   if (change.kind === "assembly.upgrade") return upgradeAssemblyAuthority(current)
+  if (isMotionStudyMutation(change)) return changeMotionStudy(current, change)
   if (isDefinitionMutation(change)) return changeDefinition(current, change)
   if (
     change.kind === "instance.create" ||
@@ -726,12 +810,13 @@ function isDefinitionMutation(
 export function applyCapturedAssemblyMutations(
   assembly: AssemblyAuthority,
   input: unknown,
+  options: { allowNoop?: boolean } = {},
 ): AssemblyAuthority {
   const changes = capturedAssemblyMutationsSchema.parse(input)
   let current = assembly
   for (const change of changes) current = changeAssembly(current, change)
   const parsed = assemblyAuthoritySchema.parse(current)
-  if (canonicalJson(parsed) === canonicalJson(assembly))
+  if (!options.allowNoop && canonicalJson(parsed) === canonicalJson(assembly))
     throw new Error("The assembly mutation is a semantic no-op.")
   return parsed
 }

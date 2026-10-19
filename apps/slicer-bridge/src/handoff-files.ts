@@ -1,7 +1,8 @@
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { lstat, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { randomUUID } from "node:crypto"
+import { isError } from "is-what"
 
 const HANDOFF_DIRECTORY_PREFIX = "handoff-"
 const RETAIN_HANDOFF_MS = 12 * 60 * 60 * 1_000
@@ -18,6 +19,36 @@ export type HandoffFileStore = Readonly<{
 
 export function defaultHandoffDirectory() {
   return join(tmpdir(), "vibeshape-slicer-handoff")
+}
+
+async function directoryUsage(directory: string) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  let files = 0
+  let bytes = 0
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const details = await lstat(join(directory, entry.name))
+    if (!details.isFile()) continue
+    files += 1
+    bytes += details.size
+  }
+  return { files, bytes }
+}
+
+export async function getHandoffFileUsage(baseDirectory = defaultHandoffDirectory()) {
+  const entries = await readdir(baseDirectory, { withFileTypes: true }).catch((error: unknown) => {
+    if (isError(error) && Reflect.get(error, "code") === "ENOENT") return []
+    throw error
+  })
+  let files = 0
+  let bytes = 0
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(HANDOFF_DIRECTORY_PREFIX)) continue
+    const usage = await directoryUsage(join(baseDirectory, entry.name))
+    files += usage.files
+    bytes += usage.bytes
+  }
+  return { files, bytes }
 }
 
 export async function cleanupStaleHandoffFiles(
@@ -57,7 +88,7 @@ export function createHandoffFileStore(
         path,
         scheduleCleanup() {
           const timer = setTimeout(() => {
-            void rm(directory, { recursive: true, force: true })
+            void rm(directory, { recursive: true, force: true }).catch(() => undefined)
           }, RETAIN_HANDOFF_MS)
           timer.unref()
         },

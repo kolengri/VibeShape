@@ -15,11 +15,13 @@ import {
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
   extrusionFeatureParametersV7Schema,
+  extrusionFeatureParametersV8Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
@@ -723,5 +725,38 @@ describe("body-bound extrusion end conditions", () => {
       ok: true,
       feature: { parameters: { startOffset: { value: -4 }, draftAngle: { value: Math.PI / 18 } } },
     })
+  })
+})
+
+describe("multi-sketch Extrude version 8", () => {
+  it("round-trips canonical cross-sketch intent while every older schema retains its restriction", () => {
+    const parameters = {
+      profiles: {
+        schemaVersion: 0,
+        profiles: [profile, { ...secondProfile, sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299" }],
+      },
+      distance: createLengthQuantity(8),
+      symmetric: false,
+      reversed: false,
+      secondDistance: null,
+      targetBody: null,
+      startOffset: createLengthQuantity(2),
+      draftAngle: createAngleQuantity(0),
+      operation: "new",
+      endCondition: { kind: "distance" },
+    }
+    expect(extrusionFeatureParametersV6Schema.safeParse(parameters).success).toBe(false)
+    expect(extrusionFeatureParametersV7Schema.safeParse(parameters).success).toBe(false)
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV8.type,
+      parameters: extrusionFeatureParametersV8Schema.parse(parameters),
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(
+      readExtrusionProfileSet(featureRecordSchema.parse(JSON.parse(JSON.stringify(feature)))),
+    ).toEqual<unknown>(parameters.profiles)
+    expect(featureBodyDependencies(feature)).toEqual([])
+    expect(readExtrusionFeatureParameters(extrusion())?.profile).toEqual<unknown>(profile)
   })
 })

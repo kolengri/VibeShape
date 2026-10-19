@@ -6,7 +6,11 @@ import { invokeModelCommand } from "./model-command-support"
 test.setTimeout(60_000)
 
 async function saved(page: Page) {
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
 }
 
 async function rename(page: Page, name: string) {

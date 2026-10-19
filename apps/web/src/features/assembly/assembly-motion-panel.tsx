@@ -12,7 +12,9 @@ import {
   assemblyMotionCoordinates,
   assemblyMotionUnits,
 } from "./assembly-motion"
-import type { AssemblyMotionView } from "./use-assembly-motion"
+import { assemblyMotionFailureKey } from "./assembly-motion-runner"
+import { AssemblyPlaybackSettings } from "./assembly-motion-study-panel"
+import type { AssemblyMotionView, AssemblyPlaybackOptions } from "./use-assembly-motion"
 
 function MotionNumber({
   label,
@@ -55,6 +57,7 @@ type MotionPanelProps = {
   onClose: () => void
 }
 function useMotionInputs(coordinate: AssemblyMotionCoordinate, motion: AssemblyMotionView) {
+  const [playback, setPlayback] = useState<AssemblyPlaybackOptions>({ count: 13, speed: 1 })
   const units = useDocumentDisplayUnits()
   const unit = useMemo(() => assemblyMotionUnits(coordinate, units), [coordinate, units])
   const display = (value: number) => String(unit.display(value))
@@ -85,13 +88,15 @@ function useMotionInputs(coordinate: AssemblyMotionCoordinate, motion: AssemblyM
     editStart: edit(setStart),
     editEnd: edit(setEnd),
     reset,
+    playback,
+    setPlayback,
     preview: () => {
       setValue(value)
       return motion.preview(parse(value))
     },
     play: () => {
       setValue(value)
-      return motion.play(parse(start), parse(end))
+      return motion.play(parse(start), parse(end), playback)
     },
   }
 }
@@ -201,13 +206,8 @@ function MotionStatus({
   input,
 }: Pick<MotionPanelProps, "motion" | "error" | "coordinate"> & { input: MotionInputs }) {
   const t = useTranslations("app.assembly")
-  let failure = error
-  if (!failure && motion.error) {
-    failure =
-      motion.error.kind === "solver"
-        ? t("operationFailed", { reason: motion.error.reason })
-        : t(motion.error.kind === "invalid" ? "motionInvalid" : "saveFailed")
-  }
+  const failureKey = error ? "motionStudySaveFailed" : assemblyMotionFailureKey(motion.error)
+  const failure = failureKey ? t(failureKey) : null
   return (
     <>
       <div
@@ -288,6 +288,11 @@ export function AssemblyMotionPanel({
         disabled={busy || motion.playing || motion.pending}
       />
       <MotionPlayback motion={motion} coordinate={coordinate} input={input} disabled={busy} />
+      <AssemblyPlaybackSettings
+        value={input.playback}
+        onChange={input.setPlayback}
+        disabled={busy || motion.playing || motion.pending}
+      />
       <MotionStatus motion={motion} coordinate={coordinate} input={input} error={error} />
     </form>
   )

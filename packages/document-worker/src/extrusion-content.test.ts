@@ -7,9 +7,11 @@ import {
   createSketchProfileSet,
   datumPlaneFeatureType,
   documentSnapshotSchema,
+  extrusionFeatureParametersV8Schema,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
+  extrusionFeatureTypeV8,
   featureRecordSchema,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
@@ -30,6 +32,7 @@ import {
 } from "@vibeshape/sketch-solver"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { matchValue } from "../../../tests/unit/support/match-value"
+import type { SketchSolvePort } from "./external-sketch-references"
 import { createDocumentFeatureContentPreparer } from "./extrusion-content"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
@@ -374,6 +377,108 @@ function ellipticalArcFixture() {
 }
 
 describe("document extrusion content preparation", () => {
+  it("retains exact local curves and each plane while solving every selected sketch once", async () => {
+    const source = multiCircleFixture()
+    const firstSketch = source.document.sketches[0]
+    if (!firstSketch) throw new Error("Expected the source sketch.")
+    const secondSketch = sketchRecordSchema.parse({
+      ...firstSketch,
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f9999",
+      plane: "yz",
+      label: "Perpendicular sketch",
+    })
+    const originalProfiles = multiProfileExtrusionFeatureParametersSchema.parse(
+      source.feature.parameters,
+    ).profiles.profiles
+    const originalProfile = originalProfiles[0]
+    if (!originalProfile) throw new Error("Expected a selected circle profile.")
+    const selected = createSketchProfileSet([
+      ...originalProfiles,
+      { ...originalProfile, sketchId: secondSketch.id },
+    ])
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      type: extrusionFeatureTypeV8.type,
+      parameters: extrusionFeatureParametersV8Schema.parse({
+        ...source.feature.parameters,
+        profiles: selected,
+        reversed: true,
+        secondDistance: null,
+        startOffset: createLengthQuantity(2),
+        draftAngle: createAngleQuantity(0),
+        targetBody: null,
+        endCondition: { kind: "distance" },
+      }),
+    })
+    const document = documentSnapshotSchema.parse({
+      ...source.document,
+      sketches: [firstSketch, secondSketch],
+      features: [feature],
+    })
+    const solve = vi.fn<SketchSolvePort>(({ sketch }) => ({
+      ok: true,
+      solution: { ...source.solution, sketchId: sketchIdSchema.parse(sketch.id) },
+    }))
+    const prepare = createDocumentFeatureContentPreparer(solve)
+    const result = await prepare({ document, feature })
+    expect(matchValue(result)).toMatchObject({
+      ok: true,
+      parameters: {
+        sketchIds: [firstSketch.id, secondSketch.id],
+        supportFeatureIds: [],
+        reversed: true,
+        startOffset: 2,
+        profiles: [
+          {
+            frame: { normal: [0, 0, 1] },
+            outer: { segments: [{ type: "circle", center: [-8, 0], radius: 5 }] },
+          },
+          {
+            frame: { normal: [0, 0, 1] },
+            outer: { segments: [{ type: "circle", center: [8, 0], radius: 5 }] },
+          },
+          {
+            frame: { normal: [1, 0, 0] },
+            outer: { segments: [{ type: "circle", center: [-8, 0], radius: 5 }] },
+          },
+        ],
+      },
+    })
+    expect(await prepare({ document, feature })).toEqual(result)
+    expect(solve).toHaveBeenCalledTimes(2)
+    const missing = featureRecordSchema.parse({
+      ...feature,
+      parameters: {
+        ...feature.parameters,
+        profiles: createSketchProfileSet(
+          selected.profiles.map((profile) =>
+            profile.sketchId === secondSketch.id
+              ? {
+                  ...profile,
+                  outerBoundaryEntityIds: [
+                    sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003210"),
+                  ],
+                }
+              : profile,
+          ),
+        ),
+      },
+    })
+    await expect(prepare({ document, feature: missing })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "org.vibeshape.feature.sketch-profile-missing" },
+    })
+    await expect(
+      prepare({ document: { ...document, sketches: [firstSketch] }, feature }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "org.vibeshape.feature.sketch-missing",
+        values: { sketchId: secondSketch.id },
+      },
+    })
+  })
+
   it.each([false, true])(
     "materializes both version-5 depths deterministically with reversed=%s",
     async (reversed) => {

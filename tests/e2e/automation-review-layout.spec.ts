@@ -69,7 +69,11 @@ test("long AI reviews keep consent controls visible and details scrollable in sh
 }) => {
   test.setTimeout(120_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const committing = proposeLongReview(page)
@@ -123,7 +127,11 @@ test("long AI reviews keep consent controls visible and details scrollable in sh
   })
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await expect(page.getByText("Untitled project", { exact: true })).toBeVisible()

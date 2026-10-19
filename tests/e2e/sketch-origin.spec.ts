@@ -5,7 +5,11 @@ test("snaps a circle to the origin and keeps its constrained center selectable",
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await page
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Create sketch", exact: true })
@@ -44,9 +48,17 @@ test("snaps a circle to the origin and keeps its constrained center selectable",
   await expect(center).toHaveAttribute("cx", "0")
   await expect(center).toHaveAttribute("cy", "0")
   await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
   await expect(center).toHaveAttribute("cx", "0")
   await expect(center).toHaveAttribute("cy", "0")

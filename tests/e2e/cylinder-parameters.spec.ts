@@ -4,7 +4,11 @@ import { invokeModelCommand } from "./model-command-support"
 test.describe("Cylinder parameters", () => {
   test("creates, edits, renders, and reopens a variable-driven Cylinder", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("radius")
@@ -24,7 +28,11 @@ test.describe("Cylinder parameters", () => {
     await expect(page.getByRole("treeitem", { name: "Cylinder 1" })).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Cylinder 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit cylinder" })

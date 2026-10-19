@@ -111,7 +111,11 @@ test("explains view-aligned depth dragging while preserving exact distance editi
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
@@ -151,7 +155,11 @@ test("drags both extrusion endpoints independently and cancels zoomed depth gest
   test.setTimeout(180_000)
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })

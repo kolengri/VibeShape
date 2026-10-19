@@ -31,7 +31,11 @@ test.describe("datum plane reference geometry", () => {
   test("creates, edits, hides, and uses an offset plane as a sketch support", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Create", "Datum plane")
     const createForm = page.getByRole("form", { name: "Create datum plane" })
@@ -90,7 +94,11 @@ test.describe("datum plane reference geometry", () => {
   test("offsets a reusable plane from a selected planar feature face", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })

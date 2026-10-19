@@ -7,7 +7,7 @@ import type {
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { enableLocalAi, openApplicationMenuItem } from "./application-menu-support"
-import { expect, test } from "./fixtures"
+import { createEditorProject, expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 function success<T>(
@@ -68,7 +68,11 @@ test("retrieves exact geometry and replay-valid editable backup through actor-ow
         destructiveHint: false,
       })
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const before = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const draft = success(
@@ -97,7 +101,11 @@ test("retrieves exact geometry and replay-valid editable backup through actor-ow
     await expect(review).toBeVisible()
     await review.getByRole("button", { name: "Apply", exact: true }).click()
     const committed = success(localToolOutputs.commit_draft.parse(await committing))
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     let backup: Buffer | undefined
     for (const format of ["step", "stl", "3mf", "vshape"] as const) {
       const file =
@@ -133,7 +141,12 @@ test("retrieves exact geometry and replay-valid editable backup through actor-ow
     try {
       const imported = await fresh.newPage()
       await imported.goto(local.origin)
-      await expect(imported.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await createEditorProject(imported)
+      await expect(
+        imported
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await openApplicationMenuItem(imported, "Files and projects…")
       await imported
         .getByRole("dialog", { name: "Projects" })

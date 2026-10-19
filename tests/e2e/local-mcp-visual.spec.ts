@@ -8,7 +8,11 @@ test("keeps the local AI connection controls visible in both themes and a compac
   const local = await createMcpTestClient(43600 + info.parallelIndex)
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     for (const dark of [false, true]) {

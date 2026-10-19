@@ -14,6 +14,11 @@ function fixture(failWrites = false) {
   const writes: { href: string; mode: string }[] = []
   const errors: string[] = []
   const opens: string[] = []
+  const libraries: AbortSignal[] = []
+  let library: NonNullable<Parameters<typeof createProjectNavigation>[0]["library"]> = async () => {
+    active = null
+    return { ok: true }
+  }
   let open: Parameters<typeof createProjectNavigation>[0]["open"] = async (id) => {
     active = id
     navigation.sync(id)
@@ -37,6 +42,10 @@ function fixture(failWrites = false) {
       opens.push(id)
       return open(id, signal)
     },
+    library: (signal) => {
+      libraries.push(signal)
+      return library(signal)
+    },
     failed: (error) => {
       errors.push(error)
     },
@@ -47,6 +56,10 @@ function fixture(failWrites = false) {
     writes,
     errors,
     opens,
+    libraries,
+    setLibrary: (next: typeof library) => {
+      library = next
+    },
     stop,
     href: () => href,
     active: () => active,
@@ -56,9 +69,10 @@ function fixture(failWrites = false) {
     setActive: (id: string) => {
       active = id
     },
-    pop: (id: string) => {
+    pop: (id: string | null) => {
       const url = new URL(href)
-      url.searchParams.set("project", id)
+      if (id === null) url.searchParams.delete("project")
+      else url.searchParams.set("project", id)
       href = url.href
       listener?.()
     },
@@ -101,6 +115,43 @@ describe("local project URLs", () => {
     expect(f.opens).toEqual([second, first])
     expect(f.writes).toEqual([])
     f.stop()
+  })
+
+  it("uses guarded library navigation for bare Back destinations and keeps Forward deep links", async () => {
+    const f = fixture()
+    f.pop(null)
+    await settle()
+    expect(f.active()).toBeNull()
+    expect(f.libraries).toHaveLength(1)
+    expect(readProjectUrl(f.href())).toEqual({ kind: "default" })
+    f.pop(second)
+    await settle()
+    expect(f.active()).toBe(second)
+    expect(f.opens).toEqual([second])
+    expect(f.writes).toEqual([])
+    expect(f.errors).toEqual([])
+    f.stop()
+  })
+  it("restores the active URL when returning to the library is blocked", async () => {
+    const f = fixture()
+    f.setLibrary(async () => ({ ok: false, diagnostic: { code: "project-action-blocked" } }))
+    f.pop(null)
+    await settle()
+    expect(f.active()).toBe(first)
+    expect(new URL(f.href()).searchParams.get("project")).toBe(first)
+    expect(f.errors).toEqual(["project-action-blocked"])
+    f.stop()
+  })
+  it("clears the project URL without losing unrelated URL state and reports write failures", () => {
+    const f = fixture()
+    expect(f.navigation.clear()).toBe(true)
+    expect(f.href()).toBe("https://cad.test/editor?theme=dark#view")
+    expect(f.writes).toEqual([{ href: f.href(), mode: "push" }])
+    f.stop()
+    const failed = fixture(true)
+    expect(failed.navigation.clear()).toBe(false)
+    expect(failed.errors).toEqual(["project-url-unavailable"])
+    failed.stop()
   })
 
   it("reconciles failed and blocked history navigation to the actual active session", async () => {

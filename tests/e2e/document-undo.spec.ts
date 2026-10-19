@@ -10,7 +10,11 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
 }) => {
   test.setTimeout(180_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   const undo = toolbar.getByRole("button", { name: "Undo", exact: true })
   const redo = toolbar.getByRole("button", { name: "Redo", exact: true })
@@ -89,7 +93,11 @@ test("keeps sketch draft undo separate and truncates committed redo after a new 
 }) => {
   test.setTimeout(120_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xy")

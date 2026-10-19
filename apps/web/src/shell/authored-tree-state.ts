@@ -7,6 +7,10 @@ import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-folders"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import type { DocumentControllerState } from "../document/document-controller"
+import {
+  effectivePartVisibility,
+  type PartVisibilityOverrides,
+} from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import type { HistoryViewRow } from "./model-tree-history"
 
@@ -52,9 +56,10 @@ function authoredHistoryRepairKeys(
 export function selectedAuthoredBody(
   parts: readonly ResolvedAuthoredPart[],
   partId: PartId | null,
+  overrides?: PartVisibilityOverrides,
 ): ModelBodySelection | null {
   const resolved = parts.find(({ part }) => part.id === partId)
-  return resolved?.part.visible && resolved.body
+  return resolved && effectivePartVisibility(resolved.part, overrides) && resolved.body
     ? {
         featureId: resolved.body.featureId,
         ...(resolved.body.outputRole === undefined ? {} : { outputRole: resolved.body.outputRole }),
@@ -69,10 +74,16 @@ export function authoredBodyKey(body: {
   return `${body.featureId}:${body.outputRole ?? "result"}`
 }
 
-export function authoredBodyKeys(authority: AuthoredDocumentSnapshot, hiddenOnly = false) {
+export function authoredBodyKeys(
+  authority: AuthoredDocumentSnapshot,
+  hiddenOnly = false,
+  overrides?: PartVisibilityOverrides,
+) {
   return new Set(
     authority.parts.flatMap((part) =>
-      hiddenOnly && part.visible ? [] : part.bodyHistory.map(authoredBodyKey),
+      hiddenOnly && effectivePartVisibility(part, overrides)
+        ? []
+        : part.bodyHistory.map(authoredBodyKey),
     ),
   )
 }

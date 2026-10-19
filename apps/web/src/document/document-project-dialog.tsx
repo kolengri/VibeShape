@@ -1,5 +1,5 @@
 import { VSHAPE_MAX_ARCHIVE_BYTES, VSHAPE_MEDIA_TYPE } from "@vibeshape/formats/vshape"
-import { useFormatter, useTranslations } from "@vibeshape/i18n"
+import { useTranslations } from "@vibeshape/i18n"
 import type { LocalProjectSummary } from "@vibeshape/persistence"
 import { Button } from "@vibeshape/ui/components/button"
 import {
@@ -15,23 +15,30 @@ import {
 import { FolderOpen } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { type DropEvent, type FileRejection, useDropzone } from "react-dropzone"
 import { useDialogOpen } from "../components/use-dialog-open"
+import { ProjectLibrary, type ProjectLibraryState } from "../projects/project-library"
+import { ProjectLibraryPageLayout } from "../projects/project-library-page-layout"
 import {
   activateLocalProject,
   createNewLocalProject,
   type DocumentControllerState,
-  deleteLocalProject,
   duplicateLocalProject,
   exportActiveProjectBackup,
   getProjectActionBlock,
   importProjectBackup,
   listLocalProjects,
+  showProjectLibrary,
 } from "./document-controller"
 import { downloadProjectBackup } from "./document-project-file"
-import { DocumentRenameDialog } from "./document-rename-dialog"
-import { ProjectDeleteAction } from "./project-delete-action"
 import { formatProjectCopyName } from "./versioned-project-file"
 
 type ProjectActivity =
@@ -42,11 +49,6 @@ type ProjectActivity =
   | "duplicating"
   | "opening-file"
   | "switching"
-
-type ProjectLibraryState =
-  | { status: "loading"; projects: readonly LocalProjectSummary[] }
-  | { status: "error"; projects: readonly LocalProjectSummary[] }
-  | { status: "ready"; projects: readonly LocalProjectSummary[] }
 
 type ProjectFeedback = Readonly<{
   key: string
@@ -172,262 +174,6 @@ function resetProjectFileInput(input: HTMLInputElement | undefined) {
   if (input) input.value = ""
 }
 
-function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"]>) {
-  try {
-    if (thumbnail.mediaType === "image/png") {
-      let binary = ""
-      for (let index = 0; index < thumbnail.bytes.length; index += 8_192) {
-        binary += String.fromCharCode(...thumbnail.bytes.subarray(index, index + 8_192))
-      }
-      return `data:image/png;base64,${btoa(binary)}`
-    }
-    const svg = new TextDecoder("utf-8", { fatal: true }).decode(thumbnail.bytes)
-    return `data:${thumbnail.mediaType};charset=utf-8,${encodeURIComponent(svg)}`
-  } catch {
-    return null
-  }
-}
-
-function ProjectPreview({ project }: { project: LocalProjectSummary }) {
-  const t = useTranslations("app.projectFile.library.preview")
-  const source = project.thumbnail ? thumbnailDataUrl(project.thumbnail) : null
-
-  return (
-    <div className="row-span-2 grid h-24 w-36 shrink-0 place-items-center overflow-hidden rounded-sm border bg-viewport-background">
-      {source ? (
-        <img
-          className="size-full object-contain"
-          src={source}
-          alt={t("alt", { name: project.name })}
-        />
-      ) : (
-        <span
-          className="px-4 text-center text-xs text-muted-foreground"
-          role="img"
-          aria-label={t("unavailableLabel", { name: project.name })}
-        >
-          {t("unavailable")}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function LocalProjectList({
-  activeDocumentId,
-  controller,
-  disabled,
-  duplicatingDocumentId,
-  onCreate,
-  onDelete,
-  onDeleted,
-  onDuplicate,
-  onOpen,
-  onPendingDeleteChange,
-  onRenamed,
-  projects,
-  switchingDocumentId,
-}: {
-  activeDocumentId: string | undefined
-  controller: DocumentControllerState
-  disabled: boolean
-  duplicatingDocumentId: string | null
-  onCreate: () => unknown
-  onDelete: (
-    documentId: string,
-    expectedHeadRevision: number,
-  ) => ReturnType<typeof deleteLocalProject>
-  onDeleted: () => Promise<void>
-  onDuplicate: (project: LocalProjectSummary) => unknown
-  onOpen: (documentId: string) => unknown
-  onPendingDeleteChange: (pending: boolean) => void
-  onRenamed: () => void
-  projects: readonly LocalProjectSummary[]
-  switchingDocumentId: string | null
-}) {
-  const t = useTranslations("app.projectFile.library")
-  const formatter = useFormatter()
-
-  return (
-    <section className="grid gap-3" aria-labelledby="local-projects-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="grid gap-1">
-          <h3 id="local-projects-title" className="text-sm font-medium">
-            {t("title")}
-          </h3>
-          <p className="text-xs text-muted-foreground">{t("description")}</p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          disabled={disabled}
-          isLoading={switchingDocumentId === "new"}
-          onClick={onCreate}
-        >
-          {t("newProject")}
-        </Button>
-      </div>
-      {projects.length === 0 ? (
-        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          {t("empty")}
-        </p>
-      ) : (
-        <ul className="grid max-h-64 gap-2 overflow-y-auto pr-1" aria-label={t("listLabel")}>
-          {projects.map((project) => {
-            const isCurrent = project.documentId === activeDocumentId
-            return (
-              <li
-                key={project.documentId}
-                className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border bg-card p-3"
-                aria-current={isCurrent ? "page" : undefined}
-              >
-                <ProjectPreview project={project} />
-                <div className="min-w-0 grid gap-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="truncate text-sm font-medium">{project.name}</h4>
-                    {isCurrent ? (
-                      <span className="rounded-sm bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-secondary-foreground">
-                        {t("current")}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("revision", { revision: project.headRevision })}
-                    {" · "}
-                    {t("updated")}{" "}
-                    <time dateTime={project.updatedAt}>
-                      {formatter.dateTime(new Date(project.updatedAt), "shortTime")}
-                    </time>
-                  </p>
-                  {isCurrent ? (
-                    <p className="text-xs text-muted-foreground">{t("delete.currentBlocked")}</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {isCurrent ? (
-                    <DocumentRenameDialog
-                      controller={controller}
-                      disabled={disabled}
-                      onRenamed={onRenamed}
-                    />
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={disabled || isCurrent}
-                    isLoading={switchingDocumentId === project.documentId}
-                    aria-label={t("openLabel", {
-                      name: project.name,
-                      revision: project.headRevision,
-                    })}
-                    onClick={() => onOpen(project.documentId)}
-                  >
-                    {t("open")}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={disabled}
-                    isLoading={duplicatingDocumentId === project.documentId}
-                    aria-label={t("duplicate.actionLabel", {
-                      name: project.name,
-                      revision: project.headRevision,
-                    })}
-                    onClick={() => onDuplicate(project)}
-                  >
-                    {t("duplicate.action")}
-                  </Button>
-                  <ProjectDeleteAction
-                    disabled={disabled}
-                    isCurrent={isCurrent}
-                    onDelete={onDelete}
-                    onDeleted={onDeleted}
-                    onPendingChange={onPendingDeleteChange}
-                    project={project}
-                  />
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </section>
-  )
-}
-
-function ProjectLibrary({
-  activeDocumentId,
-  controller,
-  disabled,
-  duplicatingDocumentId,
-  library,
-  onCreate,
-  onDeleted,
-  onDuplicate,
-  onOpen,
-  onPendingDeleteChange,
-  onRenamed,
-  onRetry,
-  switchingDocumentId,
-}: {
-  activeDocumentId: string | undefined
-  controller: DocumentControllerState
-  disabled: boolean
-  duplicatingDocumentId: string | null
-  library: ProjectLibraryState
-  onCreate: () => unknown
-  onDeleted: () => Promise<void>
-  onDuplicate: (project: LocalProjectSummary) => unknown
-  onOpen: (documentId: string) => unknown
-  onPendingDeleteChange: (pending: boolean) => void
-  onRenamed: () => void
-  onRetry: () => unknown
-  switchingDocumentId: string | null
-}) {
-  const t = useTranslations("app.projectFile.library")
-
-  if (library.status === "loading") {
-    return (
-      <p className="text-sm text-muted-foreground" role="status">
-        {t("loading")}
-      </p>
-    )
-  }
-
-  if (library.status === "error") {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 p-3">
-        <p className="text-sm text-destructive" role="alert">
-          {t("loadFailed")}
-        </p>
-        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
-          {t("retry")}
-        </Button>
-      </div>
-    )
-  }
-
-  return (
-    <LocalProjectList
-      activeDocumentId={activeDocumentId}
-      controller={controller}
-      disabled={disabled}
-      duplicatingDocumentId={duplicatingDocumentId}
-      onCreate={onCreate}
-      onDelete={deleteLocalProject}
-      onDeleted={onDeleted}
-      onDuplicate={onDuplicate}
-      onOpen={onOpen}
-      onPendingDeleteChange={onPendingDeleteChange}
-      onRenamed={onRenamed}
-      projects={library.projects}
-      switchingDocumentId={switchingDocumentId}
-    />
-  )
-}
-
 function ProjectFileFeedback({
   feedback,
   kind,
@@ -467,37 +213,147 @@ function ProjectGuardFeedback({ blockedReason }: { blockedReason: string | null 
   )
 }
 
+function ProjectLibraryContent({
+  presentation,
+  feedback,
+  blockedReason,
+  backup,
+  openFile,
+  library,
+}: {
+  presentation: "dialog" | "page"
+  feedback: ProjectFeedback | null
+  blockedReason: string | null
+  backup: Pick<ComponentProps<typeof ProjectFileCard>, "disabled" | "loading" | "onAction">
+  openFile: ComponentProps<typeof ProjectFileDropzone>
+  library: ComponentProps<typeof ProjectLibrary>
+}) {
+  const t = useTranslations("app.projectFile")
+  return (
+    <>
+      <ProjectFileFeedback feedback={feedback} kind="status" />
+      <ProjectGuardFeedback blockedReason={blockedReason} />
+      <ProjectFileFeedback feedback={feedback} kind="error" />
+      <div className={presentation === "page" ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
+        {presentation === "dialog" && (
+          <ProjectFileCard
+            {...backup}
+            action={t("backup.action")}
+            description={t("backup.description")}
+            title={t("backup.title")}
+          />
+        )}
+        <ProjectFileDropzone {...openFile} />
+      </div>
+      <ProjectLibrary {...library} />
+    </>
+  )
+}
+
+function ProjectLibraryFrame({
+  controller,
+  children,
+  presentation,
+  feedback,
+  open,
+  onOpenChange,
+  showTrigger,
+  onCloseAutoFocus,
+  busy,
+}: {
+  controller: DocumentControllerState
+  children: ReactNode
+  presentation: "dialog" | "page"
+  feedback: ProjectFeedback | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  showTrigger: boolean
+  onCloseAutoFocus: ((event: Event) => void) | undefined
+  busy: boolean
+}) {
+  const t = useTranslations("app.projectFile")
+  if (presentation === "page") {
+    return (
+      <ProjectLibraryPageLayout
+        controller={controller}
+        title={t("title")}
+        description={t("library.description")}
+      >
+        {children}
+      </ProjectLibraryPageLayout>
+    )
+  }
+
+  return (
+    <>
+      <ProjectFileFeedback feedback={open ? null : feedback} kind="status" compact />
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <ProjectDialogTrigger shown={showTrigger} />
+        <DialogContent
+          className="max-h-[min(90vh,48rem)] max-w-2xl overflow-y-auto"
+          closeLabel={t("closeLabel")}
+          onCloseAutoFocus={onCloseAutoFocus}
+          showCloseButton={!busy}
+        >
+          <DialogHeader>
+            <DialogTitle>{t("title")}</DialogTitle>
+            <DialogDescription>{t("description")}</DialogDescription>
+          </DialogHeader>
+          {children}
+          <div className="h-px bg-border" />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={busy}>
+                {t("close")}
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function useProjectFileTarget(controller: DocumentControllerState, blockedReason: string | null) {
   const latest = useRef({ controller, blockedReason })
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   useEffect(() => {
     latest.current = { controller, blockedReason }
   }, [controller, blockedReason])
   const target = () => {
+    if (latest.current.controller.status === "library") return { kind: "library" } as const
     const snapshot = latest.current.controller.report?.snapshot
     return snapshot ? { documentId: snapshot.id, revision: snapshot.revision } : null
   }
   const stillCurrent = (expected: ReturnType<typeof target>) => {
     const current = target()
-    return (
-      expected &&
-      current &&
-      !latest.current.blockedReason &&
-      !getProjectActionBlock() &&
-      current.documentId === expected.documentId &&
-      current.revision === expected.revision
-    )
+    if (!mounted.current || !expected || !current || latest.current.blockedReason) return false
+    if ("kind" in expected) return "kind" in current
+    if ("kind" in current || getProjectActionBlock()) return false
+    return current.documentId === expected.documentId && current.revision === expected.revision
   }
   return { target, stillCurrent }
 }
 
-function useProjectLibrary(open: boolean) {
+function projectLibraryIsAvailable(status: DocumentControllerState["status"]) {
+  return status === "ready" || status === "library"
+}
+
+function useProjectLibrary(open: boolean, status: DocumentControllerState["status"]) {
   const [library, setLibrary] = useState<ProjectLibraryState>({ status: "loading", projects: [] })
   const listRequestRef = useRef(0)
+  const recoveringRef = useRef(false)
   const loadProjects = useCallback(async () => {
     const request = listRequestRef.current + 1
     listRequestRef.current = request
     setLibrary((current) => ({ status: "loading", projects: current.projects }))
-    const result = await listLocalProjects()
+    const result = await listLocalProjects().catch(() => ({ ok: false as const }))
     if (listRequestRef.current !== request) return
     setLibrary(
       result.ok
@@ -506,10 +362,31 @@ function useProjectLibrary(open: boolean) {
     )
   }, [])
 
+  const retryProjects = async () => {
+    if (recoveringRef.current) return
+    if (status !== "error") return loadProjects()
+    recoveringRef.current = true
+    const request = ++listRequestRef.current
+    setLibrary({ status: "loading", projects: [] })
+    const result = await showProjectLibrary().catch(() => ({ ok: false as const }))
+    recoveringRef.current = false
+    if (request !== listRequestRef.current) return
+    if (!result.ok) {
+      setLibrary({ status: "error", projects: [] })
+      return
+    }
+    await loadProjects()
+  }
+
   useEffect(() => {
-    if (open) void loadProjects()
-  }, [open, loadProjects])
-  return { library, loadProjects }
+    if (!open) return
+    if (projectLibraryIsAvailable(status)) void loadProjects()
+    else setLibrary({ status: status === "error" ? "error" : "loading", projects: [] })
+    return () => {
+      listRequestRef.current += 1
+    }
+  }, [open, status, loadProjects])
+  return { library, loadProjects, retryProjects }
 }
 
 function ProjectDialogTrigger({ shown }: { shown: boolean }) {
@@ -537,6 +414,7 @@ export function DocumentProjectDialog({
   open: controlledOpen,
   onOpenChange,
   onCloseAutoFocus,
+  presentation = "dialog",
 }: {
   controller: DocumentControllerState
   blockedReason?: string | null
@@ -544,6 +422,7 @@ export function DocumentProjectDialog({
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onCloseAutoFocus?: (event: Event) => void
+  presentation?: "dialog" | "page"
 }) {
   const t = useTranslations("app.projectFile")
   const { target, stillCurrent } = useProjectFileTarget(controller, blockedReason)
@@ -551,10 +430,11 @@ export function DocumentProjectDialog({
   const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [activity, setActivity] = useState<ProjectActivity>("idle")
   const [feedback, setFeedback] = useState<ProjectFeedback | null>(null)
-  const { library, loadProjects } = useProjectLibrary(open)
+  const { library, loadProjects, retryProjects } = useProjectLibrary(open, controller.status)
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
-  const disabled = controller.status !== "ready" || blockedReason !== null || activity !== "idle"
+  const available = projectLibraryIsAvailable(controller.status)
+  const disabled = !available || blockedReason !== null || activity !== "idle"
 
   const importAndActivate = async (
     file: File,
@@ -575,7 +455,10 @@ export function DocumentProjectDialog({
       return
     }
     setFeedback({ key: "status.switching", kind: "status" })
-    const activated = await activateLocalProject(imported.documentId, expected)
+    const activated = await activateLocalProject(
+      imported.documentId,
+      "kind" in expected ? undefined : expected,
+    )
     if (!activated.ok) setFeedback({ key: "errors.switchFailed", kind: "error" })
   }
 
@@ -621,7 +504,7 @@ export function DocumentProjectDialog({
 
   const backup = async () => {
     const expected = target()
-    if (!expected || !stillCurrent(expected)) return
+    if (!expected || "kind" in expected || !stillCurrent(expected)) return
     setActivity("backing-up")
     setFeedback({ key: "status.backingUp", kind: "status" })
     try {
@@ -703,71 +586,54 @@ export function DocumentProjectDialog({
     }
   }
 
+  const rejectFiles = (tooLarge: boolean) => {
+    if (disabled || importInProgressRef.current) return
+    setFeedback({ key: tooLarge ? "errors.tooLarge" : "open.invalidFile", kind: "error" })
+  }
+  const changeDeletePending = (pending: boolean) => setActivity(pending ? "deleting" : "idle")
+
+  const content = (
+    <ProjectLibraryContent
+      presentation={presentation}
+      feedback={feedback}
+      blockedReason={blockedReason}
+      backup={{ disabled, loading: activity === "backing-up", onAction: backup }}
+      openFile={{
+        disabled: disabled || importInProgressRef.current,
+        loading: activity === "opening-file",
+        onImport: (files, input) => void importFiles(files, input),
+        onRejected: rejectFiles,
+      }}
+      library={{
+        activeDocumentId: controller.report?.snapshot.id,
+        controller,
+        disabled,
+        duplicatingDocumentId,
+        library,
+        onCreate: createProject,
+        onDeleted: loadProjects,
+        onDuplicate: duplicateProject,
+        onOpen: openProject,
+        onPendingDeleteChange: changeDeletePending,
+        onRenamed: () => void loadProjects(),
+        onRetry: retryProjects,
+        switchingDocumentId,
+        presentation,
+      }}
+    />
+  )
   return (
-    <>
-      <ProjectFileFeedback feedback={open ? null : feedback} kind="status" compact />
-      <Dialog open={open} onOpenChange={changeOpen}>
-        <ProjectDialogTrigger shown={showTrigger} />
-        <DialogContent
-          className="max-h-[min(90vh,48rem)] max-w-2xl overflow-y-auto"
-          closeLabel={t("closeLabel")}
-          onCloseAutoFocus={onCloseAutoFocus}
-          showCloseButton={activity === "idle"}
-        >
-          <DialogHeader>
-            <DialogTitle>{t("title")}</DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
-          </DialogHeader>
-          <ProjectFileFeedback feedback={feedback} kind="status" />
-          <ProjectGuardFeedback blockedReason={blockedReason} />
-          <ProjectFileFeedback feedback={feedback} kind="error" />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ProjectFileCard
-              action={t("backup.action")}
-              description={t("backup.description")}
-              disabled={disabled}
-              loading={activity === "backing-up"}
-              onAction={backup}
-              title={t("backup.title")}
-            />
-            <ProjectFileDropzone
-              disabled={disabled || importInProgressRef.current}
-              loading={activity === "opening-file"}
-              onImport={(files, input) => void importFiles(files, input)}
-              onRejected={(tooLarge) => {
-                if (disabled || importInProgressRef.current) return
-                setFeedback({
-                  key: tooLarge ? "errors.tooLarge" : "open.invalidFile",
-                  kind: "error",
-                })
-              }}
-            />
-          </div>
-          <ProjectLibrary
-            activeDocumentId={controller.report?.snapshot.id}
-            controller={controller}
-            disabled={disabled}
-            duplicatingDocumentId={duplicatingDocumentId}
-            library={library}
-            onCreate={createProject}
-            onDeleted={loadProjects}
-            onDuplicate={duplicateProject}
-            onOpen={openProject}
-            onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
-            onRenamed={() => void loadProjects()}
-            onRetry={loadProjects}
-            switchingDocumentId={switchingDocumentId}
-          />
-          <div className="h-px bg-border" />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={activity !== "idle"}>
-                {t("close")}
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    <ProjectLibraryFrame
+      controller={controller}
+      presentation={presentation}
+      feedback={feedback}
+      open={open}
+      onOpenChange={changeOpen}
+      showTrigger={showTrigger}
+      onCloseAutoFocus={onCloseAutoFocus}
+      busy={activity !== "idle"}
+    >
+      {content}
+    </ProjectLibraryFrame>
   )
 }

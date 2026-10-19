@@ -35,7 +35,11 @@ test("discovers native draft profiles, uses their stable selector and reads the 
       })
     }
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30000,
     })
     await enableLocalAi(page)

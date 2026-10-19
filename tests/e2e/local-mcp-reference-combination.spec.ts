@@ -83,7 +83,11 @@ test("creates, repairs, applies and undoes Datum Plane and body combinations thr
   const local = await createMcpTestClient(45100 + info.parallelIndex)
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const draft = await createDraft(local)
     await draft.stage("create_datum_plane", feature(1, [], plane(-29.5)))
@@ -223,7 +227,11 @@ test("requires browser opt-in before automatically applying an exact Union v2 dr
   const local = await createMcpTestClient(45200 + info.parallelIndex)
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     await openAiConnections(page)
     await openAutoApplySetup(page)

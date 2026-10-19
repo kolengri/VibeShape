@@ -4,7 +4,11 @@ import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 test("rejects invalid Extrude dimensions without changing the saved model", async ({ page }) => {
   test.setTimeout(120_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
@@ -28,7 +32,11 @@ test("rejects invalid Extrude dimensions without changing the saved model", asyn
   await distance.fill("12 mm")
   await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
   await create.click()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const feature = page.getByRole("treeitem", { name: "Extrusion 1", exact: true })
@@ -42,7 +50,11 @@ test("rejects invalid Extrude dimensions without changing the saved model", asyn
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   await edit.getByRole("button", { name: "Cancel", exact: true }).click()
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await feature.click()

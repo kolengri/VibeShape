@@ -663,3 +663,7 @@ Assemblies and mates, engineering drawings, advanced surfacing, simulation, clou
 public third-party execution, and independent headless modeling are outside the first local
 part-modeling/MCP release. They need separate scope and acceptance plans. Completing this plan
 would establish a useful local parametric CAD application with automation, not full Onshape parity.
+
+## MCP SDK maintenance: 2026-10-19
+
+The shared catalog now pins MCP SDK 1.31.0 for local, remote and desktop workspaces. This supersedes the initial server-only 1.30.0 pin above and removes the version range flagged by GHSA-6qxp-vccf-f47h. Existing query, draft, confirmation and transport authority is unchanged. See the current [licensing and advisory record](../licensing.md#mcp-sdk-security-update).

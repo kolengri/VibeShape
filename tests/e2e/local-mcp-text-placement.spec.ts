@@ -21,7 +21,11 @@ test("authors, regenerates and detaches exact sketch text, then places its extru
     (await local.callTool({ name, arguments: arguments_ })).structuredContent?.result
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await enableLocalAi(page)

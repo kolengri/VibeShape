@@ -13,6 +13,7 @@ import {
   extrusionFeatureContentParametersV5Schema,
   extrusionFeatureContentParametersV6Schema,
   extrusionFeatureContentParametersV7Schema,
+  extrusionFeatureContentParametersV8Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   type FdmFeatureContentParameters,
@@ -361,6 +362,8 @@ const EXTRUSION_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#4"
 const EXTRUSION_FEATURE_TYPE_V6_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#6"
+const EXTRUSION_FEATURE_TYPE_V8_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#8"
 const EXTRUSION_FEATURE_TYPE_V7_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#7"
 const EXTRUSION_FEATURE_TYPE_V5_KEY =
@@ -1038,6 +1041,7 @@ type ExtrusionContentParameters = ReturnType<
 type AdvancedExtrusionContentParameters =
   | ReturnType<typeof extrusionFeatureContentParametersV6Schema.parse>
   | ReturnType<typeof extrusionFeatureContentParametersV7Schema.parse>
+  | ReturnType<typeof extrusionFeatureContentParametersV8Schema.parse>
 type ExtrusionExtentContentParameters =
   | ReturnType<typeof extrusionFeatureContentParametersV5Schema.parse>
   | AdvancedExtrusionContentParameters
@@ -1682,19 +1686,22 @@ function extrusionTargetAndSupportSlots(
   parameters: AdvancedExtrusionContentParameters,
   roles: readonly (string | null)[],
 ) {
-  const expected = new Set<number>()
-  if (parameters.operation !== "new") {
-    if (!input.dependencies[0]?.outputRole || roles[0] !== input.dependencies[0].outputRole)
-      return null
-    expected.add(0)
-  }
-  if (parameters.supportFeatureId) {
-    const slot = input.dependencies.findIndex(
-      ({ featureId }) => featureId === parameters.supportFeatureId,
-    )
-    if (slot < 0 || !extrusionSupportRoleIsValid(parameters, roles[slot], slot)) return null
-    expected.add(slot)
-  }
+  const supports =
+    "supportFeatureIds" in parameters
+      ? parameters.supportFeatureIds
+      : parameters.supportFeatureId
+        ? [parameters.supportFeatureId]
+        : []
+  const slots = supports.map((support) =>
+    input.dependencies.findIndex(({ featureId }) => featureId === support),
+  )
+  if (slots.some((slot) => slot < 0 || !extrusionSupportRoleIsValid(parameters, roles[slot], slot)))
+    return null
+  const expected = new Set(slots)
+  if (parameters.operation === "new") return expected
+  if (!input.dependencies[0]?.outputRole || roles[0] !== input.dependencies[0].outputRole)
+    return null
+  expected.add(0)
   return expected
 }
 
@@ -1726,36 +1733,58 @@ function extrusionEndBindingIsValid(
   )
 }
 
+function extrusionV8SupportReferencesAreValid(
+  input: FeatureEvaluationInput,
+  supports: readonly string[],
+) {
+  const slots = supports.map((id) =>
+    input.dependencies.findIndex(({ featureId }) => featureId === id),
+  )
+  if (slots.some((slot) => slot < 0)) return false
+  const references = input.content.feature.references
+  return (
+    references.every(({ inputIndex }) => slots.includes(inputIndex)) &&
+    slots.every((slot) => references.some(({ inputIndex }) => inputIndex === slot))
+  )
+}
+
+function advancedExtrusionContentSchema(version: number) {
+  if (version === 8) return extrusionFeatureContentParametersV8Schema
+  return version === 7
+    ? extrusionFeatureContentParametersV7Schema
+    : extrusionFeatureContentParametersV6Schema
+}
+
+function advancedExtrusionInputsAreValid(
+  input: FeatureEvaluationInput,
+  parameters: AdvancedExtrusionContentParameters,
+) {
+  const referencesValid =
+    "supportFeatureIds" in parameters
+      ? extrusionV8SupportReferencesAreValid(input, parameters.supportFeatureIds)
+      : supportReferencesAreValid(input, parameters.supportFeatureId)
+  return referencesValid && extrusionV6InputsAreValid(input, parameters)
+}
+
 function parseExtrusionExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
-  const parameters = (
-    input.content.feature.type.schemaVersion === 7
-      ? extrusionFeatureContentParametersV7Schema
-      : input.content.feature.type.schemaVersion === 6
-        ? extrusionFeatureContentParametersV6Schema
-        : extrusionFeatureContentParametersV5Schema
-  ).safeParse(input.content.feature.parameters)
-  if (!parameters.success) {
+  const version = input.content.feature.type.schemaVersion
+  const advancedSchema = advancedExtrusionContentSchema(version)
+  const schema = version >= 6 ? advancedSchema : extrusionFeatureContentParametersV5Schema
+  const parameters = schema.safeParse(input.content.feature.parameters)
+  if (!parameters.success)
     return featureFailure(
       "invalid-feature-parameters",
       "Extrusion extent content parameters are invalid.",
     )
-  }
-  if (
-    !("endCondition" in parameters.data
-      ? extrusionV6InputsAreValid(
-          input,
-          (input.content.feature.type.schemaVersion === 7
-            ? extrusionFeatureContentParametersV7Schema
-            : extrusionFeatureContentParametersV6Schema
-          ).parse(parameters.data),
-        )
-      : extrusionInputCardinalityIsValid(input, parameters.data)) ||
-    !supportReferencesAreValid(input, parameters.data.supportFeatureId)
-  ) {
+  const validInputs =
+    version >= 6
+      ? advancedExtrusionInputsAreValid(input, advancedSchema.parse(parameters.data))
+      : extrusionInputCardinalityIsValid(input, parameters.data) &&
+        supportReferencesAreValid(input, parameters.data.supportFeatureId)
+  if (!validInputs)
     return invalidInputCardinality(
-      "Extrusion extent inputs must match the explicit target and sketch support.",
+      "Extrusion extent inputs must match the explicit target and sketch supports.",
     )
-  }
   return { ok: true, feature: { kind: "extent-extrusion", parameters: parameters.data } }
 }
 
@@ -2417,6 +2446,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [EXTRUSION_FEATURE_TYPE_V5_KEY, parseExtrusionExtentFeature],
   [EXTRUSION_FEATURE_TYPE_V6_KEY, parseExtrusionExtentFeature],
   [EXTRUSION_FEATURE_TYPE_V7_KEY, parseExtrusionExtentFeature],
+  [EXTRUSION_FEATURE_TYPE_V8_KEY, parseExtrusionExtentFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
@@ -3649,6 +3679,7 @@ function multiExtrusionRoleParameters(
     | ExtrusionMultiProfileModifyingContentParameters
     | ExtrusionExtentContentParameters,
 ): ExtrusionContentParameters | undefined {
+  if ("sketchIds" in parameters) return undefined
   const [first, ...rest] = parameters.profiles
   if (!first) return undefined
   return {

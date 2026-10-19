@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test"
 import { extrusionFeatureParametersV5Schema } from "../../packages/domain/src/part-design"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
-import { expect, test } from "./fixtures"
+import { createEditorProject, expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -138,7 +138,11 @@ test.describe("native project file", () => {
   test("adds the preview store without replacing version-one browser data", async ({ page }) => {
     await seedVersionOneDatabase(page)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     const migration = await page.evaluate(
       () =>
@@ -169,7 +173,11 @@ test.describe("native project file", () => {
   }) => {
     test.setTimeout(90_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.getByRole("heading", { name: "Variables", exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Add variable" }).click()
@@ -292,7 +300,12 @@ test.describe("native project file", () => {
 
     try {
       await importedPage.goto(new URL(page.url()).origin)
-      await expect(importedPage.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      await createEditorProject(importedPage)
+      await expect(
+        importedPage
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible({
         timeout: 30_000,
       })
       await openApplicationMenuItem(importedPage, "Files and projects…")
@@ -313,8 +326,8 @@ test.describe("native project file", () => {
       await transfer.dispose()
 
       await expect(
-        importedPage.getByText("Calibration bracket imported", { exact: true }),
-      ).toBeVisible()
+        importedPage.getByRole("tab", { name: "Calibration bracket imported", exact: true }),
+      ).toHaveAttribute("aria-selected", "true")
       await expect(importedPage.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible({
         timeout: 30_000,
       })
@@ -344,7 +357,11 @@ test.describe("native project file", () => {
   }) => {
     test.setTimeout(90_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
@@ -368,7 +385,11 @@ test.describe("native project file", () => {
         name: "New project",
       })
       .click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
 
     await openApplicationMenuItem(page, "Files and projects…")
@@ -423,7 +444,11 @@ test.describe("native project file", () => {
 
     expect(projectNavigations).toBe(0)
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByText("Untitled project copy", { exact: true })).toBeVisible()
     await openApplicationMenuItem(page, "Files and projects…")
     await expect(page.getByRole("dialog", { name: "Projects" }).getByRole("listitem")).toHaveCount(
@@ -469,7 +494,9 @@ test("round trips reversed independent V5 extrusion depths through Save and a fr
   test.setTimeout(180_000)
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/")
-  const saved = page.getByText("Saved in this browser", { exact: true })
+  const saved = page
+    .getByRole("status", { name: "Project save status", exact: true })
+    .filter({ hasText: /^Saved$/ })
   await expect(saved).toBeVisible({ timeout: 30_000 })
   const commands = page.getByRole("toolbar", { name: "Model commands" })
   await commands.getByRole("button", { name: "Create sketch", exact: true }).click()

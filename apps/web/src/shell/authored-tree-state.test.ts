@@ -155,4 +155,37 @@ describe("authored tree projection", () => {
     expect(hidden.has(`${advanced.featureId}:profile:1`)).toBe(false)
     expect(hidden.has(`${authority.parts[1]?.bodyHistory[0]?.featureId}:result`)).toBe(false)
   })
+  it("applies per-Part overrides to every binding while retaining another Part from the same producer", () => {
+    const { authority } = fixture()
+    const first = requireAuthoredFixture(authority.parts[0])
+    const second = requireAuthoredFixture(authority.parts[1])
+    const old = requireAuthoredFixture(first.bodyHistory[0])
+    const producer = featureIdSchema.parse(authoredTestId(400))
+    const left = { ...old, featureId: producer, outputRole: "left" }
+    const right = { ...old, featureId: producer, outputRole: "right" }
+    const authored = {
+      ...authority,
+      parts: [
+        { ...first, bodyHistory: [old, left] },
+        { ...second, bodyHistory: [right] },
+      ],
+    }
+    expect([...authoredBodyKeys(authored, true, { [first.id]: false })]).toEqual([
+      `${old.featureId}:result`,
+      `${producer}:left`,
+    ])
+    expect(authoredBodyKeys(authored, true, { [first.id]: false }).has(`${producer}:right`)).toBe(
+      false,
+    )
+    const resolved = {
+      part: { ...first, visible: false },
+      body: authoredTestBody({ ...first, bodyHistory: [left] }),
+      status: "available" as const,
+    }
+    expect(selectedAuthoredBody([resolved], first.id, { [first.id]: true })).toEqual({
+      featureId: producer,
+      outputRole: "left",
+    })
+    expect(selectedAuthoredBody([resolved], first.id, { [first.id]: false })).toBeNull()
+  })
 })

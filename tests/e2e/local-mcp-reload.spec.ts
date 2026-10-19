@@ -2,7 +2,7 @@ import { test as recoveryTest } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
-import { expect, test } from "./fixtures"
+import { createEditorProject, expect, test } from "./fixtures"
 
 test("restores local MCP and auto-apply after reload and respects Stop AI", async ({
   page,
@@ -11,7 +11,11 @@ test("restores local MCP and auto-apply after reload and respects Stop AI", asyn
   const local = await createMcpTestClient(43280 + info.workerIndex)
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await enableLocalAi(page)
@@ -35,7 +39,11 @@ test("restores local MCP and auto-apply after reload and respects Stop AI", asyn
     expect(after.value.summary.revision).toBe(before.value.summary.revision)
     await page.getByRole("button", { name: "Stop AI", exact: true }).click()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     const stopped = await openAiConnections(page)
@@ -65,12 +73,13 @@ test("remembers local AI access and approval mode across a fresh browser session
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
+    const projectUrl = page.url()
     const storageState = await page.context().storageState({ indexedDB: true })
     await page.close()
     const freshContext = await browser.newContext({ storageState })
     try {
       const fresh = await freshContext.newPage()
-      await fresh.goto(local.origin)
+      await fresh.goto(projectUrl)
       await expect(fresh.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
       expect(
         (await local.callTool({ name: "model_info", arguments: {} })).structuredContent?.result,
@@ -111,6 +120,7 @@ recoveryTest(
     page.on("pageerror", (error) => pageErrors.push(error.message))
     try {
       await page.goto(local.origin)
+      await createEditorProject(page)
       await enableLocalAi(page)
       await openAutoApplySetup(page)
       await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()

@@ -3,6 +3,7 @@ import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain"
 import { createAngleQuantity, createLengthQuantity } from "@vibeshape/domain/units"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import { createLocalCadCommand } from "./local-cad-command"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -105,6 +106,45 @@ describe("local CAD commands", () => {
       )
     },
   )
+
+  it("routes cross-sketch Extrude through v8 while retaining all stable selectors", () => {
+    const parameters = {
+      profiles: { schemaVersion: 0, profiles: [profile, { ...profile, sketchId: id(9) }] },
+      distance: createLengthQuantity(8),
+      symmetric: false,
+      reversed: false,
+      secondDistance: null,
+      targetBody: null,
+      startOffset: createLengthQuantity(0),
+      draftAngle: createAngleQuantity(0),
+      operation: "new",
+      endCondition: { kind: "distance" },
+    }
+    const operation = localOperationSchema.parse({
+      tool: "create_extrude",
+      arguments: {
+        draftId: id(5),
+        baseRevision: 7,
+        commandId: id(6),
+        featureId: id(7),
+        dependencies: [],
+        references: [],
+        suppressed: false,
+        parameters,
+      },
+    })
+    if (operation.tool !== "create_extrude") throw new Error("Expected an Extrude operation.")
+    const request = createLocalCadCommand(
+      operation,
+      commandActorSchema.parse({ type: "mcp", clientId: "org.example.client", sessionId: id(3) }),
+      id(4),
+    )
+    const parsed = parseDocumentCommand(request.command)
+    if (!parsed.ok || !("feature" in parsed.command.payload))
+      throw new Error("Expected a feature command.")
+    expect(parsed.command.payload.feature.type.schemaVersion).toBe(8)
+    expect(parsed.command.payload.feature.parameters).toEqual<unknown>(parameters)
+  })
 
   it("rejects malformed sketch references and invalid solid parameters at the tool boundary", () => {
     expect(

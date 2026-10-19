@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   assemblyAuthoritySchema,
+  assemblyMotionStudySchema,
   captureAssemblyDefinition,
   emptyAssemblyAuthority,
   projectAssemblyAuthority,
@@ -221,6 +222,77 @@ function populated() {
   )
   return { ...f, added }
 }
+describe("persisted assembly motion study commands", () => {
+  it("saves study intent separately from the current pose and restores exact authority through Undo and replay", () => {
+    const f = populated(),
+      baseline = f.added.snapshot
+    const study = assemblyMotionStudySchema.parse({
+      schemaVersion: 1,
+      id: id(200),
+      name: "Hinge study",
+      duration: 2,
+      tracks: [
+        {
+          id: id(201),
+          jointId: id(70),
+          coordinate: "angle",
+          keys: [
+            { time: 0, value: -1 },
+            { time: 2, value: 1 },
+          ],
+        },
+      ],
+    })
+    const saved = value(mutate(baseline, [{ kind: "motion-study.create", study }]))
+    expect(saved.snapshot.assembly.joints).toEqual(baseline.assembly.joints)
+    expect(saved.snapshot.assembly.motionStudies).toEqual([study])
+    expect(value(reduceDocumentV4Event(baseline, saved.event)).snapshot).toEqual(saved.snapshot)
+    expect(
+      mutate(saved.snapshot, [
+        { kind: "joint.update", joint: { ...joint("revolute"), limits: { min: -0.5, max: 1 } } },
+      ]).ok,
+    ).toBe(false)
+    expect(mutate(saved.snapshot, [{ kind: "motion-study.create", study }]).ok).toBe(false)
+    const undo = {
+      ...envelope(saved.snapshot.revision),
+      schemaVersion: 4,
+      type: "org.vibeshape.document.restored",
+      transactionId: null,
+      revision: saved.snapshot.revision + 1,
+      direction: "undo",
+      targetRevision: baseline.revision,
+    }
+    const undone = value(reduceDocumentV4Event(saved.snapshot, undo, baseline)).snapshot
+    expect(undone.assembly).toEqual(baseline.assembly)
+    expect(Object.hasOwn(undone.assembly, "motionStudies")).toBe(false)
+    const redo = {
+      ...envelope(undone.revision),
+      schemaVersion: 4,
+      type: "org.vibeshape.document.restored",
+      transactionId: null,
+      revision: undone.revision + 1,
+      direction: "redo",
+      targetRevision: saved.snapshot.revision,
+    }
+    const restored = value(reduceDocumentV4Event(undone, redo, saved.snapshot)).snapshot
+    const replayed = replayDocumentAuthorityEvents(null, [
+      ...f.events,
+      f.added.event,
+      saved.event,
+      undo,
+      redo,
+    ])
+    expect(replayed.ok).toBe(true)
+    if (replayed.ok) expect(replayed.snapshot).toEqual(restored)
+    expect(
+      mutate(restored, [
+        { kind: "motion-study.remove", studyId: id(200) },
+        { kind: "instance.remove", instanceId: id(61), cascade: true },
+      ]).ok,
+    ).toBe(true)
+  })
+})
+
 function meshImport(snapshot: DocumentSnapshotV4, featureId = 4, nodeKey = "3mf.node.1") {
   const outputId = asset.outputs[0]
   if (!outputId) throw new Error("Expected captured mesh output.")

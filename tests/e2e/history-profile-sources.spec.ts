@@ -9,7 +9,11 @@ test("previews a hidden source region and opens its sketch from History", async 
   test.setTimeout(90_000)
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xy")
@@ -152,7 +156,11 @@ test("autosaves an unsaved sketch and preserves local undo when reactivating the
 }) => {
   test.setTimeout(120_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page, "xy")

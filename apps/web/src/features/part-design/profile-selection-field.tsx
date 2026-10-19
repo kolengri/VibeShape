@@ -35,28 +35,26 @@ export function ProfileSelectionField({
     >
       <legend className="sr-only">{copy.label}</legend>
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
-          {copy.label}
-        </span>
+        {onSelectionRequest ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-auto min-w-0 justify-start px-0 text-xs font-medium text-muted-foreground"
+            aria-label={copy.select}
+            aria-pressed={selectionActive}
+            disabled={disabled}
+            onClick={onSelectionRequest}
+          >
+            <Scan className="size-3.5" aria-hidden="true" />
+            <span className="truncate">{copy.label}</span>
+          </Button>
+        ) : (
+          <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
+            {copy.label}
+          </span>
+        )}
         <div className="flex shrink-0 items-center gap-1">
-          {onSelectionRequest ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant={selectionActive ? "secondary" : "ghost"}
-                  aria-label={copy.select}
-                  aria-pressed={selectionActive}
-                  disabled={disabled}
-                  onClick={onSelectionRequest}
-                >
-                  <Scan className="size-3.5" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{copy.select}</TooltipContent>
-            </Tooltip>
-          ) : null}
           {showClear ? (
             <Tooltip>
               <TooltipTrigger asChild>

@@ -17,6 +17,12 @@ import {
   AssemblyMotionTask,
   useAssemblyMotionSession,
 } from "./assembly-motion-session"
+import {
+  AssemblyMotionStudyActions,
+  AssemblyMotionStudyPanel,
+  type AssemblyMotionStudySession,
+  useAssemblyMotionStudySession,
+} from "./assembly-motion-study-panel"
 import { AssemblyRemoveDialog } from "./assembly-remove-dialog"
 import { AssemblyTree } from "./assembly-tree"
 import { AssemblyViewport } from "./assembly-viewport"
@@ -247,6 +253,7 @@ function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
         ))}
       </div>
       <GeneralMateStatus view={view} />
+      <AssemblyMotionStudyActions view={view} />
       <AssemblyExportDialog
         key={view.documentKey}
         instances={view.assembly.instances}
@@ -271,13 +278,23 @@ function AssemblyPanelContent({
   view,
   selectedPartId,
   motion,
+  study,
 }: {
   view: AssemblyWorkspaceView
   selectedPartId: string | null
   motion: AssemblyMotionSession
+  study: AssemblyMotionStudySession
 }) {
   const t = useTranslations("app.assembly")
   const task = view.task
+  if (view.studyTask)
+    return (
+      <AssemblyMotionStudyPanel
+        key={`${view.documentKey}:${view.panelKey}`}
+        view={view}
+        session={study}
+      />
+    )
   if (view.motion) return <AssemblyMotionTask view={view} motion={motion} />
   if (!task) return <AssemblyActions view={view} />
   const Form = taskForms[task.kind]
@@ -327,10 +344,12 @@ function AssemblyPanel({
   view,
   selectedPartId,
   motion,
+  study,
 }: {
   view: AssemblyWorkspaceView
   selectedPartId: string | null
   motion: AssemblyMotionSession
+  study: AssemblyMotionStudySession
 }) {
   const t = useTranslations("app.assembly")
   return (
@@ -344,7 +363,12 @@ function AssemblyPanel({
         aria-label={t("taskPanel")}
       >
         {view.idle && <IdleAssemblyPanelHeading error={view.mutations.error} />}
-        <AssemblyPanelContent view={view} selectedPartId={selectedPartId} motion={motion} />
+        <AssemblyPanelContent
+          view={view}
+          selectedPartId={selectedPartId}
+          motion={motion}
+          study={study}
+        />
         <AssemblyInspectionStatus view={view} />
       </section>
     </ResponsiveTaskPanel>
@@ -359,6 +383,8 @@ export function AssemblyWorkspace({
 }) {
   const view = useAssemblyWorkspace(controller)
   const motion = useAssemblyMotionSession(view)
+  const study = useAssemblyMotionStudySession(view)
+  const preview = study.motion.inspection ?? motion.state.inspection
   return (
     <>
       <WorkspacePanels
@@ -375,15 +401,22 @@ export function AssemblyWorkspace({
             motionDisabled={view.taskActionsDisabled}
           />
         }
-        taskPanel={<AssemblyPanel view={view} selectedPartId={selectedPartId} motion={motion} />}
+        taskPanel={
+          <AssemblyPanel
+            view={view}
+            selectedPartId={selectedPartId}
+            motion={motion}
+            study={study}
+          />
+        }
       >
         <AssemblyViewport
-          inspection={motion.state.inspection ?? view.inspection.inspection}
+          inspection={preview ?? view.inspection.inspection}
           selectedId={view.selected.activeId}
           onSelect={view.selectInstance}
-          autoFit={!view.motion}
+          autoFit={!view.motionActive}
         />
-        <AssemblyMotionPreviewBadge visible={motion.state.inspection !== null} />
+        <AssemblyMotionPreviewBadge visible={preview !== null} />
       </WorkspacePanels>
       {view.removal && (
         <AssemblyRemoveDialog

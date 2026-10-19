@@ -94,7 +94,11 @@ test("creates and updates a sketch-backed extrusion through real local MCP and b
     (await local.callTool({ name, arguments: args })).structuredContent?.result
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const info = localToolOutputs.model_info.parse(await call("model_info", {}))
     const base = success(info).summary.revision
@@ -299,7 +303,11 @@ test("creates and updates a sketch-backed extrusion through real local MCP and b
       )
       .toBeGreaterThan(updateCommit.revision)
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 30_000,
     })
@@ -318,7 +326,11 @@ test("creates and updates a full revolve through real local MCP", async ({ page 
     (await local.callTool({ name, arguments: args })).structuredContent?.result
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const base = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
       .revision
@@ -436,7 +448,11 @@ test("preserves a manual first depth when MCP changes the independent second dep
     (await local.callTool({ name, arguments: args })).structuredContent?.result
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await enableLocalAi(page)
@@ -546,7 +562,11 @@ test("preserves a manual first depth when MCP changes the independent second dep
     const final = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(featureVolume(final, id(502))).toBeCloseTo(4000, 5)
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page.getByRole("treeitem", { name: "Independent extents", exact: true }).click()

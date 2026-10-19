@@ -113,7 +113,17 @@ Adding `treatment` selects Hole v3 and requires `targetBody`: `{kind:"simple"}`,
 
 Dependencies retain the modifying target first, optional sketch support second, and a distinct end producer last, with duplicate producers listed once. A shared sketch support uses the whole `result` slot; it cannot share a producer slot with a constituent target or endpoint. Dynamic endpoints require `symmetric:false` and `secondDistance:null`. Through-all reaches beyond current support bounds, up-to-body stops at the first uniquely covering body boundary, and up-to-face requires the complete end cap to lie on the selected finite planar face. Unreachable, ambiguous, stale and partially covering endpoints fail closed. V6 remains limited to planar faces.
 
-`create_face_extent_extrude` and `update_face_extent_extrude` author v7 up-to-face only, with the same typed advanced fields and exact target/body dependency rules. Obtain a current finite planar or curved `BodyFaceRef` from `model_body_topology` or `draft_body_topology` and retain its captured support hash. Curved termination requires one complete reachable cap; every new cap face must lie on the selected finite face. Partial patches, neighboring boundaries, an inside start, unreachable extents and stale or ambiguous support fail closed. No implicit surface extension is performed. Explicitly upgrading a legacy feature uses this named update tool and manual browser review; editing a saved v7 feature through it remains v7 when the endpoint becomes planar. Preview downstream geometry before committing. These additive tools are shared by local stdio and paired remote MCP.
+Cross-sketch Extrude uses v8 through the same named tools: supply the complete advanced fields above,
+a canonical selector set, and every selected sketch's actual support reference in canonical selector
+order (deduplicated by full reference identity). List the exact modifying target first, distinct sketch
+support producers next, and a distinct end producer last. Each sketch uses its own plane normal;
+depth, reverse, symmetry and offset apply relative to that normal. Parallel offset and nonparallel
+planes are supported without projecting or sampling profiles. Dynamic endpoints resolve independently
+for every profile and fail the whole feature if any endpoint is unreachable or incomplete. Preview
+bounds, volume and solid count for the complete selection before Apply. Revolve still requires all
+profiles to come from one sketch.
+
+`create_face_extent_extrude` and `update_face_extent_extrude` author v7 up-to-face for one-sketch selections, or v8 for cross-sketch selections, with the same typed advanced fields and exact target/body dependency rules. Obtain a current finite planar or curved `BodyFaceRef` from `model_body_topology` or `draft_body_topology` and retain its captured support hash. Curved termination requires one complete reachable cap; every new cap face must lie on the selected finite face. Partial patches, neighboring boundaries, an inside start, unreachable extents and stale or ambiguous support fail closed. No implicit surface extension is performed. Explicitly upgrading a legacy feature uses this named update tool and manual browser review; editing a saved v7 feature through it remains v7 when the endpoint becomes planar. Preview downstream geometry before committing. These additive tools are shared by local stdio and paired remote MCP.
 
 ## Fillet and Chamfer
 

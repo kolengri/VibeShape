@@ -8,7 +8,11 @@ test("previews and repairs an automation draft through disposable real document 
 }) => {
   test.setTimeout(180_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const result = await page.evaluate(
     async (paths) => {
       const domain: typeof import("../../packages/domain/src/index") = await import(paths.domain)

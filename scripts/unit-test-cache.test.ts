@@ -332,6 +332,43 @@ describe("native unit-test result inputs", () => {
       await parser.close()
     }
   })
+  it("couples the geometry import reader to both its exact bytes and the reviewed WASM-fetch producer", async () => {
+    const root = join(import.meta.dir, "..")
+    const inputs = [
+      "packages/geometry-worker/src/engine.ts",
+      "packages/geometry-worker/src/engine-import-kernel.test.ts",
+    ].map((path) => {
+      const source = readFileSync(join(root, path), "utf8")
+      return { path, source, hash: digest(source) }
+    })
+    const [engine, reader] = inputs
+    if (!engine || !reader) throw new Error("Missing geometry cache producers.")
+    const hashes = new Map(inputs.map((input) => [input.path, input.hash]))
+    const parser = await unitTestParser(root, inputs)
+    try {
+      const parsed = await parser.parse(reader)
+      expect(sourceAnalysis(root, reader, parsed, hashes).unsafe).toBe(false)
+      expect(sourceAnalysis(root, reader, parsed, new Map()).unsafe).toBe(true)
+      expect(
+        sourceAnalysis(
+          root,
+          reader,
+          parsed,
+          new Map(hashes).set(engine.path, digest(`${engine.source}\n// changed producer`)),
+        ).unsafe,
+      ).toBe(true)
+      expect(
+        sourceAnalysis(
+          root,
+          { ...reader, hash: digest(`${reader.source}\n// changed reader`) },
+          parsed,
+          hashes,
+        ).unsafe,
+      ).toBe(true)
+    } finally {
+      await parser.close()
+    }
+  })
   it("parses the actual Vite preload without treating import.meta.url as a mutable local URL reference", async () => {
     const repo = fixture()
     repo.write(

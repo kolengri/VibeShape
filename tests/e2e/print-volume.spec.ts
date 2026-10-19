@@ -7,7 +7,11 @@ test("checks current CAD placement and a rotated print copy against a persistent
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings", exact: true })
   await settings.getByLabel("Bed width X (mm)").fill("30")

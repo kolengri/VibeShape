@@ -13,13 +13,14 @@ import {
 import {
   booleanFeatureParametersSchema,
   type ExtrusionFeatureParametersV6,
-  expectedExtrusionV6DependencyIds,
+  expectedExtrusionV8DependencyIds,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV3Schema,
   extrusionFeatureParametersV4Schema,
   extrusionFeatureParametersV5Schema,
   extrusionFeatureParametersV6Schema,
   extrusionFeatureParametersV7Schema,
+  extrusionFeatureParametersV8Schema,
   revolveFeatureParametersSchema,
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
@@ -112,34 +113,34 @@ const fdm = z
 function extrusionEndpointBody(parameters: ExtrusionFeatureParametersV6) {
   return parameters.endCondition.kind === "distance" ? null : parameters.endCondition.targetBody
 }
-function extrusionBodyDependencies(
-  parameters: ExtrusionFeatureParametersV6,
-  support: z.infer<typeof featureIdSchema> | null,
-) {
-  return expectedExtrusionV6DependencyIds(
-    parameters.targetBody?.featureId ?? null,
-    support,
-    extrusionEndpointBody(parameters)?.featureId ?? null,
-  )
-}
+const multiSketchExtrusionParameters = extrusionFeatureParametersV8Schema.refine(
+  ({ profiles }) => new Set(profiles.profiles.map(({ sketchId }) => sketchId)).size > 1,
+  "Multi-sketch Extrude requires profiles from more than one sketch.",
+)
 const extrude = z
   .object({
     ...feature,
+    dependencies: featureRecordSchema.shape.dependencies.max(66),
+    references: featureRecordSchema.shape.references.max(64),
     parameters: z.union([
       extrusionFeatureParametersSchema,
       extrusionFeatureParametersV3Schema,
       extrusionFeatureParametersV4Schema,
       extrusionFeatureParametersV5Schema,
       extrusionFeatureParametersV6Schema,
+      multiSketchExtrusionParameters,
     ]),
   })
   .strict()
   .superRefine((input, context) => {
     const parameters = input.parameters
     if (!("endCondition" in parameters)) return
-    const support = input.references[0]?.featureId ?? null
     const end = extrusionEndpointBody(parameters)
-    const expected = extrusionBodyDependencies(parameters, support)
+    const expected = expectedExtrusionV8DependencyIds(
+      parameters.targetBody?.featureId ?? null,
+      input.references.map(({ featureId }) => featureId),
+      end?.featureId ?? null,
+    )
     if (
       canonicalJson(expected) !== canonicalJson(input.dependencies) ||
       input.dependencies.includes(input.featureId)
@@ -151,8 +152,10 @@ const extrude = z
           "Extrusion requires its exact target first, optional sketch support, and distinct end support, without self-dependencies.",
       })
     if (
-      [parameters.targetBody, end].some(
-        (body) => body?.featureId === support && body?.outputRole !== "result",
+      input.references.some(({ featureId }) =>
+        [parameters.targetBody, end].some(
+          (body) => body?.featureId === featureId && body?.outputRole !== "result",
+        ),
       )
     )
       context.addIssue({
@@ -161,7 +164,12 @@ const extrude = z
         message: "A sketch support must retain its whole result slot.",
       })
   })
-const faceExtentExtrude = extrude.safeExtend({ parameters: extrusionFeatureParametersV7Schema })
+const faceExtentExtrude = extrude.safeExtend({
+  parameters: z.union([
+    extrusionFeatureParametersV7Schema,
+    multiSketchExtrusionParameters.refine(({ endCondition }) => endCondition.kind === "up-to-face"),
+  ]),
+})
 const revolve = z
   .object({
     ...feature,

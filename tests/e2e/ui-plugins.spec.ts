@@ -73,7 +73,11 @@ test("installs reviewed local UI contributions and runs a real opaque panel unde
     expect(documentResponse?.headers()["cross-origin-resource-policy"]).toBe("same-origin")
     expect(documentResponse?.headers()["access-control-allow-origin"]).toBeUndefined()
   }
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await page.locator("html").evaluate((root) => root.classList.add("dark"))
   // Apply the deployment's restrictive policy before creating the child, including in dev runs.
   if (!productionOrigin)
@@ -166,7 +170,11 @@ test("rejects executable packages and revokes an already open panel after anothe
 }) => {
   if (productionOrigin) await deploymentHeaders(page)
   await page.goto(productionOrigin ?? "/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const dialog = await installExample(page)
   await dialog.getByRole("button", { name: "Calculate print fit", exact: true }).click()
   await expect(

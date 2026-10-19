@@ -6,6 +6,7 @@ import {
   editorCommandIds,
   type ResolvedEditorCommand,
 } from "./editor-command"
+import { hasTextInputTarget } from "./editor-text-input"
 
 const parsedShortcuts = new WeakMap<EditorCommandShortcut, readonly ParsedHotkey[]>()
 const paletteShortcut: EditorCommandShortcut = { key: "k", modifiers: ["mod"] }
@@ -26,16 +27,6 @@ function getParsedShortcuts(shortcut: EditorCommandShortcut) {
   )
   parsedShortcuts.set(shortcut, compiled)
   return compiled
-}
-
-function hasTextInputTarget(target: EventTarget | null) {
-  if (!(target instanceof Element)) return false
-  return (
-    target.matches(
-      "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']",
-    ) ||
-    target.closest("[contenteditable]:not([contenteditable='false']), [role='textbox']") !== null
-  )
 }
 
 function matchesShortcut(event: KeyboardEvent, shortcut: EditorCommandShortcut) {

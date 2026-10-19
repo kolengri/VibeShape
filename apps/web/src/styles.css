@@ -1,12 +1,78 @@
 @import "@vibeshape/ui/globals.css";
 @source "../../../packages/ui/src";
 
+.application-wordmark-print-head {
+  animation: application-wordmark-print 0.75s ease-in-out infinite alternate;
+}
+
+@keyframes application-wordmark-print {
+  from {
+    transform: translateX(-2px);
+  }
+  to {
+    transform: translateX(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .application-wordmark-print-head {
+    animation: none;
+  }
+}
+
 .cad-shell {
+  --application-bar-height: 5rem;
+  --assistant-width: min(420px, calc(100vw - 16px));
   display: grid;
-  grid-template-rows: 2.5rem 2.25rem minmax(0, 1fr) 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--application-bar-height, 2.5rem) 2.25rem minmax(0, 1fr) 1.5rem;
   height: 100svh;
   min-height: 0;
   overflow: hidden;
+}
+
+.cad-shell[data-window-chrome="unified"] {
+  --application-bar-height: 6rem;
+}
+
+@media (min-width: 640px) {
+  .cad-shell {
+    --application-bar-height: 2.5rem;
+  }
+
+  .cad-shell[data-window-chrome="unified"] {
+    --application-bar-height: 56px;
+  }
+}
+
+.assistant-panel {
+  position: fixed;
+  z-index: 30;
+  top: calc(var(--application-bar-height, 2.5rem) + 2.25rem);
+  right: 0;
+  bottom: 1.5rem;
+  width: min(var(--assistant-width), calc(100vw - 16px));
+}
+
+@media (min-width: 64rem) {
+  .cad-shell {
+    /* Preserve the tree, task, viewport and resize-handle minimums while chat is docked. */
+    --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
+  }
+
+  .cad-shell:has(> .assistant-panel) .editor-model-area {
+    margin-right: var(--assistant-width);
+  }
+}
+
+.application-bar[data-unified-chrome] {
+  -webkit-app-region: drag;
+  padding-left: 88px;
+}
+
+.application-bar[data-unified-chrome]
+  :is(button, a, input, textarea, select, [role="tablist"], [role="status"]) {
+  -webkit-app-region: no-drag;
 }
 
 .cad-workspace-grid {

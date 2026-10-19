@@ -18,7 +18,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -59,7 +63,11 @@ test.describe("full sketch editor", () => {
   test("uses an exact elliptical edge from a rebuilt extrusion", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     const taskPanel = page.getByRole("complementary", { name: "Task panel" })
     await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
@@ -107,7 +115,11 @@ test.describe("full sketch editor", () => {
   test("wakes a coplanar circular model edge without activating Use", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Cylinder")
     const createCylinderForm = page.getByRole("form", { name: "Create cylinder" })
@@ -177,7 +189,11 @@ test.describe("full sketch editor", () => {
   test("wakes an offset model-circle center without activating Use", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Cylinder")
     const createCylinderForm = page.getByRole("form", { name: "Create cylinder" })
@@ -243,7 +259,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -292,7 +312,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -361,7 +385,11 @@ test.describe("full sketch editor", () => {
   test("keeps and repairs a model edge across source-feature deletion", async ({ page }) => {
     test.setTimeout(45_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -482,7 +510,11 @@ test.describe("full sketch editor", () => {
     await expect(
       page.getByRole("button", { name: "Open Sketch 1 to repair 1 broken reference" }),
     ).toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.reload()
     const repairSketch = page.getByRole("button", {
       name: "Open Sketch 1 to repair 1 broken reference",
@@ -495,7 +527,11 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(repairSketch).toHaveCount(0)
 
     await page.reload()
@@ -508,7 +544,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -587,7 +627,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -677,7 +721,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const taskPanel = page.getByRole("complementary", { name: "Task panel" })
     await taskPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xy")
@@ -771,7 +819,11 @@ test.describe("full sketch editor", () => {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const taskPanel = page.getByRole("complementary", { name: "Task panel" })
     await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
     await confirmSketchPlane(page, "xz")
@@ -857,7 +909,11 @@ test.describe("full sketch editor", () => {
   test("pierces a stable linear model edge and reopens the associative point", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     await invokeModelCommand(page, "Primitives", "Box")
@@ -907,7 +963,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const taskPanel = page.getByRole("complementary", { name: "Task panel" })
     await taskPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xy")
@@ -971,7 +1031,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -1043,7 +1107,11 @@ test.describe("full sketch editor", () => {
 
   test("chooses one overlapping earlier-sketch line directly in Select", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
@@ -1140,7 +1208,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
@@ -1238,7 +1310,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
@@ -1332,7 +1408,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
@@ -1417,7 +1497,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -1475,7 +1559,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
@@ -1556,7 +1644,11 @@ test.describe("full sketch editor", () => {
 
   test("propagates concentric circles through a projected sketch curve", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const createSketch = page
       .getByRole("toolbar", { name: "Model commands" })
@@ -1638,7 +1730,11 @@ test.describe("full sketch editor", () => {
 
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const taskPanel = page.getByRole("complementary", { name: "Task panel" })
     await taskPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xy")
@@ -1673,7 +1769,11 @@ test.describe("full sketch editor", () => {
 
   test("wakes an earlier circle while placing a point without activating Use", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const taskPanel = page.getByRole("complementary", { name: "Task panel" })
     await taskPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xy")
@@ -1752,7 +1852,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -1781,7 +1885,11 @@ test.describe("full sketch editor", () => {
   test("keeps sketch lifecycle actions compact in the command header", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -1871,7 +1979,11 @@ test.describe("full sketch editor", () => {
   }) => {
     await page.setViewportSize({ width: 512, height: 360 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page
@@ -1939,7 +2051,11 @@ test.describe("full sketch editor", () => {
   test("keeps the expanded sketch panel inside a compact viewport", async ({ page }) => {
     await page.setViewportSize({ width: 720, height: 500 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -1972,7 +2088,11 @@ test.describe("full sketch editor", () => {
 
   test("adds and edits a driving dimension from a selected line", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2037,7 +2157,11 @@ test.describe("full sketch editor", () => {
 
   test("sets and persists exact rectangle dimensions during creation", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2065,7 +2189,11 @@ test.describe("full sketch editor", () => {
     await taskPanel.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
     await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
@@ -2076,7 +2204,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2112,7 +2244,11 @@ test.describe("full sketch editor", () => {
 
   test("persists a reference dimension without driving sketch geometry", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2155,7 +2291,11 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
     await expect(
@@ -2170,7 +2310,11 @@ test.describe("full sketch editor", () => {
 
   test("closes the stale task-panel editor after a canvas dimension edit", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2216,7 +2360,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2282,7 +2430,11 @@ test.describe("full sketch editor", () => {
 
   test("authors every alpha analytical primitive on the canvas", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2326,7 +2478,11 @@ test.describe("full sketch editor", () => {
 
   test("authors a symmetric center rectangle with preview and local history", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2358,7 +2514,11 @@ test.describe("full sketch editor", () => {
 
   test("authors a three-point arc with exact preview and local history", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2389,7 +2549,11 @@ test.describe("full sketch editor", () => {
 
   test("persists the positive-sweep midpoint of an authored arc", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2440,7 +2604,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2476,7 +2644,11 @@ test.describe("full sketch editor", () => {
 
   test("persists an exact point-on-elliptical-arc relation from the canvas", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2528,7 +2700,11 @@ test.describe("full sketch editor", () => {
 
   test("drives both stable axes of a selected ellipse by diameter", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2565,7 +2741,11 @@ test.describe("full sketch editor", () => {
 
   test("persists an exact full-ellipse quadrant from the canvas", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2602,7 +2782,11 @@ test.describe("full sketch editor", () => {
 
   test("persists an exact point-on-ellipse relation from the canvas", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2644,7 +2828,11 @@ test.describe("full sketch editor", () => {
 
   test("constrains a selected point to a selected full ellipse", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2689,7 +2877,11 @@ test.describe("full sketch editor", () => {
 
   test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2722,7 +2914,11 @@ test.describe("full sketch editor", () => {
 
   test("authors both regular polygon variants with an explicit side count", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2769,7 +2965,11 @@ test.describe("full sketch editor", () => {
 
   test("authors aligned rectangle and tangent arc design intent", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2825,7 +3025,11 @@ test.describe("full sketch editor", () => {
 
   test("authors a centered aligned rectangle from its center axis", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2862,7 +3066,11 @@ test.describe("full sketch editor", () => {
 
   test("authors exact straight and centered slots with analytical end caps", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2941,7 +3149,11 @@ test.describe("full sketch editor", () => {
 
   test("offers non-blocking exact length and width for a new straight slot", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -2971,7 +3183,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3030,7 +3246,11 @@ test.describe("full sketch editor", () => {
 
   test("transforms selected sketch geometry with one preview and undo entry", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3093,7 +3313,11 @@ test.describe("full sketch editor", () => {
 
   test("creates a two-direction linear sketch pattern with one undo entry", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3125,7 +3349,11 @@ test.describe("full sketch editor", () => {
 
   test("creates a center-based circular sketch pattern with one undo entry", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3156,7 +3384,11 @@ test.describe("full sketch editor", () => {
 
   test("offsets a connected line loop with one editable signed dimension", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3232,7 +3464,11 @@ test.describe("full sketch editor", () => {
 
   test("trims, splits, and extends lines as atomic sketch edits", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3294,7 +3530,11 @@ test.describe("full sketch editor", () => {
 
   test("preselects and drag-trims multiple curves with one local undo", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3349,7 +3589,11 @@ test.describe("full sketch editor", () => {
 
   test("trims and splits circles and extends arcs with exact solver feedback", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3416,7 +3660,11 @@ test.describe("full sketch editor", () => {
 
   test("trims and splits ellipses and extends elliptical arcs analytically", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3487,7 +3735,11 @@ test.describe("full sketch editor", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -3560,7 +3812,11 @@ test.describe("full sketch editor", () => {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
@@ -3609,7 +3865,11 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Rename variable" }).dblclick()
 
     await expect(page.getByRole("button", { name: "Rename variable" })).toHaveCount(0)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
@@ -3630,7 +3890,11 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Profile: 1,200 mm² · 146 mm perimeter")).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
@@ -3638,7 +3902,11 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
@@ -3663,7 +3931,11 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(

@@ -9,6 +9,7 @@ import type {
 } from "@vibeshape/viewer"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
+import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 
@@ -287,6 +288,7 @@ function renderViewport(
     onChange: (plane: "xy" | "xz" | "yz", visible: boolean) => void
   }>,
   featureHighlight?: Readonly<{
+    partVisibilityOverrides?: PartVisibilityOverrides
     preselectedFeatureId?: string
     selectedFeatureId?: string
     selectedBody?: ModelBodySelection
@@ -387,6 +389,8 @@ function renderViewport(
     nextAxialGizmo: typeof axialGizmo | null = axialGizmo,
     nextAxialGizmoPending = axialGizmoPending,
     nextWorkspaceTask: WorkspaceTask = workspaceTask,
+    nextPartVisibility = featureHighlight?.partVisibilityOverrides,
+    nextFeaturePreview = featurePreview,
   ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
@@ -398,7 +402,8 @@ function renderViewport(
             onSelectionChange={onSelectionChange}
             {...optionalProp("sketchContext", nextSketchContext)}
             {...featureHighlight}
-            {...optionalProp("featurePreview", featurePreview)}
+            partVisibilityOverrides={nextPartVisibility}
+            {...optionalProp("featurePreview", nextFeaturePreview)}
             {...optionalProp("originPlaneSelection", originPlaneSelection)}
             {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
             {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
@@ -420,6 +425,20 @@ function renderViewport(
     createViewport,
     onSelectionChange,
     port,
+    rerenderPartVisibility: (overrides: PartVisibilityOverrides, preview = featurePreview) =>
+      result.rerender(
+        element(
+          controller,
+          sketchContext,
+          sketchProfilePreview,
+          hiddenSketchIds,
+          axialGizmo,
+          axialGizmoPending,
+          workspaceTask,
+          overrides,
+          preview,
+        ),
+      ),
     rerenderWorkspaceTask: (nextTask: WorkspaceTask) =>
       result.rerender(
         element(
@@ -496,6 +515,115 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("filters an active preview and clears picking without changing its authority or draft", async () => {
+    const { authority, snapshot } = authoredTreeFixture()
+    const first = requireAuthoredFixture(authority.parts[0])
+    const firstBinding = requireAuthoredFixture(first.bodyHistory[0])
+    const source = readyController(
+      snapshot.features.map(({ id, dependencies }) => ({ id, dependencies })),
+      snapshot.features.map(({ id }) => ({ featureId: id, geometry: { mesh } })),
+    )
+    if (!source.report) throw new Error("Expected fixture report.")
+    const controller = {
+      ...source,
+      report: { ...source.report, snapshot },
+      authoredSnapshot: authority,
+    }
+    const preview = {
+      status: "ready" as const,
+      kind: "extrusion" as const,
+      meshes: snapshot.features.map(({ id }) => ({
+        featureId: id,
+        appearance: "preview" as const,
+        ...mesh,
+      })),
+    }
+    const selected = { featureId: firstBinding.featureId, faceId: 1, faceOrdinal: 1 }
+    const { port, onSelectionChange, rerenderPartVisibility } = renderViewport(
+      controller,
+      selected,
+      undefined,
+      preview,
+      undefined,
+      { partVisibilityOverrides: { [first.id]: false }, selectedFeatureId: firstBinding.featureId },
+    )
+    await waitFor(() => expect(port.setMeshes).toHaveBeenLastCalledWith(preview.meshes.slice(1)))
+    expect(onSelectionChange).toHaveBeenCalledWith(null)
+    expect(port.setFeatureSelection).toHaveBeenLastCalledWith(null)
+    expect(screen.getByText("Unsaved feature preview")).toBeTruthy()
+    expect(controller.report.snapshot).toBe(snapshot)
+    expect(controller.authoredSnapshot.revision).toBe(authority.revision)
+    expect(preview.meshes).toHaveLength(3)
+    rerenderPartVisibility({ [first.id]: true })
+    await waitFor(() => expect(port.setMeshes).toHaveBeenLastCalledWith(preview.meshes))
+    rerenderPartVisibility({ [first.id]: false }, { status: "idle", meshes: [] })
+    await waitFor(() =>
+      expect(
+        vi.mocked(port.setMeshes).mock.lastCall?.[0].map(({ featureId }) => featureId),
+      ).toEqual(snapshot.features.slice(1).map(({ id }) => id)),
+    )
+  })
+
+  it("hides only the chosen output role from a producer with two authored Parts", () => {
+    const { authority, snapshot } = authoredTreeFixture()
+    const first = requireAuthoredFixture(authority.parts[0])
+    const second = requireAuthoredFixture(authority.parts[1])
+    const feature = requireAuthoredFixture(snapshot.features[0])
+    const old = requireAuthoredFixture(first.bodyHistory[0])
+    const source = readyController(
+      snapshot.features.map(({ id, dependencies }) => ({ id, dependencies })),
+      snapshot.features.map(({ id }) => ({ featureId: id, geometry: { mesh } })),
+    )
+    if (!source.report?.rebuild?.ok) throw new Error("Expected fixture rebuild.")
+    const response = source.report.rebuild.response
+    const parts = [
+      { ...first, bodyHistory: [{ ...old, featureId: feature.id, outputRole: "left" }] },
+      { ...second, bodyHistory: [{ ...old, featureId: feature.id, outputRole: "right" }] },
+    ]
+    const controller = {
+      ...source,
+      authoredSnapshot: { ...authority, parts },
+      report: {
+        ...source.report,
+        snapshot,
+        rebuild: {
+          ok: true as const,
+          response: {
+            ...response,
+            geometry: response.geometry.map((record) =>
+              record.featureId !== feature.id
+                ? record
+                : {
+                    ...record,
+                    geometry: {
+                      ...record.geometry,
+                      bodies: ["left", "right"].map((outputRole) => ({
+                        outputRole,
+                        shape: record.geometry.shape,
+                        mesh: record.geometry.mesh,
+                        topologyCandidates: record.geometry.topologyCandidates,
+                      })),
+                    },
+                  },
+            ),
+          },
+        },
+      },
+    }
+    expect(
+      viewerMeshes(controller, [], [], { [first.id]: false })
+        .filter(({ featureId }) => featureId === feature.id)
+        .map(({ outputRole }) => outputRole),
+    ).toEqual(["right"])
+    expect(
+      viewerMeshes(controller, [], [], { [second.id]: false })
+        .filter(({ featureId }) => featureId === feature.id)
+        .map(({ outputRole }) => outputRole),
+    ).toEqual(["left"])
+    expect(controller.authoredSnapshot.parts[0]?.visible).toBe(true)
+    expect(controller.report.snapshot).toBe(snapshot)
+  })
+
   it("applies authored part visibility without mutating feature visibility or model history", () => {
     const { authority, snapshot } = authoredTreeFixture()
     const first = requireAuthoredFixture(authority.parts[0])
@@ -928,7 +1056,10 @@ describe("GeometryViewport", () => {
     profilePicker.focus()
     expect(document.activeElement).toBe(profilePicker)
     fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
-    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "replace")
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "toggle")
+    expect((profilePicker as HTMLSelectElement).value).toBe("")
+    fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
+    expect(onSelect).toHaveBeenCalledTimes(2)
   })
 
   it("keeps hidden saved profiles reusable while excluding dependency-ineligible sketches", async () => {
@@ -952,7 +1083,7 @@ describe("GeometryViewport", () => {
     expect(screen.queryByRole("option", { name: "Sketch 2 · Profile 1" })).toBeNull()
     const option = screen.getByRole("option", { name: "Sketch 1 · Profile 1" })
     fireEvent.change(picker, { target: { value: option.getAttribute("value") } })
-    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "replace")
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "toggle")
     expect(port.setSketches).toHaveBeenLastCalledWith([])
   })
 
@@ -1563,6 +1694,37 @@ describe("GeometryViewport", () => {
 
     options?.onSelectionChange?.(null)
     expect(onSelectionChange).toHaveBeenCalledWith(null)
+  })
+
+  it("keeps structured Extrude preview diagnostics as a compact status instead of a duplicate alert", () => {
+    renderViewport(readyController([], []), null, undefined, {
+      status: "error",
+      kind: "extrusion",
+      meshes: [],
+      diagnostics: [
+        {
+          entity: { kind: "feature", id: featureIdSchema.parse(boxId) },
+          code: "org.vibeshape.feature.sketch-profile-missing",
+          values: {},
+          action: "inspect-feature",
+        },
+      ],
+    })
+    expect(screen.getByRole("status").textContent).toBe(
+      "Preview unavailable. Open the task panel for details.",
+    )
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("retains a preview failure alert when no structured error details are available", () => {
+    renderViewport(readyController([], []), null, undefined, {
+      status: "error",
+      kind: "extrusion",
+      meshes: [],
+    })
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The unsaved feature could not be previewed. Adjust its parameters or target.",
+    )
   })
 
   it("renders exact unsaved meshes as a distinct preview state", async () => {

@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./native": "./src/native.ts"
   },
   "scripts": {
     "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json"

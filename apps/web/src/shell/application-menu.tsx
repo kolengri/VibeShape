@@ -16,12 +16,14 @@ import {
   Settings,
 } from "@vibeshape/ui/components/icons"
 import { useRef, useState } from "react"
+import { NativeApplicationCommandBridge } from "../desktop/native-editor-commands"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { ImportDialog } from "../features/import/import-dialog"
 import { LibraryDialog } from "../features/library/library-dialog"
 import { PlanarImportDialog } from "../features/planar-import/import-dialog"
+import { ApplicationWordmark } from "./application-wordmark"
 import { ExtensionsDialog } from "./extensions-dialog"
 import { FaqDialog } from "./faq-dialog"
 import { SettingsDialog } from "./settings-dialog"
@@ -75,6 +77,16 @@ export function ApplicationMenu({
   }
   return (
     <>
+      <NativeApplicationCommandBridge
+        exportAvailable={
+          !hideModelExport && controller.status === "ready" && controller.report !== null
+        }
+        onCommand={(command) => {
+          if (command === "shortcuts") {
+            if (trigger.current) onOpenShortcutHelp(trigger.current)
+          } else launchDialog(command)
+        }}
+      />
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -85,7 +97,9 @@ export function ApplicationMenu({
             aria-label={t("trigger")}
             data-application-menu-trigger
           >
-            <strong className="text-sm">VibeShape</strong>
+            <ApplicationWordmark
+              saving={controller.status === "ready" && controller.saveStatus === "saving"}
+            />
             <ChevronDown aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>

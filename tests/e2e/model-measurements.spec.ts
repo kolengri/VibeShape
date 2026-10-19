@@ -19,7 +19,11 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await page.setViewportSize({ width: 1024, height: 900 })
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box" })
   await box.getByRole("combobox", { name: "Width", exact: true }).fill("10 mm")
@@ -83,7 +87,11 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await units.getByRole("button", { name: "Done", exact: true }).click()
   await expect(units).not.toBeVisible()
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await invokeModelCommand(page, "Inspect", "Measure")
   if (await all.isVisible()) await all.click()
   await output.selectOption({ label: "Box 1" })

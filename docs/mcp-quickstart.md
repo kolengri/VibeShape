@@ -2,8 +2,11 @@
 
 VibeShape is a browser CAD editor with opt-in local stdio and development HTTP MCP bridges. External agents use
 named tools; the browser remains the document owner and manual approval is the default.
-There is no embedded chat. The stdio bridge serves the production editor at a stable loopback origin;
-use the same origin to retain browser-local projects.
+The Mac app provides project chat through installed ACP agents and an MCP connection to its open
+editor. See [macOS native integration](desktop-macos.md#ai-connections). Static web chat connects
+directly to a user-provided compatible model API without a VibeShape model server. The standalone
+stdio editor retains its own stable origin and browser-local projects. Bare URLs open the project
+chooser before pairing.
 
 Named tools cover all registered Box, Cylinder, Cone, Sphere, Torus and Pyramid authoring, plus
 owned-draft feature/sketch removal, explicit suppression and project rename. Lifecycle changes

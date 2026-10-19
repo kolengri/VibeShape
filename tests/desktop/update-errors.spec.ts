@@ -1,14 +1,12 @@
 import { createHash } from "node:crypto"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
-import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
-import { _electron, expect, test } from "@playwright/test"
-import { z } from "zod"
+import { join } from "node:path"
+import { expect, test } from "@playwright/test"
 
-const root = resolve(import.meta.dirname, "../..")
-const require = createRequire(join(root, "apps/desktop/package.json"))
-const executablePath = z.string().parse(require("electron"))
+import { createNativeFixture, nativeTestRoot, openNativeEditor } from "./native-fixture"
+
+const root = nativeTestRoot
 
 test("native update failures use catalog copy and keep diagnostics out of dialogs", async () => {
   const directory = await mkdtemp(join(tmpdir(), "vibeshape-native-update-errors-"))
@@ -32,14 +30,14 @@ test("native update failures use catalog copy and keep diagnostics out of dialog
   }
   const bootstrap = `
 const {dialog} = require('electron');
-globalThis.desktopUpdateErrors = {mode: 'network', dialogs: [], apiCalls: 0};
+globalThis.desktopUpdateErrors = {mode: 'network', dialogs: [], apiCalls: 0, downloads: 0};
 dialog.showMessageBox = async options => {
   globalThis.desktopUpdateErrors.dialogs.push(options);
-  return {response: 0, checkboxChecked: false};
+  return {response: options.buttons?.includes('Choose another name…') ? 1 : 0, checkboxChecked: false};
 };
 dialog.showSaveDialog = async () => {
   if (globalThis.desktopUpdateErrors.mode === 'unknown') throw new Error('fixture-secret-token from a native diagnostic');
-  return {canceled: false, filePath: ${JSON.stringify(destination)}};
+  return {canceled: false, filePath: globalThis.desktopUpdateErrors.mode === 'destination' ? ${JSON.stringify(join(directory, "missing-parent/update.dmg"))} : ${JSON.stringify(destination)}};
 };
 globalThis.fetch = async url => {
   const state = globalThis.desktopUpdateErrors;
@@ -50,27 +48,18 @@ globalThis.fetch = async url => {
     if (state.mode === 'response') return new Response('fixture-secret-token invalid JSON');
     return new Response(JSON.stringify(${JSON.stringify([release])}));
   }
+  state.downloads++;
   return new Response(state.mode === 'integrity' ? 'Corrupted image bytes!' : ${JSON.stringify(bytes)});
 };
 require(${JSON.stringify(join(root, "apps/desktop/dist/main.cjs"))});
 `
-  await writeFile(
-    join(directory, "package.json"),
-    JSON.stringify({ name: "native-update-errors", version: "0.1.0", main: "bootstrap.cjs" }),
-  )
-  await writeFile(join(directory, "bootstrap.cjs"), bootstrap)
-  const environment = z
-    .record(z.string(), z.string())
-    .parse({ ...process.env, VIBESHAPE_DESKTOP_EDITOR: join(root, "apps/web/dist") })
-  delete environment.ELECTRON_RUN_AS_NODE
-  const native = await _electron.launch({
-    executablePath,
-    args: [directory, `--user-data-dir=${join(directory, "profile")}`],
-    env: environment,
-  })
+  const fixture = await createNativeFixture({ directory, bootstrap })
+  const native = await fixture.launch()
   try {
-    const page = await native.firstWindow()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const page = await openNativeEditor(native)
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     const receipt = () => native.evaluate(() => Reflect.get(globalThis, "desktopUpdateErrors"))
     const enabled = () =>
       native.evaluate(
@@ -104,13 +93,19 @@ require(${JSON.stringify(join(root, "apps/desktop/dist/main.cjs"))});
           "The update could not be saved. Choose a writable folder and a new file name, then try again.",
       },
       {
+        mode: "destination-exists",
+        detail: "A file or folder already uses this name. Choose another file name for the update.",
+      },
+      {
         mode: "unknown",
         detail: "The update could not be completed. Try Check for Updates again.",
       },
     ]
     for (const [index, scenario] of cases.entries()) {
       await test.step(scenario.mode, async () => {
-        if (scenario.mode === "destination") await writeFile(destination, "Existing user file")
+        if (scenario.mode === "destination-exists")
+          await writeFile(destination, "Existing user file")
+        const before = await receipt()
         await native.evaluate(({ Menu }, mode) => {
           const state = Reflect.get(globalThis, "desktopUpdateErrors")
           state.mode = mode
@@ -122,19 +117,29 @@ require(${JSON.stringify(join(root, "apps/desktop/dist/main.cjs"))});
         await expect.poll(receipt).toMatchObject({
           apiCalls: index + 2,
           dialogs: expect.arrayContaining([
-            {
+            expect.objectContaining({
               type: "error",
               message: "VibeShape could not complete the update",
               detail: scenario.detail,
-            },
+            }),
           ]),
         })
         await expect.poll(enabled).toBe(true)
-        expect(JSON.stringify(await receipt())).not.toContain("fixture-secret-token")
+        const after = await receipt()
+        expect(JSON.stringify(after)).not.toContain("fixture-secret-token")
+        if (scenario.mode === "destination-exists") {
+          expect(after.downloads).toBe(before.downloads)
+          expect(after.dialogs.at(-1).buttons).toEqual(["Choose another name…", "Cancel"])
+          expect(
+            after.dialogs.some(
+              (dialog: { message: string }) => dialog.message === "The update is ready",
+            ),
+          ).toBe(false)
+        }
       })
     }
   } finally {
-    await native.close()
+    await fixture.cleanup()
     await rm(directory, { recursive: true, force: true })
   }
 })
