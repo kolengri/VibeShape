@@ -157,7 +157,7 @@ function Header() {
 function Hero() {
   const t = useTranslations("hero")
   return (
-    <section className="relative overflow-hidden border-b border-border">
+    <section id="overview" className="relative scroll-mt-20 overflow-hidden border-b border-border">
       <div className="mx-auto grid max-w-7xl items-center gap-4 px-6 pb-12 pt-16 md:grid-cols-2 md:pb-20 md:pt-24 lg:px-12">
         <div className="relative z-10">
           <Eyebrow>{t("eyebrow")}</Eyebrow>

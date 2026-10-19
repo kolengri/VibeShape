@@ -151,3 +151,18 @@ test("modified section navigation preserves native new-tab activation", async ({
   await expect(page).toHaveURL(/#features$/)
   await destination.close()
 })
+
+test("the home link returns to the overview when its fragment is already active", async ({
+  page,
+}) => {
+  await page.goto("/#overview")
+  const heading = page.getByRole("heading", { level: 1 })
+  await expect(heading).toBeInViewport()
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await expect(heading).not.toBeInViewport()
+  await page.locator("header").getByRole("link", { name: "VibeShape", exact: true }).focus()
+  await page.keyboard.press("Enter")
+  await expect(page).toHaveURL(/#overview$/)
+  await expect(heading).toBeInViewport()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+})
