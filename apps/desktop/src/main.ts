@@ -1,4 +1,3 @@
-import { mkdirSync } from "node:fs"
 import { join, resolve } from "node:path"
 import {
   app,
@@ -15,6 +14,7 @@ import {
 import { reportDesktopStartupFailure, reportEditorLoadFailure } from "./editor-load-error"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
 import { desktopMessage as t } from "./messages"
+import { initializeDesktopProfile } from "./startup-profile"
 import { createPendingUpdateWork } from "./update-work"
 import {
   type DesktopRelease,
@@ -29,8 +29,6 @@ const profile =
   commandLineProfile || (!app.isPackaged && process.env.VIBESHAPE_DESKTOP_USER_DATA)
     ? resolve(commandLineProfile || process.env.VIBESHAPE_DESKTOP_USER_DATA || "")
     : join(app.getPath("appData"), "VibeShape")
-mkdirSync(profile, { recursive: true })
-app.setPath("userData", profile)
 app.enableSandbox()
 
 let editor: Awaited<ReturnType<typeof startEditorServer>> | undefined
@@ -355,7 +353,13 @@ function restrictSession() {
   })
 }
 
-if (!app.requestSingleInstanceLock()) app.quit()
+const profileReady = initializeDesktopProfile(profile, {
+  packaged: app.isPackaged,
+  setUserDataPath: (path) => app.setPath("userData", path),
+  showErrorBox: dialog.showErrorBox,
+})
+if (!profileReady) app.quit()
+else if (!app.requestSingleInstanceLock()) app.quit()
 else {
   app.on("second-instance", focusEditor)
   app.on("activate", focusEditor)
