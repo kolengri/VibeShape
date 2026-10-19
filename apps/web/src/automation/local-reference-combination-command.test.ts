@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
-import { commandActorSchema, createLengthQuantity, datumPlaneFeatureType } from "@vibeshape/domain"
+import {
+  commandActorSchema,
+  createAngleQuantity,
+  createLengthQuantity,
+  datumPlaneFeatureType,
+} from "@vibeshape/domain"
 import { booleanFeatureType } from "@vibeshape/domain/part-design"
 import {
   compoundFeatureTypeV2,
@@ -55,6 +60,7 @@ const cases = [
         mode: "offset",
         support: { kind: "origin-plane", plane: "xz" },
         offset: createLengthQuantity(-29.5, "mm", "-29.5 mm"),
+        rotation: { axis: "x", angle: createAngleQuantity(-35, "deg", "#tilt") },
       },
     },
   },
@@ -69,6 +75,7 @@ const cases = [
         mode: "offset",
         support: { kind: "feature-face", reference: face },
         offset: createLengthQuantity(2),
+        rotation: { axis: "y", angle: createAngleQuantity(90, "deg") },
       },
     },
   },
@@ -180,6 +187,20 @@ describe("local Datum Plane and body combination draft tools", () => {
         offset: createLengthQuantity(1_000_001),
       },
     },
+    ...[
+      { axis: "z", angle: createAngleQuantity(1) },
+      { axis: "x", angle: createLengthQuantity(1) },
+      { axis: "x", angle: createAngleQuantity(361, "deg") },
+      { axis: "y", angle: createAngleQuantity(-361, "deg") },
+      { axis: "x", angle: createAngleQuantity(0), pivot: [0, 0, 0] },
+    ].map((rotation) => ({
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(0),
+        rotation,
+      },
+    })),
   ])("rejects invalid origin plane intent before dispatch %j", (changes) => {
     expect(
       localOperationSchema.safeParse({

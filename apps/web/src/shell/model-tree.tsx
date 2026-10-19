@@ -75,7 +75,7 @@ import { effectiveHistoryBoundaryIndex, historyInsertionContext } from "./histor
 import { HistoryNavigationControls, HistoryNavigationProvider } from "./history-navigation"
 import { HistoryProfileSources } from "./history-profile-sources"
 import { HistoryTimelineCursor } from "./history-timeline-cursor"
-import { ModelBrowserOrigin } from "./model-browser-origin"
+import { ModelBrowserPlanes } from "./model-browser-planes"
 import {
   modelBrowserChildRow,
   modelBrowserCount,
@@ -941,33 +941,98 @@ function ModelTreeWorkspaceItems({
   activeWorkspace,
   controller,
   onWorkspaceChange,
-  origin,
   t,
-}: Pick<ModelTreeProps, "activeWorkspace" | "controller" | "onWorkspaceChange" | "origin"> & {
+}: Pick<ModelTreeProps, "activeWorkspace" | "controller" | "onWorkspaceChange"> & {
   t: ReturnType<typeof useTranslations>
 }) {
   const workspaceUnavailable = controller.status !== "ready"
   return (
-    <>
-      <ModelTreeRootItem
-        current={activeWorkspace === "variables" ? "page" : undefined}
-        tabIndex={0}
-        targetWorkspace="variables"
-        title={t("items.variables")}
-        disabled={workspaceUnavailable}
-        onWorkspaceChange={onWorkspaceChange}
+    <ModelTreeRootItem
+      current={activeWorkspace === "variables" ? "page" : undefined}
+      tabIndex={0}
+      targetWorkspace="variables"
+      title={t("items.variables")}
+      disabled={workspaceUnavailable}
+      onWorkspaceChange={onWorkspaceChange}
+    />
+  )
+}
+
+function DatumPlaneBrowserItem({
+  feature,
+  busy,
+  rolledBack,
+  ...props
+}: ModelTreeHistoryBranchProps & {
+  feature: FeatureRecord
+  busy: boolean
+  rolledBack: boolean
+}) {
+  const { controller, t, view } = props
+  return (
+    <fieldset
+      data-feature-id={feature.id}
+      disabled={busy || rolledBack}
+      className={cn("min-w-0 pl-6", rolledBack && "opacity-60")}
+    >
+      <legend className="sr-only">{feature.label ?? t("unnamedFeature")}</legend>
+      <FeatureTreeItem
+        active={
+          feature.id === props.activeFeatureId || feature.id === props.selectedResultFeatureId
+        }
+        controller={controller}
+        historyActions={{
+          disabled: historyFeatureDeleteIsUnavailable(props, busy, rolledBack, view),
+          onDeleted: props.onFeatureDeleted,
+          onRemove: props.onFeatureRemove,
+        }}
+        feature={feature}
+        onActivate={props.onFeatureActivate}
+        onFeatureRename={props.onFeatureRename}
+        onPreselectionChange={props.onFeaturePreselectionChange}
+        onSuppressionChange={props.onFeatureSuppressionChange}
+        onVisibilityChange={props.onFeatureVisibilityChange}
+        onSketchRename={props.onSketchRename}
+        unnamedFeature={t("unnamedFeature")}
+        visible={!props.hiddenFeatureIds.includes(feature.id)}
       />
-      {origin ? (
-        <ModelBrowserOrigin {...origin} disabled={workspaceUnavailable || origin.disabled} />
-      ) : (
-        <ModelTreeRootItem
-          targetWorkspace="model"
-          title={t("items.origin")}
-          disabled={workspaceUnavailable}
-          onWorkspaceChange={onWorkspaceChange}
+    </fieldset>
+  )
+}
+
+function ModelTreePlanes(props: ModelTreeHistoryBranchProps) {
+  const { controller, origin, view } = props
+  const originProps = origin ?? {
+    disabled: false,
+    selected: null,
+    visibility: { xy: false, xz: false, yz: false },
+  }
+  const planes = view.rows.filter((row) => row.datum)
+  const busy = controller.status !== "ready" || controller.saveStatus === "saving"
+  const boundary = rollbackHistoryIndex(view, props)
+  const reveal = props.revealRequest
+  return (
+    <ModelBrowserPlanes
+      {...originProps}
+      disabled={busy || originProps.disabled}
+      showOriginPlanes={Boolean(origin)}
+      authoredCount={planes.length}
+      revealSequence={
+        reveal && planes.some((row) => row.ref.id === reveal.featureId)
+          ? reveal.sequence
+          : undefined
+      }
+    >
+      {planes.map((row) => (
+        <DatumPlaneBrowserItem
+          {...props}
+          key={row.ref.id}
+          feature={row.record as FeatureRecord}
+          busy={busy}
+          rolledBack={view.rows.indexOf(row) > boundary}
         />
-      )}
-    </>
+      ))}
+    </ModelBrowserPlanes>
   )
 }
 
@@ -2115,7 +2180,7 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
 }
 
 function visibleTreeItems(tree: HTMLElement) {
-  return [...tree.querySelectorAll<HTMLElement>('[role="treeitem"]:not([disabled])')]
+  return [...tree.querySelectorAll<HTMLElement>('[role="treeitem"]:not([disabled]):not(:disabled)')]
 }
 
 const treeNavigationKeys = new Set([
@@ -2145,10 +2210,15 @@ function firstTreeChild(current: HTMLElement) {
 }
 
 function parentTreeItem(current: HTMLElement) {
-  const parent = current.closest<HTMLElement>("fieldset")?.previousElementSibling
-  return parent?.matches('[role="treeitem"]')
-    ? (parent as HTMLElement)
-    : (parent?.querySelector<HTMLElement>('[role="treeitem"]') ?? undefined)
+  let group = current.closest<HTMLElement>("fieldset")
+  while (group) {
+    const parent = group.previousElementSibling
+    if (parent?.matches('[role="treeitem"][aria-expanded]')) return parent as HTMLElement
+    const disclosure = parent?.querySelector<HTMLElement>('[role="treeitem"][aria-expanded]')
+    if (disclosure) return disclosure
+    group = group.parentElement?.closest<HTMLElement>("fieldset") ?? null
+  }
+  return undefined
 }
 
 function hierarchicalTreeTarget(key: string, current: HTMLElement) {
@@ -2362,6 +2432,7 @@ export function ModelTree(props: ModelTreeProps) {
         onKeyDown={moveTreeFocus}
       >
         <ModelTreeWorkspaceItems {...props} t={t} />
+        <ModelTreePlanes {...props} t={t} view={historyView} />
         <ModelTreeHistoryBranch {...props} t={t} view={historyView} />
       </div>
     </aside>

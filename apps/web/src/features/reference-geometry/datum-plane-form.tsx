@@ -1,6 +1,9 @@
 import {
+  createAngleQuantity,
   datumPlaneFeatureType,
   datumPlaneParametersSchema,
+  evaluateExpression,
+  evaluateVariableDefinitions,
   type FeatureId,
   type FeatureRecord,
   featureRecordSchema,
@@ -9,7 +12,9 @@ import {
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import {
+  defaultAngleExpression,
   defaultLengthExpression,
+  normalizeExpressionWithDisplayUnit,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -23,6 +28,7 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import { VariableExpressionField } from "../variables/variable-expression-field"
 
 type OriginPlane = "xy" | "xz" | "yz"
 
@@ -45,17 +51,30 @@ export type DatumPlaneFormCopy = ParameterPanelCopy &
     planeXz: string
     planeYz: string
     offset: string
+    angle: string
+    angleDescription: string
+    rotationAxis: string
+    rotationAxisX: string
+    rotationAxisY: string
+    rotationDescription: string
     expressionDescription: string
     submit: string
     invalidExpression: string
     invalidDimension: string
     invalidRange: string
+    invalidAngleDimension: string
+    invalidAngleRange: string
     validationSummary: string
     staleRevision: string
     saveFailed: string
   }>
 
-type DatumPlaneFormValues = Readonly<{ originPlane: OriginPlane; offset: string }>
+type DatumPlaneFormValues = Readonly<{
+  originPlane: OriginPlane
+  offset: string
+  angle: string
+  rotationAxis: "x" | "y"
+}>
 
 function parametersFromMode(mode: DatumPlaneFormMode) {
   if (mode.kind === "edit") return datumPlaneParametersSchema.parse(mode.feature.parameters)
@@ -76,15 +95,20 @@ function parametersFromMode(mode: DatumPlaneFormMode) {
 
 function defaultValues(
   mode: DatumPlaneFormMode,
-  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
 ): DatumPlaneFormValues {
   const parameters = parametersFromMode(mode)
   return {
     originPlane: parameters.support.kind === "origin-plane" ? parameters.support.plane : "xy",
     offset:
       mode.kind === "create"
-        ? defaultLengthExpression(10, displayUnit)
+        ? defaultLengthExpression(10, displayUnits.length)
         : quantityExpression(parameters.offset),
+    angle: parameters.rotation
+      ? (parameters.rotation.angle.source.expression ??
+        `${parameters.rotation.angle.source.value} ${parameters.rotation.angle.source.unit}`)
+      : defaultAngleExpression(0, displayUnits.angle),
+    rotationAxis: parameters.rotation?.axis ?? "x",
   }
 }
 
@@ -126,33 +150,56 @@ function datumPlaneRecord(
   })
 }
 
+function parseDatumAngle(
+  raw: string,
+  variables: Parameters<typeof parsePrimitiveLengthExpression>[1],
+  copy: DatumPlaneFormCopy,
+  unit: ReturnType<typeof useDocumentDisplayUnits>["angle"],
+) {
+  const values = evaluateVariableDefinitions(variables)
+  const expression = normalizeExpressionWithDisplayUnit(raw, unit)
+  const evaluated = values.ok ? evaluateExpression(expression, values.valuesByName) : null
+  if (!evaluated?.ok) return { ok: false as const, message: copy.invalidExpression }
+  if (evaluated.value.dimension !== "angle")
+    return { ok: false as const, message: copy.invalidAngleDimension }
+  if (!Number.isFinite(evaluated.value.value) || Math.abs(evaluated.value.value) > Math.PI * 2)
+    return { ok: false as const, message: copy.invalidAngleRange }
+  return {
+    ok: true as const,
+    quantity: createAngleQuantity(evaluated.value.value, "rad", expression),
+  }
+}
+
 function parsedDatumPlaneRecord(
   values: DatumPlaneFormValues,
   mode: DatumPlaneFormMode,
   featureId: FeatureId,
   variables: Parameters<typeof parsePrimitiveLengthExpression>[1],
   copy: DatumPlaneFormCopy,
-  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
 ) {
   const offset = parsePrimitiveLengthExpression(
     values.offset,
     variables,
     copy,
     (quantity) => Math.abs(quantity.value) <= 1_000_000,
-    displayUnit,
+    displayUnits.length,
   )
-  if (!offset.ok) return { ok: false as const, message: offset.message }
+  if (!offset.ok) return { ok: false as const, field: "offset", message: offset.message }
+  const angle = parseDatumAngle(values.angle, variables, copy, displayUnits.angle)
+  if (!angle.ok) return { ok: false as const, field: "angle", message: angle.message }
   const parameters = datumPlaneParametersSchema.parse({
     mode: "offset",
     support: supportFromMode(mode, values.originPlane),
     offset: offset.quantity,
+    rotation: { axis: values.rotationAxis, angle: angle.quantity },
   })
   return { ok: true as const, feature: datumPlaneRecord(mode, featureId, parameters) }
 }
 
 function DatumPlanePreviewSync({
   copy,
-  displayUnit,
+  displayUnits,
   featureId,
   mode,
   onPreviewChange,
@@ -160,14 +207,14 @@ function DatumPlanePreviewSync({
   variables,
 }: Readonly<{
   copy: DatumPlaneFormCopy
-  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>
   featureId: FeatureId
   mode: DatumPlaneFormMode
   onPreviewChange: (feature: FeatureRecord | null) => void
   values: DatumPlaneFormValues
   variables: Parameters<typeof parsePrimitiveLengthExpression>[1]
 }>) {
-  const parsed = parsedDatumPlaneRecord(values, mode, featureId, variables, copy, displayUnit)
+  const parsed = parsedDatumPlaneRecord(values, mode, featureId, variables, copy, displayUnits)
   useDebouncedFeaturePreview({
     onPreviewChange,
     preview: parsed.ok ? parsed.feature : null,
@@ -204,20 +251,13 @@ export function DatumPlaneForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const form = useAppForm({
-    defaultValues: defaultValues(mode, displayUnits.length),
+    defaultValues: defaultValues(mode, displayUnits),
     onSubmit: async ({ value }) => {
-      const parsed = parsedDatumPlaneRecord(
-        value,
-        mode,
-        featureId,
-        variables,
-        copy,
-        displayUnits.length,
-      )
+      const parsed = parsedDatumPlaneRecord(value, mode, featureId, variables, copy, displayUnits)
       if (!parsed.ok) {
-        setIssues({ offset: parsed.message })
+        setIssues({ [parsed.field]: parsed.message })
         setMessage(copy.validationSummary)
-        formElementRef.current?.querySelector<HTMLElement>('[name="offset"]')?.focus()
+        formElementRef.current?.querySelector<HTMLElement>(`[name="${parsed.field}"]`)?.focus()
         return
       }
       setIssues({})
@@ -240,7 +280,7 @@ export function DatumPlaneForm({
           {(values) => (
             <DatumPlanePreviewSync
               copy={copy}
-              displayUnit={displayUnits.length}
+              displayUnits={displayUnits}
               featureId={featureId}
               mode={mode}
               onPreviewChange={onPreviewChange}
@@ -294,6 +334,36 @@ export function DatumPlaneForm({
               label={copy.offset}
               description={copy.expressionDescription}
               error={issues.offset}
+              suggestions={suggestions}
+              onBlur={field.handleBlur}
+              onValueChange={(value) => {
+                clearSubmissionErrors()
+                field.handleChange(value)
+              }}
+            />
+          )}
+        </form.Field>
+        <form.AppField name="rotationAxis">
+          {(field) => (
+            <field.NativeSelectField
+              label={copy.rotationAxis}
+              description={copy.rotationDescription}
+              onValueChange={clearSubmissionErrors}
+            >
+              <option value="x">{copy.rotationAxisX}</option>
+              <option value="y">{copy.rotationAxisY}</option>
+            </field.NativeSelectField>
+          )}
+        </form.AppField>
+        <form.Field name="angle">
+          {(field) => (
+            <VariableExpressionField
+              id="datum-plane-angle"
+              name={field.name}
+              value={field.state.value}
+              label={copy.angle}
+              description={copy.angleDescription}
+              error={issues.angle}
               suggestions={suggestions}
               onBlur={field.handleBlur}
               onValueChange={(value) => {

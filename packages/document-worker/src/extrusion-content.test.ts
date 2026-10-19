@@ -24,6 +24,7 @@ import {
   sketchProfileSelectorSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import { extrusionFeatureContentParametersSchema } from "@vibeshape/protocol"
 import {
   createSketchProfileSelector,
   detectSketchProfiles,
@@ -587,6 +588,64 @@ describe("document extrusion content preparation", () => {
         },
       },
     })
+  })
+
+  it("prepares an extrusion in its angled datum support frame", async () => {
+    const source = fixture()
+    const datumId = "0195b5ac-b220-7a2c-8c33-000000003300"
+    const reference = {
+      schemaVersion: 0,
+      featureId: datumId,
+      kind: "face",
+      semanticRole: "datum.plane",
+      signature: {
+        kind: "face",
+        geometryClass: "PLANE",
+        measure: 1,
+        centroid: [0, 0, 8],
+        bounds: { min: [0, 0, 8], max: [1, 1, 8] },
+        boundaryCount: 4,
+        adjacentGeometryClasses: [],
+      },
+    }
+    const datum = featureRecordSchema.parse({
+      ...source.feature,
+      id: datumId,
+      type: datumPlaneFeatureType.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(8),
+        rotation: { axis: "y", angle: createAngleQuantity(30, "deg") },
+      },
+    })
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      dependencies: [datumId],
+      references: [reference],
+    })
+    const sketch = sketchRecordSchema.parse({
+      ...source.document.sketches[0],
+      support: { kind: "feature-face", reference },
+    })
+    const document = documentSnapshotSchema.parse({
+      ...source.document,
+      sketches: [sketch],
+      features: [datum, feature],
+    })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+    const result = await prepare({ document, feature })
+    if (!result?.ok) throw new Error("Expected extrusion content on an angled support.")
+    const { frame } = extrusionFeatureContentParametersSchema.parse(result.parameters)
+    expect(frame?.origin).toEqual([0, 0, 8])
+    expect(frame?.xAxis[0]).toBeCloseTo(Math.sqrt(3) / 2, 12)
+    expect(frame?.xAxis[2]).toBeCloseTo(-0.5, 12)
+    expect(frame?.yAxis).toEqual([0, 1, 0])
+    expect(frame?.normal[0]).toBeCloseTo(0.5, 12)
+    expect(frame?.normal[2]).toBeCloseTo(Math.sqrt(3) / 2, 12)
   })
 
   it("resolves a stable selector into ordered exact profile geometry", async () => {

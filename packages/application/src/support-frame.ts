@@ -189,6 +189,35 @@ function translatedFrame(frame: SupportFrame, offset: number, reverse = false): 
   })
 }
 
+function rotatedDatumFrame(
+  frame: SupportFrame,
+  rotation: NonNullable<ReturnType<typeof readDatumPlaneFeatureParameters>>["rotation"],
+): SupportFrame {
+  if (!rotation?.angle.value) return frame
+  const cosine = Math.cos(rotation.angle.value)
+  const sine = Math.sin(rotation.angle.value)
+  const combine = (
+    left: Vector3,
+    right: Vector3,
+    leftScale: number,
+    rightScale: number,
+  ): Vector3 => [
+    left[0] * leftScale + right[0] * rightScale,
+    left[1] * leftScale + right[1] * rightScale,
+    left[2] * leftScale + right[2] * rightScale,
+  ]
+  const { xAxis, yAxis, normal } = frame
+  return extrusionFrameSchema.parse({
+    origin: frame.origin,
+    xAxis: rotation.axis === "x" ? xAxis : combine(xAxis, normal, cosine, -sine),
+    yAxis: rotation.axis === "y" ? yAxis : combine(yAxis, normal, cosine, sine),
+    normal:
+      rotation.axis === "x"
+        ? combine(normal, yAxis, cosine, -sine)
+        : combine(normal, xAxis, cosine, sine),
+  })
+}
+
 function boxSupportFrame(feature: FeatureRecord, role: string) {
   const parameters = boxFeatureParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) return null
@@ -307,7 +336,9 @@ export function datumPlaneFrame(
             geometry,
           )
         })()
-  return baseFrame ? translatedFrame(baseFrame, parameters.offset.value) : null
+  return baseFrame
+    ? rotatedDatumFrame(translatedFrame(baseFrame, parameters.offset.value), parameters.rotation)
+    : null
 }
 
 function featureSupportFrame(

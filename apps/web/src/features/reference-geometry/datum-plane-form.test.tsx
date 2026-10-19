@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
+  createAngleQuantity,
+  createLengthQuantity,
+  datumPlaneFeatureType,
   type FeatureRecord,
   featureIdSchema,
   sketchFeatureFaceSupportSchema,
@@ -24,6 +27,12 @@ const supportId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2702")
 const variableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2703")
 const variables = [
   { schemaVersion: 0 as const, id: variableId, name: "planeOffset", expression: "-12 mm" },
+  {
+    schemaVersion: 0 as const,
+    id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2704"),
+    name: "planeTilt",
+    expression: "45 deg",
+  },
 ]
 const copy = {
   title: "Create datum plane",
@@ -36,12 +45,20 @@ const copy = {
   planeXz: "XZ plane",
   planeYz: "YZ plane",
   offset: "Offset",
+  angle: "Angle",
+  angleDescription: "Enter an angle or angle variable.",
+  rotationAxis: "Rotation axis",
+  rotationAxisX: "Support X axis",
+  rotationAxisY: "Support Y axis",
+  rotationDescription: "Rotate around the support-local axis through the offset origin.",
   expressionDescription: "Enter a signed length or #variable.",
   submit: "Create datum plane",
   cancel: "Cancel",
   invalidExpression: "Enter a valid expression.",
   invalidDimension: "Expression must resolve to a length.",
   invalidRange: "Enter a supported offset.",
+  invalidAngleDimension: "Expression must resolve to an angle.",
+  invalidAngleRange: "Enter an angle from -360 to 360 degrees.",
   validationSummary: "Fix the highlighted offset.",
   staleRevision: "The document changed.",
   saveFailed: "The datum plane could not be created.",
@@ -94,6 +111,95 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("DatumPlaneForm", () => {
+  it("creates a variable-driven rotation around the selected support axis", async () => {
+    const user = userEvent.setup()
+    const onSave = renderForm({
+      kind: "create",
+      createFeatureId: () => datumId,
+      featureLabel: "Angled plane",
+    })
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.rotationAxis }), "y")
+    const angle = screen.getByRole("combobox", { name: copy.angle })
+    await user.clear(angle)
+    await user.type(angle, "#planeTilt")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        id: datumId,
+        parameters: expect.objectContaining({
+          rotation: {
+            axis: "y",
+            angle: expect.objectContaining({
+              value: Math.PI / 4,
+              source: expect.objectContaining({ expression: "#planeTilt" }),
+            }),
+          },
+        }),
+      }),
+    )
+  })
+
+  it("restores an angled plane for editing and preserves its feature identity", async () => {
+    const user = userEvent.setup()
+    const onSave = renderForm({
+      kind: "edit",
+      feature: {
+        schemaVersion: 0,
+        id: datumId,
+        type: datumPlaneFeatureType.type,
+        label: "Angled plane",
+        parameters: {
+          mode: "offset",
+          support: { kind: "origin-plane", plane: "xz" },
+          offset: createLengthQuantity(8),
+          rotation: { axis: "y", angle: createAngleQuantity(45, "deg", "#planeTilt") },
+        },
+        dependencies: [],
+        references: [],
+        suppressed: false,
+      },
+    })
+    const angle = screen.getByRole("combobox", { name: copy.angle }) as HTMLInputElement
+    expect(angle.value).toBe("#planeTilt")
+    expect(
+      (screen.getByRole("combobox", { name: copy.rotationAxis }) as HTMLSelectElement).value,
+    ).toBe("y")
+    await user.clear(angle)
+    await user.type(angle, "-90")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        id: datumId,
+        parameters: expect.objectContaining({
+          rotation: { axis: "y", angle: expect.objectContaining({ value: -Math.PI / 2 }) },
+        }),
+      }),
+    )
+  })
+
+  it.each([
+    ["20 mm", copy.invalidAngleDimension],
+    ["361 deg", copy.invalidAngleRange],
+    ["#missing", copy.invalidExpression],
+  ])("blocks invalid angle %s and clears its preview", async (value, error) => {
+    const user = userEvent.setup()
+    const onPreviewChange = vi.fn()
+    const onSave = renderForm(
+      { kind: "create", createFeatureId: () => datumId, featureLabel: "Plane" },
+      onPreviewChange,
+    )
+    const angle = screen.getByRole("combobox", { name: copy.angle })
+    await user.clear(angle)
+    await user.type(angle, value)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByText(error)).toBeTruthy()
+    expect(document.activeElement).toBe(angle)
+    await waitFor(() => expect(onPreviewChange).toHaveBeenLastCalledWith(null))
+  })
+
   it("creates a variable-driven signed offset from a selected origin plane", async () => {
     const user = userEvent.setup()
     const onSave = renderForm({
