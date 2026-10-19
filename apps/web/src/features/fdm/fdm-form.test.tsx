@@ -121,3 +121,18 @@ it("limits wall extension to Web and clears the incompatible setting when choosi
       .checked,
   ).toBe(false)
 })
+
+it("pairs all twelve FDM tool choices with distinct decorative artwork", async () => {
+  setup()
+  fireEvent.keyDown(screen.getByRole("combobox", { name: messages.app.fdm.kind }), { key: "Enter" })
+  const options = await screen.findAllByRole("option")
+  expect(options).toHaveLength(12)
+  const ids = options.map((option) =>
+    option.querySelector("svg[data-icon]")?.getAttribute("data-icon"),
+  )
+  expect(new Set(ids).size).toBe(12)
+  expect(ids).toContain("fdm-insert-pocket")
+  expect(ids).toContain("fdm-membrane")
+  for (const option of options)
+    expect(option.querySelector("svg[data-icon]")?.getAttribute("aria-hidden")).toBe("true")
+})

@@ -1,0 +1,822 @@
+[
+  {
+    "id": "box",
+    "label": "Box",
+    "legacy": ["PrimitiveBoxIcon", "Box"]
+  },
+  {
+    "id": "extrude",
+    "label": "Extrude",
+    "legacy": ["ExtrudeIcon"]
+  },
+  {
+    "id": "fillet",
+    "label": "Fillet",
+    "legacy": ["FilletIcon"]
+  },
+  {
+    "id": "chamfer",
+    "label": "Chamfer",
+    "legacy": ["ChamferIcon"]
+  },
+  {
+    "id": "circle",
+    "label": "Circle",
+    "legacy": ["SketchCircleIcon", "Circle"]
+  },
+  {
+    "id": "constraint-parallel",
+    "label": "Parallel",
+    "legacy": ["ConstraintParallelIcon"]
+  },
+  {
+    "id": "files",
+    "label": "Projects",
+    "legacy": ["FolderOpen"]
+  },
+  {
+    "id": "settings",
+    "label": "Settings",
+    "legacy": ["Settings"]
+  },
+  {
+    "id": "cylinder",
+    "label": "Cylinder",
+    "legacy": ["CylinderIcon"]
+  },
+  {
+    "id": "sphere",
+    "label": "Sphere",
+    "legacy": ["SphereIcon"]
+  },
+  {
+    "id": "cone",
+    "label": "Cone",
+    "legacy": ["ConeIcon"]
+  },
+  {
+    "id": "pyramid",
+    "label": "Pyramid",
+    "legacy": ["PrimitivePyramidIcon", "Pyramid"]
+  },
+  {
+    "id": "torus",
+    "label": "Torus",
+    "legacy": ["TorusIcon"]
+  },
+  {
+    "id": "revolve",
+    "label": "Revolve",
+    "legacy": ["RevolveIcon"]
+  },
+  {
+    "id": "loft",
+    "label": "Loft",
+    "legacy": ["LoftIcon"]
+  },
+  {
+    "id": "sweep",
+    "label": "Sweep",
+    "legacy": ["SweepIcon"]
+  },
+  {
+    "id": "hole",
+    "label": "Hole",
+    "legacy": ["HoleIcon"]
+  },
+  {
+    "id": "shell",
+    "label": "Shell",
+    "legacy": ["ShellIcon"]
+  },
+  {
+    "id": "thread",
+    "label": "Thread",
+    "legacy": ["ThreadIcon"]
+  },
+  {
+    "id": "compound",
+    "label": "Compound",
+    "legacy": ["CompoundIcon"]
+  },
+  {
+    "id": "union",
+    "label": "Union",
+    "legacy": ["UnionIcon", "Combine"]
+  },
+  {
+    "id": "subtract",
+    "label": "Subtract",
+    "legacy": ["SubtractIcon"]
+  },
+  {
+    "id": "intersection",
+    "label": "Intersection",
+    "legacy": ["IntersectionIcon"]
+  },
+  {
+    "id": "split-body",
+    "label": "Split body",
+    "legacy": ["SplitBodyIcon"]
+  },
+  {
+    "id": "mirror",
+    "label": "Mirror",
+    "legacy": ["MirrorIcon", "FlipHorizontal2"]
+  },
+  {
+    "id": "linear-pattern",
+    "label": "Linear pattern",
+    "legacy": ["LinearPatternIcon"]
+  },
+  {
+    "id": "circular-pattern",
+    "label": "Circular pattern",
+    "legacy": ["CircularPatternIcon"]
+  },
+  {
+    "id": "surface-texture",
+    "label": "Surface texture",
+    "legacy": ["SurfaceTextureIcon"]
+  },
+  {
+    "id": "lightweighting",
+    "label": "Lightweighting",
+    "legacy": ["LightweightingIcon"]
+  },
+  {
+    "id": "quick-lightweighting",
+    "label": "Quick lightweighting",
+    "legacy": ["QuickLightweightingIcon"]
+  },
+  {
+    "id": "generative-design",
+    "label": "Generative design",
+    "legacy": []
+  },
+  {
+    "id": "datum-plane",
+    "label": "Datum plane",
+    "legacy": ["DatumPlaneIcon"]
+  },
+  {
+    "id": "transform",
+    "label": "Transform / placement",
+    "legacy": ["Move"]
+  },
+  {
+    "id": "sketch",
+    "label": "Create sketch",
+    "legacy": ["SketchIcon"]
+  },
+  {
+    "id": "point",
+    "label": "Point",
+    "legacy": ["PointIcon"]
+  },
+  {
+    "id": "line",
+    "label": "Line",
+    "legacy": ["SketchLineIcon", "Slash"]
+  },
+  {
+    "id": "midpoint-line",
+    "label": "Midpoint line",
+    "legacy": ["MidpointLineIcon"]
+  },
+  {
+    "id": "rectangle",
+    "label": "Rectangle",
+    "legacy": ["SketchRectangleIcon", "RectangleHorizontal", "Square"]
+  },
+  {
+    "id": "center-rectangle",
+    "label": "Center rectangle",
+    "legacy": ["CenterRectangleIcon"]
+  },
+  {
+    "id": "aligned-rectangle",
+    "label": "Aligned rectangle",
+    "legacy": ["AlignedRectangleIcon"]
+  },
+  {
+    "id": "centered-aligned-rectangle",
+    "label": "Centered aligned rectangle",
+    "legacy": ["CenteredAlignedRectangleIcon"]
+  },
+  {
+    "id": "ellipse",
+    "label": "Ellipse",
+    "legacy": ["EllipseIcon"]
+  },
+  {
+    "id": "three-point-circle",
+    "label": "Three-point circle",
+    "legacy": ["ThreePointCircleIcon"]
+  },
+  {
+    "id": "arc",
+    "label": "Center arc",
+    "legacy": ["CenterArcIcon"]
+  },
+  {
+    "id": "three-point-arc",
+    "label": "Three-point arc",
+    "legacy": ["ThreePointArcIcon"]
+  },
+  {
+    "id": "tangent-arc",
+    "label": "Tangent arc",
+    "legacy": ["TangentArcIcon"]
+  },
+  {
+    "id": "elliptical-arc",
+    "label": "Elliptical arc",
+    "legacy": ["EllipticalArcIcon"]
+  },
+  {
+    "id": "spline",
+    "label": "Spline",
+    "legacy": ["SketchSplineIcon", "Spline"]
+  },
+  {
+    "id": "inscribed-polygon",
+    "label": "Inscribed polygon",
+    "legacy": ["InscribedPolygonIcon"]
+  },
+  {
+    "id": "circumscribed-polygon",
+    "label": "Circumscribed polygon",
+    "legacy": ["CircumscribedPolygonIcon"]
+  },
+  {
+    "id": "slot",
+    "label": "Slot",
+    "legacy": ["SlotIcon"]
+  },
+  {
+    "id": "centered-slot",
+    "label": "Centered slot",
+    "legacy": ["CenteredSlotIcon"]
+  },
+  {
+    "id": "slot-around-line",
+    "label": "Slot around line",
+    "legacy": ["SlotAroundLineIcon"]
+  },
+  {
+    "id": "text",
+    "label": "Text",
+    "legacy": ["Type"]
+  },
+  {
+    "id": "dimension",
+    "label": "Dimension",
+    "legacy": ["DimensionIcon"]
+  },
+  {
+    "id": "trim",
+    "label": "Trim",
+    "legacy": ["Scissors"]
+  },
+  {
+    "id": "extend",
+    "label": "Extend",
+    "legacy": ["ExtendIcon"]
+  },
+  {
+    "id": "offset",
+    "label": "Offset",
+    "legacy": ["OffsetIcon"]
+  },
+  {
+    "id": "split",
+    "label": "Split sketch entity",
+    "legacy": ["SketchSplitIcon"]
+  },
+  {
+    "id": "construction",
+    "label": "Construction geometry",
+    "legacy": ["SketchConstructionIcon", "Construction", "CircleDashed"]
+  },
+  {
+    "id": "use-external-geometry",
+    "label": "Use external geometry",
+    "legacy": []
+  },
+  {
+    "id": "intersection-curve",
+    "label": "Intersection curve",
+    "legacy": []
+  },
+  {
+    "id": "pierce",
+    "label": "Pierce",
+    "legacy": ["PierceIcon"]
+  },
+  {
+    "id": "constraint-coincident",
+    "label": "Coincident",
+    "legacy": ["ConstraintCoincidentIcon"]
+  },
+  {
+    "id": "constraint-horizontal",
+    "label": "Horizontal",
+    "legacy": ["ConstraintHorizontalIcon"]
+  },
+  {
+    "id": "constraint-vertical",
+    "label": "Vertical",
+    "legacy": ["ConstraintVerticalIcon"]
+  },
+  {
+    "id": "constraint-perpendicular",
+    "label": "Perpendicular",
+    "legacy": ["ConstraintPerpendicularIcon"]
+  },
+  {
+    "id": "constraint-equal",
+    "label": "Equal",
+    "legacy": ["ConstraintEqualIcon"]
+  },
+  {
+    "id": "constraint-tangent",
+    "label": "Tangent",
+    "legacy": ["ConstraintTangentIcon"]
+  },
+  {
+    "id": "constraint-concentric",
+    "label": "Concentric",
+    "legacy": ["ConstraintConcentricIcon"]
+  },
+  {
+    "id": "constraint-midpoint",
+    "label": "Midpoint",
+    "legacy": ["ConstraintMidpointIcon"]
+  },
+  {
+    "id": "constraint-symmetric",
+    "label": "Symmetric",
+    "legacy": ["ConstraintSymmetricIcon"]
+  },
+  {
+    "id": "constraint-fixed",
+    "label": "Fixed / ground",
+    "legacy": ["ConstraintFixedIcon"]
+  },
+  {
+    "id": "constraint-point-on-line",
+    "label": "Point on line",
+    "legacy": ["ConstraintPointOnLineIcon"]
+  },
+  {
+    "id": "constraint-point-on-curve",
+    "label": "Point on curve",
+    "legacy": ["ConstraintPointOnCurveIcon"]
+  },
+  {
+    "id": "assembly-instance",
+    "label": "Insert component",
+    "legacy": ["AssemblyInstanceIcon"]
+  },
+  {
+    "id": "assembly-joint",
+    "label": "Joint",
+    "legacy": ["AssemblyJointIcon"]
+  },
+  {
+    "id": "rigid-group",
+    "label": "Rigid group",
+    "legacy": ["RigidGroupIcon"]
+  },
+  {
+    "id": "motion-study",
+    "label": "Motion study",
+    "legacy": ["MotionStudyIcon"]
+  },
+  {
+    "id": "link",
+    "label": "Link / mate",
+    "legacy": ["Link2"]
+  },
+  {
+    "id": "measure",
+    "label": "Measure",
+    "legacy": ["Ruler"]
+  },
+  {
+    "id": "section-view",
+    "label": "Section view",
+    "legacy": ["SectionViewIcon"]
+  },
+  {
+    "id": "print",
+    "label": "Prepare for printing",
+    "legacy": []
+  },
+  {
+    "id": "model",
+    "label": "Model workspace",
+    "legacy": ["Cuboid"]
+  },
+  {
+    "id": "orbit-view",
+    "label": "Orbit view",
+    "legacy": ["RotateCw"]
+  },
+  {
+    "id": "normal-view",
+    "label": "Normal to sketch",
+    "legacy": ["NormalViewIcon"]
+  },
+  {
+    "id": "final-context",
+    "label": "Final result context",
+    "legacy": ["FinalResultIcon"]
+  },
+  {
+    "id": "sketch-visibility",
+    "label": "Show sketches",
+    "legacy": ["Eye"]
+  },
+  {
+    "id": "hide",
+    "label": "Hide",
+    "legacy": ["EyeOff"]
+  },
+  {
+    "id": "fit-view",
+    "label": "Fit view",
+    "legacy": ["Scan"]
+  },
+  {
+    "id": "box-select",
+    "label": "Box select",
+    "legacy": ["BoxSelect"]
+  },
+  {
+    "id": "select",
+    "label": "Select",
+    "legacy": ["MousePointer2"]
+  },
+  {
+    "id": "layers",
+    "label": "Objects / history",
+    "legacy": ["Layers3"]
+  },
+  {
+    "id": "grid",
+    "label": "Grid / library view",
+    "legacy": ["Grid2X2"]
+  },
+  {
+    "id": "layout",
+    "label": "Workspace layout",
+    "legacy": ["PanelsTopLeft"]
+  },
+  {
+    "id": "panel-left-open",
+    "label": "Show browser",
+    "legacy": ["PanelLeftOpen"]
+  },
+  {
+    "id": "panel-left-close",
+    "label": "Hide browser",
+    "legacy": ["PanelLeftClose"]
+  },
+  {
+    "id": "panel-bottom-open",
+    "label": "Show history",
+    "legacy": ["PanelBottomOpen"]
+  },
+  {
+    "id": "panel-bottom-close",
+    "label": "Hide history",
+    "legacy": ["PanelBottomClose"]
+  },
+  {
+    "id": "filter",
+    "label": "Filter",
+    "legacy": ["ListFilter"]
+  },
+  {
+    "id": "new-project",
+    "label": "New project / folder",
+    "legacy": ["FolderPlus"]
+  },
+  {
+    "id": "backup",
+    "label": "Save editable backup",
+    "legacy": []
+  },
+  {
+    "id": "export",
+    "label": "Export model",
+    "legacy": ["Download"]
+  },
+  {
+    "id": "import-geometry",
+    "label": "Import geometry",
+    "legacy": []
+  },
+  {
+    "id": "import-sketch",
+    "label": "Import sketch",
+    "legacy": []
+  },
+  {
+    "id": "library",
+    "label": "Local library",
+    "legacy": []
+  },
+  {
+    "id": "extensions",
+    "label": "Extensions",
+    "legacy": []
+  },
+  {
+    "id": "command",
+    "label": "Command palette",
+    "legacy": ["CommandIcon"]
+  },
+  {
+    "id": "keyboard",
+    "label": "Keyboard shortcuts",
+    "legacy": ["Keyboard"]
+  },
+  {
+    "id": "help",
+    "label": "Help / FAQ",
+    "legacy": ["CircleHelp"]
+  },
+  {
+    "id": "undo",
+    "label": "Undo",
+    "legacy": ["Undo2"]
+  },
+  {
+    "id": "redo",
+    "label": "Redo",
+    "legacy": ["Redo2"]
+  },
+  {
+    "id": "rename",
+    "label": "Rename / edit",
+    "legacy": ["Pencil", "PenLine"]
+  },
+  {
+    "id": "copy",
+    "label": "Copy",
+    "legacy": ["Copy"]
+  },
+  {
+    "id": "duplicate",
+    "label": "Duplicate",
+    "legacy": ["CopyPlus"]
+  },
+  {
+    "id": "delete",
+    "label": "Delete",
+    "legacy": ["Trash2"]
+  },
+  {
+    "id": "accept",
+    "label": "Accept / apply",
+    "legacy": ["Check"]
+  },
+  {
+    "id": "cancel",
+    "label": "Cancel",
+    "legacy": ["X"]
+  },
+  {
+    "id": "add",
+    "label": "Add",
+    "legacy": []
+  },
+  {
+    "id": "remove",
+    "label": "Remove",
+    "legacy": ["Minus"]
+  },
+  {
+    "id": "warning",
+    "label": "Warning",
+    "legacy": []
+  },
+  {
+    "id": "error",
+    "label": "Error / conflict",
+    "legacy": ["CircleAlert"]
+  },
+  {
+    "id": "play",
+    "label": "Play",
+    "legacy": ["CirclePlay"]
+  },
+  {
+    "id": "pause",
+    "label": "Pause",
+    "legacy": ["CirclePause"]
+  },
+  {
+    "id": "step-back",
+    "label": "Previous step",
+    "legacy": ["StepBack"]
+  },
+  {
+    "id": "step-forward",
+    "label": "Next step",
+    "legacy": ["StepForward"]
+  },
+  {
+    "id": "skip-back",
+    "label": "First step",
+    "legacy": ["SkipBack"]
+  },
+  {
+    "id": "skip-forward",
+    "label": "Last step",
+    "legacy": ["SkipForward"]
+  },
+  {
+    "id": "favorite",
+    "label": "Favorite",
+    "legacy": ["Star"]
+  },
+  {
+    "id": "assistant",
+    "label": "New assistant conversation",
+    "legacy": ["MessageSquarePlus"]
+  },
+  {
+    "id": "send",
+    "label": "Send",
+    "legacy": ["Send"]
+  },
+  {
+    "id": "more",
+    "label": "More actions",
+    "legacy": ["Ellipsis"]
+  },
+  {
+    "id": "chevron-down",
+    "label": "Expand menu",
+    "legacy": ["ChevronDown"]
+  },
+  {
+    "id": "arrow-up",
+    "label": "Move up",
+    "legacy": ["ArrowUp"]
+  },
+  {
+    "id": "arrow-down",
+    "label": "Move down",
+    "legacy": ["ArrowDown"]
+  },
+  {
+    "id": "open-external",
+    "label": "Open externally",
+    "legacy": ["ArrowUpRight"]
+  },
+  {
+    "id": "drag-handle",
+    "label": "Reorder",
+    "legacy": ["GripVertical"]
+  },
+  {
+    "id": "bolt",
+    "label": "Fastener / quick action",
+    "legacy": ["Bolt"]
+  },
+  {
+    "id": "compass",
+    "label": "Sketch tools",
+    "legacy": ["DraftingCompass"]
+  },
+  {
+    "id": "split-generic",
+    "label": "Split / separate",
+    "legacy": ["Split"]
+  },
+  {
+    "id": "sketch-fillet",
+    "label": "Sketch fillet",
+    "legacy": []
+  },
+  {
+    "id": "sketch-chamfer",
+    "label": "Sketch chamfer",
+    "legacy": []
+  },
+  {
+    "id": "sketch-transform",
+    "label": "Transform sketch",
+    "legacy": []
+  },
+  {
+    "id": "navigate-view",
+    "label": "Navigate sketch",
+    "legacy": []
+  },
+  {
+    "id": "fdm-tools",
+    "label": "FDM features",
+    "legacy": []
+  },
+  {
+    "id": "fdm-web",
+    "label": "Web / rib",
+    "legacy": []
+  },
+  {
+    "id": "fdm-corner-relief",
+    "label": "Corner relief",
+    "legacy": []
+  },
+  {
+    "id": "fdm-seam-groove",
+    "label": "Seam groove",
+    "legacy": []
+  },
+  {
+    "id": "fdm-teardrop-hole",
+    "label": "Teardrop hole",
+    "legacy": []
+  },
+  {
+    "id": "fdm-hex-seat",
+    "label": "Hex seat",
+    "legacy": []
+  },
+  {
+    "id": "fdm-crush-ribs",
+    "label": "Crush ribs",
+    "legacy": []
+  },
+  {
+    "id": "fdm-flexible-sleeve",
+    "label": "Flexible sleeve",
+    "legacy": []
+  },
+  {
+    "id": "fdm-nut-pocket",
+    "label": "Nut pocket",
+    "legacy": []
+  },
+  {
+    "id": "fdm-insert-pocket",
+    "label": "Insert pocket",
+    "legacy": []
+  },
+  {
+    "id": "fdm-enclosure-joint",
+    "label": "Enclosure joint",
+    "legacy": []
+  },
+  {
+    "id": "fdm-membrane",
+    "label": "Membrane / bridges",
+    "legacy": []
+  },
+  {
+    "id": "fdm-calibration-coupon",
+    "label": "Calibration coupon",
+    "legacy": []
+  },
+  {
+    "id": "file-text",
+    "label": "Text attachment",
+    "legacy": ["FileText"]
+  },
+  {
+    "id": "image",
+    "label": "Image attachment",
+    "legacy": ["Image"]
+  },
+  {
+    "id": "attach",
+    "label": "Attach file",
+    "legacy": ["Paperclip"]
+  },
+  {
+    "id": "search",
+    "label": "Search",
+    "legacy": []
+  },
+  {
+    "id": "loading",
+    "label": "Loading",
+    "legacy": []
+  },
+  {
+    "id": "indicator-check",
+    "label": "Selected",
+    "legacy": []
+  },
+  {
+    "id": "stop",
+    "label": "Stop",
+    "legacy": []
+  }
+]

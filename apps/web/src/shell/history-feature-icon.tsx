@@ -1,6 +1,8 @@
 import type { FeatureRecord } from "@vibeshape/domain"
+import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import type { EditorCommandIcon } from "../commands/editor-command"
 import { EditorCommandIconView } from "../commands/editor-command-presentation"
+import { FdmToolIcon } from "../features/fdm/fdm-tool-icon"
 
 const featureIcons: Readonly<Record<string, EditorCommandIcon>> = {
   "org.vibeshape.feature.part-design.box": "box",
@@ -25,9 +27,11 @@ const featureIcons: Readonly<Record<string, EditorCommandIcon>> = {
   "org.vibeshape.feature.part-design.split": "split-body",
   "org.vibeshape.feature.part-design.shell": "shell",
   "org.vibeshape.feature.part-design.thread": "thread",
-  "org.vibeshape.feature.part-design.fdm": "shell",
+  "org.vibeshape.feature.part-design.fdm": "fdm-tools",
 }
 
 export function HistoryFeatureIcon({ feature }: { feature: FeatureRecord }) {
+  const fdm = readFdmFeatureParameters(feature)
+  if (fdm) return <FdmToolIcon kind={fdm.kind} />
   return <EditorCommandIconView icon={featureIcons[feature.type.typeId] ?? "model"} />
 }

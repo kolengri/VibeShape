@@ -124,6 +124,7 @@
 | [0113](0113-assembly-motion-studies.md) | Accepted | Persisted joint-key studies, exact timeline sampling, bounded cached playback and solved pose/image exports |
 | [0114](0114-versioned-angular-datum-planes.md) | Accepted | Strict legacy offset planes and versioned support-local angular datum frames |
 | [0115](0115-automatic-native-project-mcp-access.md) | Accepted | Automatic embedded project MCP access with isolated approval preferences and persistent Stop |
+| [0116](0116-source-owned-colored-ui-icons.md) | Accepted | Source-owned colored SVG icon family, optical sizing, generated React components and contextual command artwork |
 
 Statuses:
 

@@ -1,7 +1,7 @@
-import { CheckIcon, ChevronDownIcon } from "lucide-react"
 import { Select as SelectPrimitive } from "radix-ui"
 import { type ComponentProps, type FocusEventHandler, type ReactNode, useId } from "react"
 import { Field, FieldLabel } from "#components/field"
+import { IndicatorCheckIcon as CheckIcon, ChevronDown as ChevronDownIcon } from "#components/icons"
 import { cn } from "#lib/cn"
 
 type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {

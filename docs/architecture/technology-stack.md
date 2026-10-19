@@ -21,7 +21,7 @@
 | Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
 | UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
 | Resizable workspace panels | `react-resizable-panels` 4.13.2 | Shared UI wrappers with pointer/keyboard separators; layout preferences remain shell-local and independent of CAD history |
-| Icons | Lucide React | Consistent low-noise icon set for tools, trees, and actions |
+| Icons | Source-owned colored SVG / generated React | Shared palette and optical sizing for tools, trees and actions; see [the icon contract](../product/icon-design.md) |
 | Project DB | IndexedDB through Dexie | Transactions and indexes without another heavy WASM runtime |
 | Large binary cache | OPFS | Efficient local files accessed from workers |
 | Offline | Web App Manifest and service worker | Installable offline static PWA |

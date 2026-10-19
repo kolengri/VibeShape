@@ -5,6 +5,7 @@ import {
   type PartId,
 } from "@vibeshape/domain/identifiers"
 import { Button } from "@vibeshape/ui/components/button"
+import { ArrowDown, ArrowUp, X } from "@vibeshape/ui/components/icons"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
@@ -62,7 +63,7 @@ function OrderedCombinationInput({
         disabled={index === 0}
         onClick={() => props.onChange(moveCombinationInput(props.selected, index, -1))}
       >
-        ↑
+        <ArrowUp aria-hidden="true" />
       </Button>
       <Button
         type="button"
@@ -72,7 +73,7 @@ function OrderedCombinationInput({
         disabled={index === props.selected.length - 1}
         onClick={() => props.onChange(moveCombinationInput(props.selected, index, 1))}
       >
-        ↓
+        <ArrowDown aria-hidden="true" />
       </Button>
       <Button
         type="button"
@@ -81,7 +82,7 @@ function OrderedCombinationInput({
         aria-label={props.copy.removePart(input.name)}
         onClick={() => props.onChange(props.selected.filter((id) => id !== input.partId))}
       >
-        ×
+        <X aria-hidden="true" />
       </Button>
     </li>
   )

@@ -187,7 +187,7 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 - Stable high-frequency actions in the application bar and command toolbar use icon-only controls instead of repeating the same label beside the icon. A task-panel command header may use the established compact Cancel and Accept icons when both have localized accessible names and tooltips. Parameter actions, destructive confirmation, menus, and unfamiliar one-off actions retain visible text when the label carries essential meaning.
 - Do not put icons on every menu item. Use them when they improve scanning or encode a stable command family.
 - Destructive actions do not become safe merely because they use a red icon.
-- Custom CAD icons use the same optical size, stroke weight, and view box as Lucide.
+- CAD application and shared-control icons use the [source-owned colored family](icon-design.md), its shared optical sizing and its 256 x 256 master canvas.
 
 ## Viewport Design
 

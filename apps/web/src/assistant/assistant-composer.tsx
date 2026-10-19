@@ -6,7 +6,7 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
-import { Paperclip, Send, Square, X } from "@vibeshape/ui/components/icons"
+import { Paperclip, Send, StopIcon, X } from "@vibeshape/ui/components/icons"
 import { Textarea } from "@vibeshape/ui/components/textarea"
 import {
   type Dispatch,
@@ -200,7 +200,7 @@ function AssistantTurnActions({
     <>
       {busy && (
         <AssistantIconAction key="stop" label={t("stop")} onAction={onCancel}>
-          <Square aria-hidden="true" />
+          <StopIcon aria-hidden="true" />
         </AssistantIconAction>
       )}
       {(!busy || onQueue) && (

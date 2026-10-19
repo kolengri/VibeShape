@@ -5,6 +5,7 @@ import {
 import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { X } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
 import { useEffect, useId, useRef, useState } from "react"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
@@ -232,7 +233,7 @@ function TrackEditor({
                   update(index, { ...track, keys: track.keys.filter((_, at) => at !== keyIndex) })
                 }
               >
-                ×
+                <X aria-hidden="true" />
               </Button>
             </div>
           ))}

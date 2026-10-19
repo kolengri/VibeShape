@@ -139,6 +139,12 @@ export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBas
   )
 
 export type EditorCommandIcon =
+  | "generative-design"
+  | "fdm-tools"
+  | "sketch-fillet"
+  | "sketch-chamfer"
+  | "sketch-transform"
+  | "navigate-view"
   | "lightweighting"
   | "quick-lightweighting"
   | "shell"

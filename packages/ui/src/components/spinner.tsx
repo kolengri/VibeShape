@@ -1,7 +1,6 @@
-import { LoaderIcon } from "lucide-react"
 import type * as React from "react"
-
 import { useReportActivity } from "#components/activity"
+import { LoadingIcon as LoaderIcon } from "#components/icons"
 import { cn } from "#lib/cn"
 
 type SpinnerBaseProps = Omit<React.ComponentProps<typeof LoaderIcon>, "aria-hidden" | "aria-label">
