@@ -130,7 +130,7 @@
     "localAction": "Local installation guide",
     "desktop": "macOS desktop build guide",
     "installers": "Desktop installers",
-    "installerStatus": "macOS · Apple Silicon · v0.1.4",
+    "installerStatus": "macOS · Apple Silicon · v0.1.5",
     "installerBody": "Download the Apple Silicon DMG and drag VibeShape to Applications. This build is ad-hoc signed and is not notarized by Apple. Intel Mac, Windows, and Linux installers are not published.",
     "desktopAction": "Download for Apple Silicon",
     "releases": "All releases & checksums",

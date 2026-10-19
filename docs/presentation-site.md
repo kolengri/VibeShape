@@ -108,7 +108,7 @@ part of the domain setup handoff.
 
 ## Downloads and release maintenance
 
-The downloads section links to the Apple Silicon macOS DMG for desktop v0.1.4 and to the
+The downloads section links to the Apple Silicon macOS DMG for desktop v0.1.5 and to the
 GitHub release index for release notes, checksums, and source provenance. The package is ad-hoc
 signed and is not notarized by Apple; the site states this beside the download. Intel Mac,
 Windows, and Linux installers are not published. The separate OCCT source archive is not an
