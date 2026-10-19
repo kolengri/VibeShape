@@ -23,17 +23,24 @@ The site needs no API keys, hosted database, or model provider.
 
 ## Hero playback
 
-The hero plays its silent six-second H.264 introduction independently of scrolling, then returns
-to the exploded mechanical housing around the four-second reference pose. That short segment
-moves slowly forward and backward with a gentle vertical float. The hero stays in normal document
+The hero plays its silent six-second H.264 introduction independently of scrolling, then plays
+the final two source seconds backward over three seconds, easing back to the exploded mechanical
+housing at the four-second reference pose. Both directions are encoded in `media/hero-intro-return.mp4`;
+the browser never seeks from the final pose to the reference pose. A separate eight-second,
+60 fps H.264 loop moves slowly forward and backward with eased turns and a gentle vertical float.
+The browser plays this loop normally, without per-frame timeline seeks. The hero stays in normal document
 flow at every screen size. Playback pauses while the visual is outside the viewport or the tab is
 hidden; returning resumes the introduction or the floating pose rather than restarting the story.
 Reduced-motion preferences show `media/hero-model.jpg` without fetching the video, and media or
 autoplay failures also leave that poster visible.
 
 The original 3DBenchy mesh is CC0; its source and attribution are in `media/NOTICE.txt`. The remaining
-geometry is a presentation illustration, not an editor recording. Every video frame is independently
-seekable. The hero itself requires no Three.js or CAD runtime.
+geometry is a presentation illustration, not an editor recording. `media/hero-float.mp4` derives from
+frames 109–131 of the original `media/hero-scroll.mp4`, with cosine timing, optical-flow interpolation,
+and a reversed return path. The loop begins and ends at the four-second reference pose so switching
+between the clips preserves the model's position. Both playback assets are encoded at 960 × 960,
+with H.264/yuv420p and MP4 fast-start metadata. The hero itself
+requires no Three.js or CAD runtime.
 
 ## Spatial illustrations
 

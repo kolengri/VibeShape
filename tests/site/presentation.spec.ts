@@ -19,19 +19,78 @@ test("the hero plays freely, then floats around the exploded model without pinni
   expect(
     await video.evaluate((element: HTMLVideoElement) => element.currentTime),
   ).toBeGreaterThanOrEqual(beforeReturn)
-  await expect(video).toHaveAttribute("data-phase", "floating", { timeout: 9000 })
-  await expect
-    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeGreaterThan(4.2)
   await expect
     .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime), {
-      timeout: 7000,
+      timeout: 9000,
     })
-    .toBeLessThan(3.9)
-  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+    .toBeGreaterThan(6.2)
+  await expect(video).toHaveAttribute("data-phase", "intro")
+  expect(await video.evaluate((element: HTMLVideoElement) => element.duration)).toBeCloseTo(9, 1)
+  await expect(video).toHaveAttribute("data-phase", "floating", { timeout: 13000 })
+  await expect(video).toHaveAttribute("src", "./media/hero-float.mp4")
+  await expect(video).toHaveCSS("opacity", "1")
+  expect(await video.evaluate((element: HTMLVideoElement) => element.loop)).toBe(true)
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
+    .toBeGreaterThan(0.2)
+  const cadence = await video.evaluate(
+    (element: HTMLVideoElement) =>
+      new Promise<{ frames: number; seeks: number; advance: number }>((resolve) => {
+        let frames = 0
+        let seeks = 0
+        const start = element.currentTime
+        const onSeek = () => seeks++
+        element.addEventListener("seeking", onSeek)
+        let callback = 0
+        const onFrame = () => {
+          frames++
+          callback = element.requestVideoFrameCallback(onFrame)
+        }
+        callback = element.requestVideoFrameCallback(onFrame)
+        setTimeout(() => {
+          element.cancelVideoFrameCallback(callback)
+          element.removeEventListener("seeking", onSeek)
+          resolve({ frames, seeks, advance: element.currentTime - start })
+        }, 2000)
+      }),
+  )
+  expect(cadence.seeks).toBe(0)
+  expect(cadence.frames).toBeGreaterThan(30)
+  expect(cadence.advance).toBeGreaterThan(1.5)
   await page.locator("#features").scrollIntoViewIfNeeded()
   await expect(page.locator("#features h2")).toBeInViewport()
   await expect(video).toHaveAttribute("data-active", "false")
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+  await page.locator("#overview").scrollIntoViewIfNeeded()
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+  await expect(video).toHaveAttribute("data-phase", "floating")
+})
+
+test("the floating hero loads under a deployment path prefix", async ({ page }) => {
+  const loopRequests: string[] = []
+  await page.route("**/media/hero-float.mp4", async (route) => {
+    loopRequests.push(new URL(route.request().url()).pathname)
+    await route.abort()
+  })
+  await page.route("**/vibeshape/**", async (route) => {
+    const url = new URL(route.request().url())
+    url.pathname = url.pathname.slice("/vibeshape".length)
+    if (url.pathname.endsWith("/hero-float.mp4")) {
+      loopRequests.push(new URL(route.request().url()).pathname)
+    }
+    await route.fulfill({ response: await route.fetch({ url: url.toString() }) })
+  })
+  await page.goto("/vibeshape/")
+  const video = page.locator("#overview video")
+  await expect(video).toHaveAttribute("data-phase", "floating", { timeout: 15000 })
+  await expect(video).toHaveCSS("opacity", "1")
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+  expect(
+    await video.evaluate((element: HTMLVideoElement) => new URL(element.currentSrc).pathname),
+  ).toBe("/vibeshape/media/hero-float.mp4")
+  expect(loopRequests).toContain("/vibeshape/media/hero-float.mp4")
+  expect(loopRequests).not.toContain("/media/hero-float.mp4")
 })
 
 test("reduced motion uses the poster without fetching video or pinning the hero", async ({
@@ -41,7 +100,7 @@ test("reduced motion uses the poster without fetching video or pinning the hero"
   await page.emulateMedia({ reducedMotion: "reduce" })
   const videoRequests: string[] = []
   page.on("request", (request) => {
-    if (request.url().endsWith("/media/hero-scroll.mp4")) videoRequests.push(request.url())
+    if (/\/media\/hero-.*\.mp4$/.test(request.url())) videoRequests.push(request.url())
   })
   await page.goto("/")
   await expect(page.locator("#overview video")).toHaveCount(0)
@@ -79,9 +138,22 @@ test("the mobile hero plays independently of scrolling without horizontal overfl
 })
 
 test("a failed hero video leaves a decoded poster visible", async ({ page }) => {
-  await page.route("**/media/hero-scroll.mp4", (route) => route.abort())
+  await page.route("**/media/hero-intro-return.mp4", (route) => route.abort())
   await page.goto("/")
   await expect(page.locator("#overview video")).toHaveCount(0)
+  const poster = page.locator(".hero-visual img")
+  await expect(poster).toBeVisible()
+  expect(
+    await poster.evaluate(
+      (element: HTMLImageElement) => element.complete && element.naturalWidth > 0,
+    ),
+  ).toBe(true)
+})
+
+test("a failed floating loop leaves the model poster visible", async ({ page }) => {
+  await page.route("**/media/hero-float.mp4", (route) => route.abort())
+  await page.goto("/")
+  await expect(page.locator("#overview video")).toHaveCount(0, { timeout: 15000 })
   const poster = page.locator(".hero-visual img")
   await expect(poster).toBeVisible()
   expect(

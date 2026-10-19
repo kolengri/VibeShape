@@ -30,22 +30,15 @@ function useVideoVisibility(ref: RefObject<HTMLVideoElement | null>) {
   return active
 }
 
-function floatModel(video: HTMLVideoElement) {
-  let frame = 0
-  const started = performance.now()
-  const update = (now: number) => {
-    // Keep the exploded assembly around its four-second reference pose.
-    const time = 4 + 0.35 * Math.sin(((now - started) / 8000) * Math.PI * 2)
-    if (!video.seeking && Math.abs(video.currentTime - time) > 1 / 60) {
-      video.currentTime = time
-    }
-    frame = requestAnimationFrame(update)
-  }
-  frame = requestAnimationFrame(update)
-  return () => cancelAnimationFrame(frame)
-}
-
-function PlaybackVideo({ source }: { source: string }) {
+function PlaybackVideo({
+  source,
+  loopSource,
+  poster,
+}: {
+  source: string
+  loopSource: string
+  poster: string
+}) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -56,7 +49,7 @@ function PlaybackVideo({ source }: { source: string }) {
     const video = videoRef.current
     if (!video) return
     let cancelled = false
-    if (active && phase === "intro") {
+    if (active) {
       void video.play().catch(() => {
         if (!cancelled) setFailed(true)
       })
@@ -69,16 +62,13 @@ function PlaybackVideo({ source }: { source: string }) {
     }
   }, [active, phase])
 
-  useEffect(() => {
-    const video = videoRef.current
-    if (video && active && phase === "floating") return floatModel(video)
-  }, [active, phase])
-
   if (failed) return null
   return (
     <video
       ref={videoRef}
-      src={source}
+      src={phase === "intro" ? source : loopSource}
+      poster={poster}
+      loop={phase === "floating"}
       muted
       playsInline
       preload="auto"
@@ -86,20 +76,26 @@ function PlaybackVideo({ source }: { source: string }) {
       tabIndex={-1}
       data-phase={phase}
       data-active={active}
+      data-ready={ready}
       onLoadedData={() => setReady(true)}
-      onEnded={() => setPhase("floating")}
+      onEnded={() => {
+        setReady(false)
+        setPhase("floating")
+      }}
       onError={() => setFailed(true)}
-      className={`hero-playback absolute inset-0 size-full object-cover ${ready ? "opacity-100" : "opacity-0"}`}
+      className="hero-playback absolute inset-0 size-full object-cover opacity-0 transition-opacity duration-300 data-[ready=true]:opacity-100"
     />
   )
 }
 
 export function HeroVisual({
   source,
+  loopSource,
   poster,
   description,
 }: {
   source: string
+  loopSource: string
   poster: string
   description: string
 }) {
@@ -114,7 +110,7 @@ export function HeroVisual({
         fetchPriority="high"
         className="size-full object-cover"
       />
-      {!reducedMotion && <PlaybackVideo source={source} />}
+      {!reducedMotion && <PlaybackVideo source={source} loopSource={loopSource} poster={poster} />}
     </div>
   )
 }
