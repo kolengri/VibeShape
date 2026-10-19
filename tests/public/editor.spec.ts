@@ -3,7 +3,7 @@ import type { Page, TestInfo } from "@playwright/test"
 import { unzipSync } from "fflate"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "../e2e/application-menu-support"
-import { expect, test } from "../e2e/fixtures"
+import { createEditorProject, expect, test } from "../e2e/fixtures"
 import { invokeModelCommand } from "../e2e/model-command-support"
 
 async function downloadExport(page: Page, info: TestInfo, format: "STEP" | "STL" | "3MF") {
@@ -54,7 +54,9 @@ test("the public editor loads WASM, edits, restores a native project and exports
     }
   })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+    "Saved",
+  )
   await invokeModelCommand(page, "Primitives", "Box")
   const create = page.getByRole("form", { name: "Create box", exact: true })
   for (const [name, value] of [
@@ -71,7 +73,9 @@ test("the public editor loads WASM, edits, restores a native project and exports
   await edit.getByRole("combobox", { name: "Height", exact: true }).fill("12 mm")
   await edit.getByRole("button", { name: "Update box", exact: true }).click()
   await expect(edit).not.toBeVisible()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+    "Saved",
+  )
   await page.reload()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
 
@@ -92,7 +96,7 @@ test("the public editor loads WASM, edits, restores a native project and exports
   })
   try {
     await recovered.goto("/")
-    await expect(recovered.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await createEditorProject(recovered)
     await openApplicationMenuItem(recovered, "Files and projects…")
     await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
     await expect(recovered.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
@@ -116,6 +120,7 @@ test("the public editor loads WASM, edits, restores a native project and exports
     expect(model).toContain("<triangle ")
     expect(model).toContain("<item ")
     await openApplicationMenuItem(recovered, "Settings…")
+    await recovered.getByRole("tab", { name: "About VibeShape", exact: true }).click()
     await expect(
       recovered.getByRole("link", { name: /Licenses and corresponding source/ }),
     ).toHaveAttribute("href", "/sources/index.html")
