@@ -1,23 +1,15 @@
 import { spawnSync } from "node:child_process"
-import {
-  chmodSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs"
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { z } from "zod"
 import {
   assertDistributionPath,
   createDistributionManifest,
   DISTRIBUTION_BUN_VERSION,
-  distributionHash,
-  distributionInventory,
   verifyDistribution,
 } from "./local-distribution-files"
+
+import { verifyControlledEditorBuild } from "./local-editor-build"
 
 const root = resolve(import.meta.dirname, "..")
 
@@ -50,56 +42,11 @@ function requireCommittedExecutableSource() {
   return git(["rev-parse", "HEAD"])
 }
 
-function verifyControlledDist(directory: string) {
-  const report = z
-    .object({
-      schemaVersion: z.literal(1),
-      kernelRevision: z.literal("bb368e271e24f63078129283148ce83db6b9670a"),
-      sourceManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
-      artifacts: z
-        .array(z.object({ file: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict())
-        .length(2),
-      sourceArchives: z
-        .array(z.object({ file: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict())
-        .length(2),
-    })
-    .strict()
-    .parse(JSON.parse(readFileSync(join(directory, "local-build.json"), "utf8")))
-  const files = distributionInventory(directory)
-  verifyRecordedHashes(files, [...report.artifacts, ...report.sourceArchives])
-  requireControlledSources(files)
-  return distributionHash(JSON.stringify(files))
-}
-
-function verifyRecordedHashes(
-  files: ReturnType<typeof distributionInventory>,
-  expected: { file: string; sha256: string }[],
-) {
-  for (const entry of expected) {
-    if (!files.some(({ path, sha256 }) => path === entry.file && sha256 === entry.sha256))
-      throw new Error(`Controlled build hash mismatch: ${entry.file}`)
-  }
-}
-
-function requireControlledSources(files: ReturnType<typeof distributionInventory>) {
-  for (const required of [
-    "sources/occt-corresponding-source.tar",
-    "sources/solvespace-corresponding-source.tar.gz",
-    "sources/LICENSE.txt",
-    "sources/OCCT-NOTICES.txt",
-    "sources/Noto-Sans-OFL.txt",
-    "sources/Noto-Sans-provenance.md",
-    "sources/opentype-js-MIT.txt",
-    "sources/OCCT-REPLACEMENT.txt",
-    "sources/index.html",
-  ]) {
-    if (!files.some(({ path }) => path === required))
-      throw new Error(`Controlled build lacks ${required}.`)
-  }
-}
-
 function requireUnchangedDist(original: string, copied: string, expected: string) {
-  if (verifyControlledDist(original) !== expected || verifyControlledDist(copied) !== expected)
+  if (
+    verifyControlledEditorBuild(original) !== expected ||
+    verifyControlledEditorBuild(copied) !== expected
+  )
     throw new Error("The editor dist changed while packaging; refuse mixed artifacts.")
 }
 
@@ -188,7 +135,7 @@ async function build() {
   const dist = join(root, "apps/web/dist")
   const output = packageOutput(dist)
   const commit = requireCommittedExecutableSource()
-  const before = verifyControlledDist(dist)
+  const before = verifyControlledEditorBuild(dist)
   mkdirSync(dirname(output), { recursive: true })
   // Only the process that exclusively created this directory may populate or remove it.
   mkdirSync(output)

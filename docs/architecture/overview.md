@@ -96,6 +96,7 @@ React components, command palette, model tree, property panels, diagnostics, and
 ```text
 apps/
   web/                    # PWA shell and composition root
+  desktop/                # native macOS host for the same editor, profile and release downloads
   slicer-bridge/          # authenticated loopback-to-desktop handoff
 packages/
   domain/                 # model, units, commands, events

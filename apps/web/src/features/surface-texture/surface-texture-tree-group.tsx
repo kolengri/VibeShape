@@ -4,6 +4,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { ChevronDown, Layers3 } from "@vibeshape/ui/components/icons"
 import { useState } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
+import { modelBrowserChildRow, modelBrowserGroupRow } from "../../shell/model-browser-styles"
 
 export function SurfaceTextureTreeGroup({
   controller,
@@ -39,11 +40,12 @@ export function SurfaceTextureTreeGroup({
         aria-expanded={expanded}
         aria-selected={false}
         variant="ghost"
-        size="xs"
-        className="w-full justify-start font-normal"
+        size="sm"
+        className={modelBrowserGroupRow}
         onClick={() => setExpanded(!expanded)}
       >
         <ChevronDown aria-hidden="true" className={expanded ? "size-4" : "size-4 -rotate-90"} />
+        <Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />
         <span>{t("treeGroup")}</span>
       </Button>
       {expanded && (
@@ -56,9 +58,9 @@ export function SurfaceTextureTreeGroup({
               aria-selected={false}
               tabIndex={-1}
               disabled={disabled}
-              size="xs"
+              size="sm"
               variant="ghost"
-              className="w-full justify-start pl-6 font-normal text-muted-foreground"
+              className={modelBrowserChildRow}
               onClick={() => onEdit(body.featureId, body.outputRole)}
             >
               <Layers3 aria-hidden="true" className="size-4 shrink-0" />
