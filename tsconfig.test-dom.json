@@ -5,6 +5,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["bun"]
   },
-  "include": ["tests/unit/support/dom.ts", "scripts/testing/bun-test-dom.test.ts"],
+  "include": [
+    "tests/unit/support/dom.ts",
+    "scripts/testing/bun-test-dom.test.ts",
+    "tests/site/**/*.ts"
+  ],
   "exclude": []
 }

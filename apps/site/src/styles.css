@@ -1,0 +1,48 @@
+@import "@vibeshape/ui/globals.css";
+@source "../../../packages/ui/src/components/button.tsx";
+@source "../../../packages/ui/src/components/spinner.tsx";
+
+:root {
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+html {
+  scroll-padding-top: 6rem;
+}
+
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 5px;
+  border-radius: var(--radius);
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--primary-foreground);
+}
+
+.blueprint-grid {
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+    transition: none;
+    animation: none;
+  }
+}
