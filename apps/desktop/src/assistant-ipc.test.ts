@@ -32,7 +32,7 @@ describe("native assistant IPC boundary", () => {
           calls += 1
           return { ok: false, code: "stale-session" }
         },
-        close() {},
+        async close() {},
       },
     })
     if (!handler) throw new Error("Missing registered handler.")

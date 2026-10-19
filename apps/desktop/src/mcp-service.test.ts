@@ -88,6 +88,12 @@ describe("app-owned native MCP attachment", () => {
       'name="vibeshape-local-automation"',
     )
     const { client } = await connect(context)
+    const released = context.service.whenClientReleased()
+    let detached = false
+    void released.then(() => {
+      detached = true
+    })
+    expect(context.service.isClientAttached()).toBe(true)
     expect(
       (await client.request({ method: "tools/list" }, ListToolsResultSchema)).tools.some(
         (tool) => tool.name === "model_info",
@@ -106,6 +112,7 @@ describe("app-owned native MCP attachment", () => {
       body: JSON.stringify(initialization()),
     })
     expect(denied.status).toBe(409)
+    expect(detached).toBe(false)
     const grant = await browser(context, "connect", {
       protocolVersion: 1,
       document: { id: "0195b5ac-b220-7a2c-8c33-67a36a7f6101", name: "Open project", revision: 4 },
@@ -116,10 +123,14 @@ describe("app-owned native MCP attachment", () => {
       paired: true,
     })
     await client.close()
+    await released
+    expect(detached).toBe(true)
     await vi.waitFor(async () =>
       expect(await (await browser(context)).json()).toMatchObject({ client: null, paired: false }),
     )
     const replacement = await connect(context, "next-client")
+    await released
+    expect(context.service.isClientAttached()).toBe(true)
     expect(
       (await replacement.client.request({ method: "tools/list" }, ListToolsResultSchema)).tools
         .length,

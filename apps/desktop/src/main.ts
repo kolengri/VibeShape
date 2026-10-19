@@ -67,6 +67,7 @@ let editor: Awaited<ReturnType<typeof startEditorServer>> | undefined
 let nativeMcp: ReturnType<typeof createDesktopMcpService> | undefined
 let nativeSlicer: ReturnType<typeof createNativeSlicerService> | undefined
 let assistant: ReturnType<typeof createAssistantService> | undefined
+let assistantClosing = Promise.resolve()
 let unregisterAssistant: (() => void) | undefined
 let unregisterSlicer: (() => void) | undefined
 const nativeDirectory = join(profile, "native-workflows")
@@ -547,15 +548,21 @@ function preparePrivateDirectory(path: string) {
 function closeAssistant() {
   unregisterAssistant?.()
   unregisterAssistant = undefined
-  assistant?.close()
+  const closing = assistant?.close() ?? Promise.resolve()
   assistant = undefined
+  assistantClosing = Promise.allSettled([assistantClosing, closing]).then(() => undefined)
+  return assistantClosing
 }
 function installAssistant() {
   if (assistant) return
   assistant = createAssistantService({
     cwd: assistantDirectory,
     getMcpSetup: async () => mcpSetup(),
-    isMcpClientAttached: () => nativeMcp?.isClientAttached() ?? false,
+    async isMcpClientAttached() {
+      await assistantClosing
+      return nativeMcp?.isClientAttached() ?? false
+    },
+    whenMcpClientReleased: () => nativeMcp?.whenClientReleased() ?? Promise.resolve(),
     onEvent(event) {
       const contents = mainWindow?.webContents
       if (contents && canSendNativeEvent(contents, quitting, ownsEditorNavigation))
@@ -636,7 +643,7 @@ else {
     void startup
       .catch(() => undefined)
       .then(async () => {
-        closeAssistant()
+        await closeAssistant()
         unregisterSlicer?.()
         nativeSlicer?.close()
         await editor?.close()

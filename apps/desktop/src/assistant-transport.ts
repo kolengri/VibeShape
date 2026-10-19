@@ -1,9 +1,17 @@
-import { type ChildProcessWithoutNullStreams, spawn as nodeSpawn } from "node:child_process"
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  spawn as nodeSpawn,
+} from "node:child_process"
 import * as acp from "@agentclientprotocol/sdk"
 import type { AssistantAgent, AssistantErrorCode } from "@vibeshape/automation-api/assistant"
 
-export function killAssistantProcess(child: ChildProcessWithoutNullStreams) {
+const closedChildren = new WeakSet<ChildProcess>()
+
+export function killAssistantProcess(child: ChildProcess) {
+  if (closedChildren.has(child)) return Promise.resolve()
   const kill = (signal: NodeJS.Signals) => {
+    if (closedChildren.has(child)) return
     try {
       if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal)
       else child.kill(signal)
@@ -11,8 +19,18 @@ export function killAssistantProcess(child: ChildProcessWithoutNullStreams) {
       child.kill(signal)
     }
   }
-  kill("SIGTERM")
-  setTimeout(() => kill("SIGKILL"), 500).unref()
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(force)
+      clearTimeout(deadline)
+      child.removeListener("close", finish)
+      resolve()
+    }
+    const force = setTimeout(() => kill("SIGKILL"), 500)
+    const deadline = setTimeout(finish, 1500)
+    child.once("close", finish)
+    kill("SIGTERM")
+  })
 }
 
 export function spawnAssistantProcess(
@@ -34,6 +52,7 @@ export function spawnAssistantProcess(
     stdio: ["pipe", "pipe", "pipe"],
   })
   child.stderr.resume()
+  child.once("close", () => closedChildren.add(child))
   child.stdin.on("error", () => onFailure("agent-exited"))
   child.once("error", () => onFailure("launch-failed"))
   child.once("exit", () => onFailure("agent-exited"))

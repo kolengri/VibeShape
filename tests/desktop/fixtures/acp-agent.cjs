@@ -1,9 +1,13 @@
 const assert = require("node:assert/strict")
 const { appendFileSync, existsSync } = require("node:fs")
 const { createInterface } = require("node:readline")
+const { createRequire } = require("node:module")
+const { resolve } = require("node:path")
 
-// This agent speaks ACP only. It never connects to the supplied MCP server or a provider.
+// The optional relay mode discovers local tools only; neither mode contacts a provider.
 const receipt = process.argv[2]
+const attachMcp = process.argv[3] === "--attach-mcp"
+let mcpClient
 let sessionId = `fixture-${process.pid}`
 let pendingPrompt
 let permissionPrompt
@@ -21,12 +25,27 @@ function initialize(id, params) {
   record({ event: "initialized" })
   reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] })
 }
-function startSession(id, params, method) {
+async function startSession(id, params, method) {
   const mcp = params.mcpServers[0]
   assert.equal(mcp.name, "vibeshape")
   assert.match(mcp.command, /^\//)
   assert.equal(mcp.args[1], "--descriptor")
   assert.deepEqual(mcp.env, [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }])
+  if (attachMcp) {
+    const sdk = createRequire(resolve(__dirname, "../../../apps/desktop/package.json"))
+    const { Client } = sdk("@modelcontextprotocol/sdk/client/index.js")
+    const { StdioClientTransport } = sdk("@modelcontextprotocol/sdk/client/stdio.js")
+    mcpClient = new Client({ name: "native-acp-relay-fixture", version: "1" })
+    const transport = new StdioClientTransport({
+      command: mcp.command,
+      args: mcp.args,
+      env: { ...process.env, ...Object.fromEntries(mcp.env.map(({ name, value }) => [name, value])) },
+      stderr: "ignore",
+    })
+    await mcpClient.connect(transport)
+    assert.ok((await mcpClient.listTools()).tools.some(({ name }) => name === "model_info"))
+    record({ event: "mcp-attached", sessionId, relayPid: transport.pid })
+  }
   if (method === "session/load") sessionId = params.sessionId
   record({ event: method, sessionId })
   reply(id, method === "session/new" ? { sessionId } : {})
@@ -91,7 +110,11 @@ const handlers = {
 process.on("SIGTERM", () => {
   record({ event: "terminated", sessionId })
   text("Obsolete project output must be ignored")
-  setTimeout(() => process.exit(0), 40)
+  setTimeout(async () => {
+    await mcpClient?.close()
+    record({ event: "closed", sessionId })
+    process.exit(0)
+  }, attachMcp ? 120 : 40)
 })
 createInterface({ input: process.stdin }).on("line", (line) => {
   const { id, method, params, result } = JSON.parse(line)

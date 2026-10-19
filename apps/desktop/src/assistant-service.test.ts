@@ -352,6 +352,106 @@ describe("native ACP service", () => {
     expect(await conflict.connect()).toEqual({ ok: false, code: "mcp-client-conflict" })
   })
 
+  it("waits for the previous assistant relay to detach before replacing it", async () => {
+    let attached = false
+    let release = () => {}
+    let captured = false
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const context = await host({
+      isMcpClientAttached: () => attached,
+      whenMcpClientReleased() {
+        captured = true
+        return released
+      },
+    })
+    const first = ready(await context.connect())
+    attached = true
+    const replacement = context.connect("normal", "project-b")
+    expect(captured).toBe(true)
+    expect(attached).toBe(true)
+    attached = false
+    release()
+    expect(ready(await replacement)).toMatchObject({ projectId: "project-b", status: "ready" })
+    expect(await context.service.handle({ operation: "cancel", input: scope(first) })).toEqual({
+      ok: false,
+      code: "stale-session",
+    })
+    expect(
+      context.events.some((event) => event.type === "text" && event.text.includes("obsolete")),
+    ).toBe(false)
+  })
+
+  it("retains teardown after disconnect and only starts the latest concurrent replacement", async () => {
+    let attached = false
+    let release = () => {}
+    let setupCalls = 0
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const context = await host({
+      isMcpClientAttached() {
+        setupCalls += 1
+        return attached
+      },
+      whenMcpClientReleased: () => released,
+    })
+    const first = ready(await context.connect())
+    attached = true
+    const disconnected = context.service.handle({ operation: "disconnect", input: scope(first) })
+    const obsolete = context.connect("normal", "project-b")
+    const latest = context.connect("normal", "project-c")
+    expect(setupCalls).toBe(1)
+    attached = false
+    release()
+    expect(await disconnected).toMatchObject({ ok: true, value: { status: "disconnected" } })
+    expect(await obsolete).toEqual({ ok: false, code: "stale-session" })
+    expect(ready(await latest)).toMatchObject({ projectId: "project-c", status: "ready" })
+    expect(setupCalls).toBe(2)
+  })
+
+  it("keeps a still-attached external client protected after bounded cleanup", async () => {
+    let attached = false
+    const context = await host({
+      isMcpClientAttached: () => attached,
+      whenMcpClientReleased: () => new Promise<void>(() => {}),
+      shutdownTimeoutMs: 20,
+    })
+    ready(await context.connect())
+    attached = true
+    expect(await context.connect("normal", "project-b")).toEqual({
+      ok: false,
+      code: "mcp-client-conflict",
+    })
+    expect(attached).toBe(true)
+    await context.service.close()
+    expect(await context.connect()).toEqual({ ok: false, code: "stale-session" })
+  })
+
+  it("closes pending replacement work without spawning a stale owner", async () => {
+    let release = () => {}
+    let checks = 0
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const context = await host({
+      isMcpClientAttached() {
+        checks += 1
+        return false
+      },
+      whenMcpClientReleased: () => released,
+    })
+    ready(await context.connect())
+    const replacement = context.connect("normal", "project-b")
+    const closed = context.service.close()
+    expect(checks).toBe(1)
+    release()
+    await closed
+    expect(await replacement).toEqual({ ok: false, code: "stale-session" })
+    expect(checks).toBe(1)
+  })
+
   it("bounds malformed JSON that the ACP transport rejects without ending the turn", async () => {
     const context = await host({ promptTimeoutMs: 100 })
     const session = ready(await context.connect())

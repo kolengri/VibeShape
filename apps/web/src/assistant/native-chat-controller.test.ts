@@ -22,12 +22,22 @@ function storage() {
     },
   }
 }
+function deferred() {
+  let resolve = () => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
 function fixture() {
   let listener: ((event: AssistantEvent) => void) | undefined
   let subscriptions = 0
   let sequence = 0
   let snapshot: AssistantSnapshot
   let resolvePrompt: (() => void) | undefined
+  let disconnectDelay: Promise<void> | undefined
+  let connectDelay: ReturnType<typeof deferred> | undefined
+  let connectStarted: ReturnType<typeof deferred> | undefined
   const connects: Parameters<AssistantBridge["connect"]>[0][] = []
   const disconnected: string[] = []
   const permissions: Parameters<AssistantBridge["respondPermission"]>[0][] = []
@@ -47,7 +57,10 @@ function fixture() {
         currentModelId: null,
         authMethods: [],
       }
-      return { ok: true, value: snapshot }
+      const captured = snapshot
+      connectStarted?.resolve()
+      await connectDelay?.promise
+      return { ok: true, value: captured }
     },
     async prompt() {
       const captured = snapshot
@@ -62,7 +75,9 @@ function fixture() {
     },
     async disconnect(input) {
       disconnected.push(input.sessionToken)
-      return { ok: true, value: { ...snapshot, status: "disconnected" } }
+      const captured = snapshot
+      await disconnectDelay
+      return { ok: true, value: { ...captured, status: "disconnected" } }
     },
     async respondPermission(input) {
       permissions.push(input)
@@ -95,6 +110,28 @@ function fixture() {
     snapshot: () => snapshot,
     finish: () => resolvePrompt?.(),
     emit: (event: AssistantEvent) => listener?.(event),
+    deferDisconnect() {
+      const waiting = deferred()
+      disconnectDelay = waiting.promise
+      return () => {
+        disconnectDelay = undefined
+        waiting.resolve()
+      }
+    },
+    deferConnect() {
+      const waiting = deferred(),
+        started = deferred()
+      connectDelay = waiting
+      connectStarted = started
+      return {
+        started: started.promise,
+        release() {
+          connectDelay = undefined
+          connectStarted = undefined
+          waiting.resolve()
+        },
+      }
+    },
   }
 }
 
@@ -173,6 +210,98 @@ describe("project-scoped agent chat", () => {
     expect(f.connects.at(-1)?.resumeSessionId).toBe("session-1")
     await chat.reset()
     expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
+    chat.dispose()
+  })
+  it.each(["reset", "reconnect"] as const)(
+    "never reconnects disposed project A after its pending %s disconnect releases",
+    async (action) => {
+      const f = fixture(),
+        disk = storage()
+      const first = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+      first.start()
+      await first.connect(agent)
+      f.emit({
+        projectId,
+        sessionToken: f.snapshot().sessionToken,
+        type: "text",
+        text: "Saved project A",
+      })
+      const release = f.deferDisconnect()
+      const pending =
+        action === "reset" ? first.reset() : first.connect({ ...agent, args: ["--replacement"] })
+      if (action === "reconnect") expect(first.getSnapshot().connecting).toBe(true)
+      first.dispose()
+      const second = createNativeChatController({
+        projectId: otherProjectId,
+        bridge: f.bridge,
+        storage: disk,
+      })
+      second.start()
+      await second.connect(agent)
+      const current = second.getSnapshot().snapshot
+      if (!current) throw new Error("Expected project B to remain connected.")
+      release()
+      await pending
+      expect(f.connects.map((input) => input.projectId)).toEqual([projectId, otherProjectId])
+      expect(second.getSnapshot().snapshot).toBe(current)
+      expect(f.snapshot()).toBe(current)
+      expect(readChatHistory(projectId, disk)?.messages.map((message) => message.text)).toEqual([
+        "Saved project A",
+      ])
+      second.dispose()
+    },
+  )
+  it("keeps a newer settings reconnect and its history when an older reset finishes", async () => {
+    const f = fixture(),
+      disk = storage()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    const release = f.deferDisconnect()
+    const reset = chat.reset()
+    const replacement = { ...agent, args: ["--new-settings"] }
+    await chat.connect(replacement)
+    const current = chat.getSnapshot().snapshot
+    f.emit({
+      projectId,
+      sessionToken: f.snapshot().sessionToken,
+      type: "text",
+      text: "New settings response",
+    })
+    release()
+    await reset
+    expect(f.connects).toHaveLength(2)
+    expect(f.connects.at(-1)?.agent).toEqual(replacement)
+    expect(chat.getSnapshot().snapshot).toBe(current)
+    expect(chat.getSnapshot().messages.map((message) => message.text)).toEqual([
+      "New settings response",
+    ])
+    expect(readChatHistory(projectId, disk)?.agentSession?.agent).toEqual(replacement)
+    chat.dispose()
+  })
+  it("does not let a stale reconnect unlock the newer connection created by reset", async () => {
+    const f = fixture()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+    chat.start()
+    await chat.connect(agent)
+    const release = f.deferDisconnect()
+    const replacement = { ...agent, args: ["--replacement"] }
+    const obsolete = chat.connect(replacement)
+    const connection = f.deferConnect()
+    const reset = chat.reset()
+    await connection.started
+    release()
+    await obsolete
+    expect(chat.getSnapshot().connecting).toBe(true)
+    await chat.connect(replacement)
+    expect(f.connects).toHaveLength(2)
+    connection.release()
+    await reset
+    expect(chat.getSnapshot().connecting).toBe(false)
+    expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
+    await chat.connect(replacement)
+    expect(f.connects).toHaveLength(3)
+    expect(chat.getSnapshot().connecting).toBe(false)
     chat.dispose()
   })
   it("handles corrupt, cross-project, oversized and unavailable storage", () => {

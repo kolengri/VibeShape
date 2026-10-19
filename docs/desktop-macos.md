@@ -85,6 +85,11 @@ person's existing MCP approval policy, including any explicit auto-apply consent
 grant that consent to itself. Browser API chat always requires manual Apply. The local agent has ordinary user OS privileges even though
 VibeShape advertises no ACP filesystem or terminal capabilities.
 
+Replacing or disconnecting an ACP agent waits for bounded cleanup of its process and captured MCP
+connection. Reopening a closed window preserves that cleanup barrier; Quit drains cleanup before
+stopping the native server. A different MCP client is never disconnected to make room for chat; if
+a client remains attached, the connection reports the existing client conflict.
+
 The static web application instead connects directly to a user-provided compatible model API. No
 VibeShape AI server or hosted worker is needed. The provider must allow the browser origin through
 CORS. API credentials remain in runtime memory, and model calls happen only after an explicit Send.

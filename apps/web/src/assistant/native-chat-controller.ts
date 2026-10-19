@@ -49,7 +49,7 @@ export function createNativeChatController({
   let disposed = false
   let generation = 0
   let agent: AssistantAgent | null = null
-  let connecting = false
+  let connecting: number | null = null
   let unsubscribe: (() => void) | undefined
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   const ignoredTokens = new Set<string>()
@@ -184,15 +184,20 @@ export function createNativeChatController({
       return { ok: false, code: "request-failed" } as const
     }
   }
-  async function disconnect() {
+  function beginDisconnect() {
     const current = scope()
-    generation += 1
+    const at = ++generation
+    connecting = null
     if (current) ignoredTokens.add(current.sessionToken)
     permissions.clear()
     toolMessages.clear()
     publish({ snapshot: null, busy: false, connecting: false, permission: null })
     save()
-    if (current) await bridge.disconnect(current).catch(() => undefined)
+    const done = current ? bridge.disconnect(current).catch(() => undefined) : Promise.resolve()
+    return { at, done }
+  }
+  async function disconnect() {
+    await beginDisconnect().done
   }
   function matchingResume(configuration: AssistantAgent) {
     if (!agentSession) return undefined
@@ -207,15 +212,21 @@ export function createNativeChatController({
     if (isCurrent(at)) acceptResult(result)
     else await discardConnection(result)
   }
+  function finishConnecting(at: number) {
+    if (connecting === at) connecting = null
+    if (isCurrent(at)) publish({ connecting: false })
+  }
   async function connect(configuration: AssistantAgent) {
-    if (connecting || state.busy) return
-    connecting = true
-    await disconnect()
-    agent = configuration
-    const at = ++generation
+    if (disposed || connecting !== null || state.busy) return
+    const { at, done } = beginDisconnect()
+    if (!isCurrent(at)) return
+    connecting = at
     publish({ connecting: true, error: null })
-    const resume = matchingResume(configuration)
     try {
+      await done
+      if (!isCurrent(at)) return
+      agent = configuration
+      const resume = matchingResume(configuration)
       const result = await bridge.connect({
         projectId,
         agent: configuration,
@@ -223,10 +234,9 @@ export function createNativeChatController({
       })
       await receiveConnection(at, result)
     } catch {
-      if (generation === at) publish({ error: "request-failed" })
+      if (isCurrent(at)) publish({ error: "request-failed" })
     } finally {
-      connecting = false
-      if (generation === at) publish({ connecting: false })
+      finishConnecting(at)
     }
   }
   return {
@@ -262,7 +272,9 @@ export function createNativeChatController({
       if (current) await run(() => bridge.cancel(current))
     },
     async reset() {
-      await disconnect()
+      const { at, done } = beginDisconnect()
+      await done
+      if (!isCurrent(at)) return
       agentSession = undefined
       publish({ messages: [], error: null, storageFailed: !clearChatHistory(projectId, storage) })
       if (agent) await connect(agent)
@@ -296,6 +308,7 @@ export function createNativeChatController({
       save()
       disposed = true
       generation += 1
+      connecting = null
       unsubscribe?.()
       unsubscribe = undefined
       permissions.clear()

@@ -2,6 +2,13 @@ import { readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import { z } from "zod"
+import {
+  Client,
+  desktopMcpSetupSchema,
+  StdioClientTransport,
+  type Transport,
+} from "../../apps/desktop/test-support/mcp-client"
+import { assistantResultSchema } from "../../packages/automation-api/src/assistant"
 import { createNativeFixture, nativeTestRoot, openNativeEditor } from "./native-fixture"
 
 const scopeSchema = z.object({
@@ -13,11 +20,30 @@ const receiptSchema = z.array(
   z.object({
     event: z.string(),
     pid: z.number(),
+    relayPid: z.number().int().positive().optional(),
     sessionId: z.string().optional(),
     optionId: z.string().optional(),
     text: z.string().optional(),
   }),
 )
+async function agentRecords(receipt: string) {
+  return receiptSchema.parse(
+    (await readFile(receipt, "utf8").catch(() => ""))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)),
+  )
+}
+function fixtureProcessRunning(pid: number) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error instanceof Error && Reflect.get(error, "code") === "ESRCH") return false
+    throw error
+  }
+}
 const tabs = (page: Page) => page.getByRole("navigation", { name: "Open projects", exact: true })
 const panel = (page: Page) => page.getByRole("complementary", { name: "AI chat", exact: true })
 const transcript = (page: Page) =>
@@ -57,14 +83,7 @@ test("native project chat streams ACP, reviews permissions, stops work and resto
   )
   const fixture = await createNativeFixture()
   const receipt = join(fixture.directory, "agent-receipt.jsonl")
-  const records = async () =>
-    receiptSchema.parse(
-      (await readFile(receipt, "utf8").catch(() => ""))
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line)),
-    )
+  const records = () => agentRecords(receipt)
   try {
     const native = await fixture.launch()
     const page = await openNativeEditor(native)
@@ -177,6 +196,118 @@ test("native project chat streams ACP, reviews permissions, stops work and resto
     await ready(page)
     await page.screenshot({ path: test.info().outputPath("native-chat.png") })
   } finally {
+    await fixture.cleanup()
+  }
+})
+
+test("native ACP reconnect waits for its real MCP relay and preserves an external client", async () => {
+  test.skip(
+    Boolean(process.env.VIBESHAPE_PACKAGED_APP),
+    "The installed app keeps its production port.",
+  )
+  const fixture = await createNativeFixture()
+  const receipt = join(fixture.directory, "relay-agent.jsonl")
+  const external = new Client({ name: "external-conflict-fixture", version: "1" })
+  try {
+    const native = await fixture.launch()
+    let page = await openNativeEditor(native)
+    const projectUrl = page.url()
+    await openChat(page)
+    await page.evaluate(`(() => {
+      window.vibeshapeAssistant.onEvent(event => {
+        if (event.type === 'snapshot') globalThis.nativeChatSnapshot = event.snapshot;
+      });
+    })()`)
+    const agent = {
+      command: "node",
+      args: [join(nativeTestRoot, "tests/desktop/fixtures/acp-agent.cjs"), receipt, "--attach-mcp"],
+    }
+    await panel(page)
+      .getByRole("textbox", { name: "ACP agent executable", exact: true })
+      .fill(agent.command)
+    await panel(page)
+      .getByRole("textbox", { name: "Arguments (JSON array)", exact: true })
+      .fill(JSON.stringify(agent.args))
+    await panel(page).getByRole("button", { name: "Connect agent", exact: true }).click()
+    await ready(page)
+    const first = scopeSchema.parse(await page.evaluate("globalThis.nativeChatSnapshot"))
+    const input = { projectId: first.projectId, agent }
+    let session = first
+    for (let count = 0; count < 2; count++) {
+      const result = assistantResultSchema.parse(
+        await page.evaluate(
+          async (input) => Reflect.get(globalThis, "vibeshapeAssistant").connect(input),
+          input,
+        ),
+      )
+      expect(result).toMatchObject({ ok: true, value: { status: "ready" } })
+      if (!result.ok) throw new Error("Expected replacement of the owned ACP relay.")
+      expect(result.value.sessionToken).not.toBe(session.sessionToken)
+      session = scopeSchema.parse(result.value)
+    }
+    expect(
+      (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-attached"),
+    ).toHaveLength(3)
+    const reopened = native.waitForEvent("window")
+    await page.close()
+    await native.evaluate(({ app }) => app.emit("activate"))
+    page = await reopened
+    await page.waitForLoadState("domcontentloaded")
+    await page.goto(projectUrl)
+    const recreated = assistantResultSchema.parse(
+      await page.evaluate(
+        async (input) => Reflect.get(globalThis, "vibeshapeAssistant").connect(input),
+        input,
+      ),
+    )
+    expect(recreated).toMatchObject({ ok: true, value: { status: "ready" } })
+    if (!recreated.ok) throw new Error("Expected the recreated window to wait for prior cleanup.")
+    await page.evaluate(
+      async (scope) => Reflect.get(globalThis, "vibeshapeAssistant").disconnect(scope),
+      {
+        projectId: recreated.value.projectId,
+        sessionToken: recreated.value.sessionToken,
+      },
+    )
+    const setup = desktopMcpSetupSchema.parse(
+      await page.evaluate("window.vibeshapeDesktop.getMcpSetup()"),
+    )
+    await external.connect(
+      new StdioClientTransport({ ...setup.mcpServers.vibeshape, stderr: "ignore" }) as Transport,
+    )
+    expect(
+      await page.evaluate(
+        async (input) => Reflect.get(globalThis, "vibeshapeAssistant").connect(input),
+        input,
+      ),
+    ).toEqual({ ok: false, code: "mcp-client-conflict" })
+    expect((await external.listTools()).tools.some((tool) => tool.name === "model_info")).toBe(true)
+    await external.close()
+    await expect
+      .poll(() =>
+        page.evaluate(
+          "fetch('/__vibeshape/automation/status',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(r=>r.client)",
+        ),
+      )
+      .toBeNull()
+    expect(
+      await page.evaluate(
+        async (input) => Reflect.get(globalThis, "vibeshapeAssistant").connect(input),
+        input,
+      ),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
+    await native.close()
+    const records = await agentRecords(receipt)
+    expect(records.filter((entry) => entry.event === "mcp-attached")).toHaveLength(5)
+    const parents = records
+      .filter((entry) => entry.event === "initialized")
+      .map((entry) => entry.pid)
+    const relays = records.flatMap((entry) => (entry.relayPid ? [entry.relayPid] : []))
+    expect(new Set(parents).size).toBe(5)
+    expect(new Set(relays).size).toBe(5)
+    for (const pid of [...parents, ...relays]) expect(fixtureProcessRunning(pid)).toBe(false)
+  } finally {
+    await external.close()
     await fixture.cleanup()
   }
 })

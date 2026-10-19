@@ -37,19 +37,22 @@ type Owner = {
   eventCount: number
   cancelTimer: ReturnType<typeof setTimeout> | undefined
   failureCode: AssistantErrorCode | undefined
+  stopping: Promise<void> | undefined
 }
 
 export type AssistantServiceOptions = {
   cwd: string
   getMcpSetup: (projectId: string) => Promise<DesktopMcpSetup>
   onEvent: (event: AssistantEvent) => void
-  isMcpClientAttached?: () => boolean
+  isMcpClientAttached?: () => boolean | Promise<boolean>
+  whenMcpClientReleased?: () => Promise<void>
   spawn?: typeof nodeSpawn
   env?: NodeJS.ProcessEnv
   requestTimeoutMs?: number
   promptTimeoutMs?: number
   permissionTimeoutMs?: number
   cancelTimeoutMs?: number
+  shutdownTimeoutMs?: number
 }
 
 class AssistantFailure extends Error {
@@ -82,10 +85,25 @@ function applyInitialization(owner: Owner, init: acp.InitializeResponse) {
   if (owner.resumeSessionId && !owner.snapshot.canResume) throw new AssistantFailure("unsupported")
 }
 
+async function settleShutdown(pending: Promise<unknown>, timeoutMs: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      pending.catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export function createAssistantService(options: AssistantServiceOptions) {
   if (!isAbsolute(options.cwd)) throw new Error("The assistant working directory must be absolute.")
   let current: Owner | null = null
   let disposed = false
+  let stopping = Promise.resolve()
   const requestTimeout = options.requestTimeoutMs ?? 30_000
 
   function emit(owner: Owner, event: AssistantEvent) {
@@ -121,14 +139,24 @@ export function createAssistantService(options: AssistantServiceOptions) {
     return value
   }
   function stop(owner: Owner, code?: AssistantErrorCode) {
+    if (owner.stopping) return owner.stopping
+    owner.stopping = stopping
     owner.failureCode = code
     owner.acceptingUpdates = false
     owner.permissions.cancel()
     clearTimeout(owner.cancelTimer)
-    owner.connection?.close()
     const child = owner.process
     owner.process = null
-    if (child) killAssistantProcess(child)
+    if (child) {
+      const released = options.whenMcpClientReleased?.() ?? Promise.resolve()
+      const pending = Promise.all([
+        killAssistantProcess(child),
+        settleShutdown(released, options.shutdownTimeoutMs ?? 2000),
+      ])
+      stopping = Promise.all([stopping, pending]).then(() => undefined)
+      owner.stopping = stopping
+    }
+    owner.connection?.close()
     owner.snapshot.status = code ? "error" : "disconnected"
     if (code)
       emit(owner, {
@@ -138,6 +166,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         code,
       })
     snapshot(owner)
+    return owner.stopping
   }
   async function bounded<T>(
     owner: Owner,
@@ -270,6 +299,22 @@ export function createAssistantService(options: AssistantServiceOptions) {
     )
     applyInitialization(owner, init)
   }
+  async function prepareConnection(owner: Owner, projectId: string) {
+    await stopping
+    if (current !== owner || disposed) throw new AssistantFailure("stale-session")
+    if (await options.isMcpClientAttached?.()) throw new AssistantFailure("mcp-client-conflict")
+    const setup = desktopMcpSetupSchema.parse(await options.getMcpSetup(projectId))
+    if (current !== owner || disposed) throw new AssistantFailure("stale-session")
+    const server = setup.mcpServers.vibeshape
+    owner.mcp = [
+      {
+        name: "vibeshape",
+        command: server.command,
+        args: server.args,
+        env: [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }],
+      },
+    ]
+  }
   async function connect(
     input: Extract<AssistantRequest, { operation: "connect" }>["input"],
   ): Promise<AssistantResult> {
@@ -304,22 +349,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
       eventCount: 0,
       cancelTimer: undefined,
       failureCode: undefined,
+      stopping: undefined,
     }
     current = owner
     snapshot(owner)
     try {
-      if (options.isMcpClientAttached?.()) throw new AssistantFailure("mcp-client-conflict")
-      const setup = desktopMcpSetupSchema.parse(await options.getMcpSetup(input.projectId))
-      if (current !== owner || disposed) throw new AssistantFailure("stale-session")
-      const server = setup.mcpServers.vibeshape
-      owner.mcp = [
-        {
-          name: "vibeshape",
-          command: server.command,
-          args: server.args,
-          env: [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }],
-        },
-      ]
+      await prepareConnection(owner, input.projectId)
       await initialize(owner, input.agent)
       return { ok: true, value: await openSession(owner) }
     } catch (error) {
@@ -329,6 +364,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   function connectFailure(owner: Owner, error: unknown): AssistantResult {
+    if (current !== owner || disposed) return failure("stale-session")
     const code =
       owner.failureCode ??
       errorCode(error, owner.process ? "initialization-failed" : "launch-failed")
@@ -493,8 +529,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
     const owner = owned(request.input)
     if (!owner) return failure("stale-session")
     if (request.operation === "disconnect") {
-      stop(owner)
+      const stopped = stop(owner)
       current = null
+      await stopped
       return { ok: true, value: { ...owner.snapshot } }
     }
     if (!owner.process || !owner.connection) return failure("agent-exited")
@@ -524,6 +561,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       disposed = true
       if (current) stop(current)
       current = null
+      return stopping
     },
   }
 }

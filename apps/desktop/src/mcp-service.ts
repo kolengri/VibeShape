@@ -18,6 +18,8 @@ type Client = {
   transport: StreamableHTTPServerTransport
   lease: ReturnType<typeof setTimeout>
   stream?: ServerResponse
+  released: Promise<void>
+  resolveReleased: () => void
 }
 
 function reject(response: ServerResponse, status: number, message: string) {
@@ -42,6 +44,7 @@ export function createDesktopMcpService(origin: string) {
     clearTimeout(owner.lease)
     broker.setClient(null)
     resources.clear()
+    owner.resolveReleased()
     await owner.server.close()
   }
 
@@ -67,10 +70,16 @@ export function createDesktopMcpService(origin: string) {
       )
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: randomUUID })
     const server = createLocalMcpAdapter(broker, resources)
+    let resolveReleased = () => {}
+    const released = new Promise<void>((resolve) => {
+      resolveReleased = resolve
+    })
     const owner: Client = {
       server,
       transport,
       lease: setTimeout(() => void release(owner), 10_000),
+      released,
+      resolveReleased,
     }
     // Reserve before connecting or reading the client's initialization response.
     client = owner
@@ -119,6 +128,9 @@ export function createDesktopMcpService(origin: string) {
     handleBrowser: broker.handle,
     isClientAttached() {
       return client !== null
+    },
+    whenClientReleased() {
+      return client?.released ?? Promise.resolve()
     },
     handles(path: string) {
       return path.split("?", 1)[0] === DESKTOP_MCP_PATH
