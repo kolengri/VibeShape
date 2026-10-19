@@ -118,8 +118,14 @@ compliance checks before publishing a stable GitHub Release:
 
 The checker considers stable desktop tags, compares SemVer and selects the architecture-matched
 asset. It ignores the separate OCCT source-release channel. Missing digests, invalid metadata,
-unapproved redirects, oversized/interrupted downloads and hash mismatches fail without publishing a
-partial image. HTTPS and GitHub's asset digest do not replace Developer ID authentication.
+unapproved redirects, oversized/interrupted downloads and hash mismatches fail before copying an
+image to its final name. HTTPS and GitHub's asset digest do not replace Developer ID authentication.
+The selected destination is checked before transfer; an occupied path opens the Save dialog again
+without repeating the release lookup. Final creation remains exclusive to refuse a later collision.
+Verified bytes are copied through an owned destination handle rather than a hard link, so writable
+volumes such as exFAT and FAT do not need hard-link support. Publication is not an atomic rename:
+the ready dialog appears only after copying and closing the destination. Cancellation and ordinary
+copy failures clean up owned incomplete files, and shutdown waits for that cleanup.
 Update dialogs select typed catalog messages for network, HTTP, metadata, integrity and destination
 failures; raw transport and filesystem diagnostics are never interpolated into their product copy.
 

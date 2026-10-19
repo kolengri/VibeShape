@@ -33,6 +33,10 @@ const messages = {
       "The update service returned an invalid response. Try Check for Updates again later.",
     updateErrorIntegrity:
       "The downloaded update failed its integrity check and was not saved. Try downloading it again.",
+    chooseAnotherName: "Choose another name…",
+    cancel: "Cancel",
+    updateErrorDestinationExists:
+      "A file or folder already uses this name. Choose another file name for the update.",
     updateErrorDestination:
       "The update could not be saved. Choose a writable folder and a new file name, then try again.",
     checkForUpdates: "Check for Updates…",

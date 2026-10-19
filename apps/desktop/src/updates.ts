@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto"
-import { link, open, rm } from "node:fs/promises"
+import { lstat, open, rm } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join } from "node:path"
 import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import { gt, parse, valid } from "semver"
 import { z } from "zod"
+import { publishVerifiedUpdate } from "./update-publication"
 
 const repositoryUrl = "https://github.com/kolengri/VibeShape"
 const releasesUrl = "https://api.github.com/repos/kolengri/VibeShape/releases?per_page=100&page=1"
@@ -14,7 +15,7 @@ const redirects = new Set([301, 302, 303, 307, 308])
 
 type DesktopUpdateFailure =
   | { kind: "http"; status: number }
-  | { kind: "network" | "invalid-response" | "integrity" | "destination" }
+  | { kind: "network" | "invalid-response" | "integrity" | "destination" | "destination-exists" }
 
 export class DesktopUpdateError extends Error {
   constructor(
@@ -125,16 +126,43 @@ async function discardBody(response: Response) {
   await response.body?.cancel().catch(() => undefined)
 }
 
-async function destinationOperation<T>(operation: () => Promise<T>) {
+async function destinationOperation<T>(operation: () => Promise<T>, occupiedIsConflict = false) {
   try {
     return await operation()
   } catch (cause) {
+    if (occupiedIsConflict && fileErrorCode(cause) === "EEXIST")
+      throw new DesktopUpdateError(
+        { kind: "destination-exists" },
+        "The desktop update destination already exists.",
+        { cause },
+      )
     throw new DesktopUpdateError(
       { kind: "destination" },
       "Desktop update destination could not be written.",
       { cause },
     )
   }
+}
+
+function fileErrorCode(error: unknown) {
+  return error instanceof Error && "code" in error ? error.code : undefined
+}
+
+async function requireAvailableDestination(destination: string) {
+  try {
+    await lstat(destination)
+  } catch (cause) {
+    if (fileErrorCode(cause) === "ENOENT") return
+    throw new DesktopUpdateError(
+      { kind: "destination" },
+      "The desktop update destination could not be inspected.",
+      { cause },
+    )
+  }
+  throw new DesktopUpdateError(
+    { kind: "destination-exists" },
+    "The desktop update destination already exists.",
+  )
 }
 
 function declaredLength(response: Response): number | null {
@@ -365,8 +393,7 @@ async function writeVerifiedDownload(
         "Desktop update download failed SHA-256 verification.",
       )
     }
-    // A same-directory hard link publishes verified bytes atomically and refuses every existing path.
-    await destinationOperation(() => link(partial, destination))
+    await destinationOperation(() => publishVerifiedUpdate(partial, destination, signal), true)
   } finally {
     await reader.cancel().catch(() => undefined)
     reader.releaseLock()
@@ -427,6 +454,8 @@ export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
         )
       }
       const signal = operationSignal(options.signal, 10 * 60_000)
+      signal.throwIfAborted()
+      await requireAvailableDestination(destination)
       signal.throwIfAborted()
       const response = await assetResponse(transport, descriptor.data, signal)
       await writeVerifiedDownload(

@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { once } from "node:events"
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
+import { writeFileSync } from "node:fs"
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises"
 import { createServer, type ServerResponse } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -419,16 +430,37 @@ describe("verified desktop downloads", () => {
     expect(await readdir(context.directory)).toEqual([])
   })
 
-  test("never overwrites an existing destination and cleans the verified partial", async () => {
+  test.each(["file", "directory", "dangling symlink"])(
+    "rejects an occupied %s before HTTP transfer",
+    async (kind) => {
+      const context = await fixture((_url, response) => response.end(image))
+      if (kind === "file") await writeFile(context.destination, "the user's existing file")
+      else if (kind === "directory") await mkdir(context.destination)
+      else await symlink(join(context.directory, "missing-target"), context.destination)
+      const before = await lstat(context.destination)
+      await expect(
+        context.client.downloadDesktopUpdate(desktopRelease(), context.destination),
+      ).rejects.toMatchObject({ failure: { kind: "destination-exists" } })
+      expect(context.requests).toEqual([])
+      expect((await lstat(context.destination)).ino).toBe(before.ino)
+      if (kind === "file")
+        expect(await readFile(context.destination, "utf8")).toBe("the user's existing file")
+      if (kind === "dangling symlink")
+        expect(await readlink(context.destination)).toBe(join(context.directory, "missing-target"))
+      expect(await readdir(context.directory)).toEqual(["update.dmg"])
+    },
+  )
+  test("refuses a destination created after preflight and preserves the racing file", async () => {
     const context = await fixture((_url, response) => response.end(image))
-    await writeFile(context.destination, "the user's existing file")
     await expect(
-      context.client.downloadDesktopUpdate(desktopRelease(), context.destination),
-    ).rejects.toMatchObject({
-      failure: { kind: "destination" },
-      cause: { code: "EEXIST" },
-    })
-    expect(await readFile(context.destination, "utf8")).toBe("the user's existing file")
+      context.client.downloadDesktopUpdate(desktopRelease(), context.destination, {
+        onProgress(fraction) {
+          if (fraction === 1) writeFileSync(context.destination, "The racing user's file")
+        },
+      }),
+    ).rejects.toMatchObject({ failure: { kind: "destination-exists" }, cause: { code: "EEXIST" } })
+    expect(context.requests).toHaveLength(1)
+    expect(await readFile(context.destination, "utf8")).toBe("The racing user's file")
     expect(await readdir(context.directory)).toEqual(["update.dmg"])
   })
 })

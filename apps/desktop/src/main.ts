@@ -207,26 +207,60 @@ async function showDownloadedUpdate(path: string) {
   if (finished.response === 0 && !quitting) shell.showItemInFolder(path)
 }
 
-async function downloadRelease(release: DesktopRelease, signal: AbortSignal) {
+async function chooseUpdateDestination(release: DesktopRelease) {
+  if (quitting) return undefined
   const destination = await dialog.showSaveDialog({
     title: t("downloadTitle", { version: release.version }),
     defaultPath: join(app.getPath("downloads"), release.fileName),
     filters: [{ name: t("diskImageType"), extensions: ["dmg"] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
-  if (destination.canceled || !destination.filePath || quitting) return
+  if (destination.canceled || quitting) return undefined
+  return destination.filePath
+}
+
+async function downloadToDestination(release: DesktopRelease, path: string, signal: AbortSignal) {
   const progressWindow = mainWindow
   try {
     setDownloadProgress(progressWindow, 0)
     await updateWork.run(() =>
-      downloadDesktopUpdate(release, destination.filePath, {
+      downloadDesktopUpdate(release, path, {
         signal,
         onProgress: (fraction) => setDownloadProgress(progressWindow, fraction),
       }),
     )
-    await showDownloadedUpdate(destination.filePath)
+    await showDownloadedUpdate(path)
   } finally {
     setDownloadProgress(progressWindow, -1)
+  }
+}
+
+async function retryUpdateDestination(error: unknown) {
+  if (quitting) return false
+  if (!(error instanceof DesktopUpdateError) || error.failure.kind !== "destination-exists")
+    throw error
+  const retry = await dialog.showMessageBox({
+    type: "error",
+    message: t("updateErrorTitle"),
+    detail: t("updateErrorDestinationExists"),
+    buttons: [t("chooseAnotherName"), t("cancel")],
+    defaultId: 0,
+    cancelId: 1,
+  })
+  return retry.response === 0
+}
+
+async function downloadRelease(release: DesktopRelease, signal: AbortSignal) {
+  let retry = true
+  while (retry) {
+    const path = await chooseUpdateDestination(release)
+    if (!path) return
+    try {
+      await downloadToDestination(release, path, signal)
+      return
+    } catch (error) {
+      retry = await retryUpdateDestination(error)
+    }
   }
 }
 
@@ -270,6 +304,7 @@ function updateFailureDetail(error: unknown) {
     "invalid-response": "updateErrorResponse",
     integrity: "updateErrorIntegrity",
     destination: "updateErrorDestination",
+    "destination-exists": "updateErrorDestinationExists",
   } as const
   return t(keys[error.failure.kind])
 }
