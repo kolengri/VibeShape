@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   truncate,
@@ -26,6 +27,20 @@ async function directory() {
   const root = await mkdtemp(join(tmpdir(), "vibeshape-native-slicer-"))
   roots.push(root)
   return root
+}
+async function fullCustomRegistry() {
+  const root = await directory()
+  const options = { directory: root, resolve: async () => null }
+  const applications = createNativeSlicerApplications(options)
+  const targets: { id: string; name: string }[] = []
+  for (let index = 0; index < 16; index++) {
+    const path = join(root, `Custom slicer ${index}`)
+    await writeFile(path, "executable", { mode: 0o755 })
+    const chosen = await applications.choose(path)
+    if (!chosen) throw new Error("Expected a custom application to be registered.")
+    targets.push(chosen)
+  }
+  return { root, options, targets }
 }
 const request = {
   slicerId: "orca-slicer",
@@ -221,6 +236,40 @@ describe("native slicer handoff", () => {
 })
 
 describe("native application allowlist", () => {
+  it("reclaims stale custom registrations before applying the limit after restart", async () => {
+    const { root, options, targets } = await fullCustomRegistry()
+    await rm(join(root, "Custom slicer 0"))
+    await rename(join(root, "Custom slicer 1"), join(root, "Moved slicer"))
+    await chmod(join(root, "Custom slicer 2"), 0o644)
+    const restarted = createNativeSlicerApplications(options)
+    expect(await restarted.list()).toEqual(targets.slice(3))
+    const replacement = join(root, "Replacement slicer")
+    await writeFile(replacement, "executable", { mode: 0o755 })
+    const chosen = await restarted.choose(replacement)
+    expect(chosen?.id).toMatch(/^custom-/)
+    if (!chosen) throw new Error("Expected a replacement custom application.")
+    const expected = [...targets.slice(3), chosen]
+    expect(await createNativeSlicerApplications(options).list()).toEqual(expected)
+    const saved = JSON.parse(await readFile(join(root, "slicer-applications.json"), "utf8"))
+    expect(saved).toHaveLength(14)
+    expect(saved).toEqual(expected.map((target) => expect.objectContaining(target)))
+    for (const stale of targets.slice(0, 3)) expect(await restarted.resolve(stale.id)).toBeNull()
+    expect((await stat(join(root, "slicer-applications.json"))).mode & 0o777).toBe(0o600)
+  })
+  it("preserves the full valid custom registry and existing IDs when a new selection exceeds the limit", async () => {
+    const { root, options, targets } = await fullCustomRegistry()
+    const registry = join(root, "slicer-applications.json")
+    const before = await readFile(registry)
+    const candidate = join(root, "One more slicer")
+    await writeFile(candidate, "executable", { mode: 0o755 })
+    const restarted = createNativeSlicerApplications(options)
+    expect(await restarted.choose(candidate)).toBeNull()
+    const first = targets[0]
+    if (!first) throw new Error("Expected the first registered application.")
+    expect(await restarted.choose(join(root, "Custom slicer 0"))).toEqual(first)
+    expect(await restarted.list()).toEqual(targets)
+    expect(await readFile(registry)).toEqual(before)
+  })
   it("discovers installed bundles and remembers only applications selected through the host", async () => {
     const root = await directory()
     const bundle = join(root, "OrcaSlicer.app")

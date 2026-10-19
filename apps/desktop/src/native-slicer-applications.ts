@@ -92,6 +92,17 @@ export function createNativeSlicerApplications(options: {
   const registry = join(options.directory, "slicer-applications.json")
   const inspect = options.inspect ?? inspectSlicerApplication
   let current: NativeSlicerApplication[] = []
+  async function readCustomApplications() {
+    const custom = await Promise.all(
+      (await readRegistry(registry)).map(async (saved) => {
+        const application = await inspect(saved.path)
+        return application && application.path === saved.path && application.kind === saved.kind
+          ? saved
+          : null
+      }),
+    )
+    return custom.filter((application) => application !== null)
+  }
   async function list() {
     const installed = await Promise.all(
       slicerIdSchema.options.map(async (id) => {
@@ -106,14 +117,7 @@ export function createNativeSlicerApplications(options: {
         return application ? { ...application, id, name: slicerNames[id] } : null
       }),
     )
-    const custom = await Promise.all(
-      (await readRegistry(registry)).map(async (saved) => {
-        const application = await inspect(saved.path)
-        return application && application.path === saved.path && application.kind === saved.kind
-          ? saved
-          : null
-      }),
-    )
+    const custom = await readCustomApplications()
     current = [...installed, ...custom].filter((application) => application !== null)
     return nativeSlicerTargetsSchema.parse(current.map(({ id, name }) => ({ id, name })))
   }
@@ -125,7 +129,7 @@ export function createNativeSlicerApplications(options: {
       await list()
       const installed = current.find((candidate) => candidate.path === application.path)
       if (installed) return { id: installed.id, name: installed.name }
-      const custom = await readRegistry(registry)
+      const custom = await readCustomApplications()
       if (custom.length >= 16) return null
       const added = {
         ...application,
