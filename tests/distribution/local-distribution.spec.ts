@@ -5,7 +5,7 @@ import { join, resolve } from "node:path"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { openApplicationMenuItem } from "../e2e/application-menu-support"
-import { expect, test } from "../e2e/fixtures"
+import { createEditorProject, expect, test } from "../e2e/fixtures"
 import { invokeModelCommand } from "../e2e/model-command-support"
 
 const distribution = resolve(process.env.VIBESHAPE_DISTRIBUTION_ROOT ?? "")
@@ -50,7 +50,9 @@ test("the relocated package preserves saved work across stop, restart, backup re
   try {
     await startEditor()
     await page.goto(origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     await expect(page.getByRole("button", { name: /Enable AI session|Stop AI/ })).toHaveCount(0)
     expect(await fetch(`${origin}/__vibeshape/automation/status`).then((r) => r.status)).toBe(404)
     await invokeModelCommand(page, "Primitives", "Box")
@@ -67,7 +69,9 @@ test("the relocated package preserves saved work across stop, restart, backup re
       "data-rendered-feature-count",
       "1",
     )
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
 
     const conflicting = spawn(executable, ["editor", "--port", String(port)], { cwd })
     let conflictMessage = ""
@@ -105,7 +109,7 @@ test("the relocated package preserves saved work across stop, restart, backup re
     })
     try {
       await recovered.goto(origin)
-      await expect(recovered.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await createEditorProject(recovered)
       await openApplicationMenuItem(recovered, "Files and projects…")
       await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
       await expect(recovered.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
