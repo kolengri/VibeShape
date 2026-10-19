@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@vibeshape/automation-api": "workspace:*",
     "@vibeshape/mcp-server": "workspace:*",
     "@vibeshape/slicer-bridge": "workspace:*",
