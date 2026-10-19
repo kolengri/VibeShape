@@ -21,17 +21,19 @@ Development uses `http://127.0.0.1:5180`; production preview uses port `4180`.
 The browser tests run against the built site, so rebuild before testing changed source.
 The site needs no API keys, hosted database, or model provider.
 
-## Scroll-driven hero
+## Hero playback
 
-The hero uses a silent six-second H.264 visual in `apps/site/public/media`. Scrolling seeks the
-paused video forward or backward; it does not autoplay. On desktop viewports at least 1024 pixels
-wide and 800 pixels tall, the hero stays visible during this transition. Smaller viewports use normal
-document flow. Reduced-motion preferences show the poster without loading video, and media errors
-also leave the poster visible. Text and branding belong to the page, not the visual.
+The hero plays its silent six-second H.264 introduction independently of scrolling, then returns
+to the exploded mechanical housing around the four-second reference pose. That short segment
+moves slowly forward and backward with a gentle vertical float. The hero stays in normal document
+flow at every screen size. Playback pauses while the visual is outside the viewport or the tab is
+hidden; returning resumes the introduction or the floating pose rather than restarting the story.
+Reduced-motion preferences show `media/hero-model.jpg` without fetching the video, and media or
+autoplay failures also leave that poster visible.
 
 The original 3DBenchy mesh is CC0; its source and attribution are in `media/NOTICE.txt`. The remaining
 geometry is a presentation illustration, not an editor recording. Every video frame is independently
-seekable, and the site loads no Three.js or CAD runtime for this animation.
+seekable. The hero itself requires no Three.js or CAD runtime.
 
 ## Spatial illustrations
 
@@ -41,6 +43,21 @@ It stays finished when revisited. Feature diagrams, workflow stages, and agent s
 when their block enters the viewport; selecting another workflow stage starts that stage's visual.
 Reduced-motion preferences show completed static illustrations and keep all content visible.
 These SVG/CSS illustrations use the existing theme tokens and do not load the CAD runtime.
+
+## Interactive workflow model
+
+The Shape stage lazy-loads the existing `@vibeshape/viewer` viewport once its preview enters the
+viewport. Visitors can orbit a perforated mounting plate, use the editor's orientation inset,
+select standard views, or Fit the model. Pointer focus enables zoom; unfocused wheel gestures
+continue scrolling the page, and Escape releases focus. The site owns the responsive canvas host,
+localized controls, loading state, and unavailable fallback. Changing workflow stages disposes
+the preview and its render resources.
+
+The committed STL is an original display-only demonstration, not an editable CAD document or a
+manufacturing export. See [its dimensions, provenance, and reproduction recipe](../apps/site/public/models/README.md).
+The preview reuses the editor's renderer and camera controls without loading the CAD kernel,
+accessing editor storage, or creating a parallel document or command path. The bundled Three.js
+MIT notice is shipped at `third-party/three-MIT.txt`.
 
 ## Social previews
 

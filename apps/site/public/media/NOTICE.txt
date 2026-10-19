@@ -6,3 +6,5 @@ License: CC0 1.0 Universal, https://www.3dbenchy.com/license/
 
 The mechanical housing, contour transformation, and rendering are original presentation artwork for VibeShape.
 This is an illustration, not a recording of the VibeShape editor.
+
+hero-model.jpg is the exploded-housing frame extracted from the presentation video at four seconds.
