@@ -6,6 +6,7 @@ import {
   createRectangleSketch,
   createSketchProfileSet,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   documentSnapshotSchema,
   extrusionFeatureParametersV8Schema,
   extrusionFeatureType,
@@ -548,47 +549,50 @@ describe("document extrusion content preparation", () => {
     })
   })
 
-  it("resolves a signed origin-offset datum plane into an exact world frame", async () => {
-    const feature = featureRecordSchema.parse({
-      schemaVersion: 0,
-      id: "0195b5ac-b220-7a2c-8c33-000000003300",
-      type: datumPlaneFeatureType.type,
-      parameters: {
-        mode: "offset",
-        support: { kind: "origin-plane", plane: "xz" },
-        offset: createLengthQuantity(12),
-      },
-      dependencies: [],
-      references: [],
-      suppressed: false,
-      label: "Plane 1",
-    })
-    const document = documentSnapshotSchema.parse({
-      schemaVersion: 0,
-      id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
-      revision: 1,
-      name: "Datum plane preparation",
-      variables: [],
-      sketches: [],
-      features: [feature],
-      createdAt: "2026-08-20T00:00:00.000Z",
-      updatedAt: "2026-08-20T00:00:00.000Z",
-    })
-    const prepare = createDocumentFeatureContentPreparer(null)
-
-    await expect(prepare({ document, feature })).resolves.toMatchObject({
-      ok: true,
-      parameters: {
-        size: 64,
-        frame: {
-          origin: [0, -12, 0],
-          xAxis: [1, 0, 0],
-          yAxis: [0, 0, 1],
-          normal: [0, -1, 0],
+  it.each([datumPlaneFeatureTypeV1, datumPlaneFeatureType])(
+    "resolves a signed origin-offset datum v$type.schemaVersion into an exact world frame",
+    async (descriptor) => {
+      const feature = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000003300",
+        type: descriptor.type,
+        parameters: {
+          mode: "offset",
+          support: { kind: "origin-plane", plane: "xz" },
+          offset: createLengthQuantity(12),
         },
-      },
-    })
-  })
+        dependencies: [],
+        references: [],
+        suppressed: false,
+        label: "Plane 1",
+      })
+      const document = documentSnapshotSchema.parse({
+        schemaVersion: 0,
+        id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+        revision: 1,
+        name: "Datum plane preparation",
+        variables: [],
+        sketches: [],
+        features: [feature],
+        createdAt: "2026-08-20T00:00:00.000Z",
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      })
+      const prepare = createDocumentFeatureContentPreparer(null)
+
+      await expect(prepare({ document, feature })).resolves.toMatchObject({
+        ok: true,
+        parameters: {
+          size: 64,
+          frame: {
+            origin: [0, -12, 0],
+            xAxis: [1, 0, 0],
+            yAxis: [0, 0, 1],
+            normal: [0, -1, 0],
+          },
+        },
+      })
+    },
+  )
 
   it("prepares an extrusion in its angled datum support frame", async () => {
     const source = fixture()

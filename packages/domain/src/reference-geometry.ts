@@ -23,20 +23,23 @@ const datumPlaneAngleSchema = angleQuantitySchema.refine(
   { message: "The datum plane rotation angle must be between -360 and 360 degrees." },
 )
 
-export const datumPlaneParametersSchema = z
+export const datumPlaneParametersV1Schema = z
   .object({
     mode: z.literal("offset"),
     support: datumPlaneSupportSchema,
     offset: lengthQuantitySchema,
-    rotation: datumPlaneRotationSchema.extend({ angle: datumPlaneAngleSchema }).optional(),
   })
   .strict()
+
+export const datumPlaneParametersSchema = datumPlaneParametersV1Schema.extend({
+  rotation: datumPlaneRotationSchema.extend({ angle: datumPlaneAngleSchema }).optional(),
+})
 
 const unresolvedDatumPlaneParametersSchema = datumPlaneParametersSchema.extend({
   rotation: datumPlaneRotationSchema.optional(),
 })
 
-export const datumPlaneFeatureType = featureTypeDescriptorSchema.parse({
+export const datumPlaneFeatureTypeV1 = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
     moduleId: "org.vibeshape.core.reference-geometry",
@@ -47,6 +50,11 @@ export const datumPlaneFeatureType = featureTypeDescriptorSchema.parse({
   classification: "reference",
   dependencies: { min: 0, max: 1 },
   references: { min: 0, max: 1 },
+})
+
+export const datumPlaneFeatureType = featureTypeDescriptorSchema.parse({
+  ...datumPlaneFeatureTypeV1,
+  type: { ...datumPlaneFeatureTypeV1.type, schemaVersion: 2 },
 })
 
 function invariantIssues(valid: boolean, message: string) {
@@ -173,6 +181,18 @@ function contentParameters(parameters: unknown) {
 
 export const referenceGeometryFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
   {
+    type: datumPlaneFeatureTypeV1.type,
+    parametersSchema: datumPlaneParametersV1Schema,
+    resolveParameters(parameters, variables) {
+      const parsed = datumPlaneParametersV1Schema.safeParse(parameters)
+      return parsed.success
+        ? resolveDatumPlaneParameters(parsed.data, variables)
+        : { ok: true, parameters }
+    },
+    contentParameters,
+    validateFeature: datumPlaneInvariant,
+  },
+  {
     type: datumPlaneFeatureType.type,
     parametersSchema: datumPlaneParametersSchema,
     resolveParameters: resolveDatumPlaneParameters,
@@ -181,16 +201,23 @@ export const referenceGeometryFeatureTypeHandlers: readonly TrustedFeatureTypeHa
   },
 ]
 
-export function readDatumPlaneFeatureParameters(feature: FeatureRecord) {
+export function readDatumPlaneFeatureParameters(
+  feature: FeatureRecord,
+): z.infer<typeof datumPlaneParametersSchema> | null {
   const type = feature.type
   if (
     type.moduleId !== datumPlaneFeatureType.type.moduleId ||
     type.moduleVersion !== datumPlaneFeatureType.type.moduleVersion ||
-    type.typeId !== datumPlaneFeatureType.type.typeId ||
-    type.schemaVersion !== datumPlaneFeatureType.type.schemaVersion
+    type.typeId !== datumPlaneFeatureType.type.typeId
   ) {
     return null
   }
-  const parsed = datumPlaneParametersSchema.safeParse(feature.parameters)
-  return parsed.success ? parsed.data : null
+  const schema =
+    type.schemaVersion === 1
+      ? datumPlaneParametersV1Schema
+      : type.schemaVersion === 2
+        ? datumPlaneParametersSchema
+        : null
+  const parsed = schema?.safeParse(feature.parameters)
+  return parsed?.success ? parsed.data : null
 }

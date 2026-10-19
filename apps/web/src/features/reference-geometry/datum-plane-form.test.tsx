@@ -6,6 +6,7 @@ import {
   createAngleQuantity,
   createLengthQuantity,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   type FeatureRecord,
   featureIdSchema,
   sketchFeatureFaceSupportSchema,
@@ -127,6 +128,7 @@ describe("DatumPlaneForm", () => {
       4,
       expect.objectContaining({
         id: datumId,
+        type: expect.objectContaining({ schemaVersion: 2 }),
         parameters: expect.objectContaining({
           rotation: {
             axis: "y",
@@ -177,6 +179,45 @@ describe("DatumPlaneForm", () => {
         }),
       }),
     )
+  })
+
+  it("upgrades a legacy plane only on explicit submission while preserving its identity", async () => {
+    const user = userEvent.setup()
+    const feature: FeatureRecord = {
+      schemaVersion: 0,
+      id: datumId,
+      type: datumPlaneFeatureTypeV1.type,
+      label: "Legacy offset plane",
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(8),
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const onSave = renderForm({ kind: "edit", feature })
+    const angle = screen.getByRole("combobox", { name: copy.angle }) as HTMLInputElement
+    expect(angle.value).toBe("0 deg")
+    await user.clear(angle)
+    await user.type(angle, "45 deg")
+    expect(onSave).not.toHaveBeenCalled()
+    expect(feature.type.schemaVersion).toBe(1)
+    expect(feature.parameters).not.toHaveProperty("rotation")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        id: datumId,
+        label: "Legacy offset plane",
+        type: expect.objectContaining({ schemaVersion: 2 }),
+        parameters: expect.objectContaining({
+          rotation: { axis: "x", angle: expect.objectContaining({ value: Math.PI / 4 }) },
+        }),
+      }),
+    )
+    expect(feature.type.schemaVersion).toBe(1)
   })
 
   it.each([

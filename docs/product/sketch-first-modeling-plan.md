@@ -95,7 +95,7 @@ Exit criterion: users can choose among multiple regions without relying on creat
 ### Slice 5 — feature operations
 
 - Extend Extrude from New to Add, Remove, and Intersect with explicit merge scope.
-- Sketch-on-planar-face and signed offset Datum Plane support are implemented. Add mid-plane, angular, three-point, axis, and point reference modes after stable edge/vertex selection.
+- Sketch-on-planar-face and signed offset/support-local angular Datum Plane support are implemented; see [ADR-0114](../adr/0114-versioned-angular-datum-planes.md). Add mid-plane, arbitrary line-at-angle, three-point, axis, and point reference modes after stable edge/vertex selection.
 - Extend the implemented selector-backed Revolve from origin, same-sketch line, and stable straight model-edge axes to connector and curved axes, then add Hole, Fillet, Chamfer, Shell, Pattern, and Mirror as ordinary ordered features.
 - Keep command availability driven by selected geometry and registered module capabilities.
 

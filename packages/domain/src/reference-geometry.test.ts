@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test"
+import { type DocumentSnapshotV1, documentSnapshotSchema } from "./document"
+import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
+import { documentRestoredEventSchema } from "./document-history"
 import { createFeatureContentIdentity } from "./feature-content-identity"
 import { featureRecordSchema } from "./feature-graph"
+import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
+import { moduleIdSchema } from "./identifiers"
 import {
   createModuleRegistry,
   documentCoreModule,
@@ -10,25 +15,38 @@ import {
 } from "./modules"
 import {
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   datumPlaneParametersSchema,
+  datumPlaneParametersV1Schema,
+  readDatumPlaneFeatureParameters,
   referenceGeometryFeatureTypeHandlers,
 } from "./reference-geometry"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
+import {
+  applyVersionedDocumentCommand,
+  reduceVersionedDocumentEvent,
+  replayVersionedDocumentEvents,
+  type VersionedDocumentEvent,
+} from "./versioned-document-commands"
 
 const supportFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3301"
 const datumFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3302"
 
-function registry() {
+function registry(legacyOnly = false) {
   const modules = createModuleRegistry([
     documentCoreModule,
     featureCoreModule,
-    referenceGeometryModule,
+    legacyOnly
+      ? { ...referenceGeometryModule, featureTypes: [datumPlaneFeatureTypeV1] }
+      : referenceGeometryModule,
   ])
   if (!modules.ok) throw new Error(modules.diagnostic.message)
   const featureTypes = createFeatureTypeRegistry(
     modules.registry,
-    referenceGeometryFeatureTypeHandlers,
+    referenceGeometryFeatureTypeHandlers.filter(
+      ({ type }) => !legacyOnly || type.schemaVersion === 1,
+    ),
   )
   if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
   return featureTypes.registry
@@ -73,8 +91,8 @@ const originParameters = {
   offset: createLengthQuantity(12),
 } as const
 
-function contentIdentity(feature: unknown) {
-  const result = createFeatureContentIdentity(registry(), {
+function contentIdentity(feature: unknown, legacyOnly = false) {
+  const result = createFeatureContentIdentity(registry(legacyOnly), {
     feature,
     dependencies: [],
     environment: {
@@ -109,7 +127,147 @@ function angleVariables(expression: string) {
 }
 
 describe("datum plane feature", () => {
-  it("preserves legacy records and canonical content exactly for absent and zero rotation", () => {
+  it("registers strict legacy v1 and rotation-capable v2 without reclassifying old records", () => {
+    const types = registry()
+    expect(types.descriptors.map(({ type }) => type.schemaVersion)).toEqual([1, 2])
+    const legacy = { ...datum(originParameters), type: datumPlaneFeatureTypeV1.type }
+    expect(datumPlaneParametersV1Schema.parse(originParameters)).toEqual(originParameters)
+    expect(types.validateFeature(legacy)).toMatchObject({ ok: true, feature: legacy })
+    expect(types.resolveFeatureParameters(legacy, new Map())).toEqual({ ok: true, feature: legacy })
+    expect(readDatumPlaneFeatureParameters(legacy)).toEqual(originParameters)
+    expect(contentIdentity(legacy)).toEqual(contentIdentity(legacy, true))
+    expect(types.validateFeature(legacy)).toMatchObject({
+      contentParameters: { mode: "offset", support: originParameters.support, offset: 12 },
+    })
+    const rotated = datum({
+      ...originParameters,
+      rotation: { axis: "x", angle: createAngleQuantity(30, "deg") },
+    })
+    expect(rotated.type.schemaVersion).toBe(2)
+    expect(types.validateFeature(rotated)).toMatchObject({ ok: true })
+    expect(types.validateFeature({ ...rotated, type: datumPlaneFeatureTypeV1.type })).toMatchObject(
+      {
+        ok: false,
+        diagnostic: { code: "invalid-feature-parameters" },
+      },
+    )
+    expect(
+      readDatumPlaneFeatureParameters({ ...rotated, type: datumPlaneFeatureTypeV1.type }),
+    ).toBeNull()
+    expect(datumPlaneParametersV1Schema.safeParse(rotated.parameters).success).toBe(false)
+    expect(contentIdentity(datum(originParameters))).not.toEqual(contentIdentity(legacy))
+    const oldTypes = registry(true)
+    expect(oldTypes.validateFeature(rotated)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "feature-type-unavailable" },
+    })
+    expect(oldTypes.resolveFeatureParameters(rotated, new Map())).toEqual({
+      ok: true,
+      feature: rotated,
+    })
+  })
+
+  it.each([datumPlaneFeatureTypeV1, datumPlaneFeatureType])(
+    "retains dependency and semantic-input projection for datum version $type.schemaVersion",
+    (descriptor) => {
+      const feature = { ...datum(originParameters), type: descriptor.type }
+      expect(projectFirstPartyFeatureSemanticInputs(feature)).toEqual({
+        recognized: true,
+        ok: true,
+        inputs: [],
+      })
+      const snapshot = documentSnapshotSchema.parse({
+        schemaVersion: 0,
+        id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+        revision: 1,
+        name: "Datum versions",
+        sketches: [],
+        features: [feature],
+        createdAt: "2026-08-20T00:00:00.000Z",
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      })
+      expect(createDocumentDependencyGraphFromSnapshot(snapshot)).toMatchObject({
+        ok: true,
+        graph: { dependencyModelIssues: [] },
+      })
+    },
+  )
+
+  it.each([
+    { schemaVersion: 0 },
+    { schemaVersion: 3 },
+    { moduleVersion: "0.2.0" },
+    { moduleId: moduleIdSchema.parse("org.example.reference-geometry") },
+    { typeId: "org.example.datum-plane" },
+  ])("rejects unknown datum type revisions %j", (type) => {
+    expect(
+      readDatumPlaneFeatureParameters({
+        ...datum(originParameters),
+        type: { ...datumPlaneFeatureType.type, ...type },
+      }),
+    ).toBeNull()
+  })
+
+  it("upgrades a legacy datum only through an explicit update and restores v1 through Undo", () => {
+    const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
+    const actor = { type: "user", userId: null }
+    const issuedAt = "2026-10-19T00:00:00Z"
+    const events: VersionedDocumentEvent[] = []
+    let snapshot: DocumentSnapshotV1 | null = null
+    const apply = (kind: string, payload: unknown) => {
+      const result = applyVersionedDocumentCommand(snapshot, {
+        schemaVersion: 1,
+        commandId: id(10 + events.length),
+        documentId: id(1),
+        baseRevision: snapshot?.revision ?? 0,
+        kind,
+        issuedAt,
+        actor,
+        payload,
+      })
+      if (!result.ok) throw new Error(result.diagnostic.message)
+      snapshot = result.snapshot
+      events.push(result.event)
+      return result.snapshot
+    }
+    apply("org.vibeshape.document.create", { name: "Legacy datum" })
+    const legacy = { ...datum(originParameters), type: datumPlaneFeatureTypeV1.type }
+    const before = apply("org.vibeshape.history.insert-feature", {
+      feature: legacy,
+      historyAfter: null,
+    })
+    expect(before.features[0]?.type).toEqual(datumPlaneFeatureTypeV1.type)
+    const after = apply("org.vibeshape.feature.update", {
+      feature: {
+        ...legacy,
+        type: datumPlaneFeatureType.type,
+        parameters: {
+          ...originParameters,
+          rotation: { axis: "x", angle: createAngleQuantity(30, "deg") },
+        },
+      },
+    })
+    expect(after.features[0]).toMatchObject({ id: legacy.id, type: datumPlaneFeatureType.type })
+    expect(before.features[0]?.type).toEqual(datumPlaneFeatureTypeV1.type)
+    const restore = documentRestoredEventSchema.parse({
+      type: "org.vibeshape.document.restored",
+      schemaVersion: 1,
+      direction: "undo",
+      commandId: id(30),
+      transactionId: null,
+      documentId: id(1),
+      baseRevision: after.revision,
+      revision: after.revision + 1,
+      targetRevision: before.revision,
+      issuedAt,
+      actor,
+    })
+    const restored = reduceVersionedDocumentEvent(after, restore, before)
+    expect(restored).toMatchObject({ ok: true, snapshot: { features: before.features } })
+    expect(replayVersionedDocumentEvents([...events, restore])).toEqual(restored)
+  })
+
+  it("preserves latest offset-only records and canonical content for absent and zero rotation", () => {
     expect(datumPlaneParametersSchema.parse(originParameters)).toEqual(originParameters)
     const legacy = datum(originParameters)
     const resolved = registry().resolveFeatureParameters(legacy, new Map())

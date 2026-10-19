@@ -8,6 +8,7 @@ import {
   createSketchProfileSet,
   cylinderFeatureType,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   extrusionFeatureType,
   extrusionFeatureTypeV4,
   extrusionFeatureTypeV5,
@@ -187,6 +188,18 @@ const datumPlane = featureRecordSchema.parse({
 })
 
 describe("part-design tool routing", () => {
+  it.each([datumPlaneFeatureTypeV1, datumPlaneFeatureType])(
+    "routes datum v$type.schemaVersion to its edit tool",
+    (descriptor) => {
+      const plane = { ...datumPlane, type: descriptor.type }
+      expect(isDatumPlaneFeature(plane)).toBe(true)
+      expect(editPartDesignTool(plane)).toEqual({
+        kind: "edit-datum-plane",
+        featureId: plane.id,
+      })
+    },
+  )
+
   it("edits independent extents and excludes ambiguous new multi-solid targets", () => {
     const single = featureRecordSchema.parse({
       ...extrusion,

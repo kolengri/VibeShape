@@ -8,6 +8,7 @@ import {
   coneFeatureType,
   cylinderFeatureType,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
@@ -252,7 +253,10 @@ export function isRevolveFeature(feature: FeatureRecord) {
 }
 
 export function isDatumPlaneFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, datumPlaneFeatureType.type)
+  return (
+    hasFeatureType(feature, datumPlaneFeatureTypeV1.type) ||
+    hasFeatureType(feature, datumPlaneFeatureType.type)
+  )
 }
 
 function isPlacementFeature(feature: FeatureRecord) {

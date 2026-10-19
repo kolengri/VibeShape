@@ -58,6 +58,7 @@ test.describe("datum plane reference geometry", () => {
     const created = await saveProject(page)
     const feature = created.project.snapshot.features.find(({ label }) => label === "Datum plane 1")
     if (!feature) throw new Error("The saved project is missing its datum plane.")
+    expect(feature.type.schemaVersion).toBe(2)
     const parameters = datumPlaneParametersSchema.parse(feature.parameters)
     expect(parameters.rotation?.axis).toBe("y")
     expect(parameters.rotation?.angle.value).toBeCloseTo(Math.PI / 4, 12)
@@ -86,6 +87,7 @@ test.describe("datum plane reference geometry", () => {
     await expect(plane).toBeVisible()
     const reopened = await saveProject(page)
     const restored = reopened.project.snapshot.features.find(({ id }) => id === feature.id)
+    expect(restored?.type).toEqual(feature.type)
     expect(restored?.parameters).toEqual(
       backup.project.snapshot.features.find(({ id }) => id === feature.id)?.parameters,
     )

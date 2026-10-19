@@ -133,6 +133,7 @@ function datumPlaneRecord(
   if (mode.kind === "edit") {
     return featureRecordSchema.parse({
       ...mode.feature,
+      type: datumPlaneFeatureType.type,
       parameters,
       dependencies: supportReference ? [supportReference.featureId] : [],
       references: supportReference ? [supportReference] : [],

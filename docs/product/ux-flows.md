@@ -36,6 +36,10 @@ The implemented viewport shows terminal authoritative meshes only after a succes
 
 ### Planes
 
+New planes use the versioned angular contract in [ADR-0114](../adr/0114-versioned-angular-datum-planes.md).
+Opening a legacy offset plane leaves its version unchanged. Applying an edit explicitly upgrades that
+feature while preserving its identity; Cancel leaves it unchanged and Undo restores the prior version.
+
 The model browser groups XY, XZ, YZ, and every authored datum plane under **Planes**. Creating a
 datum plane expands this group; selecting, renaming, hiding, or deleting it uses the same feature
 commands as History. The chronological History entry remains available independently. Hidden,

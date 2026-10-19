@@ -5,6 +5,7 @@ import {
   createLengthQuantity,
   cylinderFeatureType,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   documentSnapshotSchema,
   extrusionFeatureType,
   extrusionFeatureTypeV5,
@@ -133,7 +134,7 @@ describe("support-frame resolution", () => {
       support: { kind: "origin-plane", plane: "xz" },
       offset: createLengthQuantity(-8),
     }
-    const legacy = datumPlane(parameters)
+    const legacy = { ...datumPlane(parameters), type: datumPlaneFeatureTypeV1.type }
     const zero = datumPlane({ ...parameters, rotation: { axis, angle: createAngleQuantity(0) } })
     expect(datumPlaneFrame(zero, documentWith([], [zero]), [zero], new Set())).toEqual(
       datumPlaneFrame(legacy, documentWith([], [legacy]), [legacy], new Set()),
