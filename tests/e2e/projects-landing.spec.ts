@@ -84,7 +84,10 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
     animations: "disabled",
     path: info.outputPath("project-chooser-dark.png"),
   })
-  await page.getByRole("button", { name: /^Open Landing bracket, revision / }).click()
+  await page
+    .getByRole("button", { name: /^Open Landing bracket, revision / })
+    .getByText("Landing bracket", { exact: true })
+    .click()
   await saved(page)
   expect(projectId(page)).toBe(originalId)
   await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
@@ -111,6 +114,10 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
   await page.getByRole("button", { name: /^Delete Landing bracket, revision / }).click()
   await confirm.getByRole("button", { name: "Delete project", exact: true }).click()
   await expect(page.getByRole("listitem")).toHaveCount(0)
+  await expect(confirm).toHaveCount(0)
+  await expect(
+    page.getByRole("button", { name: "Drop a .vshape project", exact: true }),
+  ).toHaveAttribute("aria-disabled", "false")
   await page.getByLabel("Choose VibeShape project file").setInputFiles({
     name: backup.filename,
     mimeType: "application/octet-stream",
@@ -122,6 +129,6 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
   await openChooser(page)
   await expect(page.getByRole("listitem")).toHaveCount(1)
   await expect(
-    page.getByRole("heading", { name: "Landing bracket imported", exact: true }),
+    page.getByRole("button", { name: /^Open Landing bracket imported, revision / }),
   ).toBeVisible()
 })

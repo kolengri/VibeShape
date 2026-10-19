@@ -4,23 +4,16 @@ import type {
   FeatureRecord,
   VariableDefinition,
 } from "@vibeshape/domain"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Button } from "@vibeshape/ui/components/button"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { type RefObject, useEffect, useState } from "react"
-import {
-  defaultAngleExpression,
-  defaultLengthExpression,
-} from "../../document/document-display-units"
+import { type RefObject, useEffect } from "react"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
-import {
-  type FeatureParameterFormProps,
-  submitFeatureMutation,
-} from "../part-design/primitive-form"
+import type { FeatureParameterFormProps } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
-import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import { PlacementAlignmentFields } from "./placement-alignment-fields"
 import type { PlacementAlignmentFaces } from "./placement-face-alignment"
 import {
@@ -33,6 +26,9 @@ import {
   placementFieldName,
   placementFormValues,
 } from "./placement-form-model"
+import type { PlacementManipulator, PlacementSourceBounds } from "./placement-manipulator"
+import { PlacementManipulatorBinding } from "./placement-manipulator-binding"
+import { usePlacementDraft } from "./use-placement-draft"
 
 export type PlacementFormCopy = ParameterPanelCopy &
   PlacementValidationCopy & {
@@ -51,12 +47,15 @@ export type PlacementFormCopy = ParameterPanelCopy &
     validationSummary: string
     staleRevision: string
     saveFailed: string
+    unavailable: string
   }
 
 type PlacementFormProps = FeatureParameterFormProps<PlacementFormMode, PlacementFormCopy> & {
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
   alignmentFaces?: PlacementAlignmentFaces | undefined
   selectedFace?: ViewerSelection | null | undefined
+  sourceBounds?: PlacementSourceBounds | null | undefined
+  onManipulatorChange?: ((value: PlacementManipulator | null) => void) | undefined
 }
 function PlacementPreview({
   values,
@@ -104,52 +103,42 @@ function PlacementErrorFocus({
   return null
 }
 
-export function PlacementForm({
-  baseRevision,
-  alignmentFaces,
-  copy,
-  disabled = false,
-  mode,
-  onCancel,
-  onPreviewChange,
-  onSave,
-  onSaved,
-  previewStatus,
-  selectedFace,
-  variables,
-}: PlacementFormProps) {
-  const state = useParameterFormState(variables)
-  const [previewEnabled, setPreviewEnabled] = useState(true)
-  const [featureId] = useState(() =>
-    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
-  )
-  const form = useAppForm({
-    defaultValues: placementFormValues(mode, state.displayUnits),
-    onSubmit: async ({ value }) => {
-      const parsed = parsePlacementForm(value, variables, state.displayUnits, copy)
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(copy.validationSummary)
-        return
-      }
-      state.setIssues({})
-      state.setMessage(null)
-      try {
-        await submitFeatureMutation({
-          baseRevision,
-          copy,
-          feature: placementFeatureRecord(mode, featureId, parsed),
-          onSave,
-          onSaved,
-          setMessage: state.setMessage,
-        })
-      } catch {
-        state.setMessage(copy.saveFailed)
-      }
-    },
-  })
+export function PlacementForm(props: PlacementFormProps) {
+  const {
+    alignmentFaces,
+    copy,
+    disabled = false,
+    mode,
+    onPreviewChange,
+    previewStatus,
+    selectedFace,
+    sourceBounds,
+    onManipulatorChange,
+    variables,
+  } = props
+  const draft = usePlacementDraft(props)
+  const { form, state } = draft
   return (
     <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      {onManipulatorChange && (
+        <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
+          {([values, pending]) => (
+            <PlacementManipulatorBinding
+              values={values}
+              variables={variables}
+              units={state.displayUnits}
+              copy={copy}
+              featureId={draft.featureId}
+              sourceBounds={sourceBounds}
+              axis={draft.manipulationAxis}
+              disabled={disabled || pending || !draft.previewEnabled || !draft.interactive}
+              onManipulatorChange={onManipulatorChange}
+              onTranslationChange={draft.changeTranslation}
+              onRotationChange={draft.changeRotation}
+            />
+          )}
+        </form.Subscribe>
+      )}
       {onPreviewChange && (
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
@@ -159,9 +148,9 @@ export function PlacementForm({
               units={state.displayUnits}
               copy={copy}
               mode={mode}
-              featureId={featureId}
+              featureId={draft.featureId}
               onPreviewChange={onPreviewChange}
-              previewEnabled={previewEnabled}
+              previewEnabled={draft.previewEnabled}
             />
           )}
         </form.Subscribe>
@@ -177,19 +166,37 @@ export function PlacementForm({
             <ParameterPanel
               copy={copy}
               legend={copy.parameters}
-              disabled={disabled || pending}
-              message={state.message}
+              disabled={disabled || pending || sourceBounds === null}
+              message={state.message ?? (sourceBounds === null ? copy.unavailable : null)}
               actions={
                 <TaskPanelFormActions
                   acceptLabel={copy.submit}
                   ariaLabel={copy.title}
                   cancelLabel={copy.cancel}
-                  disabled={disabled}
-                  onCancel={onCancel}
+                  disabled={disabled || sourceBounds === null}
+                  onCancel={draft.cancel}
                   previewStatus={previewStatus}
                 />
               }
             >
+              {onManipulatorChange && sourceBounds && (
+                <fieldset className="flex min-w-0 flex-wrap gap-1" aria-label={copy.parameters}>
+                  {(["translation", ...placementAxes] as const).map((axis) => (
+                    <Button
+                      key={axis}
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      aria-pressed={draft.manipulationAxis === axis}
+                      onClick={() => draft.selectAxis(axis)}
+                    >
+                      {axis === "translation"
+                        ? copy.translation
+                        : copy[placementFieldName("rotation", axis)]}
+                    </Button>
+                  ))}
+                </fieldset>
+              )}
               {alignmentFaces && (
                 <PlacementAlignmentFields
                   faces={alignmentFaces}
@@ -197,25 +204,9 @@ export function PlacementForm({
                   units={state.displayUnits}
                   variables={variables}
                   copy={copy}
-                  onPickFaces={() => setPreviewEnabled(false)}
-                  previewPaused={!previewEnabled}
-                  onAlign={({ translation, rotation }) => {
-                    setPreviewEnabled(true)
-                    state.clearSubmissionErrors()
-                    for (const [index, axis] of placementAxes.entries()) {
-                      form.setFieldValue(
-                        placementFieldName("translation", axis),
-                        defaultLengthExpression(
-                          translation[index] as number,
-                          state.displayUnits.length,
-                        ),
-                      )
-                      form.setFieldValue(
-                        placementFieldName("rotation", axis),
-                        defaultAngleExpression(rotation[index] as number, state.displayUnits.angle),
-                      )
-                    }
-                  }}
+                  onPickFaces={draft.pickFaces}
+                  previewPaused={!draft.previewEnabled}
+                  onAlign={draft.align}
                 />
               )}
               {(["translation", "rotation"] as const).map((group) => (
@@ -242,8 +233,7 @@ export function PlacementForm({
                             suggestions={state.suggestions}
                             onBlur={field.handleBlur}
                             onValueChange={(value) => {
-                              setPreviewEnabled(true)
-                              state.clearSubmissionErrors()
+                              draft.beforeEdit()
                               field.handleChange(value)
                             }}
                           />

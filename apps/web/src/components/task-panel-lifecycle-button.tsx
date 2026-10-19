@@ -30,15 +30,11 @@ export function TaskPanelLifecycleButton({
             size="icon-sm"
             variant={kind === "cancel" ? "ghost" : destructive ? "destructive" : "default"}
             className={cn(
-              "group/lifecycle-action",
               kind === "cancel" && "text-destructive hover:text-destructive",
               className,
             )}
           >
-            <Icon
-              aria-hidden="true"
-              className="group-data-[loading=true]/lifecycle-action:hidden"
-            />
+            <Icon aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>

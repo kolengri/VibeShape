@@ -1,49 +1,28 @@
 import { VSHAPE_MAX_ARCHIVE_BYTES, VSHAPE_MEDIA_TYPE } from "@vibeshape/formats/vshape"
 import { useTranslations } from "@vibeshape/i18n"
 import type { LocalProjectSummary } from "@vibeshape/persistence"
-import { Button } from "@vibeshape/ui/components/button"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@vibeshape/ui/components/dialog"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { FolderOpen } from "@vibeshape/ui/components/icons"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import {
-  type ComponentProps,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { type DropEvent, type FileRejection, useDropzone } from "react-dropzone"
-import { useDialogOpen } from "../components/use-dialog-open"
 import { ProjectLibrary, type ProjectLibraryState } from "../projects/project-library"
 import { ProjectLibraryPageLayout } from "../projects/project-library-page-layout"
+import { useReportApplicationError } from "../shell/application-notices"
 import {
   activateLocalProject,
   createNewLocalProject,
   type DocumentControllerState,
   duplicateLocalProject,
-  exportActiveProjectBackup,
   getProjectActionBlock,
   importProjectBackup,
   listLocalProjects,
   showProjectLibrary,
 } from "./document-controller"
-import { downloadProjectBackup } from "./document-project-file"
 import { formatProjectCopyName } from "./versioned-project-file"
 
 type ProjectActivity =
   | "idle"
-  | "backing-up"
   | "creating"
   | "deleting"
   | "duplicating"
@@ -54,34 +33,6 @@ type ProjectFeedback = Readonly<{
   key: string
   kind: "error" | "status"
 }>
-
-function ProjectFileCard({
-  action,
-  description,
-  disabled,
-  loading,
-  onAction,
-  title,
-}: {
-  action: string
-  description: string
-  disabled: boolean
-  loading: boolean
-  onAction: () => unknown
-  title: string
-}) {
-  return (
-    <section className="grid content-start gap-3 rounded-md border bg-card p-4">
-      <div className="grid gap-1">
-        <h3 className="text-sm font-medium">{title}</h3>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      <Button type="button" disabled={disabled} isLoading={loading} onClick={onAction}>
-        {action}
-      </Button>
-    </section>
-  )
-}
 
 function ProjectFileDropzone({
   disabled,
@@ -103,13 +54,12 @@ function ProjectFileDropzone({
     const input = event.target instanceof HTMLInputElement ? event.target : undefined
     onImport(acceptedFiles, input)
   }
-  const { getInputProps, getRootProps, isDragActive, open } = useDropzone({
+  const { getInputProps, getRootProps, isDragActive } = useDropzone({
     accept: { [VSHAPE_MEDIA_TYPE]: [".vshape"] },
     disabled,
     maxFiles: 1,
     maxSize: VSHAPE_MAX_ARCHIVE_BYTES,
     multiple: false,
-    noClick: true,
     onDrop,
   })
 
@@ -127,27 +77,21 @@ function ProjectFileDropzone({
       <div
         {...getRootProps({
           className: cn(
-            "grid min-h-24 place-items-center rounded-sm border border-dashed p-4 text-center text-sm transition-colors",
+            "grid min-h-24 cursor-pointer place-items-center rounded-sm border border-dashed p-4 text-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isDragActive ? "border-primary bg-primary/5" : "border-border",
             disabled && "opacity-50",
           ),
           "aria-disabled": disabled,
           "aria-label": t("open.dropTitle"),
-          role: "group",
+          "aria-busy": loading,
+          role: "button",
+          tabIndex: disabled ? -1 : 0,
         })}
       >
         <input {...getInputProps({ "aria-label": t("open.inputLabel") })} />
         <div className="grid justify-items-center gap-2">
+          <FolderOpen aria-hidden="true" className="size-5 text-muted-foreground" />
           <p>{t("open.dropTitle")}</p>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={disabled}
-            isLoading={loading}
-            onClick={open}
-          >
-            {t("open.action")}
-          </Button>
         </div>
       </div>
     </section>
@@ -174,32 +118,20 @@ function resetProjectFileInput(input: HTMLInputElement | undefined) {
   if (input) input.value = ""
 }
 
-function ProjectFileFeedback({
-  feedback,
-  kind,
-  compact = false,
-}: {
-  feedback: ProjectFeedback | null
-  kind: ProjectFeedback["kind"]
-  compact?: boolean
-}) {
+function ProjectFileFeedback({ feedback }: { feedback: ProjectFeedback | null }) {
   const t = useTranslations("app.projectFile")
-  if (feedback?.kind !== kind) return null
-  const Element = compact ? "span" : "p"
+  const centralized = useReportApplicationError(feedback?.kind === "error" ? t(feedback.key) : null)
+  if (!feedback || (feedback.kind === "error" && centralized)) return null
   return (
-    <Element
+    <p
       className={
-        kind === "error"
-          ? "text-sm text-destructive"
-          : compact
-            ? "text-xs text-muted-foreground"
-            : "text-sm text-muted-foreground"
+        feedback.kind === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
       }
-      role={kind === "error" ? "alert" : "status"}
-      aria-live={kind === "status" ? "polite" : undefined}
+      role={feedback.kind === "error" ? "alert" : "status"}
+      aria-live={feedback.kind === "status" ? "polite" : undefined}
     >
       {t(feedback.key)}
-    </Element>
+    </p>
   )
 }
 
@@ -210,107 +142,6 @@ function ProjectGuardFeedback({ blockedReason }: { blockedReason: string | null 
     <p role="status" className="text-sm text-muted-foreground">
       {t(blockedReason === "save-error" ? "errors.saveError" : "errors.activeWork")}
     </p>
-  )
-}
-
-function ProjectLibraryContent({
-  presentation,
-  feedback,
-  blockedReason,
-  backup,
-  openFile,
-  library,
-}: {
-  presentation: "dialog" | "page"
-  feedback: ProjectFeedback | null
-  blockedReason: string | null
-  backup: Pick<ComponentProps<typeof ProjectFileCard>, "disabled" | "loading" | "onAction">
-  openFile: ComponentProps<typeof ProjectFileDropzone>
-  library: ComponentProps<typeof ProjectLibrary>
-}) {
-  const t = useTranslations("app.projectFile")
-  return (
-    <>
-      <ProjectFileFeedback feedback={feedback} kind="status" />
-      <ProjectGuardFeedback blockedReason={blockedReason} />
-      <ProjectFileFeedback feedback={feedback} kind="error" />
-      <div className={presentation === "page" ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
-        {presentation === "dialog" && (
-          <ProjectFileCard
-            {...backup}
-            action={t("backup.action")}
-            description={t("backup.description")}
-            title={t("backup.title")}
-          />
-        )}
-        <ProjectFileDropzone {...openFile} />
-      </div>
-      <ProjectLibrary {...library} />
-    </>
-  )
-}
-
-function ProjectLibraryFrame({
-  controller,
-  children,
-  presentation,
-  feedback,
-  open,
-  onOpenChange,
-  showTrigger,
-  onCloseAutoFocus,
-  busy,
-}: {
-  controller: DocumentControllerState
-  children: ReactNode
-  presentation: "dialog" | "page"
-  feedback: ProjectFeedback | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  showTrigger: boolean
-  onCloseAutoFocus: ((event: Event) => void) | undefined
-  busy: boolean
-}) {
-  const t = useTranslations("app.projectFile")
-  if (presentation === "page") {
-    return (
-      <ProjectLibraryPageLayout
-        controller={controller}
-        title={t("title")}
-        description={t("library.description")}
-      >
-        {children}
-      </ProjectLibraryPageLayout>
-    )
-  }
-
-  return (
-    <>
-      <ProjectFileFeedback feedback={open ? null : feedback} kind="status" compact />
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <ProjectDialogTrigger shown={showTrigger} />
-        <DialogContent
-          className="max-h-[min(90vh,48rem)] max-w-2xl overflow-y-auto"
-          closeLabel={t("closeLabel")}
-          onCloseAutoFocus={onCloseAutoFocus}
-          showCloseButton={!busy}
-        >
-          <DialogHeader>
-            <DialogTitle>{t("title")}</DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
-          </DialogHeader>
-          {children}
-          <div className="h-px bg-border" />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={busy}>
-                {t("close")}
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }
 
@@ -345,7 +176,7 @@ function projectLibraryIsAvailable(status: DocumentControllerState["status"]) {
   return status === "ready" || status === "library"
 }
 
-function useProjectLibrary(open: boolean, status: DocumentControllerState["status"]) {
+function useProjectLibrary(status: DocumentControllerState["status"]) {
   const [library, setLibrary] = useState<ProjectLibraryState>({ status: "loading", projects: [] })
   const listRequestRef = useRef(0)
   const recoveringRef = useRef(false)
@@ -379,60 +210,31 @@ function useProjectLibrary(open: boolean, status: DocumentControllerState["statu
   }
 
   useEffect(() => {
-    if (!open) return
     if (projectLibraryIsAvailable(status)) void loadProjects()
     else setLibrary({ status: status === "error" ? "error" : "loading", projects: [] })
     return () => {
       listRequestRef.current += 1
     }
-  }, [open, status, loadProjects])
+  }, [status, loadProjects])
   return { library, loadProjects, retryProjects }
 }
 
-function ProjectDialogTrigger({ shown }: { shown: boolean }) {
-  const t = useTranslations("app.projectFile")
-  if (!shown) return null
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <DialogTrigger asChild>
-          <Button type="button" size="sm" variant="outline" aria-label={t("file")}>
-            <FolderOpen aria-hidden="true" />
-            <span>{t("file")}</span>
-          </Button>
-        </DialogTrigger>
-      </TooltipTrigger>
-      <TooltipContent>{t("trigger")}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-export function DocumentProjectDialog({
+export function DocumentProjectPage({
   controller,
   blockedReason = null,
-  showTrigger = true,
-  open: controlledOpen,
-  onOpenChange,
-  onCloseAutoFocus,
-  presentation = "dialog",
 }: {
   controller: DocumentControllerState
   blockedReason?: string | null
-  showTrigger?: boolean
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onCloseAutoFocus?: (event: Event) => void
-  presentation?: "dialog" | "page"
 }) {
   const t = useTranslations("app.projectFile")
   const { target, stillCurrent } = useProjectFileTarget(controller, blockedReason)
   const importInProgressRef = useRef(false)
-  const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [activity, setActivity] = useState<ProjectActivity>("idle")
   const [feedback, setFeedback] = useState<ProjectFeedback | null>(null)
-  const { library, loadProjects, retryProjects } = useProjectLibrary(open, controller.status)
+  const { library, loadProjects, retryProjects } = useProjectLibrary(controller.status)
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
+  useReportActivity(activity !== "idle" || library.status === "loading")
   const available = projectLibraryIsAvailable(controller.status)
   const disabled = !available || blockedReason !== null || activity !== "idle"
 
@@ -488,47 +290,6 @@ export function DocumentProjectDialog({
     } finally {
       resetProjectFileInput(input)
       importInProgressRef.current = false
-      setActivity("idle")
-    }
-  }
-
-  const changeOpen = (nextOpen: boolean) => {
-    if (!nextOpen && activity !== "idle") return
-    setOpen(nextOpen)
-  }
-  useEffect(() => {
-    if (open) {
-      setFeedback(null)
-    }
-  }, [open])
-
-  const backup = async () => {
-    const expected = target()
-    if (!expected || "kind" in expected || !stillCurrent(expected)) return
-    setActivity("backing-up")
-    setFeedback({ key: "status.backingUp", kind: "status" })
-    try {
-      const result = await exportActiveProjectBackup()
-      if (!result.ok) {
-        setFeedback({
-          key:
-            result.diagnostic.code === "project-action-blocked"
-              ? "errors.activeWork"
-              : "errors.backupFailed",
-          kind: "error",
-        })
-        return
-      }
-      if (!stillCurrent(expected)) {
-        setFeedback({ key: "errors.activeWork", kind: "error" })
-        return
-      }
-      downloadProjectBackup(result)
-      setFeedback({ key: "status.downloaded", kind: "status" })
-      setOpen(false)
-    } catch {
-      setFeedback({ key: "errors.backupFailed", kind: "error" })
-    } finally {
       setActivity("idle")
     }
   }
@@ -592,48 +353,37 @@ export function DocumentProjectDialog({
   }
   const changeDeletePending = (pending: boolean) => setActivity(pending ? "deleting" : "idle")
 
-  const content = (
-    <ProjectLibraryContent
-      presentation={presentation}
-      feedback={feedback}
-      blockedReason={blockedReason}
-      backup={{ disabled, loading: activity === "backing-up", onAction: backup }}
-      openFile={{
-        disabled: disabled || importInProgressRef.current,
-        loading: activity === "opening-file",
-        onImport: (files, input) => void importFiles(files, input),
-        onRejected: rejectFiles,
-      }}
-      library={{
-        activeDocumentId: controller.report?.snapshot.id,
-        controller,
-        disabled,
-        duplicatingDocumentId,
-        library,
-        onCreate: createProject,
-        onDeleted: loadProjects,
-        onDuplicate: duplicateProject,
-        onOpen: openProject,
-        onPendingDeleteChange: changeDeletePending,
-        onRenamed: () => void loadProjects(),
-        onRetry: retryProjects,
-        switchingDocumentId,
-        presentation,
-      }}
-    />
-  )
   return (
-    <ProjectLibraryFrame
+    <ProjectLibraryPageLayout
       controller={controller}
-      presentation={presentation}
-      feedback={feedback}
-      open={open}
-      onOpenChange={changeOpen}
-      showTrigger={showTrigger}
-      onCloseAutoFocus={onCloseAutoFocus}
       busy={activity !== "idle"}
+      title={t("title")}
+      description={t("library.description")}
     >
-      {content}
-    </ProjectLibraryFrame>
+      <ProjectFileFeedback feedback={feedback?.kind === "status" ? feedback : null} />
+      <ProjectGuardFeedback blockedReason={blockedReason} />
+      <ProjectFileFeedback feedback={feedback?.kind === "error" ? feedback : null} />
+      <ProjectFileDropzone
+        disabled={disabled || importInProgressRef.current}
+        loading={activity === "opening-file"}
+        onImport={(files, input) => void importFiles(files, input)}
+        onRejected={rejectFiles}
+      />
+      <ProjectLibrary
+        activeDocumentId={controller.report?.snapshot.id}
+        controller={controller}
+        disabled={disabled}
+        duplicatingDocumentId={duplicatingDocumentId}
+        library={library}
+        onCreate={createProject}
+        onDeleted={loadProjects}
+        onDuplicate={duplicateProject}
+        onOpen={openProject}
+        onPendingDeleteChange={changeDeletePending}
+        onRenamed={() => void loadProjects()}
+        onRetry={retryProjects}
+        switchingDocumentId={switchingDocumentId}
+      />
+    </ProjectLibraryPageLayout>
   )
 }

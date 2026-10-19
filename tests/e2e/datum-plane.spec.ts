@@ -30,6 +30,59 @@ async function selectFeatureFace(page: Page, featureLabel: string) {
 }
 
 test.describe("datum plane reference geometry", () => {
+  test("selects authored planes with modifiers and deletes them in one undoable action", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000)
+    await page.goto("/")
+    const browser = page.getByRole("complementary", { name: "Model tree" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    for (const [index, offset] of [8, 16].entries()) {
+      await invokeModelCommand(page, "Create", "Datum plane")
+      const form = page.getByRole("form", { name: "Create datum plane", exact: true })
+      await form.getByRole("combobox", { name: "Offset", exact: true }).fill(`${offset} mm`)
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+      await form.getByRole("button", { name: "Create datum plane", exact: true }).click()
+      await expect(form).toHaveCount(0)
+      await saved(page)
+      await expect(viewport).toHaveAttribute("data-rendered-feature-count", `${index + 1}`)
+    }
+    const first = browser.getByRole("treeitem", { name: "Datum plane 1", exact: true })
+    const second = browser.getByRole("treeitem", { name: "Datum plane 2", exact: true })
+    await first.click({ modifiers: ["ControlOrMeta"] })
+    await second.click({ modifiers: ["Shift"] })
+    await expect(page.getByRole("form", { name: "Edit datum plane", exact: true })).toHaveCount(0)
+    await expect(first).toHaveAttribute("aria-selected", "true")
+    await expect(second).toHaveAttribute("aria-selected", "true")
+    await first.click({ modifiers: ["ControlOrMeta"] })
+    await expect(first).toHaveAttribute("aria-selected", "false")
+    await expect(second).toHaveAttribute("aria-selected", "true")
+    await first.click({ modifiers: ["ControlOrMeta"] })
+    await second.focus()
+    await second.press("Backspace")
+    const confirmation = page.getByRole("alertdialog", {
+      name: "Delete 2 selected items?",
+      exact: true,
+    })
+    await expect(confirmation).toContainText("Datum plane 1")
+    await expect(confirmation).toContainText("Datum plane 2")
+    await confirmation.getByRole("button", { name: "Delete selection", exact: true }).click()
+    await expect(first).toHaveCount(0)
+    await expect(second).toHaveCount(0)
+    await saved(page)
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await saved(page)
+    await expect(first).toBeVisible()
+    await expect(second).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+    await page.reload()
+    await saved(page)
+    await expect(first).toBeVisible()
+    await expect(second).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+  })
+
   test("groups angled planes and preserves their angle through edit, undo, reload and native backup", async ({
     page,
   }) => {

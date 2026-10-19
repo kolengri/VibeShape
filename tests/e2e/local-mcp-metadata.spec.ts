@@ -248,10 +248,8 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
         item.status === "succeeded" ? item.shape : item.status,
       ),
     )
-    await openApplicationMenuItem(page, "Files and projects…")
-    const projects = page.getByRole("dialog", { name: "Projects", exact: true })
     const downloading = page.waitForEvent("download")
-    await projects.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+    await openApplicationMenuItem(page, "Save project (.vshape)")
     const downloaded = await downloading
     const path = await downloaded.path()
     if (!path) throw new Error("Expected a native project archive")

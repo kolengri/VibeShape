@@ -63,10 +63,8 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
   await expect(edit.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("30 mm")
   await edit.getByRole("button", { name: "Cancel", exact: true }).click()
 
-  await openApplicationMenuItem(page, "Files and projects…")
-  const projects = page.getByRole("dialog", { name: "Projects" })
   const downloading = page.waitForEvent("download")
-  await projects.getByRole("button", { name: "Save project (.vshape)" }).click()
+  await openApplicationMenuItem(page, "Save project (.vshape)")
   const file = await (await downloading).path()
   if (!file) throw new Error("The project backup was not retained.")
   const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
@@ -78,7 +76,8 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
       (event) => event.type === "org.vibeshape.document.restored",
     ),
   ).toHaveLength(5)
-  await openApplicationMenuItem(page, "Files and projects…")
+  await openApplicationMenuItem(page, "Projects")
+  const projects = page.getByRole("main")
   await projects.getByRole("button", { name: /Duplicate .*revision/ }).click()
   const copy = projects.getByRole("listitem").filter({ hasText: "Untitled project copy" })
   await copy.getByRole("button", { name: /Open .*revision/ }).click()

@@ -4,22 +4,15 @@ import type {
   FeatureRecord,
   VariableDefinition,
 } from "@vibeshape/domain"
-import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-split"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Button } from "@vibeshape/ui/components/button"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useEffect, useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
-import {
-  type FeatureParameterFormProps,
-  type PrimitiveLengthCopy,
-  submitFeatureMutation,
-} from "../part-design/primitive-form"
+import type { FeatureParameterFormProps, PrimitiveLengthCopy } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
-import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import { ReferencePlaneSelection } from "../reference-geometry/reference-support-fields"
 import {
@@ -28,9 +21,14 @@ import {
   type SplitFormMode,
   type SplitFormValues,
   splitFeatureRecord,
-  splitFormValues,
-  splitMidpointExpression,
 } from "./split-form-model"
+import {
+  type SplitManipulator,
+  type SplitPlaneResolver,
+  splitSupportPlane,
+} from "./split-manipulator"
+import { SplitManipulatorBinding } from "./split-manipulator-binding"
+import { useSplitDraft } from "./use-split-draft"
 
 export type SplitFormCopy = ParameterPanelCopy &
   PrimitiveLengthCopy & {
@@ -51,6 +49,8 @@ type SplitFormProps = FeatureParameterFormProps<SplitFormMode, SplitFormCopy> & 
   referenceOptions?: ReferenceFrameOptions | undefined
   selectedFace?: ViewerSelection | null | undefined
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+  onManipulatorChange?: ((value: SplitManipulator | null) => void) | undefined
+  resolvePlane?: SplitPlaneResolver | undefined
 }
 function SplitPreview({
   values,
@@ -61,6 +61,7 @@ function SplitPreview({
   featureId,
   referencePlane,
   onPreviewChange,
+  resolvePlane,
 }: {
   values: SplitFormValues
   variables: readonly VariableDefinition[]
@@ -70,72 +71,57 @@ function SplitPreview({
   featureId: FeatureId
   referencePlane: ReferencePlane | null | undefined
   onPreviewChange: (feature: FeatureRecord | null) => void
+  resolvePlane: SplitPlaneResolver | undefined
 }) {
   const parsed = parseSplitForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
     preview:
-      parsed.ok && referencePlane !== null
+      parsed.ok &&
+      referencePlane !== null &&
+      splitSupportPlane(referencePlane, values.plane, resolvePlane)
         ? splitFeatureRecord(mode, featureId, parsed, referencePlane)
         : null,
   })
   return null
 }
-export function SplitForm({
-  baseRevision,
-  copy,
-  disabled = false,
-  mode,
-  referenceOptions,
-  selectedFace,
-  sourceBounds,
-  onCancel,
-  onPreviewChange,
-  onSave,
-  onSaved,
-  previewStatus,
-  variables,
-}: SplitFormProps) {
-  const state = useParameterFormState(variables)
-  const [referencePlane, setReference] = useState<ReferencePlane | null | undefined>(() =>
-    mode.kind === "edit" ? readSplitFeatureParametersV2(mode.feature)?.plane : undefined,
-  )
-  const [featureId] = useState(() =>
-    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
-  )
-  const form = useAppForm({
-    defaultValues: splitFormValues(mode, sourceBounds, state.displayUnits),
-    onSubmit: async ({ value }) => {
-      if (referencePlane === null) return
-      const parsed = parseSplitForm(value, variables, state.displayUnits, copy)
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(copy.validationSummary)
-        return
-      }
-      state.setIssues({})
-      state.setMessage(null)
-      try {
-        await submitFeatureMutation({
-          baseRevision,
-          copy,
-          feature: splitFeatureRecord(mode, featureId, parsed, referencePlane),
-          onSave,
-          onSaved,
-          setMessage: state.setMessage,
-        })
-      } catch {
-        state.setMessage(copy.saveFailed)
-      }
-    },
-  })
-  const invalidOffset = Boolean(state.issues.offset)
-  useEffect(() => {
-    if (invalidOffset)
-      state.formElementRef.current?.querySelector<HTMLInputElement>('[name="offset"]')?.focus()
-  }, [invalidOffset, state.formElementRef])
+export function SplitForm(props: SplitFormProps) {
+  const {
+    copy,
+    disabled = false,
+    mode,
+    referenceOptions,
+    selectedFace,
+    sourceBounds,
+    onPreviewChange,
+    onManipulatorChange,
+    resolvePlane,
+    previewStatus,
+    variables,
+  } = props
+  const draft = useSplitDraft(props)
+  const { form, state } = draft
   return (
     <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      {onManipulatorChange && (
+        <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
+          {([values, pending]) => (
+            <SplitManipulatorBinding
+              values={values}
+              variables={variables}
+              units={state.displayUnits}
+              copy={copy}
+              featureId={draft.featureId}
+              sourceBounds={sourceBounds}
+              referencePlane={draft.referencePlane}
+              resolvePlane={resolvePlane}
+              disabled={disabled || pending || !draft.interactive}
+              onManipulatorChange={onManipulatorChange}
+              onOffsetChange={draft.changeOffset}
+            />
+          )}
+        </form.Subscribe>
+      )}
       {onPreviewChange && sourceBounds && (
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
@@ -145,8 +131,9 @@ export function SplitForm({
               units={state.displayUnits}
               copy={copy}
               mode={mode}
-              featureId={featureId}
-              referencePlane={referencePlane}
+              featureId={draft.featureId}
+              referencePlane={draft.referencePlane}
+              resolvePlane={resolvePlane}
               onPreviewChange={onPreviewChange}
             />
           )}
@@ -158,23 +145,26 @@ export function SplitForm({
             copy={copy}
             legend={copy.parameters}
             disabled={disabled || pending || !sourceBounds}
-            message={state.message ?? (!sourceBounds ? copy.unavailable : null)}
+            message={
+              state.message ??
+              (!sourceBounds || !draft.referenceAvailable ? copy.unavailable : null)
+            }
             actions={
               <TaskPanelFormActions
                 acceptLabel={copy.submit}
                 ariaLabel={copy.title}
                 cancelLabel={copy.cancel}
-                disabled={disabled || !sourceBounds || referencePlane === null}
-                onCancel={onCancel}
+                disabled={disabled || !sourceBounds || !draft.referenceAvailable}
+                onCancel={draft.cancel}
                 previewStatus={previewStatus}
               />
             }
           >
             <ReferencePlaneSelection
               options={referenceOptions}
-              value={referencePlane}
+              value={draft.referencePlane}
               selectedFace={selectedFace}
-              onChange={setReference}
+              onChange={draft.setReference}
             >
               <form.Field name="plane">
                 {(field) => (
@@ -223,19 +213,8 @@ export function SplitForm({
               type="button"
               variant="outline"
               size="sm"
-              disabled={!sourceBounds || referencePlane !== undefined}
-              onClick={() => {
-                if (!sourceBounds) return
-                state.clearSubmissionErrors()
-                form.setFieldValue(
-                  "offset",
-                  splitMidpointExpression(
-                    sourceBounds,
-                    form.state.values.plane,
-                    state.displayUnits,
-                  ),
-                )
-              }}
+              disabled={!sourceBounds || draft.referencePlane !== undefined}
+              onClick={draft.midpoint}
             >
               {copy.midpoint}
             </Button>

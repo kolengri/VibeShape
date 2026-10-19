@@ -11,6 +11,7 @@ import {
   Link2,
 } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useId, useState } from "react"
 import {
@@ -118,14 +119,11 @@ function AssemblyInstances({
                 )}
                 aria-pressed={instance.id === selectedId}
                 onClick={() => onSelectInstance(instance.id)}
-                title={definition ? t("instanceDefinition", { name: definition.name }) : undefined}
                 data-assembly-instance-id={instance.id}
               >
                 <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                 <span className="grid min-w-0 flex-1 gap-0.5">
-                  <span className="truncate" title={instance.name}>
-                    {instance.name}
-                  </span>
+                  <span className="truncate">{instance.name}</span>
                   <span className="truncate text-xs text-muted-foreground">
                     {t(instance.grounded ? "grounded" : connected ? "attached" : "freeInstance")}
                   </span>
@@ -182,9 +180,7 @@ function AssemblyDefinitions({
             >
               <Cuboid aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
               <span className="grid min-w-0 flex-1 gap-0.5">
-                <span className="truncate" title={definition.name}>
-                  {definition.name}
-                </span>
+                <span className="truncate">{definition.name}</span>
                 <span className="flex min-w-0 gap-2 text-xs text-muted-foreground">
                   <span className="truncate">
                     {t("pinRevision", { revision: definition.pinRevision })}
@@ -258,15 +254,20 @@ function AssemblyJoints({
               </span>
             </Button>
             {onDriveJoint && joint.kind !== "fixed" && joint.kind !== "ball" && (
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                disabled={motionDisabled}
-                aria-label={t("driveJointBetween", { parent, child })}
-                onClick={() => onDriveJoint(joint.id)}
-              >
-                <CirclePlay aria-hidden="true" className="size-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    disabled={motionDisabled}
+                    aria-label={t("driveJointBetween", { parent, child })}
+                    onClick={() => onDriveJoint(joint.id)}
+                  >
+                    <CirclePlay aria-hidden="true" className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t("driveJointBetween", { parent, child })}</TooltipContent>
+              </Tooltip>
             )}
           </li>
         ))}

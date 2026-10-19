@@ -23,9 +23,9 @@ test("authors exact Loft v3 tracks, rail, C0 guide and independent G1/G2 faces, 
   if (!archive.ok) throw new Error(archive.diagnostic.message)
   await page.goto("/")
   await nativeSaved(page)
-  await openApplicationMenuItem(page, "Files and projects…")
+  await openApplicationMenuItem(page, "Projects")
   await page
-    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("main")
     .getByLabel("Choose VibeShape project file")
     .setInputFiles({
       name: "constrained-loft.vshape",
@@ -146,9 +146,9 @@ test("applies a cylindrical Loft with nonzero G2 at both ends and healthy orient
   if (!archive.ok) throw new Error(archive.diagnostic.message)
   await page.goto("/")
   await nativeSaved(page)
-  await openApplicationMenuItem(page, "Files and projects…")
+  await openApplicationMenuItem(page, "Projects")
   await page
-    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("main")
     .getByLabel("Choose VibeShape project file")
     .setInputFiles({
       name: "cylindrical-loft.vshape",

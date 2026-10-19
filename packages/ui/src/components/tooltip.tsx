@@ -26,14 +26,18 @@ function TooltipTrigger(props: React.ComponentProps<typeof TooltipPrimitive.Trig
 function TooltipContent({
   children,
   className,
-  sideOffset = 6,
+  side = "bottom",
+  sideOffset = 8,
+  collisionPadding = 8,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
+        side={side}
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
         className={cn(
           "pointer-events-none z-50 w-fit max-w-72 rounded-md border bg-popover px-2 py-1.5 text-xs text-popover-foreground shadow-md",
           className,

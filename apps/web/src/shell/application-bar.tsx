@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { useActivityPending } from "@vibeshape/ui/components/activity"
 import type { ReactNode } from "react"
 import { getDesktopHost } from "../desktop/desktop-host"
 import {
@@ -7,8 +8,9 @@ import {
   getProjectActiveWorkBlock,
 } from "../document/document-controller"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
-import { ApplicationMenu } from "./application-menu"
+import { useReportApplicationError } from "./application-notices"
 import { useAutomationConnections } from "./automation-status"
+import { EditorApplicationMenu as ApplicationMenu } from "./editor-application-menu"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -24,6 +26,20 @@ function saveStatusMessage(
   const loadingStatuses = new Set<DocumentControllerState["status"]>(["idle", "loading"])
   const messageKey = loadingStatuses.has(controller.status) ? "loading" : controller.saveStatus
   return messages[messageKey]
+}
+
+function applicationBarActivity(controller: DocumentControllerState, pending: boolean) {
+  return {
+    busy:
+      pending ||
+      controller.status === "loading" ||
+      controller.status === "idle" ||
+      controller.saveStatus === "saving",
+    unitChangesBlocked:
+      controller.status !== "ready" ||
+      controller.saveStatus === "saving" ||
+      getProjectActiveWorkBlock() !== null,
+  }
 }
 
 export function ApplicationBar({
@@ -42,14 +58,12 @@ export function ApplicationBar({
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
 }) {
   const t = useTranslations("app.shell.applicationBar")
+  const activityPending = useActivityPending()
+  const { busy, unitChangesBlocked } = applicationBarActivity(controller, activityPending)
   const desktop = getDesktopHost()
   const unifiedChrome = desktop?.platform === "darwin" && desktop.windowChrome === "unified"
   const { remote } = useAutomationConnections()
   const blockedReason = getProjectActionBlock()
-  const unitChangesBlocked =
-    controller.status !== "ready" ||
-    controller.saveStatus === "saving" ||
-    getProjectActiveWorkBlock() !== null
   const documentName = controller.report?.snapshot.name ?? t("untitledProject")
   const saveStatus = saveStatusMessage(controller, {
     error: t("projectUnavailable"),
@@ -58,9 +72,13 @@ export function ApplicationBar({
     saving: t("saving"),
     "save-error": t("saveFailed"),
   })
+  useReportApplicationError(
+    controller.status === "error" || controller.saveStatus === "save-error" ? saveStatus : null,
+  )
 
   return (
     <header
+      data-loading={busy || undefined}
       data-unified-chrome={unifiedChrome || undefined}
       className="application-bar grid min-w-0 grid-cols-[auto_minmax(0,1fr)] grid-rows-2 items-center gap-x-1 border-b bg-toolbar px-2 sm:flex sm:gap-3"
     >
@@ -75,24 +93,14 @@ export function ApplicationBar({
       />
       <div className="flex min-w-0 flex-1 items-center gap-1">
         {projectNavigation ?? (
-          <span className="min-w-0 truncate text-muted-foreground" title={documentName}>
-            {documentName}
-          </span>
+          <span className="min-w-0 truncate text-muted-foreground">{documentName}</span>
         )}
         <DocumentRenameDialog controller={controller} />
       </div>
       <div className="col-span-2 flex min-w-0 items-center justify-end gap-1 sm:shrink-0">
         {children}
       </div>
-      <span
-        className={
-          controller.status === "ready" && controller.saveStatus !== "save-error"
-            ? "sr-only"
-            : "sr-only sm:not-sr-only sm:ml-auto sm:min-w-0 sm:truncate sm:text-xs sm:text-muted-foreground"
-        }
-        role="status"
-        aria-label={t("saveStatusLabel")}
-      >
+      <span className="sr-only" role="status" aria-label={t("saveStatusLabel")}>
         {saveStatus}
       </span>
     </header>

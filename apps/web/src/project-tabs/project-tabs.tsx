@@ -1,10 +1,12 @@
+import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import { FolderOpen, FolderPlus, X } from "@vibeshape/ui/components/icons"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useEffect, useId } from "react"
 import type { DocumentControllerState, ProjectSwitchResult } from "../document/document-controller"
-import { DocumentProjectDialog } from "../document/document-project-dialog"
+import { useReportApplicationError } from "../shell/application-notices"
 import { useProjectTabsController } from "./use-project-tabs"
 
 export const PROJECT_EDITOR_PANEL_ID = "project-editor-panel"
@@ -33,17 +35,22 @@ export function ProjectTabs({
   onOpenProjects?: () => Promise<ProjectSwitchResult>
 }) {
   const tabs = useProjectTabsController(controller, onOpenProjects)
+  useReportActivity(tabs.pending)
   const feedbackId = useId()
   const message = tabs.feedback ? copy[tabs.feedback] : null
+  const centralized = useReportApplicationError(message, tabs.feedbackAttempt)
+  const storageCentralized = useReportApplicationError(
+    tabs.storageFailed ? copy.storageFailed : null,
+  )
   const disabled = tabs.pending || controller.status !== "ready"
   useEffect(() => {
-    if (!tabs.focusRequested || tabs.pending || !tabs.activeId || tabs.libraryOpen) return
+    if (!tabs.focusRequested || tabs.pending || !tabs.activeId) return
     const target = document.getElementById(projectTabId(tabs.activeId))
     if (target) {
       target.focus()
       tabs.actions.clearFocus()
     }
-  }, [tabs.activeId, tabs.actions, tabs.focusRequested, tabs.libraryOpen, tabs.pending, tabs.tabs])
+  }, [tabs.activeId, tabs.actions, tabs.focusRequested, tabs.pending, tabs.tabs])
   return (
     <nav aria-label={copy.label} className={cn("min-w-0", className)}>
       <Tabs
@@ -51,7 +58,7 @@ export function ProjectTabs({
         activationMode="manual"
         onValueChange={tabs.activate}
         aria-busy={tabs.pending}
-        aria-describedby={message ? feedbackId : undefined}
+        aria-describedby={message && !centralized ? feedbackId : undefined}
         className="flex min-w-0 items-center gap-1"
       >
         <TabsList
@@ -63,82 +70,121 @@ export function ProjectTabs({
           onPointerEnter={() => void tabs.refresh()}
         >
           {tabs.tabs.map((tab) => (
-            <div
+            <ProjectTab
               key={tab.documentId}
-              className={cn(
-                "flex min-w-0 shrink-0 items-center rounded-md",
-                tab.documentId === tabs.activeId && "bg-secondary",
-              )}
-            >
-              <TabsTrigger
-                value={tab.documentId}
-                id={projectTabId(tab.documentId)}
-                aria-controls={PROJECT_EDITOR_PANEL_ID}
-                disabled={disabled}
-                title={tab.name}
-                className="max-w-44 truncate py-1 pl-2 pr-1 text-xs"
-                onKeyDown={(event) => {
-                  if (event.key !== "Delete") return
-                  event.preventDefault()
-                  void tabs.close(tab.documentId)
-                }}
-              >
-                {tab.name}
-              </TabsTrigger>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                disabled={disabled}
-                aria-label={copy.closeProject(tab.name)}
-                title={copy.closeProject(tab.name)}
-                onClick={() => tabs.close(tab.documentId)}
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </div>
+              tab={tab}
+              active={tab.documentId === tabs.activeId}
+              disabled={disabled}
+              closeLabel={copy.closeProject(tab.name)}
+              onClose={tabs.close}
+            />
           ))}
         </TabsList>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          disabled={disabled || Boolean(tabs.blocked)}
-          aria-label={copy.newProject}
-          title={tabs.blocked ? copy.blocked : copy.newProject}
-          onClick={tabs.create}
-        >
-          <FolderPlus aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          disabled={disabled}
-          aria-label={copy.openProjects}
-          title={copy.openProjects}
-          onClick={tabs.openLibrary}
-        >
-          <FolderOpen aria-hidden="true" />
-        </Button>
+        <ProjectTabActions tabs={tabs} disabled={disabled} copy={copy} />
       </Tabs>
-      {message && (
-        <p id={feedbackId} role="alert" className="text-xs text-destructive">
+      {message && !centralized && (
+        <p id={feedbackId} role="alert" className="sr-only">
           {message}
         </p>
       )}
-      {tabs.storageFailed && (
-        <p role="status" className="text-xs text-muted-foreground">
+      {tabs.storageFailed && !storageCentralized && (
+        <p role="status" className="sr-only">
           {copy.storageFailed}
         </p>
       )}
-      <DocumentProjectDialog
-        controller={controller}
-        blockedReason={tabs.blocked}
-        showTrigger={false}
-        open={tabs.libraryOpen}
-        onOpenChange={tabs.changeLibraryOpen}
-      />
     </nav>
+  )
+}
+
+function ProjectTab({
+  tab,
+  active,
+  disabled,
+  closeLabel,
+  onClose,
+}: {
+  tab: ReturnType<typeof useProjectTabsController>["tabs"][number]
+  active: boolean
+  disabled: boolean
+  closeLabel: string
+  onClose: ReturnType<typeof useProjectTabsController>["close"]
+}) {
+  return (
+    <div className={cn("flex min-w-0 shrink-0 items-center rounded-md", active && "bg-secondary")}>
+      <TabsTrigger
+        value={tab.documentId}
+        id={projectTabId(tab.documentId)}
+        aria-controls={PROJECT_EDITOR_PANEL_ID}
+        disabled={disabled}
+        className="max-w-44 truncate py-1 pl-2 pr-1 text-xs"
+        onKeyDown={(event) => {
+          if (event.key !== "Delete") return
+          event.preventDefault()
+          void onClose(tab.documentId)
+        }}
+      >
+        {tab.name}
+      </TabsTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            disabled={disabled}
+            aria-label={closeLabel}
+            onClick={() => onClose(tab.documentId)}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{closeLabel}</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
+function ProjectTabActions({
+  tabs,
+  disabled,
+  copy,
+}: {
+  tabs: ReturnType<typeof useProjectTabsController>
+  disabled: boolean
+  copy: ProjectTabsCopy
+}) {
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            disabled={disabled || Boolean(tabs.blocked)}
+            aria-label={copy.newProject}
+            onClick={tabs.create}
+          >
+            <FolderPlus aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{tabs.blocked ? copy.blocked : copy.newProject}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            disabled={disabled}
+            aria-label={copy.openProjects}
+            onClick={tabs.openLibrary}
+          >
+            <FolderOpen aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{copy.openProjects}</TooltipContent>
+      </Tooltip>
+    </>
   )
 }

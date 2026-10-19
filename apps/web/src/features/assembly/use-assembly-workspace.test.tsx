@@ -4,12 +4,13 @@ import type { ReactNode } from "react"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
 
-const ports = (() => ({ commit: vi.fn(), inspect: vi.fn() }))()
+const ports = (() => ({ commit: vi.fn(), inspect: vi.fn(), preview: vi.fn() }))()
 const controllerModule = { ...(await import("../../document/document-controller")) }
 mock.module("../../document/document-controller", () => ({
   ...controllerModule,
   commitAuthoredTransaction: ports.commit,
   inspectActiveAssembly: ports.inspect,
+  previewAssemblyChanges: ports.preview,
 }))
 
 const { webcrypto } = await import("node:crypto")
@@ -21,6 +22,8 @@ const { documentSnapshotV5Schema } = await import("@vibeshape/domain/document-v5
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { i18n } = await import("../../i18n")
 const { createAssemblyDefinitionChanges } = await import("./assembly-model")
+const { asBuiltUiFixture } = await import("./assembly-as-built-test-fixture")
+const { rigidGroupChanges } = await import("./assembly-as-built")
 const { assemblyUiFixture } = await import("./assembly-test-fixture")
 const { identityAssemblyPose } = await import("./assembly-model")
 const { authoredTestId: id } = await import("../../test-support/authored-tree-fixture")
@@ -46,6 +49,7 @@ function fixture() {
 beforeEach(() => {
   vi.stubGlobal("crypto", webcrypto)
   ports.commit.mockReset()
+  ports.preview.mockReset()
   ports.inspect.mockResolvedValue({ ok: true, inspection: { occurrences: [], interference: [] } })
 })
 afterEach(() => {
@@ -207,6 +211,146 @@ describe("Assembly Apply publication", () => {
     })
     expect(ports.commit).not.toHaveBeenCalled()
     expect(hook.result.current.task?.kind).toBe("createDefinition")
+    expect(hook.result.current.mutations.error).toContain("document changed")
+  })
+  it("disables captured-pose menu actions until the current inspection completes", async () => {
+    const f = asBuiltUiFixture()
+    const authoredSnapshot = documentSnapshotV4Schema.parse({
+      ...promoteDocumentSnapshotV4(f.authority),
+      assembly: f.assembly,
+    })
+    let finish: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    ports.inspect.mockImplementation(async () => {
+      await gate
+      return { ok: true, inspection: f.inspection }
+    })
+    const hook = renderHook(
+      () => useAssemblyWorkspace({ ...fixture().controller, authoredSnapshot }),
+      { wrapper },
+    )
+    expect(hook.result.current.inspection.pending).toBe(true)
+    expect(hook.result.current.taskActionsDisabled).toBe(true)
+    for (const kind of ["asBuiltJoint", "rigidGroup"] as const) {
+      act(() => hook.result.current.openTask(kind))
+      expect(hook.result.current.task).toBeNull()
+    }
+    await act(async () => {
+      finish?.()
+      await gate
+    })
+    expect(hook.result.current.inspection.pending).toBe(false)
+    expect(hook.result.current.taskActionsDisabled).toBe(false)
+    act(() => hook.result.current.openTask("rigidGroup"))
+    expect(hook.result.current.task?.kind).toBe("rigidGroup")
+    expect(ports.preview).not.toHaveBeenCalled()
+    expect(ports.commit).not.toHaveBeenCalled()
+  })
+  it("preflights a captured rigid group and publishes every mate through one ordinary transaction", async () => {
+    const f = asBuiltUiFixture()
+    const authoredSnapshot = documentSnapshotV4Schema.parse({
+      ...promoteDocumentSnapshotV4(f.authority),
+      assembly: f.assembly,
+    })
+    const controller = { ...fixture().controller, authoredSnapshot }
+    ports.inspect.mockResolvedValue({ ok: true, inspection: f.inspection })
+    ports.preview.mockResolvedValue({ ok: true, inspection: f.inspection })
+    ports.commit.mockResolvedValue({ ok: true })
+    const hook = renderHook(() => useAssemblyWorkspace(controller), { wrapper })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => hook.result.current.openTask("rigidGroup"))
+    const task = hook.result.current.task
+    if (!task || !("capture" in task)) throw new Error("Expected captured group task.")
+    let n = 800
+    const changes = rigidGroupChanges(
+      f.assembly,
+      task.capture,
+      id(510),
+      [id(510), id(511), id(512)],
+      () => id(n++),
+    )
+    await act(async () => {
+      expect(await assemblyTaskActions(hook.result.current).onApply(changes)).toBe(true)
+    })
+    expect(ports.preview).toHaveBeenCalledWith(changes, authoredSnapshot.revision)
+    expect(ports.commit).toHaveBeenCalledTimes(1)
+    expect(ports.commit.mock.calls[0]?.[1].commands).toHaveLength(1)
+    expect(ports.commit.mock.calls[0]?.[1].commands[0].payload.changes).toEqual(changes)
+    expect(hook.result.current.task).toBeNull()
+  })
+  it("keeps the entire captured batch uncommitted after failed exact preflight and reports finite guidance", async () => {
+    const f = asBuiltUiFixture(2)
+    const authoredSnapshot = documentSnapshotV4Schema.parse({
+      ...promoteDocumentSnapshotV4(f.authority),
+      assembly: f.assembly,
+    })
+    ports.inspect.mockResolvedValue({ ok: true, inspection: f.inspection })
+    ports.preview.mockResolvedValue({ ok: false, diagnostic: { message: "Internal C++ failure" } })
+    const hook = renderHook(
+      () => useAssemblyWorkspace({ ...fixture().controller, authoredSnapshot }),
+      { wrapper },
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => hook.result.current.openTask("rigidGroup"))
+    const task = hook.result.current.task
+    if (!task || !("capture" in task)) throw new Error("Expected captured group task.")
+    const changes = rigidGroupChanges(f.assembly, task.capture, id(510), [id(510), id(511)], () =>
+      id(800),
+    )
+    await act(async () => {
+      expect(await assemblyTaskActions(hook.result.current).onApply(changes)).toBe(false)
+    })
+    expect(ports.commit).not.toHaveBeenCalled()
+    expect(hook.result.current.task?.kind).toBe("rigidGroup")
+    expect(hook.result.current.mutations.error).toContain(
+      "Check grounding, existing joints and selected members",
+    )
+    expect(hook.result.current.mutations.error).not.toContain("C++")
+  })
+  it("rejects a captured pose after a same-revision project switch before preview or commit", async () => {
+    const f = asBuiltUiFixture()
+    const authoredSnapshot = documentSnapshotV4Schema.parse({
+      ...promoteDocumentSnapshotV4(f.authority),
+      assembly: f.assembly,
+    })
+    const controller = { ...fixture().controller, authoredSnapshot }
+    ports.inspect.mockResolvedValue({ ok: true, inspection: f.inspection })
+    const hook = renderHook(({ controller }) => useAssemblyWorkspace(controller), {
+      wrapper,
+      initialProps: { controller },
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => hook.result.current.openTask("asBuiltJoint"))
+    const task = hook.result.current.task
+    if (!task || !("capture" in task)) throw new Error("Expected captured joint task.")
+    const changes = rigidGroupChanges(f.assembly, task.capture, id(510), [id(510), id(511)], () =>
+      id(800),
+    )
+    const report = controller.report
+    if (!report) throw new Error("Expected a current project report.")
+    hook.rerender({
+      controller: {
+        ...controller,
+        authoredSnapshot: { ...authoredSnapshot, id: id(901) as typeof authoredSnapshot.id },
+        report: {
+          ...report,
+          snapshot: { ...report.snapshot, id: id(901) as typeof report.snapshot.id },
+        },
+      },
+    })
+    await act(async () => {
+      expect(await assemblyTaskActions(hook.result.current).onApply(changes)).toBe(false)
+    })
+    expect(ports.preview).not.toHaveBeenCalled()
+    expect(ports.commit).not.toHaveBeenCalled()
     expect(hook.result.current.mutations.error).toContain("document changed")
   })
 })

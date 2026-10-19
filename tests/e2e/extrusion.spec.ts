@@ -1,4 +1,5 @@
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
+import { saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import { resultOperationLabels, selectResultOperation } from "./result-operation-helpers"
@@ -16,55 +17,63 @@ function extrudeCommand(page: Page) {
     .getByRole("button", { name: "Extrude", exact: true })
 }
 
-async function drawTwoSeparatedProfiles(page: Page) {
+type ProfileRectangle = readonly [number, number, number, number]
+
+async function drawProfileRectangles(page: Page, rectangles: readonly ProfileRectangle[]) {
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
-  const rectangles = [
-    [0.18, 0.62, 0.4, 0.38],
-    [0.6, 0.62, 0.82, 0.38],
-  ] as const
   for (const [startX, startY, endX, endY] of rectangles) {
     await page.keyboard.press("Escape")
     await selectSketchTool(page, "Rectangle tools", "Rectangle G")
-    await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
-    await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    // Locator clicks verify that the SVG receives each corner through overlaid workspace chrome.
+    await drawing.click({ position: { x: bounds.width * startX, y: bounds.height * startY } })
+    await drawing.click({ position: { x: bounds.width * endX, y: bounds.height * endY } })
   }
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+}
+
+async function drawTwoSeparatedProfiles(page: Page) {
+  await drawProfileRectangles(page, [
+    [0.28, 0.62, 0.4, 0.38],
+    [0.6, 0.62, 0.72, 0.38],
+  ])
 }
 
 async function drawTwoProfilesForDefaultBox(page: Page) {
-  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
-  const rectangles = [
+  await drawProfileRectangles(page, [
     [0.35, 0.7, 0.65, 0.3],
-    [0.72, 0.56, 0.82, 0.44],
-  ] as const
-  for (const [startX, startY, endX, endY] of rectangles) {
-    await page.keyboard.press("Escape")
-    await selectSketchTool(page, "Rectangle tools", "Rectangle G")
-    await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
-    await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
-  }
-  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+    [0.66, 0.56, 0.76, 0.44],
+  ])
 }
 
 async function drawTwoProfilesInsideDefaultBox(page: Page) {
-  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
-  const rectangles = [
+  await drawProfileRectangles(page, [
     [0.455, 0.54, 0.48, 0.46],
     [0.52, 0.54, 0.545, 0.46],
-  ] as const
-  for (const [startX, startY, endX, endY] of rectangles) {
-    await page.keyboard.press("Escape")
-    await selectSketchTool(page, "Rectangle tools", "Rectangle G")
-    await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
-    await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
+  ])
+}
+
+async function clearExtrusionProfiles(form: Locator) {
+  const removals = form.getByRole("button", { name: /^Remove Sketch \d+ · Profile \d+$/ })
+  while (await removals.count()) await removals.first().click()
+}
+
+async function extrusionFormRetention(form: Locator) {
+  const node = await form.elementHandle()
+  if (!node) throw new Error("The populated extrusion form is not mounted.")
+  return async (distance: string) => {
+    expect(await form.evaluate((current, original) => current === original, node)).toBe(true)
+    await expect(form.getByRole("combobox", { name: "Distance", exact: true })).toHaveValue(
+      distance,
+    )
   }
-  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+}
+
+async function closeVariablesDialog(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Variables", exact: true })
+  await dialog.getByRole("button", { name: "Done", exact: true }).last().click()
+  await expect(dialog).not.toBeVisible()
 }
 
 test.describe("selector-backed extrusion", () => {
@@ -94,9 +103,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
       timeout: 120_000,
     })
-    await viewport
-      .getByRole("combobox", { name: "Select saved profile" })
-      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 1")
     await extrudeCommand(page).click()
 
     const form = page.getByRole("form", { name: "Extrude profile" })
@@ -214,9 +221,7 @@ test.describe("selector-backed extrusion", () => {
       await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
         timeout: 120_000,
       })
-      await viewport
-        .getByRole("combobox", { name: "Select saved profile" })
-        .selectOption({ label: "Sketch 1 · Profile 1" })
+      await clickSavedProfileInViewport(page, "Sketch 1 · Profile 1")
       await extrudeCommand(page).click()
       const form = page.getByRole("form", { name: "Extrude profile" })
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
@@ -251,13 +256,11 @@ test.describe("selector-backed extrusion", () => {
         .getByRole("complementary", { name: "Model tree", exact: true })
         .getByRole("button", { name: "Show Sketch 1", exact: true })
         .click()
-      await viewport
-        .getByRole("combobox", { name: "Select saved profile" })
-        .selectOption({ label: "Sketch 1 · Profile 1" })
-      await extrudeCommand(page).click()
-      const downstreamForm = page.getByRole("form", { name: "Extrude profile" })
       await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Hide Extrusion 1", exact: true }).click()
+      await clickSavedProfileInViewport(page, "Sketch 1 · Profile 1")
+      await extrudeCommand(page).click()
+      const downstreamForm = page.getByRole("form", { name: "Extrude profile" })
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Extrusion 1", exact: true }).click()
@@ -292,24 +295,45 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
     const profilePicker = viewport.getByRole("combobox", { name: "Select saved profile" })
-    await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
+    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 1")
+    await expect(viewport).toHaveAttribute("data-selected-sketch-profile", /.+/)
+    const selectedBeforeCreate = await viewport.getAttribute("data-selected-sketch-profile")
     await extrudeCommand(page).click()
     let form = page.getByRole("form", { name: "Extrude profile" })
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toHaveCount(0)
+    const expectFirstCreateRetained = await extrusionFormRetention(form)
+    const initialDistance = await form.getByRole("combobox", { name: "Distance" }).inputValue()
+    await form.getByRole("combobox", { name: "Distance" }).fill("18 mm")
 
     await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2")
     await expect(form).toBeVisible()
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expectFirstCreateRetained("18 mm")
+    await form.getByRole("button", { name: "Remove Sketch 1 · Profile 1", exact: true }).click()
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toHaveCount(0)
+    await expectFirstCreateRetained("18 mm")
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Cancel" }).click()
-    await expect(profilePicker.locator("option:checked")).toHaveText("Sketch 1 · Profile 1")
+    await expect(profilePicker).toHaveCount(0)
+    await expect
+      .poll(() => viewport.getAttribute("data-selected-sketch-profile"))
+      .toBe(selectedBeforeCreate)
 
-    await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
+    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 1")
     await extrudeCommand(page).click()
     form = page.getByRole("form", { name: "Extrude profile" })
+    await expect(form.getByRole("combobox", { name: "Distance" })).toHaveValue(initialDistance)
+    const expectSecondCreateRetained = await extrusionFormRetention(form)
+    await form.getByRole("combobox", { name: "Distance" }).fill("24 mm")
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 2" })
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expectSecondCreateRetained("24 mm")
+    await form.getByRole("button", { name: "Remove Sketch 1 · Profile 1", exact: true }).click()
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toHaveCount(0)
+    await expectSecondCreateRetained("24 mm")
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create extrusion" }).click()
     await expect(form).toHaveCount(0, { timeout: 30_000 })
@@ -318,19 +342,34 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect(editForm.getByRole("combobox", { name: "Distance" })).toHaveValue("24 mm")
+    const expectEditRetained = await extrusionFormRetention(editForm)
+    await editForm.getByRole("combobox", { name: "Distance" }).fill("26 mm")
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
     await expect(editForm).toBeVisible()
     await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expectEditRetained("26 mm")
+    await editForm.getByRole("button", { name: "Remove Sketch 1 · Profile 2", exact: true }).click()
+    await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toHaveCount(0)
+    await expectEditRetained("26 mm")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await editForm.getByRole("button", { name: "Update extrusion" }).click()
     await expect(editForm).toHaveCount(0, { timeout: 30_000 })
 
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
+    await closeVariablesDialog(page)
     await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     await expect(
       page
         .getByRole("form", { name: "Edit extrusion" })
         .getByText("Sketch 1 · Profile 1", { exact: true }),
     ).toBeVisible()
+    await expect(
+      page
+        .getByRole("form", { name: "Edit extrusion" })
+        .getByRole("combobox", { name: "Distance" }),
+    ).toHaveValue("26 mm")
   })
 
   test("selects a saved profile through the compact picker after reload", async ({ page }) => {
@@ -360,19 +399,22 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
       timeout: 120_000,
     })
+    await expect(extrudeCommand(page)).toBeEnabled()
+    await extrudeCommand(page).click()
+    const form = page.getByRole("form", { name: "Extrude profile" })
+    await clearExtrusionProfiles(form)
     const profile = page.getByRole("combobox", { name: "Select saved profile" })
     await profile.focus()
     await expect(profile).toBeFocused()
     await profile.selectOption({ label: "Sketch 1 · Profile 1" })
 
-    await expect(profile).toHaveValue(/.+/)
+    await expect(
+      form.getByRole("button", { name: "Remove Sketch 1 · Profile 1", exact: true }),
+    ).toBeVisible()
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile", /.+/)
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
-    await expect(
-      page
-        .getByRole("toolbar", { name: "Model commands" })
-        .getByRole("button", { name: "Extrude", exact: true }),
-    ).toBeEnabled()
+    await expect(extrudeCommand(page)).toHaveAttribute("aria-pressed", "true")
+    await expect(form.getByRole("button", { name: "Create extrusion", exact: true })).toBeEnabled()
   })
 
   test("selects a saved profile directly in the 3D viewport after reload", async ({ page }) => {
@@ -453,10 +495,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("combobox", { name: "Variable expression" }).fill("18 mm")
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
 
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Model", exact: true })
-      .click()
+    await closeVariablesDialog(page)
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xz")
     await drawRectangle(page)
@@ -480,9 +519,7 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("button", { name: "Show Sketch 1" })
       .click()
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
-    await page
-      .getByRole("combobox", { name: "Select saved profile" })
-      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 1")
     await expect(page.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)
     await expect(extrudeCommand(page)).toBeEnabled()
     await extrudeCommand(page).click()
@@ -577,10 +614,7 @@ test.describe("selector-backed extrusion", () => {
     const expression = page.getByRole("combobox", { name: "Variable expression" })
     await expression.fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Model", exact: true })
-      .click()
+    await closeVariablesDialog(page)
     await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
@@ -596,6 +630,7 @@ test.describe("selector-backed extrusion", () => {
     })
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.getByRole("combobox", { name: "Variable expression" })).toHaveValue("24 mm")
+    await closeVariablesDialog(page)
     await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(reopenedForm.getByRole("combobox", { name: "Distance" })).toHaveValue("#depth")
@@ -805,16 +840,42 @@ test.describe("selector-backed extrusion", () => {
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
-    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
-    await canvas.click({ position: { x: bounds.width * 0.72, y: bounds.height * 0.45 } })
+    const center = await page.getByTestId("workspace-center").boundingBox()
+    if (!bounds || !center)
+      throw new Error("The unobscured geometry canvas has no measurable bounds.")
+    const left = Math.max(bounds.x, center.x)
+    const top = Math.max(bounds.y, center.y)
+    const width = Math.min(bounds.x + bounds.width, center.x + center.width) - left
+    const height = Math.min(bounds.y + bounds.height, center.y + center.height) - top
+    expect(width).toBeGreaterThan(0)
+    expect(height).toBeGreaterThan(0)
+    const sidePosition = {
+      x: left - bounds.x + width * 0.72,
+      y: top - bounds.y + height * 0.65,
+    }
+    await canvas.hover({ position: sidePosition })
+    const faceHint = viewport.getByText(/^Click to sketch on Extrusion 1 · Face \d+$/)
+    await expect(faceHint).toBeVisible()
+    const hoveredFace = await faceHint.innerText()
+    await canvas.click({ position: sidePosition })
 
     const support = page.getByRole("combobox", { name: "Support plane" })
     await expect(support).toHaveValue("feature-face")
     const sideLabel = await support.locator("option:checked").textContent()
     if (!sideLabel) throw new Error("The planar extrusion side has no readable label.")
+    expect(hoveredFace).toBe(`Click to sketch on ${sideLabel}`)
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
+    const saved = await saveProject(page)
+    const source = saved.project.snapshot.features.find(({ label }) => label === "Extrusion 1")
+    const side = saved.project.snapshot.sketches.find(({ label }) => label === "Sketch 2")
+    if (!source || !side?.support) throw new Error("The authored planar-side support is missing.")
+    const normal = side.support.reference.signature.direction
+    if (!normal) throw new Error("The authored planar-side support has no normal.")
+    expect(side.support.reference.featureId).toBe(source.id)
+    expect(Math.abs(normal[2])).toBeLessThan(0.000001)
+    expect(Math.hypot(normal[0], normal[1])).toBeCloseTo(1, 6)
     await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(support.locator("option:checked")).toHaveText(sideLabel)
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
@@ -972,6 +1033,8 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("form", { name: "Create cylinder" })
       .getByRole("button", { name: "Create cylinder" })
       .click()
+    await expect(page.getByRole("form", { name: "Create cylinder" })).toHaveCount(0)
+    await expect(page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
 

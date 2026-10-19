@@ -2,6 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { isAnyObject, isFunction, isPromise } from "is-what"
 import { Slot } from "radix-ui"
 import * as React from "react"
+import { useReportActivity } from "#components/activity"
 import { Spinner } from "#components/spinner"
 import { cn } from "#lib/cn"
 
@@ -16,7 +17,7 @@ const buttonVariants = cva(
     "disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50",
     "aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
     "data-[loading=true]:cursor-wait",
-    "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+    "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([role=img])]:size-5",
   ],
   {
     variants: {
@@ -32,11 +33,11 @@ const buttonVariants = cva(
       },
       size: {
         default: standardButtonSize,
-        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([role=img])]:size-4",
         sm: standardButtonSize,
         content: "h-auto min-h-8 gap-1.5 whitespace-normal px-3 py-2 text-sm",
         icon: standardIconButtonSize,
-        "icon-xs": "size-6 rounded-md p-0 [&_svg:not([class*='size-'])]:size-3",
+        "icon-xs": "size-6 rounded-md p-0 [&_svg:not([role=img])]:size-4",
         "icon-sm": standardIconButtonSize,
       },
     },
@@ -64,6 +65,19 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return "then" in value && isFunction(value.then)
 }
 
+function buttonPendingPresentation(
+  isLoading: boolean,
+  isInternallyLoading: boolean,
+  ariaBusy: React.AriaAttributes["aria-busy"],
+) {
+  const showLoading = isLoading || isInternallyLoading
+  return {
+    showLoading,
+    activity: showLoading || ariaBusy === true || ariaBusy === "true",
+    ariaBusy: showLoading || ariaBusy || undefined,
+  }
+}
+
 function Button({
   className,
   variant = "default",
@@ -80,7 +94,9 @@ function Button({
   const Component = asChild ? Slot.Root : "button"
   const pendingRef = React.useRef(false)
   const [isInternallyLoading, setIsInternallyLoading] = React.useState(false)
-  const showLoading = isLoading || isInternallyLoading
+  const presentation = buttonPendingPresentation(isLoading, isInternallyLoading, ariaBusy)
+  const { showLoading } = presentation
+  const centralized = useReportActivity(presentation.activity)
   const isDisabled = disabled || showLoading
 
   const finishPendingAction = React.useCallback(() => {
@@ -120,7 +136,7 @@ function Button({
       data-variant={variant}
       data-size={size}
       data-loading={showLoading}
-      aria-busy={showLoading || ariaBusy || undefined}
+      aria-busy={presentation.ariaBusy}
       aria-disabled={(asChild && isDisabled) || ariaDisabled || undefined}
       disabled={asChild ? undefined : isDisabled}
       className={cn(buttonVariants({ variant, size, className }))}
@@ -128,7 +144,7 @@ function Button({
       onDoubleClick={handleDoubleClick}
       {...props}
     >
-      {showLoading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+      {showLoading && !centralized ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
       <Slot.Slottable>{children}</Slot.Slottable>
     </Component>
   )

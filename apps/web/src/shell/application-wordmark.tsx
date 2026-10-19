@@ -1,30 +1,25 @@
-export function ApplicationWordmark({ saving }: { saving: boolean }) {
+import { useActivityPending } from "@vibeshape/ui/components/activity"
+
+export function ApplicationWordmark({ busy = false }: { busy?: boolean }) {
+  const pending = useActivityPending() || busy
   return (
-    <strong className="inline-flex items-center text-sm" data-saving={saving || undefined}>
-      <span className="sr-only">VibeShape</span>
-      <span aria-hidden="true" className="relative inline-grid w-[0.8em] place-items-center">
-        <span className={saving ? "invisible" : undefined}>V</span>
-        {saving && (
-          <svg
-            aria-hidden="true"
-            focusable="false"
-            viewBox="0 0 24 24"
-            className="absolute size-[1.15em] text-primary"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 20h16M6 18V3h12v15M6 6h12" />
-            <path d="M9 17h6M9 14h6M11 11h2" className="opacity-60" />
-            <g className="application-wordmark-print-head">
-              <path d="M10 4h4v4h-4zM12 8v2" />
-            </g>
-          </svg>
-        )}
+    <strong
+      className="relative inline-flex items-center text-sm"
+      data-application-wordmark
+      data-loading={pending || undefined}
+    >
+      <span className={pending ? "invisible" : undefined} aria-hidden={pending || undefined}>
+        VibeShape
       </span>
-      <span aria-hidden="true">ibeShape</span>
+      {pending && (
+        <span
+          aria-hidden="true"
+          data-global-loader
+          className="absolute inset-x-0 h-1 overflow-hidden rounded-full bg-primary/20"
+        >
+          <span className="application-progress-segment block h-full w-1/2 rounded-full bg-primary" />
+        </span>
+      )}
     </strong>
   )
 }

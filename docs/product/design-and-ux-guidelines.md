@@ -15,7 +15,7 @@ Normative terms follow the definitions in the [documentation overview](../README
 3. **Preview before commit.** A modeling command shows its effect before it creates one atomic undo entry.
 4. **Failure is explicit and recoverable.** VibeShape never silently repairs topology, discards parameters, or replaces geometry with a guessed result.
 5. **One command, many entry points.** Toolbar, menu, context menu, command palette, and shortcut invoke the same application command and eligibility rules.
-6. **Local state is described honestly.** "Saved in this browser" is distinct from "Exported as a file." Autosave is not presented as backup.
+6. **Local state is described honestly.** Local autosave and explicit project-file exports are separate facts. Explain storage scope in Projects and Help; autosave is not presented as backup.
 7. **Precision beats decoration.** Motion, color, icons, and spacing communicate state and hierarchy; they do not decorate empty space.
 8. **Expert speed does not remove beginner clarity.** Frequent commands are compact and keyboard-friendly, while labels, previews, constraints, and diagnostics remain understandable.
 9. **Accessibility is structural.** Keyboard behavior, focus, names, status announcements, zoom, and non-color cues are designed with the component, not added after it.
@@ -72,7 +72,7 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Element | Default | Allowed range |
 |---|---:|---:|
 | Application bar | 40 px | 40–44 px |
-| Command toolbar | 36 px | 36–40 px |
+| Command toolbar | 36 px; taller when reserving a sketch scrollbar lane | 36–40 px command row plus a separate native scrollbar lane when needed |
 | Status bar | 24 px | 24–28 px |
 | Model tree | 240 px | 200–420 px |
 | Task panel | 320 px | 280–480 px |
@@ -81,6 +81,8 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Panel resize hit area | 8 px | At least 8 px |
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
+
+A horizontally scrolling sketch toolbar MUST reserve native scrollbar space below its 32 × 32 px controls. The scrollbar MUST NOT reduce their usable pointer area. The shell row and docked assistant offset MUST share the same toolbar-height value so the extra lane cannot overlap the workspace or chat.
 
 The application bar's **Workspace layout settings** popover provides independent model-tree and task-panel width, visibility, and background-opacity controls, plus **Reset layout**. Pointer and keyboard resizing use the shared `react-resizable-panels` adapter; separators provide an 8 px hit area. Widths are saved after interactive resizing, not on every pointer movement. A versioned, validated local-storage preference record survives document switches and reloads, but is not part of project history or exported files. Unavailable storage falls back to in-memory preferences.
 
@@ -177,7 +179,7 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 
 ### Icons
 
-- Use Lucide icons consistently at 16 px in dense controls and 20 px in larger actions.
+- Use a consistent 20 px optical size for operation and action icons, with 16 px icons in the smallest 24 px controls. CAD glyphs use clear solids, profiles, and operation direction cues on the same 24-unit grid.
 - An icon represents one concept everywhere; do not reuse it for unrelated commands.
 - Icon-only buttons require an accessible name and a tooltip that includes the command name and shortcut.
 - Stable high-frequency actions in the application bar and command toolbar use icon-only controls instead of repeating the same label beside the icon. A task-panel command header may use the established compact Cancel and Accept icons when both have localized accessible names and tooltips. Parameter actions, destructive confirmation, menus, and unfamiliar one-off actions retain visible text when the label carries essential meaning.
@@ -454,7 +456,7 @@ The table has these columns:
 
 ## Model Tree
 
-The left model tree is a dedicated accessible object browser. Parts, terminal bodies, and sketches remain separate from the horizontal feature history below the workspace. Object folders and History collapse independently. The heading names the project; section icons/counts and a contextual empty-sketch action support discovery. Origin expands to real plane selection and visibility controls. A body click selects the object when the selection callback is available; feature-history activation opens the existing editor.
+The left model tree is a dedicated accessible object browser. Parts, terminal bodies, and sketches remain separate from the horizontal feature history below the workspace. Object folders and History collapse independently. The heading names the project; section icons/counts and a contextual empty-sketch action support discovery. Planes expands to real origin-plane selection, authored datum planes, and visibility controls. A body click selects the object when the selection callback is available; feature-history activation opens the existing editor.
 
 History uses compact, named feature icons by default. **Details** reveals labels, visibility, source links, and dependency summaries. Left/Right navigate chronological items; Up/Down navigate disclosure hierarchy. Home/End, Enter, F2, context menus, and dependency-validated dragging retain their existing commands. Repair badges and the edit-point marker remain visible in compact mode. **Find in browser** is offered only for an available terminal result and reveals its part/body without editing it. Hover and selected geometry are reflected in the owning timeline feature.
 
@@ -510,7 +512,7 @@ History uses compact, named feature icons by default. **Details** reveals labels
 - Use a non-modal task panel for normal modeling parameters. Modal dialogs are reserved for project-level boundaries, blocking choices, imports, exports, and confirmations.
 - Use `AlertDialog` for destructive confirmation, never an ordinary `Dialog` styled red.
 - Popovers contain short contextual controls. Long forms and multi-step tasks do not belong in popovers.
-- Tooltips supplement accessible names; they never contain required instructions, errors, or interactive content, and their transient layers never intercept pointer input intended for the viewport or adjacent commands.
+- Tooltips appear only on icon-only controls without a direct visible label. Text-labelled controls and project tabs have no tooltip or native `title`. Tooltips supplement accessible names; they never contain required instructions, errors, or interactive content, and their transient layers never intercept pointer input intended for the viewport or adjacent commands.
 - A hover-opened surface remains dismissible and does not cover the control or model entity the user must inspect.
 - The application-level `Export…` dialog names each format by purpose, blocks format actions until a valid rebuilt solid exists, and keeps pending, success, or failure status discoverable in the application bar after the modal closes.
 - The preferred slicer is a device/browser preference, not document content. Save a valid selection immediately and reuse it across projects.
@@ -539,7 +541,7 @@ Status changes that do not move focus use the appropriate live-region semantics.
 - Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
-- Otherwise use indeterminate progress with elapsed time after an appropriate delay.
+- Otherwise show one horizontal indeterminate indicator in place of the complete VibeShape wordmark, preserving its width and height. No other animated loaders appear on buttons, tabs, panels, or dialogs. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion uses a static progress segment.
 - Keep camera navigation and unaffected document inspection responsive.
 - Distinguish `Cancel requested` from `Canceled`; logical cancellation may wait for the active kernel call to return.
 - Discard stale worker generations and state this in diagnostics only when relevant.
@@ -560,7 +562,7 @@ Never replace this structure with a raw exception, a generic `Something went wro
 ## Project Library, Empty States, and Onboarding
 
 - The project library prioritizes `New project`, `Open .vshape`, recent local projects, and recovery state.
-- Each project card shows name, exact-revision 3D preview when available, modification time, storage state, and an accessible action menu. Preview generation is derived and non-authoritative: a failed write must not be marked complete and receives one bounded retry; an unavailable or stale preview remains an explicit placeholder.
+- Each project card opens directly and shows its name, exact-revision 3D preview when available, modification time, and separate accessible secondary actions. Preview generation is derived and non-authoritative: a failed write must not be marked complete and receives one bounded retry. A missing preview uses a quiet origin-grid illustration without an error caption.
 - Deletion uses a specific confirmation and does not imply that exported copies are deleted.
 - The first-run screen offers the versioned bracket example and a short `Create sketch -> Extrude -> Print check` path.
 - Do not force a multi-step product tour. Use dismissible contextual tips attached to stable UI regions.
@@ -571,16 +573,16 @@ Never replace this structure with a raw exception, a generic `Something went wro
 
 Use these states consistently:
 
-| State | Preferred copy |
+| State | Presentation |
 |---|---|
-| Transaction committed to browser storage | `Saved in this browser` |
-| Write pending | `Saving locally…` |
-| Local write failed | `Could not save in this browser` |
+| Transaction committed to local storage | Accessible `Saved` status |
+| Write pending | Global wordmark progress and accessible `Saving` status |
+| Local write failed | Fixed application error center with applicable recovery |
 | Native file written or downloaded | `Project file exported` |
 | Persistent storage granted | `Browser storage protected from automatic cleanup where supported` |
 | Offline application ready | `Available offline` |
 
-Do not use `Synced`, `Backed up`, or cloud icons unless an actual opt-in sync or backup exists. The project header exposes the latest local save and latest file export as separate facts.
+Do not use `Synced`, `Backed up`, or cloud icons unless an actual opt-in sync or backup exists. The wordmark owns the single global progress indicator. Keep save state available to assistive technology and explain storage scope in Projects and Help. File export remains an explicit action; the editor header does not show a permanent storage or autosave badge.
 
 ## Accessibility Contract
 
@@ -820,3 +822,10 @@ Record completion, critical errors, wrong turns, time on task, assistance, and q
 ## Standards Basis
 
 The implementation basis is recorded in [Research and Primary Sources](../research-sources.md#ux-accessibility-and-component-behavior). When this document conflicts with an accepted architecture decision, the ADR controls architecture and this guideline must be updated. When a prototype reveals an interaction failure, update this specification together with the test or research evidence.
+
+The Planes group provides one visibility eye for the origin planes even while collapsed. Any visible origin plane makes this action hide all origin planes; when every origin plane is hidden, it shows all three. Authored datum planes retain their independent feature visibility controls and participate in the browser's Shift range, Ctrl/Cmd toggle, cross-highlighting, and atomic Delete/Backspace selection workflow. The mixed state is exposed accessibly. Per-plane controls retain independent editing, and visibility remains transient presentation state. The redundant viewport `XYZ · unit` badge is omitted because axes and units already have dedicated displays.
+
+The ordinary XY ground grid covers the viewport through an analytic background shader rather than
+a fixed-size scene object. Neutral major lines and subtler subdivisions adapt to zoom, retain world
+alignment during panning, and fade near the horizon. The print-bed grid remains limited to the
+configured physical envelope. Grid decoration does not participate in selection or Fit bounds.

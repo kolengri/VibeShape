@@ -10,11 +10,13 @@ export {
   Circle,
   CircleAlert,
   CircleDashed,
+  CircleHelp,
   CirclePause,
   CirclePlay,
   Combine,
   Command as CommandIcon,
   Construction,
+  Copy,
   CopyPlus,
   Cuboid,
   Download,
@@ -31,6 +33,7 @@ export {
   Layers3,
   Link2,
   ListFilter,
+  MessageSquarePlus,
   Minus,
   MousePointer2,
   Move,
@@ -48,12 +51,14 @@ export {
   Ruler,
   Scan,
   Scissors,
+  Send,
   Settings,
   SkipBack,
   SkipForward,
   Slash,
   Spline,
   Split,
+  Square,
   Star,
   StepBack,
   StepForward,
@@ -64,299 +69,77 @@ export {
 } from "lucide-react"
 export {
   AlignedRectangleIcon,
+  AssemblyInstanceIcon,
+  AssemblyJointIcon,
   CenterArcIcon,
   CenteredAlignedRectangleIcon,
   CenteredSlotIcon,
   CenterRectangleIcon,
   ChamferIcon,
   CircularPatternIcon,
+  CircumscribedPolygonIcon,
+  CompoundIcon,
   ConeIcon,
+  ConstraintCoincidentIcon,
+  ConstraintConcentricIcon,
+  ConstraintEqualIcon,
+  ConstraintFixedIcon,
+  ConstraintHorizontalIcon,
+  ConstraintMidpointIcon,
+  ConstraintParallelIcon,
+  ConstraintPerpendicularIcon,
+  ConstraintPointOnCurveIcon,
+  ConstraintPointOnLineIcon,
+  ConstraintSymmetricIcon,
+  ConstraintTangentIcon,
+  ConstraintVerticalIcon,
   CylinderIcon,
   DatumPlaneIcon,
   DimensionIcon,
+  EllipseIcon,
+  EllipticalArcIcon,
+  ExtendIcon,
   ExtrudeIcon,
   FilletIcon,
+  FinalResultIcon,
   HoleIcon,
+  InscribedPolygonIcon,
+  IntersectionIcon,
   LightweightingIcon,
   LinearPatternIcon,
   LoftIcon,
   MidpointLineIcon,
+  MirrorIcon,
+  MotionStudyIcon,
   NormalViewIcon,
   OffsetIcon,
+  PierceIcon,
   PointIcon,
+  PrimitiveBoxIcon,
+  PrimitivePyramidIcon,
   QuickLightweightingIcon,
   RevolveIcon,
+  RigidGroupIcon,
+  SectionViewIcon,
+  ShellIcon,
+  SketchCircleIcon,
+  SketchConstructionIcon,
+  SketchIcon,
+  SketchLineIcon,
+  SketchRectangleIcon,
+  SketchSplineIcon,
+  SketchSplitIcon,
   SlotAroundLineIcon,
   SlotIcon,
   SphereIcon,
+  SplitBodyIcon,
   SubtractIcon,
   SurfaceTextureIcon,
   SweepIcon,
   TangentArcIcon,
+  ThreadIcon,
   ThreePointArcIcon,
   ThreePointCircleIcon,
   TorusIcon,
+  UnionIcon,
 } from "./cad-icons"
-
-import type { ReactNode, SVGProps } from "react"
-
-function ConstraintGlyph({
-  children,
-  ...props
-}: SVGProps<SVGSVGElement> & Readonly<{ children: ReactNode }>) {
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
-      {children}
-    </svg>
-  )
-}
-
-const constraintStrokeProps = {
-  stroke: "currentColor",
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-  strokeWidth: 2,
-} as const
-
-export function ConstraintCoincidentIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <circle cx="12" cy="12" r="3" {...constraintStrokeProps} />
-      <path d="M3 12h6m6 0h6M12 3v6m0 6v6" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintConcentricIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <circle cx="12" cy="12" r="3" {...constraintStrokeProps} />
-      <circle cx="12" cy="12" r="8" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintEqualIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M5 9h14M5 15h14" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintFixedIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <rect x="5" y="10" width="14" height="11" rx="2" {...constraintStrokeProps} />
-      <path d="M8 10V7a4 4 0 0 1 8 0v3" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintHorizontalIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M4 6v12M20 6v12M4 12h16" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintMidpointIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M3 18 12 5l9 13H3Z" {...constraintStrokeProps} />
-      <circle cx="12" cy="18" r="1.75" fill="currentColor" />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintParallelIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="m7 19 7-14m-4 14 7-14" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintPerpendicularIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M5 5v14h14M5 13h8v6" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintPointOnCurveIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M3 16c4-9 14-9 18 0" {...constraintStrokeProps} />
-      <circle cx="12" cy="10" r="2" fill="currentColor" />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintPointOnLineIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M3 17 21 7" {...constraintStrokeProps} />
-      <circle cx="12" cy="12" r="2" fill="currentColor" />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintSymmetricIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M12 3v18M4 8l5 4-5 4m16-8-5 4 5 4" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintTangentIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <circle cx="12" cy="14" r="6" {...constraintStrokeProps} />
-      <path d="M3 8h18" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function ConstraintVerticalIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <ConstraintGlyph {...props}>
-      <path d="M6 4h12M6 20h12M12 4v16" {...constraintStrokeProps} />
-    </ConstraintGlyph>
-  )
-}
-
-export function InscribedPolygonIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <circle cx="12" cy="12" r="5.5" />
-      <path d="M12 2.5 20.2 7.25v9.5L12 21.5l-8.2-4.75v-9.5L12 2.5Z" />
-    </svg>
-  )
-}
-
-export function CircumscribedPolygonIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <circle cx="12" cy="12" r="9.5" />
-      <path d="M12 4.5 18.5 8.25v7.5L12 19.5l-6.5-3.75v-7.5L12 4.5Z" />
-    </svg>
-  )
-}
-
-export function EllipseIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <ellipse cx="12" cy="12" rx="9" ry="5.5" transform="rotate(-25 12 12)" />
-      <path d="M4.1 15.8 19.9 8.2M12 12l2.1 4.3" strokeDasharray="1.5 2" />
-    </svg>
-  )
-}
-
-export function EllipticalArcIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <path d="M3.6 13.7c1.4 4.1 6.8 6.1 12 4.4s8.2-6.4 6.8-10.5" />
-      <path d="m3.6 13.7 18.8-6.1M13 10.7l2.1 4.2" strokeDasharray="1.5 2" />
-      <circle cx="3.6" cy="13.7" r="1" fill="currentColor" stroke="none" />
-      <circle cx="22.4" cy="7.6" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-
-export function FinalResultIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <path d="M4 6h9M4 12h9M4 18h9M18 4v16M13 12h5" />
-      <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
-      <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-
-export function IntersectionIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <path d="m3 7 9-4 9 4-9 4-9-4Z" />
-      <path d="m3 17 9-4 9 4-9 4-9-4Z" />
-      <path d="m6.5 14.4 11-4.8" strokeWidth="2.5" />
-    </svg>
-  )
-}
-
-export function PierceIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <path d="m3 12 9-4 9 4-9 4-9-4Z" />
-      <path d="M12 2v20" />
-      <circle cx="12" cy="12" r="2.25" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}

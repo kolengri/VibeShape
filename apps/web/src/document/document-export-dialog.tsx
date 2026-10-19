@@ -4,7 +4,6 @@ import type { GeometryExportFormat, MeshExportQuality } from "@vibeshape/protoco
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -15,13 +14,16 @@ import {
 import { Download } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { useCallback, useEffect, useState } from "react"
+import { useRef, useState } from "react"
 import { useDialogOpen } from "../components/use-dialog-open"
 import { PrintPreparationPanel } from "../printing/print-preparation-panel"
-import { SlicerHandoffPanel } from "../printing/slicer-handoff-panel"
+import { SlicerHandoffOptions } from "../printing/slicer-handoff-panel"
+import { useSlicerHandoff } from "../printing/use-slicer-handoff"
+import { useReportApplicationError } from "../shell/application-notices"
 import type { DocumentControllerState } from "./document-controller"
 import { exportActiveDocument } from "./document-controller"
 import { downloadDocumentExport } from "./document-export"
+import { DocumentExportOptions, type ExportDestination } from "./document-export-options"
 import {
   type MeshExportQualityChoice,
   MeshExportQualityField,
@@ -30,23 +32,14 @@ import {
 
 const formatCopy = {
   "3mf": {
-    title: "threeMf.title",
-    description: "threeMf.description",
-    action: "threeMf.action",
     pending: "status.exportingThreeMf",
     succeeded: "status.exportedThreeMf",
   },
   step: {
-    title: "step.title",
-    description: "step.description",
-    action: "step.action",
     pending: "status.exportingStep",
     succeeded: "status.exportedStep",
   },
   stl: {
-    title: "stl.title",
-    description: "stl.description",
-    action: "stl.action",
     pending: "status.exportingStl",
     succeeded: "status.exportedStl",
   },
@@ -62,15 +55,16 @@ type ExportActivity = Readonly<{
 const idleActivity: ExportActivity = { pendingFormat: null, statusKey: null, failed: false }
 
 function useDocumentExportAction(
-  closeDialog: () => void,
+  closeDialog: (format: GeometryExportFormat) => void,
   partId: string | undefined,
-  open: boolean,
   includesMesh = false,
   quality?: MeshExportQuality,
 ) {
   const [activity, setActivity] = useState<ExportActivity>(idleActivity)
+  const locked = useRef(false)
 
   const runExport = async (format: GeometryExportFormat) => {
+    if (locked.current) return
     if (format === "step" && includesMesh) {
       setActivity({
         pendingFormat: null,
@@ -80,6 +74,7 @@ function useDocumentExportAction(
       })
       return
     }
+    locked.current = true
     setActivity({ pendingFormat: format, statusKey: formatCopy[format].pending, failed: false })
     try {
       const result =
@@ -92,16 +87,13 @@ function useDocumentExportAction(
       }
       downloadDocumentExport(result)
       setActivity({ pendingFormat: null, statusKey: formatCopy[format].succeeded, failed: false })
-      closeDialog()
+      closeDialog(format)
     } catch {
       setActivity({ pendingFormat: null, statusKey: "status.failed", failed: true })
+    } finally {
+      locked.current = false
     }
   }
-
-  const resetActivity = useCallback(() => setActivity(idleActivity), [])
-  useEffect(() => {
-    if (open) resetActivity()
-  }, [open, resetActivity])
   return { activity, runExport }
 }
 
@@ -143,41 +135,6 @@ function ExportStatus({ messageKey }: { messageKey: string | null }) {
   )
 }
 
-function ExportFormatCard({
-  format,
-  disabled,
-  loading,
-  onExport,
-  preferred,
-}: {
-  format: GeometryExportFormat
-  preferred: boolean
-  disabled: boolean
-  loading: boolean
-  onExport: (format: GeometryExportFormat) => Promise<void>
-}) {
-  const t = useTranslations("app.export")
-  const settingsT = useTranslations("app.settings")
-  const copy = formatCopy[format]
-  return (
-    <section className="grid content-start gap-3 rounded-md border bg-card p-4">
-      <div className="grid gap-1">
-        <h3 className="text-sm font-medium">{t(copy.title)}</h3>
-        {preferred ? <span className="text-xs text-primary">{settingsT("preferred")}</span> : null}
-        <p className="text-xs text-muted-foreground">{t(copy.description)}</p>
-      </div>
-      <Button
-        type="button"
-        disabled={disabled}
-        isLoading={loading}
-        onClick={() => onExport(format)}
-      >
-        {t(copy.action)}
-      </Button>
-    </section>
-  )
-}
-
 function ExportNotice({
   hasGeometry,
   failed,
@@ -188,8 +145,11 @@ function ExportNotice({
   errorKey?: "meshStepError" | undefined
 }) {
   const t = useTranslations("app.export")
+  const appOwnsError = useReportApplicationError(
+    hasGeometry && failed && !errorKey ? t("error") : null,
+  )
   if (!hasGeometry) return <p className="text-sm text-muted-foreground">{t("noBodies")}</p>
-  if (!failed) return null
+  if (!failed || (appOwnsError && !errorKey)) return null
   return (
     <p className="text-sm text-destructive" role="alert">
       {t(errorKey ?? "error")}
@@ -275,60 +235,6 @@ function ExportPreparation({
   )
 }
 
-function useExportDialogPresentation(open: boolean) {
-  const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
-  const [showPreparation, setShowPreparation] = useState(false)
-  const [exportPart, setExportPart] = useState("all")
-  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
-  useEffect(() => {
-    if (!open) return
-    setSlicerStatus(null)
-    setShowPreparation(false)
-    setExportPart("all")
-    setMeshQualityChoice("default")
-  }, [open])
-  return {
-    slicerStatus,
-    setSlicerStatus,
-    showPreparation,
-    setShowPreparation,
-    exportPart,
-    setExportPart,
-    meshQualityChoice,
-    setMeshQualityChoice,
-  }
-}
-
-function ExportFormatCards({
-  preferredFormat,
-  disabled,
-  pendingFormat,
-  onExport,
-}: {
-  preferredFormat: GeometryExportFormat
-  disabled: boolean
-  pendingFormat: GeometryExportFormat | null
-  onExport: (format: GeometryExportFormat) => Promise<void>
-}) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {[
-        preferredFormat,
-        ...(["3mf", "step", "stl"] as const).filter((format) => format !== preferredFormat),
-      ].map((format) => (
-        <ExportFormatCard
-          key={format}
-          format={format}
-          preferred={format === preferredFormat}
-          disabled={disabled}
-          loading={pendingFormat === format}
-          onExport={onExport}
-        />
-      ))}
-    </div>
-  )
-}
-
 function ExportDialogTrigger({
   shown,
   controller,
@@ -358,6 +264,215 @@ function ExportDialogTrigger({
   )
 }
 
+type ExportContentProps = {
+  controller: DocumentControllerState
+  preferredFormat: GeometryExportFormat
+  onClose: () => void
+  onSlicerOpened: (message: string) => void
+  onExported: (message: string) => void
+  onCloseAutoFocus?: ((event: Event) => void) | undefined
+}
+
+function useExportSession({
+  controller,
+  preferredFormat,
+  onClose,
+  onExported,
+  onSlicerOpened,
+}: ExportContentProps) {
+  const t = useTranslations("app.export")
+  const [showPreparation, setShowPreparation] = useState(false)
+  const [exportPart, setExportPart] = useState("all")
+  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
+  const [slicerPending, setSlicerPending] = useState(false)
+  const [printPending, setPrintPending] = useState(false)
+  const selectedPartId = exportPart === "all" ? undefined : exportPart
+  const quality = meshExportQuality(meshQualityChoice)
+  const { activity, runExport } = useDocumentExportAction(
+    (format) => {
+      onExported(t(formatCopy[format].succeeded))
+      onClose()
+    },
+    selectedPartId,
+    exportSelectionIncludesMesh(controller, selectedPartId),
+    quality,
+  )
+  const handoff = useSlicerHandoff({
+    onBusyChange: setSlicerPending,
+    onOpened: onSlicerOpened,
+    prepareMesh: (format) =>
+      quality
+        ? exportActiveDocument(format, selectedPartId, quality)
+        : exportActiveDocument(format, selectedPartId),
+  })
+  const hasGeometry = documentHasExportableGeometry(controller)
+  const exporting = activity.pendingFormat !== null || slicerPending
+  const preparationDisabled = exporting || !hasGeometry
+  const pending = exporting || printPending
+  const actionDisabled = preparationDisabled || printPending
+  const destination = useExportDestination(preferredFormat, handoff)
+
+  return {
+    ...destination,
+    showPreparation,
+    setShowPreparation,
+    exportPart,
+    setExportPart,
+    meshQualityChoice,
+    setMeshQualityChoice,
+    activity,
+    runExport,
+    handoff,
+    hasGeometry,
+    pending,
+    actionDisabled,
+    preparationDisabled,
+    setPrintPending,
+  }
+}
+function useExportDestination(
+  preferredFormat: GeometryExportFormat,
+  handoff: ReturnType<typeof useSlicerHandoff>,
+) {
+  const [destination, setDestination] = useState<ExportDestination>("file")
+  const [fileFormat, setFileFormat] = useState(preferredFormat)
+  const nativeDestination = destination === "slicer"
+  const format = nativeDestination ? handoff.preference.format : fileFormat
+  const changeFormat = (value: GeometryExportFormat) => {
+    if (!nativeDestination) setFileFormat(value)
+    else if (value !== "step") handoff.choosePreference(handoff.selected?.id ?? null, value)
+  }
+  return { destination, setDestination, format, changeFormat, nativeDestination }
+}
+type ExportSession = ReturnType<typeof useExportSession>
+
+function ExportDialogHeader({ controller }: { controller: DocumentControllerState }) {
+  const t = useTranslations("app.export")
+  const authority = controller.authoredSnapshot
+  const hasTextures =
+    authority &&
+    "surfaceTextures" in authority &&
+    authority.surfaceTextures.some(({ enabled }) => enabled)
+  return (
+    <DialogHeader>
+      <DialogTitle>{t("title")}</DialogTitle>
+      <DialogDescription>{t("description")}</DialogDescription>
+      {hasTextures ? (
+        <p className="text-xs text-muted-foreground">{t("textureExportHint")}</p>
+      ) : null}
+    </DialogHeader>
+  )
+}
+
+function ExportOriginalModelFields({
+  controller,
+  session,
+}: {
+  controller: DocumentControllerState
+  session: ExportSession
+}) {
+  const { handoff, actionDisabled, activity } = session
+  return (
+    <>
+      <DocumentExportOptions
+        destination={session.destination}
+        onDestinationChange={session.setDestination}
+        format={session.format}
+        onFormatChange={session.changeFormat}
+        disabled={actionDisabled}
+        native={handoff.native !== undefined}
+      />
+      <ExportPartSelection
+        controller={controller}
+        value={session.exportPart}
+        onChange={session.setExportPart}
+        disabled={actionDisabled}
+      />
+      {session.format !== "step" ? (
+        <MeshExportQualityField
+          value={session.meshQualityChoice}
+          onChange={session.setMeshQualityChoice}
+          disabled={actionDisabled}
+        />
+      ) : null}
+      {session.nativeDestination && handoff.native ? (
+        <SlicerHandoffOptions handoff={handoff} disabled={actionDisabled} />
+      ) : null}
+      <ExportStatus messageKey={activity.failed ? null : activity.statusKey} />
+      <ExportNotice
+        hasGeometry={session.hasGeometry}
+        failed={activity.failed}
+        errorKey={activity.errorKey}
+      />
+    </>
+  )
+}
+
+function ExportDialogActions({
+  session,
+  onClose,
+}: {
+  session: ExportSession
+  onClose: () => void
+}) {
+  const t = useTranslations("app.export")
+  const { handoff, nativeDestination, format, activity } = session
+  const slicerUnavailable = nativeDestination && (!handoff.native || !handoff.canSend)
+  return (
+    <DialogFooter>
+      <Button type="button" variant="outline" disabled={session.pending} onClick={onClose}>
+        {t("close")}
+      </Button>
+      {!session.showPreparation ? (
+        <Button
+          type="button"
+          disabled={session.actionDisabled || slicerUnavailable}
+          isLoading={activity.pendingFormat !== null || handoff.pending}
+          onClick={() => (nativeDestination ? handoff.send() : session.runExport(format))}
+        >
+          {nativeDestination
+            ? t("destination.slicer")
+            : t("saveFile", { format: format.toUpperCase() })}
+        </Button>
+      ) : null}
+    </DialogFooter>
+  )
+}
+
+function ExportDialogContent(props: ExportContentProps) {
+  const t = useTranslations("app.export")
+  const session = useExportSession(props)
+  return (
+    <DialogContent
+      onCloseAutoFocus={props.onCloseAutoFocus}
+      closeLabel={t("closeLabel")}
+      showCloseButton={false}
+      className={session.showPreparation ? "max-w-3xl" : "max-w-xl"}
+      onEscapeKeyDown={(event) => {
+        if (session.pending) event.preventDefault()
+      }}
+      onInteractOutside={(event) => {
+        if (session.pending) event.preventDefault()
+      }}
+    >
+      <ExportDialogHeader controller={props.controller} />
+      {!session.showPreparation ? (
+        <ExportOriginalModelFields controller={props.controller} session={session} />
+      ) : null}
+      <ExportPreparation
+        controller={props.controller}
+        available={session.exportPart === "all"}
+        shown={session.showPreparation}
+        onShowChange={session.setShowPreparation}
+        disabled={session.actionDisabled}
+        panelDisabled={session.preparationDisabled}
+        onBusyChange={session.setPrintPending}
+      />
+      <ExportDialogActions session={session} onClose={props.onClose} />
+    </DialogContent>
+  )
+}
+
 export function DocumentExportDialog({
   controller,
   preferredFormat = "3mf",
@@ -371,120 +486,32 @@ export function DocumentExportDialog({
   showTrigger?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onCloseAutoFocus?: (event: Event) => void
+  onCloseAutoFocus?: ((event: Event) => void) | undefined
 }) {
-  const t = useTranslations("app.export")
   const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
-  const [slicerPending, setSlicerPending] = useState(false)
-  const [printPending, setPrintPending] = useState(false)
-  const {
-    slicerStatus,
-    setSlicerStatus,
-    showPreparation,
-    setShowPreparation,
-    exportPart,
-    setExportPart,
-    meshQualityChoice,
-    setMeshQualityChoice,
-  } = useExportDialogPresentation(open)
-  const selectedPartId = exportPart === "all" ? undefined : exportPart
-  const { activity, runExport } = useDocumentExportAction(
-    () => setOpen(false),
-    selectedPartId,
-    open,
-    exportSelectionIncludesMesh(controller, selectedPartId),
-    meshExportQuality(meshQualityChoice),
-  )
-  const hasGeometry = documentHasExportableGeometry(controller)
-  const preparationDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
-  const actionDisabled = preparationDisabled || printPending
-
+  const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
   return (
     <>
       {slicerStatus ? (
-        <span className="text-xs text-muted-foreground" role="status" aria-live="polite">
+        <span className="text-xs text-muted-foreground" role="status">
           {slicerStatus}
         </span>
-      ) : (
-        <ExportStatus messageKey={activity.statusKey} />
-      )}
+      ) : null}
       <Dialog open={open} onOpenChange={setOpen}>
         <ExportDialogTrigger shown={showTrigger} controller={controller} />
-        <DialogContent
-          onCloseAutoFocus={onCloseAutoFocus}
-          closeLabel={t("closeLabel")}
-          className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto"
-        >
-          <DialogHeader>
-            <DialogTitle>{t("title")}</DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
-            {(controller.authoredSnapshot?.schemaVersion === 3 ||
-              controller.authoredSnapshot?.schemaVersion === 4 ||
-              controller.authoredSnapshot?.schemaVersion === 5) &&
-              controller.authoredSnapshot.surfaceTextures.some(({ enabled }) => enabled) && (
-                <p className="text-xs text-muted-foreground">{t("textureExportHint")}</p>
-              )}
-          </DialogHeader>
-          {!showPreparation ? (
-            <>
-              <MeshExportQualityField
-                value={meshQualityChoice}
-                onChange={setMeshQualityChoice}
-                disabled={actionDisabled}
-              />
-              <ExportPartSelection
-                controller={controller}
-                value={exportPart}
-                onChange={setExportPart}
-                disabled={actionDisabled}
-              />
-              <SlicerHandoffPanel
-                disabled={actionDisabled}
-                onBusyChange={setSlicerPending}
-                onOpened={(message) => {
-                  setSlicerStatus(message)
-                  setOpen(false)
-                }}
-                prepareMesh={(format) =>
-                  meshQualityChoice === "default"
-                    ? exportActiveDocument(format, selectedPartId)
-                    : exportActiveDocument(
-                        format,
-                        selectedPartId,
-                        meshExportQuality(meshQualityChoice),
-                      )
-                }
-              />
-              <ExportFormatCards
-                preferredFormat={preferredFormat}
-                disabled={actionDisabled}
-                pendingFormat={activity.pendingFormat}
-                onExport={runExport}
-              />
-            </>
-          ) : null}
-          <ExportNotice
-            hasGeometry={hasGeometry}
-            failed={activity.failed}
-            errorKey={activity.errorKey}
-          />
-          <ExportPreparation
+        {open ? (
+          <ExportDialogContent
             controller={controller}
-            available={exportPart === "all"}
-            shown={showPreparation}
-            onShowChange={setShowPreparation}
-            disabled={actionDisabled}
-            panelDisabled={preparationDisabled}
-            onBusyChange={setPrintPending}
+            preferredFormat={preferredFormat}
+            onClose={() => setOpen(false)}
+            onSlicerOpened={(message) => {
+              setSlicerStatus(message)
+              setOpen(false)
+            }}
+            onExported={setSlicerStatus}
+            onCloseAutoFocus={onCloseAutoFocus}
           />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                {t("close")}
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
+        ) : null}
       </Dialog>
     </>
   )

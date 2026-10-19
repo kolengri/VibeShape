@@ -1,6 +1,6 @@
 import "../../../../tests/unit/support/dom"
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -69,10 +69,21 @@ const actions = {
   undoSketch: vi.fn(),
 }
 
-class ResizeObserverMock {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+const resizeObservers = new Set<ResizeObserverMock>()
+class ResizeObserverMock implements ResizeObserver {
+  readonly targets = new Set<Element>()
+  constructor(readonly callback: ResizeObserverCallback) {
+    resizeObservers.add(this)
+  }
+  observe(target: Element) {
+    this.targets.add(target)
+  }
+  unobserve(target: Element) {
+    this.targets.delete(target)
+  }
+  disconnect() {
+    resizeObservers.delete(this)
+  }
 }
 
 function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {}) {
@@ -110,14 +121,139 @@ function renderToolbar(commandSet = commands()) {
   )
 }
 
+function measuredToolbar(initialWidth: number) {
+  let width = initialWidth
+  let measurements = 0
+  const original = HTMLElement.prototype.getBoundingClientRect
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    let measured: number | undefined
+    if (this.hasAttribute("data-responsive-model-toolbar")) {
+      measured = width
+      measurements++
+    } else if (this.hasAttribute("data-fit-icon")) measured = 32
+    else if (this.hasAttribute("data-fit-leading")) measured = 104
+    else if (this.hasAttribute("data-fit-separator")) measured = 9
+    else if (this.hasAttribute("data-fit-menu"))
+      measured = this.dataset.fitMenu === "primitives" ? 96 : 80
+    return measured === undefined ? original.call(this) : new DOMRect(0, 0, measured, 32)
+  })
+  return {
+    measurements: () => measurements,
+    async resize(next: number) {
+      width = next
+      await act(async () => {
+        for (const observer of resizeObservers) {
+          if (
+            [...observer.targets].some((target) =>
+              target.hasAttribute("data-responsive-model-toolbar"),
+            )
+          ) {
+            observer.callback([], observer)
+            observer.callback([], observer)
+          }
+        }
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      })
+    },
+  }
+}
+
 beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
 afterAll(() => vi.unstubAllGlobals())
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.clearAllMocks()
 })
 
 describe("CommandToolbar", () => {
+  it("promotes frequent commands only when they fit and moves disappearing focus into its group menu", async () => {
+    const size = measuredToolbar(1200)
+    const user = userEvent.setup()
+    const invokeSweep = vi.fn()
+    renderToolbar(
+      commands().map((command) => ({
+        ...command,
+        eligibility: { enabled: true as const },
+        ...(command.descriptor.id === editorCommandIds.createSweep ? { invoke: invokeSweep } : {}),
+      })),
+    )
+    expect(screen.getByRole("button", { name: "Fillet" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Box" }))
+    expect(actions.createBox).toHaveBeenCalledTimes(1)
+    const sweep = screen.getByRole("button", { name: "Sweep" })
+    act(() => sweep.focus())
+    const before = size.measurements()
+    await size.resize(480)
+    expect(size.measurements() - before).toBe(1)
+    expect(screen.queryByRole("button", { name: "Sweep" })).toBeNull()
+    const create = screen.getByRole("button", { name: "Create" })
+    expect(document.activeElement).toBe(create)
+    await user.keyboard("{ArrowDown}")
+    await user.click(screen.getByRole("menuitem", { name: "Sweep" }))
+    expect(invokeSweep).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(document.activeElement).toBe(create))
+  })
+
+  it("keeps an open dropdown stable across a resize and applies compact overflow after closing", async () => {
+    const size = measuredToolbar(1200)
+    const user = userEvent.setup()
+    const all = commands().map((command) => ({
+      ...command,
+      eligibility: { enabled: true as const },
+    }))
+    renderToolbar(all)
+    const create = screen.getByRole("button", { name: "Create" })
+    await user.click(create)
+    await size.resize(100)
+    expect(screen.getByRole("menu")).toBeTruthy()
+    expect(create.isConnected).toBe(true)
+    expect(create.getAttribute("aria-expanded")).toBe("true")
+    await user.keyboard("{Escape}")
+    const overflow = await screen.findByRole("button", { name: "Modeling actions" })
+    await waitFor(() => expect(document.activeElement).toBe(overflow))
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Redo" })).toBeTruthy()
+    await user.keyboard("{ArrowDown}")
+    expect(
+      screen
+        .getAllByRole("menuitem")
+        .map((item) => item.getAttribute("data-command-id"))
+        .sort(),
+    ).toEqual(
+      all
+        .filter(
+          (command) =>
+            command.toolbarVisible && command.descriptor.toolbarGroup?.startsWith("model-"),
+        )
+        .map((command) => command.descriptor.id)
+        .sort(),
+    )
+    expect(screen.getByRole("menuitem", { name: "Create sketch" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "Box" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "Measure" })).toBeTruthy()
+    await user.click(screen.getByRole("menuitem", { name: "Box" }))
+    expect(actions.createBox).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows tooltips only for icon-only command menu triggers", async () => {
+    const user = userEvent.setup()
+    renderToolbar()
+    for (const name of ["Primitives", "Modify", "Create", "Inspect"]) {
+      const trigger = screen.getByRole("button", { name })
+      expect(trigger.textContent).toContain(name)
+      expect(trigger.getAttribute("title")).toBeNull()
+      await user.hover(trigger)
+      expect(screen.queryByRole("tooltip")).toBeNull()
+      await user.unhover(trigger)
+    }
+    const icon = screen.getByRole("button", { name: "Create sketch" })
+    await user.hover(icon)
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Create sketch")
+  })
+
   it("opens Lightweighting from Modify with distinct vector icons", async () => {
     const user = userEvent.setup()
     renderToolbar()
@@ -137,7 +273,7 @@ describe("CommandToolbar", () => {
     renderToolbar()
 
     expect(screen.getByRole("toolbar", { name: "Model commands" })).toBeTruthy()
-    expect(screen.getByText("Primitives", { exact: true })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Primitives" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Extrude" }).getAttribute("aria-disabled")).toBe(
       "true",
     )
@@ -299,14 +435,16 @@ describe("CommandToolbar", () => {
     expect(actions.undoSketch).toHaveBeenCalledTimes(1)
   }, 15_000)
 
-  it("uses roving arrow-key focus across workspace controls", async () => {
+  it("keeps workspace switches out of the toolbar and focuses creation commands", async () => {
     const user = userEvent.setup()
     renderToolbar()
 
     await user.tab()
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Model" }))
+    expect(screen.queryByRole("button", { name: "Model" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Sketch" })).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Create sketch" }))
     await user.keyboard("{ArrowRight}")
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Extrude" }))
   })
 
   it("includes blocked commands in roving focus and describes their prerequisite on focus", async () => {
@@ -388,7 +526,7 @@ describe("CommandToolbar", () => {
     const modeling = screen.getByRole("group", { name: "Modeling actions" })
     const history = screen.getByRole("group", { name: "History" })
     expect(history.classList.contains("border")).toBe(false)
-    expect(within(history).getByText("History").classList.contains("sr-only")).toBe(false)
+    expect(within(history).getByText("History").classList.contains("sr-only")).toBe(true)
     expect(
       within(modeling)
         .getAllByRole("button")

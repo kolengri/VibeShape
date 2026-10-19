@@ -32,6 +32,8 @@ type PartsProps = {
   parts: readonly ResolvedAuthoredPart[]
   revision: number
   selectedPartId: PartId | null
+  selectedPartIds?: readonly PartId[] | undefined
+  highlightedPartIds?: readonly PartId[] | undefined
   disabled: boolean
   visibility?: PartVisibilityControl | undefined
   presentationOnlyVisibility?: boolean | undefined
@@ -129,7 +131,8 @@ function AuthoredPartRow({
   const t = useTranslations("app.authoredTree")
   const { part, status } = resolved
   const [error, setError] = useState<string | null>(null)
-  const selected = props.selectedPartId === part.id
+  const selected = props.selectedPartIds?.includes(part.id) ?? props.selectedPartId === part.id
+  const highlighted = props.highlightedPartIds?.includes(part.id)
   const visible = effectivePartVisibility(part, props.visibility?.overrides)
   const highlight = selectedAuthoredBody([resolved], part.id, props.visibility?.overrides)
   const toggleVisibility = async () => {
@@ -171,8 +174,16 @@ function AuthoredPartRow({
         data-part-visible={visible}
         onPointerEnter={() => props.onPreselect?.(highlight)}
         onPointerLeave={() => props.onPreselect?.(null)}
+        onPointerCancel={() => props.onPreselect?.(null)}
       >
-        <div role="none" className={cn(modelBrowserItem, selected && modelBrowserSelectedRow)}>
+        <div
+          role="none"
+          className={cn(
+            modelBrowserItem,
+            selected && modelBrowserSelectedRow,
+            highlighted && "bg-accent ring-1 ring-primary ring-inset",
+          )}
+        >
           <Button
             type="button"
             variant="ghost"
@@ -180,6 +191,7 @@ function AuthoredPartRow({
             role="treeitem"
             tabIndex={-1}
             aria-selected={selected}
+            data-model-tree-selection-key={`part:${part.id}`}
             aria-label={t("partLabel", { name: part.name })}
             aria-describedby={`part-status-${part.id}`}
             disabled={props.selectionRequiresBody && !highlight}

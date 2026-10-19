@@ -126,9 +126,9 @@ test("shows original point formulas on hover by default, with an all-label toggl
   await page.setViewportSize({ width: 1100, height: 900 })
   await page.goto("/")
   await saved(page)
-  await openApplicationMenuItem(page, "Files and projects…")
+  await openApplicationMenuItem(page, "Projects")
   await page
-    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("main")
     .getByLabel("Choose VibeShape project file")
     .setInputFiles({
       name: "coordinates.vshape",

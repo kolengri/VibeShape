@@ -58,7 +58,8 @@ test("solves topology-bound ball and cylindrical mates in the real worker and pr
   await apply(page)
   const legacy = await authority(page),
     anchor = required(legacy.assembly.instances[0])
-  await panel(page).getByRole("button", { name: "Enable general mates", exact: true }).click()
+  await panel(page).getByRole("button", { name: "More assembly actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Enable general mates", exact: true }).click()
   await expect(panel(page).getByText(/Fully constrained · 0 degrees of freedom/)).toBeVisible({
     timeout: 60_000,
   })
@@ -126,9 +127,12 @@ test("solves topology-bound ball and cylindrical mates in the real worker and pr
     .getByRole("spinbutton", { name: "X (mm)", exact: true })
     .fill("1")
   await panel(page).getByRole("button", { name: "Apply", exact: true }).click()
-  await expect(panel(page).getByRole("alert")).toContainText(/inconsistent|conflict/i, {
+  await expect(
+    page.getByRole("region", { name: "Notifications" }).getByRole("alert"),
+  ).toContainText(/inconsistent|conflict/i, {
     timeout: 60_000,
   })
+  await panel(page).getByRole("button", { name: "Cancel", exact: true }).click()
   expect((await authority(page)).revision).toBe(mated.revision)
 })
 

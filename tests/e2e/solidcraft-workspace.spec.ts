@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { createSolids, saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
-import { invokeModelCommand } from "./model-command-support"
+import { invokeModelCommand, openModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test.setTimeout(60_000)
@@ -138,11 +138,7 @@ for (const theme of ["dark", "light"] as const) {
     expect(
       await page.locator("html").evaluate((element) => element.scrollWidth <= element.clientWidth),
     ).toBe(true)
-    await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Primitives", exact: true })
-      .click()
-    await expect(page.getByRole("menuitem", { name: "Cylinder", exact: true })).toBeVisible()
+    await expect(await openModelCommand(page, "Primitives", "Cylinder")).toBeVisible()
     await page.keyboard.press("Escape")
     await page.screenshot({ path: `artifacts/solidcraft-interface/workspace-${theme}-compact.png` })
   })

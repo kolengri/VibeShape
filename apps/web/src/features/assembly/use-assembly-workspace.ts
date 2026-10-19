@@ -7,6 +7,7 @@ import {
   type DocumentControllerState,
   previewAssemblyChanges,
 } from "../../document/document-controller"
+import { type AssemblyPoseCapture, captureAsBuiltPoses } from "./assembly-as-built"
 import type { AssemblyFormActions } from "./assembly-forms"
 import {
   type AssemblyDocumentContext,
@@ -20,7 +21,7 @@ import { type AssemblyMotionCoordinate, assemblyMotionCoordinates } from "./asse
 import type { AssemblyRemoval } from "./assembly-remove-dialog"
 import { useAssemblyInspection } from "./use-assembly-inspection"
 
-export type AssemblyTask = {
+type StandardAssemblyTask = {
   kind:
     | "createDefinition"
     | "editDefinition"
@@ -32,6 +33,15 @@ export type AssemblyTask = {
   id: string | null
   revision: number
 }
+export type AssemblyTask =
+  | StandardAssemblyTask
+  | {
+      kind: "asBuiltJoint" | "rigidGroup"
+      id: null
+      revision: number
+      capture: AssemblyPoseCapture
+    }
+
 type AssemblyMotionTask = {
   id: string
   coordinate: AssemblyMotionCoordinate["kind"]
@@ -78,7 +88,11 @@ function useAssemblyMutations(
   const lock = useRef(false)
   const failureCopy = (reason: string | null) =>
     reason === null ? t("saveFailed") : t("operationFailed", { reason })
-  const apply = async (changes: readonly AssemblyMutation[], revision: number) => {
+  const apply = async (
+    changes: readonly AssemblyMutation[],
+    revision: number,
+    forcePreview = false,
+  ) => {
     if (lock.current) return false
     const base = reviewedBase(context, writable, revision)
     if (!base) {
@@ -103,16 +117,22 @@ function useAssemblyMutations(
       const result = await commitIntent(
         base,
         prepared,
-        general || changes.some((change) => change.kind === "assembly.upgrade"),
+        forcePreview || general || changes.some((change) => change.kind === "assembly.upgrade"),
       )
-      if (!result.ok) setError(failureCopy(result.reason))
+      if (!result.ok) setError(forcePreview ? t("asBuiltFailed") : failureCopy(result.reason))
       return result.ok
     } finally {
       lock.current = false
       setPending(false)
     }
   }
-  return { pending, error, apply }
+  return {
+    pending,
+    error,
+    apply,
+    rejectStale: () => setError(t("staleRevision")),
+    rejectPose: () => setError(t("asBuiltUnavailable")),
+  }
 }
 function selectionRecords(
   assembly: AssemblyAuthority,
@@ -208,9 +228,23 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
     setDefinitionId(id)
     setInstanceId(null)
   }, [])
+  const openPoseTask = (kind: "asBuiltJoint" | "rigidGroup", revision: number) => {
+    if (inspection.pending || !inspection.inspection || assembly.instances.length < 2) return
+    try {
+      const capture = captureAsBuiltPoses(assembly, inspection.inspection, documentKey)
+      setTask({ kind, id: null, revision, capture })
+    } catch {
+      mutations.rejectPose()
+    }
+  }
   const openTask = (kind: AssemblyTask["kind"], id: string | null = null) => {
     if (disabled || motion || studyTask) return
-    if (context) setTask({ kind, id, revision: context.revision })
+    if (!context) return
+    if (kind === "asBuiltJoint" || kind === "rigidGroup") {
+      openPoseTask(kind, context.revision)
+      return
+    }
+    setTask({ kind, id, revision: context.revision })
   }
   const onRemove = (kind: AssemblyRemoval["kind"], id: string, name: string) => {
     if (context) setRemoval({ kind, id, name, revision: context.revision })
@@ -262,7 +296,12 @@ export function assemblyTaskActions(view: AssemblyWorkspaceView): AssemblyFormAc
     pending: view.disabled,
     onCancel: () => view.setTask(null),
     onApply: async (changes) => {
-      const applied = await view.mutations.apply(changes, revision)
+      const poseTask = view.task && "capture" in view.task ? view.task : null
+      if (poseTask && poseTask.capture.documentKey !== view.documentKey) {
+        view.mutations.rejectStale()
+        return false
+      }
+      const applied = await view.mutations.apply(changes, revision, poseTask !== null)
       if (applied) view.setTask(null)
       return applied
     },

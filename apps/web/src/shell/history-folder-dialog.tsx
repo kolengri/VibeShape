@@ -222,7 +222,7 @@ export function HistoryFolderDialog(props: FolderDialogProps) {
       }}
     >
       {props.showTrigger !== false && (
-        <Tooltip>
+        <Tooltip {...(props.folder ? { open: false } : {})}>
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
               <Button

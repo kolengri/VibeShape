@@ -1,7 +1,10 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
+import { MessageSquarePlus, Send, Settings, Square, X } from "@vibeshape/ui/components/icons"
 import { Textarea } from "@vibeshape/ui/components/textarea"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
+import { useReportApplicationError } from "../shell/application-notices"
+import { AssistantIconAction } from "./assistant-icon-action"
 import type { ChatMessage } from "./chat-history"
 
 type AssistantPanelProps = {
@@ -11,8 +14,9 @@ type AssistantPanelProps = {
   busy: boolean
   canSend: boolean
   configuration: ReactNode
+  sessionControls?: ReactNode
   permission?: ReactNode
-  error: ReactNode
+  error: string | null
   storageFailed: boolean
   onClose: () => void
   onSend: (text: string) => Promise<void>
@@ -26,12 +30,16 @@ function AssistantHeader({
   settingsOpen,
   onSettings,
   onClose,
+  onReset,
+  canReset,
 }: {
   titleId: string
   projectName: string
   settingsOpen: boolean
   onSettings: () => void
   onClose: () => void
+  onReset: () => Promise<void>
+  canReset: boolean
 }) {
   const t = useTranslations("app.assistant")
   return (
@@ -40,22 +48,17 @@ function AssistantHeader({
         <h2 id={titleId} className="font-medium">
           {t("title")}
         </h2>
-        <p className="truncate text-xs text-muted-foreground" title={projectName}>
-          {projectName}
-        </p>
+        <p className="truncate text-xs text-muted-foreground">{projectName}</p>
       </div>
-      <Button
-        type="button"
-        size="xs"
-        variant="ghost"
-        onClick={onSettings}
-        aria-expanded={settingsOpen}
-      >
-        {t("connection")}
-      </Button>
-      <Button type="button" size="xs" variant="ghost" onClick={onClose}>
-        {t("close")}
-      </Button>
+      <AssistantIconAction label={t("newChat")} disabled={!canReset} onAction={onReset}>
+        <MessageSquarePlus aria-hidden="true" />
+      </AssistantIconAction>
+      <AssistantIconAction label={t("settingsTitle")} expanded={settingsOpen} onAction={onSettings}>
+        <Settings aria-hidden="true" />
+      </AssistantIconAction>
+      <AssistantIconAction label={t("close")} onAction={onClose}>
+        <X aria-hidden="true" />
+      </AssistantIconAction>
     </div>
   )
 }
@@ -92,15 +95,19 @@ function AssistantFeedback(
   props: Pick<AssistantPanelProps, "permission" | "error" | "storageFailed">,
 ) {
   const t = useTranslations("app.assistant")
+  const centralized = useReportApplicationError(props.error)
+  const storageCentralized = useReportApplicationError(
+    props.storageFailed ? t("storageFailed") : null,
+  )
   return (
     <>
       {props.permission}
-      {props.error && (
+      {props.error && !centralized && (
         <p role="alert" className="text-sm text-destructive">
           {props.error}
         </p>
       )}
-      {props.storageFailed && (
+      {props.storageFailed && !storageCentralized && (
         <p role="status" className="text-xs text-muted-foreground">
           {t("storageFailed")}
         </p>
@@ -112,15 +119,7 @@ function AssistantFeedback(
 function AssistantComposer(
   props: Pick<
     AssistantPanelProps,
-    | "busy"
-    | "canSend"
-    | "messages"
-    | "permission"
-    | "error"
-    | "storageFailed"
-    | "onSend"
-    | "onCancel"
-    | "onReset"
+    "busy" | "canSend" | "permission" | "error" | "storageFailed" | "onSend" | "onCancel"
   > & { text: string; onTextChange: (text: string) => void },
 ) {
   const t = useTranslations("app.assistant")
@@ -149,7 +148,7 @@ function AssistantComposer(
         id={id}
         ref={composer}
         value={props.text}
-        rows={3}
+        rows={2}
         maxLength={16_000}
         placeholder={t("placeholder")}
         disabled={!props.canSend}
@@ -161,31 +160,21 @@ function AssistantComposer(
           }
         }}
       />
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={props.busy || props.messages.length === 0}
-          onClick={props.onReset}
-        >
-          {t("newChat")}
-        </Button>
-        <span className="flex-1" />
+      <div className="flex items-center justify-end gap-2">
         {props.busy ? (
-          <Button key="stop" type="button" size="sm" variant="outline" onClick={props.onCancel}>
-            {t("stop")}
-          </Button>
+          <AssistantIconAction key="stop" label={t("stop")} onAction={props.onCancel}>
+            <Square aria-hidden="true" />
+          </AssistantIconAction>
         ) : (
-          <Button
+          <AssistantIconAction
             key="send"
-            type="button"
-            size="sm"
+            label={t("send")}
             disabled={!props.canSend || !props.text.trim()}
-            onClick={submit}
+            onAction={submit}
+            primary
           >
-            {t("send")}
-          </Button>
+            <Send aria-hidden="true" />
+          </AssistantIconAction>
         )}
       </div>
     </div>
@@ -193,29 +182,40 @@ function AssistantComposer(
 }
 
 export function AssistantPanel(props: AssistantPanelProps) {
+  const t = useTranslations("app.assistant")
   const titleId = useId()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [text, setText] = useState("")
   if (!props.open) return null
   return (
-    <aside
-      className="assistant-panel flex min-h-0 flex-col border-l bg-panel shadow-lg"
-      aria-labelledby={titleId}
-    >
-      <AssistantHeader
-        titleId={titleId}
-        projectName={props.projectName}
-        settingsOpen={settingsOpen}
-        onSettings={() => setSettingsOpen(!settingsOpen)}
-        onClose={props.onClose}
-      />
-      {(settingsOpen || !props.canSend) && (
-        <div className="shrink-0 overflow-y-auto border-b p-3 max-h-[45%]">
-          {props.configuration}
-        </div>
-      )}
-      <AssistantMessages messages={props.messages} />
-      <AssistantComposer {...props} text={text} onTextChange={setText} />
-    </aside>
+    <TooltipProvider>
+      <aside
+        className="assistant-panel flex min-h-0 flex-col border-l bg-panel shadow-lg"
+        aria-labelledby={titleId}
+      >
+        <AssistantHeader
+          titleId={titleId}
+          projectName={props.projectName}
+          settingsOpen={settingsOpen}
+          onSettings={() => setSettingsOpen(!settingsOpen)}
+          onClose={props.onClose}
+          onReset={props.onReset}
+          canReset={!props.busy && props.messages.length > 0}
+        />
+        {props.sessionControls && (
+          <div className="shrink-0 space-y-2 border-b px-3 py-2">{props.sessionControls}</div>
+        )}
+        {(settingsOpen || !props.canSend) && (
+          <section
+            aria-label={t("settingsTitle")}
+            className="shrink-0 overflow-y-auto border-b p-3 max-h-[45%]"
+          >
+            {props.configuration}
+          </section>
+        )}
+        <AssistantMessages messages={props.messages} />
+        <AssistantComposer {...props} text={text} onTextChange={setText} />
+      </aside>
+    </TooltipProvider>
   )
 }

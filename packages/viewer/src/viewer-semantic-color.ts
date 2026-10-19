@@ -1,6 +1,7 @@
 import { Color } from "three"
 
 const fallbackColors = {
+  "--muted-foreground": 0x7c8490,
   "--axis-z": 0x4c8dff,
   "--diagnostic-error": 0xe15b64,
   "--diagnostic-warning": 0xf59e0b,

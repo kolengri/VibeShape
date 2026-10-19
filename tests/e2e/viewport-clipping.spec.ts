@@ -9,22 +9,26 @@ type DrawBounds = {
   positions: number[]
   depthAxis: number[]
 }
+type GridDraw = { spacing: number; fade: number; right: number[]; up: number[]; vertices: number }
+type CameraProjection = Readonly<Record<"a" | "b" | "c" | "d" | "e" | "f", number>>
 
-test("keeps the ground grid and origin planes complete after fitting a small model", async ({
+type ClippingEvidence = {
+  modelBefore: DrawBounds
+  modelAfter: DrawBounds
+  grid: GridDraw[]
+  planes: DrawBounds[]
+  bed: DrawBounds[]
+  views: (CameraProjection | null)[]
+  highlights: DrawBounds[]
+  handles: DrawBounds[]
+}
+
+test("keeps the analytic grid, origin planes, and finite decorations complete after fitting a small model", async ({
   page,
 }) => {
   await page.goto("/spikes/body-selection.html")
   const moduleUrl = `/@fs${resolve("packages/viewer/src/three-viewport.ts")}`
-  const result = await page.evaluate<{
-    modelBefore: DrawBounds
-    modelAfter: DrawBounds
-    grid: DrawBounds[]
-    planes: DrawBounds[]
-    bed: DrawBounds[]
-    views: DrawBounds[]
-    highlights: DrawBounds[]
-    handles: DrawBounds[]
-  }>(`(async () => {
+  const result = await page.evaluate<ClippingEvidence>(`(async () => {
     const { createGeometryViewport } = await import(${JSON.stringify(moduleUrl)})
     const canvas = document.createElement("canvas")
     canvas.style.cssText = "position:fixed;width:600px;height:400px"
@@ -57,7 +61,6 @@ test("keeps the ground grid and origin planes complete after fitting a small mod
     }
     const corners = size => [[-size,-size,0], [size,-size,0], [size,size,0], [-size,size,0]]
     gl.drawArrays = function(...args) {
-      if (args[0] === gl.LINES && args[2] === 60) grid.push(bounds(corners(150)))
       if (args[0] === gl.LINES && args[2] === 8) planes.push(bounds(corners(32)))
       if (args[0] === gl.LINES && args[2] === 24) bed.push(bounds(
         [-100,100].flatMap(x => [-80,80].flatMap(y => [-125,125].map(z => [x,y,z])))
@@ -65,6 +68,15 @@ test("keeps the ground grid and origin planes complete after fitting a small mod
       return drawArrays(...args)
     }
     gl.drawElements = function(...args) {
+      const program = gl.getParameter(gl.CURRENT_PROGRAM)
+      const gridSpacing = gl.getUniformLocation(program, "gridSpacing")
+      if (gridSpacing !== null) grid.push({
+        spacing: gl.getUniform(program, gridSpacing),
+        fade: gl.getUniform(program, gl.getUniformLocation(program, "gridFade")),
+        right: Array.from(gl.getUniform(program, gl.getUniformLocation(program, "gridRight"))),
+        up: Array.from(gl.getUniform(program, gl.getUniformLocation(program, "gridUp"))),
+        vertices: args[1],
+      })
       if (args[0] === gl.TRIANGLES && args[1] === 3)
         model = bounds([[0,0,0], [8,0,0], [0,8,0]])
       if (args[0] === gl.TRIANGLES && args[1] === 9)
@@ -92,11 +104,23 @@ test("keeps the ground grid and origin planes complete after fitting a small mod
         deltaY: 100, clientX: 300, clientY: 200, bubbles: true, cancelable: true,
       }))
       await settled()
+      const isoLength = Math.hypot(1,-1,0.8)
+      const diagonal = Math.SQRT2
+      const frames = {
+        front: {origin:[0,0,0],xAxis:[1,0,0],yAxis:[0,0,1],normal:[0,-1,0]},
+        top: {origin:[0,0,0],xAxis:[1,0,0],yAxis:[0,1,0],normal:[0,0,1]},
+        isometric: {origin:[0,0,0],xAxis:[1/diagonal,1/diagonal,0],
+          yAxis:[-0.8/(isoLength*diagonal),0.8/(isoLength*diagonal),2/(isoLength*diagonal)],
+          normal:[1/isoLength,-1/isoLength,0.8/isoLength]},
+      }
       for (const view of ["front", "top", "isometric"]) {
         viewport.setStandardView(view)
+        let projection = null
+        viewport.setSketchPlaneProjection(frames[view], value => {projection = value})
         await settled()
-        views.push(grid.at(-1))
+        views.push(projection)
       }
+      viewport.setSketchPlaneProjection(null)
       viewport.setPrintBed({width:200, depth:160, height:250, margin:0})
       viewport.fit()
       await settled()
@@ -128,7 +152,24 @@ test("keeps the ground grid and origin planes complete after fitting a small mod
       canvas.remove()
     }
   })()`)
-  expect(result.grid.length).toBeGreaterThanOrEqual(5)
+  expectAnalyticGrid(result)
+  expectModelFraming(result)
+  expectStandardViewAlignment(result)
+  expectCompleteDepthRange(result)
+})
+
+function expectAnalyticGrid(result: ClippingEvidence) {
+  expect(result.grid.length).toBeGreaterThanOrEqual(3)
+  for (const grid of result.grid) {
+    expect(grid.vertices).toBe(6)
+    expect(grid.spacing).toBeGreaterThan(0)
+    expect(grid.fade).toBeGreaterThan(0)
+    expect(grid.fade).toBeLessThanOrEqual(1)
+    expect([...grid.right, ...grid.up].every(Number.isFinite)).toBe(true)
+  }
+}
+
+function expectModelFraming(result: ClippingEvidence) {
   expect(result.planes.length).toBeGreaterThanOrEqual(15)
   expect(result.bed.length).toBeGreaterThan(0)
   expect(result.highlights.length).toBeGreaterThanOrEqual(2)
@@ -137,19 +178,21 @@ test("keeps the ground grid and origin planes complete after fitting a small mod
   for (const [index, value] of result.modelBefore.positions.entries()) {
     expect(result.modelAfter.positions[index]).toBeCloseTo(value, 5)
   }
-  const isometricLength = Math.hypot(1, -1, 0.8)
-  const expectedAxes = [
-    [0, -1, 0],
-    [0, 0, 1],
-    [1 / isometricLength, -1 / isometricLength, 0.8 / isometricLength],
-  ]
-  for (const [viewIndex, axis] of expectedAxes.entries()) {
-    for (const [index, value] of axis.entries()) {
-      expect(result.views[viewIndex]?.depthAxis[index]).toBeCloseTo(value, 5)
-    }
+}
+
+function expectStandardViewAlignment(result: ClippingEvidence) {
+  for (const projection of result.views) {
+    if (!projection) throw new Error("The standard-view support plane projection is missing.")
+    expect(projection.a).toBeGreaterThan(0)
+    expect(projection.d).toBeLessThan(0)
+    expect(projection.b).toBeCloseTo(0, 8)
+    expect(projection.c).toBeCloseTo(0, 8)
+    expect(projection.a).toBeCloseTo(-projection.d / 1.5, 8)
   }
+}
+
+function expectCompleteDepthRange(result: ClippingEvidence) {
   for (const bounds of [
-    ...result.grid,
     ...result.planes,
     ...result.bed,
     ...result.highlights,
@@ -160,4 +203,4 @@ test("keeps the ground grid and origin planes complete after fitting a small mod
     expect(bounds.minClip).toBeGreaterThanOrEqual(-1)
     expect(bounds.maxClip).toBeLessThanOrEqual(1)
   }
-})
+}

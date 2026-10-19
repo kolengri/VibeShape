@@ -12,8 +12,9 @@ import type { ActivePartDesignTool } from "../features/part-design/part-design-t
 import { placementAlignmentFaces } from "../features/placement/placement-face-alignment"
 import { PlacementForm, type PlacementFormCopy } from "../features/placement/placement-form"
 import type { PlacementFormMode } from "../features/placement/placement-form-model"
+import type { PlacementManipulator } from "../features/placement/placement-manipulator"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
-import { featureTaskFormProps } from "./feature-task-form-props"
+import { exactTaskSource, featureTaskFormProps } from "./feature-task-form-props"
 
 type PlacementPanelProps = {
   activeTool: ActivePartDesignTool
@@ -26,6 +27,7 @@ type PlacementPanelProps = {
   renderDelete: (feature: FeatureRecord) => ReactNode
   selectedFace?: ViewerSelection | null | undefined
   parts: readonly ResolvedAuthoredPart[]
+  onPlacementManipulatorChange?: ((value: PlacementManipulator | null) => void) | undefined
 }
 function placementMode(
   tool: ActivePartDesignTool,
@@ -45,32 +47,36 @@ function placementMode(
 }
 function usePlacementCopy(editing: boolean): PlacementFormCopy {
   const t = useTranslations("app.placement")
-  return {
-    title: t(editing ? "editTitle" : "title"),
-    submit: t(editing ? "update" : "create"),
-    description: t("description"),
-    cancel: t("cancel"),
-    parameters: t("parameters"),
-    translation: t("translation"),
-    rotation: t("rotation"),
-    translationX: t("translationX"),
-    translationY: t("translationY"),
-    translationZ: t("translationZ"),
-    rotationX: t("rotationX"),
-    rotationY: t("rotationY"),
-    rotationZ: t("rotationZ"),
-    lengthDescription: t("lengthDescription"),
-    angleDescription: t("angleDescription"),
-    invalidExpression: t("invalidExpression"),
-    invalidDimension: t("invalidDimension"),
-    invalidAngleDimension: t("invalidAngleDimension"),
-    invalidRange: t("invalidTranslationRange"),
-    invalidTranslationRange: t("invalidTranslationRange"),
-    invalidRotationRange: t("invalidRotationRange"),
-    validationSummary: t("validationSummary"),
-    staleRevision: t("staleRevision"),
-    saveFailed: t("saveFailed"),
-  }
+  return useMemo(
+    () => ({
+      title: t(editing ? "editTitle" : "title"),
+      submit: t(editing ? "update" : "create"),
+      description: t("description"),
+      cancel: t("cancel"),
+      parameters: t("parameters"),
+      translation: t("translation"),
+      rotation: t("rotation"),
+      translationX: t("translationX"),
+      translationY: t("translationY"),
+      translationZ: t("translationZ"),
+      rotationX: t("rotationX"),
+      rotationY: t("rotationY"),
+      rotationZ: t("rotationZ"),
+      lengthDescription: t("lengthDescription"),
+      angleDescription: t("angleDescription"),
+      invalidExpression: t("invalidExpression"),
+      invalidDimension: t("invalidDimension"),
+      invalidAngleDimension: t("invalidAngleDimension"),
+      invalidRange: t("invalidTranslationRange"),
+      invalidTranslationRange: t("invalidTranslationRange"),
+      invalidRotationRange: t("invalidRotationRange"),
+      validationSummary: t("validationSummary"),
+      staleRevision: t("staleRevision"),
+      saveFailed: t("saveFailed"),
+      unavailable: t("unavailable"),
+    }),
+    [editing, t],
+  )
 }
 export function PlacementTaskPanel(props: PlacementPanelProps) {
   const t = useTranslations("app.placement")
@@ -78,14 +84,21 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
   const { report } = props
   const features = report.snapshot.features
   const count = features.filter((feature) => readPlacementFeatureParameters(feature)).length
-  const mode = placementMode(props.activeTool, features, t("featureLabel", { number: count + 1 }))
+  const label = t("featureLabel", { number: count + 1 })
+  const mode = useMemo(
+    () => placementMode(props.activeTool, features, label),
+    [props.activeTool, features, label],
+  )
   const copy = usePlacementCopy(mode?.kind === "edit")
-  const source =
-    props.activeTool.kind === "create-placement"
-      ? props.activeTool.targetBody
-      : mode?.kind === "edit"
-        ? readPlacementFeatureParameters(mode.feature)?.targetBody
-        : undefined
+  const source = useMemo(
+    () =>
+      props.activeTool.kind === "create-placement"
+        ? props.activeTool.targetBody
+        : mode?.kind === "edit"
+          ? readPlacementFeatureParameters(mode.feature)?.targetBody
+          : undefined,
+    [props.activeTool, mode],
+  )
   const faces = useMemo(
     () =>
       source
@@ -93,11 +106,15 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
         : undefined,
     [report.snapshot, report.rebuild, props.parts, source],
   )
+  const bounds = useMemo(
+    () => (source ? (exactTaskSource(report, source)?.shape.bounds ?? null) : null),
+    [report, source],
+  )
   if (!mode) return null
   const key =
     mode.kind === "edit"
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
-      : `create:${report.snapshot.revision}`
+      : `create:${mode.targetBody.featureId}:${mode.targetBody.outputRole}:${report.snapshot.revision}`
   return (
     <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <PlacementForm
@@ -106,6 +123,8 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
         mode={mode}
         alignmentFaces={faces}
         selectedFace={props.selectedFace}
+        sourceBounds={bounds}
+        onManipulatorChange={props.onPlacementManipulatorChange}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />

@@ -86,7 +86,7 @@ describe("Assembly export isolation", () => {
     await open(f)
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
     await userEvent.click(screen.getByRole("option", { name: "Fine" }))
-    await userEvent.click(screen.getByRole("button", { name: "Download 3MF" }))
+    await userEvent.click(screen.getByRole("button", { name: "Save 3MF file" }))
     expect(ports.assembly).toHaveBeenCalledWith(
       {
         format: "3mf",
@@ -99,20 +99,24 @@ describe("Assembly export isolation", () => {
   it("exports one selected instance or every occurrence without calling the model export port", async () => {
     const f = fixture()
     await open(f)
-    await userEvent.click(screen.getByRole("button", { name: "Download STL" }))
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "File format" }), "stl")
+    await userEvent.click(screen.getByRole("button", { name: "Save STL file" }))
     expect(ports.assembly).toHaveBeenLastCalledWith(
       { format: "stl", instanceIds: [f.instances[0]?.id] },
       expect.any(AbortSignal),
     )
     await choose("All assembly instances")
-    await userEvent.click(screen.getByRole("button", { name: "Download 3MF" }))
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "File format" }), "3mf")
+    await userEvent.click(screen.getByRole("button", { name: "Save 3MF file" }))
     expect(ports.assembly).toHaveBeenLastCalledWith({ format: "3mf" }, expect.any(AbortSignal))
     expect(ports.download).toHaveBeenCalledTimes(2)
     expect(ports.model).not.toHaveBeenCalled()
   })
   it("reports mesh STEP incompatibility and bounds print preparation by source-body count", async () => {
     await open(fixture(true, 9), null)
-    expect(screen.getByRole("button", { name: "Download STEP" }).hasAttribute("disabled")).toBe(
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "File format" }), "step")
+    expect(screen.queryByRole("combobox", { name: "Mesh quality" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Save STEP file" }).hasAttribute("disabled")).toBe(
       true,
     )
     expect(
@@ -198,7 +202,8 @@ describe("Assembly export isolation", () => {
       }),
     )
     await open()
-    await userEvent.click(screen.getByRole("button", { name: "Download STEP" }))
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "File format" }), "step")
+    await userEvent.click(screen.getByRole("button", { name: "Save STEP file" }))
     await userEvent.click(screen.getByRole("button", { name: "Close export" }))
     expect(ports.assembly.mock.calls[0]?.[1].aborted).toBe(true)
     await act(async () => {

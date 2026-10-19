@@ -64,9 +64,9 @@ test("explains an actual missing Extrude profile, retains raw details and keeps 
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await saved(page)
-  await openApplicationMenuItem(page, "Files and projects…")
+  await openApplicationMenuItem(page, "Projects")
   await page
-    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("main")
     .getByLabel("Choose VibeShape project file")
     .setInputFiles({
       name: "missing-profile.vshape",

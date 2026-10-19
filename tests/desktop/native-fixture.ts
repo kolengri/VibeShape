@@ -94,10 +94,10 @@ export async function openNativeEditor(
   await expect(chooser.or(viewport)).toBeVisible()
   if (await chooser.isVisible()) {
     if (options.projectName) {
-      const card = page
-        .getByRole("listitem")
-        .filter({ has: page.getByRole("heading", { name: options.projectName, exact: true }) })
-      await card.getByRole("button", { name: /^Open / }).click()
+      await page
+        .getByRole("button", { name: /^Open / })
+        .filter({ has: page.getByText(options.projectName, { exact: true }) })
+        .click()
     } else await page.getByRole("button", { name: "New project", exact: true }).click()
   }
   await expect(viewport).toBeVisible()

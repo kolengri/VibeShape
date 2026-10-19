@@ -252,6 +252,13 @@ The domain now defines canonical feature-content identity schema version `0`. Tr
 ## Hangs and memory
 
 - One geometry worker per active document in alpha.
+- Browser document-worker transports wait for a schema-validated, exactly matched health response
+  before forwarding CAD requests. This metadata-only handshake does not initialize WASM. Cancellation
+  rejects the logical session immediately and drops queued requests; native termination waits for
+  startup acknowledgement or a definitive startup error to avoid interrupting worker compilation.
+- At most two unacknowledged browser workers may start concurrently. A 120-second startup deadline
+  fails the logical session but retains an unacknowledged native worker's slot. If both slots retire,
+  new starts fail closed; a later valid acknowledgement or definitive error releases the slot.
 - Print preparation rebuilds an immutable revision in a disposable worker, separate from the
   document command queue. Closing the preparation panel terminates that worker; stale results
   cannot replace the prepared download. See [print preparation](../product/print-preparation-and-ux-plan.md).

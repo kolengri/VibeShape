@@ -7,6 +7,7 @@ import type {
   GeometryViewport as GeometryViewportPort,
   ViewerSelection,
 } from "@vibeshape/viewer"
+import type { ViewerToolPlane } from "@vibeshape/viewer/three-viewport"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
@@ -293,6 +294,10 @@ function renderViewport(
     selectedFeatureId?: string
     selectedBody?: ModelBodySelection
     preselectedBody?: ModelBodySelection
+    selectedBodies?: readonly ModelBodySelection[]
+    preselectedBodies?: readonly ModelBodySelection[]
+    preselectedSketchId?: string
+    selectedSketchIds?: readonly string[]
     onBodySelectionChange?: (body: ModelBodySelection | null) => void
     onBodyPreselectionChange?: (body: ModelBodySelection | null) => void
   }>,
@@ -302,6 +307,7 @@ function renderViewport(
     onSelect: (plane: "xy" | "xz" | "yz" | null) => void
   }>,
   sketchProfileSelection?: Readonly<{
+    keyboardPickerActive?: boolean
     excludedSketchIds?: readonly string[]
     selectedProfiles: readonly SketchProfileSelector[]
     onSelect: (
@@ -339,6 +345,7 @@ function renderViewport(
   axialGizmoPending = false,
   workspaceTask: WorkspaceTask = null,
   pendingViewport?: Promise<GeometryViewportPort>,
+  toolPlane?: ViewerToolPlane | null,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -353,6 +360,7 @@ function renderViewport(
     setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
     setSection: vi.fn(),
+    setToolPlane: vi.fn(),
     setPrintBed: vi.fn(),
     setGroundGrid: vi.fn(),
     setSketchReferenceCandidates: vi.fn(),
@@ -391,6 +399,7 @@ function renderViewport(
     nextWorkspaceTask: WorkspaceTask = workspaceTask,
     nextPartVisibility = featureHighlight?.partVisibilityOverrides,
     nextFeaturePreview = featurePreview,
+    nextToolPlane = toolPlane,
   ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
@@ -414,6 +423,7 @@ function renderViewport(
             {...optionalProp("axialGizmo", nextAxialGizmo ?? undefined)}
             axialGizmoPending={nextAxialGizmoPending}
             {...optionalProp("angularGizmo", angularGizmo)}
+            toolPlane={nextToolPlane}
           />
         </WorkspaceTaskProvider>
       </TooltipProvider>
@@ -425,6 +435,21 @@ function renderViewport(
     createViewport,
     onSelectionChange,
     port,
+    rerenderToolPlane: (next: ViewerToolPlane | null) =>
+      result.rerender(
+        element(
+          controller,
+          sketchContext,
+          sketchProfilePreview,
+          hiddenSketchIds,
+          axialGizmo,
+          axialGizmoPending,
+          workspaceTask,
+          featureHighlight?.partVisibilityOverrides,
+          featurePreview,
+          next,
+        ),
+      ),
     rerenderPartVisibility: (overrides: PartVisibilityOverrides, preview = featurePreview) =>
       result.rerender(
         element(
@@ -837,6 +862,20 @@ describe("GeometryViewport", () => {
     expect(onAngleChange).toHaveBeenCalledWith(Math.PI / 2)
   })
 
+  it("updates and clears the tool plane without replacing meshes or viewport", async () => {
+    const { port, createViewport, rerenderToolPlane } = renderViewport(readyController([], []))
+    await waitFor(() => expect(port.setToolPlane).toHaveBeenCalledWith(null))
+    const meshes = vi.mocked(port.setMeshes)
+    const meshCalls = meshes.mock.calls.length
+    const plane = { origin: [4, 5, 6], normal: [0, -1, 0], size: 30 } as const
+    rerenderToolPlane(plane)
+    await waitFor(() => expect(port.setToolPlane).toHaveBeenLastCalledWith(plane))
+    rerenderToolPlane(null)
+    await waitFor(() => expect(port.setToolPlane).toHaveBeenLastCalledWith(null))
+    expect(meshes.mock.calls.length).toBe(meshCalls)
+    expect(createViewport).toHaveBeenCalledTimes(1)
+  })
+
   it("adapts bounded saved profile loops to one stable viewer region", () => {
     const [sketch] = viewerSketches(readyController([], [], [profileSketchDisplay]))
 
@@ -1035,34 +1074,7 @@ describe("GeometryViewport", () => {
     expect(onSelect).toHaveBeenCalledWith(secondProfileSelector, [secondProfileSelector], "toggle")
   })
 
-  it("offers a focusable model-mode control for every saved profile", async () => {
-    const onSelect = vi.fn()
-    renderViewport(
-      readyController([], [], [profileSketchDisplay]),
-      null,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      { selectedProfiles: [], onSelect },
-    )
-
-    const profilePicker = await screen.findByRole("combobox", {
-      name: "Select saved profile",
-    })
-    const profileOption = screen.getByRole("option", { name: "Sketch 1 · Profile 1" })
-    profilePicker.focus()
-    expect(document.activeElement).toBe(profilePicker)
-    fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
-    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "toggle")
-    expect((profilePicker as HTMLSelectElement).value).toBe("")
-    fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
-    expect(onSelect).toHaveBeenCalledTimes(2)
-  })
-
-  it("keeps hidden saved profiles reusable while excluding dependency-ineligible sketches", async () => {
+  it("keeps the model viewport free of a duplicate saved-profile menu", async () => {
     const onSelect = vi.fn()
     const { port, rerenderSketchProfilePreview } = renderViewport(
       readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
@@ -1076,18 +1088,46 @@ describe("GeometryViewport", () => {
       { selectedProfiles: [], excludedSketchIds: [secondProfileSketchId], onSelect },
     )
     await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    expect(screen.queryByRole("combobox", { name: "Select saved profile" })).toBeNull()
+    expect(screen.queryByText("Choose a saved profile")).toBeNull()
     rerenderSketchProfilePreview(null, [sketchDisplay.sketchId, secondProfileSketchId])
     await waitFor(() => expect(port.setSketches).toHaveBeenLastCalledWith([]))
-
-    const picker = screen.getByRole("combobox", { name: "Select saved profile" })
-    expect(screen.queryByRole("option", { name: "Sketch 2 · Profile 1" })).toBeNull()
-    const option = screen.getByRole("option", { name: "Sketch 1 · Profile 1" })
-    fireEvent.change(picker, { target: { value: option.getAttribute("value") } })
-    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "toggle")
-    expect(port.setSketches).toHaveBeenLastCalledWith([])
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it("keeps the maximum supported profile set in one compact native picker", async () => {
+  it("offers eligible hidden profiles through the active task's keyboard picker", async () => {
+    const onSelect = vi.fn()
+    const { port, rerenderSketchProfilePreview } = renderViewport(
+      readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        keyboardPickerActive: true,
+        selectedProfiles: [profileSelector],
+        excludedSketchIds: [secondProfileSketchId],
+        onSelect,
+      },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    rerenderSketchProfilePreview(null, [sketchDisplay.sketchId, secondProfileSketchId])
+    await waitFor(() => expect(port.setSketches).toHaveBeenLastCalledWith([]))
+    const picker = screen.getByRole("combobox", { name: "Select saved profile" })
+    picker.focus()
+    expect(document.activeElement).toBe(picker)
+    const option = screen.getByRole("option", { name: "Sketch 1 · Profile 1" })
+    expect(screen.queryByRole("option", { name: /Sketch 2/ })).toBeNull()
+    await userEvent.selectOptions(picker, option)
+    expect(onSelect).toHaveBeenLastCalledWith(profileSelector, [profileSelector], "toggle")
+    await userEvent.selectOptions(picker, option)
+    expect(onSelect).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps the maximum supported profile set in one compact active-task picker", async () => {
     const baseProfile = profileSketchDisplay.profiles[0]
     if (!baseProfile) throw new Error("The saved-profile fixture must contain one profile.")
     const profiles = Array.from({ length: 2_000 }, (_, index) => ({
@@ -1110,7 +1150,7 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfiles: [], onSelect: vi.fn() },
+      { keyboardPickerActive: true, selectedProfiles: [], onSelect: vi.fn() },
     )
 
     expect(await screen.findAllByRole("combobox", { name: "Select saved profile" })).toHaveLength(1)
@@ -1911,7 +1951,7 @@ describe("GeometryViewport", () => {
     ).toBe("1")
     expect(port.fit).toHaveBeenCalledTimes(1)
     expect(screen.getByRole("img", { name: "World axes" }).textContent).toBe("")
-    expect(screen.getByText("XYZ · mm")).toBeTruthy()
+    expect(screen.queryByText("XYZ · mm")).toBeNull()
 
     fireEvent.click(screen.getByRole("button", { name: "Fit view" }))
     expect(port.fit).toHaveBeenCalledTimes(2)
@@ -2478,6 +2518,62 @@ function bodyController(roles = ["pattern.instance.0", "pattern.instance.1"]) {
 }
 
 describe("constituent viewport projection", () => {
+  it("projects independent exact sketch selection and hover into the existing renderer", async () => {
+    const controller = readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay])
+    const { port } = renderViewport(controller, null, undefined, undefined, undefined, {
+      selectedSketchIds: [profileSketchDisplay.sketchId],
+      preselectedSketchId: secondProfileSketchDisplay.sketchId,
+    })
+    await waitFor(() =>
+      expect(port.setSketches).toHaveBeenCalledWith([
+        expect.objectContaining({
+          sketchId: profileSketchDisplay.sketchId,
+          selected: true,
+          preselected: false,
+        }),
+        expect.objectContaining({
+          sketchId: secondProfileSketchDisplay.sketchId,
+          selected: false,
+          preselected: true,
+        }),
+      ]),
+    )
+  })
+
+  it("highlights every selected output without substituting a sibling for a missing role", async () => {
+    const selectedBodies = ["pattern.instance.0", "pattern.instance.1", "missing"].map(
+      (outputRole) => ({
+        featureId: featureIdSchema.parse(boxId),
+        outputRole,
+      }),
+    )
+    const rendered = renderViewport(bodyController(), null, undefined, undefined, undefined, {
+      selectedBodies,
+    })
+    await waitFor(() =>
+      expect(rendered.port.setFeatureSelection).toHaveBeenLastCalledWith([
+        expect.objectContaining({ featureId: boxId, outputRole: "pattern.instance.0" }),
+        expect.objectContaining({ featureId: boxId, outputRole: "pattern.instance.1" }),
+      ]),
+    )
+  })
+
+  it("highlights all current output bindings involved in a History hover", async () => {
+    const preselectedBodies = ["pattern.instance.0", "pattern.instance.1"].map((outputRole) => ({
+      featureId: featureIdSchema.parse(boxId),
+      outputRole,
+    }))
+    const rendered = renderViewport(bodyController(), null, undefined, undefined, undefined, {
+      preselectedBodies,
+    })
+    await waitFor(() =>
+      expect(rendered.port.setFeaturePreselection).toHaveBeenLastCalledWith([
+        expect.objectContaining({ featureId: boxId, outputRole: "pattern.instance.0" }),
+        expect.objectContaining({ featureId: boxId, outputRole: "pattern.instance.1" }),
+      ]),
+    )
+  })
+
   it("highlights an exact body and a different hovered sibling", async () => {
     const selectedBody = {
       featureId: featureIdSchema.parse(boxId),

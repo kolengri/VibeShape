@@ -209,6 +209,7 @@ export type EditorCommandIcon =
   | "slot"
   | "slot-around-line"
   | "split"
+  | "split-body"
   | "transform"
   | "subtract"
   | "tangent-arc"

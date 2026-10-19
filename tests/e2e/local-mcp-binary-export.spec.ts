@@ -147,15 +147,12 @@ test("retrieves exact geometry and replay-valid editable backup through actor-ow
           .getByRole("status", { name: "Project save status", exact: true })
           .filter({ hasText: /^Saved$/ }),
       ).toBeVisible()
-      await openApplicationMenuItem(imported, "Files and projects…")
-      await imported
-        .getByRole("dialog", { name: "Projects" })
-        .getByLabel("Choose VibeShape project file")
-        .setInputFiles({
-          name: "model.vshape",
-          mimeType: "application/octet-stream",
-          buffer: backup,
-        })
+      await openApplicationMenuItem(imported, "Projects")
+      await imported.getByRole("main").getByLabel("Choose VibeShape project file").setInputFiles({
+        name: "model.vshape",
+        mimeType: "application/octet-stream",
+        buffer: backup,
+      })
       await expect(
         imported.getByRole("treeitem", { name: "Chunked export box", exact: true }),
       ).toBeVisible()

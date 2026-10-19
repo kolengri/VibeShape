@@ -29,7 +29,6 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
@@ -406,52 +405,40 @@ function RevolveAxisField({
           const selected = value.kind === "origin-axis" && value.axis === axis
           const label = axis === "x" ? copy.axisX : copy.axisY
           return (
-            <Tooltip key={axis}>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  className="min-w-0 flex-1"
-                  size="sm"
-                  variant={selected ? "secondary" : "outline"}
-                  aria-label={label}
-                  aria-pressed={selected}
-                  onClick={() => {
-                    onSelectionRequest?.()
-                    onChange({ kind: "origin-axis", axis })
-                  }}
-                >
-                  {axis.toUpperCase()}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{label}</TooltipContent>
-            </Tooltip>
+            <Button
+              key={axis}
+              type="button"
+              className="min-w-0 flex-1"
+              size="sm"
+              variant={selected ? "secondary" : "outline"}
+              aria-label={label}
+              aria-pressed={selected}
+              onClick={() => {
+                onSelectionRequest?.()
+                onChange({ kind: "origin-axis", axis })
+              }}
+            >
+              {axis.toUpperCase()}
+            </Button>
           )
         })}
       </div>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="content"
-            type="button"
-            className="w-full min-w-0 justify-start overflow-hidden border-dashed text-left"
-            variant={selectionActive ? "secondary" : "outline"}
-            aria-label={copy.axisSelectHint}
-            aria-pressed={selectionActive}
-            {...(onSelectionRequest ? { onClick: onSelectionRequest } : {})}
-          >
-            <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span
-              className={cn(
-                "min-w-0 truncate",
-                axisLineLabel ? undefined : "text-muted-foreground",
-              )}
-            >
-              {axisLineLabel ?? copy.axisSelectHint}
-            </span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{copy.axisSelectHint}</TooltipContent>
-      </Tooltip>
+      <Button
+        size="content"
+        type="button"
+        className="w-full min-w-0 justify-start overflow-hidden border-dashed text-left"
+        variant={selectionActive ? "secondary" : "outline"}
+        aria-label={copy.axisSelectHint}
+        aria-pressed={selectionActive}
+        {...(onSelectionRequest ? { onClick: onSelectionRequest } : {})}
+      >
+        <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span
+          className={cn("min-w-0 truncate", axisLineLabel ? undefined : "text-muted-foreground")}
+        >
+          {axisLineLabel ?? copy.axisSelectHint}
+        </span>
+      </Button>
     </fieldset>
   )
 }

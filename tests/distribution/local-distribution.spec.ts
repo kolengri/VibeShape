@@ -5,7 +5,7 @@ import { join, resolve } from "node:path"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { openApplicationMenuItem } from "../e2e/application-menu-support"
-import { createEditorProject, expect, test } from "../e2e/fixtures"
+import { expect, test } from "../e2e/fixtures"
 import { invokeModelCommand } from "../e2e/model-command-support"
 
 const distribution = resolve(process.env.VIBESHAPE_DISTRIBUTION_ROOT ?? "")
@@ -91,9 +91,8 @@ test("the relocated package preserves saved work across stop, restart, backup re
     const edit = page.getByRole("form", { name: "Edit box" })
     await expect(edit.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("22 mm")
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await openApplicationMenuItem(page, "Files and projects…")
     const downloadReady = page.waitForEvent("download")
-    await page.getByRole("button", { name: "Save project (.vshape)", exact: true }).click()
+    await openApplicationMenuItem(page, "Save project (.vshape)")
     const download = await downloadReady
     const backup = testInfo.outputPath("saved-model.vshape")
     await download.saveAs(backup)
@@ -109,8 +108,6 @@ test("the relocated package preserves saved work across stop, restart, backup re
     })
     try {
       await recovered.goto(origin)
-      await createEditorProject(recovered)
-      await openApplicationMenuItem(recovered, "Files and projects…")
       await recovered.getByLabel("Choose VibeShape project file").setInputFiles(backup)
       await expect(recovered.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
       await expect(recovered.getByRole("region", { name: "3D viewport" })).toHaveAttribute(

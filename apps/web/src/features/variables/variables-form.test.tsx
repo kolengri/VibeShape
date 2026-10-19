@@ -84,6 +84,21 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("VariablesForm", () => {
+  it("keeps the protected removal reason visible and associated with its action", () => {
+    renderForm({
+      variables: [
+        { schemaVersion: 0, id: variableId, name: "width", expression: "20 mm" },
+        { schemaVersion: 0, id: secondVariableId, name: "height", expression: "#width" },
+      ],
+    })
+    const remove = screen.getAllByRole("button", { name: copy.remove })[0] as HTMLButtonElement
+    expect(remove.disabled).toBe(true)
+    expect(remove.getAttribute("title")).toBeNull()
+    const reason = screen.getByText(copy.removeInUse)
+    expect(reason.className).not.toContain("sr-only")
+    expect(remove.getAttribute("aria-describedby")).toBe(reason.id)
+  })
+
   it("adds a focused draft row, evaluates it, and guards async double submission", async () => {
     const user = userEvent.setup()
     let resolveApply: (() => void) | undefined
@@ -219,7 +234,12 @@ describe("VariablesForm", () => {
     )
 
     resolveRename?.()
-    await waitFor(() => expect(confirm.getAttribute("aria-busy")).toBeNull())
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: copy.confirmRename })).toBeNull()
+      expect((screen.getByRole("button", { name: copy.apply }) as HTMLButtonElement).disabled).toBe(
+        false,
+      )
+    })
   })
 
   it("preserves a conflicting rename draft and reports the adjacent error", async () => {

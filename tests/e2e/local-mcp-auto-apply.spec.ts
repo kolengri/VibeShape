@@ -301,13 +301,19 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     ).toMatchObject({ ok: true })
     const pendingSwitch = call(local, "commit_draft", { draftId: switching.draftId })
     await expect(review).toBeVisible()
-    await openApplicationMenuItem(page, "Files and projects…")
-    await expect(page.getByRole("button", { name: "New project", exact: true })).toBeDisabled()
-    await page.getByRole("button", { name: "Close projects dialog", exact: true }).click()
+    await openApplicationMenuItem(page, "Projects")
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Projects", exact: true }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole("alert").filter({ hasText: /Finish or cancel the current edit/ }),
+    ).toBeVisible()
+    await expect(review).toBeVisible()
+    await page.getByRole("button", { name: "Dismiss notification", exact: true }).click()
     await review.getByRole("button", { name: "Discard", exact: true }).click()
     expect(await pendingSwitch).toMatchObject({ ok: false })
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
-    await openApplicationMenuItem(page, "Files and projects…")
+    await openApplicationMenuItem(page, "Projects")
     await expect(page.getByRole("button", { name: "New project", exact: true })).toBeEnabled()
     await page.getByRole("button", { name: "New project", exact: true }).click()
     await expect(

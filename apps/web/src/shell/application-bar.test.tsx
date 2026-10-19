@@ -177,10 +177,9 @@ it("keeps File blocked after save failure while allowing unit retry only without
   }
   const result = render(<Header />)
   await userEvent.click(screen.getByRole("button", { name: "Application menu" }))
-  await userEvent.click(screen.getByRole("menuitem", { name: "Files and projects…" }))
   expect(
-    (screen.getByRole("button", { name: "Save project (.vshape)" }) as HTMLButtonElement).disabled,
-  ).toBe(true)
+    screen.getByRole("menuitem", { name: "Save project (.vshape)" }).getAttribute("aria-disabled"),
+  ).toBe("true")
   await userEvent.keyboard("{Escape}")
   await userEvent.click(screen.getByRole("button", { name: "Application menu" }))
   await userEvent.click(screen.getByRole("menuitem", { name: "Settings…" }))
@@ -248,7 +247,7 @@ it("keeps the saved idle status quiet while announcing loading, saving, and fail
   expect(status.textContent).toBe("Saved")
   expect(status.classList.contains("sr-only")).toBe(true)
   expect(status.classList.contains("sm:not-sr-only")).toBe(false)
-  expect(header.container.querySelector("[data-saving] svg")).toBeNull()
+  expect(header.container.querySelector("[data-global-loader]")).toBeNull()
   header.unmount()
   const loading = renderHeader(undefined, undefined, false, { status: "loading", report: null })
   expect(screen.getByText("Opening local document…")).toBeTruthy()
@@ -258,11 +257,11 @@ it("keeps the saved idle status quiet while announcing loading, saving, and fail
   expect(
     screen.getByRole("status", { name: "Project save status" }).classList.contains("sr-only"),
   ).toBe(true)
-  expect(saving.container.querySelector("[data-saving] svg")).not.toBeNull()
+  expect(saving.container.querySelector("[data-global-loader]")).not.toBeNull()
   saving.unmount()
   const failed = renderHeader(undefined, undefined, false, { saveStatus: "save-error" })
   expect(screen.getByText("Could not save")).toBeTruthy()
-  expect(failed.container.querySelector("[data-saving] svg")).toBeNull()
+  expect(failed.container.querySelector("[data-global-loader]")).toBeNull()
 })
 
 it("reports an unavailable project instead of a saved document after opening fails", () => {

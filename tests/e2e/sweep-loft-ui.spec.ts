@@ -59,7 +59,8 @@ async function exportPart(page: Page, name: string) {
   await dialog.getByRole("combobox", { name: "Export scope", exact: true }).click()
   await page.getByRole("option", { name, exact: true }).click()
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "Export STEP", exact: true }).click()
+  await dialog.getByRole("combobox", { name: "File format" }).selectOption("step")
+  await dialog.getByRole("button", { name: "Save STEP file", exact: true }).click()
   expect((await downloading).suggestedFilename()).toMatch(/\.step$/)
   await expect(dialog).not.toBeVisible()
 }

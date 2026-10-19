@@ -52,9 +52,15 @@ test("keeps the Extrude preview visible above the compact parameter panel", asyn
   expect(acceptBounds.y + acceptBounds.height).toBeLessThanOrEqual(
     panelBounds.y + panelBounds.height,
   )
-  await page.screenshot({ path: test.info().outputPath("compact-extrude-preview.png") })
+  await page.screenshot({
+    animations: "disabled",
+    path: test.info().outputPath("compact-extrude-preview.png"),
+  })
   await page.locator("html").evaluate((element) => element.classList.remove("dark"))
-  await page.screenshot({ path: test.info().outputPath("compact-extrude-preview-light.png") })
+  await page.screenshot({
+    animations: "disabled",
+    path: test.info().outputPath("compact-extrude-preview-light.png"),
+  })
   await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")

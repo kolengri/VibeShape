@@ -61,6 +61,39 @@ function selectedFeatureFaceSupport() {
   }
 }
 
+describe("Transient model tree selection", () => {
+  it("keeps multiple items out of single-part command targeting and replaces them on viewport selection", () => {
+    const store = createEditorSessionStore()
+    const partId = partIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    store.getState().actions.setModelTreeSelection([
+      { kind: "part", id: partId },
+      { kind: "sketch", id: sketchId },
+    ])
+    expect(store.getState().modelTreeSelection).toHaveLength(2)
+    expect(store.getState().selectedPartId).toBeNull()
+    store.getState().actions.setSelectedPart(partId)
+    expect(store.getState().modelTreeSelection).toEqual([{ kind: "part", id: partId }])
+    store.getState().actions.setSelection({ featureId, faceId: 1, faceOrdinal: 0 })
+    expect(store.getState().modelTreeSelection).toEqual([])
+    expect(store.getState().selection?.featureId).toBe(featureId)
+  })
+
+  it("clears competing hover channels without touching committed visibility", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    actions.setBodyPreselection({ featureId, outputRole: "result" })
+    actions.setSketchPreselection(sketchId)
+    expect(store.getState().preselectedBody).toBeNull()
+    expect(store.getState().preselectedSketchId).toBe(sketchId)
+    actions.setFeaturePreselection(featureId)
+    expect(store.getState().preselectedSketchId).toBeNull()
+    actions.setFeaturePreselection(null)
+    expect(store.getState().preselectedFeatureId).toBeNull()
+    expect(store.getState().hiddenSketchIds).toEqual([])
+    expect(store.getState().partVisibilityOverrides).toEqual({})
+  })
+})
+
 describe("editor session store", () => {
   it("keeps authored part identity distinct from topology and clears it on a new selection", () => {
     const store = createEditorSessionStore()

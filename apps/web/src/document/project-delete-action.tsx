@@ -11,12 +11,15 @@ import {
   AlertDialogTrigger,
 } from "@vibeshape/ui/components/alert-dialog"
 import { Button } from "@vibeshape/ui/components/button"
+import { Trash2 } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useState } from "react"
 import type { ProjectDeleteResult } from "./document-controller"
 
 export function ProjectDeleteAction({
   disabled,
   isCurrent,
+  iconOnly = false,
   onDelete,
   onDeleted,
   onPendingChange,
@@ -24,6 +27,7 @@ export function ProjectDeleteAction({
 }: {
   disabled: boolean
   isCurrent: boolean
+  iconOnly?: boolean
   onDelete: (documentId: string, expectedHeadRevision: number) => Promise<ProjectDeleteResult>
   onDeleted: () => Promise<void>
   onPendingChange: (pending: boolean) => void
@@ -60,24 +64,34 @@ export function ProjectDeleteAction({
     }
   }
 
+  const trigger = (
+    <Button
+      type="button"
+      size={iconOnly ? "icon-sm" : "sm"}
+      variant={iconOnly ? "ghost" : "outline"}
+      className="text-destructive hover:text-destructive"
+      disabled={disabled || isCurrent}
+      aria-label={t("actionLabel", {
+        name: project.name,
+        revision: project.headRevision,
+      })}
+    >
+      {iconOnly ? <Trash2 aria-hidden="true" /> : t("action")}
+    </Button>
+  )
+
   return (
     <AlertDialog open={open} onOpenChange={changeOpen}>
-      <AlertDialogTrigger asChild>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="text-destructive hover:text-destructive"
-          disabled={disabled || isCurrent}
-          aria-label={t("actionLabel", {
-            name: project.name,
-            revision: project.headRevision,
-          })}
-          title={isCurrent ? t("currentBlocked") : undefined}
-        >
-          {t("action")}
-        </Button>
-      </AlertDialogTrigger>
+      {iconOnly ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{isCurrent ? t("currentBlocked") : t("action")}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      )}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("title", { name: project.name })}</AlertDialogTitle>

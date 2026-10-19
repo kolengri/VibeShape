@@ -1,6 +1,7 @@
 import { LoaderIcon } from "lucide-react"
 import type * as React from "react"
 
+import { useReportActivity } from "#components/activity"
 import { cn } from "#lib/cn"
 
 type SpinnerBaseProps = Omit<React.ComponentProps<typeof LoaderIcon>, "aria-hidden" | "aria-label">
@@ -18,7 +19,12 @@ function Spinner({
   "aria-label": ariaLabel,
   ...props
 }: SpinnerProps) {
+  const centralized = useReportActivity(true)
   const isHidden = ariaHidden === true || ariaHidden === "true"
+
+  if (centralized) {
+    return isHidden ? null : <span role="status" aria-label={ariaLabel} className="sr-only" />
+  }
 
   return (
     <LoaderIcon

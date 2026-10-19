@@ -20,7 +20,8 @@ export async function exportGeometry(
 ) {
   const dialog = await openExport(page, partName)
   const downloading = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: `Export ${format}`, exact: true }).click()
+  await dialog.getByRole("combobox", { name: "File format" }).selectOption(format.toLowerCase())
+  await dialog.getByRole("button", { name: `Save ${format} file`, exact: true }).click()
   const download = await downloading,
     path = await download.path()
   if (!path) throw new Error("The authentic geometry download must be retained.")

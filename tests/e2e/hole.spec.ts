@@ -64,7 +64,7 @@ async function reopenHoleBackup(browser: Browser, download: Download, origin: st
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await openApplicationMenuItem(page, "Files and projects…")
+    await openApplicationMenuItem(page, "Projects")
     await page.getByLabel("Choose VibeShape project file").setInputFiles({
       name: download.suggestedFilename(),
       mimeType: "application/octet-stream",
@@ -105,7 +105,6 @@ for (const theme of ["light", "dark"] as const) {
       .evaluate((element, dark) => element.classList.toggle("dark", dark), theme === "dark")
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    const hole = page.getByRole("menuitem", { name: "Hole", exact: true })
     await expect(await openModelCommand(page, "Modify", "Hole")).toBeDisabled()
     await page.keyboard.press("Escape")
     await invokeModelCommand(page, "Primitives", "Box")
@@ -122,7 +121,8 @@ for (const theme of ["light", "dark"] as const) {
     await confirmSketchPlane(page)
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-    await expect(await openModelCommand(page, "Modify", "Hole")).toBeEnabled()
+    const hole = await openModelCommand(page, "Modify", "Hole")
+    await expect(hole).toBeEnabled()
     await hole.click()
     const form = page.getByRole("form", { name: "Hole", exact: true })
     const apply = form.getByRole("button", { name: "Create hole", exact: true })
@@ -171,12 +171,8 @@ for (const theme of ["light", "dark"] as const) {
     await expect(edit.getByRole("checkbox", { name: "Point 1", exact: true })).toBeChecked()
     await inspectCompactHoleTask(page, theme)
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
-    await openApplicationMenuItem(page, "Files and projects…")
     const downloading = page.waitForEvent("download")
-    await page
-      .getByRole("dialog", { name: "Projects" })
-      .getByRole("button", { name: "Save project (.vshape)" })
-      .click()
+    await openApplicationMenuItem(page, "Save project (.vshape)")
     const download = await downloading
     const file = await download.path()
     if (!file) throw new Error("Expected a native backup.")

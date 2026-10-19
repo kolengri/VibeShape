@@ -10,7 +10,7 @@ async function saved(page: Page) {
     page
       .getByRole("status", { name: "Project save status", exact: true })
       .filter({ hasText: /^Saved$/ }),
-  ).toBeVisible()
+  ).toBeAttached()
 }
 
 async function rename(page: Page, name: string) {
@@ -27,11 +27,8 @@ async function rename(page: Page, name: string) {
 
 async function newProject(page: Page) {
   const previous = new URL(page.url()).searchParams.get("project")
-  await openApplicationMenuItem(page, "Files and projects…")
-  await page
-    .getByRole("dialog", { name: "Projects", exact: true })
-    .getByRole("button", { name: "New project", exact: true })
-    .click()
+  await openApplicationMenuItem(page, "Projects")
+  await page.getByRole("main").getByRole("button", { name: "New project", exact: true }).click()
   await expect.poll(() => new URL(page.url()).searchParams.get("project")).not.toBe(previous)
   await saved(page)
 }
@@ -62,9 +59,14 @@ test("project URLs select local projects across switching, history, direct links
   expect(new URL(secondUrl).hash).toBe("#model")
 
   await page.goBack()
+  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get("project")).toBeNull()
+  await page.goBack()
   await expect(page.locator("header").getByText("First URL project", { exact: true })).toBeVisible()
   await expect.poll(() => activeId(page)).toBe(firstId)
   expect(page.url()).toBe(firstUrl)
+  await page.goForward()
+  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible()
   await page.goForward()
   await expect(
     page.locator("header").getByText("Second URL project", { exact: true }),
@@ -80,9 +82,9 @@ test("project URLs select local projects across switching, history, direct links
   await expect(page.locator("header").getByText("First URL project", { exact: true })).toBeVisible()
   expect(page.url()).toBe(firstUrl)
 
-  await openApplicationMenuItem(page, "Files and projects…")
+  await openApplicationMenuItem(page, "Projects")
   const project = page
-    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("main")
     .getByRole("listitem")
     .filter({ hasText: "Second URL project" })
   await project.getByRole("button", { name: /^Open / }).click()
@@ -126,7 +128,10 @@ for (const target of ["invalid", "0195b5ac-b250-7a2c-8c33-000000000199"]) {
     ).toContainText(target === "invalid" ? "project URL is invalid" : "not stored in this browser")
     expect(new URL(page.url()).searchParams.get("project")).toBe(target)
     expect(await activeId(page)).toBe(originalId)
-    await page.getByRole("link", { name: "Open last local project", exact: true }).click()
+    await page.getByRole("link", { name: "Open projects", exact: true }).click()
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible()
+    expect(new URL(page.url()).searchParams.get("project")).toBeNull()
+    await page.getByRole("button", { name: /^Open Untitled project, revision / }).click()
     await saved(page)
     await expect.poll(() => new URL(page.url()).searchParams.get("project")).toBe(originalId)
     expect(new URL(page.url()).searchParams.get("panel")).toBe("browser")

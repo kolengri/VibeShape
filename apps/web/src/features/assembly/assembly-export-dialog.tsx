@@ -17,15 +17,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { Download } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { ToolbarButton } from "@vibeshape/ui/components/toolbar"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useCallback, useState } from "react"
 import { exportActiveAssembly } from "../../document/document-controller"
+import { DocumentExportFormatField } from "../../document/document-export-options"
 import {
   type MeshExportQualityChoice,
   MeshExportQualityField,
   meshExportQuality,
 } from "../../document/mesh-export-quality-field"
 import { PrintPreparationPanel } from "../../printing/print-preparation-panel"
+import { useReportApplicationError } from "../../shell/application-notices"
 import { useAssemblyExport } from "./use-assembly-export"
 
 type ExportSelection = {
@@ -34,39 +39,11 @@ type ExportSelection = {
   inspection: AssemblyInspection | null
   disabled: boolean
 }
-function AssemblyExportFormats({
-  disabled,
-  includesMesh,
-  pending,
-  onExport,
-}: {
-  disabled: boolean
-  includesMesh: boolean
-  pending: GeometryExportFormat | null
-  onExport: (format: GeometryExportFormat) => Promise<void>
-}) {
-  const t = useTranslations("app.assembly")
-  return (
-    <div className="grid gap-2 sm:grid-cols-3">
-      {(["step", "stl", "3mf"] as const).map((format) => (
-        <Button
-          key={format}
-          type="button"
-          variant="outline"
-          disabled={disabled || (format === "step" && includesMesh)}
-          aria-busy={pending === format}
-          onClick={() => void onExport(format)}
-        >
-          {t(`exportFormat.${format}`)}
-        </Button>
-      ))}
-    </div>
-  )
-}
 function selectedInstanceScope(scope: string) {
   return scope === "all" ? {} : { instanceIds: [scope] }
 }
 function useAssemblyExportSelection({ selectedId, inspection, disabled }: ExportSelection) {
+  const [format, setFormat] = useState<GeometryExportFormat>("3mf")
   const [scope, setScope] = useState(selectedId ?? "all")
   const [showPreparation, setShowPreparation] = useState(false)
   const [printPending, setPrintPending] = useState(false)
@@ -103,6 +80,8 @@ function useAssemblyExportSelection({ selectedId, inspection, disabled }: Export
         : {}),
     })
   return {
+    format,
+    setFormat,
     scope,
     setScope,
     showPreparation,
@@ -146,10 +125,11 @@ function AssemblyExportScope({
 }
 function AssemblyExportStatus({ view }: { view: ExportView }) {
   const t = useTranslations("app.assembly")
+  const appOwnsError = useReportApplicationError(view.action.failed ? t("exportFailed") : null)
   return (
     <>
       {view.includesMesh && <p className="text-xs text-muted-foreground">{t("exportMeshStep")}</p>}
-      {view.action.failed && (
+      {view.action.failed && !appOwnsError && (
         <p role="alert" className="text-sm text-destructive">
           {t("exportFailed")}
         </p>
@@ -188,64 +168,110 @@ function AssemblyPrintPreparation({ view }: { view: ExportView }) {
     </>
   )
 }
-function AssemblyExportContent(props: ExportSelection) {
+function AssemblyExportOptions({
+  view,
+  instances,
+}: {
+  view: ExportView
+  instances: ExportSelection["instances"]
+}) {
   const t = useTranslations("app.assembly")
-  const view = useAssemblyExportSelection(props)
   return (
     <>
-      <AssemblyExportScope view={view} instances={props.instances} />
+      <AssemblyExportScope view={view} instances={instances} />
       <p className="text-xs text-muted-foreground">{t("exportGeometryExplanation")}</p>
-      {!view.showPreparation && (
+      <DocumentExportFormatField
+        format={view.format}
+        onFormatChange={view.setFormat}
+        disabled={view.busy}
+      />
+      {view.format !== "step" ? (
         <MeshExportQualityField
           value={view.meshQualityChoice}
           onChange={view.setMeshQualityChoice}
           disabled={view.busy}
         />
-      )}
-      {!view.showPreparation && (
-        <AssemblyExportFormats
-          disabled={view.busy}
-          includesMesh={view.includesMesh}
-          pending={view.action.pending}
-          onExport={view.exportFormat}
-        />
-      )}
-      <AssemblyExportStatus view={view} />
-      <AssemblyPrintPreparation view={view} />
+      ) : null}
     </>
   )
 }
-export function AssemblyExportDialog(props: ExportSelection) {
+function AssemblyExportContent(props: ExportSelection) {
+  const t = useTranslations("app.assembly")
+  const common = useTranslations("app.export")
+  const view = useAssemblyExportSelection(props)
+  return (
+    <DialogContent
+      closeLabel={t("cancel")}
+      showCloseButton={false}
+      className={view.showPreparation ? "max-w-3xl" : "max-w-xl"}
+    >
+      <DialogHeader>
+        <DialogTitle>{t("exportAssembly")}</DialogTitle>
+        <DialogDescription>{t("exportDescription")}</DialogDescription>
+      </DialogHeader>
+      {view.showPreparation ? (
+        <AssemblyExportScope view={view} instances={props.instances} />
+      ) : (
+        <AssemblyExportOptions view={view} instances={props.instances} />
+      )}
+      <AssemblyExportStatus view={view} />
+      <AssemblyPrintPreparation view={view} />
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            {t("closeExport")}
+          </Button>
+        </DialogClose>
+        {!view.showPreparation ? (
+          <Button
+            type="button"
+            disabled={view.busy || (view.format === "step" && view.includesMesh)}
+            isLoading={view.action.pending !== null}
+            onClick={() => view.exportFormat(view.format)}
+          >
+            {common("saveFile", { format: view.format.toUpperCase() })}
+          </Button>
+        ) : null}
+      </DialogFooter>
+    </DialogContent>
+  )
+}
+export function AssemblyExportDialog(props: ExportSelection & { compact?: boolean }) {
   const t = useTranslations("app.assembly")
   const [open, setOpen] = useState(false)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={props.disabled || props.instances.length === 0 || !props.inspection}
-        >
-          {t("exportAssembly")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent
-        closeLabel={t("cancel")}
-        className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto"
-      >
-        <DialogHeader>
-          <DialogTitle>{t("exportAssembly")}</DialogTitle>
-          <DialogDescription>{t("exportDescription")}</DialogDescription>
-        </DialogHeader>
-        <AssemblyExportContent {...props} />
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline">
-              {t("closeExport")}
-            </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
+      {props.compact ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <ToolbarButton asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={t("exportAssembly")}
+                  disabled={props.disabled || props.instances.length === 0 || !props.inspection}
+                >
+                  <Download aria-hidden="true" />
+                </Button>
+              </ToolbarButton>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("exportAssembly")}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={props.disabled || props.instances.length === 0 || !props.inspection}
+          >
+            {t("exportAssembly")}
+          </Button>
+        </DialogTrigger>
+      )}
+      {open ? <AssemblyExportContent {...props} /> : null}
     </Dialog>
   )
 }

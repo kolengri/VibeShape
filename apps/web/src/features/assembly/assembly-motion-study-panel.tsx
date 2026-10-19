@@ -625,32 +625,3 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
     </section>
   )
 }
-
-export function AssemblyMotionStudyActions({ view }: { view: AssemblyWorkspaceView }) {
-  const t = useTranslations("app.assembly")
-  return (
-    <section className="grid gap-2" aria-label={t("motionStudies")}>
-      <h3 className="text-sm font-medium">{t("motionStudies")}</h3>
-      <Button
-        variant="outline"
-        disabled={
-          view.taskActionsDisabled ||
-          !view.assembly.joints.some((joint) => assemblyMotionCoordinates(joint).length)
-        }
-        onClick={() => view.openStudy(null)}
-      >
-        {t("motionNewStudy")}
-      </Button>
-      {view.assembly.motionStudies?.map((study) => (
-        <Button
-          key={study.id}
-          variant="outline"
-          disabled={view.taskActionsDisabled}
-          onClick={() => view.openStudy(study.id)}
-        >
-          {study.name}
-        </Button>
-      ))}
-    </section>
-  )
-}

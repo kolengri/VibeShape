@@ -93,6 +93,7 @@ import {
   profileSupportReference,
   profileSupportReferences,
 } from "../features/part-design/profile-feature-selection"
+import type { PlacementManipulator } from "../features/placement/placement-manipulator"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import {
   DatumPlaneForm,
@@ -130,6 +131,7 @@ import {
   isActiveSketchEditorTool,
   type SketchDraftChangeMode,
 } from "../features/sketch/sketch-tool"
+import type { SplitManipulator } from "../features/split/split-manipulator"
 import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-texture-task-panel"
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
@@ -170,6 +172,8 @@ type TaskPanelProps = Readonly<{
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
+  onPlacementManipulatorChange?: ((value: PlacementManipulator | null) => void) | undefined
+  onSplitManipulatorChange?: ((value: SplitManipulator | null) => void) | undefined
   holePickingRequest?: HolePickingRequest | null
   onHolePickingContextChange?: (context: HolePickingContext | null) => void
   edgeTreatmentPickRequest?: EdgeTreatmentPickRequest | null
@@ -1728,6 +1732,8 @@ type ActiveTaskPanelProps = Readonly<{
   onCloseTool: () => void
   onCompleteTool: () => void
   onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  onPlacementManipulatorChange?: TaskPanelProps["onPlacementManipulatorChange"]
+  onSplitManipulatorChange?: TaskPanelProps["onSplitManipulatorChange"]
   holePickingRequest?: TaskPanelProps["holePickingRequest"]
   onHolePickingContextChange?: TaskPanelProps["onHolePickingContextChange"]
   edgeTreatmentPickRequest?: TaskPanelProps["edgeTreatmentPickRequest"]
@@ -2384,6 +2390,8 @@ function ModelTaskPanel(props: TaskPanelProps) {
         onCloseTool={props.onCloseTool}
         onCompleteTool={props.onCompleteTool}
         onFeaturePreviewChange={props.onFeaturePreviewChange}
+        onPlacementManipulatorChange={props.onPlacementManipulatorChange}
+        onSplitManipulatorChange={props.onSplitManipulatorChange}
         holePickingRequest={props.holePickingRequest}
         onHolePickingContextChange={props.onHolePickingContextChange}
         edgeTreatmentPickRequest={props.edgeTreatmentPickRequest}

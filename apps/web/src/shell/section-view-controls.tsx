@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { Scissors } from "@vibeshape/ui/components/icons"
+import { SectionViewIcon } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
 import { TextField } from "@vibeshape/ui/components/text-field"
@@ -73,7 +73,7 @@ export function SectionViewControls({
               aria-label={t("title")}
               aria-pressed={section !== null}
             >
-              <Scissors aria-hidden="true" />
+              <SectionViewIcon aria-hidden="true" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>

@@ -95,29 +95,59 @@ export async function selectIdleOriginPlaneInViewport(page: Page, plane: "xy" | 
   throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable while idle.`)
 }
 
+async function unobscuredDrawingBounds(page: Page, drawing: Locator) {
+  const [bounds, center] = await Promise.all([
+    drawing.boundingBox(),
+    page.getByTestId("workspace-center").boundingBox(),
+  ])
+  if (!bounds || !center) throw new Error("The unobscured drawing area is not visible.")
+  const x = Math.max(bounds.x, center.x)
+  const y = Math.max(bounds.y, center.y)
+  const width = Math.min(bounds.x + bounds.width, center.x + center.width) - x
+  const height = Math.min(bounds.y + bounds.height, center.y + center.height) - y
+  if (width <= 0 || height <= 0) throw new Error("The unobscured drawing area is empty.")
+  return { x, y, width, height }
+}
+
+function* savedProfileSamplePositions(bounds: {
+  x: number
+  y: number
+  width: number
+  height: number
+}) {
+  for (const divisions of [12, 20]) {
+    for (let row = 1; row < divisions; row += 1) {
+      for (let column = 1; column < divisions; column += 1) {
+        yield {
+          x: bounds.x + (bounds.width * column) / divisions,
+          y: bounds.y + (bounds.height * row) / divisions,
+        }
+      }
+    }
+  }
+}
+
 export async function clickSavedProfileInViewport(page: Page, label: string, additive = false) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvas = viewport.locator("canvas")
-  const bounds = await canvas.boundingBox()
-  if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
+  const bounds = await unobscuredDrawingBounds(page, canvas)
   const status = viewport.getByText(`Select profile: ${label}`, { exact: true })
-  for (let row = 1; row < 12; row += 1) {
-    for (let column = 1; column < 12; column += 1) {
-      const position = {
-        x: bounds.x + (bounds.width * column) / 12,
-        y: bounds.y + (bounds.height * row) / 12,
-      }
-      await page.mouse.move(position.x, position.y)
-      await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
-      if (!(await status.isVisible())) continue
-      if (additive) await page.keyboard.down("Shift")
-      try {
-        await page.mouse.click(position.x, position.y)
-      } finally {
-        if (additive) await page.keyboard.up("Shift")
-      }
-      return
+  for (const position of savedProfileSamplePositions(bounds)) {
+    const canvasReceivesPointer = await canvas.evaluate((element, point) => {
+      const target = element.ownerDocument.elementFromPoint(point.x, point.y)
+      return target !== null && element.contains(target)
+    }, position)
+    if (!canvasReceivesPointer) continue
+    await page.mouse.move(position.x, position.y)
+    await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+    if (!(await status.isVisible())) continue
+    if (additive) await page.keyboard.down("Shift")
+    try {
+      await page.mouse.click(position.x, position.y)
+    } finally {
+      if (additive) await page.keyboard.up("Shift")
     }
+    return
   }
   throw new Error(`${label} was not pickable in the 3D viewport.`)
 }
@@ -243,8 +273,9 @@ export async function addDimension(
   if (await selectionAction.isVisible()) await selectionAction.click()
 
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+  const drawingBounds = await drawing.boundingBox()
+  if (!drawingBounds) throw new Error("The editable sketch canvas is not visible.")
+  const bounds = await unobscuredDrawingBounds(page, drawing)
   const placement = {
     Angle: { x: 0.7, y: 0.3 },
     Diameter: { x: 0.7, y: 0.3 },
@@ -256,7 +287,12 @@ export async function addDimension(
     "Vertical distance": { x: 0.75, y: 0.5 },
   } as const
   const anchor = placement[type]
-  await page.mouse.click(bounds.x + bounds.width * anchor.x, bounds.y + bounds.height * anchor.y)
+  await drawing.click({
+    position: {
+      x: bounds.x - drawingBounds.x + bounds.width * anchor.x,
+      y: bounds.y - drawingBounds.y + bounds.height * anchor.y,
+    },
+  })
 
   const editor = page.getByRole("form", { name: "Dimension value" })
   const typeControl = editor.getByRole("combobox", { name: "Dimension type" })

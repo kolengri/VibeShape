@@ -17,11 +17,13 @@ import {
   viewerAngularGizmoAngle,
   viewerAngularGizmoPoint,
   viewerAxialGizmoDistance,
+  viewerAxialGizmoDragDistance,
   viewerAxialGizmoHandlePosition,
   viewerBodyKey,
   viewerCameraPoseForFrame,
   viewerCameraPoseForStandardView,
   viewerFaceOrdinal,
+  viewerHighlightMeshes,
   viewerSketchPlaneProjection,
   viewerSketchProfileKey,
   viewerSketchProjectionTarget,
@@ -38,6 +40,14 @@ const mesh: ViewerMesh = {
 }
 
 describe("Three viewport geometry", () => {
+  it("retains every exact mesh in a multi-body highlight", () => {
+    const first = { ...mesh, outputRole: "pattern.instance.0" }
+    const second = { ...mesh, outputRole: "pattern.instance.1" }
+    expect(viewerHighlightMeshes([first, second])).toEqual([first, second])
+    expect(viewerHighlightMeshes(first)).toEqual([first])
+    expect(viewerHighlightMeshes(null)).toEqual([])
+  })
+
   const profileSelector = (sketchId: string, boundary: string) => ({
     schemaVersion: 0 as const,
     sketchId,
@@ -194,6 +204,27 @@ describe("Three viewport geometry", () => {
     ).toBeNull()
   })
 
+  it("preserves the positive extrusion minimum unless an axial tool opts into a signed range", () => {
+    expect(viewerAxialGizmoDragDistance({}, -3)).toBe(0.01)
+    expect(viewerAxialGizmoDragDistance({}, 0)).toBe(0.01)
+    expect(viewerAxialGizmoDragDistance({}, 0.005)).toBe(0.01)
+    expect(viewerAxialGizmoDragDistance({}, 12)).toBe(12)
+    const split = { distanceRange: { min: -100_000, max: 100_000 } }
+    expect(viewerAxialGizmoDragDistance(split, -3)).toBe(-3)
+    expect(viewerAxialGizmoDragDistance(split, 0)).toBe(0)
+    expect(viewerAxialGizmoDragDistance(split, -100_001)).toBe(-100_000)
+    expect(viewerAxialGizmoDragDistance(split, 100_001)).toBe(100_000)
+  })
+
+  it("rejects invalid axial drag ranges and nonfinite pointer distances", () => {
+    expect(viewerAxialGizmoDragDistance({}, Number.NaN)).toBeNull()
+    expect(viewerAxialGizmoDragDistance({ distanceRange: { min: 1, max: 1 } }, 2)).toBeNull()
+    expect(viewerAxialGizmoDragDistance({ distanceRange: { min: 1, max: -1 } }, 2)).toBeNull()
+    expect(
+      viewerAxialGizmoDragDistance({ distanceRange: { min: -Infinity, max: 1 } }, 2),
+    ).toBeNull()
+  })
+
   it("maps angular manipulator values to exact points around an arbitrary world axis", () => {
     const gizmo = {
       angle: Math.PI / 2,
@@ -245,6 +276,27 @@ describe("Three viewport geometry", () => {
         [1, 0, 0],
       ),
     ).toBeNull()
+  })
+
+  it("keeps signed Placement rotation continuous through zero and clamps at either revolution", () => {
+    const gizmo = {
+      angle: -0.25,
+      minAngle: -2 * Math.PI,
+      maxAngle: 2 * Math.PI,
+      axisDirection: [0, 0, 1] as const,
+      axisOrigin: [0, 0, 0] as const,
+      rotationOrigin: [10, 0, 0] as const,
+    }
+    const negative = viewerAngularGizmoPoint(gizmo)
+    expect(negative && viewerAngularGizmoAngle(gizmo, negative, 0)).toBeCloseTo(-0.25)
+    const beyondNegative = viewerAngularGizmoPoint(gizmo, -2 * Math.PI - 0.1)
+    expect(beyondNegative && viewerAngularGizmoAngle(gizmo, beyondNegative, -2 * Math.PI)).toBe(
+      -2 * Math.PI,
+    )
+    const beyondPositive = viewerAngularGizmoPoint(gizmo, 2 * Math.PI + 0.1)
+    expect(beyondPositive && viewerAngularGizmoAngle(gizmo, beyondPositive, 2 * Math.PI)).toBe(
+      2 * Math.PI,
+    )
   })
 
   it("orders and deduplicates saved profiles by stable selector identity", () => {

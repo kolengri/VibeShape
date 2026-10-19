@@ -8,6 +8,7 @@ import {
   getProjectActionBlock,
   listLocalProjects,
   type ProjectSwitchResult,
+  showProjectLibrary,
 } from "../document/document-controller"
 import { useProjectTabs, useProjectTabsStore } from "./project-tabs-provider"
 
@@ -27,14 +28,13 @@ function projectTransitionExpectation(controller: DocumentControllerState) {
 
 export function useProjectTabsController(
   controller: DocumentControllerState,
-  onOpenProjects?: () => Promise<ProjectSwitchResult>,
+  onOpenProjects: () => Promise<ProjectSwitchResult> = showProjectLibrary,
 ) {
   const store = useProjectTabsStore()
   const state = useProjectTabs()
   const [feedback, setFeedback] = useState<ProjectTabsFeedback>(null)
-  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [feedbackAttempt, setFeedbackAttempt] = useState(0)
   const listRequest = useRef(0)
-  const previousActiveId = useRef<string | undefined>(undefined)
   const snapshot = controller.report?.snapshot
   const activeId = snapshot?.id
   const activeName = snapshot?.name
@@ -46,11 +46,6 @@ export function useProjectTabsController(
       store.getState().actions.remember({ documentId: activeId, name: activeName })
     }
   }, [activeId, activeName, ready, store])
-
-  useEffect(() => {
-    if (previousActiveId.current && previousActiveId.current !== activeId) setLibraryOpen(false)
-    previousActiveId.current = activeId
-  }, [activeId])
 
   const refresh = useCallback(async () => {
     const request = ++listRequest.current
@@ -94,6 +89,7 @@ export function useProjectTabsController(
     closingId?: string,
     focusAfter = true,
   ) => {
+    setFeedbackAttempt((attempt) => attempt + 1)
     const expected = projectTransitionExpectation(controller)
     if (!expected) {
       setFeedback("blocked")
@@ -127,11 +123,7 @@ export function useProjectTabsController(
     )
   }
 
-  const openLibrary = (closingId?: string) => {
-    if (onOpenProjects) return transition(onOpenProjects, closingId, false)
-    if (closingId) store.getState().actions.replaceOnActivation(closingId)
-    setLibraryOpen(true)
-  }
+  const openLibrary = (closingId?: string) => transition(onOpenProjects, closingId, false)
 
   const close = (documentId: string) => {
     if (state.pending) return
@@ -141,6 +133,7 @@ export function useProjectTabsController(
       return
     }
     if (!projectTransitionExpectation(controller)) {
+      setFeedbackAttempt((attempt) => attempt + 1)
       setFeedback("blocked")
       return
     }
@@ -155,18 +148,11 @@ export function useProjectTabsController(
     activeId,
     blocked,
     feedback,
-    libraryOpen,
+    feedbackAttempt,
     refresh,
     activate: (documentId: string) => navigate(documentId),
     create: () => navigate(null),
     close,
     openLibrary: () => openLibrary(),
-    changeLibraryOpen: (open: boolean) => {
-      setLibraryOpen(open)
-      if (!open) {
-        store.getState().actions.replaceOnActivation(null)
-        void refresh()
-      }
-    },
   }
 }

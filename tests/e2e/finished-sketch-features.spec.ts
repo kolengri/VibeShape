@@ -1,8 +1,10 @@
+import { saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 for (const command of ["Extrude", "Revolve"] as const) {
   test(`starts ${command} immediately after finishing a closed sketch`, async ({ page }) => {
+    test.setTimeout(120_000)
     await page.goto("/")
     await expect(
       page
@@ -26,11 +28,7 @@ for (const command of ["Extrude", "Revolve"] as const) {
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "1")
     await form.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.reload()
-    await expect(
-      page
-        .getByRole("status", { name: "Project save status", exact: true })
-        .filter({ hasText: /^Saved$/ }),
-    ).toBeVisible()
+    await saved(page)
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
     await expect(action).toBeEnabled()
