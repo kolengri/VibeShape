@@ -21,6 +21,27 @@ Development uses `http://127.0.0.1:5180`; production preview uses port `4180`.
 The browser tests run against the built site, so rebuild before testing changed source.
 The site needs no API keys, hosted database, or model provider.
 
+## Automatic GitHub deployment
+
+`.github/workflows/presentation-site.yml` builds, checks, and deploys the presentation after every
+push to `main`. It can also be dispatched manually on `main`. Every main push triggers a run so
+a newer unrelated commit cannot strand a site update rejected by the current-main source check.
+
+The workflow uses the existing `cloudflare-production` environment and its account-scoped
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. It explicitly targets `vibeshape-site`; the
+editor's `CLOUDFLARE_PAGES_PROJECT` variable remains `vibeshape-greg` and is not used by this workflow.
+No browser upload, additional token, artifact-storage transfer, or CAD kernel build is required.
+
+Before publication, the job requires frozen installation, scoped Biome and typechecks, a production
+build, five Chromium browser scenarios, the expected personal account, and a source commit that
+still matches current `main`. It compares the deployed HTML with the built HTML after upload.
+Concurrency serializes presentation deployments. The existing environment allows deployment only
+from `main`; the workflow cannot publish this task branch or be initially dispatched until merged.
+
+Use the previous successful production deployment in the `vibeshape-site` Pages dashboard for
+rollback. Keep the editor project and relay separate. DNS, TLS, and public-domain verification remain
+part of the domain setup handoff.
+
 ## Content ownership
 
 - `apps/site/src/messages/en.json` owns typed English copy and introductory articles.
