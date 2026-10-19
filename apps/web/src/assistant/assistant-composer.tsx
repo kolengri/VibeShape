@@ -41,12 +41,16 @@ export type AssistantComposerProps = {
   attachmentCapabilities?: { text: boolean; images: boolean }
   queuedMessages?: readonly AssistantQueuedMessage[]
   queuePaused?: boolean
+  supportsActiveSteer?: boolean
+  activeSteerTurn?: boolean
+  steeringQueuedId?: string | null
   onSend: (
     text: string,
     attachments?: readonly AssistantAttachment[],
   ) => Promise<void> | Promise<boolean>
   onQueue?: (text: string, attachments?: readonly AssistantAttachment[]) => Promise<boolean>
   onRemoveQueued?: (id: string) => void | Promise<void>
+  onSteerQueued?: (id: string) => Promise<boolean>
   onResumeQueue?: () => Promise<boolean>
   onCancel: () => Promise<void>
 }
@@ -54,19 +58,45 @@ export type AssistantComposerProps = {
 function AssistantQueue({
   queuedMessages = [],
   queuePaused,
+  busy,
+  supportsActiveSteer,
+  activeSteerTurn,
+  steeringQueuedId,
   onRemoveQueued,
+  onSteerQueued,
   onResumeQueue,
 }: Pick<
   AssistantComposerProps,
-  "queuedMessages" | "queuePaused" | "onRemoveQueued" | "onResumeQueue"
+  | "queuedMessages"
+  | "queuePaused"
+  | "busy"
+  | "supportsActiveSteer"
+  | "activeSteerTurn"
+  | "steeringQueuedId"
+  | "onRemoveQueued"
+  | "onSteerQueued"
+  | "onResumeQueue"
 >) {
   const t = useTranslations("app.assistant")
+  const reasonId = useId()
+  const steeringTurn = activeSteerTurn ?? busy
+  const unavailable =
+    !supportsActiveSteer || !onSteerQueued
+      ? t("steerUnsupported")
+      : !steeringTurn
+        ? t("steerRequiresActiveTurn")
+        : null
   if (!queuedMessages.length) return null
   return (
     <section
       aria-label={t("queuedMessages")}
       className="space-y-1 rounded-md border bg-muted/30 p-2"
     >
+      {unavailable && (
+        <p id={reasonId} className="text-xs text-muted-foreground">
+          {unavailable}
+        </p>
+      )}
       <ul className="space-y-1">
         {queuedMessages.map((message) => (
           <li key={message.id} className="flex min-w-0 items-start gap-1 text-xs">
@@ -81,9 +111,21 @@ function AssistantQueue({
                 </p>
               ))}
             </details>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              aria-describedby={unavailable ? reasonId : undefined}
+              disabled={Boolean(unavailable || steeringQueuedId)}
+              isLoading={steeringQueuedId === message.id}
+              onClick={() => onSteerQueued?.(message.id)}
+            >
+              {t("steerQueuedMessage")}
+            </Button>
             {onRemoveQueued && (
               <AssistantIconAction
                 label={t("removeQueuedMessage")}
+                disabled={steeringQueuedId === message.id}
                 onAction={() => onRemoveQueued(message.id)}
               >
                 <X aria-hidden="true" />
@@ -220,7 +262,7 @@ function AssistantTurnActions({
 
 function AssistantComposerActions(props: ComposerActionsProps) {
   return (
-    <div className="grid min-w-0 grid-cols-1 items-end gap-2 px-2 pb-2 @sm/composer:grid-cols-[minmax(0,1fr)_auto]">
+    <div className="grid min-w-0 grid-cols-1 items-end gap-1 px-2 pb-2 @sm/composer:grid-cols-[minmax(0,1fr)_auto]">
       <div className="min-w-0">{props.sessionControls}</div>
       <div className="flex shrink-0 items-center justify-self-end gap-1">
         <AssistantAttachmentAction {...props} />

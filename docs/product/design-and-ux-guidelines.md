@@ -140,6 +140,10 @@ ordinary actions retain their height when disabled or pending. Spatial constrain
 their geometry-driven annotation placement and double-click editing contract. The `sm` and `icon-sm` names are
 compatibility aliases for the standard tier, not additional densities.
 
+The model browser uses one 32 px row and 14 px label tier for origin planes, authored datum planes,
+Parts and sketches. The owning row paints selection across labels and trailing controls; child
+hover fills must not mask that state. Compact chronological History retains its separate density.
+
 ### Typography
 
 - Use the bundled system UI stack initially; CAD operation must not depend on network fonts.

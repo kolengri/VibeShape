@@ -23,6 +23,7 @@ import {
   modelBrowserChildRow,
   modelBrowserCount,
   modelBrowserGroupRow,
+  modelBrowserHighlightedRow,
   modelBrowserItem,
   modelBrowserSelectedRow,
 } from "./model-browser-styles"
@@ -181,7 +182,7 @@ function AuthoredPartRow({
           className={cn(
             modelBrowserItem,
             selected && modelBrowserSelectedRow,
-            highlighted && "bg-accent ring-1 ring-primary ring-inset",
+            highlighted && modelBrowserHighlightedRow,
           )}
         >
           <Button

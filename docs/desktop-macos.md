@@ -95,8 +95,8 @@ with recovery guidance; reconnect after correcting the command or authentication
 
 Each embedded connection supplies a project-stable internal MCP server name, so an unrelated
 disabled `vibeshape` entry in the adapter's user configuration does not suppress the project tools.
-The native project connection enables read and proposal access automatically; ordinary Apply
-remains required unless the person has explicitly granted automatic approval for that project.
+Connecting the built-in chat authorizes reads and validated model changes in that project. Valid
+stages save through the ordinary revision-checked commit path without a second Apply action.
 External MCP clients still require their normal pairing consent. **Stop AI** keeps the native
 connection disabled across reload until the person explicitly enables it again.
 
@@ -132,10 +132,18 @@ Pending queued messages can be removed, and New chat does not discard them impli
 attachment bytes remain in memory and are not a durable job store. Accepted turn text is saved in
 the transcript so an asynchronous provider failure does not overwrite a newly edited composer.
 
+Providers advertising active steering expose **Steer now** on queued messages while working. It
+delivers the exact queued text and attachments to the existing provider session without canceling
+the current prompt. Delivery locks that item; confirmed acceptance removes only it, while failure
+retains it and pauses the queue. Unsupported providers and direct Chat Completions explain why
+active steering is unavailable. If the provider has already finished and reports a new turn, the
+UI reports that outcome and retains output tracking until authoritative provider completion;
+acknowledgement alone does not mark the turn finished. Stop and project/session fences still apply.
+
 Every native prompt identifies its project and instructs the agent to establish live project
 identity and geometry through the supplied VibeShape MCP tools before modeling. The private agent
-working directory is not the model. These instructions preserve the existing access, preview,
-review, and commit authority; they do not grant auto-apply or substitute filesystem CAD generation.
+working directory is not the model. These instructions preserve exact preview, project and revision checks, and ordinary commit
+authority. They describe connected model access and exclude substitute filesystem CAD generation.
 
 Open **Settings → Connections → Connect an MCP client**, copy the configuration, and add it to the
 external client's MCP settings. It launches the app's bundled stdio forwarder with Electron's own
@@ -152,16 +160,19 @@ returning shows that project's accumulated updates and pending review. Embedded 
 project-management tools or redirect their tools to another project. Messages and tool progress stay
 tied to that project. Stop cancels
 the response; New chat starts a new conversation. Transcripts persist locally per project and are not included in `.vshape` backups. Native
-context restoration depends on the agent's advertised support. CAD changes retain preview and the
-person's existing MCP approval policy, including any explicit auto-apply consent. The chat cannot
-grant that consent to itself. Browser API chat always requires manual Apply. The local agent has ordinary user OS privileges even though
+context restoration depends on the agent's advertised support. Both built-in native and browser API chats use connected model authority under
+[ADR-0116](adr/0116-connected-assistant-model-authority-and-checkpoints.md). Their model changes
+appear incrementally and commit without separate Apply prompts. External clients retain their own
+approval policy. Each assistant turn has an internal checkpoint; **View before** temporarily shows
+the earlier model, and **Undo agent changes** restores the saved turn atomically. These controls
+add no parametric History rows and reject stale targets after unrelated edits. The local agent has ordinary user OS privileges even though
 VibeShape advertises no ACP filesystem or terminal capabilities.
 
 Replacing or disconnecting a project's ACP agent waits for bounded cleanup of its process and captured MCP
 connection. Reopening a closed window preserves that cleanup barrier; Quit drains cleanup before
 stopping the native server. Other projects' agents and the external MCP attachment have separate
-leases. Discovery and ACP readiness still do not grant model access: each broker retains the existing
-explicit project consent, remembered-client policy and CAD approval checks.
+leases. Discovery and ACP readiness alone do not grant model access. The built-in chat selects its trusted
+project policy; external brokers retain explicit pairing and remembered-client approval checks.
 
 The static web application instead connects directly to a user-provided compatible model API. No
 VibeShape AI server or hosted worker is needed. The provider must allow the browser origin through

@@ -10,7 +10,14 @@ import {
 } from "@vibeshape/domain"
 import { useFormatter } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Check, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { isInteger, isString } from "is-what"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
@@ -128,54 +135,85 @@ function VariableRowActions({
 }) {
   if (renaming) {
     return (
-      <div className="flex justify-end gap-1">
+      <div className="flex items-center justify-end gap-1">
         <Button
           type="button"
-          size="sm"
+          size="icon-xs"
           variant="ghost"
           disabled={disabled}
+          aria-label={copy.cancelRename}
+          title={copy.cancelRename}
           onClick={onCancelRename}
         >
-          {copy.cancelRename}
+          <X aria-hidden="true" />
         </Button>
         <Button
           type="button"
-          size="sm"
+          size="icon-xs"
           variant="secondary"
           disabled={disabled}
+          aria-label={copy.confirmRename}
+          title={copy.confirmRename}
           onClick={onConfirmRename}
         >
-          {copy.confirmRename}
+          <Check aria-hidden="true" />
         </Button>
       </div>
     )
   }
   return (
-    <div className="flex flex-wrap justify-end gap-1">
-      {canRename ? (
-        <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onStartRename}>
-          {copy.rename}
-        </Button>
-      ) : null}
-      <ActionAvailability
-        disabledReason={removeDisabledReason}
-        presentation="persistent"
-        reasonClassName="basis-full text-right"
-      >
-        {({ describedBy }) => (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={disabled || removeDisabled}
-            aria-describedby={describedBy}
-            onClick={onRemove}
-          >
-            {copy.remove}
-          </Button>
-        )}
-      </ActionAvailability>
-    </div>
+    <TooltipProvider>
+      <div className="flex items-center justify-end gap-1">
+        {canRename ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                disabled={disabled}
+                aria-label={copy.rename}
+                onClick={onStartRename}
+              >
+                <Pencil aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{copy.rename}</TooltipContent>
+          </Tooltip>
+        ) : null}
+        <ActionAvailability
+          disabledReason={removeDisabledReason}
+          presentation="persistent"
+          reasonClassName="sr-only"
+        >
+          {({ describedBy }) => (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <fieldset
+                  className="m-0 inline-flex min-w-0 rounded-md border-0 p-0 focus-visible:outline focus-visible:outline-ring"
+                  tabIndex={removeDisabled && !disabled ? 0 : undefined}
+                  aria-label={removeDisabled ? copy.remove : undefined}
+                  aria-describedby={describedBy}
+                >
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    disabled={disabled || removeDisabled}
+                    aria-label={copy.remove}
+                    aria-describedby={describedBy}
+                    onClick={onRemove}
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                </fieldset>
+              </TooltipTrigger>
+              <TooltipContent>{removeDisabledReason ?? copy.remove}</TooltipContent>
+            </Tooltip>
+          )}
+        </ActionAvailability>
+      </div>
+    </TooltipProvider>
   )
 }
 

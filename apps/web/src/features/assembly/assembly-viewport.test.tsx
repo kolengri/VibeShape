@@ -12,6 +12,7 @@ const ports = (() => ({
   fit: vi.fn(),
   bed: vi.fn(),
   grid: vi.fn(),
+  mode: vi.fn(),
 }))()
 const originalModule1 = { ...(await import("@vibeshape/viewer/three-viewport")) }
 mock.module("@vibeshape/viewer/three-viewport", () => {
@@ -71,6 +72,7 @@ beforeEach(() => {
     setGroundGrid: ports.grid,
     setPrintBed: ports.bed,
     setMeshes: ports.meshes,
+    setInteractionMode: ports.mode,
     setFeatureSelection: ports.highlight,
     dispose: ports.dispose,
     fit: ports.fit,
@@ -82,6 +84,50 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly viewport occurrence identity", () => {
+  it("shows only baseline occurrences with navigation and preserves framing across read-only toggles", async () => {
+    const current = inspection()
+    const baseline = { ...inspection(), occurrences: inspection().occurrences.slice(0, 2) }
+    const select = vi.fn()
+    const View = ({ readOnly, empty = false }: { readOnly: boolean; empty?: boolean }) => (
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <ViewerPreferencesProvider>
+          <AssemblyViewport
+            inspection={readOnly ? (empty ? null : baseline) : current}
+            selectedId={id(2)}
+            onSelect={select}
+            readOnly={readOnly}
+          />
+        </ViewerPreferencesProvider>
+      </I18nProvider>
+    )
+    const view = render(<View readOnly={false} />)
+    await waitFor(() => expect(ports.meshes).toHaveBeenCalled())
+    const fits = ports.fit.mock.calls.length
+    const options: GeometryViewportOptions = ports.create.mock.calls[0]?.[1]
+    view.rerender(<View readOnly />)
+    expect(ports.meshes.mock.calls.at(-1)?.[0]).toHaveLength(2)
+    expect(ports.meshes.mock.calls.at(-1)?.[0][0].positions).toBe(
+      baseline.occurrences[0]?.mesh.positions,
+    )
+    expect(ports.mode).toHaveBeenLastCalledWith("camera-only")
+    expect(ports.highlight).toHaveBeenLastCalledWith(null)
+    act(() => options.onSelectionChange?.({ featureId: id(3), faceId: 1, faceOrdinal: 1 }))
+    expect(select).not.toHaveBeenCalled()
+    expect(ports.fit).toHaveBeenCalledTimes(fits)
+    fireEvent.click(screen.getByRole("button", { name: "Fit assembly" }))
+    expect(ports.fit).toHaveBeenCalledTimes(fits + 1)
+    view.rerender(<View readOnly empty />)
+    expect(ports.meshes).toHaveBeenLastCalledWith([])
+    view.rerender(<View readOnly={false} />)
+    expect(ports.meshes.mock.calls.at(-1)?.[0]).toHaveLength(3)
+    expect(ports.mode).toHaveBeenLastCalledWith("select")
+    expect(ports.fit).toHaveBeenCalledTimes(fits + 1)
+    act(() => options.onSelectionChange?.({ featureId: id(3), faceId: 1, faceOrdinal: 1 }))
+    expect(select).toHaveBeenCalledWith(id(3))
+    expect(ports.create).toHaveBeenCalledTimes(1)
+    expect(ports.dispose).not.toHaveBeenCalled()
+  })
+
   it("updates solved preview meshes without fitting the camera or replacing the renderer", async () => {
     const select = vi.fn()
     const View = ({ value, autoFit }: { value: AssemblyInspection; autoFit: boolean }) => (

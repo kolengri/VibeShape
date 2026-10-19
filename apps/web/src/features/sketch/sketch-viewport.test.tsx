@@ -2,6 +2,7 @@ import "../../../../../tests/unit/support/dom"
 
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import type { SketchEntity, SketchEntityId, SketchRecord } from "@vibeshape/domain"
+import type { ViewerSketchPlaneProjection } from "@vibeshape/viewer/three-viewport"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import type {
   ActiveSketchSolveResult,
@@ -197,6 +198,8 @@ const noOperation = () => undefined
 type SketchViewportTestProps = Readonly<{
   interactive?: boolean
   overlay?: boolean
+  spatial?: boolean
+  cameraProjection?: ViewerSketchPlaneProjection
   controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
@@ -271,9 +274,16 @@ function viewportState(props: SketchViewportTestProps) {
 }
 
 function ProjectionProbe({
+  cameraProjection,
   onChange,
-}: Readonly<{ onChange?: (projection: SketchProjection | null) => void }>) {
+}: Readonly<{
+  cameraProjection?: ViewerSketchPlaneProjection
+  onChange?: (projection: SketchProjection | null) => void
+}>) {
   const store = useSketchProjectionStoreApi()
+  useEffect(() => {
+    if (cameraProjection) store?.getState().publishCameraProjection(cameraProjection)
+  }, [cameraProjection, store])
   useEffect(() => {
     if (!store || !onChange) return
     onChange(store.getState().projection)
@@ -303,6 +313,7 @@ function viewportElement(props: SketchViewportTestProps) {
   return (
     <SketchProjectionProvider>
       <ProjectionProbe
+        {...(props.cameraProjection ? { cameraProjection: props.cameraProjection } : {})}
         {...(props.onProjectionChange ? { onChange: props.onProjectionChange } : {})}
       />
       <I18nProvider i18n={i18n} initialLocale="en">
@@ -313,6 +324,7 @@ function viewportElement(props: SketchViewportTestProps) {
             <SketchViewport
               {...(props.interactive === undefined ? {} : { interactive: props.interactive })}
               {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
+              {...(props.spatial === undefined ? {} : { spatial: props.spatial })}
               solveSketch={props.solveSketch}
               state={viewportState(props)}
               actions={viewportActions(props)}
@@ -6401,15 +6413,16 @@ describe("SketchViewport", () => {
   })
 
   it("highlights a constraint's related geometry on pointer hover and keyboard focus", () => {
-    renderViewport({
-      draft: sketch,
-      sketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
-    })
     const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
     if (!constraint || !("lineId" in constraint)) {
       throw new Error("The rectangle fixture must contain a horizontal line constraint.")
     }
+    renderViewport({
+      draft: sketch,
+      sketch,
+      selectedEntityIds: [constraint.lineId],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
     const glyph = document.querySelector(`[data-sketch-constraint-id="${constraint.id}"]`)
     if (!glyph) throw new Error("The horizontal constraint annotation must be rendered.")
 
@@ -6429,17 +6442,18 @@ describe("SketchViewport", () => {
   })
 
   it.each(["Delete", "Backspace"])("removes a focused constraint directly with %s", (key) => {
+    const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
+    if (!constraint) throw new Error("The rectangle fixture must contain a horizontal constraint.")
     const onConstraintSelectionChange = vi.fn()
     const onDraftChange = vi.fn()
     renderViewport({
       draft: sketch,
+      selectedConstraintId: constraint.id,
       sketch,
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
       onConstraintSelectionChange,
       onDraftChange,
     })
-    const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
-    if (!constraint) throw new Error("The rectangle fixture must contain a horizontal constraint.")
     const glyph = document.querySelector(`[data-sketch-constraint-id="${constraint.id}"]`)
     if (!glyph) throw new Error("The horizontal constraint annotation must be rendered.")
 
@@ -6452,6 +6466,283 @@ describe("SketchViewport", () => {
       }),
     )
     expect(onConstraintSelectionChange).toHaveBeenLastCalledWith(null)
+  })
+
+  it("keeps the selected constraint and its endpoints highlighted without changing geometry selection", () => {
+    const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
+    if (!constraint || !("lineId" in constraint))
+      throw new Error("The fixture needs a horizontal constraint.")
+    const line = requiredSketchEntity(sketch, "line", constraint.lineId)
+    const selectedEntityIds = sketchEntitiesOfType(sketch, "line")
+      .slice(1, 3)
+      .map(({ id }) => id)
+    const onSelectionChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: sketch,
+      sketch,
+      selectedConstraintId: constraint.id,
+      selectedEntityIds,
+      onSelectionChange,
+      solveSketch,
+    })
+
+    const annotation = screen.getByRole("button", {
+      name: "Select constraint Horizontal",
+      pressed: true,
+    })
+    expect(annotation.getAttribute("aria-pressed")).toBe("true")
+    expect(annotation.className).toContain("ring-selection")
+    for (const id of [line.id, line.startPointId, line.endPointId]) {
+      expect(document.querySelector(`[data-sketch-constraint-related-entity="${id}"]`)).toBeTruthy()
+    }
+    fireEvent.pointerEnter(annotation)
+    fireEvent.pointerLeave(annotation)
+    expect(
+      document.querySelector(`[data-sketch-constraint-related-entity="${line.id}"]`),
+    ).toBeTruthy()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+
+    view.rerender(
+      viewportElement({ draft: sketch, sketch, selectedEntityIds, onSelectionChange, solveSketch }),
+    )
+    expect(document.querySelector("[data-sketch-constraint-related-entity-layer]")).toBeNull()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("shows orientation badges for selected or hovered geometry and keeps their constraint identity", async () => {
+    const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
+    if (!constraint || !("lineId" in constraint))
+      throw new Error("The fixture needs a horizontal constraint.")
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({ draft: sketch, sketch, solveSketch })
+    expect(screen.queryByRole("button", { name: "Select constraint Horizontal" })).toBeNull()
+    const line = document.querySelector(`[data-sketch-entity-id="${constraint.lineId}"]`)
+    if (!line) throw new Error("The constrained line must be rendered.")
+    fireEvent.pointerOver(line)
+    const annotation = screen.getByRole("button", { name: "Select constraint Horizontal" })
+    expect(annotation.textContent).toBe("H")
+    expect(annotation.getAttribute("data-sketch-constraint-kind")).toBe("geometric")
+    fireEvent.pointerOver(annotation)
+    await new Promise((resolve) => setTimeout(resolve, 180))
+    expect(screen.getByRole("button", { name: "Select constraint Horizontal" })).toBeTruthy()
+    fireEvent.pointerLeave(annotation.closest(".relative") ?? annotation)
+    view.rerender(
+      viewportElement({
+        draft: sketch,
+        sketch,
+        selectedEntityIds: [constraint.lineId],
+        solveSketch,
+      }),
+    )
+    expect(screen.getByRole("button", { name: "Select constraint Horizontal" })).toBeTruthy()
+  })
+
+  it("formats dimension annotations without rounding their editable source", () => {
+    const dimension = sketch.constraints.find(
+      (constraint) => constraint.type === "horizontal-distance" && "value" in constraint,
+    )
+    if (!dimension || !("value" in dimension))
+      throw new Error("The fixture needs a width dimension.")
+    const target = sketchRecordSchema.parse({
+      ...sketch,
+      constraints: sketch.constraints.map((constraint) =>
+        constraint.id === dimension.id
+          ? { ...constraint, value: createLengthQuantity(81.8451866698) }
+          : constraint,
+      ),
+    })
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      sketch: target,
+      selectedConstraintId: dimension.id,
+      onDraftChange,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const annotation = screen.getByRole("button", { name: "Edit dimension 81.845187 mm" })
+    expect(annotation.textContent).toBe("81.845187 mm")
+    fireEvent.doubleClick(annotation)
+    expect(
+      (screen.getByRole("combobox", { name: "Driving dimension expression" }) as HTMLInputElement)
+        .value,
+    ).toBe("81.8451866698 mm")
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])(
+    "moves dimension labels and extension lines with their geometry in spatial=%s",
+    (spatial) => {
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 600,
+        right: 800,
+        bottom: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      })
+      const fixture = lineSketchFixture("b295", [{ start: { x: 0, y: 0 }, end: { x: 30, y: 0 } }])
+      const line = requiredSketchEntity(fixture, "line")
+      const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b296-7a2c-8c33-000000000001")
+      const target = sketchRecordSchema.parse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId,
+            type: "distance",
+            firstPointId: line.startPointId,
+            secondPointId: line.endPointId,
+            value: createLengthQuantity(30),
+          },
+        ],
+      })
+      const cameraProjection = { a: 0.01, b: 0.002, c: 0.003, d: -0.01, e: 0.25, f: 0.65 }
+      const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+      const props = {
+        draft: target,
+        sketch: target,
+        solveSketch,
+        spatial,
+        ...(spatial ? { cameraProjection } : {}),
+      }
+      const view = renderViewport(props)
+      const annotation = screen.getByRole("button", { name: "Edit dimension 30 mm" })
+      const initial = {
+        left: Number.parseFloat(annotation.style.left),
+        top: Number.parseFloat(annotation.style.top),
+      }
+      const extension = document.querySelector(
+        `[data-sketch-linear-dimension="${constraintId}"] [data-sketch-dimension-extension="0"]`,
+      )
+      if (!extension) throw new Error("The length dimension must render extension lines.")
+      const firstX = Number(extension.getAttribute("x1"))
+      const firstY = Number(extension.getAttribute("y1"))
+      fireEvent.pointerDown(annotation, { button: 0, pointerId: 9, clientX: 400, clientY: 300 })
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: 424, clientY: 270 })
+      fireEvent.pointerUp(window, { pointerId: 9, clientX: 424, clientY: 270 })
+      const dragged = {
+        left: Number.parseFloat(annotation.style.left),
+        top: Number.parseFloat(annotation.style.top),
+      }
+      expect(dragged.left - initial.left).toBeCloseTo(24)
+      expect(dragged.top - initial.top).toBeCloseTo(-30)
+
+      const translated = {
+        ...target,
+        entities: target.entities.map((entity) =>
+          entity.type === "point" ? { ...entity, x: entity.x + 5, y: entity.y + 7 } : entity,
+        ),
+      }
+      view.rerender(viewportElement({ ...props, draft: translated, sketch: translated }))
+      const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+      const width = Number(drawing.getAttribute("viewBox")?.split(" ")[2])
+      const height = Number(drawing.getAttribute("viewBox")?.split(" ")[3])
+      const scale = Math.min(800 / width, 600 / height)
+      const delta = spatial ? { x: 56.8, y: -36 } : { x: 5 * scale, y: -7 * scale }
+      expect(Number.parseFloat(annotation.style.left) - dragged.left).toBeCloseTo(delta.x)
+      expect(Number.parseFloat(annotation.style.top) - dragged.top).toBeCloseTo(delta.y)
+      const dimension = document.querySelector(
+        `[data-sketch-linear-dimension="${constraintId}"] [data-sketch-dimension-line]`,
+      )
+      if (!dimension) throw new Error("The length dimension must render a straight dimension line.")
+      const dimensionStart = {
+        x: Number(dimension.getAttribute("x1")),
+        y: Number(dimension.getAttribute("y1")),
+      }
+      const dimensionEnd = {
+        x: Number(dimension.getAttribute("x2")),
+        y: Number(dimension.getAttribute("y2")),
+      }
+      const label = {
+        x: Number.parseFloat(annotation.style.left),
+        y: Number.parseFloat(annotation.style.top),
+      }
+      const cross =
+        (dimensionEnd.x - dimensionStart.x) * (label.y - dimensionStart.y) -
+        (dimensionEnd.y - dimensionStart.y) * (label.x - dimensionStart.x)
+      expect(cross).toBeCloseTo(0)
+      expect(Number(extension.getAttribute("x1"))).not.toBe(firstX)
+      expect(Number(extension.getAttribute("y1"))).not.toBe(firstY)
+      expect(target.constraints[0]).toEqual(translated.constraints[0])
+      if (!spatial) {
+        const beforeZoom = annotation.style.top
+        fireEvent.wheel(drawing, { clientX: 400, clientY: 300, deltaY: -100 })
+        expect(annotation.style.top).not.toBe(beforeZoom)
+        expect(Number(dimension.getAttribute("y1"))).toBeCloseTo(
+          Number.parseFloat(annotation.style.top),
+        )
+      }
+    },
+  )
+
+  it("keeps dimension labels connected to an immediate point drag while the solver is pending", async () => {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const constraint = sketch.constraints.find(
+      (candidate) => candidate.type === "horizontal-distance",
+    )
+    if (!constraint || !("firstPointId" in constraint))
+      throw new Error("The fixture needs a width dimension.")
+    const solveSketch = vi
+      .fn()
+      .mockResolvedValueOnce(solveResult())
+      .mockImplementation(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    renderViewport({ draft: sketch, sketch, selectedConstraintId: constraint.id, solveSketch })
+    await screen.findByText("Fully constrained")
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    const point = document.querySelector(
+      `circle[data-sketch-entity-id="${constraint.firstPointId}"]`,
+    )
+    if (!point) throw new Error("The dimension endpoint must be rendered.")
+    const label = screen.getByRole("button", { name: "Edit dimension 30 mm" })
+    const initial = {
+      x: Number.parseFloat(label.style.left),
+      y: Number.parseFloat(label.style.top),
+    }
+    fireEvent.pointerDown(point, { pointerId: 9 })
+    fireEvent.pointerMove(drawing, {
+      ...clientPointForSketch(drawing, { x: 10, y: 10 }),
+      pointerId: 9,
+      shiftKey: true,
+    })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The immediate drag must schedule a presentation frame.")
+    act(() => frame(0))
+    expect(Number.parseFloat(label.style.left) - initial.x).toBeCloseTo(20)
+    expect(Number.parseFloat(label.style.top) - initial.y).toBeCloseTo(-20)
+    const line = document.querySelector(
+      `[data-sketch-linear-dimension="${constraint.id}"] [data-sketch-dimension-line]`,
+    )
+    expect(Number(line?.getAttribute("y1"))).toBeCloseTo(Number.parseFloat(label.style.top))
+    expect(label.textContent).toBe("30 mm")
+    fireEvent.pointerCancel(drawing, { pointerId: 9 })
+    const released = {
+      x: Number.parseFloat(label.style.left),
+      y: Number.parseFloat(label.style.top),
+    }
+    fireEvent.pointerDown(label, { button: 0, pointerId: 10, clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(window, { pointerId: 10, clientX: 424, clientY: 270 })
+    fireEvent.pointerUp(window, { pointerId: 10, clientX: 424, clientY: 270 })
+    expect(Number.parseFloat(label.style.left) - released.x).toBeCloseTo(24)
+    expect(Number.parseFloat(label.style.top) - released.y).toBeCloseTo(-30)
   })
 
   it("renders a line relation to projected geometry as an external selectable constraint", async () => {
@@ -7021,14 +7312,26 @@ describe("SketchViewport", () => {
   })
 
   it("places and commits a driving dimension without focusing the task panel", async () => {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
     const selectedLine = requiredSketchEntity(sketch, "line")
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: sketch,
       editorTool: "dimension",
       sketch,
       selectedEntityIds: [selectedLine.id],
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -7047,7 +7350,11 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, { clientX: 520, clientY: 240 })
     fireEvent.pointerDown(drawing, { button: 0, clientX: 520, clientY: 240 })
 
-    expect(document.querySelector("[data-sketch-dimension-placement-preview]")).toBeTruthy()
+    const preview = document.querySelector("[data-sketch-dimension-placement-preview]")
+    expect(preview?.querySelectorAll("[data-sketch-dimension-line]")).toHaveLength(1)
+    expect(preview?.querySelectorAll("[data-sketch-dimension-extension]")).toHaveLength(2)
+    expect(preview?.querySelectorAll("[data-sketch-dimension-tick]")).toHaveLength(2)
+    expect(preview?.querySelector("[stroke-dasharray], circle")).toBeNull()
     expect(screen.getByRole("form", { name: "Dimension value" })).toBeTruthy()
     const expression = screen.getByRole("combobox", { name: "Driving dimension expression" })
     fireEvent.change(expression, { target: { value: "42 mm" } })
@@ -7066,6 +7373,11 @@ describe("SketchViewport", () => {
         }),
       ),
     )
+    const saved = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    view.rerender(viewportElement({ draft: saved, sketch: saved, solveSketch, onDraftChange }))
+    const label = screen.getByRole("button", { name: "Edit dimension 42 mm" })
+    expect(Number.parseFloat(label.style.left)).toBeCloseTo(520)
+    expect(Number.parseFloat(label.style.top)).toBeCloseTo(240)
   })
 
   it("cancels dimension input, collected geometry, and the tool in separate Escape stages", () => {

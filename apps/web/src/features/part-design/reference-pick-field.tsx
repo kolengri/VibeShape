@@ -3,6 +3,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { type FocusEventHandler, type ReactNode, useLayoutEffect, useRef, useState } from "react"
 import { useReferencePicking } from "../../shell/reference-pick-context"
 import type { ReferencePickCandidate } from "../../shell/reference-picking"
@@ -81,7 +82,14 @@ function ReferenceSelectControl({
       aria-describedby={describedBy}
       aria-invalid={field.error ? true : undefined}
       onBlur={field.onBlur}
-      className={compact ? "w-9 px-0 text-transparent [&_option]:text-foreground" : undefined}
+      className={
+        compact
+          ? cn(
+              "h-full w-full rounded-l-none border-0 border-l border-input px-0",
+              "bg-transparent text-transparent dark:bg-transparent [&_option]:bg-background [&_option]:text-foreground",
+            )
+          : undefined
+      }
       onChange={(event) => {
         onBeforeChange?.()
         field.onValueChange(event.currentTarget.value)
@@ -144,13 +152,21 @@ function ReferencePickControls({
     field.options.find((option) => option.value === field.value)?.label ?? field.placeholder
   return (
     <>
-      <div className="flex min-w-0 items-center gap-1">
+      <div
+        data-active={binding.active || undefined}
+        data-invalid={Boolean(field.error) || undefined}
+        className={cn(
+          "flex h-8 min-w-0 rounded-md border border-input bg-background",
+          "focus-within:border-ring data-[active=true]:border-ring data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[invalid=true]:border-destructive",
+          "[&>[data-slot=native-select-wrapper]]:h-full [&>[data-slot=native-select-wrapper]]:w-9 [&>[data-slot=native-select-wrapper]]:shrink-0",
+        )}
+      >
         <Button
           ref={binding.buttonRef}
           type="button"
           variant="outline"
           size="sm"
-          className="min-w-0 flex-1 justify-start font-normal aria-pressed:border-ring aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+          className="h-full min-w-0 flex-1 justify-start rounded-r-none border-0 bg-transparent font-normal shadow-none"
           aria-label={t("pick", { field: field.label })}
           aria-pressed={binding.active}
           aria-describedby={describedBy}

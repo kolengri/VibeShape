@@ -13,7 +13,9 @@ not exchange authority under asynchronous work. Manual reviews remain with their
 tab is selected. Each embedded native MCP attachment uses its own private credential and broker,
 which rejects a foreign document during consent and rejects project-management operations. The
 separately copied external MCP configuration retains its existing single-client, active-project
-scope. ACP readiness, MCP attachment, project access and auto-apply approval remain distinct states.
+scope. ACP readiness, MCP attachment and project authority remain distinct states. Connecting a built-in
+chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
+external clients retain their separate approval policy.
 
 Pending solid-feature CAD reviews present their exact draft geometry in the owning project's viewport before
 Apply. This presentation is disposable: it does not create a saved revision, grant selection
@@ -103,6 +105,15 @@ requires the resulting snapshot to equal the exact draft before writing. Success
 the saved revision to the editor and create one undo checkpoint; typed failures release the save lock
 and reconcile lost writer access. An unexpected rejection means the commit could not be confirmed,
 not proof that no write occurred.
+
+Successful private draft commands request an exact disposable viewport rebuild before returning.
+Valid geometry is projected through the owning project's review controller without opening Apply,
+writing storage or changing the committed model tree. This adds an exact rebuild per construction
+step; incomplete or invalid intermediate geometry leaves no new presentation. Explicit preview
+continues to return its validation diagnostics. Presentation buffers are replaced on later commands
+and released on discard, cancellation, disposal, review or a changed saved base. The committed
+worker remains untouched. Draft state includes additive optional command-budget metadata; the
+normal 64-command limit includes corrections and bounds one transaction, not model complexity.
 
 The browser handle cancels private calculations when its committed revision changes and disposes
 them when its owning document session closes or the page exits. An external transport replaces its
@@ -323,8 +334,9 @@ Local static reads are available before pairing. Remote static reads retain the 
 
 The required review port receives detached parsed commands, actor identity, and an exact version-2
 preview only after whole-draft geometry is valid. It returns one validated decision: approved,
-rejected, or cancelled. There is no client approval field, reusable approval token, or production
-always-approve fallback. The host serializes draft operations while review is pending and rechecks
+rejected, or cancelled. There is no client approval field or reusable approval token. External clients use the browser
+review policy. The built-in chat explicitly selects a host-owned connected-assistant policy for
+its captured project; this is not selected through tool arguments or a failure fallback. The host serializes draft operations while review is pending and rechecks
 the committed revision and expiry after approval, before crossing the ordinary persistence port.
 
 The browser renders the review in its responsive task panel, with command summaries, common authored
@@ -334,10 +346,10 @@ owned draft. Expiry, a changed document, or session closure cancels a pending re
 bounded message that can be dismissed. A request-specific UI identity prevents an old button from
 approving a later review. Only one session can own the confirmation surface at a time.
 
-An idle paired user may explicitly opt in to the supported first-party CAD scope in
+For external clients, an idle paired user may explicitly opt in to the supported first-party CAD scope in
 [ADR-0099](../adr/0099-complete-session-cad-auto-apply.md), including feature/sketch/variable lifecycle
 edits and removal, supported schema upgrades and all shipped CAD feature versions. Import features,
-metadata and separate review services retain their existing manual-review contracts. The browser
+metadata and separate review services retain their existing manual-review contracts for external clients. The browser
 then approves qualifying valid drafts through the same review port, with a persistent Auto-apply on
 indicator and Stop AI control. An existing review cannot acquire this grant retroactively. All
 other drafts keep the review surface above; explicit Stop AI clears local access and its remembered preference. Local access and the latest
@@ -356,7 +368,7 @@ Once the ordinary atomic persistence operation has started, cancellation is not 
 The editor keeps action controls locked while it completes. Unexpected persistence failures remain
 explicitly unconfirmed; they are not converted into a claim that storage was unchanged. Transport
 pairing, request cancellation, revocation, and closed-browser behavior still need a real client test.
-The first review presents semantic summaries and metrics, not a general visual geometry diff or a
+The external review presents semantic summaries and metrics, not a general visual geometry diff or a
 complete topology inspector. Command-specific MCP exposure must respect that inspection scope.
 
 ## Draft, preview, and commit
@@ -390,10 +402,9 @@ The browser still needs an explicit local session with the bridge. The initial a
 
 The embedded native ACP assistant automatically establishes that session through its private
 project-bound attachment under [ADR-0115](../adr/0115-automatic-native-project-mcp-access.md). Its
-stable internal server name avoids collisions with external provider configuration. Native access
-and approval preferences are isolated per project; initial access enables reads and proposals with
-manual Apply. Explicit Stop persists across reload until Enable AI session. This policy uses the
-ordinary broker, credentials, exact previews, revisions and review path; it grants no project
+stable internal server name avoids collisions with external provider configuration. Native access is isolated per project. Connecting the built-in chat authorizes its validated model
+commits without separate Apply prompts under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md). Explicit Stop persists across reload until Enable AI session. This policy uses the
+ordinary broker, credentials, exact previews, revisions and commit path; it grants no project
 management authority. External clients retain the initial pairing action below.
 
 The loopback origin has these requirements:
@@ -494,7 +505,7 @@ unchanged. See [ADR-0077](../adr/0077-mirror-copies-and-draft-shell-selection.md
 ## Security and privacy
 
 The user explicitly pairs an external client and chooses which document sessions are shared. The
-embedded native assistant receives only its own project's default access under ADR-0115. Pairing one
+embedded native assistant receives only its own project's connected model authority under ADR-0116. Pairing one
 document does not expose the project library, recent files, other tabs, extension storage, or browser
 origin data.
 
@@ -503,7 +514,7 @@ The bridge and application enforce:
 - deny-by-default tool and resource exposure;
 - runtime validation at MCP, loopback, query, command, worker, and extension boundaries;
 - user-visible invocation and commit history;
-- explicit confirmation for mutating and destructive work;
+- model-write authorization from built-in chat connection or the external browser approval policy;
 - revision preconditions and idempotency keys;
 - prompt and resource size limits plus pagination;
 - redaction of paths, tokens, private extension data, and diagnostic internals;
@@ -582,7 +593,7 @@ and manual Apply under [ADR-0089](../adr/0089-owned-assembly-and-library-mcp-dra
 authoring uses the native relief proposal path under [ADR-0090](../adr/0090-owned-surface-texture-mcp-proposals.md).
 Prepared binary exports are shared by both transports; the legacy monolithic export remains local.
 
-Manual review remains the default. The browser-owned explicit session grant additionally permits
+For external MCP clients, manual review remains the default. The browser-owned explicit session grant additionally permits
 Union schema v2 and Loft schema v1/v2/v3 creation and same-version updates. Actor/document matching,
 valid exact preview, unsuppressed matching prior versions, expiry and persistence remain mandatory.
 Compound, version upgrades and future feature versions require manual review.

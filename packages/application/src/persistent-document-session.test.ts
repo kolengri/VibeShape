@@ -17,6 +17,7 @@ import {
 import { runtimeProjection } from "./authority-persistence-operations"
 import {
   createPersistentDocumentSession,
+  type DocumentHistoryPort,
   type DocumentLeasePort,
   type DocumentRebuildPort,
   openPersistentDocumentSession,
@@ -304,6 +305,117 @@ async function createSession(
 }
 
 describe("persistent document session", () => {
+  it("reports a checkpoint-budget rejection as an unsaved typed failure without advancing the session", async () => {
+    const state = harness(),
+      { session } = await createSession(state.dependencies)
+    state.repository.commit = async () =>
+      portFailure(
+        "checkpoint-budget-exceeded",
+        "The model change exceeds the assistant checkpoint limit and was not saved.",
+      )
+    expect(await session.commit(renameCommand(1, "01"))).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "persistence-failed",
+        sourceCode: "checkpoint-budget-exceeded",
+        message: "The model change exceeds the assistant checkpoint limit and was not saved.",
+      },
+    })
+    expect(session.snapshot.revision).toBe(1)
+    expect(session.hasPendingOperations).toBe(false)
+    await session.close()
+  })
+
+  it("settles exactly the accepted queue position while later work remains pending", async () => {
+    const state = harness(),
+      { session } = await createSession(state.dependencies)
+    const commit = state.repository.commit.bind(state.repository)
+    let releaseFirst!: () => void, releaseLater!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const laterGate = new Promise<void>((resolve) => {
+      releaseLater = resolve
+    })
+    let calls = 0
+    state.repository.commit = async (input) => {
+      await (++calls === 1 ? firstGate : laterGate)
+      return commit(input)
+    }
+    const first = session.commit(renameCommand(1, "01"))
+    expect(session.hasPendingOperations).toBe(true)
+    const boundary = session.settleAcceptedOperations()
+    const later = session.commit(renameCommand(2, "02"))
+    releaseFirst()
+    expect((await first).ok).toBe(true)
+    expect(await boundary).toBe(2)
+    expect(session.hasPendingOperations).toBe(true)
+    releaseLater()
+    expect((await later).ok).toBe(true)
+    expect(session.hasPendingOperations).toBe(false)
+    expect(await session.settleAcceptedOperations()).toBe(3)
+    await session.close()
+  })
+
+  it("queues internal checkpoint restoration behind saved work and renews the ordinary writer lease before one publication", async () => {
+    const state = harness(),
+      handle = { id: Symbol("owned-checkpoint") }
+    let restores = 0
+    const history: DocumentHistoryPort = {
+      availability: { canUndo: false, canRedo: false },
+      navigate: async () =>
+        portFailure("unexpected", "Ordinary stack navigation was not requested."),
+      checkpoints: {
+        seal: () => true,
+        capture: () => handle,
+        read: () => ({ revision: state.repository.snapshot?.revision ?? 0, changed: true }),
+        preview: () => null,
+        release() {},
+        async restore(input) {
+          restores += 1
+          expect(input.handle).toBe(handle)
+          expect(input.lease.epoch).toBe(state.leases.epoch)
+          const snapshot = {
+            ...input.baseSnapshot,
+            name: "Bracket",
+            revision: input.baseSnapshot.revision + 1,
+          }
+          state.repository.snapshot = snapshot
+          return { ok: true, value: snapshot }
+        },
+      },
+    }
+    Object.assign(state.repository, { history })
+    const { session } = await createSession(state.dependencies)
+    expect(session.captureHistoryCheckpoint(() => true)).toBe(handle)
+    await session.commit(renameCommand(1, "01"))
+    const request = {
+      direction: "undo",
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f2301",
+      documentId,
+      baseRevision: 2,
+      issuedAt: timestamp,
+      actor: { type: "user", userId: null },
+    }
+    const pendingEdit = session.commit(renameCommand(2, "02"))
+    const stale = session.restoreHistoryCheckpoint(handle, request)
+    expect((await pendingEdit).ok).toBe(true)
+    expect(await stale).toMatchObject({ ok: false, diagnostic: { sourceCode: "stale-revision" } })
+    expect(restores).toBe(0)
+    state.leases.ownerId = sessionB
+    expect(
+      (await session.restoreHistoryCheckpoint(handle, { ...request, baseRevision: 3 })).ok,
+    ).toBe(false)
+    expect(restores).toBe(0)
+    state.leases.ownerId = sessionA
+    const result = await session.restoreHistoryCheckpoint(handle, { ...request, baseRevision: 3 })
+    expect(result).toMatchObject({ ok: true, snapshot: { revision: 4, name: "Bracket" } })
+    expect(restores).toBe(1)
+    expect(state.rebuildPorts[0]?.revisions.at(-1)).toBe(4)
+    await session.close()
+    expect(session.readHistoryCheckpoint(handle)).toBeNull()
+  })
+
   it("validates domain-only drafts without renewing a lease, saving, or rebuilding", async () => {
     const state = harness()
     const created = await createSession(state.dependencies)

@@ -7,6 +7,7 @@ export function AssistantIconAction({
   children,
   disabled = false,
   expanded,
+  pressed,
   onAction,
   primary = false,
 }: {
@@ -14,6 +15,7 @@ export function AssistantIconAction({
   children: ReactNode
   disabled?: boolean
   expanded?: boolean
+  pressed?: boolean
   onAction: () => void | Promise<void>
   primary?: boolean
 }) {
@@ -23,9 +25,10 @@ export function AssistantIconAction({
         <Button
           type="button"
           size="icon-sm"
-          variant={primary ? "default" : "ghost"}
+          variant={primary ? "default" : pressed ? "secondary" : "ghost"}
           aria-label={label}
           aria-expanded={expanded}
+          aria-pressed={pressed}
           disabled={disabled}
           onClick={onAction}
         >

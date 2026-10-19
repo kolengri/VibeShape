@@ -8,6 +8,7 @@ import {
   createLengthQuantity,
   featureRecordSchema,
 } from "@vibeshape/domain"
+import type { CommandActor } from "@vibeshape/domain/commands"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentV2MetadataChange } from "@vibeshape/domain/document-v2-command-schemas"
 import { applyDocumentUpgradeV2Command } from "@vibeshape/domain/document-v2-migration"
@@ -20,6 +21,7 @@ import {
   sessionIdSchema,
 } from "@vibeshape/domain/identifiers"
 import { sourceAssetSchema } from "@vibeshape/domain/source-assets"
+import { vi } from "../../../tests/unit/support/bun-test"
 import {
   historyRepairFixture,
   repairId,
@@ -32,6 +34,7 @@ import {
   createAuthorityPersistenceAdapter,
 } from "./authority-persistence-adapter"
 import { runtimeProjection } from "./authority-persistence-operations"
+import { DocumentUndoHistory } from "./document-undo-history"
 import {
   type DocumentHistoryPreview,
   PersistentDocumentSession,
@@ -118,14 +121,21 @@ function fixture(seed: DocumentAuthoritySnapshot = initial().v2) {
   let stored = seed
   let failWrite = false
   let identity = 200
+  let publicationAttempts = 0
   const writes: AuthorityCommitInput[] = []
   const drafts: AuthorityDraftInput[] = []
   const repository: AuthorityDocumentRepositoryPort = {
     async commit(input) {
+      publicationAttempts += 1
+      if (failWrite)
+        return { ok: false, diagnostic: { code: "quota", message: "full", retryable: true } }
       stored = input.snapshot
       return { ok: true, value: undefined }
     },
     async commitDraft(input) {
+      publicationAttempts += 1
+      if (failWrite)
+        return { ok: false, diagnostic: { code: "quota", message: "full", retryable: true } }
       stored = input.snapshot
       return { ok: true, value: undefined }
     },
@@ -136,6 +146,7 @@ function fixture(seed: DocumentAuthoritySnapshot = initial().v2) {
       return { ok: true, value: undefined }
     },
     async commitAuthority(input) {
+      publicationAttempts += 1
       writes.push(input)
       if (failWrite)
         return { ok: false, diagnostic: { code: "quota", message: "full", retryable: true } }
@@ -143,6 +154,7 @@ function fixture(seed: DocumentAuthoritySnapshot = initial().v2) {
       return { ok: true, value: undefined }
     },
     async commitAuthorityDraft(input) {
+      publicationAttempts += 1
       drafts.push(input)
       if (failWrite)
         return { ok: false, diagnostic: { code: "quota", message: "full", retryable: true } }
@@ -213,6 +225,7 @@ function fixture(seed: DocumentAuthoritySnapshot = initial().v2) {
     })
   return {
     adapter,
+    publicationAttempts: () => publicationAttempts,
     repository,
     writes,
     drafts,
@@ -230,6 +243,295 @@ function part(snapshot: DocumentAuthoritySnapshot) {
   if (snapshot.schemaVersion === 1 || !snapshot.parts[0]) throw new Error("Missing authored part")
   return snapshot.parts[0]
 }
+
+const assistantActor = { type: "mcp", clientId: "org.vibeshape.assistant", sessionId } as const
+async function checkpointRename(
+  f: ReturnType<typeof fixture>,
+  n: number,
+  name: string,
+  by: CommandActor = assistantActor,
+) {
+  const base = f.runtime()
+  const changed = success(
+    applyDocumentCommand(base, {
+      ...f.envelope(n),
+      schemaVersion: 1,
+      actor: by,
+      kind: "org.vibeshape.document.rename",
+      payload: { name },
+    }),
+  )
+  success(
+    await f.adapter.commit({
+      sessionId,
+      lease,
+      storedAt: issuedAt,
+      baseSnapshot: base,
+      event: changed.event,
+      snapshot: changed.snapshot,
+    }),
+  )
+}
+
+describe("internal assistant history checkpoints", () => {
+  it.each([1, 2])(
+    "rejects v%s publication before repository access and preserves the last saved checkpoint on quota or budget failure",
+    async (version) => {
+      const f = fixture(version === 1 ? initial().v1 : initial().v2),
+        checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing checkpoint port")
+      const handle = checkpoints.capture((value) => value.type === "mcp")
+      if (!handle) throw new Error("Missing baseline")
+      await checkpointRename(f, 1401, "Checkpoint budget fixture")
+      const base = f.runtime(),
+        savedAuthority = f.current()
+      const command = {
+        ...f.envelope(1402),
+        schemaVersion: 1,
+        actor: assistantActor,
+        kind: "org.vibeshape.document.rename",
+        payload: { name: "Rejected unsaved change" },
+      }
+      const change = success(applyDocumentCommand(base, command))
+      const input = {
+        sessionId,
+        lease,
+        storedAt: issuedAt,
+        baseSnapshot: base,
+        event: change.event,
+        snapshot: change.snapshot,
+      }
+      const original = DocumentUndoHistory.prototype.permitsPublication
+      let blocked = false
+      const policy = vi
+        .spyOn(DocumentUndoHistory.prototype, "permitsPublication")
+        .mockImplementation(function (this: DocumentUndoHistory, before, after, actors) {
+          return before.name === "Checkpoint budget fixture" && blocked
+            ? false
+            : original.call(this, before, after, actors)
+        })
+      try {
+        // A real repository failure leaves actor/head ownership and the saved Undo untouched.
+        f.fail(true)
+        expect((await f.adapter.commit(input)).ok).toBe(false)
+        f.fail(false)
+        const writes = f.writes.length,
+          drafts = f.drafts.length,
+          attempts = f.publicationAttempts()
+        blocked = true
+        const failure = {
+          ok: false,
+          diagnostic: {
+            code: "checkpoint-budget-exceeded",
+            message: "The model change exceeds the assistant checkpoint limit and was not saved.",
+          },
+        }
+        expect(await f.adapter.commit(input)).toMatchObject(failure)
+        expect(
+          await f.adapter.commitDraft({
+            ...input,
+            transactionId: draftIdSchema.parse(id(1403)),
+            events: [change.event],
+          }),
+        ).toMatchObject(failure)
+        if (version === 2) {
+          expect(
+            await f.adapter.authoredTransaction.apply({
+              sessionId,
+              lease,
+              baseSnapshot: base,
+              command: { transactionId: id(1404), commands: [command] },
+            }),
+          ).toMatchObject(failure)
+          expect(
+            await f.adapter.authoredMetadata.apply({
+              sessionId,
+              lease,
+              baseSnapshot: base,
+              command: {
+                ...f.envelope(1405),
+                actor: assistantActor,
+                kind: "org.vibeshape.document.metadata-command",
+                payload: {
+                  kind: "part.rename",
+                  partId: part(savedAuthority).id,
+                  name: "Unsaved part",
+                },
+              },
+            }),
+          ).toMatchObject(failure)
+        }
+        expect(f.current()).toEqual(savedAuthority)
+        expect(f.publicationAttempts()).toBe(attempts)
+        expect(f.writes).toHaveLength(writes)
+        expect(f.drafts).toHaveLength(drafts)
+        expect(checkpoints.read(handle)).toEqual({
+          revision: savedAuthority.revision,
+          changed: true,
+        })
+        blocked = false
+        success(await f.adapter.commit(input))
+        expect(checkpoints.read(handle)).toEqual({
+          revision: savedAuthority.revision + 1,
+          changed: true,
+        })
+      } finally {
+        policy.mockRestore()
+      }
+    },
+  )
+
+  it.each([1, 2, 4, 5])(
+    "restores a whole saved series once and makes it redoable for authority v%s",
+    async (version) => {
+      const seed =
+        version === 1
+          ? initial().v1
+          : version === 2
+            ? initial().v2
+            : version === 4
+              ? assetAuthority()
+              : historyRepairFixture()
+      const f = fixture(seed)
+      const checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing internal checkpoint port.")
+      const handle = checkpoints.capture(
+        (value) => value.type === "mcp" && value.sessionId === sessionId,
+      )
+      if (!handle) throw new Error("Missing captured baseline.")
+      expect(checkpoints.read(handle)).toEqual({ revision: seed.revision, changed: false })
+      await checkpointRename(f, 901, "First assistant save")
+      await checkpointRename(f, 902, "Second assistant save")
+      const resultRevision = f.current().revision
+      expect(checkpoints.read(handle)).toEqual({ revision: resultRevision, changed: true })
+      const availability = { ...f.adapter.history.availability },
+        savedWrites = f.writes.length
+      const preview = checkpoints.preview(handle)
+      if (!preview) throw new Error("Missing internal before-view target.")
+      expect(preview.authority).toEqual(seed)
+      mutatePreviewTarget(preview)
+      expect(checkpoints.preview(handle)?.authority).toEqual(seed)
+      expect(f.writes).toHaveLength(savedWrites)
+      expect(f.adapter.history.availability).toEqual(availability)
+      const before = f.current()
+      success(
+        await checkpoints.restore({
+          handle,
+          sessionId,
+          lease,
+          baseSnapshot: f.runtime(),
+          request: {
+            direction: "undo",
+            commandId: commandIdSchema.parse(id(903)),
+            documentId: seed.id,
+            baseRevision: resultRevision,
+            issuedAt,
+            actor,
+          },
+        }),
+      )
+      expect(f.current()).toMatchObject({
+        name: seed.name,
+        revision: resultRevision + 1,
+        features: seed.features,
+        history: seed.history,
+      })
+      expect(checkpoints.read(handle)).toBeNull()
+      expect(f.adapter.history.availability.canRedo).toBe(true)
+      success(await f.navigate(904, "redo"))
+      expect(f.current()).toMatchObject({
+        name: before.name,
+        revision: resultRevision + 2,
+        history: before.history,
+      })
+    },
+  )
+
+  it("pins a baseline beyond ordinary Undo retention and rejects forged, stale, or failed restore requests", async () => {
+    const f = fixture(),
+      baseline = f.current()
+    const checkpoints = f.adapter.history.checkpoints
+    if (!checkpoints) throw new Error("Missing internal checkpoint port.")
+    const handle = checkpoints.capture((value) => value.type === "mcp")
+    if (!handle) throw new Error("Missing captured baseline.")
+    for (let n = 0; n < 105; n += 1) await checkpointRename(f, 1000 + n, `Saved stage ${n}`)
+    const request = {
+      direction: "undo" as const,
+      commandId: commandIdSchema.parse(id(1200)),
+      documentId: baseline.id,
+      baseRevision: f.current().revision,
+      issuedAt,
+      actor,
+    }
+    const input = { handle, sessionId, lease, baseSnapshot: f.runtime(), request }
+    const count = f.writes.length
+    expect((await checkpoints.restore({ ...input, handle: { id: Symbol("forged") } })).ok).toBe(
+      false,
+    )
+    expect(
+      (
+        await checkpoints.restore({
+          ...input,
+          request: { ...request, baseRevision: baseline.revision },
+        })
+      ).ok,
+    ).toBe(false)
+    expect(f.writes).toHaveLength(count)
+    f.fail(true)
+    expect((await checkpoints.restore(input)).ok).toBe(false)
+    expect(checkpoints.read(handle)).toEqual({ revision: request.baseRevision, changed: true })
+    f.fail(false)
+    success(await checkpoints.restore(input))
+    expect(f.current()).toMatchObject({ name: baseline.name, revision: request.baseRevision + 1 })
+    expect(f.writes.at(-1)?.event).toMatchObject({
+      type: "org.vibeshape.document.restored",
+      targetRevision: baseline.revision,
+    })
+  })
+
+  it.each(["human", "rotated", "unavailable"])(
+    "refuses to undo intervening %s authority without overwriting it",
+    async (kind) => {
+      const f = fixture(),
+        checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing internal checkpoint port.")
+      let available = true
+      const handle = checkpoints.capture((value) => {
+        if (!available) throw new Error("Actor owner unavailable")
+        return value.type === "mcp"
+      })
+      if (!handle) throw new Error("Missing captured baseline.")
+      await checkpointRename(f, 1301, "Assistant save")
+      if (kind === "unavailable") available = false
+      const by =
+        kind === "human" ? actor : { ...assistantActor, sessionId: sessionIdSchema.parse(id(91)) }
+      await checkpointRename(f, 1302, "Intervening save", by)
+      expect(checkpoints.read(handle)).toBeNull()
+      const count = f.writes.length,
+        before = f.current()
+      expect(
+        (
+          await checkpoints.restore({
+            handle,
+            sessionId,
+            lease,
+            baseSnapshot: f.runtime(),
+            request: {
+              direction: "undo",
+              commandId: commandIdSchema.parse(id(1303)),
+              documentId: before.id,
+              baseRevision: before.revision,
+              issuedAt,
+              actor,
+            },
+          })
+        ).ok,
+      ).toBe(false)
+      expect(f.current()).toEqual(before)
+      expect(f.writes).toHaveLength(count)
+    },
+  )
+})
 
 function validationSession(f: ReturnType<typeof fixture>) {
   const unexpected = async (): Promise<never> => {

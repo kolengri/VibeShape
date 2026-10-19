@@ -1,6 +1,6 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
-import { MessageSquarePlus, Settings, X } from "@vibeshape/ui/components/icons"
+import { Eye, EyeOff, MessageSquarePlus, Settings, Undo2, X } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { type ReactNode, useId, useState } from "react"
 import { useReportApplicationError } from "../shell/application-notices"
@@ -26,6 +26,58 @@ type AssistantPanelProps = AssistantComposerProps & {
   storageFailed: boolean
   onClose: () => void
   onReset: () => Promise<void>
+  canUndoAgentChanges?: boolean
+  undoingAgentChanges?: boolean
+  viewingBefore?: boolean
+  preparingBefore?: boolean
+  onUndoAgentChanges?: () => Promise<boolean>
+  onViewBefore?: () => Promise<boolean>
+}
+
+type AssistantCheckpointState = Pick<
+  AssistantPanelProps,
+  | "canUndoAgentChanges"
+  | "undoingAgentChanges"
+  | "viewingBefore"
+  | "preparingBefore"
+  | "onUndoAgentChanges"
+  | "onViewBefore"
+  | "busy"
+>
+
+function AssistantCheckpointActions({ checkpoint }: { checkpoint: AssistantCheckpointState }) {
+  const t = useTranslations("app.assistant")
+  if (!checkpoint.canUndoAgentChanges) return null
+  const disabled = Boolean(
+    checkpoint.busy || checkpoint.undoingAgentChanges || checkpoint.preparingBefore,
+  )
+  return (
+    <>
+      {checkpoint.onViewBefore && (
+        <AssistantIconAction
+          label={t(checkpoint.viewingBefore ? "viewCurrent" : "viewBefore")}
+          pressed={Boolean(checkpoint.viewingBefore)}
+          disabled={disabled}
+          onAction={async () => {
+            await checkpoint.onViewBefore?.()
+          }}
+        >
+          {checkpoint.viewingBefore ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+        </AssistantIconAction>
+      )}
+      {checkpoint.onUndoAgentChanges && (
+        <AssistantIconAction
+          label={t("undoAgentChanges")}
+          disabled={disabled}
+          onAction={async () => {
+            await checkpoint.onUndoAgentChanges?.()
+          }}
+        >
+          <Undo2 aria-hidden="true" />
+        </AssistantIconAction>
+      )}
+    </>
+  )
 }
 
 function AssistantHeader({
@@ -36,6 +88,7 @@ function AssistantHeader({
   onClose,
   onReset,
   canReset,
+  checkpoint,
 }: {
   titleId: string
   projectName: string
@@ -44,6 +97,7 @@ function AssistantHeader({
   onClose: () => void
   onReset: () => Promise<void>
   canReset: boolean
+  checkpoint: AssistantCheckpointState
 }) {
   const t = useTranslations("app.assistant")
   return (
@@ -54,6 +108,7 @@ function AssistantHeader({
         </h2>
         <p className="truncate text-xs text-muted-foreground">{projectName}</p>
       </div>
+      <AssistantCheckpointActions checkpoint={checkpoint} />
       <AssistantIconAction label={t("newChat")} disabled={!canReset} onAction={onReset}>
         <MessageSquarePlus aria-hidden="true" />
       </AssistantIconAction>
@@ -124,6 +179,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
           onClose={props.onClose}
           onReset={props.onReset}
           canReset={!props.busy && !props.queuedMessages?.length && props.messages.length > 0}
+          checkpoint={props}
         />
         {(settingsOpen || !props.canSend) && (
           <section

@@ -27,6 +27,8 @@ export const automationReviews: ReviewController = {
   cancel: (...args) => active.cancel(...args),
   complete: (...args) => active.complete(...args),
   clearDraftViewport: (...args) => active.clearDraftViewport(...args),
+  presentDraftViewport: (...args) => active.presentDraftViewport(...args),
+  getDraftViewportSnapshot: () => active.getDraftViewportSnapshot(),
   dismiss: (...args) => active.dismiss(...args),
   getSnapshot: () => active.getSnapshot(),
   subscribe(listener) {

@@ -3,11 +3,64 @@ import {
   assistantPromptSchema,
   assistantQuestionResponseSchema,
   assistantRequestSchema,
+  assistantResultSchema,
 } from "./assistant"
 
 const scope = { projectId: "project", sessionToken: "session" }
 
 describe("assistant input boundary", () => {
+  it("keeps steering scoped and idempotent while preserving exact prompt data", () => {
+    const input = {
+      ...scope,
+      requestId: "queued-item",
+      text: "  Exact direction\n",
+      attachments: [
+        {
+          id: "file",
+          name: "notes.txt",
+          type: "text" as const,
+          mimeType: "text/plain",
+          text: "Exact\nbytes ",
+        },
+      ],
+    }
+    const parsed = assistantRequestSchema.parse({ operation: "steer", input })
+    expect(parsed).toEqual({ operation: "steer", input })
+    const { requestId: _, ...missingId } = input
+    for (const invalid of [
+      missingId,
+      { ...input, requestId: "x".repeat(257) },
+      { ...input, autoApply: true },
+      { ...input, attachments: [{ ...input.attachments[0], path: "/private/file" }] },
+    ])
+      expect(assistantRequestSchema.safeParse({ operation: "steer", input: invalid }).success).toBe(
+        false,
+      )
+    const value = {
+      ...scope,
+      sessionId: "provider-session",
+      status: "prompting",
+      canResume: false,
+      modes: [],
+      models: [],
+      currentModeId: null,
+      currentModelId: null,
+      authMethods: [],
+    }
+    expect(assistantResultSchema.safeParse({ ok: true, value }).success).toBe(true)
+    expect(
+      assistantResultSchema.safeParse({
+        ok: true,
+        steerOutcome: "startedNewTurn",
+        value: { ...value, canSteer: true },
+      }).success,
+    ).toBe(true)
+    expect(
+      assistantResultSchema.safeParse({ ok: true, steerOutcome: "assumed-delivered", value })
+        .success,
+    ).toBe(false)
+  })
+
   it("accepts attachment-only prompts while refusing empty, malformed, path-bearing and oversized payloads", () => {
     const file = {
       id: "file",

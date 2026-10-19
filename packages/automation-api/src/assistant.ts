@@ -126,6 +126,7 @@ export const assistantPromptSchema = z
     attachments: assistantAttachmentsSchema.default([]),
   })
   .refine((value) => value.text.trim().length > 0 || value.attachments.length > 0)
+export const assistantSteerSchema = assistantPromptSchema.safeExtend({ requestId: id })
 export const assistantPermissionSchema = z.strictObject({
   ...scope,
   requestId: id,
@@ -174,6 +175,7 @@ export const assistantSnapshotSchema = z.strictObject({
   ]),
   sessionId: id.nullable(),
   canResume: z.boolean(),
+  canSteer: z.boolean().optional(),
   modes: z.array(choice).max(100),
   currentModeId: id.nullable(),
   models: z.array(choice).max(100),
@@ -183,12 +185,17 @@ export const assistantSnapshotSchema = z.strictObject({
   authMethods: z.array(choice).max(32),
 })
 export const assistantResultSchema = z.discriminatedUnion("ok", [
-  z.strictObject({ ok: z.literal(true), value: assistantSnapshotSchema }),
+  z.strictObject({
+    ok: z.literal(true),
+    value: assistantSnapshotSchema,
+    steerOutcome: z.enum(["injected", "startedNewTurn"]).optional(),
+  }),
   z.strictObject({ ok: z.literal(false), code: assistantErrorCodeSchema }),
 ])
 export const assistantRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("connect"), input: assistantConnectSchema }),
   z.strictObject({ operation: z.literal("prompt"), input: assistantPromptSchema }),
+  z.strictObject({ operation: z.literal("steer"), input: assistantSteerSchema }),
   z.strictObject({ operation: z.literal("cancel"), input: assistantScopeSchema }),
   z.strictObject({ operation: z.literal("disconnect"), input: assistantScopeSchema }),
   z.strictObject({ operation: z.literal("respondPermission"), input: assistantPermissionSchema }),
@@ -240,6 +247,7 @@ export type AssistantBridge = Readonly<{
   protocolVersion: 1
   connect(input: z.infer<typeof assistantConnectSchema>): Promise<AssistantResult>
   prompt(input: z.input<typeof assistantPromptSchema>): Promise<AssistantResult>
+  steer?(input: z.input<typeof assistantSteerSchema>): Promise<AssistantResult>
   cancel(input: z.infer<typeof assistantScopeSchema>): Promise<AssistantResult>
   disconnect(input: z.infer<typeof assistantScopeSchema>): Promise<AssistantResult>
   respondPermission(input: z.infer<typeof assistantPermissionSchema>): Promise<AssistantResult>

@@ -461,12 +461,23 @@ remain separate from that workflow and from physical printing.
 
 ### Sketch camera navigation
 
+Dragging anywhere in the XYZ orientation inset rotates the camera even while a sketch or feature
+tool is active. An intentional drag in a plane-normal sketch switches to the 3D camera without
+editing geometry or losing pointer capture. Clicking an axis remains a standard-view shortcut.
+
 The visible **Rotate view** toggle beside the viewport’s standard-view selector suspends sketch pointer
 editing and gives primary-button drag to the 3D camera. The current unsaved sketch remains visible. Toggle it off, choose **Orbit 3D view** or
 **Normal to sketch**, or select a sketch tool to resume editing. Navigation creates no document or
 sketch undo entry. In Normal to sketch, Standard views and Fit remain disabled until Rotate view or
 Orbit 3D view activates the 3D camera. Finish, Cancel, and a later sketch session restore ordinary
 editing defaults.
+
+Selecting a constraint in its manager highlights its associated geometry and points in the
+viewport without replacing the current entity selection. Horizontal/vertical glyphs are revealed
+for selected, hovered or focused related geometry or constraints, rather than continuously filling
+the sketch. Linear dimensions use a straight dimension line with extension lines and terminal
+ticks. Their label offsets follow current geometry, including an in-flight drag and oblique camera
+projection; moving the text does not change the driving value or authored expression.
 
 The **Section view** icon beside the standard-view selector opens enable, plane, offset, and flip
 controls. Its accessible name and tooltip identify the icon, and its active state remains visible.

@@ -40,6 +40,20 @@ const draft = {
 }
 
 describe("automation draft contracts", () => {
+  it("accepts additive command budget metadata and rejects invalid capacity", () => {
+    expect(
+      automationDraftStateSchema.parse({ ...draft, commandBudget: { limit: 64, remaining: 63 } })
+        .commandBudget,
+    ).toEqual({ limit: 64, remaining: 63 })
+    expect(automationDraftStateSchema.parse(draft).commandBudget).toBeUndefined()
+    for (const commandBudget of [
+      { limit: 0, remaining: 0 },
+      { limit: 64, remaining: -1 },
+      { limit: 1_025, remaining: 1_024 },
+    ]) {
+      expect(automationDraftStateSchema.safeParse({ ...draft, commandBudget }).success).toBe(false)
+    }
+  })
   it("accepts strict lifecycle requests and an open command payload envelope", () => {
     expect(
       createAutomationDraftRequestSchema.safeParse({

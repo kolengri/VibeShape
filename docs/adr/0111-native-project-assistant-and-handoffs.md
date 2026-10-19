@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-19
+- Partially superseded by: [ADR-0116](0116-connected-assistant-model-authority-and-checkpoints.md) for built-in native and browser API model-write approval
 - Partially superseded by: [ADR-0115](0115-automatic-native-project-mcp-access.md) for embedded ACP
   pairing and internal server naming
 - Partially supersedes: [ADR-0110](0110-macos-desktop-host.md) for IPC and MCP availability;

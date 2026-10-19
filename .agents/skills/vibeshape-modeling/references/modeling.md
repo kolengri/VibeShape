@@ -1,5 +1,10 @@
 # Modeling contracts and recipes
 
+Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
+The built-in chat commits validated changes to its current project without another Apply action;
+manual review requirements below describe external MCP clients. Publishing or updating the reusable
+local library remains separately reviewed for every connection.
+
 ## Choose a construction
 
 Recover design intent rather than tracing tessellation. Identify straight, circular and rotational regions, repeated geometry, openings and protected interfaces. Use a small number of dimensioned profiles and features when they reproduce the requested shape. Prefer line/arc profiles over dense sampled boundaries for analytical geometry; use additional Loft sections only where the shape or an agreed error bound requires them.

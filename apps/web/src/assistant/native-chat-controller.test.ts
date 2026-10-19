@@ -2,8 +2,10 @@ import { describe, expect, it } from "bun:test"
 import type {
   AssistantBridge,
   AssistantEvent,
+  AssistantResult,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
+import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import { readChatHistory, writeChatHistory } from "./chat-history"
 import { createNativeChatController } from "./native-chat-controller"
 
@@ -29,7 +31,7 @@ function deferred() {
   })
   return { promise, resolve }
 }
-function fixture() {
+function fixture(steeringEnabled = false) {
   let listener: ((event: AssistantEvent) => void) | undefined
   let subscriptions = 0
   let sequence = 0
@@ -44,6 +46,8 @@ function fixture() {
   let selectedConfiguration = "low"
   const promptedConfigurations: string[] = []
   const prompts: Parameters<AssistantBridge["prompt"]>[0][] = []
+  const steers: Parameters<NonNullable<AssistantBridge["steer"]>>[0][] = []
+  let steerResponse: Promise<"injected" | "startedNewTurn" | "failed"> | undefined
   const questionResponses: Parameters<AssistantBridge["respondQuestion"]>[0][] = []
   const connects: Parameters<AssistantBridge["connect"]>[0][] = []
   const disconnected: string[] = []
@@ -57,6 +61,7 @@ function fixture() {
         sessionToken: `token-${++sequence}`,
         sessionId: `session-${sequence}`,
         canResume: true,
+        ...(steeringEnabled ? { canSteer: true } : {}),
         status: "ready",
         modes: [],
         currentModeId: null,
@@ -75,12 +80,51 @@ function fixture() {
       prompts.push(input)
       promptedConfigurations.push(selectedConfiguration)
       const captured = snapshot
+      if (steeringEnabled) {
+        snapshot = { ...snapshot, status: "prompting" }
+        listener?.({
+          projectId: snapshot.projectId,
+          sessionToken: snapshot.sessionToken,
+          type: "snapshot",
+          snapshot,
+        })
+      }
       const fails = failPrompt
       failPrompt = false
       await new Promise<void>((resolve) => {
-        resolvePrompt = resolve
+        resolvePrompt = () => {
+          if (steeringEnabled && snapshot.sessionToken === captured.sessionToken) {
+            snapshot = { ...snapshot, status: "ready" }
+            listener?.({
+              projectId: snapshot.projectId,
+              sessionToken: snapshot.sessionToken,
+              type: "snapshot",
+              snapshot,
+            })
+          }
+          resolvePrompt = undefined
+          resolve()
+        }
       })
       return fails ? { ok: false, code: "request-failed" } : { ok: true, value: captured }
+    },
+    async steer(input): Promise<AssistantResult> {
+      steers.push(input)
+      const captured = snapshot
+      const response = steerResponse
+      steerResponse = undefined
+      const steerOutcome = response ? await response : "injected"
+      if (steerOutcome === "failed") return { ok: false, code: "request-failed" }
+      if (steerOutcome === "startedNewTurn" && captured.sessionToken === snapshot.sessionToken) {
+        snapshot = { ...snapshot, status: "prompting" }
+        listener?.({
+          projectId: snapshot.projectId,
+          sessionToken: snapshot.sessionToken,
+          type: "snapshot",
+          snapshot,
+        })
+      }
+      return { ok: true, value: captured, steerOutcome }
     },
     async cancel() {
       resolvePrompt?.()
@@ -133,6 +177,7 @@ function fixture() {
     disconnected,
     permissions,
     prompts,
+    steers,
     questionResponses,
     promptedConfigurations,
     failNextQuestion() {
@@ -152,6 +197,30 @@ function fixture() {
     subscriptions: () => subscriptions,
     snapshot: () => snapshot,
     finish: () => resolvePrompt?.(),
+    finishExternal() {
+      listener?.({
+        projectId: snapshot.projectId,
+        sessionToken: snapshot.sessionToken,
+        type: "completed",
+        stopReason: "end_turn",
+      })
+      snapshot = { ...snapshot, status: "ready" }
+      listener?.({
+        projectId: snapshot.projectId,
+        sessionToken: snapshot.sessionToken,
+        type: "snapshot",
+        snapshot,
+      })
+    },
+    deferSteer() {
+      let resolve!: (outcome: "injected" | "startedNewTurn" | "failed") => void
+      let reject!: (error: Error) => void
+      steerResponse = new Promise((yes, no) => {
+        resolve = yes
+        reject = no
+      })
+      return { resolve, reject }
+    },
     emit: (event: AssistantEvent) => listener?.(event),
     deferDisconnect() {
       const waiting = deferred()
@@ -185,6 +254,340 @@ async function until(predicate: () => boolean) {
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }
+
+function queuedId(chat: ReturnType<typeof createNativeChatController>, index = 0) {
+  const item = chat.getSnapshot().queuedMessages[index]
+  if (!item) throw new Error("Missing queued message.")
+  return item.id
+}
+
+describe("queued native steering", () => {
+  it.each([false, true])(
+    "waits for a delayed accepted save after Stop (prior save: %s) before capturing another prompt",
+    async (priorSave) => {
+      const f = fixture(true),
+        model = checkpointFixture()
+      const chat = createNativeChatController({
+        projectId,
+        bridge: f.bridge,
+        storage: storage(),
+        checkpointHost: model.host,
+      })
+      chat.start()
+      await chat.connect(agent)
+      expect(await chat.send("Change model")).toBe(true)
+      if (priorSave) model.save()
+      const save = model.deferSave()
+      await chat.cancel()
+      await until(() => chat.getSnapshot().settlingCheckpoint)
+      model.pair(null)
+      expect(await chat.send("Next prompt")).toBe(true)
+      expect(f.prompts).toHaveLength(1)
+      expect(chat.getSnapshot().queuedMessages).toHaveLength(1)
+      expect(await chat.undoAgentChanges()).toBe(false)
+      save()
+      await until(() => chat.getSnapshot().canUndoAgentChanges)
+      expect(f.prompts).toHaveLength(1)
+      expect(await chat.undoAgentChanges()).toBe(true)
+      expect(model.restores).toEqual([{ baseline: 1, revision: priorSave ? 3 : 2 }])
+      chat.dispose()
+    },
+  )
+
+  it("holds automatic queue draining until the accepted save finishes after ACP prompt completion", async () => {
+    const f = fixture(),
+      model = checkpointFixture()
+    const chat = createNativeChatController({
+      projectId,
+      bridge: f.bridge,
+      storage: storage(),
+      checkpointHost: model.host,
+    })
+    chat.start()
+    await chat.connect(agent)
+    await chat.send("First")
+    await chat.enqueue("Second")
+    const save = model.deferSave()
+    f.finish()
+    await until(() => chat.getSnapshot().settlingCheckpoint)
+    expect(f.prompts).toHaveLength(1)
+    save()
+    await until(() => f.prompts.length === 2)
+    expect(model.retained()).toBe(2)
+    f.finish()
+    await until(() => chat.getSnapshot().canUndoAgentChanges)
+    expect(await chat.undoAgentChanges()).toBe(true)
+    expect(model.restores).toEqual([{ baseline: 1, revision: 2 }])
+    chat.dispose()
+  })
+
+  it("captures saved changes through Stop and exposes one internal Undo after settlement", async () => {
+    const f = fixture(true),
+      model = checkpointFixture()
+    const chat = createNativeChatController({
+      projectId,
+      bridge: f.bridge,
+      storage: storage(),
+      checkpointHost: model.host,
+    })
+    chat.start()
+    await chat.connect(agent)
+    expect(await chat.send("Change model")).toBe(true)
+    model.save()
+    expect(chat.getSnapshot().canUndoAgentChanges).toBe(false)
+    await chat.cancel()
+    await until(() => chat.getSnapshot().canUndoAgentChanges)
+    expect(await chat.viewBefore()).toBe(true)
+    expect(chat.getSnapshot().viewingBefore).toBe(true)
+    await chat.cancel()
+    expect(chat.getSnapshot()).toMatchObject({ viewingBefore: false, canUndoAgentChanges: true })
+    expect(await chat.undoAgentChanges()).toBe(true)
+    expect(model.restores).toEqual([{ baseline: 1, revision: 2 }])
+    chat.dispose()
+  })
+
+  it("refuses to dispatch a model prompt if its saved baseline cannot be captured", async () => {
+    const f = fixture(),
+      model = checkpointFixture()
+    const chat = createNativeChatController({
+      projectId,
+      bridge: f.bridge,
+      storage: storage(),
+      checkpointHost: { ...model.host, open: () => null },
+    })
+    chat.start()
+    await chat.connect(agent)
+    expect(await chat.send("Must be reversible")).toBe(false)
+    expect(f.prompts).toEqual([])
+    expect(chat.getSnapshot().checkpointError).toBe("checkpointUnavailable")
+    chat.dispose()
+  })
+
+  it("claims one item until accepted, preserves its exact payload, and leaves other items in order", async () => {
+    const f = fixture(true),
+      disk = storage()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    await chat.send("Active")
+    f.emit({
+      projectId,
+      sessionToken: f.snapshot().sessionToken,
+      type: "text",
+      text: "Before dispatch",
+    })
+    await chat.enqueue("Earlier")
+    const attachments = [
+      {
+        id: "notes",
+        name: "notes.txt",
+        type: "text" as const,
+        mimeType: "text/plain",
+        text: "Exact private payload\nπ",
+      },
+      {
+        id: "view",
+        name: "view.png",
+        type: "image" as const,
+        mimeType: "image/png" as const,
+        data: "aGVsbG8=",
+      },
+    ]
+    await chat.enqueue("  Steer exactly\n", attachments)
+    await chat.enqueue("Later")
+    const id = queuedId(chat, 1),
+      pending = f.deferSteer()
+    const promoted = chat.steerQueued(id)
+    expect(await chat.steerQueued(id)).toBe(false)
+    expect(await chat.steerQueued(queuedId(chat))).toBe(false)
+    chat.removeQueued(id)
+    expect(chat.getSnapshot().queuedMessages.map(({ text }) => text)).toEqual([
+      "Earlier",
+      "  Steer exactly\n",
+      "Later",
+    ])
+    expect(f.steers).toEqual([
+      {
+        projectId,
+        sessionToken: f.snapshot().sessionToken,
+        requestId: id,
+        text: "  Steer exactly\n",
+        attachments,
+      },
+    ])
+    f.emit({
+      projectId,
+      sessionToken: f.snapshot().sessionToken,
+      type: "text",
+      text: "Before acknowledgement",
+    })
+    pending.resolve("injected")
+    expect(await promoted).toBe(true)
+    f.emit({
+      projectId,
+      sessionToken: f.snapshot().sessionToken,
+      type: "text",
+      text: " and after acknowledgement",
+    })
+    expect(chat.getSnapshot().messages.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: "user", text: "Active" },
+      { role: "assistant", text: "Before dispatch" },
+      { role: "user", text: "  Steer exactly\n" },
+      { role: "assistant", text: "Before acknowledgement and after acknowledgement" },
+    ])
+    expect(chat.getSnapshot().queuedMessages.map(({ text }) => text)).toEqual(["Earlier", "Later"])
+    expect(
+      chat
+        .getSnapshot()
+        .messages.filter(({ role, text }) => role === "user" && text === "  Steer exactly\n"),
+    ).toHaveLength(1)
+    expect(JSON.stringify(readChatHistory(projectId, disk))).not.toContain("Exact private payload")
+    f.finish()
+    await until(() => f.prompts.length === 2)
+    expect(f.prompts.map(({ text }) => text)).toEqual(["Active", "Earlier"])
+    await chat.cancel()
+    chat.dispose()
+  })
+
+  it("holds queue draining through completion and truthfully tracks a provider-started new turn", async () => {
+    const f = fixture(true),
+      chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+    chat.start()
+    await chat.connect(agent)
+    await chat.send("Active")
+    await chat.enqueue("Promoted")
+    await chat.enqueue("Later")
+    const pending = f.deferSteer(),
+      promoted = chat.steerQueued(queuedId(chat))
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    expect(f.prompts).toHaveLength(1)
+    expect(chat.getSnapshot().queuedMessages).toHaveLength(2)
+    pending.resolve("startedNewTurn")
+    expect(await promoted).toBe(true)
+    expect(chat.getSnapshot()).toMatchObject({
+      busy: true,
+      steerStartedNewTurn: true,
+      steeringQueuedId: null,
+    })
+    f.emit({
+      projectId,
+      sessionToken: f.snapshot().sessionToken,
+      type: "text",
+      text: "New turn output",
+    })
+    expect(chat.getSnapshot().messages.at(-1)?.text).toBe("New turn output")
+    expect(f.prompts).toHaveLength(1)
+    f.finishExternal()
+    await until(() => f.prompts.length === 2)
+    expect(f.prompts[1]?.text).toBe("Later")
+    expect(
+      chat
+        .getSnapshot()
+        .messages.filter(({ role, text }) => role === "user" && text === "Promoted"),
+    ).toHaveLength(1)
+    await chat.cancel()
+    chat.dispose()
+  })
+
+  it.each(["failed", "rejected"])(
+    "retains the item without draining or adding history when steering is %s",
+    async (outcome) => {
+      const f = fixture(true),
+        chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+      chat.start()
+      await chat.connect(agent)
+      await chat.send("Active")
+      await chat.enqueue("Retained")
+      await chat.enqueue("Later")
+      const pending = f.deferSteer(),
+        promoted = chat.steerQueued(queuedId(chat))
+      f.finish()
+      await until(() => !chat.getSnapshot().busy)
+      if (outcome === "failed") pending.resolve("failed")
+      else pending.reject(new Error("Steering transport failed"))
+      expect(await promoted).toBe(false)
+      expect(chat.getSnapshot()).toMatchObject({ queuePaused: true, steeringQueuedId: null })
+      expect(chat.getSnapshot().queuedMessages.map(({ text }) => text)).toEqual([
+        "Retained",
+        "Later",
+      ])
+      expect(
+        chat
+          .getSnapshot()
+          .messages.filter(({ role }) => role === "user")
+          .map(({ text }) => text),
+      ).toEqual(["Active"])
+      expect(f.prompts).toHaveLength(1)
+      chat.dispose()
+    },
+  )
+
+  it.each(["cancel", "reconnect"] as const)(
+    "keeps confirmed delivery single and the remaining queue paused through %s",
+    async (action) => {
+      const f = fixture(true),
+        chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+      chat.start()
+      await chat.connect(agent)
+      await chat.send("Active")
+      await chat.enqueue("Promoted")
+      await chat.enqueue("Later")
+      const pending = f.deferSteer(),
+        promoted = chat.steerQueued(queuedId(chat))
+      if (action === "cancel") await chat.cancel()
+      else {
+        await chat.disconnect()
+        await chat.connect(agent)
+        f.finish()
+      }
+      pending.resolve("injected")
+      expect(await promoted).toBe(true)
+      await until(() => !chat.getSnapshot().busy)
+      expect(chat.getSnapshot()).toMatchObject({ queuePaused: true, steeringQueuedId: null })
+      expect(chat.getSnapshot().queuedMessages.map(({ text }) => text)).toEqual(["Later"])
+      expect(
+        chat
+          .getSnapshot()
+          .messages.filter(({ role, text }) => role === "user" && text === "Promoted"),
+      ).toHaveLength(1)
+      expect(f.prompts).toHaveLength(1)
+      chat.dispose()
+    },
+  )
+
+  it("does not steer idle or unsupported sessions or disturb another project's queue", async () => {
+    for (const supported of [false, true]) {
+      const f = fixture(supported),
+        other = fixture(true)
+      const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+      const second = createNativeChatController({
+        projectId: otherProjectId,
+        bridge: other.bridge,
+        storage: storage(),
+      })
+      chat.start()
+      second.start()
+      await chat.connect(agent)
+      await second.connect(agent)
+      if (!supported) {
+        await chat.send("Active")
+        const snapshot = { ...f.snapshot(), status: "prompting" as const }
+        f.emit({ projectId, sessionToken: snapshot.sessionToken, type: "snapshot", snapshot })
+      }
+      await chat.enqueue("Retained")
+      await second.send("Other active")
+      await second.enqueue("Other queued")
+      expect(await chat.steerQueued(queuedId(chat))).toBe(false)
+      expect(f.steers).toHaveLength(0)
+      expect(second.getSnapshot().queuedMessages.map(({ text }) => text)).toEqual(["Other queued"])
+      expect(other.steers).toHaveLength(0)
+      await second.cancel()
+      chat.dispose()
+      second.dispose()
+    }
+  })
+})
 
 describe("project-scoped agent chat", () => {
   it("queues Send until an in-flight configuration change completes without showing inference busy", async () => {

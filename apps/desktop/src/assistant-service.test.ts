@@ -13,12 +13,13 @@ import { type AssistantServiceOptions, createAssistantService } from "./assistan
 const fixture = String.raw`
 const readline = require("node:readline");
 const scenario = process.argv[2];
-let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp;
+let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp, steerCalls = 0;
 const send = message => process.stdout.write(JSON.stringify({jsonrpc:"2.0",...message})+"\n");
 const reply = (id,result) => send({id,result});
 let sessionId = "fake-session";
 const update = value => send({method:"session/update",params:{sessionId,update:value}});
 const text = value => update({sessionUpdate:"agent_message_chunk",content:{type:"text",text:value}});
+const threadStatus = type => update({sessionUpdate:"session_info_update",_meta:{codex:{threadStatus:{type}}}});
 const configs = (value, effort = value === "large" ? "extreme" : "brief") => [
  {id:"model",name:"Model",category:"model",type:"select",currentValue:value,options:[{value:"small",name:"Small"},{value:"large",name:"Large"}]},
  ...(scenario.startsWith("config") ? [
@@ -41,7 +42,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    if (scenario === "bad-version") return reply(id,{protocolVersion:999});
    if (scenario === "client-version" && params.clientInfo.version !== "9.8.7") return send({id,error:{code:-32603,message:"Incorrect host version"}});
    if (process.env.ELECTRON_RUN_AS_NODE || params.clientCapabilities.fs || params.clientCapabilities.terminal) return process.exit(9);
-   return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario === "resume",promptCapabilities:{image:scenario !== "no-attachments",embeddedContext:scenario !== "no-attachments"}},authMethods:[{id:"login",name:"Log in"}]});
+   return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario === "resume",promptCapabilities:{image:scenario !== "no-attachments",embeddedContext:scenario !== "no-attachments"}},authMethods:[{id:"login",name:"Log in"}],...(scenario.startsWith("steer") ? {agentInfo:{name:scenario === "steer-foreign" ? "unverified-agent" : "@agentclientprotocol/codex-acp",version:scenario === "steer-future" ? "2.2.3" : "2.2.2"},_meta:{steering:{supported:true}}} : {})});
  }
  if (method === "authenticate") { authenticated = true; return reply(id,{}); }
  if (method === "session/new" || method === "session/load") {
@@ -77,7 +78,33 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    if (scenario === "ignore-cancel") return;
    text("late cancelled output");
    if (pending !== undefined) { reply(pending,{stopReason:"cancelled"}); pending = undefined; }
+   if (scenario.startsWith("steer")) threadStatus("idle");
    return;
+ }
+ if (method === "_session/steering") {
+   steerCalls++;
+   text(JSON.stringify({steerCalls,prompt:params.prompt}));
+   if (scenario === "steer-failed") return reply(id,{outcome:"failed"});
+   if (scenario === "steer-malformed") return reply(id,{outcome:"unknown"});
+   if (scenario.startsWith("steer-new")) {
+     const start = () => {
+       if (pending !== undefined) { reply(pending,{stopReason:"end_turn"}); pending = undefined; }
+       threadStatus("idle");
+       if (scenario === "steer-new-no-status") return reply(id,{outcome:"startedNewTurn"});
+       if (scenario === "steer-new-status-lag") {
+         reply(id,{outcome:"startedNewTurn"});
+         setTimeout(()=>threadStatus("idle"),10);
+         setTimeout(()=>{threadStatus("active");text("fallback active after acknowledgement");},50);
+         return setTimeout(()=>threadStatus("idle"),150);
+       }
+       threadStatus("active"); text("fallback before acknowledgement");
+       if (scenario === "steer-new-fast") { text("fallback completed before acknowledgement"); threadStatus("idle"); }
+       reply(id,{outcome:"startedNewTurn"});
+       if (scenario !== "steer-new-fast") setTimeout(()=>{text("fallback after acknowledgement");threadStatus("idle");},150);
+     };
+     return setTimeout(start,scenario === "steer-new-late" ? 100 : 0);
+   }
+   return setTimeout(()=>reply(id,{outcome:"injected"}),30);
  }
  if (method !== "session/prompt") return send({id,error:{code:-32601,message:"Unknown method"}});
  if (!params.prompt[0].text.includes("VibeShape") || !params.prompt[0].text.includes("Project ID")) return process.exit(13);
@@ -88,7 +115,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    questionPrompt = id;
    return send({id:"question-input",method:"elicitation/create",params:{sessionId,mode:"form",message:"Choose a size",requestedSchema:{type:"object",properties:prompt === "unsupported-question" ? {count:{type:"integer"}} : {size:{type:"string",title:"Size",oneOf:[{const:"Small",title:"Small"},{const:"Other",title:"Other"}]},note:{type:"string",title:"Custom size",maxLength:100}},required:["size"]}}});
  }
- if (prompt === "hold") { pending = id; text("started"); return; }
+ if (prompt === "hold") { pending = id; if (scenario.startsWith("steer")) threadStatus("active"); text("started"); return; }
  if (prompt === "crash") { process.stderr.write("private provider credential"); process.exit(3); }
  if (prompt === "malformed") return process.stdout.write('[{"jsonrpc":"2.0","method":"invalid-batch"}]\n');
  if (prompt === "invalid-json") return process.stdout.write("not-json\n");
@@ -179,6 +206,290 @@ function ready(result: AssistantResult): AssistantSnapshot {
 function scope(snapshot: AssistantSnapshot) {
   return { projectId: snapshot.projectId, sessionToken: snapshot.sessionToken }
 }
+
+async function steeringHost(scenario = "steer", options: Partial<AssistantServiceOptions> = {}) {
+  const context = await host(options)
+  const session = ready(await context.connect(scenario))
+  const active = context.service.handle({
+    operation: "prompt",
+    input: { ...scope(session), text: "hold" },
+  })
+  await context.waitFor((event) => event.type === "text" && event.text === "started")
+  return {
+    ...context,
+    session,
+    active,
+    steer: (requestId = "queue-item") =>
+      context.service.handle({
+        operation: "steer",
+        input: { ...scope(session), requestId, text: "Queued direction" },
+      }),
+  }
+}
+
+describe("native active-turn steering", () => {
+  it.each(["steer-foreign", "steer-future"])(
+    "does not advertise an unverified provider completion contract: %s",
+    async (scenario) => {
+      const context = await steeringHost(scenario)
+      expect(context.session.canSteer).not.toBe(true)
+      expect(await context.steer()).toEqual({ ok: false, code: "unsupported" })
+      expect(
+        context.events.some((event) => event.type === "text" && event.text.includes("steerCalls")),
+      ).toBe(false)
+      await context.service.handle({ operation: "cancel", input: scope(context.session) })
+      await context.active
+    },
+  )
+
+  it("requires provider support and an active scoped turn before dispatch", async () => {
+    const context = await host()
+    const unsupported = ready(await context.connect())
+    const input = { ...scope(unsupported), requestId: "queued", text: "Direction" }
+    expect(await context.service.handle({ operation: "steer", input })).toEqual({
+      ok: false,
+      code: "unsupported",
+    })
+    const supported = ready(await context.connect("steer"))
+    expect(supported.canSteer).toBe(true)
+    expect(
+      await context.service.handle({
+        operation: "steer",
+        input: { ...input, ...scope(supported) },
+      }),
+    ).toEqual({
+      ok: false,
+      code: "agent-busy",
+    })
+    expect(await context.service.handle({ operation: "steer", input })).toEqual({
+      ok: false,
+      code: "stale-session",
+    })
+    expect(context.events.some((event) => event.type === "text")).toBe(false)
+  })
+
+  it("preserves the complete prompt and deduplicates accepted queue IDs without accepting changed payloads", async () => {
+    const context = await steeringHost()
+    const attachment = {
+      id: "file",
+      name: "plan.txt",
+      type: "text",
+      mimeType: "text/plain",
+      text: "Exact\nfile bytes ",
+    } as const
+    const image = {
+      id: "view",
+      name: "view.png",
+      type: "image",
+      mimeType: "image/png",
+      data: "aGVsbG8=",
+    } as const
+    const request = {
+      operation: "steer",
+      input: {
+        ...scope(context.session),
+        requestId: "queued",
+        text: "  Exact\ndirection  ",
+        attachments: [attachment, image],
+      },
+    } as const
+    const first = context.service.handle(request)
+    const second = context.service.handle(request)
+    expect(await first).toMatchObject({
+      ok: true,
+      steerOutcome: "injected",
+      value: { status: "prompting" },
+    })
+    expect(await second).toEqual(await first)
+    expect(await context.service.handle(request)).toEqual(await first)
+    expect(
+      await context.service.handle({ ...request, input: { ...request.input, text: "Changed" } }),
+    ).toEqual({ ok: false, code: "invalid-request" })
+    const calls = context.events.filter(
+      (event) => event.type === "text" && event.text.includes("steerCalls"),
+    )
+    expect(calls).toHaveLength(1)
+    const call = calls[0]
+    if (call?.type !== "text") throw new Error("Missing steering request.")
+    const payload = JSON.parse(call.text)
+    expect(payload.steerCalls).toBe(1)
+    expect(payload.prompt).toContainEqual({ type: "text", text: request.input.text })
+    expect(payload.prompt).toContainEqual(
+      expect.objectContaining({
+        type: "resource",
+        resource: expect.objectContaining({ text: attachment.text }),
+      }),
+    )
+    expect(payload.prompt).toContainEqual({
+      type: "image",
+      mimeType: image.mimeType,
+      data: image.data,
+    })
+    await context.service.handle({ operation: "cancel", input: scope(context.session) })
+    await context.active
+  })
+
+  it.each(["steer-failed", "steer-malformed"])(
+    "retains retry eligibility after an unaccepted response: %s",
+    async (scenario) => {
+      const context = await steeringHost(scenario)
+      const code = scenario === "steer-failed" ? "request-failed" : "protocol-error"
+      expect(await context.steer()).toEqual({ ok: false, code })
+      expect(await context.steer()).toEqual({ ok: false, code })
+      expect(
+        context.events.filter(
+          (event) => event.type === "text" && event.text.includes("steerCalls"),
+        ),
+      ).toHaveLength(2)
+      await context.service.handle({ operation: "cancel", input: scope(context.session) })
+      await context.active
+    },
+  )
+
+  it("keeps a provider-started turn active and streaming until its authoritative terminal event", async () => {
+    const context = await steeringHost("steer-new")
+    const accepted = await context.steer()
+    expect(accepted).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "prompting" },
+    })
+    expect(await context.active).toMatchObject({ ok: true, value: { status: "prompting" } })
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(context.session), text: "Must stay queued" },
+      }),
+    ).toEqual({ ok: false, code: "agent-busy" })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "fallback after acknowledgement",
+    )
+    await context.waitFor(
+      (event) =>
+        event.type === "snapshot" &&
+        event.snapshot.status === "ready" &&
+        context.events.filter((value) => value.type === "completed").length === 2,
+    )
+    expect(
+      context.events.some(
+        (event) => event.type === "text" && event.text === "fallback before acknowledgement",
+      ),
+    ).toBe(true)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(context.session), text: "Next turn" },
+      }),
+    ).toMatchObject({ ok: true })
+  })
+
+  it("recognizes a complete fallback lifecycle before its acknowledgement without inventing another active turn", async () => {
+    const context = await steeringHost("steer-new-fast")
+    expect(await context.steer()).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "ready" },
+    })
+    await context.active
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(2)
+    expect(
+      context.events.some(
+        (event) =>
+          event.type === "text" && event.text === "fallback completed before acknowledgement",
+      ),
+    ).toBe(true)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(context.session), text: "Next turn" },
+      }),
+    ).toMatchObject({ ok: true })
+  })
+
+  it("cancels a late provider-started turn after Stop and suppresses its subsequent output", async () => {
+    const context = await steeringHost("steer-new-late")
+    const at = context.events.length
+    const steering = context.steer()
+    await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+    await context.service.handle({ operation: "cancel", input: scope(context.session) })
+    expect(await steering).toMatchObject({ ok: true, steerOutcome: "startedNewTurn" })
+    await context.active
+    await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= at &&
+        event.type === "completed" &&
+        event.stopReason === "cancelled",
+    )
+    await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= at &&
+        event.type === "snapshot" &&
+        event.snapshot.status === "ready",
+    )
+    expect(
+      context.events
+        .slice(at)
+        .some((event) => event.type === "text" && event.text.startsWith("fallback")),
+    ).toBe(false)
+  })
+
+  it("waits for the fallback's active-to-terminal transition when status notifications lag its acknowledgement", async () => {
+    const context = await steeringHost("steer-new-status-lag")
+    expect(await context.steer()).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "prompting" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "fallback active after acknowledgement",
+    )
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+    await context.waitFor(
+      (event) =>
+        event.type === "completed" &&
+        context.events.filter((value) => value.type === "completed").length === 2,
+    )
+    await context.active
+  })
+
+  it("fails a fallback missing completion metadata at its deadline instead of treating acknowledgement or timeout as success", async () => {
+    const context = await steeringHost("steer-new-no-status", { promptTimeoutMs: 150 })
+    expect(await context.steer()).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "prompting" },
+    })
+    await context.active
+    await context.waitFor((event) => event.type === "error" && event.code === "timeout")
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(context.session), text: "No hidden restart" },
+      }),
+    ).toEqual({ ok: false, code: "agent-exited" })
+  })
+
+  it("does not transfer an in-flight steering acknowledgement to a replacement project session", async () => {
+    const context = await steeringHost("steer-new-late")
+    const steering = context.steer()
+    await context.waitFor((event) => event.type === "text" && event.text.includes("steerCalls"))
+    const replacement = ready(await context.connect("steer"))
+    expect(await steering).toMatchObject({ ok: false })
+    await context.active
+    expect(replacement.sessionToken).not.toBe(context.session.sessionToken)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(replacement), text: "New owner" },
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { sessionToken: replacement.sessionToken, status: "ready" },
+    })
+  })
+})
 
 describe("native ACP service", () => {
   it("keeps project MCP names available despite a disabled global name and stable across resume", async () => {

@@ -6,7 +6,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vibeshape/ui/components/tooltip"
-import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from "react"
+import {
+  type ReactNode,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react"
 
 import { CompactModelTreeToggle } from "./compact-model-tree"
 
@@ -47,13 +54,25 @@ export function ResponsiveTaskPanel({
 }: ResponsiveTaskPanelProps) {
   const compact = useCompactTaskPanel()
   const contentId = useId()
+  const content = useRef<HTMLDivElement>(null)
   const activeTaskExpanded = activeTaskKey !== null && autoExpandActiveTask
-  const [expanded, setExpanded] = useState(activeTaskExpanded)
+  const [expansion, setExpansion] = useState<{
+    taskKey: string | null
+    choice: boolean | null
+  }>(() => ({ taskKey: activeTaskKey, choice: null }))
+  const expanded =
+    (expansion.taskKey === activeTaskKey ? expansion.choice : null) ?? activeTaskExpanded
 
-  useEffect(
-    () => setExpanded(activeTaskKey !== null && autoExpandActiveTask),
-    [activeTaskKey, autoExpandActiveTask],
-  )
+  useLayoutEffect(() => {
+    if (expansion.taskKey === activeTaskKey) return
+    setExpansion({ taskKey: activeTaskKey, choice: null })
+    const element = content.current
+    if (!element) return
+    element.scrollTop = 0
+    for (const panel of element.querySelectorAll<HTMLElement>("aside, [role='complementary']")) {
+      panel.scrollTop = 0
+    }
+  }, [activeTaskKey, expansion.taskKey])
 
   const panelExpanded = !compact || expanded
   const actionLabel = panelExpanded ? collapseLabel : expandLabel
@@ -61,7 +80,7 @@ export function ResponsiveTaskPanel({
 
   return (
     <div className="responsive-task-panel min-h-0" data-expanded={panelExpanded}>
-      <div className="responsive-task-panel__toggle border-b bg-panel px-2">
+      <div className="responsive-task-panel__toggle relative z-20 border-b bg-panel px-2">
         <CompactModelTreeToggle />
         <TooltipProvider>
           <Tooltip>
@@ -73,7 +92,10 @@ export function ResponsiveTaskPanel({
                 size="icon-sm"
                 type="button"
                 variant="ghost"
-                onClick={() => setExpanded((current) => !current)}
+                onClick={(event) => {
+                  event.currentTarget.focus()
+                  setExpansion({ taskKey: activeTaskKey, choice: !expanded })
+                }}
               >
                 <ActionIcon aria-hidden="true" />
               </Button>
@@ -83,7 +105,8 @@ export function ResponsiveTaskPanel({
         </TooltipProvider>
       </div>
       <div
-        className="responsive-task-panel__content min-h-0"
+        ref={content}
+        className="responsive-task-panel__content min-h-0 overflow-clip"
         hidden={compact && !expanded}
         id={contentId}
       >

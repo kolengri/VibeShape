@@ -5,6 +5,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { useEffect, useState, useSyncExternalStore } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { registerProjectActionGuard } from "../document/document-controller"
+import { assistantCheckpointBusy } from "./assistant-checkpoints"
 import { AssistantPanel } from "./assistant-panel"
 import { NativeAgentConfiguration } from "./native-agent-configuration"
 import type { createNativeChatController } from "./native-chat-controller"
@@ -58,15 +59,21 @@ function NativeProjectChat({
   open: boolean
   onClose: () => void
 }) {
-  const t = useTranslations("app.assistant")
-  const { chat, state, canSend } = useNativeChat(projectId, bridge)
+  const { chat, state, canSend, activeSteerTurn } = useNativeChat(projectId, bridge)
+  const error = useNativeChatError(state)
   return (
     <AssistantPanel
       open={open}
       projectName={projectName}
       messages={state.messages}
       busy={state.busy}
-      canSend={canSend}
+      canSend={canSend && !assistantCheckpointBusy(state)}
+      canUndoAgentChanges={state.canUndoAgentChanges}
+      undoingAgentChanges={state.undoingAgentChanges}
+      viewingBefore={state.viewingBefore}
+      preparingBefore={state.preparingBefore}
+      onUndoAgentChanges={chat.undoAgentChanges}
+      onViewBefore={chat.viewBefore}
       onClose={onClose}
       onSend={chat.send}
       onQueue={chat.enqueue}
@@ -76,11 +83,15 @@ function NativeProjectChat({
       queuedMessages={state.queuedMessages}
       queuePaused={state.queuePaused}
       onRemoveQueued={chat.removeQueued}
+      supportsActiveSteer={state.supportsActiveSteer}
+      activeSteerTurn={activeSteerTurn}
+      steeringQueuedId={state.steeringQueuedId}
+      onSteerQueued={chat.steerQueued}
       onResumeQueue={chat.resumeQueue}
       onCancel={chat.cancel}
       onReset={chat.reset}
       storageFailed={state.storageFailed}
-      error={state.error ? t(`errors.${state.error}`) : null}
+      error={error}
       configuration={<AgentConnection chat={chat} state={state} />}
       sessionControls={
         <NativeSessionControls
@@ -103,15 +114,32 @@ function useNativeChat(projectId: string, bridge: AssistantBridge) {
   useEffect(
     () =>
       registerProjectActionGuard(() =>
-        chat.getSnapshot().busy ||
-        chat.getSnapshot().connecting ||
-        chat.getSnapshot().queuedMessages.length > 0
-          ? "automation-busy"
-          : null,
+        nativeProjectActionBlocked(chat.getSnapshot()) ? "automation-busy" : null,
       ),
     [chat],
   )
-  return { chat, state, canSend: state.snapshot?.status === "ready" || state.busy }
+  const status = state.snapshot?.status
+  return {
+    chat,
+    state,
+    canSend: status === "ready" || state.busy,
+    activeSteerTurn: state.busy && status === "prompting",
+  }
+}
+
+function nativeProjectActionBlocked(state: NativeChatState) {
+  return (
+    state.busy ||
+    state.connecting ||
+    assistantCheckpointBusy(state) ||
+    state.queuedMessages.length > 0
+  )
+}
+
+function useNativeChatError(state: NativeChatState) {
+  const t = useTranslations("app.assistant")
+  if (state.checkpointError) return t(state.checkpointError)
+  return state.error ? t(`errors.${state.error}`) : null
 }
 
 function AgentConnection({ chat, state }: { chat: NativeChat; state: NativeChatState }) {
@@ -172,6 +200,11 @@ function AgentPermission({ chat, state }: { chat: NativeChat; state: NativeChatS
             </Button>
           </div>
         </fieldset>
+      )}
+      {state.steerStartedNewTurn && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("steerStartedNewTurn")}
+        </p>
       )}
     </>
   )

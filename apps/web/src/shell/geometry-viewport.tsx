@@ -64,6 +64,7 @@ import {
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
 import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
+import { effectiveHiddenSketchIds } from "../editor-session/sketch-visibility"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import type { PrimitivePlacement } from "../features/part-design/primitive-placement"
 import type {
@@ -80,6 +81,7 @@ import {
   usePrintViewportFactory,
   usePrintViewportSynchronization,
 } from "../printing/print-viewport-presentation"
+import { assistantCheckpointDisplayController } from "./assistant-checkpoint-display"
 import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
 import { SectionViewControls } from "./section-view-controls"
 import {
@@ -111,6 +113,7 @@ export type GeometryViewportSketchContext = Readonly<{
   frame: ViewerFrame | null
   mode: "normal" | "orbit"
   pointerOrbit?: boolean
+  onOrientationNavigationStart?: (() => void) | undefined
   projectionStore?: SketchProjectionStoreApi
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
@@ -404,6 +407,10 @@ async function initializeViewport(
   try {
     const viewport = await createViewport(canvas, {
       orientationInsetOffsetElement: orientationInsetOffsetElement(canvas),
+      orientationInputElement: () =>
+        latestSketchContextRef.current?.projectionStore?.getState().navigationElement ?? null,
+      onOrientationNavigationStart: () =>
+        latestSketchContextRef.current?.onOrientationNavigationStart?.(),
       isSelectionCandidateEligible: (selection) => {
         const faceSelection = latestSketchContextRef.current?.faceIntersectionSelection
         if (faceSelection?.isCandidateEligible) return faceSelection.isCandidateEligible(selection)
@@ -989,7 +996,11 @@ function useSelectionCandidateEvents(active: boolean) {
   return { commit, onChange, onCommit, stack }
 }
 
-function useProjectThumbnail(controller: DocumentControllerState, meshes: readonly ViewerMesh[]) {
+function useProjectThumbnail(
+  controller: DocumentControllerState,
+  meshes: readonly ViewerMesh[],
+  enabled = true,
+) {
   const completedRevisionRef = useRef<string | null>(null)
   const retryCountRef = useRef(new Map<string, number>())
   const [retryAttempt, requestRetry] = useState(0)
@@ -998,7 +1009,7 @@ function useProjectThumbnail(controller: DocumentControllerState, meshes: readon
     let cancelled = false
     let retryTimer: number | undefined
     const snapshot = controller.report?.snapshot
-    if (controller.status !== "ready" || !snapshot || meshes.length === 0) return
+    if (!enabled || controller.status !== "ready" || !snapshot || meshes.length === 0) return
     const revisionKey = `${snapshot.id}:${snapshot.revision}`
     if (completedRevisionRef.current === revisionKey) return
 
@@ -1032,7 +1043,7 @@ function useProjectThumbnail(controller: DocumentControllerState, meshes: readon
       cancelled = true
       window.clearTimeout(retryTimer)
     }
-  }, [controller.report?.snapshot, controller.status, meshes, retryAttempt])
+  }, [controller.report?.snapshot, controller.status, enabled, meshes, retryAttempt])
 }
 
 function ViewportMessage({
@@ -1309,6 +1320,7 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
 }
 
 type GeometryViewportProps = Readonly<{
+  readOnlyPresentation?: boolean
   toolPlane?: ViewerToolPlane | null | undefined
   viewControls?: ReactNode
   activeSketchDisplay?: ViewerSketch | null
@@ -1595,6 +1607,7 @@ function useViewportMeshPresentation({
   featurePreview,
   hiddenFeatureIds,
   partVisibilityOverrides,
+  readOnlyPresentation,
   sketchContext,
 }: Pick<
   GeometryViewportProps,
@@ -1603,6 +1616,7 @@ function useViewportMeshPresentation({
   | "featurePreview"
   | "hiddenFeatureIds"
   | "partVisibilityOverrides"
+  | "readOnlyPresentation"
   | "sketchContext"
 >) {
   const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
@@ -1657,8 +1671,11 @@ function useViewportMeshPresentation({
     selectionMeshes,
     hiddenBodies,
   ])
-  const texturedMeshes = useTexturedMeshes(controller, meshes)
-  const presentedMeshes = useTaskMeshes(texturedMeshes, selectionMeshes !== undefined)
+  const texturedMeshes = useTexturedMeshes(controller, meshes, readOnlyPresentation)
+  const presentedMeshes = useTaskMeshes(
+    texturedMeshes,
+    selectionMeshes !== undefined || readOnlyPresentation === true,
+  )
   const visibleMeshes = useMemo(
     () => presentedMeshes.filter((mesh) => !hiddenBodies.has(authoredBodyKey(mesh))),
     [presentedMeshes, hiddenBodies],
@@ -1952,7 +1969,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   const t = useTranslations("app.shell.viewport")
   const scene = useGeometryViewportScene(props)
   const interaction = useGeometryViewportInteraction(props, scene)
-  useProjectThumbnail(props.controller, scene.allCommittedMeshes)
+  useProjectThumbnail(props.controller, scene.allCommittedMeshes, !props.readOnlyPresentation)
   useClearInvalidSelection(scene.meshes, props.selection, props.onSelectionChange)
   useSketchProjectionSynchronization(interaction.viewportRef, props.sketchContext)
   useSketchNavigationSynchronization(interaction.viewportRef, props.sketchContext)
@@ -3256,6 +3273,15 @@ function viewportAdditionalControls(
 
 function TaskGeometryViewport(props: GeometryViewportProps) {
   const task = useWorkspaceTask()
+  const checkpoint = props.controller.assistantCheckpointPresentation
+  const displayController = useMemo(
+    () => assistantCheckpointDisplayController(props.controller),
+    [checkpoint, props.controller.report],
+  )
+  const hiddenSketchIds = useMemo(
+    () => effectiveHiddenSketchIds(displayController?.report ?? null, {}, true, null),
+    [displayController],
+  )
   const interaction = task?.interaction
   const selectFace = useCallback(
     (selection: ViewerSelection | null) => {
@@ -3264,8 +3290,28 @@ function TaskGeometryViewport(props: GeometryViewportProps) {
     },
     [interaction, props.onSelectionChange],
   )
+  if (displayController) {
+    return (
+      <GeometryViewport
+        controller={displayController}
+        readOnlyPresentation
+        createViewport={props.createViewport ?? loadGeometryViewport}
+        viewControls={props.viewControls}
+        printerProfile={props.printerProfile ?? null}
+        printBedVisible={props.printBedVisible ?? false}
+        groundGridVisible={props.groundGridVisible ?? true}
+        hiddenSketchIds={hiddenSketchIds}
+        sketchContext={CHECKPOINT_NAVIGATION_CONTEXT}
+        selection={null}
+        onSelectionChange={ignoreViewportSelection}
+      />
+    )
+  }
   return <GeometryViewport {...props} onSelectionChange={selectFace} />
 }
+
+const CHECKPOINT_NAVIGATION_CONTEXT = { frame: null, mode: "orbit" } as const
+const ignoreViewportSelection = () => undefined
 
 function useAnalysisOverlays(
   viewportRef: RefObject<GeometryViewportPort | null>,
@@ -3282,18 +3328,24 @@ function useAnalysisOverlays(
 function useTaskAnalysisOverlays(
   viewportRef: RefObject<GeometryViewportPort | null>,
   rendererFailed: boolean,
+  enabled: boolean,
 ) {
   const task = useWorkspaceTask()
-  useAnalysisOverlays(viewportRef, task?.interaction?.overlays, rendererFailed)
-  useTaskPreviewReadiness(viewportRef, rendererFailed)
+  useAnalysisOverlays(
+    viewportRef,
+    enabled ? task?.interaction?.overlays : undefined,
+    rendererFailed,
+  )
+  useTaskPreviewReadiness(viewportRef, rendererFailed, enabled)
 }
 
 function useTaskPreviewReadiness(
   viewportRef: RefObject<GeometryViewportPort | null>,
   rendererFailed: boolean,
+  enabled: boolean,
 ) {
   const task = useWorkspaceTask()
-  const preview = task?.interaction?.picking ? null : task?.preview
+  const preview = !enabled || task?.interaction?.picking ? null : task?.preview
   useEffect(() => {
     if (!preview?.onReady) return
     const onReady = preview.onReady
@@ -3312,17 +3364,10 @@ function useTaskPreviewReadiness(
   }, [preview, viewportRef, rendererFailed])
 }
 
-function GeometryViewport(props: GeometryViewportProps) {
-  const {
-    featurePreview,
-    idleOriginPlaneSelection,
-    onSelectionChange,
-    originPlaneSelection,
-    sketchContext,
-  } = props
+function useGeometryViewportHost(props: GeometryViewportProps) {
+  const { onSelectionChange, originPlaneSelection, sketchContext } = props
   const passive = sketchContext?.mode === "normal" && !originPlaneSelection
   const sketchReferenceRegionRef = useRef<HTMLElement>(null)
-  const t = useTranslations("app.shell.viewport")
   const axial = useAxialGizmoSide(props.axialGizmo)
   const [section, setSection] = useState<ViewerSection | null>(null)
   const activeSection = sectionDuringModeling(section, props)
@@ -3333,8 +3378,8 @@ function GeometryViewport(props: GeometryViewportProps) {
     ...(axial.gizmo ? { axialGizmo: axial.gizmo } : {}),
   }
   const model = useGeometryViewportModel(viewportProps)
-  const { canvasRef, sketchReferenceCandidateStack, sketchPointPreselection, viewportRef } = model
-  useTaskAnalysisOverlays(viewportRef, model.rendererFailed)
+  const { sketchReferenceCandidateStack, sketchPointPreselection, viewportRef } = model
+  useTaskAnalysisOverlays(viewportRef, model.rendererFailed, !props.readOnlyPresentation)
   const selectOther = useSketchReferenceSelectOther({
     candidateStack: sketchReferenceCandidateStack,
     context: sketchContext,
@@ -3370,6 +3415,42 @@ function GeometryViewport(props: GeometryViewportProps) {
     referenceInteraction,
     Boolean(props.viewControls),
   )
+  return {
+    passive,
+    axial,
+    section,
+    setSection,
+    activeSection,
+    viewportProps,
+    model,
+    sketchReferenceRegionRef,
+    selectOther,
+    supportFaceSelectOther,
+    profileSelectOther,
+    referenceInteraction,
+    regionClassNames,
+  }
+}
+
+function GeometryViewport(props: GeometryViewportProps) {
+  const { featurePreview, idleOriginPlaneSelection, originPlaneSelection, sketchContext } = props
+  const t = useTranslations("app.shell.viewport")
+  const {
+    passive,
+    axial,
+    section,
+    setSection,
+    activeSection,
+    viewportProps,
+    model,
+    sketchReferenceRegionRef,
+    selectOther,
+    supportFaceSelectOther,
+    profileSelectOther,
+    referenceInteraction,
+    regionClassNames,
+  } = useGeometryViewportHost(props)
+  const { canvasRef, viewportRef } = model
   return (
     <section
       ref={sketchReferenceRegionRef}
@@ -3381,6 +3462,9 @@ function GeometryViewport(props: GeometryViewportProps) {
       {...viewportSketchContextData(sketchContext)}
       data-section-axis={activeSection?.axis}
       data-section-offset={activeSection?.offset}
+      data-assistant-checkpoint-revision={
+        props.readOnlyPresentation ? props.controller.report?.snapshot.revision : undefined
+      }
       {...viewportGizmoData(props, axial)}
       onKeyDown={referenceInteraction.onKeyDown}
       onPointerDown={referenceInteraction.onPointerDown}
@@ -3399,7 +3483,7 @@ function GeometryViewport(props: GeometryViewportProps) {
         report={model.printReport}
         count={model.meshes.length}
       />
-      <SurfaceTextureViewportTools viewportRef={viewportRef} />
+      {!props.readOnlyPresentation && <SurfaceTextureViewportTools viewportRef={viewportRef} />}
       <div
         aria-hidden="true"
         data-viewport-orientation-offset

@@ -7,6 +7,7 @@ import {
   localStatusSchema,
 } from "@vibeshape/automation-api/local-session"
 import { localFailure, localToolOutputs } from "@vibeshape/automation-api/local-tools"
+import type { CommandActor } from "@vibeshape/domain/commands"
 import { z } from "zod"
 import { createActiveDocumentAutomationSession as createVisibleDocumentAutomationSession } from "../document/document-controller"
 import { automationReviews } from "./automation-review-controller"
@@ -127,9 +128,11 @@ export function createLocalAutomationConnection(
   } = {},
 ) {
   const reviews = options.reviews ?? automationReviews
-  const createActiveDocumentAutomationSession =
-    options.createDocumentSession ?? createVisibleDocumentAutomationSession
   const nativeProjectAccess = options.accessPolicy === "native-project" && !!options.projectId
+  const createActiveDocumentAutomationSession = () => {
+    const create = options.createDocumentSession ?? createVisibleDocumentAutomationSession
+    return nativeProjectAccess ? create({ approvalPolicy: "connected-assistant" }) : create()
+  }
   const scopedPreferenceKey = options.projectId
     ? `${preferenceKey}:${options.projectId}`
     : preferenceKey
@@ -162,6 +165,7 @@ export function createLocalAutomationConnection(
   }
   const readPreference = () => savedReadPreference(scopedPreferenceKey)
   function preferredAutoApply(client: LocalConnection["client"], fallback = false) {
+    if (nativeProjectAccess) return true
     const preference = readPreference()
     return preference && sameClient(preference.client, client) ? preference.autoApply : fallback
   }
@@ -440,6 +444,7 @@ export function createLocalAutomationConnection(
       },
       current.credential.token,
     )
+    requireSessionCredential(response)
     if (retryableResponse(response))
       throw new LocalAutomationTransportError(
         "The result acknowledgement is temporarily unavailable.",
@@ -465,8 +470,7 @@ export function createLocalAutomationConnection(
       if (pair === current && isProjectChange(current))
         saveResume(current, current.handle.readIdentity())
     } catch (error) {
-      if (error instanceof LocalAutomationTransportError) await recover(current)
-      else await fail(current)
+      await handleSessionFailure(current, error)
     } finally {
       finishOperation(current)
     }
@@ -565,7 +569,7 @@ export function createLocalAutomationConnection(
       throw new Error("The session was revoked.")
     if (value.work) acceptWork(current, value.work)
   }
-  async function handlePollFailure(current: Pair, error: unknown) {
+  async function handleSessionFailure(current: Pair, error: unknown) {
     if (pair !== current) return
     if (error instanceof LocalAutomationTransportError) await recover(current)
     else if (error instanceof LocalAutomationSessionLostError) await disconnect()
@@ -583,7 +587,7 @@ export function createLocalAutomationConnection(
       if (pair !== current) return
       await deliverPoll(current, info)
     } catch (error) {
-      await handlePollFailure(current, error)
+      await handleSessionFailure(current, error)
     }
   }
   async function poll(current: Pair) {
@@ -834,6 +838,18 @@ export function createLocalAutomationConnection(
   }
   return {
     disconnect,
+    currentActor(): CommandActor | null {
+      const current = pair
+      const identity = current?.handle.readIdentity()
+      if (
+        !current ||
+        !snapshot.connected ||
+        !identity ||
+        (options.projectId && identity.id !== options.projectId)
+      )
+        return null
+      return { ...current.credential.actor }
+    },
     enable: () => enable(),
     validateDocumentScope,
     isProjectActionPending: () =>
@@ -870,6 +886,7 @@ export function createLocalAutomationConnection(
       return true
     },
     disableAutoApply() {
+      if (nativeProjectAccess) return false
       const current = pair
       if (!current || snapshot.busy || reviews.getSnapshot() || !current.handle.disableAutoApply())
         return false

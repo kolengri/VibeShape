@@ -19,7 +19,7 @@ export type AutomationDraftViewport = Readonly<{
 
 /** Takes ownership of the retained buffers from the review's exact disposable rebuild. */
 export function createAutomationDraftViewport(
-  review: DraftReviewInput,
+  review: Pick<DraftReviewInput, "preview" | "metadata">,
   snapshot: DocumentSnapshot,
   rebuild: Rebuild,
 ): AutomationDraftViewport | null {
@@ -67,9 +67,17 @@ export function createAutomationDraftViewport(
 export function automationDraftViewportPreview(
   review: AutomationReviewState | null,
   committed: DocumentSnapshot | null,
+  presentation: AutomationDraftViewport | null = null,
 ): AutomationDraftViewport["preview"] | null {
+  if (!review || review.status === "error") {
+    return presentation &&
+      committed?.id === presentation.draft.documentId &&
+      committed.revision === presentation.draft.baseRevision
+      ? presentation.preview
+      : null
+  }
   const viewport = review?.draftViewport
-  if (!review || review.status === "error" || !viewport || !committed) return null
+  if (!viewport || !committed) return null
   if ("kind" in review.input || review.input.metadata) return null
   const { draft, geometry } = review.input.preview
   if (

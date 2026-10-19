@@ -4,7 +4,7 @@ import {
   localConnectResponseSchema,
   localPollResponseSchema,
 } from "@vibeshape/automation-api/local-session"
-import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
+import { type LocalToolResult, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { lightweightingMaterialCatalogResult } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import {
   quickLightweightingOperation,
@@ -1140,6 +1140,55 @@ describe("browser automation broker", () => {
     vi.advanceTimersByTime(60 * 60 * 1_000)
     expect(broker.isPaired()).toBe(false)
     expect(first.token).not.toBe(second.token)
+  })
+
+  it("reports idle suspension as recoverable and accepts a fresh identity read after resume", async () => {
+    vi.useFakeTimers()
+    let clock = 1_000
+    const broker = makeBroker({ origin, now: () => clock })
+    const { token } = await connect(broker)
+    clock += 16_000
+    vi.advanceTimersByTime(15_000)
+    await expect(broker.invoke({ tool: "model_info", arguments: {} })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-suspended", retryable: true },
+    })
+    const response = await broker.handle(request("resume", { protocolVersion: 1, document }, token))
+    const resumed = localConnectResponseSchema.parse(await response.json())
+    const pending = broker.invoke({ tool: "model_info", arguments: {} })
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, resumed.token),
+    )
+    const { work } = localPollResponseSchema.parse(await poll.json())
+    expect(work?.operation.tool).toBe("model_info")
+    if (!work) throw new Error("Expected a new identity read after resume.")
+    const result: LocalToolResult = {
+      ok: false,
+      diagnostic: { code: "geometry-unavailable", message: "No geometry.", retryable: true },
+    }
+    expect(
+      (
+        await broker.handle(
+          request(
+            "result",
+            {
+              protocolVersion: 1,
+              requestId: work.requestId,
+              tool: "model_info",
+              result,
+            },
+            resumed.token,
+          ),
+        )
+      ).status,
+    ).toBe(200)
+    await expect(pending).resolves.toEqual(result)
+    expect(broker.isPaired()).toBe(true)
+    await broker.handle(request("revoke", {}, resumed.token))
+    await expect(broker.invoke({ tool: "model_info", arguments: {} })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "not-paired", retryable: false },
+    })
   })
 
   it("forwards only increasing progress, rejects busy work, and cleans completion", async () => {

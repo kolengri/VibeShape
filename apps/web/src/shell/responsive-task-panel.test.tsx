@@ -1,23 +1,33 @@
 import "../../../../tests/unit/support/dom"
 
 import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { ResponsiveTaskPanel } from "./responsive-task-panel"
 
 function setCompactLayout(matches: boolean) {
+  let compact = matches
+  const listeners = new Set<() => void>()
   vi.stubGlobal(
     "matchMedia",
     vi.fn().mockImplementation((query: string) => ({
-      addEventListener: vi.fn(),
+      addEventListener: (_event: string, listener: () => void) => {
+        if (query === "(width < 64rem)") listeners.add(listener)
+      },
       dispatchEvent: vi.fn(),
-      matches: query === "(width < 64rem)" && matches,
+      matches: query === "(width < 64rem)" && compact,
       media: query,
       onchange: null,
-      removeEventListener: vi.fn(),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
     })),
   )
+  return (next: boolean) => {
+    act(() => {
+      compact = next
+      for (const listener of listeners) listener()
+    })
+  }
 }
 
 afterEach(() => {
@@ -26,6 +36,83 @@ afterEach(() => {
 })
 
 describe("ResponsiveTaskPanel", () => {
+  it("retains the explicit choice for the same task and resets scroll only for a fresh task", async () => {
+    setCompactLayout(true)
+    const user = userEvent.setup()
+    const panel = (taskKey: string, autoExpandActiveTask = true) => (
+      <ResponsiveTaskPanel
+        activeTaskKey={taskKey}
+        autoExpandActiveTask={autoExpandActiveTask}
+        collapseLabel="Collapse task panel"
+        expandLabel="Open task panel"
+      >
+        <aside aria-label="Task panel">
+          <input aria-label="Radius" defaultValue="10 mm" />
+        </aside>
+      </ResponsiveTaskPanel>
+    )
+    const { rerender } = render(panel("cylinder:first"))
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Radius" })
+    const scroller = screen.getByRole("complementary", { name: "Task panel" })
+    const content = input.closest(".responsive-task-panel__content")
+    await user.clear(input)
+    await user.type(input, "27 mm")
+    scroller.scrollTop = 150
+    const collapse = screen.getByRole("button", { name: "Collapse task panel" })
+    fireEvent.click(collapse)
+    expect(document.activeElement).toBe(collapse)
+    expect(content).toHaveProperty("hidden", true)
+
+    rerender(panel("cylinder:first", false))
+    rerender(panel("cylinder:first", true))
+    expect(content).toHaveProperty("hidden", true)
+    expect(scroller.scrollTop).toBe(150)
+    await user.click(screen.getByRole("button", { name: "Open task panel" }))
+    rerender(panel("cylinder:first", false))
+    expect(content).toHaveProperty("hidden", false)
+    expect(scroller.scrollTop).toBe(150)
+
+    rerender(panel("cylinder:second"))
+    expect(content).toHaveProperty("hidden", false)
+    expect(screen.getByRole("button", { name: "Collapse task panel" })).toBeTruthy()
+    expect(scroller.scrollTop).toBe(0)
+    expect(screen.getByRole("textbox", { name: "Radius" })).toBe(input)
+    expect(input.value).toBe("27 mm")
+  })
+
+  it("preserves compact collapse choice and mounted input across wide layout round trips", async () => {
+    const changeCompact = setCompactLayout(true)
+    const user = userEvent.setup()
+    render(
+      <ResponsiveTaskPanel
+        activeTaskKey="edit-cylinder"
+        collapseLabel="Collapse task panel"
+        expandLabel="Open task panel"
+      >
+        <aside aria-label="Task panel">
+          <input aria-label="Radius" defaultValue="10 mm" />
+        </aside>
+      </ResponsiveTaskPanel>,
+    )
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Radius" })
+    await user.clear(input)
+    await user.type(input, "31 mm")
+    const content = input.closest(".responsive-task-panel__content")
+    await user.click(screen.getByRole("button", { name: "Collapse task panel" }))
+    changeCompact(false)
+    expect(content).toHaveProperty("hidden", false)
+    expect(screen.getByRole("textbox", { name: "Radius" })).toBe(input)
+    changeCompact(true)
+    expect(content).toHaveProperty("hidden", true)
+    expect(screen.getByRole("button", { name: "Open task panel" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Open task panel" }))
+    changeCompact(false)
+    changeCompact(true)
+    expect(content).toHaveProperty("hidden", false)
+    expect(screen.getByRole("textbox", { name: "Radius" })).toBe(input)
+    expect(input.value).toBe("31 mm")
+  })
+
   it("keeps an idle compact panel collapsed until requested", async () => {
     setCompactLayout(true)
     const user = userEvent.setup()

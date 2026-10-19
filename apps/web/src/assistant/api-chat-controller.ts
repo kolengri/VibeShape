@@ -4,12 +4,18 @@ import {
   assistantAttachmentsSchema,
   assistantQuestionResponseSchema,
 } from "@vibeshape/automation-api/assistant"
+import type { CommandActor } from "@vibeshape/domain/commands"
 import { z } from "zod"
 import { type ApiToolUpdate, apiAgentMessages, runApiAgentTurn } from "./api-agent-turn"
 import { type ApiConfiguration, apiConfigurationSchema } from "./api-assistant-preferences"
 import type { ApiQuestionInput } from "./api-cad-tools"
 import { type ApiFetch, type ApiWireMessage, apiCompletionBody } from "./api-chat-completions"
 import { ApiAssistantError, type ApiAssistantErrorCode, apiErrorCode } from "./api-errors"
+import {
+  type AssistantCheckpointHost,
+  type AssistantCheckpointState,
+  createAssistantCheckpoints,
+} from "./assistant-checkpoints"
 import type { BrowserToolSession } from "./browser-tool-session"
 import {
   type ChatMessage,
@@ -25,27 +31,34 @@ type QueuedPrompt = {
   attachments: AssistantAttachment[]
   started: boolean
 }
-type ApiChatState = Readonly<{
-  messages: readonly ChatMessage[]
-  connected: boolean
-  busy: boolean
-  error: ApiAssistantErrorCode | null
-  storageFailed: boolean
-  queuedMessages: readonly {
-    id: string
-    text: string
-    attachments: readonly { id: string; name: string }[]
-  }[]
-  queuePaused: boolean
-  model: string | null
-  question: AssistantQuestion | null
-}>
+type ApiChatState = Readonly<
+  {
+    messages: readonly ChatMessage[]
+    connected: boolean
+    busy: boolean
+    error: ApiAssistantErrorCode | null
+    storageFailed: boolean
+    queuedMessages: readonly {
+      id: string
+      text: string
+      attachments: readonly { id: string; name: string }[]
+    }[]
+    queuePaused: boolean
+    supportsActiveSteer: false
+    model: string | null
+    question: AssistantQuestion | null
+  } & AssistantCheckpointState
+>
 type StoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">
 type ApiChatOptions = {
   projectId: string
   storage: StoragePort
   createTools: (projectId: string) => BrowserToolSession
   fetch?: ApiFetch | undefined
+  checkpointHost?: (
+    projectId: string,
+    currentActor: () => CommandActor | null,
+  ) => AssistantCheckpointHost
 }
 type ActiveTurn = {
   abort: AbortController
@@ -114,8 +127,15 @@ export function createApiChatController(options: ApiChatOptions) {
     storageFailed: false,
     queuedMessages: [],
     queuePaused: false,
+    supportsActiveSteer: false,
     model: null,
     question: null,
+    canUndoAgentChanges: false,
+    undoingAgentChanges: false,
+    viewingBefore: false,
+    preparingBefore: false,
+    settlingCheckpoint: false,
+    checkpointError: null,
   }
   let context = rememberedContext(state.messages)
   let configuration: ApiConfiguration | null = null
@@ -134,6 +154,11 @@ export function createApiChatController(options: ApiChatOptions) {
     state = { ...state, ...patch }
     for (const listener of listeners) listener()
   }
+  const checkpointHost = options.checkpointHost?.(
+    options.projectId,
+    () => tools?.currentActor?.() ?? null,
+  )
+  const checkpoints = checkpointHost ? createAssistantCheckpoints(checkpointHost, publish) : null
   const save = () => {
     clearTimeout(saveTimer)
     saveTimer = undefined
@@ -286,7 +311,8 @@ export function createApiChatController(options: ApiChatOptions) {
     })
   }
   function drainQueue() {
-    if (disposed || active || state.queuePaused || !state.connected) return
+    if (disposed || active || state.settlingCheckpoint || state.queuePaused || !state.connected)
+      return
     const next = queued[0]
     if (!next) return
     const parsed = validPrompt(next.text, next.attachments)
@@ -305,14 +331,16 @@ export function createApiChatController(options: ApiChatOptions) {
     } else context = rememberedContext(state.messages)
     publishQueue()
   }
-  function finishTurn(
+  async function finishTurn(
     turn: ActiveTurn,
     outcome: { succeeded: boolean; failure: ApiAssistantErrorCode | null },
     finishTools: (status: "failed" | "cancelled") => void,
   ) {
     if (disposed || active !== turn) return
-    active = null
     if (!outcome.succeeded) failTurn(turn, finishTools)
+    await checkpoints?.finish()
+    if (disposed || active !== turn) return
+    active = null
     publish({
       busy: false,
       error: outcome.failure,
@@ -353,7 +381,7 @@ export function createApiChatController(options: ApiChatOptions) {
       failure = turn.canceled ? null : apiErrorCode(error)
     } finally {
       clearTimeout(timeout)
-      finishTurn(turn, { succeeded, failure }, events.finishTools)
+      await finishTurn(turn, { succeeded, failure }, events.finishTools)
     }
   }
   function beginPromptTranscript(
@@ -366,6 +394,10 @@ export function createApiChatController(options: ApiChatOptions) {
   }
   function launchPrompt(prompt: NonNullable<ReturnType<typeof validPrompt>>, item?: QueuedPrompt) {
     if (active) return false
+    if (checkpoints && !checkpoints.begin(item?.id ?? crypto.randomUUID())) {
+      publish({ queuePaused: true })
+      return false
+    }
     if (item) {
       queued.shift()
       publishQueue()
@@ -402,6 +434,7 @@ export function createApiChatController(options: ApiChatOptions) {
     return true
   }
   async function cancel() {
+    checkpoints?.clearPreview()
     publish({ queuePaused: true })
     const turn = active
     if (!turn) return
@@ -446,7 +479,7 @@ export function createApiChatController(options: ApiChatOptions) {
       save()
     },
     async send(text: string, attachments: readonly AssistantAttachment[] = []) {
-      if (active || queued.length) return enqueue(text, attachments)
+      if (active || state.settlingCheckpoint || queued.length) return enqueue(text, attachments)
       const parsed = validPrompt(text, attachments)
       return parsed ? launchPrompt(parsed) : false
     },
@@ -477,10 +510,19 @@ export function createApiChatController(options: ApiChatOptions) {
       return !state.queuePaused
     },
     cancel,
+    async undoAgentChanges() {
+      if (active) return false
+      return checkpoints?.undo() ?? false
+    },
+    async viewBefore() {
+      if (active) return false
+      return checkpoints?.viewBefore() ?? false
+    },
     async reset() {
       if (disposed || active || queued.length) return
       releaseTools()
       context = []
+      checkpoints?.clear()
       publish({
         messages: [],
         error: null,
@@ -495,6 +537,7 @@ export function createApiChatController(options: ApiChatOptions) {
       configuration = null
       publish({ connected: false, model: null, busy: false, queuePaused: true })
       save()
+      checkpoints?.clear()
       disposed = true
     },
   }
@@ -545,14 +588,30 @@ export function createApiChatRegistry(
       }),
       releaseGuard: options.registerGuard?.(
         projectId,
-        () => chat.getSnapshot().busy || chat.getSnapshot().queuedMessages.length > 0,
+        () =>
+          chat.getSnapshot().busy ||
+          chat.getSnapshot().undoingAgentChanges ||
+          chat.getSnapshot().preparingBefore ||
+          chat.getSnapshot().settlingCheckpoint ||
+          chat.getSnapshot().queuedMessages.length > 0,
       ),
     }
     entries.set(projectId, created)
     created.releaseResource = options.registerResource?.(projectId, {
-      isBusy: () => chat.getSnapshot().busy || chat.getSnapshot().queuedMessages.length > 0,
+      isBusy: () =>
+        chat.getSnapshot().busy ||
+        chat.getSnapshot().undoingAgentChanges ||
+        chat.getSnapshot().preparingBefore ||
+        chat.getSnapshot().settlingCheckpoint ||
+        chat.getSnapshot().queuedMessages.length > 0,
       dispose() {
-        if (!chat.getSnapshot().busy && !chat.getSnapshot().queuedMessages.length)
+        if (
+          !chat.getSnapshot().busy &&
+          !chat.getSnapshot().undoingAgentChanges &&
+          !chat.getSnapshot().preparingBefore &&
+          !chat.getSnapshot().settlingCheckpoint &&
+          !chat.getSnapshot().queuedMessages.length
+        )
           releaseEntry(projectId)
       },
     })
@@ -562,7 +621,14 @@ export function createApiChatRegistry(
     get(projectId: string) {
       return entry(projectId).chat
     },
-    isBusy: () => [...entries.values()].some(({ chat }) => chat.getSnapshot().busy),
+    isBusy: () =>
+      [...entries.values()].some(
+        ({ chat }) =>
+          chat.getSnapshot().busy ||
+          chat.getSnapshot().undoingAgentChanges ||
+          chat.getSnapshot().preparingBefore ||
+          chat.getSnapshot().settlingCheckpoint,
+      ),
     subscribe(listener: () => void) {
       listeners.add(listener)
       return () => listeners.delete(listener)

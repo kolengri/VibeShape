@@ -10,6 +10,11 @@ import type {
 } from "@vibeshape/automation-api/assistant"
 import { assistantPromptSchema } from "@vibeshape/automation-api/assistant"
 import {
+  type AssistantCheckpointHost,
+  type AssistantCheckpointState,
+  createAssistantCheckpoints,
+} from "./assistant-checkpoints"
+import {
   type AgentChatSession,
   type ChatMessage,
   clearChatHistory,
@@ -25,31 +30,45 @@ type QueuedPrompt = {
   attachments: readonly AssistantAttachment[]
   started: boolean
 }
-type ChatState = Readonly<{
-  messages: readonly ChatMessage[]
-  snapshot: AssistantSnapshot | null
-  permission: Permission | null
-  question: AssistantQuestion | null
-  queuedMessages: readonly {
-    id: string
-    text: string
-    attachments: readonly { id: string; name: string }[]
-  }[]
-  queuePaused: boolean
-  error: AssistantErrorCode | null
-  busy: boolean
-  connecting: boolean
-  storageFailed: boolean
-}>
+type QueuedSteer = {
+  item: QueuedPrompt
+  token: symbol
+  generation: number
+  historyTailId: string | null
+  checkpoint: symbol | null
+}
+type ChatState = Readonly<
+  {
+    messages: readonly ChatMessage[]
+    snapshot: AssistantSnapshot | null
+    permission: Permission | null
+    question: AssistantQuestion | null
+    queuedMessages: readonly {
+      id: string
+      text: string
+      attachments: readonly { id: string; name: string }[]
+    }[]
+    queuePaused: boolean
+    supportsActiveSteer: boolean
+    steeringQueuedId: string | null
+    steerStartedNewTurn: boolean
+    error: AssistantErrorCode | null
+    busy: boolean
+    connecting: boolean
+    storageFailed: boolean
+  } & AssistantCheckpointState
+>
 
 export function createNativeChatController({
   projectId,
   bridge,
   storage,
+  checkpointHost,
 }: {
   projectId: string
   bridge: AssistantBridge
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">
+  checkpointHost?: AssistantCheckpointHost
 }) {
   const saved = readChatHistory(projectId, storage)
   let agentSession: AgentChatSession | undefined = saved?.agentSession
@@ -60,10 +79,19 @@ export function createNativeChatController({
     question: null,
     queuedMessages: [],
     queuePaused: false,
+    supportsActiveSteer: false,
+    steeringQueuedId: null,
+    steerStartedNewTurn: false,
     error: null,
     busy: false,
     connecting: false,
     storageFailed: false,
+    canUndoAgentChanges: false,
+    undoingAgentChanges: false,
+    viewingBefore: false,
+    preparingBefore: false,
+    settlingCheckpoint: false,
+    checkpointError: null,
   }
   let disposed = false
   let generation = 0
@@ -76,6 +104,7 @@ export function createNativeChatController({
   let activeQueuedPrompt: QueuedPrompt | undefined
   let activePromptTranscript: readonly ChatMessage[] | null = null
   const queued: QueuedPrompt[] = []
+  let steering: QueuedSteer | null = null
   const questions = new Map<string, AssistantQuestion>()
   const ignoredTokens = new Set<string>()
   const toolMessages = new Map<
@@ -94,6 +123,10 @@ export function createNativeChatController({
     state = { ...state, ...patch }
     for (const listener of listeners) listener()
   }
+  const checkpoints = checkpointHost ? createAssistantCheckpoints(checkpointHost, publish) : null
+  function settleCheckpoints() {
+    if (!promptInFlight && !steering && !state.busy) void checkpoints?.finish().then(drainQueue)
+  }
   const save = () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = undefined
@@ -106,7 +139,11 @@ export function createNativeChatController({
   const append = (role: ChatMessage["role"], text: string) => {
     const messages = [...state.messages]
     const last = messages.at(-1)
-    if ((role === "assistant" || role === "thought") && last?.role === role)
+    if (
+      (role === "assistant" || role === "thought") &&
+      last?.role === role &&
+      last.id !== steering?.historyTailId
+    )
       messages[messages.length - 1] = { ...last, text: (last.text + text).slice(0, 32_000) }
     else messages.push({ id: crypto.randomUUID(), role, text: text.slice(0, 32_000) })
     publish({ messages: retainChatMessages(messages) })
@@ -115,10 +152,18 @@ export function createNativeChatController({
   const scope = () =>
     state.snapshot ? { projectId, sessionToken: state.snapshot.sessionToken } : null
   function acceptSnapshot(snapshot: AssistantSnapshot) {
-    publish({ snapshot, busy: ["prompting", "cancelling"].includes(snapshot.status) })
+    publish({
+      snapshot,
+      busy: ["prompting", "cancelling"].includes(snapshot.status),
+      supportsActiveSteer: snapshot.canSteer === true && typeof bridge.steer === "function",
+    })
     if (agent && snapshot.canResume && snapshot.sessionId) {
       agentSession = { agent, sessionId: snapshot.sessionId }
       save()
+    }
+    if (snapshot.status === "ready") {
+      settleCheckpoints()
+      drainQueue()
     }
   }
   function updateTool(event: Extract<AssistantEvent, { type: "tool" }>) {
@@ -256,6 +301,7 @@ export function createNativeChatController({
     }
   }
   function beginDisconnect() {
+    checkpoints?.clearPreview()
     const current = scope()
     const at = ++generation
     activeControl = null
@@ -272,9 +318,15 @@ export function createNativeChatController({
       permission: null,
       question: null,
       queuePaused: queued.length > 0,
+      supportsActiveSteer: false,
+      steerStartedNewTurn: false,
     })
     save()
-    const done = current ? bridge.disconnect(current).catch(() => undefined) : Promise.resolve()
+    const done = (
+      current ? bridge.disconnect(current).catch(() => undefined) : Promise.resolve()
+    ).finally(() => {
+      if (isCurrent(at) && !steering) return checkpoints?.finish()
+    })
     return { at, done }
   }
   async function disconnect() {
@@ -369,17 +421,22 @@ export function createNativeChatController({
     publishQueue()
     return true
   }
+  function controlLocked() {
+    return activeControl !== null || steering !== null
+  }
+  function promptReady() {
+    return !promptInFlight && !controlLocked() && state.snapshot?.status === "ready"
+  }
+  function removeQueuedPrompt(item: QueuedPrompt) {
+    const index = queued.indexOf(item)
+    if (index >= 0) queued.splice(index, 1)
+    publishQueue()
+  }
   function drainQueue() {
     const next = queued[0]
-    if (
-      next &&
-      !promptInFlight &&
-      !activeControl &&
-      !state.busy &&
-      !state.queuePaused &&
-      state.snapshot?.status === "ready"
-    )
-      launchPrompt(next.text, next.attachments, next)
+    if (!next || !promptReady()) return
+    if (state.busy || state.settlingCheckpoint || state.queuePaused) return
+    launchPrompt(next.text, next.attachments, next)
   }
   function restoreQueued(item: QueuedPrompt | undefined) {
     if (!item || queued.includes(item)) return
@@ -391,6 +448,7 @@ export function createNativeChatController({
     text: string,
     attachments: readonly AssistantAttachment[],
     queuedPrompt?: QueuedPrompt,
+    historyTailId?: string | null,
   ) {
     if (queuedPrompt?.started) return
     const message: ChatMessage = {
@@ -401,9 +459,16 @@ export function createNativeChatController({
         ? { attachments: attachments.map(({ id, name }) => ({ id, name })) }
         : {}),
     }
-    publish({ messages: retainChatMessages([...state.messages, message]) })
+    const messages = [...state.messages]
+    const position =
+      historyTailId === null ? 0 : messages.findIndex(({ id }) => id === historyTailId) + 1
+    if (historyTailId !== undefined && (historyTailId === null || position > 0))
+      messages.splice(position, 0, message)
+    else messages.push(message)
+    publish({ messages: retainChatMessages(messages) })
     save()
     if (queuedPrompt) queuedPrompt.started = true
+    return message
   }
   function launchPrompt(
     text: string,
@@ -411,16 +476,15 @@ export function createNativeChatController({
     queuedPrompt?: QueuedPrompt,
   ) {
     const current = scope()
-    if (!current || state.snapshot?.status !== "ready" || promptInFlight || activeControl)
+    if (!current || !promptReady()) return false
+    if (checkpoints && !checkpoints.begin(queuedPrompt?.id ?? crypto.randomUUID())) {
+      publish({ queuePaused: true })
       return false
+    }
     const at = generation
     promptInFlight = true
     activeQueuedPrompt = queuedPrompt
-    if (queuedPrompt) {
-      const index = queued.indexOf(queuedPrompt)
-      if (index >= 0) queued.splice(index, 1)
-      publishQueue()
-    }
+    if (queuedPrompt) removeQueuedPrompt(queuedPrompt)
     publish({ busy: true, error: null })
     toolMessages.clear()
     recordPrompt(text, attachments, queuedPrompt)
@@ -434,7 +498,10 @@ export function createNativeChatController({
         restoreQueued(queuedPrompt)
         finishToolMessages("failed")
       }
-      publish({ busy: false, ...(!result.ok ? { queuePaused: true } : {}) })
+      publish({
+        busy: ["prompting", "cancelling"].includes(state.snapshot?.status ?? ""),
+        ...(!result.ok ? { queuePaused: true } : {}),
+      })
       save()
     }
     void complete()
@@ -449,9 +516,82 @@ export function createNativeChatController({
         promptInFlight = false
         activeQueuedPrompt = undefined
         activePromptTranscript = null
+        settleCheckpoints()
         drainQueue()
       })
     return true
+  }
+  function prepareQueuedSteer(id: string) {
+    if (controlLocked() || !state.busy || state.snapshot?.status !== "prompting") return null
+    const request = bridge.steer
+    if (!state.supportsActiveSteer || !request) {
+      publish({ error: "unsupported" })
+      return null
+    }
+    const item = queued.find((candidate) => candidate.id === id)
+    if (!item) return null
+    const parsed = validPrompt(item.text, item.attachments)
+    return parsed ? { item, parsed, request } : null
+  }
+  function failQueuedSteer(at: number, error: AssistantErrorCode) {
+    if (isCurrent(at)) publish({ error, queuePaused: true })
+    return false
+  }
+  function settleSteerCheckpoint(claim: QueuedSteer, accepted: boolean) {
+    if (!checkpoints || !claim.checkpoint) return
+    if (accepted) checkpoints.acceptSteer(claim.checkpoint)
+    else checkpoints.discardSteer(claim.checkpoint)
+  }
+  function receiveQueuedSteer(claim: QueuedSteer, result: AssistantResult) {
+    if (disposed || steering !== claim) return false
+    if (!result.ok || !result.steerOutcome) {
+      settleSteerCheckpoint(claim, false)
+      return failQueuedSteer(claim.generation, result.ok ? "protocol-error" : result.code)
+    }
+    settleSteerCheckpoint(claim, true)
+    const { item } = claim
+    const message = recordPrompt(item.text, item.attachments, item, claim.historyTailId)
+    if (message && activePromptTranscript)
+      activePromptTranscript = retainChatMessages([...activePromptTranscript, message])
+    removeQueuedPrompt(item)
+    if (isCurrent(claim.generation))
+      publish({ steerStartedNewTurn: result.steerOutcome === "startedNewTurn" })
+    save()
+    return true
+  }
+  function releaseQueuedSteer(claim: QueuedSteer) {
+    if (steering !== claim) return
+    steering = null
+    if (activeControl === claim.token) activeControl = null
+    publish({ steeringQueuedId: null })
+    settleCheckpoints()
+    drainQueue()
+  }
+  async function steerQueued(id: string) {
+    const prepared = prepareQueuedSteer(id)
+    if (!prepared) return false
+    const { item, parsed, request } = prepared
+    const checkpoint = checkpoints?.begin(item.id, "steer") ?? null
+    if (checkpoints && !checkpoint) return false
+    const claim = {
+      item,
+      token: Symbol("queued-steering"),
+      generation,
+      historyTailId: state.messages.at(-1)?.id ?? null,
+      checkpoint,
+    }
+    steering = claim
+    activeControl = claim.token
+    publish({ steeringQueuedId: id, steerStartedNewTurn: false, error: null })
+    try {
+      const result = await request({ ...parsed, requestId: item.id })
+      return receiveQueuedSteer(claim, result)
+    } catch {
+      if (checkpoint) checkpoints?.discardSteer(checkpoint)
+      return failQueuedSteer(claim.generation, "request-failed")
+    } finally {
+      releaseQueuedSteer(claim)
+    }
   }
   async function configure(action: () => Promise<AssistantResult>) {
     if (activeControl || state.busy || promptInFlight || disposed) return
@@ -482,7 +622,13 @@ export function createNativeChatController({
     connect,
     disconnect,
     async send(text: string, attachments: readonly AssistantAttachment[] = []) {
-      if (state.busy || promptInFlight || activeControl || queued.length)
+      if (
+        state.busy ||
+        state.settlingCheckpoint ||
+        promptInFlight ||
+        activeControl ||
+        queued.length
+      )
         return enqueue(text, attachments)
       const parsed = validPrompt(text, attachments)
       return parsed ? launchPrompt(parsed.text, parsed.attachments) : false
@@ -490,7 +636,17 @@ export function createNativeChatController({
     async enqueue(text: string, attachments: readonly AssistantAttachment[] = []) {
       return enqueue(text, attachments)
     },
+    steerQueued,
+    async undoAgentChanges() {
+      if (state.busy || promptInFlight || steering || activeControl) return false
+      return checkpoints?.undo() ?? false
+    },
+    async viewBefore() {
+      if (state.busy || promptInFlight || steering || activeControl) return false
+      return checkpoints?.viewBefore() ?? false
+    },
     removeQueued(id: string) {
+      if (steering?.item.id === id) return
       const index = queued.findIndex((item) => item.id === id)
       if (index >= 0) queued.splice(index, 1)
       publishQueue()
@@ -502,6 +658,7 @@ export function createNativeChatController({
       return true
     },
     async cancel() {
+      checkpoints?.clearPreview()
       const current = scope()
       permissions.clear()
       questions.clear()
@@ -516,6 +673,7 @@ export function createNativeChatController({
       await done
       if (!isCurrent(at)) return
       agentSession = undefined
+      checkpoints?.clear()
       publish({ messages: [], error: null, storageFailed: !clearChatHistory(projectId, storage) })
       if (agent) await connect(agent)
     },
@@ -571,6 +729,7 @@ export function createNativeChatController({
       const current = scope()
       finishToolMessages("cancelled")
       save()
+      checkpoints?.clear()
       disposed = true
       generation += 1
       connecting = null
@@ -587,6 +746,7 @@ export function createNativeChatController({
         permission: null,
         question: null,
         queuePaused: queued.length > 0,
+        supportsActiveSteer: false,
       }
       if (current) void bridge.disconnect(current).catch(() => undefined)
     },

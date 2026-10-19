@@ -946,8 +946,15 @@ export function createBrowserBroker({
       return Promise.resolve(
         failure("project-management-disabled", "This assistant can only work in its own project."),
       )
-    if (!pair || pair.suspendedUntil !== null)
-      return Promise.resolve(failure("not-paired", "The browser is not paired."))
+    if (!pair) return Promise.resolve(failure("not-paired", "The browser is not paired."))
+    if (pair.suspendedUntil !== null)
+      return Promise.resolve(
+        failure(
+          "session-suspended",
+          "The browser connection is recovering. Retry model_info after reconnection before making further changes.",
+          true,
+        ),
+      )
     const activePair = pair
     const projectBlock = projectRequestBlock(input.operation, activePair.document.id)
     if (projectBlock) return Promise.resolve(projectBlock)
