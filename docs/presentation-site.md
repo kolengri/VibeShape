@@ -47,6 +47,20 @@ instructions distinct from ready-to-run downloads. The site does not fetch GitHu
 `bun run build:site` produces `apps/site/dist`. Serve that directory over HTTP(S) on a static host.
 Vite uses a relative base so asset URLs also work under a path prefix. Deep documentation links
 use fragments and need no server-side route fallback. Copy the complete output, including assets.
-Before public deployment, configure absolute Open Graph image and canonical URLs for the selected
-site origin. No production website deployment or hosting resource is created by this workspace.
-The existing Cloudflare editor deployment continues to build `apps/web` separately.
+If the public origin changes, update the absolute Open Graph image and canonical URLs. The configured presentation origin is
+`https://vibeshape.hello-world.cz/`; editor links use `https://cad.hello-world.cz`.
+The HTML includes absolute canonical, Open Graph URL, and Open Graph image metadata for the
+presentation origin. Domain and Cloudflare hosting setup are managed separately from this source
+workspace. The existing editor deployment continues to build `apps/web` separately.
+
+
+The intended Cloudflare Direct Upload project is `vibeshape-site` in the personal Greg account,
+separate from the existing editor project `vibeshape-greg`. Its default hostname is
+`vibeshape-site.pages.dev`. Deploy only a verified build and record the source commit and ZIP
+checksum with the handoff. Domain and live-deployment readiness must be verified independently.
+
+The existing remote MCP relay still allowlists `https://vibeshape-greg.pages.dev` through its
+`EDITOR_ORIGIN` configuration. A new `cad.hello-world.cz` editor hostname does not enable remote MCP
+there. The site's MCP guide directs users to the local MCP setup until a separately verified
+relay-origin and Turnstile migration is completed. This presentation task does not change or redeploy
+the editor or remote MCP relay.

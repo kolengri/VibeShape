@@ -1,5 +1,5 @@
 export const repository = "https://github.com/kolengri/VibeShape"
-export const editorUrl = "https://vibeshape-greg.pages.dev"
+export const editorUrl = "https://cad.hello-world.cz"
 export const releasesUrl = `${repository}/releases`
 export const referenceUrl = (path: string) => `${repository}/blob/main/${path}`
 

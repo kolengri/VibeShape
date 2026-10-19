@@ -7,7 +7,15 @@ test("the presentation explains the workflow and links to the real editor", asyn
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("CAD for thingsyou can make.")
   await expect(page.getByRole("link", { name: "Start designing" })).toHaveAttribute(
     "href",
-    "https://vibeshape-greg.pages.dev",
+    "https://cad.hello-world.cz",
+  )
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    "https://vibeshape.hello-world.cz/",
+  )
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    "content",
+    "https://vibeshape.hello-world.cz/brand/og-light.png",
   )
   await page.getByRole("button", { name: "01 / Sketch", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Start with what has to fit." })).toBeVisible()
