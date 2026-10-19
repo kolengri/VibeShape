@@ -35,11 +35,21 @@ seekable, and the site loads no Three.js or CAD runtime for this animation.
 
 ## Spatial illustrations
 
-The printer illustration reveals all 17 layers, then lifts and parks the head after eight seconds.
+The printer illustration takes 2.4 seconds per layer, revealing all 17 layers over 40.8 seconds.
+The head then lifts and parks over 2.4 seconds, completing the cycle in 43.2 seconds.
 It stays finished when revisited. Feature diagrams, workflow stages, and agent steps animate once
 when their block enters the viewport; selecting another workflow stage starts that stage's visual.
 Reduced-motion preferences show completed static illustrations and keep all content visible.
 These SVG/CSS illustrations use the existing theme tokens and do not load the CAD runtime.
+
+## Social previews
+
+The static HTML declares two 1200 × 630 PNG Open Graph images: `brand/og-light.png` is the
+preferred preview and `brand/og-dark.png` is an alternate. Each has an absolute HTTPS URL,
+MIME type, dimensions, and descriptive alt text. Twitter Cards use the light image with
+`summary_large_image`. Crawlers receive all metadata without running JavaScript; fragment-based
+documentation routes share the site's preview. The browser tests verify both image files and
+metadata with JavaScript disabled.
 
 ## Automatic GitHub deployment
 

@@ -139,6 +139,9 @@ summary:focus-visible {
 }
 
 .print-visual {
+  --print-pass-duration: 2.4s;
+  --print-build-duration: calc(var(--print-pass-duration) * 17);
+  --print-park-duration: 2.4s;
   color: var(--primary);
   width: 100%;
   background: radial-gradient(
@@ -265,22 +268,24 @@ summary:focus-visible {
   }
 
   .print-visual[data-started="true"] .printed-layer {
-    animation: print-layer 0.4s steps(1, end) both;
-    animation-delay: calc(var(--layer) * 0.4s);
+    animation: print-layer 0s both;
+    animation-delay: calc((var(--layer) + 1) * var(--print-pass-duration));
   }
 
   .print-visual[data-started="true"] .print-elevator {
-    animation: print-rise 8s linear both;
+    animation:
+      print-rise var(--print-build-duration) linear both,
+      print-lift var(--print-park-duration) var(--print-build-duration) ease-in-out forwards;
   }
 
   .print-visual[data-started="true"] .print-carriage {
     animation:
-      print-pass 0.4s linear 17,
-      print-park 1.2s 6.8s ease-in-out forwards;
+      print-pass var(--print-pass-duration) linear 17,
+      print-park var(--print-park-duration) var(--print-build-duration) ease-in-out forwards;
   }
 
   .print-visual[data-started="true"] .print-filament {
-    animation: print-extrude 6.8s steps(1, end);
+    animation: print-extrude var(--print-build-duration) steps(1, end);
   }
 
   .feature-scene[data-started="true"] .sketch-outline {
@@ -364,7 +369,13 @@ summary:focus-visible {
   from {
     transform: translateY(72px);
   }
-  85% {
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes print-lift {
+  from {
     transform: translateY(0);
   }
   to {
