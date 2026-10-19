@@ -119,8 +119,9 @@
     "browserAction": "Open VibeShape",
     "recommended": "QUICKEST START",
     "local": "On your machine",
-    "localBody": "Run the editor locally with the pinned Bun version, or build a portable package from verified, committed source.",
+    "localBody": "Build the macOS desktop app from source, run the browser editor locally, or prepare a portable Bun package.",
     "localAction": "Local installation guide",
+    "desktop": "macOS desktop build guide",
     "installers": "Desktop installers",
     "installerStatus": "Not published yet",
     "installerBody": "Signed VibeShape installers for macOS, Windows, and Linux are not currently available. The existing OCCT source archive is not an application installer.",
@@ -173,7 +174,7 @@
       "twoTitle": "Prepare a portable package",
       "two": "The packager consumes a verified editor build and committed source. Follow the portable distribution reference for controlled build preparation, licensing assets, packaging, installation, updates, and rollback. Do not treat a source archive as a ready-to-run application.",
       "threeTitle": "Understand runtime requirements",
-      "three": "The portable package needs Bun on PATH; it does not bundle Bun. Its runtime does not need a source checkout, node_modules, a cloud account, or a model API. The documented launcher and installer workflow targets macOS and Linux; Windows desktop installers are not yet available."
+      "three": "The macOS desktop app bundles its runtime and does not need Bun or Terminal to launch. The separate portable package needs Bun on PATH; it does not bundle Bun. Neither runtime needs a source checkout, node_modules, a cloud account, or a model API. Public desktop installers are not published yet; follow the macOS desktop build guide in the downloads section for source builds."
     },
     "parametric-modeling": {
       "title": "Model with design intent",

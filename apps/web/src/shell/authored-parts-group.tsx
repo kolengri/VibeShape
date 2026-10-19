@@ -15,6 +15,13 @@ import { type ReactNode, useEffect, useState } from "react"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { selectedAuthoredBody } from "./authored-tree-state"
+import {
+  modelBrowserChildRow,
+  modelBrowserCount,
+  modelBrowserGroupRow,
+  modelBrowserItem,
+  modelBrowserSelectedRow,
+} from "./model-browser-styles"
 
 type PartsProps = {
   revealRequest?: Readonly<{ featureId: FeatureId; sequence: number }> | null
@@ -38,7 +45,9 @@ function MeshOperationNotice({
 }) {
   const t = useTranslations("app.authoredTree")
   if (!selected || resolved.body?.representation !== "triangle-mesh") return null
-  return <p className="ml-8 px-2 text-xs text-muted-foreground">{t("meshOperationsUnavailable")}</p>
+  return (
+    <p className="pl-14 pr-2 text-xs text-muted-foreground">{t("meshOperationsUnavailable")}</p>
+  )
 }
 
 function AuthoredPartStatus({
@@ -57,7 +66,7 @@ function AuthoredPartStatus({
     <p
       id={`part-status-${partId}`}
       className={cn(
-        "ml-8 flex items-center gap-1 px-2 text-[10px] text-muted-foreground",
+        "flex items-center gap-1 pl-14 pr-2 text-xs text-muted-foreground",
         status === "available" && "sr-only",
       )}
     >
@@ -112,21 +121,18 @@ function AuthoredPartRow({
         onPointerEnter={() => props.onPreselect?.(highlight)}
         onPointerLeave={() => props.onPreselect?.(null)}
       >
-        <div role="none" className="flex min-w-0 items-center">
+        <div role="none" className={cn(modelBrowserItem, selected && modelBrowserSelectedRow)}>
           <Button
             type="button"
             variant="ghost"
-            size="xs"
+            size="sm"
             role="treeitem"
             tabIndex={-1}
             aria-selected={selected}
             aria-label={t("partLabel", { name: part.name })}
             aria-describedby={`part-status-${part.id}`}
             disabled={props.selectionRequiresBody && !highlight}
-            className={cn(
-              "min-w-0 flex-1 justify-start pl-6 font-normal",
-              selected && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-            )}
+            className={cn(modelBrowserChildRow, "flex-1")}
             onClick={() => props.onSelect(part.id)}
             onFocus={() => props.onPreselect?.(highlight)}
             onBlur={() => props.onPreselect?.(null)}
@@ -217,11 +223,11 @@ export function AuthoredPartsGroup(props: PartsProps) {
       <Button
         type="button"
         variant="ghost"
-        size="xs"
+        size="sm"
         role="treeitem"
         tabIndex={-1}
         aria-expanded={expanded}
-        className="w-full justify-start font-medium"
+        className={modelBrowserGroupRow}
         onClick={() => setExpanded(!expanded)}
       >
         <ChevronDown
@@ -230,7 +236,7 @@ export function AuthoredPartsGroup(props: PartsProps) {
         />
         <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
         {t("parts")}
-        <span aria-hidden="true" className="ml-auto text-xs tabular-nums text-muted-foreground">
+        <span aria-hidden="true" className={modelBrowserCount}>
           {props.parts.length}
         </span>
       </Button>
@@ -242,7 +248,7 @@ export function AuthoredPartsGroup(props: PartsProps) {
               <AuthoredPartRow key={resolved.part.id} {...props} resolved={resolved} />
             ))
           ) : (
-            <p className="px-2 py-1 text-xs text-muted-foreground">{t("emptyParts")}</p>
+            <p className="py-2 pl-14 pr-2 text-xs text-muted-foreground">{t("emptyParts")}</p>
           )}
         </fieldset>
       )}

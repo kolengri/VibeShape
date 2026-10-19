@@ -8,6 +8,10 @@ The goal is not to clone all of Onshape. The first practical release must provid
 
 By default, all computation, files, and model history remain on the user's device. A cloud account, server-side CAD session, and mandatory telemetry are not required.
 
+The [macOS desktop application](docs/desktop-macos.md) packages the same editor with native launch,
+an isolated persistent profile and GitHub release checks/downloads. Local `.app` and `.dmg` builds
+require no external runtime; public signed/notarized distribution remains a release gate.
+
 ## Status
 
 Fillet and Chamfer are persistent Part Design features over all or selected edges of one explicit solid target.

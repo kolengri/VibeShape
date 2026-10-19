@@ -1,5 +1,9 @@
 # Portable local distribution
 
+For a self-contained macOS `.app`, native launch and GitHub release downloads, see
+[macOS desktop delivery](desktop-macos.md). This document describes the separate portable Bun
+editor/stdio package and its versioned installer.
+
 The runtime package contains the built editor, its module worker and WASM, a bundled stdio MCP
 server, a launcher, corresponding application source, and the existing controlled OCCT/SolveSpace
 source and licensing assets. It needs an already installed **Bun 1.4.2** on `PATH`. Bun is not copied

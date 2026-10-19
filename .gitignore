@@ -34,4 +34,5 @@ __pycache__/
 # Local benchmark output
 .benchmarks/
 .artifacts/
+artifacts/desktop-macos/browser/
 .fallow/

@@ -155,6 +155,10 @@ test("downloads distinguish missing installers from usable installation paths", 
     "href",
     "https://github.com/kolengri/VibeShape/releases",
   )
+  await expect(downloads.getByRole("link", { name: "macOS desktop build guide" })).toHaveAttribute(
+    "href",
+    "https://github.com/kolengri/VibeShape/blob/main/docs/desktop-macos.md",
+  )
   await downloads.getByRole("link", { name: "Local installation guide" }).click()
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run VibeShape locally")
   await expect(page.locator("pre")).toContainText("bun run dev")

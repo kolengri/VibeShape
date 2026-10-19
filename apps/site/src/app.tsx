@@ -541,6 +541,12 @@ function Downloads() {
               {t("localAction")}
               <ArrowRight size={16} />
             </ActionLink>
+            <a
+              href={referenceUrl("docs/desktop-macos.md")}
+              className="mt-4 text-sm text-primary hover:underline"
+            >
+              {t("desktop")}
+            </a>
           </div>
           <div className="flex flex-col rounded-xl border border-border bg-background p-7">
             <Download size={24} strokeWidth={1.5} className="mb-8 text-muted-foreground" />
