@@ -21,7 +21,7 @@
     "primary": "Start designing",
     "secondary": "Explore the docs",
     "note": "Free to use · No account required · GPL-3.0-or-later",
-    "illustration": "Illustration of Benchy transforming into a mechanical housing as you scroll"
+    "illustration": "Illustration of Benchy transforming into an exploded mechanical housing"
   },
   "intro": {
     "label": "LESS BETWEEN YOU AND THE PART",
@@ -70,13 +70,24 @@
     "shapeDetail": "Profile → Extrude → Features",
     "exportDetail": ".vshape → 3MF / STEP / STL",
     "guide": "Follow the getting-started guide",
-    "diagram": "Illustrative modeling workflow",
+    "diagram": "Modeling workflow",
     "profile": "Closed profile",
     "dimensions": "Dimensions & constraints",
     "history": "Editable feature history",
     "native": "Native backup",
     "exact": "Exact CAD exchange",
-    "mesh": "Print mesh"
+    "mesh": "Print mesh",
+    "model": {
+      "title": "Interactive demonstration mounting plate",
+      "hint": "Drag to rotate. Focus the model to zoom. Use the view controls or Fit to reset.",
+      "fit": "Fit model",
+      "isometric": "Isometric view",
+      "front": "Front view",
+      "top": "Top view",
+      "right": "Right view",
+      "loading": "Loading 3D preview…",
+      "unavailable": "The 3D preview is unavailable on this device."
+    }
   },
   "ai": {
     "label": "YOUR AGENT. YOUR CAD SESSION.",

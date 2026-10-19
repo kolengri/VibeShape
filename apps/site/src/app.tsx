@@ -6,7 +6,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   BookOpen,
-  Box,
   Cable,
   Code,
   Download,
@@ -21,6 +20,7 @@ import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalSt
 import { HeroVisual } from "./hero-visual"
 import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
 import { AnimatedScene, ConstructionPlanes, FeatureVisual, PrintVisual } from "./spatial-visuals"
+import { type WorkflowStage, WorkflowVisual } from "./workflow-visual"
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`
 const subscribeToHash = (notify: () => void) => {
@@ -194,7 +194,7 @@ function Hero() {
           <div className="relative min-w-0">
             <HeroVisual
               source={assetUrl("media/hero-scroll.mp4")}
-              poster={assetUrl("media/hero-scroll.jpg")}
+              poster={assetUrl("media/hero-model.jpg")}
               description={t("illustration")}
             />
           </div>
@@ -280,7 +280,7 @@ function Features() {
 
 function Workflow() {
   const t = useTranslations("workflow")
-  const [stage, setStage] = useState<"sketch" | "shape" | "export">("shape")
+  const [stage, setStage] = useState<WorkflowStage>("shape")
   return (
     <section id="workflow" className="workflow-section relative isolate scroll-mt-24">
       <ConstructionPlanes />
@@ -324,48 +324,7 @@ function Workflow() {
               <ArrowRight size={15} />
             </a>
           </div>
-          <div
-            key={stage}
-            data-stage={stage}
-            className="workflow-visual blueprint-grid flex min-h-80 flex-col items-center justify-center gap-7 border-t border-border p-8 md:border-l md:border-t-0"
-            aria-hidden="true"
-          >
-            {stage === "sketch" ? (
-              <>
-                <div className="relative flex h-32 w-48 items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/5">
-                  <div className="size-12 rounded-full border-2 border-primary" />
-                  <span className="absolute -top-6 font-mono text-xs text-primary">80 mm</span>
-                  <span className="absolute -bottom-6 font-mono text-xs text-primary">Ø 20 mm</span>
-                </div>
-                <p className="mt-6 font-mono text-[11px] text-muted-foreground">
-                  {t("dimensions")}
-                </p>
-              </>
-            ) : stage === "shape" ? (
-              <>
-                <Box size={112} strokeWidth={0.65} className="text-primary" />
-                <p className="font-mono text-[11px] text-muted-foreground">{t("history")}</p>
-              </>
-            ) : (
-              <div className="w-full max-w-xs space-y-3">
-                {[
-                  [".vshape", "native"],
-                  ["STEP", "exact"],
-                  ["3MF / STL", "mesh"],
-                ].map(([format, label]) => (
-                  <div
-                    key={format}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-4 text-xs"
-                  >
-                    <span className="font-mono text-primary">{format}</span>
-                    <span className="text-muted-foreground">
-                      {t(label as "native" | "exact" | "mesh")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <WorkflowVisual key={stage} stage={stage} />
         </AnimatedScene>
       </div>
     </section>

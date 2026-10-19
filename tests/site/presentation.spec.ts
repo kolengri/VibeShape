@@ -1,27 +1,37 @@
 import { expect, test } from "@playwright/test"
 
-test("the hero follows scroll in both directions while the video stays paused", async ({
+test("the hero plays freely, then floats around the exploded model without pinning scroll", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/")
   const video = page.locator("#overview video")
   await expect(video).toHaveCSS("opacity", "1")
+  await expect(page.locator(".hero-scroll-frame")).toHaveCSS("position", "static")
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+  await page.evaluate(() => window.scrollTo({ top: 240, behavior: "instant" }))
+  expect(await page.evaluate(() => window.scrollY)).toBe(240)
   await expect
     .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeLessThan(0.1)
-  await page.evaluate(() => window.scrollTo({ top: 540, behavior: "instant" }))
-  await expect
-    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeGreaterThan(3)
-  await expect(page.locator(".hero-visual")).toBeInViewport({ ratio: 1 })
-  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+    .toBeGreaterThan(0.3)
+  const beforeReturn = await video.evaluate((element: HTMLVideoElement) => element.currentTime)
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
+  expect(
+    await video.evaluate((element: HTMLVideoElement) => element.currentTime),
+  ).toBeGreaterThanOrEqual(beforeReturn)
+  await expect(video).toHaveAttribute("data-phase", "floating", { timeout: 9000 })
   await expect
     .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeLessThan(0.1)
+    .toBeGreaterThan(4.2)
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime), {
+      timeout: 7000,
+    })
+    .toBeLessThan(3.9)
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
   await page.locator("#features").scrollIntoViewIfNeeded()
   await expect(page.locator("#features h2")).toBeInViewport()
+  await expect(video).toHaveAttribute("data-active", "false")
 })
 
 test("reduced motion uses the poster without fetching video or pinning the hero", async ({
@@ -50,26 +60,22 @@ test("reduced motion uses the poster without fetching video or pinning the hero"
   expect(videoRequests).toEqual([])
 })
 
-test("the hero follows mobile scrolling without pinning or horizontal overflow", async ({
+test("the mobile hero plays independently of scrolling without horizontal overflow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto("/")
   const video = page.locator("#overview video")
+  await page.locator(".hero-visual").scrollIntoViewIfNeeded()
   await expect(video).toHaveCSS("opacity", "1")
-  const initialTime = await video.evaluate((element: HTMLVideoElement) => element.currentTime)
-  await page
-    .locator(".hero-visual")
-    .evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }))
   await expect
     .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeGreaterThan(initialTime + 1)
+    .toBeGreaterThan(0.3)
   await expect(page.locator(".hero-scroll-frame")).toHaveCSS("position", "static")
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
-  await expect
-    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeLessThan(initialTime + 0.1)
+  await page.locator("#features").scrollIntoViewIfNeeded()
+  await expect(video).toHaveAttribute("data-active", "false")
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
 })
 
 test("a failed hero video leaves a decoded poster visible", async ({ page }) => {
@@ -388,5 +394,146 @@ test.describe("social previews", () => {
       expect(png.readUInt32BE(16)).toBe(1200)
       expect(png.readUInt32BE(20)).toBe(630)
     }
+  })
+})
+
+test("the workflow lazily loads a real 3D part with rotation and editor view controls", async ({
+  page,
+}) => {
+  const meshRequests: string[] = []
+  const kernelRequests: string[] = []
+  page.on("request", (request) => {
+    if (request.url().endsWith("/models/demo-mounting-plate.stl")) meshRequests.push(request.url())
+    if (request.url().includes(".wasm")) kernelRequests.push(request.url())
+  })
+  await page.goto("/")
+  const model = page.locator("[data-workflow-model]")
+  await expect(model).toHaveAttribute("data-state", "loading")
+  expect(meshRequests).toEqual([])
+  await model.scrollIntoViewIfNeeded()
+  await expect(model).toHaveAttribute("data-state", "ready", { timeout: 10000 })
+  expect(meshRequests).toHaveLength(1)
+  const canvas = model.getByLabel("Interactive demonstration mounting plate")
+  await expect(canvas).toBeVisible()
+  const initial = await canvas.screenshot()
+  await model.getByRole("button", { name: "Top view", exact: true }).click()
+  await expect(model).toHaveAttribute("data-view", "top")
+  const top = await canvas.screenshot()
+  expect(top.equals(initial)).toBe(false)
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("The 3D preview canvas is missing.")
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await page.mouse.move(bounds.x + bounds.width / 2 + 20, bounds.y + bounds.height / 2 + 10)
+  await expect(model).toHaveAttribute("data-view", "top")
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 90, bounds.y + bounds.height / 2 + 50, {
+    steps: 8,
+  })
+  await page.mouse.up()
+  await expect(model).toHaveAttribute("data-view", "orbit")
+  expect((await canvas.screenshot()).equals(top)).toBe(false)
+  await expect(model).toHaveAttribute("data-engaged", "true")
+  await page.keyboard.press("Escape")
+  await expect(model).toHaveAttribute("data-engaged", "false")
+  const beforeScroll = await page.evaluate(() => window.scrollY)
+  await page.mouse.wheel(0, 180)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforeScroll)
+  expect(kernelRequests).toEqual([])
+})
+
+test("the model can be reopened after changing stages and fits a mobile viewport", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/#workflow")
+  const model = page.locator("[data-workflow-model]")
+  await model.scrollIntoViewIfNeeded()
+  await expect(model).toHaveAttribute("data-state", "ready", { timeout: 10000 })
+  await page.getByRole("button", { name: "Sketch", exact: true }).click()
+  await expect(model).toHaveCount(0)
+  await page.getByRole("button", { name: "Shape", exact: true }).click()
+  await model.scrollIntoViewIfNeeded()
+  await expect(model).toHaveAttribute("data-state", "ready", { timeout: 10000 })
+  await model.getByRole("button", { name: "Front view", exact: true }).focus()
+  await page.keyboard.press("Enter")
+  await expect(model).toHaveAttribute("data-view", "front")
+  await model.getByRole("button", { name: "Top view", exact: true }).click()
+  await model.getByRole("button", { name: "Fit model", exact: true }).click()
+  await expect(model.getByRole("button", { name: "Top view", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  )
+  await expect(model).toHaveAttribute("data-view", "isometric")
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("an unavailable 3D asset keeps workflow navigation usable", async ({ page }) => {
+  await page.route("**/models/demo-mounting-plate.stl", (route) => route.abort())
+  await page.goto("/#workflow")
+  const model = page.locator("[data-workflow-model]")
+  await model.scrollIntoViewIfNeeded()
+  await expect(model).toHaveAttribute("data-state", "unavailable")
+  await expect(model.getByRole("status")).toHaveText(
+    "The 3D preview is unavailable on this device.",
+  )
+  await expect(model.getByRole("button", { name: "Fit model", exact: true })).toBeDisabled()
+  await page.getByRole("button", { name: "Export", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Bring the model with you." })).toBeVisible()
+})
+
+test("a failed viewer chunk stays inside the workflow fallback", async ({ page }) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.route(/\/assets\/three-viewport-[^/]+\.js$/, (route) => route.abort())
+  await page.goto("/#workflow")
+  const model = page.locator("[data-workflow-model]")
+  await model.scrollIntoViewIfNeeded()
+  await expect(model).toHaveAttribute("data-state", "unavailable")
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("CAD for things you can make.")
+  await page.getByRole("button", { name: "Sketch", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Start with what has to fit." })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test.describe("touch preview", () => {
+  test.use({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true })
+
+  test("a cancelled touch scroll releases the model and restores page scrolling", async ({
+    page,
+  }) => {
+    await page.goto("/#workflow")
+    const model = page.locator("[data-workflow-model]")
+    await model.scrollIntoViewIfNeeded()
+    await expect(model).toHaveAttribute("data-state", "ready", { timeout: 10000 })
+    const canvas = model.getByLabel("Interactive demonstration mounting plate")
+    await canvas.evaluate((element) =>
+      element.addEventListener("pointercancel", () =>
+        element.setAttribute("data-cancelled", "true"),
+      ),
+    )
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The touch preview canvas is missing.")
+    const x = bounds.x + bounds.width / 2
+    const y = bounds.y + bounds.height / 2
+    const session = await page.context().newCDPSession(page)
+    await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] })
+    await expect(model).toHaveAttribute("data-engaged", "false")
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y: y + 90 }],
+    })
+    await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+    await expect(canvas).toHaveAttribute("data-cancelled", "true")
+    await expect(model).toHaveAttribute("data-engaged", "false")
+    await expect(canvas).toHaveCSS("touch-action", "pan-y")
+    await canvas.tap()
+    await expect(model).toHaveAttribute("data-engaged", "true")
+    await expect(canvas).toHaveCSS("touch-action", "none")
+    await model.getByRole("button", { name: "Fit model", exact: true }).tap()
+    await expect(model).toHaveAttribute("data-engaged", "false")
+    await session.detach()
   })
 })
