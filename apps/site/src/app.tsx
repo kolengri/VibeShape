@@ -11,7 +11,6 @@ import {
   Code,
   Download,
   HardDrive,
-  Layers,
   LockKeyhole,
   Menu,
   Monitor,
@@ -21,7 +20,7 @@ import {
 import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
 import { HeroVisual } from "./hero-visual"
 import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
-import { ConstructionPlanes, PrintVisual } from "./spatial-visuals"
+import { AnimatedScene, ConstructionPlanes, FeatureVisual, PrintVisual } from "./spatial-visuals"
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`
 const subscribeToHash = (notify: () => void) => {
@@ -239,14 +238,7 @@ function UseCases() {
 
 function Features() {
   const t = useTranslations("features")
-  const features = [
-    { id: "sketch", icon: Ruler },
-    { id: "solid", icon: Box },
-    { id: "assembly", icon: Layers },
-    { id: "print", icon: Download },
-    { id: "privacy", icon: HardDrive },
-    { id: "agent", icon: Cable },
-  ] as const
+  const features = ["sketch", "solid", "assembly", "print", "privacy", "agent"] as const
   return (
     <section id="features" className="scroll-mt-24 border-y border-border bg-panel/60">
       <div className="mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
@@ -263,12 +255,12 @@ function Features() {
           </p>
         </div>
         <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
-          {features.map(({ id, icon: Icon }) => (
-            <div key={id} className="bg-background p-7 lg:p-8">
-              <Icon size={24} strokeWidth={1.5} className="mb-8 text-primary" aria-hidden="true" />
+          {features.map((id) => (
+            <AnimatedScene key={id} className="feature-scene bg-background p-7 lg:p-8">
+              <FeatureVisual kind={id} />
               <h3 className="mb-3 text-lg font-medium tracking-tight">{t(id)}</h3>
               <p className="text-sm leading-relaxed text-muted-foreground">{t(`${id}Body`)}</p>
-            </div>
+            </AnimatedScene>
           ))}
         </div>
         <div className="mt-6 flex flex-wrap justify-between gap-3 text-xs leading-relaxed text-muted-foreground">
@@ -298,7 +290,7 @@ function Workflow() {
           {t("title")}
         </h2>
         <p className="mt-4 text-muted-foreground">{t("description")}</p>
-        <div className="mt-10 grid overflow-hidden rounded-xl border border-border bg-background md:grid-cols-2">
+        <AnimatedScene className="workflow-scene mt-10 grid overflow-hidden rounded-xl border border-border bg-background md:grid-cols-2">
           <div className="p-6 sm:p-9">
             <fieldset aria-label={t("diagram")} className="flex flex-wrap gap-2">
               {(["sketch", "shape", "export"] as const).map((key) => (
@@ -333,7 +325,9 @@ function Workflow() {
             </a>
           </div>
           <div
-            className="blueprint-grid flex min-h-80 flex-col items-center justify-center gap-7 border-t border-border p-8 md:border-l md:border-t-0"
+            key={stage}
+            data-stage={stage}
+            className="workflow-visual blueprint-grid flex min-h-80 flex-col items-center justify-center gap-7 border-t border-border p-8 md:border-l md:border-t-0"
             aria-hidden="true"
           >
             {stage === "sketch" ? (
@@ -372,7 +366,7 @@ function Workflow() {
               </div>
             )}
           </div>
-        </div>
+        </AnimatedScene>
       </div>
     </section>
   )
@@ -405,7 +399,7 @@ function AgentSection() {
             <ArrowRight size={15} />
           </a>
         </div>
-        <div className="self-center overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+        <AnimatedScene className="agent-scene self-center overflow-hidden rounded-xl border border-border bg-background shadow-sm">
           <div className="flex items-center gap-2 border-b border-border px-6 py-4 text-xs text-muted-foreground">
             <Cable size={15} />
             {t("terminalLabel")}
@@ -426,7 +420,7 @@ function AgentSection() {
               {t("note")}
             </p>
           </div>
-        </div>
+        </AnimatedScene>
       </div>
     </section>
   )

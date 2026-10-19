@@ -33,6 +33,14 @@ The original 3DBenchy mesh is CC0; its source and attribution are in `media/NOTI
 geometry is a presentation illustration, not an editor recording. Every video frame is independently
 seekable, and the site loads no Three.js or CAD runtime for this animation.
 
+## Spatial illustrations
+
+The printer illustration reveals all 17 layers, then lifts and parks the head after eight seconds.
+It stays finished when revisited. Feature diagrams, workflow stages, and agent steps animate once
+when their block enters the viewport; selecting another workflow stage starts that stage's visual.
+Reduced-motion preferences show completed static illustrations and keep all content visible.
+These SVG/CSS illustrations use the existing theme tokens and do not load the CAD runtime.
+
 ## Automatic GitHub deployment
 
 `.github/workflows/presentation-site.yml` builds, checks, and deploys the presentation after every
