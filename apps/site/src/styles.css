@@ -139,9 +139,9 @@ summary:focus-visible {
 }
 
 .print-visual {
-  --print-pass-duration: 1.2s;
+  --print-pass-duration: 2.4s;
   --print-build-duration: calc(var(--print-pass-duration) * 17);
-  --print-park-duration: 1.6s;
+  --print-park-duration: 2.4s;
   color: var(--primary);
   width: 100%;
   background: radial-gradient(

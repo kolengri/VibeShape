@@ -100,7 +100,7 @@ test("the presentation explains the workflow and links to the real editor", asyn
     "href",
     "https://vibeshape.hello-world.cz/",
   )
-  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+  await expect(page.locator('meta[property="og:image"]').first()).toHaveAttribute(
     "content",
     "https://vibeshape.hello-world.cz/brand/og-light.png",
   )
@@ -267,6 +267,7 @@ test("the home link returns to the overview when its fragment is already active"
 })
 
 test("printing reveals every layer, parks the head, and stays finished", async ({ page }) => {
+  test.setTimeout(50000)
   await page.goto("/")
   const printer = page.locator(".print-visual")
   await expect(printer).toHaveAttribute("data-started", "false")
@@ -278,9 +279,9 @@ test("printing reveals every layer, parks the head, and stays finished", async (
     await head.evaluate(
       (element) => element.getAnimations()[0]?.effect?.getComputedTiming().duration,
     ),
-  ).toBeGreaterThanOrEqual(1000)
+  ).toBeGreaterThanOrEqual(2000)
   await expect(printer.locator(".printed-layer").last()).toHaveCSS("opacity", "1", {
-    timeout: 23000,
+    timeout: 44000,
   })
   await expect
     .poll(() =>
@@ -342,4 +343,50 @@ test("feature, workflow, and agent animations begin when their blocks appear", a
       .locator("li")
       .evaluateAll((items) => items.every((item) => item.getAnimations().length === 1)),
   ).toBe(true)
+})
+
+test.describe("social previews", () => {
+  test.use({ javaScriptEnabled: false })
+
+  test("social crawlers receive complete metadata and both full-size images without JavaScript", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/")
+    const images = page.locator('meta[property="og:image"]')
+    await expect(images).toHaveCount(2)
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+      "content",
+      "summary_large_image",
+    )
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
+      "content",
+      "https://vibeshape.hello-world.cz/brand/og-light.png",
+    )
+    await expect(page.locator('meta[property="og:image:width"]')).toHaveCount(2)
+    await expect(page.locator('meta[property="og:image:height"]')).toHaveCount(2)
+    for (const [index, theme] of ["light", "dark"].entries()) {
+      const url = `https://vibeshape.hello-world.cz/brand/og-${theme}.png`
+      await expect(images.nth(index)).toHaveAttribute("content", url)
+      await expect(page.locator('meta[property="og:image:width"]').nth(index)).toHaveAttribute(
+        "content",
+        "1200",
+      )
+      await expect(page.locator('meta[property="og:image:height"]').nth(index)).toHaveAttribute(
+        "content",
+        "630",
+      )
+      await expect(page.locator('meta[property="og:image:alt"]').nth(index)).toHaveAttribute(
+        "content",
+        new RegExp(`${theme} blueprint grid`),
+      )
+      const response = await request.get(new URL(url).pathname)
+      expect(response.ok()).toBe(true)
+      expect(response.headers()["content-type"]).toContain("image/png")
+      const png = await response.body()
+      expect(png.subarray(1, 4).toString()).toBe("PNG")
+      expect(png.readUInt32BE(16)).toBe(1200)
+      expect(png.readUInt32BE(20)).toBe(630)
+    }
+  })
 })
