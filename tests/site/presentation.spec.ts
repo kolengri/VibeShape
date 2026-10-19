@@ -27,7 +27,7 @@ test("the hero plays freely, then floats around the exploded model without pinni
   await expect(video).toHaveAttribute("data-phase", "intro")
   expect(await video.evaluate((element: HTMLVideoElement) => element.duration)).toBeCloseTo(9, 1)
   await expect(video).toHaveAttribute("data-phase", "floating", { timeout: 13000 })
-  await expect(video).toHaveAttribute("src", "/media/hero-float.mp4")
+  await expect(video).toHaveAttribute("src", "./media/hero-float.mp4")
   await expect(video).toHaveCSS("opacity", "1")
   expect(await video.evaluate((element: HTMLVideoElement) => element.loop)).toBe(true)
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
@@ -65,6 +65,32 @@ test("the hero plays freely, then floats around the exploded model without pinni
   await page.locator("#overview").scrollIntoViewIfNeeded()
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
   await expect(video).toHaveAttribute("data-phase", "floating")
+})
+
+test("the floating hero loads under a deployment path prefix", async ({ page }) => {
+  const loopRequests: string[] = []
+  await page.route("**/media/hero-float.mp4", async (route) => {
+    loopRequests.push(new URL(route.request().url()).pathname)
+    await route.abort()
+  })
+  await page.route("**/vibeshape/**", async (route) => {
+    const url = new URL(route.request().url())
+    url.pathname = url.pathname.slice("/vibeshape".length)
+    if (url.pathname.endsWith("/hero-float.mp4")) {
+      loopRequests.push(new URL(route.request().url()).pathname)
+    }
+    await route.fulfill({ response: await route.fetch({ url: url.toString() }) })
+  })
+  await page.goto("/vibeshape/")
+  const video = page.locator("#overview video")
+  await expect(video).toHaveAttribute("data-phase", "floating", { timeout: 15000 })
+  await expect(video).toHaveCSS("opacity", "1")
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+  expect(
+    await video.evaluate((element: HTMLVideoElement) => new URL(element.currentSrc).pathname),
+  ).toBe("/vibeshape/media/hero-float.mp4")
+  expect(loopRequests).toContain("/vibeshape/media/hero-float.mp4")
+  expect(loopRequests).not.toContain("/media/hero-float.mp4")
 })
 
 test("reduced motion uses the poster without fetching video or pinning the hero", async ({

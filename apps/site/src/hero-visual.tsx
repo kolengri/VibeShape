@@ -30,7 +30,15 @@ function useVideoVisibility(ref: RefObject<HTMLVideoElement | null>) {
   return active
 }
 
-function PlaybackVideo({ source, poster }: { source: string; poster: string }) {
+function PlaybackVideo({
+  source,
+  loopSource,
+  poster,
+}: {
+  source: string
+  loopSource: string
+  poster: string
+}) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -58,7 +66,7 @@ function PlaybackVideo({ source, poster }: { source: string; poster: string }) {
   return (
     <video
       ref={videoRef}
-      src={phase === "intro" ? source : "/media/hero-float.mp4"}
+      src={phase === "intro" ? source : loopSource}
       poster={poster}
       loop={phase === "floating"}
       muted
@@ -82,10 +90,12 @@ function PlaybackVideo({ source, poster }: { source: string; poster: string }) {
 
 export function HeroVisual({
   source,
+  loopSource,
   poster,
   description,
 }: {
   source: string
+  loopSource: string
   poster: string
   description: string
 }) {
@@ -100,7 +110,7 @@ export function HeroVisual({
         fetchPriority="high"
         className="size-full object-cover"
       />
-      {!reducedMotion && <PlaybackVideo source={source} poster={poster} />}
+      {!reducedMotion && <PlaybackVideo source={source} loopSource={loopSource} poster={poster} />}
     </div>
   )
 }

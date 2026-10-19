@@ -194,6 +194,7 @@ function Hero() {
           <div className="relative min-w-0">
             <HeroVisual
               source={assetUrl("media/hero-intro-return.mp4")}
+              loopSource={assetUrl("media/hero-float.mp4")}
               poster={assetUrl("media/hero-model.jpg")}
               description={t("illustration")}
             />
