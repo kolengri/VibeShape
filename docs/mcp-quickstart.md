@@ -47,6 +47,7 @@ bridge does not persist stdio recovery credentials.
 
 ## Built editor with stdio
 
+First prepare the verified kernel and solver inputs described in [local deployment](deployment.md).
 From the repository, install the pinned Bun workspace dependencies and build the editor using
 `bun ci` and `bun run prepare:local`. Configure a stdio MCP client to launch Bun with the absolute path
 to `apps/mcp-server/src/index.ts` as its argument. For example:

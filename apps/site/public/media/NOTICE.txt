@@ -1,0 +1,8 @@
+Hero visual provenance
+
+The opening boat uses the original 3DBenchy single-part mesh by Creative Tools.
+Source: https://github.com/CreativeTools/3DBenchy/blob/master/Single-part/3DBenchy.stl
+License: CC0 1.0 Universal, https://www.3dbenchy.com/license/
+
+The mechanical housing, contour transformation, and rendering are original presentation artwork for VibeShape.
+This is an illustration, not a recording of the VibeShape editor.

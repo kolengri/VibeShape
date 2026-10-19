@@ -76,6 +76,27 @@
         "wrangler": "4.147.0",
       },
     },
+    "apps/site": {
+      "name": "@vibeshape/site",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/i18n": "workspace:*",
+        "@vibeshape/ui": "workspace:*",
+        "lucide-react": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+        "use-intl": "catalog:",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "@vibeshape/typescript-config": "workspace:*",
+        "@vitejs/plugin-react": "catalog:",
+        "tailwindcss": "catalog:",
+        "vite": "catalog:",
+      },
+    },
     "apps/slicer-bridge": {
       "name": "@vibeshape/slicer-bridge",
       "version": "0.0.0",
@@ -1149,6 +1170,8 @@
     "@vibeshape/protocol": ["@vibeshape/protocol@workspace:packages/protocol"],
 
     "@vibeshape/remote-mcp": ["@vibeshape/remote-mcp@workspace:apps/remote-mcp"],
+
+    "@vibeshape/site": ["@vibeshape/site@workspace:apps/site"],
 
     "@vibeshape/sketch-solver": ["@vibeshape/sketch-solver@workspace:packages/sketch-solver"],
 

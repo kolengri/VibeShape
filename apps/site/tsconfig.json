@@ -1,0 +1,5 @@
+{
+  "extends": "@vibeshape/typescript-config/browser.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}
