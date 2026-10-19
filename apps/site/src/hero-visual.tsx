@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { type RefObject, useEffect, useRef, useState, useSyncExternalStore } from "react"
 
 const motionQuery = "(prefers-reduced-motion: reduce)"
-const pinnedQuery = "(min-width: 1024px) and (min-height: 800px)"
 const getReducedMotion = () => window.matchMedia(motionQuery).matches
 const getServerMotion = () => true
 const subscribeToMotion = (notify: () => void) => {
@@ -10,84 +9,70 @@ const subscribeToMotion = (notify: () => void) => {
   return () => query.removeEventListener("change", notify)
 }
 
-function getPinnedProgress(video: HTMLVideoElement) {
-  const section = video.closest<HTMLElement>(".hero-scroll-section")
-  const frame = video.closest<HTMLElement>(".hero-scroll-frame")
-  if (!section || !frame) return null
-  const distance = section.offsetHeight - frame.offsetHeight
-  if (distance <= 0) return null
-  return (
-    (Number.parseFloat(getComputedStyle(frame).top) - section.getBoundingClientRect().top) /
-    distance
-  )
+function useVideoVisibility(ref: RefObject<HTMLVideoElement | null>) {
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    const video = ref.current
+    if (!video) return
+    let visible = false
+    const update = () => setActive(visible && !document.hidden)
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry?.isIntersecting ?? false
+      update()
+    })
+    observer.observe(video)
+    document.addEventListener("visibilitychange", update)
+    return () => {
+      observer.disconnect()
+      document.removeEventListener("visibilitychange", update)
+    }
+  }, [ref])
+  return active
 }
 
-function getScrollProgress(video: HTMLVideoElement) {
-  if (window.matchMedia(pinnedQuery).matches) {
-    const progress = getPinnedProgress(video)
-    if (progress !== null) return progress
+function floatModel(video: HTMLVideoElement) {
+  let frame = 0
+  const started = performance.now()
+  const update = (now: number) => {
+    // Keep the exploded assembly around its four-second reference pose.
+    const time = 4 + 0.35 * Math.sin(((now - started) / 8000) * Math.PI * 2)
+    if (!video.seeking && Math.abs(video.currentTime - time) > 1 / 60) {
+      video.currentTime = time
+    }
+    frame = requestAnimationFrame(update)
   }
-  const bounds = video.getBoundingClientRect()
-  return (window.innerHeight - bounds.top) / (window.innerHeight + bounds.height)
+  frame = requestAnimationFrame(update)
+  return () => cancelAnimationFrame(frame)
 }
 
-function ScrollVideo({ source }: { source: string }) {
+function PlaybackVideo({ source }: { source: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [phase, setPhase] = useState<"intro" | "floating">("intro")
+  const active = useVideoVisibility(videoRef) && !failed
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-
-    let animationFrame = 0
-    let lastRequestedTime = -1
-    const update = () => {
-      animationFrame = 0
-      const progress = getScrollProgress(video)
-      const time = Math.max(0, Math.min(1, progress)) * Math.max(0, video.duration - 1 / 30)
-      if (video.seeking || !Number.isFinite(time)) return
-      setReady(video.readyState >= 2)
-      const nearestTime = Math.min(
-        Math.abs(video.currentTime - time),
-        Math.abs(lastRequestedTime - time),
-      )
-      if (nearestTime < 1 / 60) return
-      lastRequestedTime = time
-      video.currentTime = time
+    let cancelled = false
+    if (active && phase === "intro") {
+      void video.play().catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    } else {
+      video.pause()
     }
-    const schedule = () => {
-      if (!animationFrame) animationFrame = requestAnimationFrame(update)
-    }
-    const showDecodedFrame = () => {
-      setReady(true)
-      schedule()
-    }
-    const resizeObserver = new ResizeObserver(schedule)
-    for (const target of [
-      video,
-      video.closest(".hero-scroll-section"),
-      video.closest(".hero-scroll-frame"),
-    ]) {
-      if (target) resizeObserver.observe(target)
-    }
-    window.addEventListener("scroll", schedule, { passive: true })
-    window.addEventListener("resize", schedule)
-    video.addEventListener("loadedmetadata", schedule)
-    video.addEventListener("loadeddata", schedule)
-    video.addEventListener("seeked", showDecodedFrame)
-    schedule()
-
     return () => {
-      cancelAnimationFrame(animationFrame)
-      resizeObserver.disconnect()
-      window.removeEventListener("scroll", schedule)
-      window.removeEventListener("resize", schedule)
-      video.removeEventListener("loadedmetadata", schedule)
-      video.removeEventListener("loadeddata", schedule)
-      video.removeEventListener("seeked", showDecodedFrame)
+      cancelled = true
+      video.pause()
     }
-  }, [failed])
+  }, [active, phase])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (video && active && phase === "floating") return floatModel(video)
+  }, [active, phase])
 
   if (failed) return null
   return (
@@ -99,8 +84,12 @@ function ScrollVideo({ source }: { source: string }) {
       preload="auto"
       aria-hidden="true"
       tabIndex={-1}
+      data-phase={phase}
+      data-active={active}
+      onLoadedData={() => setReady(true)}
+      onEnded={() => setPhase("floating")}
       onError={() => setFailed(true)}
-      className={`absolute inset-0 size-full object-cover ${ready ? "opacity-100" : "opacity-0"}`}
+      className={`hero-playback absolute inset-0 size-full object-cover ${ready ? "opacity-100" : "opacity-0"}`}
     />
   )
 }
@@ -120,12 +109,12 @@ export function HeroVisual({
       <img
         src={poster}
         alt={description}
-        width="1280"
-        height="1280"
+        width="960"
+        height="960"
         fetchPriority="high"
         className="size-full object-cover"
       />
-      {!reducedMotion && <ScrollVideo source={source} />}
+      {!reducedMotion && <PlaybackVideo source={source} />}
     </div>
   )
 }
