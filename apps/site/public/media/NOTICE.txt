@@ -8,3 +8,7 @@ The mechanical housing, contour transformation, and rendering are original prese
 This is an illustration, not a recording of the VibeShape editor.
 
 hero-model.jpg is the exploded-housing frame extracted from the presentation video at four seconds.
+hero-float.mp4 is an eight-second eased forward/reverse loop derived from frames 109–131 of
+hero-scroll.mp4, with optical-flow interpolation to 60 fps. It retains the original artwork's provenance.
+hero-intro-return.mp4 contains the original six-second introduction, followed by its final two
+source seconds in reverse with eased timing over three seconds and interpolation to 60 fps.
