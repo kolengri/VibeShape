@@ -9,6 +9,7 @@ import {
   type Transport,
 } from "../../apps/desktop/test-support/mcp-client"
 import { assistantResultSchema } from "../../packages/automation-api/src/assistant"
+import { localConnectRequestSchema } from "../../packages/automation-api/src/local-session"
 import { createNativeFixture, nativeTestRoot, openNativeEditor } from "./native-fixture"
 
 const scopeSchema = z.object({
@@ -122,7 +123,7 @@ async function snapshot(page: Page, projectId?: string) {
     ),
   )
 }
-async function connectFixture(page: Page, receipt: string, attachMcp = false) {
+async function connectFixture(page: Page, receipt: string, attachMcp = false, longLabels = false) {
   await chooseCustomAgent(page)
   await panel(page).getByRole("textbox", { name: "ACP agent executable", exact: true }).fill("node")
   await panel(page)
@@ -132,6 +133,7 @@ async function connectFixture(page: Page, receipt: string, attachMcp = false) {
         join(nativeTestRoot, "tests/desktop/fixtures/acp-agent.cjs"),
         receipt,
         ...(attachMcp ? ["--attach-mcp"] : []),
+        ...(longLabels ? ["--long-labels"] : []),
       ]),
     )
   await panel(page).getByRole("button", { name: "Connect agent", exact: true }).click()
@@ -380,6 +382,152 @@ test("native ACP accepts advertised configuration, files, structured answers and
       [],
     )
     await page.screenshot({ path: test.info().outputPath("native-composer-completed.png") })
+  } finally {
+    await saveAgentReceipt(receipt)
+    await fixture.cleanup()
+  }
+})
+
+test("composer settings keep their positions across label changes, narrow widths and zoom", async () => {
+  test.skip(
+    Boolean(process.env.VIBESHAPE_PACKAGED_APP),
+    "The installed app keeps its production port.",
+  )
+  const fixture = await createNativeFixture()
+  const receipt = join(fixture.directory, "composer-layout-agent.jsonl")
+  try {
+    const native = await fixture.launch()
+    const page = await openNativeEditor(native)
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await openChat(page)
+    await connectFixture(page, receipt, false, true)
+    const composer = panel(page).getByRole("region", { name: "Message", exact: true })
+    const model = composer.getByRole("combobox", { name: "Model", exact: true })
+    const reasoning = composer.getByRole("combobox", { name: "Reasoning effort", exact: true })
+    await expect(composer.getByRole("combobox")).toHaveCount(5)
+    const measure = async () => {
+      const bounds = await composer.boundingBox()
+      if (!bounds) throw new Error("The composer must have visible bounds")
+      const controls = await composer.locator("button").evaluateAll((elements) =>
+        elements.map((control) => {
+          const rect = control.getBoundingClientRect()
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+        }),
+      )
+      return { ...bounds, controls }
+    }
+    for (const width of [1280, 1100, 1024]) {
+      await page.setViewportSize({ width, height: 900 })
+      const before = await measure()
+      await model.focus()
+      await model.press("Enter")
+      const longModel = page.getByRole("option", {
+        name: "Deep model with extended engineering capabilities",
+        exact: true,
+      })
+      await expect(longModel).toBeVisible()
+      await longModel.press("Enter")
+      await expect(reasoning).toHaveText("Maximum reasoning for complex engineering decisions")
+      expect(await measure()).toEqual(before)
+      if (width === 1280)
+        await composer.screenshot({ path: test.info().outputPath("composer-dark-wide.png") })
+      for (const control of before.controls) {
+        expect(control.x).toBeGreaterThanOrEqual(before.x)
+        expect(control.x + control.width).toBeLessThanOrEqual(before.x + before.width)
+        expect(control.width).toBeGreaterThanOrEqual(32)
+      }
+      await expect(
+        composer.getByRole("button", { name: "Attach files", exact: true }),
+      ).toBeInViewport()
+      await expect(composer.getByRole("button", { name: "Send", exact: true })).toBeInViewport()
+      await model.click()
+      await page.getByRole("option", { name: "Fast model", exact: true }).click()
+      await expect(reasoning).toHaveText("Brief")
+      expect(await measure()).toEqual(before)
+    }
+    await composer.screenshot({ path: test.info().outputPath("composer-dark-narrow.png") })
+    await page.setViewportSize({ width: 1280, height: 1000 })
+    await page.locator("html").evaluate((element) => {
+      element.classList.remove("dark")
+    })
+    const window = await native.browserWindow(page)
+    await window.evaluate((window) => window.webContents.setZoomFactor(2))
+    expect(await window.evaluate((window) => window.webContents.getZoomFactor())).toBe(2)
+    const beforeZoomedChange = await measure()
+    await model.click()
+    await page
+      .getByRole("option", {
+        name: "Deep model with extended engineering capabilities",
+        exact: true,
+      })
+      .click()
+    await expect(reasoning).toHaveText("Maximum reasoning for complex engineering decisions")
+    expect(await measure()).toEqual(beforeZoomedChange)
+    await expect(composer).toBeInViewport({ ratio: 1 })
+    await composer.getByRole("combobox", { name: "Web search", exact: true }).click()
+    await expect(page.getByRole("group", { name: "Web search", exact: true })).toContainText(
+      "Allow the agent to search the web.",
+    )
+    await page.screenshot({ path: test.info().outputPath("composer-setting-explanation.png") })
+    await page.getByRole("option", { name: "On", exact: true }).click()
+    await expect(composer.getByRole("combobox", { name: "Web search", exact: true })).toHaveText(
+      "On",
+    )
+    expect(await measure()).toEqual(beforeZoomedChange)
+    await composer.screenshot({ path: test.info().outputPath("composer-light-200.png") })
+  } finally {
+    await saveAgentReceipt(receipt)
+    await fixture.cleanup()
+  }
+})
+
+test("embedded agent reads its project automatically and preserves explicit Stop across reload", async () => {
+  test.skip(
+    Boolean(process.env.VIBESHAPE_PACKAGED_APP),
+    "The installed app keeps its production port.",
+  )
+  const fixture = await createNativeFixture()
+  const receipt = join(fixture.directory, "automatic-project-access.jsonl")
+  try {
+    const native = await fixture.launch()
+    const page = await openNativeEditor(native)
+    await renameProject(page, "Automatic project access")
+    await openChat(page)
+    await watchSnapshots(page)
+    const pairingRequest = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === "/__vibeshape/automation/connect",
+    )
+    await connectFixture(page, receipt, true)
+    const scope = await snapshot(page)
+    await send(page, "mcp-info")
+    await expect(transcript(page)).toContainText(`MCP project identity: ${scope.projectId}`)
+    await expect(
+      page.getByRole("button", { name: "AI connection and approval mode", exact: true }),
+    ).toHaveText("AI access on · Approve each change")
+    await ready(page)
+    const { document } = localConnectRequestSchema.parse((await pairingRequest).postDataJSON())
+    expect(document.id).toBe(scope.projectId)
+    expect((await agentRecords(receipt)).filter((entry) => entry.event === "mcp-read")).toEqual([
+      expect.objectContaining({ projectId: document.id, revision: document.revision }),
+    ])
+    await page.getByRole("button", { name: "Stop AI", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toBeVisible()
+    expect(new URL(page.url()).searchParams.get("project")).toBe(scope.projectId)
+    await expect(
+      tabs(page).getByRole("tab", { name: "Automatic project access", exact: true }),
+    ).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
+    await openChat(page)
+    await ready(page)
+    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeEnabled()
+    await expect(
+      page.getByRole("button", { name: "AI connection and approval mode", exact: true }),
+    ).toHaveCount(0)
+    await page.screenshot({ path: test.info().outputPath("native-explicit-stop-retained.png") })
   } finally {
     await saveAgentReceipt(receipt)
     await fixture.cleanup()

@@ -12,9 +12,19 @@ For an already open Mac app, use **Settings → Connections → Connect an MCP c
 configuration. The bundled Electron stdio forwarder attaches to the app's existing editor and storage
 origin; no external Bun or Node runtime is needed. Do not substitute the standalone stdio server,
 which opens a separate editor profile. The copied configuration permits one external client. The
-in-app ACP agent instead receives a separate project-bound MCP attachment. Select a project in the chooser, discover tools, and obtain
-explicit **Enable AI session** approval. A copied configuration or successful tool discovery alone
-provides no model authority. Manual project navigation replaces the external client's document scope.
+in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
+configured agent connects. Its internal server name is project-specific; discover advertised tool
+names instead of assuming `vibeshape` is the namespace. Select the intended project, discover tools,
+and call `model_info`; no external MCP configuration or initial **Enable AI session** action is
+required for the embedded agent. Its default access enables reads and proposals, with ordinary
+manual Apply. A copied external configuration still requires explicit **Enable AI session** approval;
+successful tool discovery alone does not grant document authority. Manual project navigation
+replaces the external client's document scope.
+
+The first native `model_info` may wait up to five seconds for the editor's automatic connection.
+Other tools never wait for future pairing; establish project identity before modeling. After Stop
+or any prior grant, unpaired reads fail immediately. A timeout or failed invocation is not an empty
+model and does not authorize another project or a replacement CAD workflow.
 
 The app's ACP chat retains its own document session, tool authority, transcript and queue when another
 project tab is selected. Background tools remain bound to their original project, including exact
@@ -26,6 +36,11 @@ through their MCP attachment. The configured executable connects automatically f
 explicitly disconnecting one project does not disconnect the others. Saved transcript text
 is not proof that the agent's native context resumed. Static web chat uses a direct compatible API;
 it does not spawn a local stdio agent or publish the browser's project as a reachable MCP server.
+
+Native approval choices are remembered per project, separately from external clients. **Stop AI**
+revokes that project's access and keeps it disabled across reload or reopening until the person
+chooses **Enable AI session**. Reconnecting the ACP process does not undo Stop. No tool can change
+the approval mode or restore a stopped connection.
 
 ## Development HTTP
 

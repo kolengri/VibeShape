@@ -11,6 +11,48 @@ import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
 
+it.each(["manual", "native-project"] as const)(
+  "advertises %s pairing instructions without granting document authority",
+  async (policy) => {
+    const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
+    const adapter = createLocalMcpAdapter(
+      broker,
+      createExportResources(),
+      policy === "native-project" ? { accessPolicy: policy } : {},
+    )
+    const client = new Client({ name: "instructions-test", version: "1" })
+    try {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+      await Promise.all([adapter.connect(serverTransport), client.connect(clientTransport)])
+      const instructions = client.getInstructions()
+      const manual = "Open the editor and explicitly enable the AI session for one document."
+      expect(instructions).toContain("Read model_info, create a revision-bound draft")
+      expect(instructions).toContain("preview and repair invalid geometry, then request commit")
+      if (policy === "manual") {
+        expect(instructions).toContain(manual)
+        expect(instructions).toContain("Project tools require separate browser-owned")
+        expect(instructions).not.toContain("automatically connects this embedded assistant")
+      } else {
+        expect(instructions).not.toContain(manual)
+        expect(instructions).toContain("automatically connects this embedded assistant")
+        expect(instructions).toContain("current project's read and proposal tools")
+        expect(instructions).toContain("manual Apply unless the person has explicitly chosen")
+        expect(instructions).toContain("Respect Stop AI; never enable access or switch projects")
+        expect(instructions).toContain("Project management is unavailable")
+      }
+      expect(broker.isPaired()).toBe(false)
+      expect(await client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
+        isError: true,
+        structuredContent: { result: { diagnostic: { code: "not-paired" } } },
+      })
+    } finally {
+      await client.close()
+      await adapter.close()
+      broker.dispose()
+    }
+  },
+)
+
 it("delivers client-valid native preview images and withholds them after revocation", async () => {
   const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
   const png =

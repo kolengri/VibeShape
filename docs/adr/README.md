@@ -123,6 +123,7 @@
 | [0112](0112-multi-sketch-extrude.md) | Accepted | Multi-sketch Extrude with per-profile support frames and shared normal-relative extents |
 | [0113](0113-assembly-motion-studies.md) | Accepted | Persisted joint-key studies, exact timeline sampling, bounded cached playback and solved pose/image exports |
 | [0114](0114-versioned-angular-datum-planes.md) | Accepted | Strict legacy offset planes and versioned support-local angular datum frames |
+| [0115](0115-automatic-native-project-mcp-access.md) | Accepted | Automatic embedded project MCP access with isolated approval preferences and persistent Stop |
 
 Statuses:
 

@@ -6,6 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSections,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
 import {
@@ -172,7 +173,7 @@ function ApplicationWorkspaceMenu({
   const t = useTranslations("app.shell.applicationMenu")
   const commandsT = useTranslations("app.commands")
   return (
-    <DropdownMenuGroup aria-label={t("workspace")} className="mt-1 border-t pt-1">
+    <DropdownMenuGroup aria-label={t("workspace")}>
       <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("workspace")}</p>
       <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("settings")}>
         <Settings aria-hidden="true" />
@@ -206,7 +207,7 @@ function ApplicationHelpMenu({
   const t = useTranslations("app.shell.applicationMenu")
   const commandsT = useTranslations("app.commands")
   return (
-    <DropdownMenuGroup aria-label={t("help")} className="mt-1 border-t pt-1">
+    <DropdownMenuGroup aria-label={t("help")}>
       <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("help")}</p>
       <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("faq")}>
         {t("faq")}
@@ -371,26 +372,28 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
             }
           }}
         >
-          {editor && (
-            <ApplicationProjectMenu
-              controller={controller}
-              unitChangesBlocked={unitChangesBlocked}
-              hideModelExport={hideModelExport}
-              backup={backup}
-              navigation={navigation}
+          <DropdownMenuSections>
+            {editor && (
+              <ApplicationProjectMenu
+                controller={controller}
+                unitChangesBlocked={unitChangesBlocked}
+                hideModelExport={hideModelExport}
+                backup={backup}
+                navigation={navigation}
+                launchDialog={launchDialog}
+              />
+            )}
+            <ApplicationWorkspaceMenu
+              editor={editor !== null}
               launchDialog={launchDialog}
+              onOpenCommandPalette={() => openEditorCommand("palette")}
             />
-          )}
-          <ApplicationWorkspaceMenu
-            editor={editor !== null}
-            launchDialog={launchDialog}
-            onOpenCommandPalette={() => openEditorCommand("palette")}
-          />
-          <ApplicationHelpMenu
-            editor={editor !== null}
-            launchDialog={launchDialog}
-            onOpenShortcutHelp={() => openEditorCommand("shortcuts")}
-          />
+            <ApplicationHelpMenu
+              editor={editor !== null}
+              launchDialog={launchDialog}
+              onOpenShortcutHelp={() => openEditorCommand("shortcuts")}
+            />
+          </DropdownMenuSections>
         </DropdownMenuContent>
       </DropdownMenu>
       <ApplicationMenuDialogs

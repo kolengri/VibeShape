@@ -93,4 +93,26 @@ describe("SelectField", () => {
       (screen.getByRole("combobox", { name: "Result operation" }) as HTMLButtonElement).disabled,
     ).toBe(true)
   })
+
+  it("names an on/off option group and explains its setting inside the open menu", async () => {
+    const change = vi.fn()
+    render(
+      <SelectField
+        label="Web search"
+        menuLabel="Web search"
+        menuDescription="Allow the agent to search the web."
+        defaultValue="off"
+        onValueChange={change}
+      >
+        <SelectOption value="off">Off</SelectOption>
+        <SelectOption value="on">On</SelectOption>
+      </SelectField>,
+    )
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Web search" }), { key: "Enter" })
+    const group = screen.getByRole("group", { name: "Web search" })
+    expect(group.textContent).toContain("Allow the agent to search the web.")
+    await userEvent.click(screen.getByRole("option", { name: "On" }))
+    expect(change).toHaveBeenCalledWith("on")
+    expect(screen.getByRole("combobox", { name: "Web search" }).textContent).toBe("On")
+  })
 })

@@ -85,6 +85,7 @@ const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { i18n } = await import("../i18n")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 const { ApplicationBar } = await import("./application-bar")
+const { ApplicationChromeProvider } = await import("./application-header")
 const { AutomationConnectionsProvider, AutomationEditorScope } = await import("./automation-status")
 const { StatusBar } = await import("./status-bar")
 const { ViewerPreferencesProvider } = await import("./viewer-preferences")
@@ -220,22 +221,24 @@ function renderHeader(
   } as unknown as DocumentControllerState
   const element = () => (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <ViewerPreferencesProvider>
-        <WorkspaceLayoutPreferencesProvider>
-          <TooltipProvider>
-            <AutomationConnectionsProvider controller={controller}>
-              <AutomationEditorScope />
-              <ApplicationBar
-                controller={controller}
-                hideModelExport={hideModelExport}
-                onOpenCommandPalette={onOpenCommandPalette}
-                onOpenShortcutHelp={onOpenShortcutHelp}
-              />
-              <StatusBar controller={controller} selectedOriginPlane={null} selection={null} />
-            </AutomationConnectionsProvider>
-          </TooltipProvider>
-        </WorkspaceLayoutPreferencesProvider>
-      </ViewerPreferencesProvider>
+      <ApplicationChromeProvider>
+        <ViewerPreferencesProvider>
+          <WorkspaceLayoutPreferencesProvider>
+            <TooltipProvider>
+              <AutomationConnectionsProvider controller={controller}>
+                <AutomationEditorScope />
+                <ApplicationBar
+                  controller={controller}
+                  hideModelExport={hideModelExport}
+                  onOpenCommandPalette={onOpenCommandPalette}
+                  onOpenShortcutHelp={onOpenShortcutHelp}
+                />
+                <StatusBar controller={controller} selectedOriginPlane={null} selection={null} />
+              </AutomationConnectionsProvider>
+            </TooltipProvider>
+          </WorkspaceLayoutPreferencesProvider>
+        </ViewerPreferencesProvider>
+      </ApplicationChromeProvider>
     </I18nProvider>
   )
   const result = render(element())

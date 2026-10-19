@@ -1,6 +1,6 @@
 import { CheckIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
-import type * as React from "react"
+import * as React from "react"
 import { cn } from "#lib/cn"
 
 function DropdownMenu(props: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
@@ -53,6 +53,15 @@ function DropdownMenuItem({
 
 function DropdownMenuGroup(props: React.ComponentProps<typeof DropdownMenuPrimitive.Group>) {
   return <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
+}
+
+function DropdownMenuSections({ children }: { children: React.ReactNode }) {
+  return React.Children.toArray(children).map((section, index) => (
+    <React.Fragment key={React.isValidElement(section) ? section.key : String(section)}>
+      {index > 0 && <DropdownMenuSeparator />}
+      {section}
+    </React.Fragment>
+  ))
 }
 
 function DropdownMenuRadioGroup(
@@ -130,6 +139,7 @@ export {
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSections,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 }

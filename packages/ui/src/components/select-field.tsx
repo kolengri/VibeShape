@@ -7,6 +7,8 @@ import { cn } from "#lib/cn"
 type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
   id?: string
   label: ReactNode
+  menuLabel?: ReactNode
+  menuDescription?: ReactNode
   "aria-describedby"?: string
   onBlur?: FocusEventHandler<HTMLButtonElement>
 }
@@ -14,6 +16,8 @@ type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
 function SelectField({
   id: providedId,
   label,
+  menuLabel,
+  menuDescription,
   onBlur,
   children,
   "aria-describedby": describedBy,
@@ -47,9 +51,28 @@ function SelectField({
             position="popper"
             sideOffset={4}
             collisionPadding={8}
-            className="z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+            className={cn(
+              "z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+              menuLabel && "max-w-[calc(100vw-1rem)]",
+            )}
           >
-            <SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
+            <SelectPrimitive.Viewport>
+              {menuLabel ? (
+                <SelectPrimitive.Group>
+                  <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    {menuLabel}
+                  </SelectPrimitive.Label>
+                  {menuDescription && (
+                    <p className="max-w-sm px-2 pb-1.5 text-xs text-muted-foreground">
+                      {menuDescription}
+                    </p>
+                  )}
+                  {children}
+                </SelectPrimitive.Group>
+              ) : (
+                children
+              )}
+            </SelectPrimitive.Viewport>
           </SelectPrimitive.Content>
         </SelectPrimitive.Portal>
       </SelectPrimitive.Root>

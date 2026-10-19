@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams, spawn as nodeSpawn } from "node:child_process"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { isAbsolute } from "node:path"
 import { Readable, Writable } from "node:stream"
 import * as acp from "@agentclientprotocol/sdk"
@@ -339,7 +339,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
     const server = setup.mcpServers.vibeshape
     owner.mcp = [
       {
-        name: "vibeshape",
+        // ACP adapters may drop names present in any user configuration layer, even disabled ones.
+        // Hash the full identity to preserve resume history without UUIDv7 timestamp collisions.
+        name: `vs_${createHash("sha256").update(projectId).digest("hex").slice(0, 16)}`,
         command: server.command,
         args: server.args,
         env: [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }],

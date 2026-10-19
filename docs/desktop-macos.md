@@ -28,7 +28,7 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.2-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.3-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
@@ -93,12 +93,25 @@ or install adapters. Use **Advanced connection** to provide an absolute executab
 argument array for another installation. Connection failures produce one operational notification
 with recovery guidance; reconnect after correcting the command or authentication.
 
+Each embedded connection supplies a project-stable internal MCP server name, so an unrelated
+disabled `vibeshape` entry in the adapter's user configuration does not suppress the project tools.
+The native project connection enables read and proposal access automatically; ordinary Apply
+remains required unless the person has explicitly granted automatic approval for that project.
+External MCP clients still require their normal pairing consent. **Stop AI** keeps the native
+connection disabled across reload until the person explicitly enables it again.
+
 The composer footer shows the connected agent's advertised session configuration, including
 model-specific reasoning effort when provided. Choices and effective values come from ACP;
 changing a model may replace the available reasoning levels. Legacy mode/model controls are
 fallbacks, so the same setting is not shown twice. Project-access and MCP-attachment status belong
 to the global footer rather than a repeated chat summary. An ACP connection alone does not prove
 that its MCP client has attached or that the person has granted access to the model.
+
+Session controls use fixed grid tracks determined by the composer's width. Changing a selected
+label does not move the controls or resize the composer; long labels truncate in the trigger and
+remain complete in its menu. Narrow composers place attachment and turn actions below the settings.
+Each menu also shows the setting's advertised name and description, so values such as On/Off retain
+their context without adding labels above the composer.
 
 Attachments send actual UTF-8 text as embedded ACP resources and supported PNG/JPEG/WebP/GIF
 images as ACP image blocks, only when advertised by the agent. Limits are five files, 2 MiB per
@@ -182,9 +195,9 @@ the installed app. The checker never silently installs or opens downloaded softw
 Release owners prepare a source-matched, reviewed build and complete signing/notarization and
 compliance checks before publishing a stable GitHub Release:
 
-- Tag: `desktop-v0.1.2` for desktop package version `0.1.2`.
-- Apple Silicon asset: `VibeShape-0.1.2-mac-arm64.dmg`.
-- Intel asset, only after target verification: `VibeShape-0.1.2-mac-x64.dmg`.
+- Tag: `desktop-v0.1.3` for desktop package version `0.1.3`.
+- Apple Silicon asset: `VibeShape-0.1.3-mac-arm64.dmg`.
+- Intel asset, only after target verification: `VibeShape-0.1.3-mac-x64.dmg`.
 - Upload the image as a GitHub release asset with an advertised `sha256:` digest and matching size.
 - Include checksums and corresponding-source provenance with the release.
 

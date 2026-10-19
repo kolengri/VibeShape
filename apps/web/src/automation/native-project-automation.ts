@@ -13,6 +13,7 @@ export function getNativeProjectAutomationConnection(projectId: string) {
   if (!runtime) throw new Error("The native assistant requires an open project runtime.")
   const connection = createLocalAutomationConnection({
     projectId,
+    accessPolicy: "native-project",
     createDocumentSession: runtime.createActiveDocumentAutomationSession,
     reviews: runtime.reviews,
   })

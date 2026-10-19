@@ -83,7 +83,9 @@ function BrowserProjectChat({
       error={state.error ? t(`errors.${state.error}`) : null}
       sessionControls={
         state.model ? (
-          <span className="min-w-0 truncate text-xs text-muted-foreground">{state.model}</span>
+          <span className="block min-w-0 truncate text-xs text-muted-foreground">
+            {state.model}
+          </span>
         ) : undefined
       }
       configuration={

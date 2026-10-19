@@ -27,9 +27,11 @@ function SessionSelector({
 }) {
   const descriptionId = useId()
   return (
-    <div className="min-w-0 max-w-40 [&_[data-slot=field-label]]:sr-only">
+    <div className="min-w-0 [&_[data-slot=field-label]]:sr-only [&_[role=combobox]>span:first-child]:truncate">
       <SelectField
         label={label}
+        menuLabel={label}
+        menuDescription={description}
         value={value ?? ""}
         disabled={busy}
         {...(description ? { "aria-describedby": descriptionId } : {})}
@@ -77,7 +79,10 @@ function SessionChoices({
   const locked = busy || pending || snapshot.status !== "ready"
   const configs = snapshot.configOptions
   return (
-    <div className="flex flex-wrap items-end gap-2" aria-busy={pending || undefined}>
+    <div
+      className="grid min-w-0 grid-cols-1 items-end gap-1 @xs/composer:grid-cols-2 @sm/composer:grid-cols-3"
+      aria-busy={pending || undefined}
+    >
       {snapshot.modes.length > 0 && !configs.some((config) => config.category === "mode") && (
         <SessionSelector
           label={t("mode")}

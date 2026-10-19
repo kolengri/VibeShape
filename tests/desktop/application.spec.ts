@@ -12,6 +12,7 @@ test("native full-screen bridge delivers initial state, transitions and unsubscr
     const page = await openNativeEditor(native)
     const header = page.locator(".application-bar")
     await expect(header).toHaveAttribute("data-full-screen", "false")
+    await expect(header).toHaveCSS("padding-left", "88px")
     await page.evaluate(`(() => {
       globalThis.fullScreenStates = [];
       globalThis.stopFullScreenStates = window.vibeshapeDesktop.onFullScreenChange(value => {
@@ -23,7 +24,36 @@ test("native full-screen bridge delivers initial state, transitions and unsubscr
       BrowserWindow.getAllWindows()[0]?.setFullScreen(true),
     )
     await expect(header).toHaveAttribute("data-full-screen", "true")
+    await expect(header).toHaveCSS("padding-left", "8px")
     await expect.poll(() => page.evaluate("globalThis.fullScreenStates")).toEqual([false, true])
+    await openApplicationMenuItem(page, "Projects")
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible()
+    await expect(header).toHaveAttribute("data-full-screen", "true")
+    await expect(header).toHaveCSS("padding-left", "8px")
+    await openApplicationMenuItem(page, "Settings…")
+    const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+    await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
+    await page.getByRole("option", { name: "Light", exact: true }).click()
+    await settings.getByRole("button", { name: "Done", exact: true }).click()
+    await page.getByRole("button", { name: "Application menu", exact: true }).click()
+    const menu = page.getByRole("menu")
+    await expect(menu.getByRole("separator")).toHaveCount(1)
+    await expect(menu.getByRole("group")).toHaveCount(2)
+    await expect(menu.getByRole("menuitem", { name: "Projects", exact: true })).toHaveCount(0)
+    await page.screenshot({ path: test.info().outputPath("projects-full-screen.png") })
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "New project", exact: true }).click()
+    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toBeVisible()
+    await expect(header).toHaveAttribute("data-full-screen", "true")
+    await expect(header).toHaveCSS("padding-left", "8px")
+    const projects = page.getByRole("navigation", { name: "Open projects", exact: true })
+    await expect(projects.getByRole("tab")).toHaveCount(2)
+    await projects.getByRole("tab").first().click()
+    await expect(header).toHaveAttribute("data-full-screen", "true")
+    await expect(header).toHaveCSS("padding-left", "8px")
+    await projects.getByRole("tab").last().click()
+    await expect(header).toHaveAttribute("data-full-screen", "true")
+    await expect(header).toHaveCSS("padding-left", "8px")
     await page.evaluate(`(() => {
       globalThis.fullScreenInitial = [];
       window.vibeshapeDesktop.onFullScreenChange(value => globalThis.fullScreenInitial.push(value));
@@ -34,6 +64,7 @@ test("native full-screen bridge delivers initial state, transitions and unsubscr
       BrowserWindow.getAllWindows()[0]?.setFullScreen(false),
     )
     await expect(header).toHaveAttribute("data-full-screen", "false")
+    await expect(header).toHaveCSS("padding-left", "88px")
     await expect.poll(() => page.evaluate("globalThis.fullScreenInitial")).toEqual([true, false])
     expect(await page.evaluate("globalThis.fullScreenStates")).toEqual([false, true])
     await page.screenshot({ path: test.info().outputPath("native-full-screen-returned.png") })
