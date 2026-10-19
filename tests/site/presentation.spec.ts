@@ -43,7 +43,10 @@ test("reduced motion uses the poster without fetching video or pinning the hero"
       .locator(".print-visual")
       .evaluate((element) => element.getAnimations({ subtree: true }).length),
   ).toBe(0)
-  await expect(page.locator(".print-reveal")).toHaveCSS("transform", "none")
+  await expect(page.locator(".printed-layer").last()).toHaveCSS("opacity", "1")
+  await page.locator("#features").scrollIntoViewIfNeeded()
+  await expect(page.locator(".feature-visual")).toHaveCount(6)
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0)
   expect(videoRequests).toEqual([])
 })
 
@@ -261,4 +264,77 @@ test("the home link returns to the overview when its fragment is already active"
   await expect(page).toHaveURL(/#overview$/)
   await expect(heading).toBeInViewport()
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+})
+
+test("printing reveals every layer, parks the head, and stays finished", async ({ page }) => {
+  await page.goto("/")
+  const printer = page.locator(".print-visual")
+  await expect(printer).toHaveAttribute("data-started", "false")
+  await expect(printer.locator(".printed-layer").last()).toHaveCSS("opacity", "0")
+  await printer.scrollIntoViewIfNeeded()
+  await expect(printer).toHaveAttribute("data-started", "true")
+  await expect(printer.locator(".printed-layer").last()).toHaveCSS("opacity", "1", {
+    timeout: 9000,
+  })
+  await expect
+    .poll(() =>
+      printer.evaluate((element) =>
+        element
+          .getAnimations({ subtree: true })
+          .every((animation) => animation.playState === "finished"),
+      ),
+    )
+    .toBe(true)
+  expect(
+    await printer
+      .locator(".printed-layer")
+      .evaluateAll((layers) =>
+        layers.every(
+          (layer) => getComputedStyle(layer).opacity === "1" && !layer.closest("[clip-path]"),
+        ),
+      ),
+  ).toBe(true)
+  await expect(printer.locator(".print-rail, .print-rail-edge")).toHaveCount(0)
+  await expect(printer.locator(".print-filament")).toHaveCSS("opacity", "0")
+  const head = printer.locator(".print-carriage")
+  const parkedTransform = await head.evaluate((element) => getComputedStyle(element).transform)
+  expect(
+    await head.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).e),
+  ).toBeGreaterThan(100)
+  await page.locator("#features").scrollIntoViewIfNeeded()
+  await printer.scrollIntoViewIfNeeded()
+  await expect(head).toHaveCSS("transform", parkedTransform)
+})
+
+test("feature, workflow, and agent animations begin when their blocks appear", async ({ page }) => {
+  await page.goto("/")
+  const feature = page.locator(".feature-scene").first()
+  await expect(feature).toHaveAttribute("data-started", "false")
+  await feature.scrollIntoViewIfNeeded()
+  await expect(feature).toHaveAttribute("data-started", "true")
+  expect(
+    await feature.evaluate((element) => element.getAnimations({ subtree: true }).length),
+  ).toBeGreaterThan(0)
+  await page.getByRole("button", { name: "Sketch", exact: true }).click()
+  await expect(page.locator(".workflow-scene")).toHaveAttribute("data-started", "true")
+  expect(
+    await page
+      .locator(".workflow-visual")
+      .evaluate((element) => element.getAnimations({ subtree: true }).length),
+  ).toBeGreaterThan(0)
+  await page.getByRole("button", { name: "Export", exact: true }).click()
+  expect(
+    await page
+      .locator(".workflow-visual")
+      .evaluate((element) => element.getAnimations({ subtree: true }).length),
+  ).toBe(3)
+  const agent = page.locator(".agent-scene")
+  await expect(agent).toHaveAttribute("data-started", "false")
+  await agent.scrollIntoViewIfNeeded()
+  await expect(agent).toHaveAttribute("data-started", "true")
+  expect(
+    await agent
+      .locator("li")
+      .evaluateAll((items) => items.every((item) => item.getAnimations().length === 1)),
+  ).toBe(true)
 })

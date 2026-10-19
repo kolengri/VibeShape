@@ -164,8 +164,7 @@ summary:focus-visible {
   stroke: color-mix(in oklch, var(--primary) 45%, var(--border));
 }
 
-.print-bed-edge,
-.print-rail-edge {
+.print-bed-edge {
   fill: color-mix(in oklch, var(--primary) 18%, var(--background));
   stroke: color-mix(in oklch, var(--primary) 40%, var(--border));
 }
@@ -178,11 +177,6 @@ summary:focus-visible {
   fill: color-mix(in oklch, var(--primary) 24%, var(--background));
   stroke: var(--primary);
   stroke-width: 1;
-}
-
-.print-rail {
-  fill: var(--panel);
-  stroke: color-mix(in oklch, var(--primary) 35%, var(--border));
 }
 
 .print-head-top {
@@ -207,64 +201,273 @@ summary:focus-visible {
   stroke-width: 1.5;
 }
 
-.print-reveal {
-  transform-origin: 0 340px;
+.print-elevator {
+  transform: translateY(-22px);
 }
 
-.print-elevator {
-  transform: translate(72px, -36px);
+.print-carriage {
+  transform: translate(112px, -56px);
+}
+
+.print-filament {
+  opacity: 0;
+}
+
+.feature-visual {
+  display: block;
+  width: 100%;
+  height: 100px;
+  margin-bottom: 1.5rem;
+  color: var(--primary);
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feature-guide {
+  stroke: currentColor;
+  opacity: 0.16;
+}
+
+.feature-face {
+  fill: color-mix(in oklch, var(--primary) 8%, var(--background));
+}
+
+.feature-shade {
+  fill: color-mix(in oklch, var(--primary) 18%, var(--background));
+}
+
+.privacy-light {
+  fill: var(--primary);
+  stroke: none;
+}
+
+.assembly-middle {
+  transform: translateY(14px);
+}
+
+.assembly-top {
+  transform: translateY(30px);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .print-visual[data-started="false"] .print-reveal {
-    transform: scaleY(0.05);
+  .print-visual[data-started="false"] .printed-layer {
+    opacity: 0;
   }
 
   .print-visual[data-started="false"] .print-elevator {
-    transform: translateY(76px);
+    transform: translateY(72px);
   }
 
-  .print-visual[data-started="true"] .print-reveal {
-    animation: print-build 4.8s linear both;
+  .print-visual[data-started="false"] .print-carriage {
+    transform: translate(0, -42px);
+  }
+
+  .print-visual[data-started="true"] .printed-layer {
+    animation: print-layer 0.4s steps(1, end) both;
+    animation-delay: calc(var(--layer) * 0.4s);
   }
 
   .print-visual[data-started="true"] .print-elevator {
-    animation: print-rise 4.8s linear both;
+    animation: print-rise 8s linear both;
   }
 
   .print-visual[data-started="true"] .print-carriage {
-    animation: print-pass 0.6s ease-in-out 8 alternate;
+    animation:
+      print-pass 0.4s linear 17,
+      print-park 1.2s 6.8s ease-in-out forwards;
+  }
+
+  .print-visual[data-started="true"] .print-filament {
+    animation: print-extrude 6.8s steps(1, end);
+  }
+
+  .feature-scene[data-started="true"] .sketch-outline {
+    animation: sketch-draw 1.4s ease both;
+  }
+
+  .feature-scene[data-started="true"] .sketch-hole {
+    animation: sketch-draw 0.8s 0.9s ease both;
+  }
+
+  .feature-scene[data-started="true"] .sketch-dimension {
+    animation: scene-arrive 0.6s 1.5s ease both;
+  }
+
+  .feature-scene[data-started="true"] .solid-body,
+  .workflow-scene[data-started="true"] [data-stage="shape"] > svg {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+    animation: solid-extrude 1.6s ease both;
+  }
+
+  .feature-scene[data-started="true"] .assembly-middle {
+    animation: assembly-seat-middle 1.6s 0.3s ease-in-out both;
+  }
+
+  .feature-scene[data-started="true"] .assembly-top {
+    animation: assembly-seat-top 1.6s 0.6s ease-in-out both;
+  }
+
+  .feature-scene[data-started="true"] .export-arrow {
+    animation: export-transfer 1.8s 0.5s ease both;
+  }
+
+  .feature-scene[data-started="true"] .privacy-lock {
+    animation: scene-arrive 0.8s 0.3s ease both;
+  }
+
+  .feature-scene[data-started="true"] .privacy-light {
+    animation: scene-arrive 0.4s 1.1s ease both;
+  }
+
+  .feature-scene[data-started="true"] .agent-signal {
+    animation: sketch-draw 1.8s ease both;
+  }
+
+  .feature-scene[data-started="true"] .agent-node {
+    animation: scene-arrive 0.6s 0.6s ease both;
+  }
+
+  .workflow-scene[data-started="true"] [data-stage="sketch"] > div,
+  .agent-scene[data-started="true"] li,
+  .workflow-scene[data-started="true"] [data-stage="export"] > div > div {
+    animation: scene-arrive 0.7s ease both;
+  }
+
+  .agent-scene li:nth-child(2),
+  .workflow-visual[data-stage="export"] > div > div:nth-child(2) {
+    animation-delay: 0.5s;
+  }
+
+  .agent-scene li:nth-child(3),
+  .workflow-visual[data-stage="export"] > div > div:nth-child(3) {
+    animation-delay: 1s;
+  }
+
+  .agent-scene li:nth-child(4) {
+    animation-delay: 1.5s;
   }
 }
 
-@keyframes print-build {
+@keyframes print-layer {
   from {
-    transform: scaleY(0.05);
+    opacity: 0;
   }
-  82%,
   to {
-    transform: scaleY(1);
+    opacity: 1;
   }
 }
 
 @keyframes print-rise {
   from {
-    transform: translateY(76px);
+    transform: translateY(72px);
   }
-  82% {
-    transform: translate(0, 0);
+  85% {
+    transform: translateY(0);
   }
   to {
-    transform: translate(72px, -36px);
+    transform: translateY(-22px);
   }
 }
 
 @keyframes print-pass {
+  from,
+  to {
+    transform: translate(0, -42px);
+  }
+  25% {
+    transform: translate(84px, 0);
+  }
+  50% {
+    transform: translate(0, 42px);
+  }
+  75% {
+    transform: translate(-84px, 0);
+  }
+}
+
+@keyframes print-park {
   from {
-    transform: translate(-23px, -11.5px);
+    transform: translate(0, -42px);
   }
   to {
-    transform: translate(23px, 11.5px);
+    transform: translate(112px, -56px);
+  }
+}
+
+@keyframes print-extrude {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sketch-draw {
+  from {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  to {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes solid-extrude {
+  from {
+    transform: scaleY(0.12);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes assembly-seat-middle {
+  from {
+    transform: translateY(-4px);
+  }
+  to {
+    transform: translateY(14px);
+  }
+}
+
+@keyframes assembly-seat-top {
+  from {
+    transform: translateY(-8px);
+  }
+  to {
+    transform: translateY(30px);
+  }
+}
+
+@keyframes export-transfer {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  35% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scene-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
