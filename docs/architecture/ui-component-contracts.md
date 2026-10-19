@@ -15,7 +15,7 @@ Build reusable controls in this order:
 
 Base form controls are uncontrolled by default through native attributes such as `defaultValue` and `defaultChecked`. They MAY also accept controlled native props so an adapter can bind them, but they MUST NOT own a second copy of the value or import TanStack Form. The dependency direction is always `integration -> base component`.
 
-VibeShape's TanStack Form adapter is exported from `@vibeshape/ui/integrations/tanstack-form`. Feature code uses the adapter for form state while remaining free to use base components for isolated native forms, search fields, file inputs, and progressive enhancement.
+VibeShape's TanStack Form adapter is exported from `@vibeshape/ui/integrations/tanstack-form`. Its `validationMessage` export is the shared validation-error formatter for separate feature-owned adapters, including CAD reference fields. Feature code uses the adapter for form state while remaining free to use base components for isolated native forms, search fields, file inputs, and progressive enhancement.
 
 Form integration follows one discoverable form-kit layout: shared contexts at the integration root, field adapters under `fields/`, form-owned controls under `components/`, and a single public `index.ts`. Reusable visual structure belongs to base `Field` primitives rather than being repeated in each adapter.
 

@@ -506,7 +506,11 @@ export type ViewerStandardView =
   | "right"
   | "top"
 
-export type ViewerInteractionMode = "select" | "camera-only" | "sketch-reference-select"
+export type ViewerInteractionMode =
+  | "select"
+  | "camera-only"
+  | "sketch-reference-select"
+  | "face-select"
 
 export type OrthographicFrustum = Readonly<{
   left: number
@@ -2170,10 +2174,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
-    if (mode === "camera-only" || mode === "sketch-reference-select") {
+    if (mode !== "select") {
       this.#pointerDown = null
       this.#setOriginPlanePreselection(null)
       this.#setPreselection(null)
+      this.#setSketchProfilePreselection(null)
       if (this.#selection) {
         this.#selection = null
         disposeModelGroup(this.#selectionGroup)
@@ -3127,6 +3132,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchProfilePreselection(null)
   }
 
+  #updateFacePointerPreselection(event: PointerEvent) {
+    const stack = this.#pickSelectionStack(event, true)
+    this.#setSelectionCandidateStack(stack)
+    this.#setOriginPlanePreselection(null)
+    this.#setPreselection(stack[0] ?? null)
+    this.#setSketchProfilePreselection(null)
+  }
+
   #handleAngularGizmoPointerUp(event: PointerEvent) {
     if (!this.#angularGizmoInteracting) return false
     if (event.pointerId === this.#angularGizmoPointerId) {
@@ -3140,6 +3153,12 @@ class ThreeGeometryViewport implements GeometryViewport {
   #commitPointerActivation(event: PointerEvent) {
     if (this.#interactionMode === "sketch-reference-select") {
       this.#commitSketchPointSelection(event)
+      return
+    }
+    if (this.#interactionMode === "face-select") {
+      const stack = this.#pickSelectionStack(event, true)
+      this.#setSelectionCandidateStack(stack)
+      this.#setSelection(stack[0] ?? null)
       return
     }
     if (this.#originPlaneSelectionActive) {
@@ -3286,10 +3305,19 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#handleAngularGizmoPointerMove(event)) return
     if (this.#translationGizmoInteracting) return
     if (event.buttons !== 0) return
-    if (this.#interactionMode === "camera-only") return
-    if (this.#interactionMode === "sketch-reference-select") {
-      this.#updateSketchReferencePicking(event)
-      return
+    this.#updatePointerPreselection(event)
+  }
+
+  #updatePointerPreselection(event: PointerEvent) {
+    switch (this.#interactionMode) {
+      case "camera-only":
+        return
+      case "sketch-reference-select":
+        this.#updateSketchReferencePicking(event)
+        return
+      case "face-select":
+        this.#updateFacePointerPreselection(event)
+        return
     }
     if (this.#originPlaneSelectionActive) {
       this.#updateOriginPlanePointerPreselection(event)

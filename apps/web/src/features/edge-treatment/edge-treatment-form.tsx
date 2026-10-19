@@ -15,10 +15,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
-import {
-  NativeSelectField,
-  type NativeSelectFieldProps,
-} from "@vibeshape/ui/components/native-select-field"
+import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { type ComponentProps, useEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
@@ -26,6 +23,7 @@ import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { bodyReferencePickCandidate } from "../part-design/body-reference-picking"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -33,6 +31,10 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import {
+  ReferencePickField,
+  type ReferencePickFieldProps,
+} from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
@@ -307,17 +309,24 @@ function EdgeTargetField({
   options,
   copy,
   ...props
-}: Omit<NativeSelectFieldProps, "label" | "children"> &
+}: Pick<
+  ReferencePickFieldProps,
+  "name" | "value" | "error" | "disabled" | "onBlur" | "onValueChange"
+> &
   Readonly<{ options: readonly EdgeTreatmentTargetOption[]; copy: EdgeTreatmentFormCopy }>) {
   return (
-    <NativeSelectField {...props} label={copy.target} description={copy.targetDescription} required>
-      {options.length === 0 ? <option value="">{copy.missingTarget}</option> : null}
-      {options.map((option) => (
-        <option key={option.id} value={option.id}>
-          {option.label}
-        </option>
-      ))}
-    </NativeSelectField>
+    <ReferencePickField
+      {...props}
+      id="edge-treatment-target"
+      label={copy.target}
+      description={copy.targetDescription}
+      placeholder={copy.missingTarget}
+      options={options.map((option) => ({ value: option.id, label: option.label }))}
+      candidates={options.map((option) =>
+        bodyReferencePickCandidate(option.id, { featureId: option.id }),
+      )}
+      required
+    />
   )
 }
 
@@ -741,9 +750,9 @@ export function EdgeTreatmentForm({
               value={field.state.value}
               disabled={disabled}
               onBlur={field.handleBlur}
-              onChange={(event) => {
+              onValueChange={(value) => {
                 clearSubmissionErrors()
-                field.handleChange(event.currentTarget.value)
+                field.handleChange(value)
               }}
             />
           )}

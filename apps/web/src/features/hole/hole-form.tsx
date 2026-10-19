@@ -28,6 +28,7 @@ import {
   defaultLengthExpression,
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
+import { bodyReferencePickCandidate } from "../part-design/body-reference-picking"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -35,6 +36,7 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
@@ -667,10 +669,26 @@ export function HoleForm(props: HoleFormProps) {
                     holeTargetBodyKey(option.featureId, option.outputRole) === field.state.value,
                 )
                 return (
-                  <NativeSelectField
+                  <ReferencePickField
+                    id="hole-target-body"
                     name={field.name}
                     value={field.state.value}
                     label={copy.target}
+                    placeholder={copy.missingTarget}
+                    options={options.map((option) => ({
+                      value: holeTargetBodyKey(option.featureId, option.outputRole),
+                      label: option.label,
+                      disabled: option.missing ?? false,
+                    }))}
+                    candidates={options
+                      .filter((option) => !option.missing)
+                      .map((option) =>
+                        bodyReferencePickCandidate(
+                          holeTargetBodyKey(option.featureId, option.outputRole),
+                          option,
+                        ),
+                      )}
+                    disabled={disabled}
                     description={copy.targetDescription}
                     error={
                       selectedOption?.missing
@@ -678,27 +696,11 @@ export function HoleForm(props: HoleFormProps) {
                         : issues.targetBodyKey
                     }
                     onBlur={field.handleBlur}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       clearSubmissionErrors()
-                      field.handleChange(event.currentTarget.value)
+                      field.handleChange(value)
                     }}
-                  >
-                    {!options.some(
-                      (option) =>
-                        holeTargetBodyKey(option.featureId, option.outputRole) ===
-                        field.state.value,
-                    ) ? (
-                      <option value={field.state.value}>{copy.missingTarget}</option>
-                    ) : null}
-                    {options.map((option) => (
-                      <option
-                        key={holeTargetBodyKey(option.featureId, option.outputRole)}
-                        value={holeTargetBodyKey(option.featureId, option.outputRole)}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </NativeSelectField>
+                  />
                 )
               }}
             </form.Field>

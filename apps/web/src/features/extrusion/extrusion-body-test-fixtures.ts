@@ -3,7 +3,7 @@ import { boxFeatureType, documentSnapshotSchema, type FeatureRecord } from "@vib
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { extrusionBodyOptions } from "./extrusion-body-options"
 
-export function collectedExtrusionOptions(
+export function extrusionBodyFixture(
   edited: FeatureRecord | undefined,
   multiBody = false,
   surface?: "PLANE" | "SPHERE",
@@ -127,11 +127,20 @@ export function collectedExtrusionOptions(
   })
   if (response.type !== "documentRebuilt") throw new Error("Expected a rebuild fixture.")
   const rebuild: DocumentRebuildOutcome = { ok: true, response }
-  return extrusionBodyOptions(
+  const options = extrusionBodyOptions(
     snapshot,
     rebuild,
     edited?.id,
     (name, role) => `${name} · ${role}`,
     (name) => `${name} · all bodies (legacy scope)`,
   )
+  return { snapshot, rebuild, options }
+}
+
+export function collectedExtrusionOptions(
+  edited: FeatureRecord | undefined,
+  multiBody = false,
+  surface?: "PLANE" | "SPHERE",
+) {
+  return extrusionBodyFixture(edited, multiBody, surface).options
 }

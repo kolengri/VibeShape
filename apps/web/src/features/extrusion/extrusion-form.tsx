@@ -1,5 +1,4 @@
 import {
-  type BodyTopoRef,
   canonicalJson,
   createAngleQuantity,
   createSketchProfileSet,
@@ -55,16 +54,24 @@ import {
   submitFeatureMutation,
 } from "../part-design/primitive-form"
 import { profileSelectorsEqual } from "../part-design/profile-feature-selection"
+import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import { VariableExpressionField } from "../variables/variable-expression-field"
+import { type ExtrusionTargetOption, extrusionBodyOptionKey } from "./extrusion-body-options"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import {
   ExtrusionParameterPanel,
   type ExtrusionParameterPanelCopy,
 } from "./extrusion-parameter-panel"
+import {
+  extrusionEndBodyPickCandidates,
+  extrusionEndFacePickCandidates,
+  extrusionEndFaceSelection,
+  extrusionTargetPickCandidates,
+} from "./extrusion-reference-picking"
 
 type ExtrusionFormCopy = ExtrusionParameterPanelCopy &
   Readonly<{
@@ -115,17 +122,7 @@ type ExtrusionFormValues = Readonly<{
   targetFeatureId: string
 }>
 
-export type ExtrusionTargetOption = Readonly<{
-  id: FeatureId
-  label: string
-  outputRole?: string
-  contentHash?: string
-  faces?: readonly { label: string; reference: BodyTopoRef }[]
-}>
-
-function extrusionBodyOptionKey(option: Pick<ExtrusionTargetOption, "id" | "outputRole">) {
-  return option.outputRole ? `${option.id}:${option.outputRole}` : option.id
-}
+export type { ExtrusionTargetOption } from "./extrusion-body-options"
 
 function defaultValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
@@ -878,32 +875,27 @@ function ExtrusionTargetField({ controller }: { controller: ExtrusionFormControl
         operation === "new" ? null : (
           <form.Field name="targetFeatureId">
             {(field) => (
-              <NativeSelectField
+              <ReferencePickField
+                id="extrusion-target-body"
                 name={field.name}
                 value={field.state.value}
                 label={controller.copy.target}
+                placeholder={controller.copy.missingTarget}
+                options={controller.options.map((option) => ({
+                  value: extrusionBodyOptionKey(option),
+                  label: option.label,
+                }))}
+                candidates={extrusionTargetPickCandidates(controller.options)}
                 description={controller.copy.targetDescription}
                 error={controller.issues.targetFeatureId}
                 disabled={controller.disabled}
                 required
                 onBlur={field.handleBlur}
-                onChange={(event) => {
+                onValueChange={(value) => {
                   controller.clearSubmissionErrors()
-                  field.handleChange(event.currentTarget.value)
+                  field.handleChange(value)
                 }}
-              >
-                {controller.options.length === 0 ? (
-                  <option value="">{controller.copy.missingTarget}</option>
-                ) : null}
-                {controller.options.map((option) => (
-                  <option
-                    key={extrusionBodyOptionKey(option)}
-                    value={extrusionBodyOptionKey(option)}
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </NativeSelectField>
+              />
             )}
           </form.Field>
         )
@@ -1012,15 +1004,81 @@ function ExtrusionExtentFields({ controller }: { controller: ExtrusionFormContro
   )
 }
 
+function ExtrusionEndReferenceFields({
+  controller,
+  values,
+}: {
+  controller: ExtrusionFormController
+  values: ExtrusionFormValues
+}) {
+  const t = useTranslations("app.extrusionExtent")
+  const { form } = controller
+  if (values.endKind === "distance") return null
+  const target = controller.options.find(
+    (option) => extrusionBodyOptionKey(option) === values.endTarget,
+  )
+  return (
+    <>
+      <ReferencePickField
+        id="extrusion-end-body"
+        name="endTarget"
+        label={t("endBody")}
+        value={values.endTarget}
+        placeholder={t("chooseBody")}
+        error={controller.issues.endTarget}
+        disabled={controller.disabled}
+        options={controller.options
+          .filter((option) => option.outputRole && option.contentHash)
+          .map((option) => ({ value: extrusionBodyOptionKey(option), label: option.label }))}
+        candidates={extrusionEndBodyPickCandidates(controller.options)}
+        onValueChange={(value) => {
+          controller.clearSubmissionErrors()
+          const option = controller.options.find((item) => extrusionBodyOptionKey(item) === value)
+          form.setFieldValue("endTarget", value)
+          form.setFieldValue("endSourceHash", option?.contentHash ?? "")
+          form.setFieldValue("endFace", "")
+        }}
+      />
+      {values.endKind === "up-to-face" ? (
+        <ReferencePickField
+          id="extrusion-end-face"
+          name="endFace"
+          label={t("endFace")}
+          value={values.endFace}
+          placeholder={t("chooseFace")}
+          description={t("finiteFaceCoverage")}
+          disabled={controller.disabled}
+          options={
+            target?.faces?.map((face) => ({
+              value: JSON.stringify(face.reference),
+              label: face.label,
+            })) ?? []
+          }
+          candidates={extrusionEndFacePickCandidates(controller.options)}
+          onValueChange={(value) => {
+            controller.clearSubmissionErrors()
+            if (!value) {
+              form.setFieldValue("endFace", "")
+              return
+            }
+            const selection = extrusionEndFaceSelection(controller.options, value)
+            if (!selection) return
+            form.setFieldValue("endTarget", selection.endTarget)
+            form.setFieldValue("endSourceHash", selection.endSourceHash)
+            form.setFieldValue("endFace", selection.endFace)
+          }}
+        />
+      ) : null}
+    </>
+  )
+}
+
 function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormController }) {
   const t = useTranslations("app.extrusionExtent")
   const { form } = controller
   return (
     <form.Subscribe selector={(state) => state.values}>
       {(values) => {
-        const target = controller.options.find(
-          (option) => extrusionBodyOptionKey(option) === values.endTarget,
-        )
         return (
           <div className="grid gap-3 pt-3">
             <NativeSelectField
@@ -1045,63 +1103,7 @@ function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormCont
               <option value="up-to-body">{t("upToBody")}</option>
               <option value="up-to-face">{t("upToFace")}</option>
             </NativeSelectField>
-            {values.endKind !== "distance" ? (
-              <>
-                <NativeSelectField
-                  id="extrusion-end-body"
-                  name="endTarget"
-                  label={t("endBody")}
-                  value={values.endTarget}
-                  error={controller.issues.endTarget}
-                  disabled={controller.disabled}
-                  onChange={(event) => {
-                    controller.clearSubmissionErrors()
-                    const option = controller.options.find(
-                      (item) => extrusionBodyOptionKey(item) === event.currentTarget.value,
-                    )
-                    form.setFieldValue("endTarget", event.currentTarget.value)
-                    form.setFieldValue("endSourceHash", option?.contentHash ?? "")
-                    form.setFieldValue("endFace", "")
-                  }}
-                >
-                  <option value="">{t("chooseBody")}</option>
-                  {controller.options
-                    .filter((option) => option.outputRole && option.contentHash)
-                    .map((option) => (
-                      <option
-                        key={extrusionBodyOptionKey(option)}
-                        value={extrusionBodyOptionKey(option)}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                </NativeSelectField>
-                {values.endKind === "up-to-face" ? (
-                  <NativeSelectField
-                    id="extrusion-end-face"
-                    name="endFace"
-                    label={t("endFace")}
-                    value={values.endFace}
-                    description={t("finiteFaceCoverage")}
-                    disabled={controller.disabled}
-                    onChange={(event) => {
-                      controller.clearSubmissionErrors()
-                      form.setFieldValue("endFace", event.currentTarget.value)
-                    }}
-                  >
-                    <option value="">{t("chooseFace")}</option>
-                    {target?.faces?.map((face) => (
-                      <option
-                        key={JSON.stringify(face.reference)}
-                        value={JSON.stringify(face.reference)}
-                      >
-                        {face.label}
-                      </option>
-                    ))}
-                  </NativeSelectField>
-                ) : null}
-              </>
-            ) : null}
+            <ExtrusionEndReferenceFields controller={controller} values={values} />
             <LengthExpressionField
               id="extrusion-start-offset"
               name="startOffset"
