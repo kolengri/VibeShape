@@ -74,6 +74,7 @@ export function createNativeChatController({
   let promptInFlight = false
   let activeControl: symbol | null = null
   let activeQueuedPrompt: QueuedPrompt | undefined
+  let activePromptTranscript: readonly ChatMessage[] | null = null
   const queued: QueuedPrompt[] = []
   const questions = new Map<string, AssistantQuestion>()
   const ignoredTokens = new Set<string>()
@@ -382,6 +383,7 @@ export function createNativeChatController({
   }
   function restoreQueued(item: QueuedPrompt | undefined) {
     if (!item || queued.includes(item)) return
+    if (activePromptTranscript) publish({ messages: activePromptTranscript })
     queued.unshift(item)
     publishQueue()
   }
@@ -422,6 +424,7 @@ export function createNativeChatController({
     publish({ busy: true, error: null })
     toolMessages.clear()
     recordPrompt(text, attachments, queuedPrompt)
+    activePromptTranscript = state.messages
     const complete = async () => {
       const result = await run(() =>
         bridge.prompt({ ...current, text, attachments: [...attachments] }),
@@ -445,6 +448,7 @@ export function createNativeChatController({
       .finally(() => {
         promptInFlight = false
         activeQueuedPrompt = undefined
+        activePromptTranscript = null
         drainQueue()
       })
     return true

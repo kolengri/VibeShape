@@ -66,8 +66,8 @@ function useNativeAutomationConnection(
   }, [projectId])
   const available = native.available || native.connected || native.recovering
   return nativeConnection && available
-    ? { connection: nativeConnection, current: native }
-    : { connection: externalConnection, current: external }
+    ? { connection: nativeConnection, current: native, nativeConnection }
+    : { connection: externalConnection, current: external, nativeConnection }
 }
 
 function useCreateAutomationConnections(controller: DocumentControllerState) {
@@ -85,10 +85,14 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     externalConnection.getSnapshot,
     externalConnection.getSnapshot,
   )
-  const { connection, current } = useNativeAutomationConnection(
+  const { connection, current, nativeConnection } = useNativeAutomationConnection(
     controller,
     externalConnection,
     external,
+  )
+  const localConnections = useMemo(
+    () => (nativeConnection ? [externalConnection, nativeConnection] : [externalConnection]),
+    [externalConnection, nativeConnection],
   )
   useSyncExternalStore(
     automationReviews.subscribe,
@@ -105,16 +109,15 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     return remoteConnection.dispose
   }, [remoteConnection])
   useEffect(() => {
-    connection.validateDocumentScope()
+    for (const local of localConnections) local.validateDocumentScope()
     remoteConnection.validateDocumentScope()
-  }, [connection, remoteConnection, controller.status, controller.report?.snapshot.id])
+  }, [localConnections, remoteConnection, controller.status, controller.report?.snapshot.id])
   const stopAll = useCallback(async () => {
     await Promise.all([
-      connection.disable(),
-      ...(connection === externalConnection ? [] : [externalConnection.disable()]),
+      ...localConnections.map((local) => local.disable()),
       remoteConnection.disable(),
     ])
-  }, [connection, externalConnection, remoteConnection])
+  }, [localConnections, remoteConnection])
   const controls = useMemo(
     () => ({
       connection: { ...connection, disable: stopAll },
@@ -122,7 +125,7 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     }),
     [connection, remoteConnection, stopAll],
   )
-  return { ...controls, current, remote }
+  return { ...controls, current, remote, localConnections }
 }
 
 type AutomationConnections = ReturnType<typeof useCreateAutomationConnections>
@@ -149,24 +152,21 @@ export function useAutomationConnections() {
   return connections
 }
 export function AutomationEditorScope() {
-  const { connection, remoteConnection } = useAutomationConnections()
+  const { localConnections, remoteConnection } = useAutomationConnections()
   const editorStore = useEditorSessionStoreApi()
   useEffect(
     () =>
       registerProjectActionGuard(() => {
         const draftBlock = editorDraftBlock(editorStore.getState())
         if (draftBlock) return draftBlock
-        const localBusy = connection.getSnapshot().busy
-        const remoteBusy = remoteConnection.getSnapshot().busy
-        if (
-          (localBusy && remoteBusy) ||
-          (localBusy && !connection.isProjectActionPending()) ||
-          (remoteBusy && !remoteConnection.isProjectActionPending())
+        const busy = [...localConnections, remoteConnection].filter(
+          (connection) => connection.getSnapshot().busy,
         )
+        if (busy.length > 1 || busy.some((connection) => !connection.isProjectActionPending()))
           return "automation-busy"
         return null
       }),
-    [connection, remoteConnection, editorStore],
+    [localConnections, remoteConnection, editorStore],
   )
   return null
 }

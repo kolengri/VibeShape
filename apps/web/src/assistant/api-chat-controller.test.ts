@@ -406,6 +406,57 @@ describe("browser API project chat", () => {
     chat.dispose()
   })
 
+  it("discards a failed queued stream before retry without losing completed answers or repeating the prompt", async () => {
+    const api = deferredApiRequests()
+    const storage = disk()
+    const chat = createApiChatController({
+      projectId,
+      storage,
+      createTools: tools,
+      fetch: api.fetch,
+    })
+    await chat.connect(configuration)
+    await chat.send("First")
+    await chat.enqueue("Queued", [textFile("retry attachment")])
+    api.respond(0, completion("Earlier answer"))
+    await until(chat, () => api.requests.length === 2)
+    let sawPartial = false
+    const unsubscribe = chat.subscribe(() => {
+      sawPartial ||= chat.getSnapshot().messages.some(({ text }) => text === "Failed partial")
+    })
+    api.respond(
+      1,
+      new Response(
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Failed partial" }, finish_reason: null }] })}\n\n`,
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    )
+    await idle(chat)
+    unsubscribe()
+    expect(sawPartial).toBe(true)
+    expect(chat.getSnapshot().queuePaused).toBe(true)
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual([
+      "First",
+      "Earlier answer",
+      "Queued",
+    ])
+    expect(await chat.resumeQueue()).toBe(true)
+    await until(chat, () => api.requests.length === 3)
+    expect(
+      api.requests[2]?.messages.filter(({ role }) => role === "user").map(({ content }) => content),
+    ).toEqual(["First", api.content(1)])
+    api.respond(2, completion("Complete answer"))
+    await idle(chat)
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual([
+      "First",
+      "Earlier answer",
+      "Queued",
+      "Complete answer",
+    ])
+    expect(readChatHistory(projectId, storage)?.messages).toEqual([...chat.getSnapshot().messages])
+    chat.dispose()
+  })
+
   it("routes structured model questions to real choices and custom text without invoking the CAD gateway", async () => {
     const requests: { messages: { role: string; content: string }[] }[] = []
     let cadCalls = 0

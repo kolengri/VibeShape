@@ -52,6 +52,7 @@ type ActiveTurn = {
   wire: ApiWireMessage
   queued: QueuedPrompt | undefined
   canceled: boolean
+  transcript: readonly ChatMessage[]
   done?: Promise<void>
 }
 const promptSchema = z
@@ -298,8 +299,10 @@ export function createApiChatController(options: ApiChatOptions) {
   function failTurn(turn: ActiveTurn, finishTools: (status: "failed" | "cancelled") => void) {
     finishTools(turn.canceled ? "cancelled" : "failed")
     releaseTools()
-    if (turn.queued) queued.unshift(turn.queued)
-    else context = rememberedContext(state.messages)
+    if (turn.queued) {
+      messages(turn.transcript)
+      queued.unshift(turn.queued)
+    } else context = rememberedContext(state.messages)
     publishQueue()
   }
   function finishTurn(
@@ -372,10 +375,12 @@ export function createApiChatController(options: ApiChatOptions) {
       wire: prompt.wire,
       canceled: false,
       queued: item,
+      transcript: state.messages,
     }
     active = turn
     publish({ busy: true, error: null, queuePaused: item ? state.queuePaused : false })
     beginPromptTranscript(prompt, item)
+    turn.transcript = state.messages
     turn.done = runTurn(turn, prompt.configuration, prompt.tools)
     return true
   }

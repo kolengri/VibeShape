@@ -300,6 +300,52 @@ describe("project-scoped agent chat", () => {
     chat.dispose()
   })
 
+  it("discards a failed queued answer before retry while preserving earlier history and one user message", async () => {
+    const f = fixture(),
+      disk = storage(),
+      chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    const scope = { projectId, sessionToken: f.snapshot().sessionToken }
+    await chat.send("First")
+    await chat.enqueue("Queued")
+    f.emit({ ...scope, type: "text", text: "Earlier answer" })
+    f.failNextPrompt()
+    f.finish()
+    await until(() => f.prompts.length === 2)
+    f.emit({ ...scope, type: "thought", text: "Failed plan" })
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "failed-work",
+      title: "Failed work",
+      status: "in_progress",
+    })
+    f.emit({ ...scope, type: "text", text: "Failed partial" })
+    expect(chat.getSnapshot().messages.at(-1)?.text).toBe("Failed partial")
+    f.finish()
+    await until(() => !chat.getSnapshot().busy && chat.getSnapshot().queuePaused)
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual([
+      "First",
+      "Earlier answer",
+      "Queued",
+    ])
+    expect(await chat.resumeQueue()).toBe(true)
+    await until(() => f.prompts.length === 3)
+    f.emit({ ...scope, type: "text", text: "Complete answer" })
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual([
+      "First",
+      "Earlier answer",
+      "Queued",
+      "Complete answer",
+    ])
+    expect(f.prompts.map(({ text }) => text)).toEqual(["First", "Queued", "Queued"])
+    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    chat.dispose()
+  })
+
   it("keeps a new Send behind a paused failed backlog until explicit resume", async () => {
     const f = fixture(),
       chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
