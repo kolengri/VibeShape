@@ -131,6 +131,11 @@ Key decisions:
 
 ## Development
 
+The presentation website lives in `apps/site`. Run `bun run dev:site` to preview it or
+`bun run build:site` to produce an independent static build. See the
+[presentation website guide](docs/presentation-site.md) for documentation ownership, download
+availability, browser checks, and static hosting handoff.
+
 Use the Bun version pinned in `packageManager`:
 
 ```bash
