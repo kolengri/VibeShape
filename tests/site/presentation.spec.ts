@@ -180,7 +180,7 @@ test("the presentation explains the workflow and links to the real editor", asyn
   )
   await expect(page.locator('meta[property="og:image"]').first()).toHaveAttribute(
     "content",
-    "https://vibeshape.hello-world.cz/brand/og-light.png",
+    "https://vibeshape.hello-world.cz/brand/og-light.png?v=benchy-mesh",
   )
   await page.getByRole("button", { name: "Sketch", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Start with what has to fit." })).toBeVisible()
@@ -233,16 +233,29 @@ test("every documentation article supports direct links and return navigation", 
   await expect(page.getByRole("heading", { level: 1 })).toContainText("CAD for things")
 })
 
-test("downloads distinguish missing installers from usable installation paths", async ({
-  page,
-}) => {
+test("downloads show the published Mac release with aligned primary actions", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/#downloads")
   const downloads = page.locator("#downloads")
-  await expect(downloads.getByText("Not published yet", { exact: true })).toBeVisible()
-  await expect(downloads.getByRole("link", { name: "Check GitHub releases" })).toHaveAttribute(
+  await expect(downloads.getByText("macOS · Apple Silicon · v0.1.5", { exact: true })).toBeVisible()
+  await expect(downloads.getByRole("link", { name: "All releases & checksums" })).toHaveAttribute(
     "href",
     "https://github.com/kolengri/VibeShape/releases",
   )
+  await expect(downloads.getByRole("link", { name: "Download for Apple Silicon" })).toHaveAttribute(
+    "href",
+    "https://github.com/kolengri/VibeShape/releases/download/desktop-v0.1.5/VibeShape-0.1.5-mac-arm64.dmg",
+  )
+  await expect(downloads).toContainText("not notarized by Apple")
+  const actions = ["Open VibeShape", "Local installation guide", "Download for Apple Silicon"]
+  const bounds = await Promise.all(
+    actions.map((name) => downloads.getByRole("link", { name, exact: true }).boundingBox()),
+  )
+  for (const boundsAtIndex of bounds) {
+    expect(boundsAtIndex).not.toBeNull()
+    expect(boundsAtIndex?.y).toBeCloseTo(bounds[0]?.y ?? 0, 0)
+    expect(boundsAtIndex?.height).toBe(bounds[0]?.height)
+  }
   await expect(downloads.getByRole("link", { name: "macOS desktop build guide" })).toHaveAttribute(
     "href",
     "https://github.com/kolengri/VibeShape/blob/main/docs/desktop-macos.md",
@@ -439,12 +452,12 @@ test.describe("social previews", () => {
     )
     await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
       "content",
-      "https://vibeshape.hello-world.cz/brand/og-light.png",
+      "https://vibeshape.hello-world.cz/brand/og-light.png?v=benchy-mesh",
     )
     await expect(page.locator('meta[property="og:image:width"]')).toHaveCount(2)
     await expect(page.locator('meta[property="og:image:height"]')).toHaveCount(2)
     for (const [index, theme] of ["light", "dark"].entries()) {
-      const url = `https://vibeshape.hello-world.cz/brand/og-${theme}.png`
+      const url = `https://vibeshape.hello-world.cz/brand/og-${theme}.png?v=benchy-mesh`
       await expect(images.nth(index)).toHaveAttribute("content", url)
       await expect(page.locator('meta[property="og:image:width"]').nth(index)).toHaveAttribute(
         "content",
