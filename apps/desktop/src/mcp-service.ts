@@ -5,6 +5,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { DESKTOP_MCP_PATH } from "@vibeshape/automation-api/desktop-host"
 import { localDocumentSchema } from "@vibeshape/automation-api/local-session"
+import { localFailure } from "@vibeshape/automation-api/local-tools"
 import {
   BrowserRequestError,
   createBrowserBroker,
@@ -42,12 +43,58 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
   let disposed = false
   let requests = 0
   let removeDescriptor: (() => Promise<void>) | undefined
+  const readinessWaiters = new Set<() => void>()
+
+  function wakeReadiness() {
+    for (const check of readinessWaiters) check()
+  }
+  function readinessOwnerCurrent(owner: Client, signal?: AbortSignal) {
+    return !disposed && client === owner && !signal?.aborted
+  }
+  function waitForInitialPair(owner: Client, signal?: AbortSignal) {
+    return new Promise<boolean>((resolve) => {
+      const finish = (ready: boolean) => {
+        clearTimeout(timer)
+        readinessWaiters.delete(check)
+        signal?.removeEventListener("abort", check)
+        resolve(ready)
+      }
+      const check = () => {
+        if (!readinessOwnerCurrent(owner, signal)) return finish(false)
+        const generation = broker.sessionGeneration()
+        if (generation !== 0) finish(generation === 1 && broker.isPaired(generation))
+      }
+      const timer = setTimeout(() => finish(false), 5000)
+      readinessWaiters.add(check)
+      signal?.addEventListener("abort", check, { once: true })
+      check()
+    })
+  }
+  function initialReadinessFailure(owner: Client, ready: boolean, signal?: AbortSignal) {
+    if (!readinessOwnerCurrent(owner, signal) || broker.sessionGeneration() > 1)
+      return localFailure("session-revoked", "The local automation session was revoked.")
+    if (!ready || !broker.isPaired(1))
+      return localFailure("not-paired", "The browser is not paired.", true)
+    return null
+  }
+  async function invokeWhenReady(owner: Client, ...args: Parameters<typeof broker.invoke>) {
+    const [operation, options] = args
+    // Only the first safe identity read waits for normal renderer discovery. Never defer writes
+    // across a grant, or wait after a previous grant was revoked by Stop AI.
+    if (operation.tool === "model_info" && broker.sessionGeneration() === 0 && !broker.isPaired()) {
+      const ready = await waitForInitialPair(owner, options?.signal)
+      const failure = initialReadinessFailure(owner, ready, options?.signal)
+      if (failure) return failure
+    }
+    return broker.invoke(...args)
+  }
 
   async function release(owner: Client) {
     if (client !== owner) return
     client = null
     clearTimeout(owner.lease)
     broker.setClient(null)
+    wakeReadiness()
     resources.clear()
     owner.resolveReleased()
     await owner.server.close()
@@ -74,12 +121,17 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
         "Another MCP client is attached to VibeShape. Disconnect it first.",
       )
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: randomUUID })
-    const server = createLocalMcpAdapter(broker, resources)
+    let owner: Client
+    const server = createLocalMcpAdapter(
+      projectId ? { ...broker, invoke: (...args) => invokeWhenReady(owner, ...args) } : broker,
+      resources,
+      projectId ? { accessPolicy: "native-project" } : {},
+    )
     let resolveReleased = () => {}
     const released = new Promise<void>((resolve) => {
       resolveReleased = resolve
     })
-    const owner: Client = {
+    owner = {
       server,
       transport,
       lease: setTimeout(() => void release(owner), 10_000),
@@ -130,7 +182,11 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
   }
 
   return {
-    handleBrowser: broker.handle,
+    async handleBrowser(request: Request) {
+      const response = await broker.handle(request)
+      wakeReadiness()
+      return response
+    },
     authenticate,
     isClientAttached() {
       return client !== null
@@ -168,6 +224,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
     async close() {
       if (disposed) return
       disposed = true
+      wakeReadiness()
       if (client) await release(client)
       broker.dispose()
       resources.clear()

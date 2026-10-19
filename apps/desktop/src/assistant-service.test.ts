@@ -13,10 +13,10 @@ import { type AssistantServiceOptions, createAssistantService } from "./assistan
 const fixture = String.raw`
 const readline = require("node:readline");
 const scenario = process.argv[2];
-let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0;
+let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp;
 const send = message => process.stdout.write(JSON.stringify({jsonrpc:"2.0",...message})+"\n");
 const reply = (id,result) => send({id,result});
-const sessionId = "fake-session";
+let sessionId = "fake-session";
 const update = value => send({method:"session/update",params:{sessionId,update:value}});
 const text = value => update({sessionUpdate:"agent_message_chunk",content:{type:"text",text:value}});
 const configs = (value, effort = value === "large" ? "extreme" : "brief") => [
@@ -45,9 +45,14 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  }
  if (method === "authenticate") { authenticated = true; return reply(id,{}); }
  if (method === "session/new" || method === "session/load") {
+   if (method === "session/load") sessionId = params.sessionId;
    if (scenario === "auth" && !authenticated) return send({id,error:{code:-32000,message:"private auth URL"}});
-   const mcp = params.mcpServers[0];
-   if (mcp.name !== "vibeshape" || mcp.command !== "/electron" || mcp.args[1] !== "--descriptor" || mcp.env[0].name !== "ELECTRON_RUN_AS_NODE") return process.exit(10);
+   // Match adapters that filter every configured name, including disabled global entries.
+   const configuredLayers = [{mcp_servers:{vibeshape:{enabled:false}}}];
+   const names = new Set(configuredLayers.flatMap(layer=>Object.keys(layer.mcp_servers)));
+   attachedMcp = params.mcpServers.filter(server=>!names.has(server.name));
+   const mcp = attachedMcp[0];
+   if (params.mcpServers.length !== 1 || attachedMcp.length !== 1 || !/^vs_[0-9a-f]{16}$/.test(mcp.name) || mcp.command !== "/electron" || mcp.args[1] !== "--descriptor" || mcp.env[0].name !== "ELECTRON_RUN_AS_NODE") return process.exit(10);
    return reply(id,method === "session/new" ? {sessionId,...options} : options);
  }
  if (method === "session/set_mode") return reply(id,{});
@@ -77,6 +82,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  if (method !== "session/prompt") return send({id,error:{code:-32601,message:"Unknown method"}});
  if (!params.prompt[0].text.includes("VibeShape") || !params.prompt[0].text.includes("Project ID")) return process.exit(13);
  const prompt = params.prompt.filter(block=>block.type === "text").at(-1).text;
+ if (prompt === "inspect-mcp") { text(JSON.stringify(attachedMcp)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-attachments") { text(JSON.stringify(params.prompt)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "ask-question" || prompt === "unsupported-question") {
    questionPrompt = id;
@@ -175,6 +181,51 @@ function scope(snapshot: AssistantSnapshot) {
 }
 
 describe("native ACP service", () => {
+  it("keeps project MCP names available despite a disabled global name and stable across resume", async () => {
+    const context = await host({
+      getMcpSetup: async (projectId) => ({
+        protocolVersion: 1,
+        mcpServers: {
+          vibeshape: {
+            command: "/electron",
+            args: ["/mcp.cjs", "--descriptor", `/projects/${projectId}/descriptor.json`],
+            env: { ELECTRON_RUN_AS_NODE: "1" },
+          },
+        },
+      }),
+    })
+    async function supplied(projectId: string, resumeSessionId?: string) {
+      const session = ready(await context.connect("resume", projectId, resumeSessionId))
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...scope(session), text: "inspect-mcp" },
+        }),
+      ).toMatchObject({ ok: true })
+      const event = await context.waitFor(
+        (event) => event.sessionToken === session.sessionToken && event.type === "text",
+      )
+      if (event.type !== "text") throw new Error("Missing supplied MCP configuration.")
+      return JSON.parse(event.text)
+    }
+    const firstId = "0195b5ac-b250-7a2c-8c33-000000000001"
+    const secondId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const first = await supplied(firstId)
+    const second = await supplied(secondId)
+    const resumed = await supplied(firstId, "saved-session")
+    expect(first).toEqual([
+      {
+        name: expect.stringMatching(/^vs_[0-9a-f]{16}$/),
+        command: "/electron",
+        args: ["/mcp.cjs", "--descriptor", `/projects/${firstId}/descriptor.json`],
+        env: [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }],
+      },
+    ])
+    expect(second[0].name).not.toBe(first[0].name)
+    expect(second[0].args[2]).toBe(`/projects/${secondId}/descriptor.json`)
+    expect(resumed).toEqual(first)
+  })
+
   it("retains advertised reasoning choices and replaces them with the selected model's effective configuration", async () => {
     const context = await host()
     const session = ready(await context.connect("config"))

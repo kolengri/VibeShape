@@ -13,6 +13,7 @@ const { createTestBrowserStorage } = await import("../test-support/browser-stora
 const { ViewerPreferencesProvider } = await import("../shell/viewer-preferences")
 const { WorkspaceLayoutPreferencesProvider } = await import("../shell/workspace-layout-preferences")
 const { ProjectLibraryPageLayout } = await import("./project-library-page-layout")
+const { ApplicationChromeProvider } = await import("../shell/application-header")
 
 const listeners = new Set<(command: DesktopCommand) => void>()
 const state = vi.fn()
@@ -67,19 +68,21 @@ afterEach(() => {
 function landing() {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <TooltipProvider>
-        <ViewerPreferencesProvider>
-          <WorkspaceLayoutPreferencesProvider>
-            <ProjectLibraryPageLayout
-              controller={controller}
-              title="Projects"
-              description="Local projects"
-            >
-              <p>Project chooser content</p>
-            </ProjectLibraryPageLayout>
-          </WorkspaceLayoutPreferencesProvider>
-        </ViewerPreferencesProvider>
-      </TooltipProvider>
+      <ApplicationChromeProvider>
+        <TooltipProvider>
+          <ViewerPreferencesProvider>
+            <WorkspaceLayoutPreferencesProvider>
+              <ProjectLibraryPageLayout
+                controller={controller}
+                title="Projects"
+                description="Local projects"
+              >
+                <p>Project chooser content</p>
+              </ProjectLibraryPageLayout>
+            </WorkspaceLayoutPreferencesProvider>
+          </ViewerPreferencesProvider>
+        </TooltipProvider>
+      </ApplicationChromeProvider>
     </I18nProvider>,
   )
 }
@@ -105,4 +108,27 @@ it("opens global Settings from the native menu on the project chooser without en
   expect(screen.getByRole("dialog", { name: "Settings" })).not.toBeNull()
   await userEvent.click(screen.getByRole("button", { name: "Done" }))
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" }))
+})
+
+it("updates shared native chrome on the project chooser and unsubscribes when it closes", () => {
+  let update: ((fullScreen: boolean) => void) | undefined
+  const unsubscribe = vi.fn()
+  window.vibeshapeDesktop = {
+    ...host,
+    onFullScreenChange(listener) {
+      update = listener
+      listener(true)
+      return unsubscribe
+    },
+  }
+  const view = landing()
+  const header = view.container.querySelector("header.application-bar")
+  expect(header?.getAttribute("data-unified-chrome")).toBe("true")
+  expect(header?.getAttribute("data-full-screen")).toBe("true")
+  act(() => update?.(false))
+  expect(header?.getAttribute("data-full-screen")).toBe("false")
+  act(() => update?.(true))
+  expect(header?.getAttribute("data-full-screen")).toBe("true")
+  view.unmount()
+  expect(unsubscribe).toHaveBeenCalledTimes(1)
 })

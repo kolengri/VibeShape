@@ -1,23 +1,15 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { useActivityPending } from "@vibeshape/ui/components/activity"
-import { type ReactNode, useEffect, useState } from "react"
-import { getDesktopHost } from "../desktop/desktop-host"
+import type { ReactNode } from "react"
 import {
   type DocumentControllerState,
   getProjectActionBlock,
   getProjectActiveWorkBlock,
 } from "../document/document-controller"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
+import { ApplicationHeader } from "./application-header"
 import { useReportApplicationError } from "./application-notices"
 import { useAutomationConnections } from "./automation-status"
 import { EditorApplicationMenu as ApplicationMenu } from "./editor-application-menu"
-
-function useNativeFullScreen() {
-  const [fullScreen, setFullScreen] = useState(false)
-  const host = getDesktopHost()
-  useEffect(() => host?.onFullScreenChange?.(setFullScreen), [host])
-  return fullScreen
-}
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -35,10 +27,9 @@ function saveStatusMessage(
   return messages[messageKey]
 }
 
-function applicationBarActivity(controller: DocumentControllerState, pending: boolean) {
+function applicationBarActivity(controller: DocumentControllerState) {
   return {
     busy:
-      pending ||
       controller.status === "loading" ||
       controller.status === "idle" ||
       controller.saveStatus === "saving",
@@ -65,11 +56,7 @@ export function ApplicationBar({
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
 }) {
   const t = useTranslations("app.shell.applicationBar")
-  const activityPending = useActivityPending()
-  const { busy, unitChangesBlocked } = applicationBarActivity(controller, activityPending)
-  const desktop = getDesktopHost()
-  const fullScreen = useNativeFullScreen()
-  const unifiedChrome = desktop?.platform === "darwin" && desktop.windowChrome === "unified"
+  const { busy, unitChangesBlocked } = applicationBarActivity(controller)
   const { remote } = useAutomationConnections()
   const blockedReason = getProjectActionBlock()
   const documentName = controller.report?.snapshot.name ?? t("untitledProject")
@@ -85,11 +72,9 @@ export function ApplicationBar({
   )
 
   return (
-    <header
-      data-loading={busy || undefined}
-      data-unified-chrome={unifiedChrome || undefined}
-      data-full-screen={fullScreen}
-      className="application-bar grid min-w-0 grid-cols-[auto_minmax(0,1fr)] grid-rows-2 items-center gap-x-1 border-b bg-toolbar px-2 sm:flex sm:gap-3"
+    <ApplicationHeader
+      busy={busy}
+      className="grid grid-cols-[auto_minmax(0,1fr)] grid-rows-2 gap-x-1 sm:flex sm:gap-3"
     >
       <ApplicationMenu
         controller={controller}
@@ -112,6 +97,6 @@ export function ApplicationBar({
       <span className="sr-only" role="status" aria-label={t("saveStatusLabel")}>
         {saveStatus}
       </span>
-    </header>
+    </ApplicationHeader>
   )
 }

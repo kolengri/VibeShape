@@ -220,11 +220,9 @@ function AssistantTurnActions({
 
 function AssistantComposerActions(props: ComposerActionsProps) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1 px-2 pb-2">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-        {props.sessionControls}
-      </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+    <div className="grid min-w-0 grid-cols-1 items-end gap-2 px-2 pb-2 @sm/composer:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">{props.sessionControls}</div>
+      <div className="flex shrink-0 items-center justify-self-end gap-1">
         <AssistantAttachmentAction {...props} />
         <AssistantTurnActions {...props} />
       </div>
@@ -294,7 +292,7 @@ export function AssistantComposer({
       <AssistantQueue {...props} />
       <section
         aria-label={t("prompt")}
-        className="min-w-0 overflow-hidden rounded-xl border bg-background focus-within:border-ring"
+        className="@container/composer min-w-0 overflow-hidden rounded-xl border bg-background focus-within:border-ring"
       >
         <AssistantAttachments
           attachments={draft.attachments}

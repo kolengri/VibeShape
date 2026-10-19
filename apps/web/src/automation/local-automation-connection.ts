@@ -121,6 +121,7 @@ const acknowledgement = z.object({ ok: z.literal(true) }).strict()
 export function createLocalAutomationConnection(
   options: {
     projectId?: string
+    accessPolicy?: "manual" | "native-project"
     createDocumentSession?: typeof createVisibleDocumentAutomationSession
     reviews?: typeof automationReviews
   } = {},
@@ -128,9 +129,42 @@ export function createLocalAutomationConnection(
   const reviews = options.reviews ?? automationReviews
   const createActiveDocumentAutomationSession =
     options.createDocumentSession ?? createVisibleDocumentAutomationSession
-  const scopedPreferenceKey = preferenceKey
+  const nativeProjectAccess = options.accessPolicy === "native-project" && !!options.projectId
+  const scopedPreferenceKey = options.projectId
+    ? `${preferenceKey}:${options.projectId}`
+    : preferenceKey
   const scopedResumeKey = options.projectId ? `${resumeKey}:${options.projectId}` : resumeKey
+  const disabledKey = `${scopedPreferenceKey}:disabled`
+  function savedConnectionBlocked() {
+    if (!nativeProjectAccess) return false
+    try {
+      const reserved = window.localStorage.getItem(disabledKey)
+      if (reserved !== null && reserved !== "0") return true
+      const preference = window.localStorage.getItem(scopedPreferenceKey)
+      if (preference === null) return reserved !== null
+      return !preferenceSchema.safeParse(JSON.parse(preference)).success
+    } catch {
+      return true
+    }
+  }
+  function reserveNativeAccessState() {
+    if (!nativeProjectAccess) return true
+    try {
+      // Keep a sentinel before granting access: Stop can remove approval even at full quota.
+      if (window.localStorage.getItem(disabledKey) !== "0")
+        window.localStorage.setItem(disabledKey, "0")
+      return true
+    } catch {
+      automaticConnectionBlocked = true
+      publish({ ...snapshot, error: true })
+      return false
+    }
+  }
   const readPreference = () => savedReadPreference(scopedPreferenceKey)
+  function preferredAutoApply(client: LocalConnection["client"], fallback = false) {
+    const preference = readPreference()
+    return preference && sameClient(preference.client, client) ? preference.autoApply : fallback
+  }
   const writePreference = (client: LocalConnection["client"], autoApply: boolean) =>
     savedWritePreference(client, autoApply, scopedPreferenceKey)
   const clearPreference = () => savedClearPreference(scopedPreferenceKey)
@@ -155,7 +189,7 @@ export function createLocalAutomationConnection(
   let pair: Pair | null = null
   let generation = 0
   let revokedThroughGeneration = -1
-  let automaticConnectionBlocked = false
+  let automaticConnectionBlocked = savedConnectionBlocked()
   let connecting = false
   let disposed = false
   let restoreTimer: ReturnType<typeof setTimeout> | null = null
@@ -257,7 +291,7 @@ export function createLocalAutomationConnection(
   }
   async function disable() {
     automaticConnectionBlocked = true
-    clearPreference()
+    if (reserveNativeAccessState()) clearPreference()
     await disconnect()
   }
   async function fail(current: Pair) {
@@ -348,7 +382,7 @@ export function createLocalAutomationConnection(
     }, 1000)
   }
   function publishBridgeStatus(value: z.infer<typeof localStatusSchema>) {
-    const saved = readResume()
+    const saved = nativeProjectAccess && automaticConnectionBlocked ? null : readResume()
     publish({
       ...snapshot,
       available: true,
@@ -359,10 +393,17 @@ export function createLocalAutomationConnection(
     if (saved) retryRestore()
     else {
       clearResume()
-      const preference = readPreference()
-      if (!automaticConnectionBlocked && preference && sameClient(preference.client, value.client))
-        void enable(preference.client)
+      connectDiscoveredClient(value.client)
     }
+  }
+  function connectDiscoveredClient(client: LocalConnection["client"] | null) {
+    if (automaticConnectionBlocked || !client) return
+    if (nativeProjectAccess) {
+      void enable(client)
+      return
+    }
+    const preference = readPreference()
+    if (preference && sameClient(preference.client, client)) void enable(client)
   }
   async function dispatch(current: Pair, work: LocalWork) {
     if (pair !== current) return
@@ -570,8 +611,12 @@ export function createLocalAutomationConnection(
       error: false,
     })
   }
+  function connectionAttemptCurrent(at: number) {
+    if (generation !== at || disposed) return false
+    return !nativeProjectAccess || !automaticConnectionBlocked
+  }
   function connectionStillCurrent(created: Handle, at: number) {
-    return generation === at && !disposed && created.readIdentity() !== null
+    return connectionAttemptCurrent(at) && created.readIdentity() !== null
   }
   async function requestConnection(
     info: NonNullable<Identity>,
@@ -607,6 +652,10 @@ export function createLocalAutomationConnection(
     saved?: NonNullable<ReturnType<typeof readResume>>,
     expectedClient?: LocalConnection["client"],
   ) {
+    if (!prepareConnectionGrant(at, expectedClient ?? saved?.client ?? snapshot.client)) {
+      created.dispose()
+      return false
+    }
     const info = created.readIdentity()
     if (!info) throw new Error("The document session is unavailable.")
     const credential = await requestConnection(info, saved, expectedClient)
@@ -625,13 +674,7 @@ export function createLocalAutomationConnection(
     }
     pair = current
     current.executor = createExecutor(current)
-    const preference = readPreference()
-    publishConnection(
-      current,
-      preference && sameClient(preference.client, credential.client)
-        ? preference.autoApply
-        : saved?.autoApply === true,
-    )
+    publishConnection(current, preferredAutoApply(credential.client, saved?.autoApply === true))
     if (!writePreference(credential.client, snapshot.autoApply))
       publish({ ...snapshot, error: true })
     saveResume(current)
@@ -650,6 +693,15 @@ export function createLocalAutomationConnection(
   }
   function canEnable() {
     return !disposed && !connecting && !pair && snapshot.available && snapshot.client !== null
+  }
+  function prepareConnectionGrant(at: number, client: LocalConnection["client"] | null) {
+    if (!connectionAttemptCurrent(at)) return false
+    if (!nativeProjectAccess) return true
+    if (!client || !reserveNativeAccessState()) return false
+    if (writePreference(client, preferredAutoApply(client))) return true
+    automaticConnectionBlocked = true
+    publish({ ...snapshot, error: true })
+    return false
   }
   async function enable(expectedClient?: LocalConnection["client"]) {
     if (!canEnable()) return false
@@ -692,7 +744,7 @@ export function createLocalAutomationConnection(
     }
   }
   async function restore() {
-    if (disposed || connecting || pair) return
+    if (connecting || pair || !connectionAttemptCurrent(generation)) return
     const saved = readResume()
     if (!saved) {
       clearResume()
@@ -703,6 +755,7 @@ export function createLocalAutomationConnection(
     const at = generation
     try {
       await validateRecoveryClient(saved)
+      if (!connectionAttemptCurrent(at)) return
       await resumeDocument(saved, at)
     } catch (error) {
       await recoveryFailure(error, saved, at)
@@ -711,7 +764,13 @@ export function createLocalAutomationConnection(
     }
   }
   function retryRestore() {
-    if (disposed || restoreTimer || !readResume()) return
+    if (
+      disposed ||
+      restoreTimer ||
+      (nativeProjectAccess && automaticConnectionBlocked) ||
+      !readResume()
+    )
+      return
     restoreTimer = setTimeout(() => {
       restoreTimer = null
       void restore()

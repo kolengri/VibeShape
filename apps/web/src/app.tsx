@@ -86,6 +86,7 @@ import { SketchTextDialog } from "./features/sketch/text/text-dialog"
 import { PROJECT_EDITOR_PANEL_ID, ProjectTabs, projectTabId } from "./project-tabs/project-tabs"
 import { ProjectTabsProvider } from "./project-tabs/project-tabs-provider"
 import { ApplicationBar } from "./shell/application-bar"
+import { ApplicationChromeProvider } from "./shell/application-header"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
 import { AutomationConnectionsProvider, AutomationEditorScope } from "./shell/automation-status"
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
@@ -1207,32 +1208,34 @@ export function App() {
   const controller = useDocumentController(t("untitledProject"))
 
   return (
-    <DocumentDisplayUnitsProvider
-      displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
-    >
-      <ProjectNavigationNotice controller={controller} />
-      <ViewerPreferencesProvider>
-        <WorkspaceLayoutPreferencesProvider>
-          <AutomationConnectionsProvider controller={controller}>
-            <ApiAssistantProvider>
-              <ProjectTabsProvider>
-                {controller.status === "ready" ? (
-                  <EditorSessionProvider
-                    key={controller.report?.snapshot.id ?? "loading"}
-                    documentId={controller.report?.snapshot.id}
-                  >
-                    <AutomationEditorScope />
-                    <EditorApplication controller={controller} />
-                  </EditorSessionProvider>
-                ) : (
-                  <DocumentProjectPage controller={controller} />
-                )}
-              </ProjectTabsProvider>
-            </ApiAssistantProvider>
-          </AutomationConnectionsProvider>
-        </WorkspaceLayoutPreferencesProvider>
-      </ViewerPreferencesProvider>
-    </DocumentDisplayUnitsProvider>
+    <ApplicationChromeProvider>
+      <DocumentDisplayUnitsProvider
+        displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
+      >
+        <ProjectNavigationNotice controller={controller} />
+        <ViewerPreferencesProvider>
+          <WorkspaceLayoutPreferencesProvider>
+            <AutomationConnectionsProvider controller={controller}>
+              <ApiAssistantProvider>
+                <ProjectTabsProvider>
+                  {controller.status === "ready" ? (
+                    <EditorSessionProvider
+                      key={controller.report?.snapshot.id ?? "loading"}
+                      documentId={controller.report?.snapshot.id}
+                    >
+                      <AutomationEditorScope />
+                      <EditorApplication controller={controller} />
+                    </EditorSessionProvider>
+                  ) : (
+                    <DocumentProjectPage controller={controller} />
+                  )}
+                </ProjectTabsProvider>
+              </ApiAssistantProvider>
+            </AutomationConnectionsProvider>
+          </WorkspaceLayoutPreferencesProvider>
+        </ViewerPreferencesProvider>
+      </DocumentDisplayUnitsProvider>
+    </ApplicationChromeProvider>
   )
 }
 

@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-10-19
+- Partially superseded by: [ADR-0115](0115-automatic-native-project-mcp-access.md) for embedded ACP
+  pairing and internal server naming
 - Partially supersedes: [ADR-0110](0110-macos-desktop-host.md) for IPC and MCP availability;
   [ADR-0020](0020-local-slicer-handoff-bridge.md) for the product slicer workflow
 

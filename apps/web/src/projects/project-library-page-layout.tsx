@@ -1,7 +1,6 @@
-import { useActivityPending } from "@vibeshape/ui/components/activity"
 import type { ReactNode } from "react"
-import { getDesktopHost } from "../desktop/desktop-host"
 import type { DocumentControllerState } from "../document/document-controller"
+import { ApplicationHeader } from "../shell/application-header"
 import { ApplicationMenu } from "../shell/application-menu"
 
 export function ProjectLibraryPageLayout({
@@ -17,18 +16,11 @@ export function ProjectLibraryPageLayout({
   busy?: boolean
   children: ReactNode
 }) {
-  const activityPending = useActivityPending()
-  const desktop = getDesktopHost()
-  const unifiedChrome = desktop?.platform === "darwin" && desktop.windowChrome === "unified"
   return (
     <main className="flex h-svh min-h-0 flex-col bg-background text-foreground">
-      <header
-        data-loading={activityPending || busy || undefined}
-        data-unified-chrome={unifiedChrome || undefined}
-        className="application-bar flex h-14 shrink-0 items-center border-b bg-toolbar px-6"
-      >
+      <ApplicationHeader busy={busy} className="h-14">
         <ApplicationMenu controller={controller} scope="library" busy={busy} />
-      </header>
+      </ApplicationHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8 sm:px-8">
           <div className="grid gap-2">

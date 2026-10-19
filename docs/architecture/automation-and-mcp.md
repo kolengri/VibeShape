@@ -388,11 +388,19 @@ The first bridge uses MCP `stdio` because the client launches a local subprocess
 
 The browser still needs an explicit local session with the bridge. The initial automation mode serves the reviewed production static build and its session endpoint from one stable loopback origin. Normal hosted and installed PWA modes remain independent and do not require this process.
 
+The embedded native ACP assistant automatically establishes that session through its private
+project-bound attachment under [ADR-0115](../adr/0115-automatic-native-project-mcp-access.md). Its
+stable internal server name avoids collisions with external provider configuration. Native access
+and approval preferences are isolated per project; initial access enables reads and proposals with
+manual Apply. Explicit Stop persists across reload until Enable AI session. This policy uses the
+ordinary broker, credentials, exact previews, revisions and review path; it grants no project
+management authority. External clients retain the initial pairing action below.
+
 The loopback origin has these requirements:
 
 - bind only to `127.0.0.1`; a stable per-profile origin preserves browser storage identity;
 - validate the exact `Host` and `Origin`, reject absent or unexpected origins, and provide no wildcard CORS;
-- require an initial host-owned **Enable AI session** user action; remember local access and approval
+- require an initial host-owned **Enable AI session** user action for external clients; remember local access and approval
   mode for the approved client and browser origin under [ADR-0100](../adr/0100-remembered-local-mcp-preferences.md);
 - authenticate every browser request with a session-bound, same-origin credential that is never placed in a URL;
 - bind one bridge session to an explicit set of shared documents and capabilities;
@@ -485,7 +493,10 @@ unchanged. See [ADR-0077](../adr/0077-mirror-copies-and-draft-shell-selection.md
 
 ## Security and privacy
 
-The user explicitly pairs a client and chooses which document sessions are shared. Pairing one document does not expose the project library, recent files, other tabs, extension storage, or browser origin data.
+The user explicitly pairs an external client and chooses which document sessions are shared. The
+embedded native assistant receives only its own project's default access under ADR-0115. Pairing one
+document does not expose the project library, recent files, other tabs, extension storage, or browser
+origin data.
 
 The bridge and application enforce:
 

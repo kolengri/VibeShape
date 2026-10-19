@@ -191,6 +191,369 @@ describe("unpaired local client discovery", () => {
   })
 })
 
+describe("embedded project access", () => {
+  function useNativeProject(projectId = id) {
+    connection.dispose()
+    connection = createLocalAutomationConnection({ projectId, accessPolicy: "native-project" })
+  }
+
+  it("automatically pairs a newly attached native client and serves model_info without auto-apply", async () => {
+    useNativeProject()
+    mocks.request.mockResolvedValueOnce(ok({ protocolVersion: 1, client: null, paired: false }))
+    await ready()
+    expect(connection.getSnapshot().connected).toBe(false)
+    const result = {
+      ok: true,
+      value: {
+        summary: {
+          kind: "org.vibeshape.document.summary",
+          schemaVersion: 1,
+          documentId: id,
+          revision: 4,
+          classification: "semantic",
+          truncated: false,
+          data: {
+            name: "Bracket",
+            createdAt: "2026-10-19T00:00:00.000Z",
+            updatedAt: "2026-10-19T00:00:00.000Z",
+          },
+        },
+        measurements: null,
+        measurementDiagnostic: null,
+      },
+    }
+    mocks.execute.mockResolvedValue(result)
+    const original = mocks.request.getMockImplementation()
+    let delivered = false
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/poll" && !delivered) {
+        delivered = true
+        return ok({ protocolVersion: 1, work, cancelledRequestIds: [] })
+      }
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: false,
+      projectBound: true,
+      projectManagement: false,
+    })
+    expect(mocks.execute).toHaveBeenCalledWith(work.operation, expect.any(AbortSignal))
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/result",
+      { protocolVersion: 1, requestId: work.requestId, tool: "model_info", result },
+      credential.token,
+      undefined,
+      id,
+    )
+    expect(enableAutoApply).not.toHaveBeenCalled()
+    expect(connection.setProjectManagement(true)).toBe(false)
+  })
+
+  it("requires the native policy as well as a project and keeps external discovery manual", async () => {
+    connection.dispose()
+    connection = createLocalAutomationConnection({ projectId: id })
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    connection.dispose()
+    connection = createLocalAutomationConnection({ accessPolicy: "native-project" })
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.createHandle).not.toHaveBeenCalled()
+  })
+
+  it("isolates native approval choices from external access and other projects", async () => {
+    const externalPreference = JSON.stringify({ client, autoApply: true })
+    window.localStorage.setItem("vibeshape-local-ai-preferences", externalPreference)
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(connection.enableAutoApply()).toBe(true)
+    const secondId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const other = createLocalAutomationConnection({
+      projectId: secondId,
+      accessPolicy: "native-project",
+      createDocumentSession: () => ({
+        ...mocks.createHandle(),
+        documentId: secondId,
+        readIdentity: () => ({ id: secondId, revision: 2, name: "Other project" }),
+      }),
+    })
+    try {
+      other.start()
+      await other.status()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(other.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+      expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+      expect(mocks.request).toHaveBeenCalledWith(
+        "/connect",
+        { protocolVersion: 1, document: { id: secondId, revision: 2, name: "Other project" } },
+        undefined,
+        undefined,
+        secondId,
+      )
+      await connection.disable()
+      expect(other.getSnapshot().connected).toBe(true)
+      expect(window.localStorage.getItem("vibeshape-local-ai-preferences")).toBe(externalPreference)
+    } finally {
+      other.dispose()
+    }
+  })
+
+  it("retains Stop across discovery and owner recreation until explicitly enabled", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().connected).toBe(true)
+    await connection.disable()
+    mocks.request.mockClear()
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+    expect(await connection.enable()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+  })
+
+  it.each(["current owner", "replacement owner"])(
+    "keeps Stop durable when %s cancels recovery during client validation",
+    async (owner) => {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(connection.getSnapshot().connected).toBe(true)
+      window.dispatchEvent(new Event("pagehide"))
+      await connection.status()
+      const validation = deferred<ReturnType<typeof ok>>()
+      const original = mocks.request.getMockImplementation()
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+        path === "/status" && args[2] !== true ? validation.promise : original?.(path, ...args),
+      )
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(mocks.request).toHaveBeenCalledWith("/status", {}, undefined, undefined, id)
+      if (owner === "replacement owner") {
+        useNativeProject()
+        await ready()
+      }
+      await connection.disable()
+      mocks.request.mockClear()
+      mocks.createHandle.mockClear()
+      validation.resolve(ok({ protocolVersion: 1, client, paired: false }))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(mocks.createHandle).not.toHaveBeenCalled()
+      expect(
+        mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+      ).toBe(false)
+      expect(window.localStorage.getItem(`vibeshape-local-ai-preferences:${id}`)).toBeNull()
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot().connected).toBe(false)
+      expect(
+        mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+      ).toBe(false)
+      expect(await connection.enable()).toBe(true)
+      expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    },
+  )
+
+  it("retains Stop at full storage quota across recreation until approval can be explicitly persisted", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().connected).toBe(true)
+    expect(window.localStorage.getItem(`vibeshape-local-ai-preferences:${id}:disabled`)).toBe("0")
+    const storage = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+    })
+    try {
+      await connection.disable()
+      expect(storage).not.toHaveBeenCalled()
+      expect(window.localStorage.getItem(`vibeshape-local-ai-preferences:${id}`)).toBeNull()
+      mocks.request.mockClear()
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(connection.getSnapshot().connected).toBe(false)
+      expect(
+        mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+      ).toBe(false)
+      expect(await connection.enable()).toBe(false)
+      expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(
+        mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+      ).toBe(false)
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot().connected).toBe(false)
+    } finally {
+      storage.mockRestore()
+    }
+    expect(await connection.enable()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+  })
+
+  it.each([
+    `vibeshape-local-ai-preferences:${id}:disabled`,
+    `vibeshape-local-ai-preferences:${id}`,
+  ])(
+    "requires durable native access state before granting when %s cannot be written",
+    async (key) => {
+      const write = window.localStorage.setItem.bind(window.localStorage)
+      const storage = vi.spyOn(window.localStorage, "setItem").mockImplementation((name, value) => {
+        if (name === key) throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+        write(name, value)
+      })
+      try {
+        useNativeProject()
+        await ready()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(connection.getSnapshot()).toMatchObject({ connected: false, error: true })
+        expect(
+          mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+        ).toBe(false)
+        const writes = storage.mock.calls.length
+        await vi.advanceTimersByTimeAsync(3000)
+        expect(storage.mock.calls).toHaveLength(writes)
+        useNativeProject()
+        await ready()
+        await vi.advanceTimersByTimeAsync(1000)
+        expect(connection.getSnapshot().connected).toBe(false)
+        expect(await connection.enable()).toBe(false)
+        expect(
+          mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+        ).toBe(false)
+      } finally {
+        storage.mockRestore()
+      }
+      expect(await connection.enable()).toBe(true)
+    },
+  )
+
+  it("requires reserved Stop state before resuming an older native grant", async () => {
+    window.localStorage.setItem(
+      `vibeshape-local-ai-preferences:${id}`,
+      JSON.stringify({ client, autoApply: false }),
+    )
+    sessionStorage.setItem(
+      `vibeshape-local-ai-resume:${id}`,
+      JSON.stringify({
+        documentId: id,
+        token: credential.token,
+        expiresAt: credential.expiresAt,
+        client,
+        autoApply: false,
+      }),
+    )
+    const storage = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+    })
+    try {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(connection.getSnapshot().connected).toBe(false)
+      expect(
+        mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
+      ).toBe(false)
+    } finally {
+      storage.mockRestore()
+    }
+  })
+
+  it("restores only an explicitly chosen native project approval mode", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.enableAutoApply()).toBe(true)
+    connection.dispose()
+    sessionStorage.clear()
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+    expect(connection.disableAutoApply()).toBe(true)
+    connection.dispose()
+    sessionStorage.clear()
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+  })
+
+  it("revokes a late native automatic grant after Stop without restoring preferences", async () => {
+    useNativeProject()
+    const pending = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect" ? pending.promise : original?.(path, ...args),
+    )
+    await ready()
+    await connection.disable()
+    pending.resolve(ok(credential))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true, id)
+    expect(window.localStorage.getItem(`vibeshape-local-ai-preferences:${id}`)).toBeNull()
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().connected).toBe(false)
+  })
+
+  it.each([
+    [`vibeshape-local-ai-preferences:${id}`, "{invalid"],
+    [`vibeshape-local-ai-preferences:${id}`, '{"autoApply":true}'],
+    [`vibeshape-local-ai-preferences:${id}:disabled`, "invalid"],
+    [`vibeshape-local-ai-preferences:${id}:disabled`, "1"],
+  ])("keeps ambiguous native access state disabled for %s", async (key, value) => {
+    window.localStorage.setItem(key, value)
+    sessionStorage.setItem(
+      `vibeshape-local-ai-resume:${id}`,
+      JSON.stringify({
+        documentId: id,
+        token: credential.token,
+        expiresAt: credential.expiresAt,
+        client,
+        autoApply: true,
+      }),
+    )
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.createHandle).not.toHaveBeenCalled()
+    expect(await connection.enable()).toBe(true)
+    expect(connection.getSnapshot().autoApply).toBe(false)
+  })
+
+  it("keeps native access disabled when its Stop preference cannot be read", async () => {
+    const storage = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("Storage unavailable")
+    })
+    try {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot().connected).toBe(false)
+      expect(mocks.createHandle).not.toHaveBeenCalled()
+    } finally {
+      storage.mockRestore()
+    }
+  })
+})
+
 describe("local AI project management consent", () => {
   it("keeps a connected embedded session project-bound and hides project management controls", async () => {
     connection.dispose()

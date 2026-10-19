@@ -7,6 +7,7 @@ const { resolve } = require("node:path")
 // Relay mode exercises the isolated project's real CAD tools; no fixture contacts a provider.
 const receipt = process.argv[2]
 const attachMcp = process.argv[3] === "--attach-mcp"
+const longLabels = process.argv.includes("--long-labels")
 let mcpClient
 let sessionId = `fixture-${process.pid}`
 let pendingPrompt
@@ -16,6 +17,7 @@ let questionPrompt
 let holdTimer
 let model = "compact"
 let effort = "brief"
+let webSearch = "off"
 let projectId
 const record = (event) =>
   appendFileSync(receipt, `${JSON.stringify({ pid: process.pid, ...event })}\n`)
@@ -42,7 +44,10 @@ const configs = () => [
     currentValue: model,
     options: [
       { value: "compact", name: "Fast model" },
-      { value: "deep-model", name: "Deep model" },
+      {
+        value: "deep-model",
+        name: longLabels ? "Deep model with extended engineering capabilities" : "Deep model",
+      },
     ],
   },
   {
@@ -53,9 +58,34 @@ const configs = () => [
     currentValue: effort,
     options: (model === "compact" ? ["brief", "deep"] : ["deep", "maximal"]).map((value) => ({
       value,
-      name: value[0].toUpperCase() + value.slice(1),
+      name:
+        longLabels && value === "maximal"
+          ? "Maximum reasoning for complex engineering decisions"
+          : value[0].toUpperCase() + value.slice(1),
     })),
   },
+  ...(longLabels
+    ? [
+        {
+          id: "response-style",
+          name: "Response style",
+          type: "select",
+          currentValue: "default",
+          options: [{ value: "default", name: "Default" }],
+        },
+        {
+          id: "web-search",
+          name: "Web search",
+          description: "Allow the agent to search the web.",
+          type: "select",
+          currentValue: webSearch,
+          options: [
+            { value: "off", name: "Off" },
+            { value: "on", name: "On" },
+          ],
+        },
+      ]
+    : []),
 ]
 
 function initialize(id, params) {
@@ -73,8 +103,12 @@ function initialize(id, params) {
   })
 }
 async function startSession(id, params, method) {
-  const mcp = params.mcpServers[0]
-  assert.equal(mcp.name, "vibeshape")
+  // Codex ACP ignores injected names already configured, including disabled servers.
+  const configuredServers = new Set(["vibeshape"])
+  const supplied = params.mcpServers.filter(({ name }) => !configuredServers.has(name))
+  assert.equal(supplied.length, 1)
+  const mcp = supplied[0]
+  assert.match(mcp.name, /^vs_[0-9a-f]{16}$/)
   assert.match(mcp.command, /^\//)
   assert.equal(mcp.args[1], "--descriptor")
   assert.deepEqual(mcp.env, [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }])
@@ -113,6 +147,9 @@ function setConfig(id, params) {
     assert.ok(["compact", "deep-model"].includes(params.value))
     model = params.value
     effort = model === "compact" ? "brief" : "maximal"
+  } else if (params.configId === "web-search") {
+    assert.ok(["off", "on"].includes(params.value))
+    webSearch = params.value
   } else {
     assert.equal(params.configId, "deliberation")
     assert.ok(configs()[2].options.some((option) => option.value === params.value))

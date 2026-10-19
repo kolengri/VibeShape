@@ -71,6 +71,12 @@ These requirements apply when each component is introduced or materially changed
 | File input and import control | Native file selection, accepted format copy, size/limit copy, repeat selection reset | Reading/parsing stages, cancellation, stale selection, security limits, and persistent result diagnostics |
 | Progress and status | Determinate values only when meaningful; named indeterminate state otherwise | Polite live updates, coalesced preview announcements, explicit canceled versus cancel-requested states |
 
+Application-menu groups compose `DropdownMenuSections` with one direct child per visible section.
+Conditional `null`, `undefined`, and boolean children are omitted before separators are inserted;
+sections own their content and labels, never their own leading or trailing divider. `SelectField`
+accepts an optional menu label and description for compact triggers whose selected value alone does
+not identify the setting. These headings do not become selectable options.
+
 ## Verification contract
 
 Shared interactive components require behavior tests, not snapshots alone.

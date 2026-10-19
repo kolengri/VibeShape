@@ -59,6 +59,20 @@ async function connect(context: Awaited<ReturnType<typeof host>>, name = "native
   return { client, transport }
 }
 
+async function project(context: Awaited<ReturnType<typeof host>>, id: string) {
+  const path = await context.service.publishProject(id, join(context.directory, `${id}.json`))
+  const descriptor = await readMcpDescriptor(path)
+  const attached = await connect(
+    {
+      ...context,
+      descriptor,
+      headers: { ...context.headers, Authorization: `Bearer ${descriptor.token}` },
+    },
+    id,
+  )
+  return { ...attached, descriptor }
+}
+
 function initialization() {
   return {
     jsonrpc: "2.0",
@@ -92,25 +106,182 @@ function browser(
 }
 
 describe("app-owned native MCP attachment", () => {
+  const projectId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
+  const document = { id: projectId, name: "Open project", revision: 4 }
+
+  async function grant(context: Awaited<ReturnType<typeof host>>) {
+    const response = await browser(context, "connect", { protocolVersion: 1, document }, projectId)
+    expect(response.status).toBe(200)
+    return (await response.json()) as { token: string }
+  }
+  async function poll(context: Awaited<ReturnType<typeof host>>, token: string, sequence = 1) {
+    const response = await browser(
+      context,
+      "poll",
+      { protocolVersion: 1, sequence, document, progress: null },
+      projectId,
+      token,
+    )
+    expect(response.status).toBe(200)
+    return (await response.json()) as {
+      work: { requestId: string; operation: { tool: string } } | null
+    }
+  }
+
+  it("waits for the initial native identity read to pair normally and executes it only once", async () => {
+    const context = await host()
+    const native = await project(context, projectId)
+    expect(native.client.getInstructions()).toContain(
+      "automatically connects this embedded assistant",
+    )
+    const pending = native.client.callTool({ name: "model_info", arguments: {} })
+    // Let the tool reach the unpaired attachment before the renderer's discovery/connect request.
+    await new Promise<void>((resolve) => setTimeout(resolve, 25))
+    const secondId = "0195b5ac-b220-7a2c-8c33-67a36a7f6102"
+    await project(context, secondId)
+    const secondDocument = { id: secondId, name: "Other project", revision: 0 }
+    const secondGrant = (await (
+      await browser(context, "connect", { protocolVersion: 1, document: secondDocument }, secondId)
+    ).json()) as { token: string }
+    expect(
+      await (
+        await browser(
+          context,
+          "poll",
+          { protocolVersion: 1, sequence: 1, document: secondDocument, progress: null },
+          secondId,
+          secondGrant.token,
+        )
+      ).json(),
+    ).toMatchObject({ work: null })
+    const credential = await grant(context)
+    let delivered = await poll(context, credential.token)
+    let sequence = 1
+    await vi.waitFor(async () => {
+      if (!delivered.work) delivered = await poll(context, credential.token, ++sequence)
+      expect(delivered.work?.operation.tool).toBe("model_info")
+    })
+    const result = {
+      ok: true,
+      value: {
+        summary: {
+          kind: "org.vibeshape.document.summary",
+          schemaVersion: 1,
+          documentId: projectId,
+          revision: 4,
+          classification: "semantic",
+          truncated: false,
+          data: {
+            name: "Open project",
+            createdAt: "2026-10-19T00:00:00.000Z",
+            updatedAt: "2026-10-19T00:00:00.000Z",
+          },
+        },
+        measurements: null,
+        measurementDiagnostic: null,
+      },
+    }
+    expect(
+      (
+        await browser(
+          context,
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: delivered.work?.requestId,
+            tool: "model_info",
+            result,
+          },
+          projectId,
+          credential.token,
+        )
+      ).status,
+    ).toBe(200)
+    expect(await pending).toMatchObject({ isError: false, structuredContent: { result } })
+    expect((await poll(context, credential.token, ++sequence)).work).toBeNull()
+
+    await browser(context, "revoke", {}, projectId, credential.token)
+    expect(
+      await native.client.callTool({ name: "model_info", arguments: {} }, undefined, {
+        timeout: 500,
+      }),
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "not-paired" } } },
+    })
+    const replacement = await grant(context)
+    expect((await poll(context, replacement.token)).work).toBeNull()
+  })
+
+  it("bounds an initial native read and never queues it for a later grant", async () => {
+    const context = await host()
+    const native = await project(context, projectId)
+    expect(
+      await native.client.callTool({ name: "model_info", arguments: {} }, undefined, {
+        timeout: 7000,
+      }),
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "not-paired", retryable: true } } },
+    })
+    const credential = await grant(context)
+    expect((await poll(context, credential.token)).work).toBeNull()
+  }, 9000)
+
+  it.each(["abort", "client-close", "service-close"])(
+    "cancels native identity readiness on %s without leaking into a later owner",
+    async (action) => {
+      const context = await host()
+      const native = await project(context, projectId)
+      const controller = new AbortController()
+      const pending = native.client
+        .callTool({ name: "model_info", arguments: {} }, undefined, { signal: controller.signal })
+        .then(
+          (result) => result.isError === true,
+          () => true,
+        )
+      await new Promise<void>((resolve) => setTimeout(resolve, 25))
+      if (action === "abort") controller.abort()
+      else if (action === "client-close") {
+        const released = context.service.whenClientReleased(projectId)
+        await native.client.close()
+        await released
+      } else {
+        await context.service.close()
+        // Server shutdown ends authority; the SDK client also needs its ordinary owner teardown.
+        await native.client.close()
+      }
+      expect(await pending).toBe(true)
+      if (action === "service-close") return
+      if (action === "client-close") await project(context, projectId)
+      const credential = await grant(context)
+      expect((await poll(context, credential.token)).work).toBeNull()
+    },
+  )
+
+  it("does not defer a native write before the first grant", async () => {
+    const context = await host()
+    const native = await project(context, projectId)
+    expect(
+      await native.client.callTool(
+        { name: "create_draft", arguments: { baseRevision: 4 } },
+        undefined,
+        { timeout: 500 },
+      ),
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "not-paired" } } },
+    })
+    const credential = await grant(context)
+    expect((await poll(context, credential.token)).work).toBeNull()
+  })
+
   it("isolates simultaneous native project clients, consent, pending tools and revocation", async () => {
     const context = await host()
     const firstId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
     const secondId = "0195b5ac-b220-7a2c-8c33-67a36a7f6102"
-    async function project(id: string) {
-      const path = await context.service.publishProject(id, join(context.directory, `${id}.json`))
-      const descriptor = await readMcpDescriptor(path)
-      const attached = await connect(
-        {
-          ...context,
-          descriptor,
-          headers: { ...context.headers, Authorization: `Bearer ${descriptor.token}` },
-        },
-        id,
-      )
-      return { ...attached, descriptor }
-    }
-    const first = await project(firstId)
-    const second = await project(secondId)
+    const first = await project(context, firstId)
+    const second = await project(context, secondId)
     expect(first.descriptor.token).not.toBe(second.descriptor.token)
     const document = (id: string) => ({ id, name: id, revision: 0 })
     expect(
@@ -214,6 +385,9 @@ describe("app-owned native MCP attachment", () => {
       'name="vibeshape-local-automation"',
     )
     const { client } = await connect(context)
+    expect(client.getInstructions()).toContain(
+      "Open the editor and explicitly enable the AI session",
+    )
     const released = context.service.whenClientReleased()
     let detached = false
     void released.then(() => {
