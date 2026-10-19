@@ -464,9 +464,9 @@ export const PierceIcon = cadIcon(
 
 export const SectionViewIcon = cadIcon(
   <>
-    <path d="m4 8 8-5 8 5v10l-8 4-8-4V8Zm0 0 8 4 8-4m-8 4v10" />
-    <path d="m2 14 14-8 6 4-14 8-6-4Z" fill="currentColor" fillOpacity="0.16" />
-    <path d="m7 12 3 4m2-7 3 4" />
+    <path d="m3 7 9-5 9 5v10l-9 5-9-5V7Zm0 0 9 5 9-5m-9 5v10" />
+    <path d="m3 7 9 5v10l-9-5V7Z" fill="currentColor" fillOpacity="0.16" />
+    <path d="M3 11l3.6-2M3 15l7.2-4m-3.6 8 5.4-3m-1.8 5 1.8-1" strokeWidth="1.3" />
   </>,
 )
 

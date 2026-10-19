@@ -999,7 +999,7 @@ function useProjectAssistant(controller: ReturnType<typeof useDocumentController
   const close = () => setOpen(false)
   return {
     toggle: (
-      <Button size="xs" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
         {t("title")}
       </Button>
     ),

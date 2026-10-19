@@ -28,7 +28,7 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.0-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.1-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
@@ -78,6 +78,14 @@ Only the owned editor's main frame may write text to the system clipboard. Clipb
 subframe writes and unrelated permissions remain denied.
 
 ## AI connections
+
+The built-in **AI chat** starts an installed ACP adapter. **Codex** selects `codex-acp`, which is
+separate from the Codex CLI; `codex app-server` speaks Codex's own protocol rather than ACP.
+VibeShape preserves inherited command precedence and adds `~/.local/bin`, `~/.bun/bin`,
+`/opt/homebrew/bin`, and `/usr/local/bin` for Finder launches. It does not run shell startup files
+or install adapters. Use **Advanced connection** to provide an absolute executable path and a JSON
+argument array for another installation. Connection failures produce one operational notification
+with recovery guidance; reconnect after correcting the command or authentication.
 
 Open **Settings → Connections → Connect an MCP client**, copy the configuration, and add it to the
 external client's MCP settings. It launches the app's bundled stdio forwarder with Electron's own

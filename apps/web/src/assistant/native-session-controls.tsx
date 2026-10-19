@@ -92,6 +92,8 @@ export function NativeSessionControls({
   busy: boolean
 }) {
   const t = useTranslations("app.assistant")
+  // The connection error is presented once by the assistant's operational feedback.
+  if (snapshot?.status === "error") return null
   return (
     <>
       <p className="text-xs text-muted-foreground" role="status">

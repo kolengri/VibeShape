@@ -7,7 +7,7 @@ import { I18nProvider } from "@vibeshape/i18n/provider"
 import { ActivityProvider, useActivityPending } from "@vibeshape/ui/components/activity"
 import type { ReactNode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import { i18n } from "../i18n"
+import { i18n, messages } from "../i18n"
 import { ApplicationNoticesProvider } from "../shell/application-notices"
 import { saveApiPreferences } from "./api-assistant-preferences"
 import { ApiAssistantProvider } from "./api-assistant-provider"
@@ -234,6 +234,51 @@ describe("assistant connection settings", () => {
 })
 
 describe("compact chat actions", () => {
+  it("presents a failed connection once with actionable adapter guidance", () => {
+    const failed: AssistantSnapshot = {
+      projectId: "bracket",
+      sessionToken: "failed-connection",
+      status: "error",
+      sessionId: null,
+      canResume: false,
+      modes: [],
+      currentModeId: null,
+      models: [],
+      currentModelId: null,
+      authMethods: [],
+    }
+    show(
+      <ApplicationNoticesProvider>
+        <AssistantPanel
+          open
+          projectName="Bracket"
+          messages={[]}
+          busy={false}
+          canSend={false}
+          configuration={null}
+          sessionControls={
+            <NativeSessionControls
+              chat={{ setMode: async () => {}, setModel: async () => {} }}
+              snapshot={failed}
+              busy={false}
+            />
+          }
+          error={messages.en.app.assistant.errors["launch-failed"]}
+          storageFailed={false}
+          onClose={() => {}}
+          onSend={async () => {}}
+          onCancel={async () => {}}
+          onReset={async () => {}}
+        />
+      </ApplicationNoticesProvider>,
+    )
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+    expect(screen.getByRole("alert").textContent).toContain("codex-acp")
+    expect(screen.getByRole("alert").textContent).toContain("absolute path")
+    expect(screen.queryByText("Agent connection failed")).toBeNull()
+    expect(screen.getByRole("complementary").querySelector('[role="alert"]')).toBeNull()
+  })
+
   it("routes operational and history errors to the shared center without expanding the composer", () => {
     show(
       <ApplicationNoticesProvider>

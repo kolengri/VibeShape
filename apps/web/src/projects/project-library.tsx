@@ -113,7 +113,7 @@ function LocalProjectCard({
   ) : null
   return (
     <li
-      className="flex min-w-0 flex-col gap-3 rounded-md border bg-card p-3"
+      className="relative flex min-w-0 flex-col rounded-md border bg-card"
       aria-current={isCurrent ? "page" : undefined}
     >
       <Button
@@ -124,7 +124,7 @@ function LocalProjectCard({
         aria-label={t("openLabel", { name: project.name, revision: project.headRevision })}
         onClick={() => onOpen(project.documentId)}
         className={cn(
-          "h-auto w-full justify-start gap-3 whitespace-normal p-0 text-left disabled:opacity-100",
+          "h-auto w-full flex-1 justify-start gap-3 whitespace-normal p-3 pb-14 text-left disabled:opacity-100",
           "flex min-w-0 flex-col items-stretch",
         )}
       >
@@ -147,18 +147,20 @@ function LocalProjectCard({
           ) : null}
         </span>
       </Button>
-      <ProjectCardActions
-        project={project}
-        isCurrent={isCurrent}
-        controller={controller}
-        disabled={disabled}
-        duplicatingDocumentId={duplicatingDocumentId}
-        onDelete={onDelete}
-        onDeleted={onDeleted}
-        onDuplicate={onDuplicate}
-        onPendingDeleteChange={onPendingDeleteChange}
-        onRenamed={onRenamed}
-      />
+      <div className="absolute right-3 bottom-3">
+        <ProjectCardActions
+          project={project}
+          isCurrent={isCurrent}
+          controller={controller}
+          disabled={disabled}
+          duplicatingDocumentId={duplicatingDocumentId}
+          onDelete={onDelete}
+          onDeleted={onDeleted}
+          onDuplicate={onDuplicate}
+          onPendingDeleteChange={onPendingDeleteChange}
+          onRenamed={onRenamed}
+        />
+      </div>
     </li>
   )
 }

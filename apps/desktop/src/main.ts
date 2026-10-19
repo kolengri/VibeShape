@@ -557,6 +557,7 @@ function installAssistant() {
   if (assistant) return
   assistant = createAssistantService({
     cwd: assistantDirectory,
+    applicationVersion: app.getVersion(),
     getMcpSetup: async () => mcpSetup(),
     async isMcpClientAttached() {
       await assistantClosing

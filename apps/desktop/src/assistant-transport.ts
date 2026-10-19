@@ -3,6 +3,8 @@ import {
   type ChildProcessWithoutNullStreams,
   spawn as nodeSpawn,
 } from "node:child_process"
+import { homedir } from "node:os"
+import { delimiter, join } from "node:path"
 import * as acp from "@agentclientprotocol/sdk"
 import type { AssistantAgent, AssistantErrorCode } from "@vibeshape/automation-api/assistant"
 
@@ -44,6 +46,19 @@ export function spawnAssistantProcess(
 ) {
   const env = { ...(options.env ?? process.env) }
   delete env.ELECTRON_RUN_AS_NODE
+  // Finder launches do not inherit the shell's local executable directories.
+  if (process.platform === "darwin") {
+    const home = env.HOME || homedir()
+    env.PATH = [
+      ...new Set([
+        ...(env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(delimiter),
+        join(home, ".local", "bin"),
+        join(home, ".bun", "bin"),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+      ]),
+    ].join(delimiter)
+  }
   const child = (options.spawn ?? nodeSpawn)(options.agent.command, options.agent.args, {
     cwd: options.cwd,
     env,

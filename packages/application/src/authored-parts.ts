@@ -2,7 +2,14 @@ import type { BodyReference } from "@vibeshape/domain/body-reference"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { featureEvaluationRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
+import {
+  patternCountSchema,
+  patternOutputRoles,
+  readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
+} from "@vibeshape/domain/part-design-pattern"
 import type { PartRecord } from "@vibeshape/domain/parts"
+import { evaluateVariableDefinitions, resolveQuantityExpression } from "@vibeshape/domain/variables"
 import type { DocumentExportBodies } from "@vibeshape/protocol"
 import { featureGeometryRecordSchema } from "./feature-rebuild"
 import { type ModelBodyGeometry, terminalBodyGeometry } from "./model-bodies"
@@ -61,7 +68,23 @@ function resolvePart(
   return { part, body: null, status: part.consumedBy ? "consumed" : "unavailable" }
 }
 
-/** Pure view projection: failed downstream operations may expose an earlier body of the same part. */
+function dormantPatternRoots(authority: AuthoredDocumentSnapshot): ReadonlySet<string> {
+  const dormant = new Set<string>()
+  const variables = evaluateVariableDefinitions(authority.variables)
+  if (!variables.ok) return dormant
+  for (const feature of authority.features) {
+    const pattern = readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature)
+    if (!pattern) continue
+    const resolved = resolveQuantityExpression(pattern.count, variables.valuesByName)
+    const count = resolved.ok ? patternCountSchema.safeParse(resolved.quantity) : null
+    if (!count?.success) continue
+    for (const outputRole of patternOutputRoles(256).slice(count.data.value))
+      dormant.add(bodyKey({ featureId: feature.id, outputRole }))
+  }
+  return dormant
+}
+
+/** Current view excludes count-shrunk copies while authority retains their identity and metadata. */
 export function resolveAuthoredParts(
   authority: AuthoredDocumentSnapshot,
   report: PersistentDocumentSessionReport,
@@ -86,7 +109,15 @@ export function resolveAuthoredParts(
       )
       .map((body) => [bodyKey(body), body]),
   )
-  return authority.parts.map((part) => resolvePart(part, bodies))
+  const dormant = dormantPatternRoots(authority)
+  return authority.parts
+    .filter(
+      (part) =>
+        part.origin !== "independent" ||
+        !part.bodyHistory[0] ||
+        !dormant.has(bodyKey(part.bodyHistory[0])),
+    )
+    .map((part) => resolvePart(part, bodies))
 }
 
 /** Unmanaged legacy aggregates retain their existing visibility until explicit constituent support. */

@@ -1,8 +1,61 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it } from "bun:test"
 import { ChildProcess } from "node:child_process"
 import { once } from "node:events"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { killAssistantProcess, spawnAssistantProcess } from "./assistant-transport"
+
+const directories: string[] = []
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })))
+})
+
+describe.skipIf(process.platform !== "darwin")("assistant executable discovery", () => {
+  async function installedAdapter() {
+    const home = await mkdtemp(join(tmpdir(), "vibeshape-agent-path-"))
+    directories.push(home)
+    const directory = join(home, ".local", "bin")
+    await mkdir(directory, { recursive: true })
+    const executable = join(directory, "codex-acp")
+    await writeFile(executable, '#!/bin/sh\nprintf "%s\\n" "$1"\n', { mode: 0o700 })
+    return { home, executable }
+  }
+  async function output(command: string, env: NodeJS.ProcessEnv) {
+    const failures: string[] = []
+    const child = spawnAssistantProcess(
+      { cwd: env.HOME ?? tmpdir(), env, agent: { command, args: ["literal spaces; $(exit 42)"] } },
+      (code) => failures.push(code),
+    )
+    const chunks: Buffer[] = []
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk))
+    const [exitCode] = await once(child, "close")
+    expect(exitCode).toBe(0)
+    expect(failures).not.toContain("launch-failed")
+    return Buffer.concat(chunks).toString().trim()
+  }
+
+  it("finds a local ACP adapter from a Finder environment without a shell", async () => {
+    const { home } = await installedAdapter()
+    const env = { HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", ELECTRON_RUN_AS_NODE: "1" }
+    expect(await output("codex-acp", env)).toBe("literal spaces; $(exit 42)")
+    expect(env.PATH).toBe("/usr/bin:/bin:/usr/sbin:/sbin")
+    expect(env.ELECTRON_RUN_AS_NODE).toBe("1")
+  })
+
+  it("keeps inherited command precedence and respects an absolute custom executable", async () => {
+    const { home, executable } = await installedAdapter()
+    const preferred = join(home, "preferred")
+    await mkdir(preferred)
+    await writeFile(join(preferred, "codex-acp"), '#!/bin/sh\nprintf "preferred\\n"\n', {
+      mode: 0o700,
+    })
+    const env = { HOME: home, PATH: `${preferred}:/usr/bin:/bin` }
+    expect(await output("codex-acp", env)).toBe("preferred")
+    expect(await output(executable, env)).toBe("literal spaces; $(exit 42)")
+  })
+})
 
 describe("assistant process shutdown", () => {
   it("does not signal an already closed child or leave an escalation timer", async () => {
