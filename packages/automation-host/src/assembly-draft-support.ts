@@ -73,6 +73,12 @@ export function mergeOwnedBlobs(
 }
 export function namedAssemblyMutation(operation: AssemblyOperation): AssemblyMutation | null {
   switch (operation.tool) {
+    case "create_assembly_motion_study":
+      return { kind: "motion-study.create", study: operation.arguments.study }
+    case "update_assembly_motion_study":
+      return { kind: "motion-study.update", study: operation.arguments.study }
+    case "remove_assembly_motion_study":
+      return { kind: "motion-study.remove", studyId: operation.arguments.studyId }
     case "upgrade_assembly":
       return { kind: "assembly.upgrade" }
     case "create_assembly_definition":

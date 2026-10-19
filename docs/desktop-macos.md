@@ -4,7 +4,8 @@ The Electron application packages the existing Vite editor and worker/WASM asset
 `VibeShape.app`. It runs without Terminal, an external browser, Bun, a cloud account, or a model API
 key. The native host owns menus, a persistent app profile and a loopback static server. CAD editing,
 history, assemblies, declarative UI plugins and export use the shared browser implementation.
-See [ADR-0110](adr/0110-macos-desktop-host.md) for the boundary and update decision.
+See [ADR-0110](adr/0110-macos-desktop-host.md) for delivery and updates and
+[ADR-0111](adr/0111-native-project-assistant-and-handoffs.md) for native project integration.
 
 ## Build and run
 
@@ -27,13 +28,13 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign` and `hdiutil`. It emits a runnable
 `VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.0-mac-arm64.dmg`, `SHA256SUMS`, and a
-`desktop-build.json` recording the source commit, editor inventory, main bundle and image digest.
+`desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
 
 The generated application icon master is `apps/web/public/brand/app-icon.png` (1024 px).
 Packaging exports all standard macOS icon sizes into the app's `.icns` resource. The browser
-favicon and Apple touch icon use the same artwork.
+favicon and Apple touch icon use the same original calibration-tugboat artwork.
 
 Open the disk image, copy `VibeShape.app` to Applications and launch it. The current local artifact
 is ad-hoc signed and verified, without Developer ID or notarization. Local ad-hoc signing leaves
@@ -48,19 +49,55 @@ signing/notarization and the repository's release compliance review.
 The application uses `http://127.0.0.1:43115` and its own Chromium profile under
 `~/Library/Application Support/VibeShape`. A second launch focuses the existing application. A busy
 port produces a startup error; the app never opens an existing listener or chooses different storage.
-The normal macOS window-close action keeps the app available in the Dock; Quit stops its server.
+The normal macOS window-close action keeps the app available in the Dock and stops its chat agent;
+Quit stops its server. Native traffic lights share the editor header. System menus invoke the same
+eligible commands as the toolbar; focused text fields retain ordinary native editing behavior.
+
+A bare launch opens the project chooser without creating or restoring a model. Choose a saved card,
+create a project, or import a `.vshape` backup. Open-project tabs switch using ordinary draft/save/AI
+guards; closing a tab does not delete a project. Explicit `?project=<UUID>` links open that profile's
+matching project directly. Tabs remember open IDs, not separate mutable model copies.
 
 Browser profiles do not automatically become desktop projects. Save `.vshape` backups from the
 browser, then open them through the existing Files and projects dialog in the app. Saved document
 transactions survive restart. Uncommitted drafts and transient session Undo/Redo do not. Keep native
 backups before replacing or rolling back the application; rollback does not reverse data migrations.
 
-Core modeling works without network access. The desktop host does not expose a new production MCP
-transport or an Enable AI session button. For agent authoring use the existing
-[local stdio delivery](mcp-quickstart.md), with its browser-owned review and separate storage origin.
+Core modeling works without network access.
 The experimental declarative panel plugins retain their existing sandbox and capability limits.
 Only the owned editor's main frame may write text to the system clipboard. Clipboard reads,
 subframe writes and unrelated permissions remain denied.
+
+## AI connections
+
+Open **Settings → Connections → Connect an MCP client**, copy the configuration, and add it to the
+external client's MCP settings. It launches the app's bundled stdio forwarder with Electron's own
+runtime and attaches to this open application. It does not launch another editor or require Bun.
+Only one native MCP client attaches at a time. Select a project, then enable its AI session before
+the client can inspect or modify it; disabling access revokes its drafts. The private credential is
+not included in the copied configuration. Quit/restart creates a new native descriptor.
+
+The **AI chat** panel connects an installed ACP executable with explicit arguments and uses the
+person's own agent account. Messages and tool progress stay tied to the current project. Stop cancels
+the response; New chat starts a new conversation. Transcripts persist locally per project and are not included in `.vshape` backups. Native
+context restoration depends on the agent's advertised support. CAD changes retain preview and the
+person's existing MCP approval policy, including any explicit auto-apply consent. The chat cannot
+grant that consent to itself. Browser API chat always requires manual Apply. The local agent has ordinary user OS privileges even though
+VibeShape advertises no ACP filesystem or terminal capabilities.
+
+The static web application instead connects directly to a user-provided compatible model API. No
+VibeShape AI server or hosted worker is needed. The provider must allow the browser origin through
+CORS. API credentials remain in runtime memory, and model calls happen only after an explicit Send.
+Existing CAD WebWorkers continue to compute geometry on the person's device.
+
+## Mesh handoff
+
+**Export model → Send to slicer** sends STL or 3MF directly to a detected installed application or
+one selected through the native application chooser. Mesh quality and authored export scope retain
+their ordinary meaning. The app prepares a private temporary file and opens the slicer without a
+separate bridge or pairing token. If launch fails, **Show mesh in Finder** reveals the retained file.
+The browser offers a download for manual opening. Slicer launch does not prove successful import,
+correct printer settings, slicing, or printing.
 
 ## Release checks and downloads
 

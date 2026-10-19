@@ -8,7 +8,11 @@ test("evaluates independent extrusion depths with exact worker geometry and stab
 }) => {
   test.setTimeout(180_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const evidence = await page.evaluate(

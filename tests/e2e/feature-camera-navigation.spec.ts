@@ -117,7 +117,11 @@ for (const command of ["Extrude", "Revolve"] as const) {
     test.setTimeout(120_000)
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await createProfile(page)
@@ -151,7 +155,11 @@ for (const exit of ["Cancel", "Escape", "Finish sketch"] as const) {
     test.setTimeout(120_000)
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await createProfile(page)
@@ -175,7 +183,11 @@ test("rotates with primary drag during sketch navigation and resumes the same dr
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await createProfile(page)

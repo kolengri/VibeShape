@@ -10,6 +10,7 @@ import {
   boxFeatureType,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
 } from "./part-design"
 import { fdmFeatureType } from "./part-design-fdm"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
@@ -146,6 +147,9 @@ describe("module registry", () => {
       expect(result.registry.getFeatureType(extrusionFeatureTypeV7.type)).toEqual(
         extrusionFeatureTypeV7,
       )
+      expect(result.registry.getFeatureType(extrusionFeatureTypeV8.type)).toEqual(
+        extrusionFeatureTypeV8,
+      )
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.boolean",
@@ -156,6 +160,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.compound",
         "org.vibeshape.feature.part-design.cone",
         "org.vibeshape.feature.part-design.cylinder",
+        "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",

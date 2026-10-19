@@ -11,7 +11,11 @@ function extrudeCommand(page: Page) {
 async function createRectangleAndCircleExtrusion(page: Page) {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await page
@@ -41,7 +45,11 @@ async function createRectangleAndCircleExtrusion(page: Page) {
     { timeout: 30_000 },
   )
   await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
@@ -68,7 +76,11 @@ test("reuses a hidden consumed sketch profile for an independent extrusion", asy
   await form.getByRole("combobox", { name: "Distance", exact: true }).fill("17 mm")
   await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
   await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await expect(page.getByRole("treeitem", { name: "Extrusion 2", exact: true })).toBeVisible()

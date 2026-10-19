@@ -9,7 +9,11 @@ test.setTimeout(60_000)
 async function openWorkspace(page: Page) {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
 }
@@ -20,7 +24,11 @@ async function width(locator: Locator) {
 
 async function reopenWorkspace(page: Page) {
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
 }

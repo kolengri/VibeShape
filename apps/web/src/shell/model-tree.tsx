@@ -48,6 +48,7 @@ import type {
   DocumentMutationResult,
   FeatureMutationResult,
 } from "../document/document-controller"
+import type { PartVisibilityControl } from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
 import { SurfaceTextureTreeGroup } from "../features/surface-texture/surface-texture-tree-group"
@@ -264,10 +265,10 @@ function FeatureTreeLabel({
       <Button
         type="button"
         variant="ghost"
-        size="xs"
+        size={compact ? "icon-sm" : "xs"}
         className={cn(
           "min-w-0 flex-1 font-normal",
-          compact ? "size-8 justify-center p-0" : "justify-start pl-2",
+          compact ? "flex-none" : "justify-start pl-2",
           active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
           feature.suppressed && "text-muted-foreground line-through decoration-dotted",
         )}
@@ -288,7 +289,7 @@ function FeatureTreeLabel({
         }}
       >
         {readDatumPlaneFeatureParameters(feature) ? (
-          <Layers3 aria-hidden="true" className="mr-1 size-4 shrink-0" />
+          <Layers3 aria-hidden="true" className={cn("size-4 shrink-0", !compact && "mr-1")} />
         ) : (
           <HistoryFeatureIcon feature={feature} />
         )}
@@ -510,6 +511,11 @@ function SketchVisibilityAction({
   )
 }
 
+function sketchLabelSize(timeline: boolean, compact: boolean) {
+  if (compact) return "icon-sm"
+  return timeline ? "xs" : "sm"
+}
+
 function SketchTreeLabelButton({
   active,
   sketchId,
@@ -535,14 +541,10 @@ function SketchTreeLabelButton({
       <Button
         type="button"
         variant="ghost"
-        size={timeline ? "xs" : "sm"}
+        size={sketchLabelSize(timeline, compact)}
         className={cn(
           "min-w-0 flex-1 font-normal",
-          timeline
-            ? compact
-              ? "size-8 justify-center p-0"
-              : "justify-start pl-2"
-            : modelBrowserChildRow,
+          timeline ? (compact ? "flex-none" : "justify-start pl-2") : modelBrowserChildRow,
           timeline && active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
         )}
         role="treeitem"
@@ -560,7 +562,10 @@ function SketchTreeLabelButton({
           onRenameOpen()
         }}
       >
-        <PenLine aria-hidden="true" className={cn("size-4 shrink-0", timeline && "mr-1")} />
+        <PenLine
+          aria-hidden="true"
+          className={cn("size-4 shrink-0", timeline && !compact && "mr-1")}
+        />
         <span className={compact ? "sr-only" : "truncate"}>{label}</span>
       </Button>
       {selectionDescription}
@@ -684,6 +689,11 @@ function brokenReferenceCount(health: HistoryViewRow["referenceHealth"]) {
   )
 }
 
+const sketchSupportRepairLabels = {
+  missing: "repairMissingSketchSupport",
+  ambiguous: "repairAmbiguousSketchSupport",
+} as const
+
 function BrokenSketchReferenceAction({
   referenceHealth,
   supportHealth,
@@ -699,16 +709,12 @@ function BrokenSketchReferenceAction({
   onSupportRepair: () => void
   t: ReturnType<typeof useTranslations>
 }) {
+  const { detailed } = useContext(HistoryPresentation)
   const supportBroken = supportHealth?.status === "missing" || supportHealth?.status === "ambiguous"
   const count = brokenReferenceCount(referenceHealth) + (supportBroken ? 1 : 0)
-  if (count === 0) return null
+  if (count === 0 || !detailed) return null
   const repairLabel = supportBroken
-    ? t(
-        supportHealth.status === "ambiguous"
-          ? "repairAmbiguousSketchSupport"
-          : "repairMissingSketchSupport",
-        { sketch: label },
-      )
+    ? t(sketchSupportRepairLabels[supportHealth.status], { sketch: label })
     : t("repairBrokenSketchReferences", { sketch: label, count })
   return (
     <Tooltip>
@@ -882,6 +888,7 @@ type ModelTreeProps = {
     | undefined
   onSurfaceTexture?: ((featureId: FeatureRecord["id"], outputRole: string) => void) | undefined
   authoredMetadataBlocked?: boolean | undefined
+  partVisibility?: PartVisibilityControl | undefined
   selectedPartId?: PartId | null | undefined
   onPartSelect?: ((partId: PartId) => void) | undefined
   onAuthoredMetadata?: AuthoredMetadataCommit | undefined
@@ -1190,14 +1197,27 @@ function historyRowStateData(
   }
 }
 
+function historyRepairDescription(row: HistoryViewRow, t: ReturnType<typeof useTranslations>) {
+  if (row.supportHealth?.status === "missing") return t("missingSketchSupportSummary")
+  if (row.supportHealth?.status === "ambiguous") return t("ambiguousSketchSupportSummary")
+  if (row.referenceHealth?.status === "broken") {
+    return t("brokenReferenceSummary", {
+      direct: row.referenceHealth.directBrokenReferenceIds.length,
+      chained: row.referenceHealth.transitiveBrokenReferenceIds.length,
+    })
+  }
+  return t("repairRequired")
+}
+
 function HistoryRowDetails({
   compact,
   details,
   marker,
   repairRequired,
+  row,
   summary,
   t,
-}: Pick<HistoryRowFrameProps, "details" | "marker" | "repairRequired" | "t"> & {
+}: Pick<HistoryRowFrameProps, "details" | "marker" | "repairRequired" | "row" | "t"> & {
   compact: boolean
   summary: ReactNode
 }) {
@@ -1210,8 +1230,8 @@ function HistoryRowDetails({
       {compact && repairRequired && (
         <span
           role="img"
-          aria-label={t("repairRequired")}
-          className="absolute bottom-0 right-0 text-destructive"
+          aria-label={historyRepairDescription(row, t)}
+          className="pointer-events-none absolute bottom-1 right-2 rounded-full bg-background text-destructive"
         >
           <CircleAlert aria-hidden="true" className="size-3" />
         </span>
@@ -1230,7 +1250,25 @@ function HistoryRowDetails({
 
 function historyRowLayout(timeline: boolean, compact: boolean) {
   if (!timeline) return undefined
-  return compact ? "relative w-12 shrink-0 px-2 py-1" : "relative w-64 shrink-0 border-r px-2 py-2"
+  return compact
+    ? "relative h-10 w-12 shrink-0 px-2 py-1"
+    : "relative w-64 shrink-0 border-r px-2 py-2"
+}
+
+function HistoryRepairTooltip({
+  children,
+  repairRequired,
+  row,
+  t,
+}: Pick<HistoryRowFrameProps, "repairRequired" | "row" | "t"> & { children: ReactNode }) {
+  const { timeline, detailed } = useContext(HistoryPresentation)
+  if (!timeline || detailed || !repairRequired) return children
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>{historyRepairDescription(row, t)}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 function HistoryRowPresentation({
@@ -1266,7 +1304,14 @@ function HistoryRowPresentation({
 }) {
   const { timeline, detailed } = useContext(HistoryPresentation)
   const compact = timeline && !detailed
-  return (
+  const className = cn(
+    historyRowLayout(timeline, compact),
+    feedback.className,
+    sourcePresentation.highlighted && "bg-accent ring-1 ring-primary ring-inset",
+    !reorderLocked &&
+      "cursor-grab active:cursor-grabbing [&_[role=treeitem]]:cursor-grab [&_[role=treeitem]]:active:cursor-grabbing",
+  )
+  const presentation = (
     <div
       ref={sortableRef}
       role="none"
@@ -1279,13 +1324,7 @@ function HistoryRowPresentation({
       data-history-id={row.ref.id}
       data-history-index={index}
       {...historyRowStateData(feedback, rolledBack, reorderLocked, sourcePresentation.highlighted)}
-      className={cn(
-        historyRowLayout(timeline, compact),
-        feedback.className,
-        sourcePresentation.highlighted && "bg-accent ring-1 ring-primary ring-inset",
-        !reorderLocked &&
-          "cursor-grab active:cursor-grabbing [&_[role=treeitem]]:cursor-grab [&_[role=treeitem]]:active:cursor-grabbing",
-      )}
+      className={className}
     >
       <div className="flex min-w-0 items-start">
         <div className="min-w-0 flex-1">{content}</div>
@@ -1295,6 +1334,7 @@ function HistoryRowPresentation({
         details={details}
         marker={marker}
         repairRequired={repairRequired}
+        row={row}
         summary={
           sourcePresentation.summary ?? (
             <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />
@@ -1303,6 +1343,11 @@ function HistoryRowPresentation({
         t={t}
       />
     </div>
+  )
+  return (
+    <HistoryRepairTooltip repairRequired={repairRequired} row={row} t={t}>
+      {presentation}
+    </HistoryRepairTooltip>
   )
 }
 
@@ -1970,6 +2015,62 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
   )
 }
 
+function authoredVisibilityDisabled(controller: DocumentControllerState) {
+  return (
+    controller.status !== "ready" ||
+    controller.report?.mode !== "read-write" ||
+    controller.saveStatus === "saving"
+  )
+}
+
+function selectAuthoredTreePart(
+  props: ModelTreeHistoryBranchProps,
+  parts: ReturnType<typeof currentAuthoredParts>,
+  selectionRequiresBody: boolean,
+  partId: Parameters<NonNullable<ModelTreeHistoryBranchProps["onPartSelect"]>>[0],
+) {
+  if (
+    selectionRequiresBody &&
+    !selectedAuthoredBody(parts, partId, props.partVisibility?.overrides)
+  )
+    return
+  props.onPartSelect?.(partId)
+}
+
+function AuthoredPartsBranch({
+  props,
+  parts,
+  bodyController,
+}: {
+  props: ModelTreeHistoryBranchProps
+  parts: ReturnType<typeof currentAuthoredParts>
+  bodyController: DocumentControllerState
+}) {
+  const snapshot = currentAuthoredSnapshot(props.controller)
+  const { onAuthoredMetadata, onPartSelect, revealRequest = null, selectedPartId = null } = props
+  if (!snapshot || !onAuthoredMetadata || !onPartSelect) return null
+  const selectionRequiresBody = bodyController !== props.controller
+  return (
+    <AuthoredPartsGroup
+      revealRequest={revealRequest}
+      parts={parts}
+      revision={snapshot.revision}
+      selectedPartId={selectedPartId}
+      disabled={authoredTreeWriteBlocked(props)}
+      visibility={props.partVisibility}
+      presentationOnlyVisibility={Boolean(
+        props.authoredMetadataBlocked || props.activeFeatureId || props.sketchRenameBlockedId,
+      )}
+      visibilityDisabled={authoredVisibilityDisabled(props.controller)}
+      selectionRequiresBody={selectionRequiresBody}
+      onSelect={(partId) => selectAuthoredTreePart(props, parts, selectionRequiresBody, partId)}
+      onPreselect={props.onBodyPreselectionChange}
+      onSurfaceTexture={props.onSurfaceTexture}
+      onCommit={onAuthoredMetadata}
+    />
+  )
+}
+
 function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
   const [bodiesExpanded, setBodiesExpanded] = useState(true)
   useEffect(() => {
@@ -1993,26 +2094,7 @@ function ModelTreeHistoryBranch(props: ModelTreeHistoryBranchProps) {
   }, [bodyController, props.controller, props.view])
   return (
     <>
-      {currentAuthoredSnapshot(props.controller) &&
-        props.onAuthoredMetadata &&
-        props.onPartSelect && (
-          <AuthoredPartsGroup
-            revealRequest={props.revealRequest ?? null}
-            parts={parts}
-            revision={props.controller.report?.snapshot.revision ?? 0}
-            selectedPartId={props.selectedPartId ?? null}
-            disabled={authoredTreeWriteBlocked(props)}
-            selectionRequiresBody={bodyController !== props.controller}
-            onSelect={(partId) => {
-              if (bodyController !== props.controller && !selectedAuthoredBody(parts, partId))
-                return
-              props.onPartSelect?.(partId)
-            }}
-            onPreselect={props.onBodyPreselectionChange}
-            onSurfaceTexture={props.onSurfaceTexture}
-            onCommit={props.onAuthoredMetadata}
-          />
-        )}
+      <AuthoredPartsBranch props={props} parts={parts} bodyController={bodyController} />
       <BodiesGroup
         {...props}
         controller={bodyController}

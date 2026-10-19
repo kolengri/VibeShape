@@ -1,14 +1,12 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { createRequire } from "node:module"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
-import { _electron, expect, test } from "@playwright/test"
-import { z } from "zod"
+import { join } from "node:path"
+import { expect, test } from "@playwright/test"
 
-const root = resolve(import.meta.dirname, "../..")
-const require = createRequire(join(root, "apps/desktop/package.json"))
-const executablePath = z.string().parse(require("electron"))
+import { createNativeFixture, nativeTestRoot, openNativeEditor } from "./native-fixture"
+
+const root = nativeTestRoot
 
 test("the native update menu downloads a verified image once and releases its action lock", async () => {
   const directory = await mkdtemp(join(tmpdir(), "vibeshape-native-update-"))
@@ -58,23 +56,13 @@ globalThis.fetch = async (url, options) => {
 };
 require(${JSON.stringify(join(root, "apps/desktop/dist/main.cjs"))});
 `
-  await writeFile(
-    join(directory, "package.json"),
-    JSON.stringify({ name: "native-update-test", version: "0.1.0", main: "bootstrap.cjs" }),
-  )
-  await writeFile(join(directory, "bootstrap.cjs"), bootstrap)
-  const environment = z
-    .record(z.string(), z.string())
-    .parse({ ...process.env, VIBESHAPE_DESKTOP_EDITOR: join(root, "apps/web/dist") })
-  delete environment.ELECTRON_RUN_AS_NODE
-  const native = await _electron.launch({
-    executablePath,
-    args: [directory, `--user-data-dir=${join(directory, "profile")}`],
-    env: environment,
-  })
+  const fixture = await createNativeFixture({ directory, bootstrap })
+  const native = await fixture.launch()
   try {
-    const page = await native.firstWindow()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const page = await openNativeEditor(native)
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     const enabled = () =>
       native.evaluate(
         ({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("check-for-updates")?.enabled,
@@ -106,7 +94,7 @@ require(${JSON.stringify(join(root, "apps/desktop/dist/main.cjs"))});
       ],
     })
   } finally {
-    await native.close()
+    await fixture.cleanup()
     await rm(directory, { recursive: true, force: true })
   }
 })

@@ -108,16 +108,22 @@ export function assemblyMotionSamples(
   coordinate: AssemblyMotionCoordinate,
   start: number,
   end: number,
+  count = 13,
 ) {
   if (
     !Number.isFinite(start) ||
     !Number.isFinite(end) ||
-    start < coordinate.min ||
-    end > coordinate.max ||
-    start >= end
+    Math.min(start, end) < coordinate.min ||
+    Math.max(start, end) > coordinate.max ||
+    start === end ||
+    !Number.isInteger(count) ||
+    count < 2 ||
+    count > 256
   )
-    throw new Error("Motion requires an increasing range within the authored limits.")
-  return Array.from({ length: 13 }, (_, index) =>
-    index === 12 ? end : start + ((end - start) * index) / 12,
+    throw new Error(
+      "Motion requires distinct endpoints within the authored limits and 2 to 256 samples.",
+    )
+  return Array.from({ length: count }, (_, index) =>
+    index === count - 1 ? end : start + ((end - start) * index) / (count - 1),
   )
 }

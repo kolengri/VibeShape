@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises"
 import type { Browser, Download, Page } from "@playwright/test"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
-import { expect, test } from "./fixtures"
+import { createEditorProject, expect, test } from "./fixtures"
 import { invokeModelCommand, openModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
@@ -58,7 +58,12 @@ async function reopenHoleBackup(browser: Browser, download: Download, origin: st
   })
   try {
     await page.goto(origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await createEditorProject(page)
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await openApplicationMenuItem(page, "Files and projects…")
     await page.getByLabel("Choose VibeShape project file").setInputFiles({
       name: download.suggestedFilename(),
@@ -90,7 +95,11 @@ for (const theme of ["light", "dark"] as const) {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1024, height: 900 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .locator("html")
       .evaluate((element, dark) => element.classList.toggle("dark", dark), theme === "dark")

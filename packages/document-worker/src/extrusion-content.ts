@@ -14,6 +14,7 @@ import {
   type EdgeTopoRef,
   extrusionFeatureParametersV6Schema,
   extrusionFeatureParametersV7Schema,
+  extrusionFeatureParametersV8Schema,
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
@@ -34,6 +35,7 @@ import {
   extrusionFeatureContentParametersV5Schema,
   extrusionFeatureContentParametersV6Schema,
   extrusionFeatureContentParametersV7Schema,
+  extrusionFeatureContentParametersV8Schema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   holeFeatureContentParametersSchema,
@@ -155,9 +157,14 @@ function prepareAdvancedExtrusion(
   advanced: { feature: FeatureRecord; context: Parameters<typeof prepareExtrusionEndContent>[2] },
   frame: SupportFrame,
 ) {
+  const v8 = advanced.feature.type.schemaVersion === 8
   const v7 = advanced.feature.type.schemaVersion === 7
   const value = (
-    v7 ? extrusionFeatureParametersV7Schema : extrusionFeatureParametersV6Schema
+    v8
+      ? extrusionFeatureParametersV8Schema
+      : v7
+        ? extrusionFeatureParametersV7Schema
+        : extrusionFeatureParametersV6Schema
   ).parse(advanced.feature.parameters)
   const end = prepareExtrusionEndContent(advanced.feature, value, advanced.context, frame)
   if (!end.ok)
@@ -166,7 +173,11 @@ function prepareAdvancedExtrusion(
       "extrusion-end-support-stale-or-unreachable",
     )
   const resolved = (
-    v7 ? extrusionFeatureContentParametersV7Schema : extrusionFeatureContentParametersV6Schema
+    v8
+      ? extrusionFeatureContentParametersV8Schema
+      : v7
+        ? extrusionFeatureContentParametersV7Schema
+        : extrusionFeatureContentParametersV6Schema
   ).safeParse({
     ...(content as Record<string, unknown>),
     distance: end.distance,
@@ -768,8 +779,110 @@ function profileFeatureSketchId(feature: ProfileFeature) {
   return profiles?.profiles[0]?.sketchId ?? null
 }
 
+type ResolvedExtrusionSketch = Readonly<{
+  sketch: SketchRecord
+  frame: SupportFrame
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"]
+}>
+
+async function resolveExtrusionSketches(
+  input: ProfileFeatureContentInput,
+  selectors: SketchProfileSet,
+) {
+  const sketches = new Map(input.document.sketches.map((sketch) => [sketch.id, sketch]))
+  const resolved = new Map<string, ResolvedExtrusionSketch>()
+  for (const id of new Set(selectors.profiles.map(({ sketchId }) => sketchId))) {
+    const sketch = sketches.get(id)
+    if (!sketch)
+      return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found", { sketchId: id })
+    const frame = sketchFrame(sketch, input.document, input.features, new Set(), input.geometry)
+    if (!frame)
+      return failure("org.vibeshape.feature.sketch-support-missing", "support-unresolved", {
+        sketchId: id,
+      })
+    const result = await solveFeatureSketch(input, sketch)
+    if (!result.ok) return result
+    resolved.set(id, { sketch, frame, solution: result.solution })
+  }
+  return { ok: true as const, resolved }
+}
+
+function materializeMultiSketchExtrusionProfiles(
+  input: ProfileFeatureContentInput,
+  feature: FeatureRecord,
+  parameters: ReturnType<typeof extrusionFeatureParametersV8Schema.parse>,
+  sources: ReadonlyMap<string, ResolvedExtrusionSketch>,
+) {
+  const profiles = []
+  for (const selector of parameters.profiles.profiles) {
+    const source = sources.get(selector.sketchId)
+    if (!source) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
+    const profile = materializeSelectedProfile(source.sketch, source.solution, selector)
+    if (!profile.ok) return profile
+    const end = prepareExtrusionEndContent(feature, parameters, input, source.frame)
+    if (!end.ok)
+      return failure(
+        "org.vibeshape.feature.sketch-support-missing",
+        "extrusion-end-support-stale-or-unreachable",
+        { sketchId: source.sketch.id },
+      )
+    profiles.push({
+      outer: profile.outer,
+      holes: profile.holes,
+      frame: source.frame,
+      distance: end.distance,
+      endCondition: end.endCondition,
+    })
+  }
+  return { ok: true as const, profiles }
+}
+
+async function prepareMultiSketchExtrusionContent(input: ProfileFeatureContentInput) {
+  if (input.feature.kind !== "extrusion")
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-sketch-feature")
+  const feature = input.feature.record
+  const parameters = extrusionFeatureParametersV8Schema.parse(feature.parameters)
+  const solved = await resolveExtrusionSketches(input, parameters.profiles)
+  if (!solved.ok) return solved
+  const sources = [...solved.resolved.values()]
+  const canonical = sources[0]
+  if (!canonical)
+    return failure("org.vibeshape.feature.sketch-profile-missing", "empty-profile-set")
+  const materialized = materializeMultiSketchExtrusionProfiles(
+    input,
+    feature,
+    parameters,
+    solved.resolved,
+  )
+  if (!materialized.ok) return materialized
+  return prepareAdvancedExtrusion(
+    {
+      sketchId: canonical.sketch.id,
+      sketchIds: sources.map(({ sketch }) => sketch.id),
+      supportFeatureIds: [
+        ...new Set(
+          sources.flatMap(({ sketch }) =>
+            sketch.support ? [sketch.support.reference.featureId] : [],
+          ),
+        ),
+      ],
+      frame: canonical.frame,
+      profiles: materialized.profiles,
+      distance: parameters.distance.value,
+      symmetric: parameters.symmetric,
+      reversed: parameters.reversed,
+      secondDistance: parameters.secondDistance?.value ?? null,
+      operation: parameters.operation,
+    },
+    { feature, context: input },
+    canonical.frame,
+  )
+}
+
 async function prepareProfileFeatureContent(input: ProfileFeatureContentInput) {
   const { document, feature, features, geometry } = input
+  if (feature.kind === "extrusion" && feature.record.type.schemaVersion === 8)
+    return prepareMultiSketchExtrusionContent(input)
   const profileSketchId = profileFeatureSketchId(feature)
   const sketch = document.sketches.find(({ id }) => id === profileSketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")

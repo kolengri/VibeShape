@@ -6,7 +6,11 @@ test.describe("Box parameters", () => {
     // Three reloads exercise one persisted variable/feature workflow across worker startups.
     test.setTimeout(60_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
@@ -56,7 +60,11 @@ test.describe("Box parameters", () => {
       .toMatch(/Selection: Box 1 · Face \d+/)
     await viewport.getByRole("button", { name: "Clear selection" }).click()
     await expect(statusBar).toContainText("Selection: None")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await boxTreeItem.hover()
     await expect(viewport).toHaveAttribute("data-preselected-feature", /.+/)
@@ -73,7 +81,11 @@ test.describe("Box parameters", () => {
     await editForm.getByRole("combobox", { name: "Origin Z" }).fill("12 mm")
     await editForm.getByRole("button", { name: "Update box" }).dblclick()
     await expect(editForm).not.toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.reload()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()

@@ -307,3 +307,17 @@ Registry metadata does not replace the license files in the exact lockfile and d
 - Community comments were not used as the basis for key decisions when an upstream or official source existed.
 - Exact performance promises were not copied from marketing material; they are defined as measurable Phase 0 goals.
 - No claim of complete format compatibility will be made before fixture, conformance, and slicer testing.
+
+## Native project integrations (2026-10-19)
+
+- [ACP TypeScript SDK](https://github.com/agentclientprotocol/typescript-sdk) and the installed
+  `@agentclientprotocol/sdk` 1.9.0 declarations establish the stable fluent client, stdio framing,
+  capability negotiation, session restoration and Apache-2.0 license.
+- [ACP transports](https://agentclientprotocol.com/protocol/v1/transports) distinguish process stdio
+  from the HTTP draft and custom network transports; a static page cannot launch a local process.
+- [MCP remote clients](https://modelcontextprotocol.io/docs/develop/connect-remote-servers) establish
+  network client availability; exposing a browser-owned CAD session still needs a reachable runtime.
+- [SolidCraft source](https://github.com/tangency-labs/solidcraft/tree/8e762fee578596fe37bc4348abaeca67b5f760c2)
+  was inspected for project navigation, native chat, mesh handoff and motion-study interaction.
+  Interaction patterns are independently implemented using VibeShape's existing command and solver
+  owners. No reference source code, model geometry or artwork is copied into the product.

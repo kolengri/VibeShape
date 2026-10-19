@@ -22,7 +22,11 @@ test("auto-applies Shell replacement with Mirror and Extrusion v6, then another 
   const review = page.getByRole("region", { name: "Review AI changes", exact: true })
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     await openAiConnections(page)
     await openAutoApplySetup(page)

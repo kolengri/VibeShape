@@ -172,7 +172,12 @@ describe("Assembly motion controls", () => {
   })
   it("cancels a pending worker with Escape and surfaces a solver failure without enabling Apply", async () => {
     render(<Harness />)
-    ports.preview.mockReturnValueOnce(new Promise(() => {}))
+    let finish!: () => void
+    ports.preview.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = () => resolve({ ok: true, inspection: { occurrences: [], interference: [] } })
+      }),
+    )
     fireEvent.click(screen.getByRole("button", { name: "Preview coordinate" }))
     const signal = ports.preview.mock.calls[0]?.[3] as AbortSignal
     fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Coordinate (in)" }), {
@@ -180,6 +185,9 @@ describe("Assembly motion controls", () => {
     })
     expect(signal.aborted).toBe(true)
     expect(ports.close).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      finish()
+    })
     ports.preview.mockResolvedValueOnce({
       ok: false,
       diagnostic: { message: "The closed loop has conflicting mates." },
@@ -188,7 +196,7 @@ describe("Assembly motion controls", () => {
       fireEvent.click(screen.getByRole("button", { name: "Preview coordinate" }))
     })
     expect(screen.getByRole("alert").textContent).toContain(
-      "The closed loop has conflicting mates.",
+      "Reset the preview and try a smaller sample set.",
     )
     expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(true)
     expect(ports.apply).not.toHaveBeenCalled()

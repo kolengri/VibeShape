@@ -8,7 +8,11 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   await invokeModelCommand(page, "Primitives", "Box")
   const box = page.getByRole("form", { name: "Create box" })

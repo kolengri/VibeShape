@@ -3,7 +3,11 @@ import { expandHistoryDetails, invokeModelCommand } from "./model-command-suppor
 
 test("suppresses and restores a feature through persisted history", async ({ page }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
 
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -32,7 +36,11 @@ test("suppresses and restores a feature through persisted history", async ({ pag
   await toolbar.getByRole("button", { name: "Redo", exact: true }).click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
   await page.reload()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
     "data-rendered-feature-count",
     "0",

@@ -159,7 +159,11 @@ test.describe("Primitive graphical placement", () => {
     await expect(originX).toHaveValue(releasedPosition)
     await form.getByRole("button", { name: "Update box" }).click()
     await expect(form).not.toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.reload()
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
@@ -221,7 +225,11 @@ test.describe("Primitive graphical placement", () => {
       await expect(viewport).not.toHaveAttribute("data-translation-gizmo-position", "0,0,0")
       await form.getByRole("button", { name: editing ? "Update box" : "Create box" }).click()
       await expect(form).not.toBeVisible()
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await page.reload()
       await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
       await expect(

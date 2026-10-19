@@ -157,6 +157,15 @@ describe("profile feature selection", () => {
     ).toEqual([{ ...second, sketchId: laterSketchId }])
   })
 
+  it("retains other sketches when Extrude toggles a profile and removes only the chosen region", () => {
+    const other = { ...profile, sketchId: laterSketchId }
+    const selected = nextProfileFeatureSelection([profile], other, "toggle", true)
+    expect(selected).toHaveLength(2)
+    expect(selected).toContainEqual(profile)
+    expect(selected).toContainEqual(other)
+    expect(nextProfileFeatureSelection(selected, other, "toggle", true)).toEqual([profile])
+  })
+
   it("compares topology references by semantic content instead of object identity", () => {
     expect(topologyReferencesEqual(supportReference, { ...supportReference })).toBe(true)
     expect(topologyReferencesEqual(supportReference, null)).toBe(false)

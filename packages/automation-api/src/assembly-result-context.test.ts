@@ -59,6 +59,44 @@ function topologyFixture(offset: number, limit: number, total: number) {
   }
   return { operation, result: { ok: true, value } }
 }
+describe("motion sample result authority", () => {
+  it("rejects substituted times, occurrences, revision and trace receipts", () => {
+    const operation = {
+      tool: "sample_assembly_motion_study",
+      arguments: { revision: 4, studyId: id(8), sampleCount: 2, instanceIds: [id(2)] },
+    }
+    const sample = (timeSeconds: number) => ({
+      timeSeconds,
+      occurrences: [
+        {
+          instanceId: id(2),
+          sourceIndex: 0,
+          geometryFrame: { translation: [0, 0, 0], quaternion: [0, 0, 0, 1] },
+        },
+      ],
+    })
+    const result = {
+      ok: true,
+      value: {
+        schemaVersion: 1,
+        documentId: id(1),
+        revision: 4,
+        studyId: id(8),
+        samples: [sample(0), sample(2)],
+      },
+    }
+    expect(assemblyResultContextMatches(operation, result, id(1))).toBe(true)
+    for (const value of [
+      { ...result.value, revision: 5 },
+      { ...result.value, studyId: id(9) },
+      { ...result.value, samples: [sample(1), sample(2)] },
+      { ...result.value, samples: [sample(0), sample(0)] },
+      { ...result.value, samples: [sample(0), { ...sample(2), occurrences: [] }] },
+      { ...result.value, samples: [sample(0), { ...sample(2), tracePointMm: [0, 0, 0] }] },
+    ])
+      expect(assemblyResultContextMatches(operation, { ok: true, value }, id(1))).toBe(false)
+  })
+})
 function mismatchedTopologyFixture() {
   const f = topologyFixture(2, 1, 3)
   const page = f.result.value.topology

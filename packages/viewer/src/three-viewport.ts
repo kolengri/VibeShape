@@ -47,7 +47,13 @@ import {
   viewerOriginPlanes,
 } from "./origin-planes"
 import { PrintBedDecoration, type ViewerPrintBed } from "./print-bed"
-import { sectionClipPlanes, sectionPointVisible, type ViewerSection } from "./section-view"
+import {
+  sameViewerSection,
+  sectionClipPlanes,
+  sectionPointVisible,
+  type ViewerSection,
+} from "./section-view"
+import { SectionViewDecoration } from "./section-view-decoration"
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 
 export type { ViewerAnalysisOverlay } from "./analysis-overlays"
@@ -629,6 +635,7 @@ export type GeometryViewportOptions = Readonly<{
   onTranslationGizmoPositionChange?: (position: ViewerVector3) => void
   onAxialGizmoDistanceChange?: (distance: number) => void
   onAngularGizmoAngleChange?: (angle: number) => void
+  onSectionChange?: (section: ViewerSection) => void
 }>
 
 function viewerSelectionStackCallback(
@@ -1158,6 +1165,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     sizeAttenuation: false,
   })
   #sectionPlanes: Plane[] | null = null
+  #section: ViewerSection | null = null
+  readonly #sectionDecoration: SectionViewDecoration
   readonly #printDecoration = new PrintBedDecoration(() => this.#render())
   readonly #analysisDecoration = new AnalysisOverlayDecoration(createFaceHighlightGeometry, () =>
     this.#render(),
@@ -1541,6 +1550,26 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationHelper.visible = false
     this.#scene.add(this.#translationHelper)
     this.#controls = this.#createOrbitControls(new Vector3(), true)
+    this.#sectionDecoration = new SectionViewDecoration({
+      canvas,
+      camera: this.#camera,
+      canInteract: () =>
+        this.#interactionMode === "select" &&
+        !this.#pointerOrbit &&
+        !this.#translationGizmoInteracting &&
+        !this.#angularGizmoInteracting &&
+        !this.#surfaceTextureBrush,
+      navigationEnabled: () => this.#controls.enabled,
+      setNavigationEnabled: (enabled) => {
+        this.#controls.enabled = enabled
+      },
+      onChange: (section) => {
+        this.setSection(section)
+        options.onSectionChange?.(section)
+      },
+      render: this.#render,
+    })
+    this.#scene.add(this.#sectionDecoration.group)
     this.#translationControls.addEventListener("change", this.#onTranslationControlsChange)
     this.#translationControls.addEventListener("objectChange", this.#onTranslationObjectChange)
     this.#translationControls.addEventListener("mouseDown", this.#onTranslationControlsMouseDown)
@@ -1614,7 +1643,10 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setSection(section: ViewerSection | null) {
     if (this.#disposed) return
+    if (sameViewerSection(this.#section, section)) return
     this.#sectionPlanes = sectionClipPlanes(section)
+    this.#section = section
+    this.#sectionDecoration.setSection(section)
     this.clearSelection()
     this.#applySectionClipping()
     this.#setPreselection(null)
@@ -1643,6 +1675,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#surfaceMeshes.length = 0
     this.#textureSourceMeshes.clear()
     this.#meshSources.clear()
+    this.#sectionDecoration.setMeshes(meshes)
     for (const { source, surface, textureSource } of this.#modelPresentation.setMeshes(meshes)) {
       if (source.appearance === "preview") continue
       this.#meshSources.set(viewerBodyKey(source), source)
@@ -2120,6 +2153,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   dispose() {
+    this.#sectionDecoration.dispose()
     this.#printDecoration.dispose()
     this.#analysisDecoration.dispose()
     if (this.#disposed) return
@@ -2251,6 +2285,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       .expandByObject(this.#angularGizmoGroup)
       .expandByObject(this.#printDecoration.bed)
       .expandByObject(this.#printDecoration.ground)
+    if (this.#sectionDecoration.group.visible) bounds.expandByObject(this.#sectionDecoration.group)
     for (const plane of this.#originPlaneGroup.children) {
       if (plane.visible) bounds.expandByObject(plane)
     }
@@ -3296,6 +3331,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #renderNow = () => {
     if (this.#disposed) return
+    this.#sectionDecoration.update()
     this.#applySectionClipping()
     this.#updateClippingToScene()
     const width = this.#canvas.clientWidth

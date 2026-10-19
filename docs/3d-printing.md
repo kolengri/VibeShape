@@ -173,7 +173,7 @@ breakaway fins**. It rotates around X/Y, centers the copy over the XY build area
 point at Z=0, and can add at most two coplanar disjoint comb-prism fins to selected sloped planar
 facets. Fin contacts are aligned to the requested layer height and the prepared export contains one
 3MF build item with model and fin components. The prepared file can be downloaded or sent through the
-same paired slicer handoff; it does not mutate CAD history or design coordinates, and closing or
+native slicer handoff or browser download; it does not mutate CAD history or design coordinates, and closing or
 cancelling the preparation terminates its disposable worker operation.
 
 The support heuristic is intentionally bounded: it accepts one validated convex closed body only.
@@ -229,7 +229,19 @@ Print placement is a derived configuration, not a change to design coordinates:
 
 ## Desktop slicer handoff
 
-The product export dialog implements the local path selected by [ADR-0020](adr/0020-local-slicer-handoff-bridge.md): one button prepares a 3MF and sends it through an explicitly paired loopback bridge to OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura. The preferred slicer is stored in the current browser profile and reused for later projects.
+The Mac application's export dialog prepares STL or 3MF and opens a detected installed slicer directly.
+Choose a detected application or use the native application chooser. The app remembers the target and
+format, retains quality controls, and writes a private temporary mesh without asking for a save path.
+A failed launch preserves the mesh for **Show mesh in Finder** recovery. No bridge process or pairing
+token is required. A static browser downloads the mesh for manual opening in the slicer instead.
+See [ADR-0111](adr/0111-native-project-assistant-and-handoffs.md).
+
+Launching an application does not establish successful import, correct scale, printer settings,
+slicing, or printing. These remain separate acceptance steps. Handoffs never send printer traffic.
+
+### Legacy source bridge
+
+The legacy source CLI retains the authenticated loopback protocol from [ADR-0020](adr/0020-local-slicer-handoff-bridge.md) for compatibility clients. It accepts 3MF and opens its allowlisted installed target. This is separate from the native application workflow above.
 
 A web page cannot discover the final browser download path or pass a browser-owned `Blob` directly to an arbitrary desktop process. The source bridge is therefore a separate Bun application. During development, start the Vite application, note its exact origin, then run:
 
@@ -237,7 +249,7 @@ A web page cannot discover the final browser download path or pass a browser-own
 bun run slicer:bridge -- --origin http://localhost:5173
 ```
 
-Paste the printed pairing token into **Export model → Desktop bridge setup** and keep the bridge process running. Pair the exact origin shown in the browser address bar; `http://localhost:5173` and `http://127.0.0.1:5173` are different origins. A later start reuses the stored pairing. Rotate the credential or replace the paired origin with:
+The product export dialog no longer provides bridge pairing controls. Explicit compatibility clients must use the documented bridge protocol and keep that process running. Pair the exact origin shown in the browser address bar; `http://localhost:5173` and `http://127.0.0.1:5173` are different origins. A later start reuses the stored pairing. Rotate the credential or replace the paired origin with:
 
 ```bash
 bun run slicer:bridge -- --reset-pairing --origin http://localhost:5173
@@ -253,7 +265,7 @@ If an executable is installed outside the reviewed platform locations and `PATH`
 | Snapmaker Orca | `VIBESHAPE_SLICER_SNAPMAKER_ORCA` |
 | UltiMaker Cura | `VIBESHAPE_SLICER_ULTIMAKER_CURA` |
 
-The bridge receives only the generated 3MF, writes a bounded temporary file, and starts the selected allowlisted application without a shell. It does not select a printer profile, slice, emit G-code, or print. When it is unavailable or cannot launch the selected slicer, the dialog downloads the same 3MF and reports the fallback. Signed installers and background startup remain packaging work; source execution is the current supported setup.
+The bridge receives only the generated 3MF, writes a bounded temporary file, and starts the selected allowlisted application without a shell. It does not select a printer profile, slice, emit G-code, or print. The current product UI does not invoke this bridge. Native application handoff and browser download are described above.
 
 A dedicated WASM slicer or optional remote slicing service remains outside v1. Either would require a separate ADR covering licensing, profiles, G-code safety, privacy, and resource budgets. VibeShape never sends G-code to a real printer without a separate, explicit safety workflow.
 

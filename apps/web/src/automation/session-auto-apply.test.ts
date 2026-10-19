@@ -195,7 +195,8 @@ describe("session CAD auto-apply scope", () => {
     [5, true],
     [6, true],
     [7, true],
-    [8, false],
+    [8, true],
+    [9, false],
   ] as const)("bounds extrusion schema version %i to the shipped host", (version, expected) => {
     const review = input()
     const command = review.commands[0]

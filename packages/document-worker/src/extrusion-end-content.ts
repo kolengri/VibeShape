@@ -4,6 +4,7 @@ import type {
   DocumentSnapshot,
   ExtrusionFeatureParametersV6,
   ExtrusionFeatureParametersV7,
+  ExtrusionFeatureParametersV8,
   FeatureRecord,
 } from "@vibeshape/domain"
 import type { ExtrusionFeatureContentParametersV6 } from "@vibeshape/protocol"
@@ -15,7 +16,10 @@ type Context = {
 }
 export function prepareExtrusionEndContent(
   feature: FeatureRecord,
-  parameters: ExtrusionFeatureParametersV6 | ExtrusionFeatureParametersV7,
+  parameters:
+    | ExtrusionFeatureParametersV6
+    | ExtrusionFeatureParametersV7
+    | ExtrusionFeatureParametersV8,
   context: Context,
   frame: ExtrusionFeatureContentParametersV6["frame"],
 ) {
@@ -59,7 +63,7 @@ export function prepareExtrusionEndContent(
     inputIndex: feature.dependencies.indexOf(end.targetBody.featureId),
   }
   if (end.kind !== "up-to-face") return { ok: true as const, distance, endCondition: base }
-  if (feature.type.schemaVersion === 7 && end.face.signature.geometryClass !== "PLANE") {
+  if (feature.type.schemaVersion >= 7 && end.face.signature.geometryClass !== "PLANE") {
     if (!resolveReferenceFace(end.face, context)) return { ok: false as const }
     const { featureId: _featureId, ...face } = end.face
     return {

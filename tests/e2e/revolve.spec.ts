@@ -59,7 +59,11 @@ test.describe("selector-backed revolve", () => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
@@ -118,7 +122,11 @@ test.describe("selector-backed revolve", () => {
     test.setTimeout(120_000)
     await page.setViewportSize({ width: 1024, height: 768 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     await page
@@ -148,7 +156,11 @@ test.describe("selector-backed revolve", () => {
     await form.getByRole("button", { name: "Create revolve" }).click()
     await expect(form).toHaveCount(0, { timeout: 30_000 })
 
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
@@ -171,7 +183,11 @@ test.describe("selector-backed revolve", () => {
       test.setTimeout(180_000)
       await page.setViewportSize({ width: 1440, height: 1000 })
       await page.goto("/")
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible({
         timeout: 120_000,
       })
       const toolbar = page.getByRole("toolbar", { name: "Model commands" })
@@ -263,7 +279,11 @@ test.describe("selector-backed revolve", () => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
@@ -310,7 +330,11 @@ test.describe("selector-backed revolve", () => {
   test("reselects a profile without closing create or edit", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     await page
@@ -360,7 +384,11 @@ test.describe("selector-backed revolve", () => {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     await invokeModelCommand(page, "Primitives", "Box")
@@ -419,7 +447,11 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
@@ -435,10 +467,18 @@ test.describe("selector-backed revolve", () => {
     await expect(editForm).toHaveCount(0, { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
@@ -464,7 +504,11 @@ test.describe("selector-backed revolve", () => {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     await invokeModelCommand(page, "Primitives", "Box")
@@ -505,7 +549,11 @@ test.describe("selector-backed revolve", () => {
     await expect(form).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.reload()
     await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
     await expect(

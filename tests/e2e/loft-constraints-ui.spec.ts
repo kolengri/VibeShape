@@ -259,7 +259,11 @@ function required<T>(value: T | null | undefined, message: string): T {
 
 async function nativeSaved(page: Page) {
   await test.step("Exact native rebuild and durable save", () =>
-    expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached({
+    expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeAttached({
       timeout: 120_000,
     }))
 }

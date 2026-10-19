@@ -3,7 +3,11 @@ import { expect, test } from "./fixtures"
 test.describe("document variables", () => {
   test("creates, evaluates, persists, and reopens a variable table", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
 
     await expect(page.getByRole("heading", { name: "Variables", exact: true })).toBeVisible()
@@ -17,7 +21,11 @@ test.describe("document variables", () => {
     await expect(page.getByText("20 mm", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(name).toBeDisabled()
 
     await page.reload()
@@ -29,7 +37,11 @@ test.describe("document variables", () => {
 
   test("completes variable references in expression fields", async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
 
     await page.getByRole("button", { name: "Add variable" }).click()

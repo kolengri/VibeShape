@@ -62,6 +62,7 @@ import {
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
+import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import type { PrimitivePlacement } from "../features/part-design/primitive-placement"
 import type {
@@ -135,6 +136,7 @@ export function viewerMeshes(
   controller: DocumentControllerState,
   hiddenFeatureIds: readonly string[] = [],
   contextualHiddenFeatureIds: readonly string[] = [],
+  partVisibilityOverrides?: PartVisibilityOverrides,
 ): readonly ViewerMesh[] {
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
@@ -142,7 +144,9 @@ export function viewerMeshes(
   const bodies = terminalModelBodies(features, rebuild.response, contextualHiddenFeatureIds)
   if (!bodies) return []
   const authority = currentAuthoredSnapshot(controller)
-  const hiddenParts = authority ? authoredBodyKeys(authority, true) : new Set<string>()
+  const hiddenParts = authority
+    ? authoredBodyKeys(authority, true, partVisibilityOverrides)
+    : new Set<string>()
   const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
   const solidMeshes = bodies
     .filter(
@@ -1256,11 +1260,25 @@ function previewMessageKey(preview: FeaturePreviewState | undefined) {
   return PREVIEW_MESSAGE_KEYS[preview.kind ?? "extrusion"][preview.status]
 }
 
+function ExtrusionErrorHint() {
+  const t = useTranslations("app.shell.cadError")
+  return t("viewportHint")
+}
+
+function hasExtrusionErrorDetails(preview: FeaturePreviewState | undefined) {
+  return (
+    preview?.status === "error" &&
+    preview.kind === "extrusion" &&
+    (preview.diagnostics?.length ?? 0) > 0
+  )
+}
+
 function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }) {
   const t = useTranslations("app.shell.viewport")
   const messageKey = previewMessageKey(preview)
   if (!messageKey) return null
   const failed = preview?.status === "error"
+  const detailedExtrusionError = hasExtrusionErrorDetails(preview)
   return (
     <div
       className={cn(
@@ -1270,10 +1288,10 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
     >
       <p
         className={failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
-        role={failed ? "alert" : "status"}
+        role={failed && !detailedExtrusionError ? "alert" : "status"}
         aria-live="polite"
       >
-        {t(messageKey)}
+        {detailedExtrusionError ? <ExtrusionErrorHint /> : t(messageKey)}
       </p>
     </div>
   )
@@ -1285,6 +1303,7 @@ type GeometryViewportProps = Readonly<{
   axialGizmoPending?: boolean
   controller: DocumentControllerState
   section?: ViewerSection | null
+  onSectionChange?: ((section: ViewerSection) => void) | undefined
   printerProfile?: PrinterProfile | null
   printBedVisible?: boolean
   groundGridVisible?: boolean
@@ -1292,6 +1311,7 @@ type GeometryViewportProps = Readonly<{
   contextualHiddenFeatureIds?: readonly string[]
   featurePreview?: FeaturePreviewState
   hiddenFeatureIds?: readonly string[]
+  partVisibilityOverrides?: PartVisibilityOverrides | undefined
   hiddenSketchIds?: readonly string[]
   idleOriginPlaneSelection?:
     | Readonly<{
@@ -1377,11 +1397,12 @@ function useHighlightedFeatureMesh(
   featureId: string | null | undefined,
   hiddenFeatureIds: readonly string[],
   preview: FeaturePreviewState | undefined,
+  hiddenBodies: ReadonlySet<string>,
 ) {
-  return useMemo(
-    () => highlightedFeatureMesh(controller, featureId, hiddenFeatureIds, preview),
-    [controller, featureId, hiddenFeatureIds, preview],
-  )
+  return useMemo(() => {
+    const candidate = highlightedFeatureMesh(controller, featureId, hiddenFeatureIds, preview)
+    return candidate && !hiddenBodies.has(authoredBodyKey(candidate)) ? candidate : null
+  }, [controller, featureId, hiddenFeatureIds, preview, hiddenBodies])
 }
 
 function previewMeshes(
@@ -1551,6 +1572,7 @@ function useViewportMeshPresentation({
   controller,
   featurePreview,
   hiddenFeatureIds,
+  partVisibilityOverrides,
   sketchContext,
 }: Pick<
   GeometryViewportProps,
@@ -1558,6 +1580,7 @@ function useViewportMeshPresentation({
   | "controller"
   | "featurePreview"
   | "hiddenFeatureIds"
+  | "partVisibilityOverrides"
   | "sketchContext"
 >) {
   const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
@@ -1575,14 +1598,24 @@ function useViewportMeshPresentation({
     [contextualIds, hiddenIds],
   )
   const committedMeshes = useMemo(
-    () => viewerMeshes(controller, hiddenIds, contextualIds),
-    [authority, contextualIds, featureSnapshot, hiddenIds, rebuild?.ok, rebuildResponse],
+    () => viewerMeshes(controller, hiddenIds, contextualIds, partVisibilityOverrides),
+    [
+      authority,
+      contextualIds,
+      featureSnapshot,
+      hiddenIds,
+      rebuild?.ok,
+      rebuildResponse,
+      partVisibilityOverrides,
+    ],
   )
+  const hiddenBodies = useMemo(() => {
+    const authored = currentAuthoredSnapshot(controller)
+    return authored ? authoredBodyKeys(authored, true, partVisibilityOverrides) : new Set<string>()
+  }, [authority, partVisibilityOverrides])
   const { sourceMesh, excludedFeatureIds } = facePickingPresentation(sketchContext)
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)
-    const authored = currentAuthoredSnapshot(controller)
-    const hiddenBodies = authored ? authoredBodyKeys(authored, true) : new Set<string>()
     const presented = withFacePickingSource(
       previewMeshes(featurePreview, committedMeshes),
       sourceMesh,
@@ -1599,10 +1632,15 @@ function useViewportMeshPresentation({
     excludedFeatureIds,
     featurePreview,
     sourceMesh,
+    hiddenBodies,
   ])
   const texturedMeshes = useTexturedMeshes(controller, meshes)
   const presentedMeshes = useTaskMeshes(texturedMeshes)
-  return { allCommittedMeshes, allHiddenFeatureIds, meshes: presentedMeshes }
+  const visibleMeshes = useMemo(
+    () => presentedMeshes.filter((mesh) => !hiddenBodies.has(authoredBodyKey(mesh))),
+    [presentedMeshes, hiddenBodies],
+  )
+  return { allCommittedMeshes, allHiddenFeatureIds, hiddenBodies, meshes: visibleMeshes }
 }
 
 function useTaskMeshes(meshes: readonly ViewerMesh[]) {
@@ -1680,19 +1718,22 @@ function useClearInvalidBodyHighlight(
 
 function useGeometryViewportScene(props: GeometryViewportProps) {
   const { controller, featurePreview, preselectedFeatureId, selectedFeatureId } = props
-  const { allCommittedMeshes, allHiddenFeatureIds, meshes } = useViewportMeshPresentation(props)
+  const { allCommittedMeshes, allHiddenFeatureIds, hiddenBodies, meshes } =
+    useViewportMeshPresentation(props)
   const sketches = useViewportSketchPresentation(props)
   const featurePreselection = useHighlightedFeatureMesh(
     controller,
     preselectedFeatureId,
     allHiddenFeatureIds,
     featurePreview,
+    hiddenBodies,
   )
   const featureSelection = useHighlightedFeatureMesh(
     controller,
     selectedFeatureId,
     allHiddenFeatureIds,
     featurePreview,
+    hiddenBodies,
   )
   const selectedBody = props.selectedBody
   const preselectedBody = props.preselectedBody
@@ -1742,7 +1783,11 @@ function useGeometryViewportInteraction(
     props.printBedVisible,
     props.groundGridVisible,
   )
-  const sectionFactory = useSectionViewportFactory(printPresentation.factory, props.section ?? null)
+  const sectionFactory = useSectionViewportFactory(
+    printPresentation.factory,
+    props.section ?? null,
+    props.onSectionChange,
+  )
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
   )
@@ -2498,23 +2543,17 @@ function SavedProfileViewportChrome({
   profilePreselectionLabel,
   profileSelectOther,
   profileSelection,
-  selectedSketchProfileKey,
 }: Readonly<{
   controller: DocumentControllerState
   profilePreselectionLabel: string | null
   profileSelectOther: SavedProfileSelectOtherState
   profileSelection: GeometryViewportProps["sketchProfileSelection"]
-  selectedSketchProfileKey: string | null
 }>) {
   const t = useTranslations("app.shell.viewport")
   return (
     <>
       <SavedProfileSelectOtherOverlay selection={profileSelectOther} />
-      <SavedProfileKeyboardPicker
-        controller={controller}
-        selectedKey={selectedSketchProfileKey}
-        selection={profileSelection}
-      />
+      <SavedProfileKeyboardPicker controller={controller} selection={profileSelection} />
       {profilePreselectionLabel ? (
         <div
           className={cn(
@@ -2661,11 +2700,9 @@ function SavedProfileSelectOtherOverlay({
 
 function SavedProfileKeyboardPicker({
   controller,
-  selectedKey,
   selection,
 }: Readonly<{
   controller: DocumentControllerState
-  selectedKey: string | null
   selection: GeometryViewportProps["sketchProfileSelection"]
 }>) {
   const t = useTranslations("app.shell.viewport")
@@ -2700,12 +2737,13 @@ function SavedProfileKeyboardPicker({
       <legend className="sr-only">{t("savedProfiles")}</legend>
       <NativeSelect
         aria-label={t("selectSavedProfile")}
+        data-saved-profile-picker
         className="h-8 max-w-72 text-xs"
         onChange={(event) => {
           const option = options.find(({ key }) => key === event.currentTarget.value)
-          if (option) selection.onSelect(option.profile, option.selectors, "replace")
+          if (option) selection.onSelect(option.profile, option.selectors, "toggle")
         }}
-        value={selectedKey ?? ""}
+        value=""
       >
         <option value="">{t("chooseSavedProfile")}</option>
         {options.map((option) => (
@@ -2954,7 +2992,6 @@ function GeometryViewportContextChrome({
             props.sketchProfileSelection,
             props.sketchProfilePreview,
           )}
-          selectedSketchProfileKey={model.selectedSketchProfileKey}
         />
       }
       selection={props.selectedBody ?? selection}
@@ -3229,6 +3266,7 @@ function GeometryViewport(props: GeometryViewportProps) {
   const viewportProps = {
     ...props,
     section: activeSection,
+    onSectionChange: setSection,
     ...(axial.gizmo ? { axialGizmo: axial.gizmo } : {}),
   }
   const model = useGeometryViewportModel(viewportProps)

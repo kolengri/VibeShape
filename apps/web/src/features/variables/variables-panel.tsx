@@ -125,6 +125,7 @@ function ResolvedVariablesPanel({ controller }: VariablesPanelProps) {
 const panelByStatus = {
   idle: LoadingVariablesPanel,
   loading: LoadingVariablesPanel,
+  library: () => null,
   ready: ResolvedVariablesPanel,
   error: ErrorVariablesPanel,
 } satisfies Record<DocumentControllerState["status"], (props: VariablesPanelProps) => ReactNode>

@@ -6,8 +6,10 @@ import {
   documentSnapshotSchema,
   extrusionFeatureParametersV6Schema,
   extrusionFeatureParametersV7Schema,
+  extrusionFeatureParametersV8Schema,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
+  extrusionFeatureTypeV8,
   featureRecordSchema,
   topologySignatureSchema,
 } from "@vibeshape/domain"
@@ -97,6 +99,36 @@ function context(contentHash = hash, outputRole = role, candidates = [candidate]
   return { document, features: [feature], geometry }
 }
 describe("captured exact extrusion end preparation", () => {
+  it("resolves shared v8 dynamic support independently along each sketch normal", () => {
+    const value = extrusionFeatureParametersV8Schema.parse(parameters)
+    const record = featureRecordSchema.parse({
+      ...feature,
+      type: extrusionFeatureTypeV8.type,
+      parameters: value,
+    })
+    expect(prepareExtrusionEndContent(record, value, context(), frame)).toMatchObject({
+      ok: true,
+      distance: 13.01,
+    })
+    const perpendicular = {
+      origin: [-10, 0, 0] as [number, number, number],
+      xAxis: [0, 1, 0] as [number, number, number],
+      yAxis: [0, 0, 1] as [number, number, number],
+      normal: [1, 0, 0] as [number, number, number],
+    }
+    expect(prepareExtrusionEndContent(record, value, context(), perpendicular)).toMatchObject({
+      ok: true,
+      distance: 12.01,
+    })
+    const faceEnd = extrusionFeatureParametersV8Schema.parse({
+      ...value,
+      endCondition: { kind: "up-to-face", targetBody: body, sourceContentHash: hash, face },
+    })
+    expect(prepareExtrusionEndContent(record, faceEnd, context(), perpendicular)).toEqual({
+      ok: false,
+    })
+  })
+
   it("prepares v7 curved endpoints without invented plane data and rejects ambiguous or stale bodies", () => {
     const curvedSignature = topologySignatureSchema.parse({
       kind: "face",

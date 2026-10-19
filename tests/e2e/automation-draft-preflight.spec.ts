@@ -16,7 +16,11 @@ test("reports a forward History dependency before geometry or Apply and preserve
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const result = await page.evaluate(

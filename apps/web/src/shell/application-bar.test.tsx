@@ -184,6 +184,7 @@ it("keeps File blocked after save failure while allowing unit retry only without
   await userEvent.keyboard("{Escape}")
   await userEvent.click(screen.getByRole("button", { name: "Application menu" }))
   await userEvent.click(screen.getByRole("menuitem", { name: "Settings…" }))
+  await userEvent.click(screen.getByRole("tab", { name: "Project units" }))
   const units = screen.getByRole("combobox", { name: "Length unit" }) as HTMLSelectElement
   expect(units.disabled).toBe(false)
   work.active.mockReturnValue("automation-busy")
@@ -240,6 +241,29 @@ function renderHeader(
   const result = render(element())
   return { ...result, refresh: () => result.rerender(element()) }
 }
+
+it("keeps the saved idle status quiet while announcing loading, saving, and failure", () => {
+  const header = renderHeader()
+  const status = screen.getByRole("status", { name: "Project save status" })
+  expect(status.textContent).toBe("Saved")
+  expect(status.classList.contains("sr-only")).toBe(true)
+  expect(status.classList.contains("sm:not-sr-only")).toBe(false)
+  expect(header.container.querySelector("[data-saving] svg")).toBeNull()
+  header.unmount()
+  const loading = renderHeader(undefined, undefined, false, { status: "loading", report: null })
+  expect(screen.getByText("Opening local document…")).toBeTruthy()
+  loading.unmount()
+  const saving = renderHeader(undefined, undefined, false, { saveStatus: "saving" })
+  expect(screen.getByText("Saving…")).toBeTruthy()
+  expect(
+    screen.getByRole("status", { name: "Project save status" }).classList.contains("sr-only"),
+  ).toBe(true)
+  expect(saving.container.querySelector("[data-saving] svg")).not.toBeNull()
+  saving.unmount()
+  const failed = renderHeader(undefined, undefined, false, { saveStatus: "save-error" })
+  expect(screen.getByText("Could not save")).toBeTruthy()
+  expect(failed.container.querySelector("[data-saving] svg")).toBeNull()
+})
 
 it("reports an unavailable project instead of a saved document after opening fails", () => {
   renderHeader(undefined, undefined, false, { status: "error", report: null })

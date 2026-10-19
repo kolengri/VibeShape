@@ -16,5 +16,8 @@
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*"
+  },
+  "exports": {
+    "./native": "./src/native.ts"
   }
 }

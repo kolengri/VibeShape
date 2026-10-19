@@ -438,9 +438,14 @@ sketch undo entry. In Normal to sketch, Standard views and Fit remain disabled u
 Orbit 3D view activates the 3D camera. Finish, Cancel, and a later sketch session restore ordinary
 editing defaults.
 
-**Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
-control group beside the standard-view selector. Its button highlights an active section; the panel
-closes with Escape and returns focus to its trigger.
+The **Section view** icon beside the standard-view selector opens enable, plane, offset, and flip
+controls. Its accessible name and tooltip identify the icon, and its active state remains visible.
+Drag the plane's viewport handle along its projected normal to change the same offset; numeric input
+is the keyboard equivalent. Pointer capture prevents accidental orbiting, and Escape or pointer
+cancellation restores the starting offset. Closed render meshes receive derived solid cut caps with
+hole preservation. Open, nonmanifold, intersecting, or over-budget contours conservatively omit caps.
+Sectioning changes no authored geometry, revision, or export. Closing the control panel returns focus
+to its trigger.
 
 ## FDM tools
 

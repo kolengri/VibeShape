@@ -3,10 +3,17 @@ import {
   assemblyDraftPreviewSchema,
   assemblyDraftStateSchema,
   assemblyInspectionViewSchema,
+  assemblyMotionSamplesViewSchema,
 } from "@vibeshape/automation-api/assembly-tools"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import { applyVersionedDocumentCommand } from "@vibeshape/domain"
-import { captureAssemblyDefinition } from "@vibeshape/domain/assembly-authority"
+import {
+  applyCapturedAssemblyMutations,
+  assemblyMotionStudySchema,
+  captureAssemblyDefinition,
+  projectAssemblyAuthority,
+} from "@vibeshape/domain/assembly-authority"
+import { solveAssemblyKinematics } from "@vibeshape/domain/assembly-kinematics"
 import {
   assemblyLibraryItemSchema,
   assemblyLibraryVersionSchema,
@@ -14,7 +21,7 @@ import {
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import { applyDocumentUpgradeV2Command } from "@vibeshape/domain/document-v2-migration"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
-import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
+import { type DocumentSnapshotV4, documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4Command } from "@vibeshape/domain/document-v4-commands"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
@@ -246,6 +253,226 @@ async function draft(fixture: ReturnType<typeof setup>) {
     ),
   )
 }
+function motionFixture() {
+  const f = setup()
+  let authority: DocumentSnapshotV4 = documentSnapshotV4Schema.parse({
+    ...f.read(),
+    assembly: {
+      schemaVersion: 1,
+      definitions: [f.definition],
+      instances: [
+        {
+          schemaVersion: 1,
+          id: id(70),
+          definitionId: f.definition.id,
+          name: "Ground",
+          grounded: true,
+          worldFrame: pose,
+        },
+        {
+          schemaVersion: 1,
+          id: id(71),
+          definitionId: f.definition.id,
+          name: "Arm",
+          grounded: false,
+        },
+      ],
+      joints: [
+        {
+          schemaVersion: 1,
+          id: id(72),
+          kind: "revolute",
+          parentInstanceId: id(70),
+          childInstanceId: id(71),
+          parentFrame: pose,
+          childFrame: pose,
+          axis: [0, 0, 1],
+          value: 0,
+          limits: { min: -2, max: 2 },
+        },
+      ],
+    },
+  })
+  const study = assemblyMotionStudySchema.parse({
+    schemaVersion: 1,
+    id: id(73),
+    name: "Quarter turn",
+    duration: 2,
+    tracks: [
+      {
+        id: id(74),
+        jointId: id(72),
+        coordinate: "angle",
+        keys: [
+          { time: 0, value: 0 },
+          { time: 2, value: Math.PI / 2 },
+        ],
+      },
+    ],
+  })
+  const solve: AssemblySessionConfiguration["preview"] = async (changes, revision) => {
+    const assembly = applyCapturedAssemblyMutations(authority.assembly, changes, {
+      allowNoop: true,
+    })
+    const solved = solveAssemblyKinematics(projectAssemblyAuthority(assembly))
+    if (!solved.ok) return localFailure("assembly-operation-failed", solved.diagnostic.message)
+    return {
+      ok: true,
+      value: assemblyInspectionViewSchema.parse({
+        schemaVersion: 1,
+        documentId: authority.id,
+        revision,
+        interference: [],
+        occurrences: solved.instances.map((instance) => ({
+          instanceId: instance.instanceId,
+          definitionId: f.definition.id,
+          pinRevision: 1,
+          sourceIndex: 0,
+          selectedBody: f.definition.pinnedModels[0]?.selectedBody,
+          contentHash: "a".repeat(64),
+          representation: "exact-solid",
+          geometryFrame: instance.geometryFrame,
+          bounds: { min: [0, 0, 0], max: [10, 20, 30] },
+        })),
+      }),
+    }
+  }
+  const preview = vi.fn(solve),
+    commit = vi.fn<AssemblySessionConfiguration["commit"]>(async (input) => {
+      const result = applyDocumentV4Command(authority, {
+        documentId: authority.id,
+        commandId: id(900 + authority.revision),
+        baseRevision: input.baseRevision,
+        issuedAt: new Date(started).toISOString(),
+        actor: input.actor,
+        schemaVersion: 4,
+        kind: "org.vibeshape.document.assembly-command",
+        payload: { changes: input.changes },
+      })
+      if (!result.ok) return localFailure("assembly-operation-failed", result.diagnostic.message)
+      authority = result.snapshot
+      return { ok: true, value: { revision: authority.revision } }
+    })
+  const session = createAssemblyAutomationSession({
+    ...f.configuration,
+    readSnapshot: () => authority,
+    preview,
+    commit,
+  })
+  return {
+    session,
+    study,
+    preview,
+    commit,
+    review: f.review,
+    solve,
+    read: () => authority,
+    advance: () => {
+      authority = { ...authority, revision: authority.revision + 1 }
+    },
+  }
+}
+describe("owned motion study automation", () => {
+  it("requires ordinary draft review to save a study without applying its pose, then samples actual solved poses and traces", async () => {
+    const f = motionFixture(),
+      baseline = f.read().assembly.joints
+    const created = assemblyDraftStateSchema.parse(
+      success(
+        await f.session.execute(actor, {
+          tool: "create_assembly_draft",
+          arguments: { baseRevision: 5 },
+        }),
+      ),
+    )
+    const staged = assemblyDraftStateSchema.parse(
+      success(
+        await f.session.execute(actor, {
+          tool: "create_assembly_motion_study",
+          arguments: { ...args(created), study: f.study },
+        }),
+      ),
+    )
+    expect(f.read().assembly.motionStudies).toBeUndefined()
+    expect(
+      await f.session.execute(actor, { tool: "commit_assembly_draft", arguments: args(staged) }),
+    ).toMatchObject({ ok: true, value: { revision: 6 } })
+    expect(f.review).toHaveBeenCalledTimes(1)
+    expect(f.commit).toHaveBeenCalledTimes(1)
+    expect(f.read().assembly.joints).toEqual(baseline)
+    f.preview.mockClear()
+    const sampled = assemblyMotionSamplesViewSchema.parse(
+      success(
+        await f.session.execute(actor, {
+          tool: "sample_assembly_motion_study",
+          arguments: {
+            revision: 6,
+            studyId: f.study.id,
+            sampleCount: 3,
+            reverse: true,
+            instanceIds: [id(71)],
+            trace: { instanceId: id(71), sourceIndex: 0, point: [1, 0, 0] },
+          },
+        }),
+      ),
+    )
+    expect(sampled.samples.map(({ timeSeconds }) => timeSeconds)).toEqual([2, 1, 0])
+    expect(sampled.samples[0]?.tracePointMm?.[0]).toBeCloseTo(0, 12)
+    expect(sampled.samples[0]?.tracePointMm?.[1]).toBeCloseTo(1, 12)
+    expect(sampled.samples[2]?.tracePointMm).toEqual([1, 0, 0])
+    expect(f.preview).toHaveBeenCalledTimes(3)
+    expect(f.read().revision).toBe(6)
+    expect(f.commit).toHaveBeenCalledTimes(1)
+  })
+  it("returns no partial sample result after cancellation or a revision change", async () => {
+    const f = motionFixture()
+    const created = assemblyDraftStateSchema.parse(
+      success(
+        await f.session.execute(actor, {
+          tool: "create_assembly_draft",
+          arguments: { baseRevision: 5 },
+        }),
+      ),
+    )
+    const staged = assemblyDraftStateSchema.parse(
+      success(
+        await f.session.execute(actor, {
+          tool: "create_assembly_motion_study",
+          arguments: { ...args(created), study: f.study },
+        }),
+      ),
+    )
+    success(
+      await f.session.execute(actor, { tool: "commit_assembly_draft", arguments: args(staged) }),
+    )
+    const operation = {
+      tool: "sample_assembly_motion_study",
+      arguments: { revision: 6, studyId: f.study.id, sampleCount: 3, instanceIds: [id(71)] },
+    }
+    f.preview.mockImplementationOnce(async (changes, revision, blobs) => {
+      const result = await f.solve(changes, revision, blobs)
+      f.advance()
+      return result
+    })
+    expect(await f.session.execute(actor, operation)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-revision" },
+    })
+    const abort = new AbortController()
+    f.preview.mockImplementationOnce(async (changes, revision, blobs) => {
+      const result = await f.solve(changes, revision, blobs)
+      abort.abort()
+      return result
+    })
+    expect(
+      await f.session.execute(
+        actor,
+        { ...operation, arguments: { ...operation.arguments, revision: 7 } },
+        abort.signal,
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "session-revoked" } })
+    expect(f.commit).toHaveBeenCalledTimes(1)
+  })
+})
 const args = (state: ReturnType<typeof assemblyDraftStateSchema.parse>) => ({
   draftId: state.draftId,
   baseRevision: state.baseRevision,

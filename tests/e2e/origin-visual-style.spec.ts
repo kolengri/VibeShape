@@ -77,7 +77,11 @@ for (const theme of ["light", "dark"] as const) {
   test(`keeps idle origin planes restrained and selectable in ${theme} theme`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page

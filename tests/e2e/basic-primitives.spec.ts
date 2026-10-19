@@ -16,7 +16,11 @@ for (const primitive of primitives) {
     page,
   }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await invokeModelCommand(page, "Primitives", primitive.name)
@@ -58,7 +62,11 @@ for (const primitive of primitives) {
       .getByRole("button", { name: `Update ${primitive.name.toLowerCase()}`, exact: true })
       .click()
     await expect(editForm).not.toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.reload()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     await treeItem.click()

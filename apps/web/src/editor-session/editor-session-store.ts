@@ -46,6 +46,7 @@ import {
   type SketchEditorTool,
 } from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "../shell/workspace"
+import type { PartVisibilityOverrides } from "./part-visibility"
 import type { SketchVisibilityOverrides } from "./sketch-visibility"
 
 function clearFeatureSelection(state: Draft<EditorSessionState>, featureId: FeatureId) {
@@ -86,6 +87,7 @@ export type EditorSessionState = Readonly<{
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
   sketchVisibilityOverrides: SketchVisibilityOverrides
+  partVisibilityOverrides: PartVisibilityOverrides
   originPlaneVisibility: ViewerOriginPlaneVisibility
   preselectedBody: ModelBodySelection | null
   selectedBody: ModelBodySelection | null
@@ -130,6 +132,8 @@ export type EditorSessionActions = Readonly<{
   selectSketchSupport: (support: SelectedSketchSupport) => void
   setCommandPaletteOpen: (open: boolean) => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
+  setPartVisibilityOverride: (partId: PartId, visible: boolean) => void
+  clearPartVisibilityOverride: (partId: PartId) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setSelectedOriginPlane: (plane: ViewerOriginPlane | null) => void
   setBodyPreselection: (body: ModelBodySelection | null) => void
@@ -198,6 +202,7 @@ function createEditorSessionState(overrides: SketchVisibilityOverrides): EditorS
       .filter((id) => !overrides[id])
       .map((id) => sketchIdSchema.parse(id)),
     sketchVisibilityOverrides: overrides,
+    partVisibilityOverrides: {},
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     preselectedBody: null,
     selectedBody: null,
@@ -527,6 +532,19 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
               ? state.hiddenFeatureIds.filter((id) => id !== featureId)
               : [...new Set([...state.hiddenFeatureIds, featureId])]
             if (!visible) clearFeatureSelection(state, featureId)
+          }),
+        setPartVisibilityOverride: (partId, visible) =>
+          set((state) => {
+            state.partVisibilityOverrides[partId] = visible
+            if (!visible && state.selectedPartId === partId) {
+              state.selectedPartId = null
+              state.selection = null
+              state.selectedBody = null
+            }
+          }),
+        clearPartVisibilityOverride: (partId) =>
+          set((state) => {
+            delete state.partVisibilityOverrides[partId]
           }),
         setBodyPreselection: (body) =>
           set((state) => {

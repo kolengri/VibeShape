@@ -6,6 +6,7 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
+    "./local-host": "./src/local-host.ts",
     "./development-plugin": "./src/development-plugin.ts",
     "./static-editor": "./src/static-editor.ts"
   },

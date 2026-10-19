@@ -5,7 +5,11 @@ test("keeps the Extrude preview visible above the compact parameter panel", asyn
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 800, height: 900 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible({
     timeout: 30_000,
   })
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })

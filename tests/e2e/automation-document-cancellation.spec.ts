@@ -35,7 +35,11 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
   test(cases[mode], async ({ page }) => {
     test.setTimeout(180_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
 
@@ -205,7 +209,11 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
       expect(result.committed).toMatchObject({ ok: false, diagnostic: { code: "stale-revision" } })
       await expect(page.getByText("Human update", { exact: true })).toBeVisible()
       await page.reload()
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await expect(page.getByText("Human update", { exact: true })).toBeVisible()
       await expect(page.getByRole("treeitem", { name: "AI box", exact: true })).toHaveCount(0)
       await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(

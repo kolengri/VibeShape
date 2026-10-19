@@ -12,6 +12,10 @@ import { ChevronDown, CircleAlert, Cuboid, Eye, EyeOff } from "@vibeshape/ui/com
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useEffect, useState } from "react"
+import {
+  effectivePartVisibility,
+  type PartVisibilityControl,
+} from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { selectedAuthoredBody } from "./authored-tree-state"
@@ -29,6 +33,9 @@ type PartsProps = {
   revision: number
   selectedPartId: PartId | null
   disabled: boolean
+  visibility?: PartVisibilityControl | undefined
+  presentationOnlyVisibility?: boolean | undefined
+  visibilityDisabled?: boolean | undefined
   selectionRequiresBody?: boolean | undefined
   onSelect: (partId: PartId) => void
   onPreselect?: ((body: ModelBodySelection | null) => void) | undefined
@@ -76,6 +83,45 @@ function AuthoredPartStatus({
   )
 }
 
+function PartVisibilityButton({
+  name,
+  visible,
+  controls,
+  onToggle,
+}: {
+  name: string
+  visible: boolean
+  controls: Pick<
+    PartsProps,
+    "visibilityDisabled" | "disabled" | "presentationOnlyVisibility" | "visibility"
+  >
+  onToggle: () => Promise<void>
+}) {
+  const t = useTranslations("app.authoredTree")
+  const label = t(visible ? "hidePart" : "showPart", { name })
+  const disabled =
+    (controls.visibilityDisabled ?? controls.disabled) ||
+    (controls.presentationOnlyVisibility && !controls.visibility)
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          disabled={disabled}
+          aria-label={label}
+          aria-pressed={visible}
+          onClick={onToggle}
+        >
+          {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function AuthoredPartRow({
   resolved,
   ...props
@@ -84,17 +130,22 @@ function AuthoredPartRow({
   const { part, status } = resolved
   const [error, setError] = useState<string | null>(null)
   const selected = props.selectedPartId === part.id
-  const highlight = selectedAuthoredBody([resolved], part.id)
-  const visibilityLabel = t(part.visible ? "hidePart" : "showPart", { name: part.name })
+  const visible = effectivePartVisibility(part, props.visibility?.overrides)
+  const highlight = selectedAuthoredBody([resolved], part.id, props.visibility?.overrides)
   const toggleVisibility = async () => {
     setError(null)
+    if (props.presentationOnlyVisibility) {
+      props.visibility?.setOverride(part.id, !visible)
+      return
+    }
     try {
       const result = await props.onCommit(props.revision, {
         kind: "part.set-visibility",
         partId: part.id,
-        visible: !part.visible,
+        visible: !visible,
       })
-      if (!result.ok)
+      if (result.ok) props.visibility?.clearOverride(part.id)
+      else
         setError(
           t(
             result.diagnostic.sourceCode === "stale-revision"
@@ -117,7 +168,7 @@ function AuthoredPartRow({
         data-part-id={part.id}
         data-feature-id={highlight?.featureId}
         data-part-status={status}
-        data-part-visible={part.visible}
+        data-part-visible={visible}
         onPointerEnter={() => props.onPreselect?.(highlight)}
         onPointerLeave={() => props.onPreselect?.(null)}
       >
@@ -147,22 +198,12 @@ function AuthoredPartRow({
             disabled={props.disabled}
             onCommit={props.onCommit}
           />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                disabled={props.disabled}
-                aria-label={visibilityLabel}
-                aria-pressed={part.visible}
-                onClick={toggleVisibility}
-              >
-                {part.visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{visibilityLabel}</TooltipContent>
-          </Tooltip>
+          <PartVisibilityButton
+            name={part.name}
+            visible={visible}
+            controls={props}
+            onToggle={toggleVisibility}
+          />
         </div>
         <AuthoredPartStatus
           partId={part.id}

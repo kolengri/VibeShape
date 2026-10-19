@@ -10,7 +10,7 @@ import {
   openApplicationMenuItem,
   openAutoApplySetup,
 } from "./application-menu-support"
-import { expect, test } from "./fixtures"
+import { createEditorProject, expect, test } from "./fixtures"
 
 test.use({ actionTimeout: 15_000 })
 
@@ -93,7 +93,11 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
   const toolbar = page.getByRole("toolbar", { name: "Model commands" })
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     expect(await call(local, "model_info", {})).toMatchObject({
@@ -259,7 +263,11 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
       diagnostic: { code: "not-paired" },
     })
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(
@@ -302,7 +310,11 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     await openApplicationMenuItem(page, "Files and projects…")
     await expect(page.getByRole("button", { name: "New project", exact: true })).toBeEnabled()
     await page.getByRole("button", { name: "New project", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toHaveCount(0)
@@ -327,7 +339,12 @@ recoveryTest(
     let local = await createMcpTestClient(port, undefined, { recoveryDirectory: directory })
     try {
       await page.goto(local.origin)
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await createEditorProject(page)
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await enableLocalAi(page)
       await enableAutoApply(page)
       const before = await boxDraft(local, 100, "Before restart")
@@ -364,7 +381,11 @@ recoveryTest(
       ).toHaveCount(0)
       await page.getByRole("button", { name: "Stop AI", exact: true }).click()
       await page.reload()
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
       await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toHaveCount(0)
       expect(await call(local, "model_info", {})).toMatchObject({
         ok: false,

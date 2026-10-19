@@ -10,12 +10,18 @@ import {
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
+import { ApiAssistantProvider } from "./assistant/api-assistant-provider"
+import { BrowserProjectAssistant } from "./assistant/browser-project-assistant"
+import { getNativeAssistant } from "./assistant/native-assistant-bridge"
+import { NativeProjectAssistant } from "./assistant/native-project-assistant"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { editorCommandIds, type ResolvedEditorCommand } from "./commands/editor-command"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
+import { getDesktopHost } from "./desktop/desktop-host"
 import {
   addSketch,
   createBrowserSketchConstraintId,
@@ -24,10 +30,12 @@ import {
   redoDocument,
   saveSketchEdits,
   setHistoryInsertionPoint,
+  showProjectLibrary,
   undoDocument,
   useDocumentController,
 } from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
+import { DocumentProjectDialog } from "./document/document-project-dialog"
 import { ProjectNavigationNotice } from "./document/project-navigation-notice"
 import {
   EditorSessionProvider,
@@ -72,6 +80,8 @@ import { SketchToolbarPortalsProvider } from "./features/sketch/sketch-toolbar-p
 import { useSketchTextApplication } from "./features/sketch/text/text-application"
 import { SketchTextActionsProvider } from "./features/sketch/text/text-context"
 import { SketchTextDialog } from "./features/sketch/text/text-dialog"
+import { PROJECT_EDITOR_PANEL_ID, ProjectTabs, projectTabId } from "./project-tabs/project-tabs"
+import { ProjectTabsProvider } from "./project-tabs/project-tabs-provider"
 import { ApplicationBar } from "./shell/application-bar"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
 import { AutomationConnectionsProvider, AutomationEditorScope } from "./shell/automation-status"
@@ -603,6 +613,7 @@ type EditorApplicationSession = Pick<
   | "commandPaletteOpen"
   | "extrusionDistanceRequest"
   | "hiddenFeatureIds"
+  | "partVisibilityOverrides"
   | "sketchVisibilityOverrides"
   | "originPlaneVisibility"
   | "preselectedBody"
@@ -624,6 +635,7 @@ function useEditorApplicationSession() {
       commandPaletteOpen: state.commandPaletteOpen,
       extrusionDistanceRequest: state.extrusionDistanceRequest,
       hiddenFeatureIds: state.hiddenFeatureIds,
+      partVisibilityOverrides: state.partVisibilityOverrides,
       sketchVisibilityOverrides: state.sketchVisibilityOverrides,
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
@@ -811,6 +823,11 @@ function EditorWorkspaceComposition({
       controller={controller}
       extrusionDistanceRequest={session.extrusionDistanceRequest}
       hiddenFeatureIds={session.hiddenFeatureIds}
+      partVisibility={{
+        overrides: session.partVisibilityOverrides,
+        setOverride: sessionActions.setPartVisibilityOverride,
+        clearOverride: sessionActions.clearPartVisibilityOverride,
+      }}
       hiddenSketchIds={hiddenSketchIds}
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
@@ -854,7 +871,11 @@ function useAuthoredEditorSession(controller: ReturnType<typeof useDocumentContr
   return storedSession.selectedPartId
     ? {
         ...storedSession,
-        selectedBody: selectedAuthoredBody(authoredParts, storedSession.selectedPartId),
+        selectedBody: selectedAuthoredBody(
+          authoredParts,
+          storedSession.selectedPartId,
+          storedSession.partVisibilityOverrides,
+        ),
       }
     : storedSession
 }
@@ -912,9 +933,40 @@ function lightweightingWorkspaceActive(session: EditorApplicationSession) {
   )
 }
 
+function useProjectAssistant(controller: ReturnType<typeof useDocumentController>) {
+  const t = useTranslations("app.assistant")
+  const [open, setOpen] = useState(false)
+  const bridge = getNativeAssistant()
+  const close = () => setOpen(false)
+  return {
+    toggle: (
+      <Button size="xs" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {t("title")}
+      </Button>
+    ),
+    panel: bridge ? (
+      <NativeProjectAssistant bridge={bridge} controller={controller} open={open} onClose={close} />
+    ) : (
+      <BrowserProjectAssistant controller={controller} open={open} onClose={close} />
+    ),
+  }
+}
+
+function assemblySwitchDisabled(
+  controller: ReturnType<typeof useDocumentController>,
+  session: ReturnType<typeof useAuthoredEditorSession>,
+) {
+  return (
+    controller.status !== "ready" ||
+    controller.saveStatus === "saving" ||
+    Boolean(session.activePartDesignTool || session.sketch.activeSketchTool)
+  )
+}
+
 function EditorApplication({
   controller,
 }: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
+  const assistant = useProjectAssistant(controller)
   const session = useAuthoredEditorSession(controller)
   const sessionActions = useEditorSession((state) => state.actions)
   const workspaceActions = useEditorWorkspaceActions(controller)
@@ -988,25 +1040,27 @@ function EditorApplication({
     </LightweightingWorkspace>
   )
   return (
-    <main className="cad-shell bg-background text-[13px] text-foreground">
+    <main
+      className="cad-shell bg-background text-[13px] text-foreground"
+      data-window-chrome={getDesktopHost()?.windowChrome}
+    >
       <ApplicationBar
         controller={controller}
+        projectNavigation={<LocalizedProjectTabs controller={controller} />}
         hideModelExport={assemblyMode.active}
         onOpenShortcutHelp={shortcutHelp.show}
         onOpenCommandPalette={(returnFocusTarget) =>
           commandPaletteFocus.setOpen(true, returnFocusTarget)
         }
       >
+        {assistant.toggle}
         <AssemblyModeSwitch
           active={assemblyMode.active}
-          disabled={
-            controller.status !== "ready" ||
-            controller.saveStatus === "saving" ||
-            Boolean(session.activePartDesignTool || session.sketch.activeSketchTool)
-          }
+          disabled={assemblySwitchDisabled(controller, session)}
           onChange={assemblyMode.onChange}
         />
       </ApplicationBar>
+      {assistant.panel}
       <ShortcutHelpDialog
         commands={commands}
         open={shortcutHelp.open}
@@ -1026,24 +1080,35 @@ function EditorApplication({
         returnFocusRef={sketchShortcutReturnFocusRef}
         onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
       />
-      <SketchTextActionsProvider actions={textDialog.actions}>
-        <SketchToolbarPortalsProvider>
-          <CommandToolbar commands={commands} />
-          <AssemblyContent
-            active={assemblyMode.active}
-            controller={controller}
-            selectedPartId={session.selectedPartId}
-          >
-            {modelWorkspace}
-          </AssemblyContent>
-        </SketchToolbarPortalsProvider>
-        <SketchTextDialog
-          target={textDialog.target}
-          getDraft={textDialog.getDraft}
-          onDraftChange={textDialog.commitDraft}
-          onClose={textDialog.close}
-        />
-      </SketchTextActionsProvider>
+      <div
+        className="contents"
+        id={PROJECT_EDITOR_PANEL_ID}
+        role="tabpanel"
+        aria-labelledby={
+          controller.report ? projectTabId(controller.report.snapshot.id) : undefined
+        }
+      >
+        <SketchTextActionsProvider actions={textDialog.actions}>
+          <SketchToolbarPortalsProvider>
+            <CommandToolbar commands={commands} />
+            <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
+              <AssemblyContent
+                active={assemblyMode.active}
+                controller={controller}
+                selectedPartId={session.selectedPartId}
+              >
+                {modelWorkspace}
+              </AssemblyContent>
+            </div>
+          </SketchToolbarPortalsProvider>
+          <SketchTextDialog
+            target={textDialog.target}
+            getDraft={textDialog.getDraft}
+            onDraftChange={textDialog.commitDraft}
+            onClose={textDialog.close}
+          />
+        </SketchTextActionsProvider>
+      </div>
       <StatusBar
         selectedBody={session.selectedBody}
         controller={controller}
@@ -1066,16 +1131,54 @@ export function App() {
       <ViewerPreferencesProvider>
         <WorkspaceLayoutPreferencesProvider>
           <AutomationConnectionsProvider controller={controller}>
-            <EditorSessionProvider
-              key={controller.report?.snapshot.id ?? "loading"}
-              documentId={controller.report?.snapshot.id}
-            >
-              <AutomationEditorScope />
-              <EditorApplication controller={controller} />
-            </EditorSessionProvider>
+            <ApiAssistantProvider>
+              <ProjectTabsProvider>
+                {controller.status === "ready" ? (
+                  <EditorSessionProvider
+                    key={controller.report?.snapshot.id ?? "loading"}
+                    documentId={controller.report?.snapshot.id}
+                  >
+                    <AutomationEditorScope />
+                    <EditorApplication controller={controller} />
+                  </EditorSessionProvider>
+                ) : (
+                  <DocumentProjectDialog
+                    controller={controller}
+                    presentation="page"
+                    open
+                    showTrigger={false}
+                  />
+                )}
+              </ProjectTabsProvider>
+            </ApiAssistantProvider>
           </AutomationConnectionsProvider>
         </WorkspaceLayoutPreferencesProvider>
       </ViewerPreferencesProvider>
     </DocumentDisplayUnitsProvider>
+  )
+}
+
+function LocalizedProjectTabs({
+  controller,
+}: {
+  controller: ReturnType<typeof useDocumentController>
+}) {
+  const t = useTranslations("app.projectTabs")
+  return (
+    <ProjectTabs
+      controller={controller}
+      onOpenProjects={showProjectLibrary}
+      className="min-w-0 flex-1"
+      copy={{
+        label: t("label"),
+        newProject: t("newProject"),
+        openProjects: t("openProjects"),
+        closeProject: (name) => t("closeProject", { name }),
+        blocked: t("blocked"),
+        switchFailed: t("switchFailed"),
+        listFailed: t("listFailed"),
+        storageFailed: t("storageFailed"),
+      }}
+    />
   )
 }

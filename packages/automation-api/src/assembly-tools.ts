@@ -5,6 +5,11 @@ import {
   assemblyJointIdSchema,
   assemblyRigidPoseSchema,
 } from "@vibeshape/domain/assembly"
+import {
+  assemblyMotionStudiesSchema,
+  assemblyMotionStudyIdSchema,
+  assemblyMotionStudySchema,
+} from "@vibeshape/domain/assembly-authority"
 import { assemblyLibraryBindingSchema } from "@vibeshape/domain/assembly-library"
 import {
   assemblyInstanceRecordSchema,
@@ -58,6 +63,42 @@ export const assemblyInspectionArgumentsSchema = z
   )
 
 export const assemblyToolInputs = {
+  create_assembly_motion_study: z
+    .object({ ...assemblyDraftArguments, study: assemblyMotionStudySchema })
+    .strict(),
+  update_assembly_motion_study: z
+    .object({ ...assemblyDraftArguments, study: assemblyMotionStudySchema })
+    .strict(),
+  remove_assembly_motion_study: z
+    .object({ ...assemblyDraftArguments, studyId: assemblyMotionStudyIdSchema })
+    .strict(),
+  sample_assembly_motion_study: z
+    .object({
+      revision: revisionSchema,
+      studyId: assemblyMotionStudyIdSchema,
+      sampleCount: z.number().int().min(2).max(64).default(13),
+      reverse: z.boolean().default(false),
+      instanceIds: z.array(assemblyInstanceIdSchema).min(1).max(32),
+      trace: z
+        .object({
+          instanceId: assemblyInstanceIdSchema,
+          sourceIndex: z.number().int().min(0).max(255),
+          point: z.tuple([
+            z.number().finite().min(-100000).max(100000),
+            z.number().finite().min(-100000).max(100000),
+            z.number().finite().min(-100000).max(100000),
+          ]),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
+    .refine(
+      ({ instanceIds, trace }) =>
+        new Set(instanceIds).size === instanceIds.length &&
+        (!trace || instanceIds.includes(trace.instanceId)),
+      "Choose unique occurrences including the trace target.",
+    ),
   model_assembly: z.object({ revision: revisionSchema }).strict(),
   inspect_assembly: assemblyInspectionArgumentsSchema,
   create_assembly_draft: z.object({ baseRevision: revisionSchema }).strict(),
@@ -126,6 +167,7 @@ export const assemblyModelViewSchema = z
     definitions: z.array(assemblyDefinitionViewSchema).max(256),
     instances: z.array(assemblyInstanceRecordSchema).max(256),
     joints: z.array(assemblyJointRecordSchema).max(1024),
+    motionStudies: assemblyMotionStudiesSchema.optional(),
   })
   .strict()
 export const assemblyDraftStateSchema = z
@@ -256,6 +298,38 @@ export const assemblyDraftPreviewSchema = z
       draft.baseRevision === inspection.revision,
     "Assembly preview evidence must belong to the owned base revision.",
   )
+export const assemblyMotionSamplesViewSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    studyId: assemblyMotionStudyIdSchema,
+    samples: z
+      .array(
+        z
+          .object({
+            timeSeconds: z.number().finite().min(0).max(3600),
+            occurrences: z
+              .array(
+                z
+                  .object({
+                    instanceId: assemblyInstanceIdSchema,
+                    sourceIndex: z.number().int().min(0).max(255),
+                    geometryFrame: assemblyRigidPoseSchema,
+                  })
+                  .strict(),
+              )
+              .max(4096),
+            tracePointMm: z
+              .tuple([z.number().finite(), z.number().finite(), z.number().finite()])
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(64),
+  })
+  .strict()
 export const assemblyCommitViewSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -275,6 +349,30 @@ export const assemblyToolNames = Object.keys(
   assemblyToolInputs,
 ) as (keyof typeof assemblyToolInputs)[]
 export const assemblyOperations = [
+  z
+    .object({
+      tool: z.literal("create_assembly_motion_study"),
+      arguments: assemblyToolInputs.create_assembly_motion_study,
+    })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("update_assembly_motion_study"),
+      arguments: assemblyToolInputs.update_assembly_motion_study,
+    })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("remove_assembly_motion_study"),
+      arguments: assemblyToolInputs.remove_assembly_motion_study,
+    })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("sample_assembly_motion_study"),
+      arguments: assemblyToolInputs.sample_assembly_motion_study,
+    })
+    .strict(),
   z
     .object({ tool: z.literal("model_assembly"), arguments: assemblyToolInputs.model_assembly })
     .strict(),

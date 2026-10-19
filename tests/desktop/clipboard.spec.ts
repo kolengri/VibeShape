@@ -50,7 +50,9 @@ require(${JSON.stringify(join(root, "apps/desktop/dist/main.cjs"))});
   })
   try {
     const page = await native.firstWindow()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     await native.evaluate(async () => {
       await Reflect.get(globalThis, "desktopClipboardFixture").snapshot
     })

@@ -1,5 +1,6 @@
 import { assemblyLibraryItemSchema } from "@vibeshape/domain/assembly-library"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
+import type { z } from "zod"
 import {
   type AssemblyInspectionView,
   type AssemblyOperation,
@@ -9,6 +10,7 @@ import {
   assemblyDraftStateSchema,
   assemblyInspectionViewSchema,
   assemblyModelViewSchema,
+  assemblyMotionSamplesViewSchema,
   assemblyOperationSchema,
   assemblyToolInputs,
 } from "./assembly-tools"
@@ -155,10 +157,10 @@ function assemblyMatches(
   belongs: DocumentContext,
 ): boolean {
   switch (operation.tool) {
-    case "model_assembly": {
-      const view = assemblyModelViewSchema.parse(value)
-      return belongs(view.documentId) && view.revision === operation.arguments.revision
-    }
+    case "sample_assembly_motion_study":
+      return sampledStudyMatches(operation, value, belongs)
+    case "model_assembly":
+      return assemblyModelMatches(operation, value, belongs)
     case "inspect_assembly":
       return inspectionMatches(operation, value, belongs)
     case "create_assembly_draft":
@@ -172,6 +174,61 @@ function assemblyMatches(
     default:
       return changedDraftMatches(operation, value, belongs)
   }
+}
+function assemblyModelMatches(
+  operation: Extract<AssemblyOperation, { tool: "model_assembly" }>,
+  value: unknown,
+  belongs: DocumentContext,
+) {
+  const view = assemblyModelViewSchema.parse(value)
+  return belongs(view.documentId) && view.revision === operation.arguments.revision
+}
+function sampledStudyMatches(
+  operation: Extract<AssemblyOperation, { tool: "sample_assembly_motion_study" }>,
+  value: unknown,
+  belongs: DocumentContext,
+) {
+  const view = assemblyMotionSamplesViewSchema.parse(value),
+    input = operation.arguments
+  return (
+    belongs(view.documentId) &&
+    view.revision === input.revision &&
+    view.studyId === input.studyId &&
+    view.samples.length === input.sampleCount &&
+    motionSamplesMatch(view, input)
+  )
+}
+function motionSamplesMatch(
+  view: z.infer<typeof assemblyMotionSamplesViewSchema>,
+  input: Extract<AssemblyOperation, { tool: "sample_assembly_motion_study" }>["arguments"],
+) {
+  const endpoint = input.reverse ? view.samples.at(-1) : view.samples[0]
+  if (endpoint?.timeSeconds !== 0) return false
+  return view.samples.every((sample, index) => {
+    const previous = view.samples[index - 1]
+    if (
+      previous &&
+      (input.reverse
+        ? sample.timeSeconds >= previous.timeSeconds
+        : sample.timeSeconds <= previous.timeSeconds)
+    )
+      return false
+    const identities = sample.occurrences.map(
+      ({ instanceId, sourceIndex }) => `${instanceId}:${sourceIndex}`,
+    )
+    if (new Set(identities).size !== identities.length) return false
+    if (
+      input.instanceIds.some(
+        (id) => !sample.occurrences.some(({ instanceId }) => instanceId === id),
+      )
+    )
+      return false
+    if (sample.occurrences.some(({ instanceId }) => !input.instanceIds.includes(instanceId)))
+      return false
+    return input.trace === undefined
+      ? sample.tracePointMm === undefined
+      : sample.tracePointMm !== undefined
+  })
 }
 function versionMatches(
   operation: Extract<LibraryOperation, { tool: "library_version" }>,

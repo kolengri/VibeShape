@@ -6,9 +6,14 @@ import type { DocumentSnapshot } from "@vibeshape/domain"
 import { vi } from "../../../../tests/unit/support/bun-test"
 
 const ports = (() => ({
+  initializeRepository: vi.fn(),
   create: vi.fn(),
   open: vi.fn(),
   list: vi.fn(),
+  delete: vi.fn(),
+  copy: vi.fn(),
+  export: vi.fn(),
+  thumbnail: vi.fn(),
   review: vi.fn(),
   createAutomation: vi.fn(),
   disposeAutomation: vi.fn(),
@@ -28,9 +33,16 @@ mock.module("./authored-document-session", () => ({
 }))
 mock.module("./browser-project-repository", () => ({
   BrowserProjectRepository: class {
+    constructor() {
+      ports.initializeRepository()
+    }
     legacy = {}
     versioned = {}
     listProjects = ports.list
+    deleteProject = ports.delete
+    copyPortableProject = ports.copy
+    exportPortableProject = ports.export
+    copyProjectThumbnail = ports.thumbnail
   },
 }))
 const originalModule3 = { ...(await import("../automation/automation-review-controller")) }
@@ -132,6 +144,7 @@ let moduleRevision = 0
 beforeEach(() => {
   moduleRevision += 1
   vi.clearAllMocks()
+  ports.initializeRepository.mockImplementation(() => {})
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.stubGlobal("sessionStorage", createTestBrowserStorage())
   localStorage.setItem(storageKey, initialId)
@@ -149,7 +162,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function ready(document = snapshot()) {
+async function ready(
+  document = snapshot(),
+  library = false,
+  startup?: { url: string; status: "error" },
+) {
+  window.history.replaceState(
+    null,
+    "",
+    startup?.url ?? (library ? "/" : `/?project=${document.id}`),
+  )
   const projects = new Map<string, DocumentSnapshot>([
     [document.id, document],
     [targetId, snapshot(targetId, "Existing project")],
@@ -171,7 +193,7 @@ async function ready(document = snapshot()) {
     if (!stored) throw new Error("Unexpected project open.")
     return persistedSession(stored)
   })
-  ports.open.mockResolvedValueOnce(source)
+  if (!library) ports.open.mockResolvedValueOnce(source)
   ports.list.mockImplementation(async () => ({
     ok: true,
     value: [...projects.values()].map(({ id, name, revision }) => ({
@@ -186,11 +208,28 @@ async function ready(document = snapshot()) {
     projects.set(created.snapshot.id, created.snapshot)
     return persistedSession(created.snapshot)
   })
+  ports.delete.mockImplementation(async ({ documentId, expectedHeadRevision }) => {
+    const current = projects.get(documentId)
+    if (!current || current.revision !== expectedHeadRevision)
+      return { ok: false, diagnostic: { code: "stale-revision", message: "Project changed." } }
+    projects.delete(documentId)
+    return { ok: true }
+  })
+  ports.copy.mockImplementation(async (copied) => {
+    const document = copied.project.snapshot
+    projects.set(document.id, {
+      ...snapshot(document.id, document.name),
+      revision: document.revision,
+    })
+    return { ok: true, value: { documentId: document.id, revision: document.revision } }
+  })
   const controller = (await import(
     `./document-controller?test=${moduleRevision}`
   )) as typeof import("./document-controller")
   const hook = renderHook(() => controller.useDocumentController("Untitled"))
-  await waitFor(() => expect(hook.result.current.status).toBe("ready"))
+  await waitFor(() =>
+    expect(hook.result.current.status).toBe(startup?.status ?? (library ? "library" : "ready")),
+  )
   const expected = () => {
     const current = controller.getDocumentControllerState().report?.snapshot
     if (!current) throw new Error("Expected the current project.")
@@ -549,5 +588,264 @@ describe("in-place automation project management", () => {
     })
     expect(localStorage.getItem(storageKey)).toBe(initialId)
     expect(oldHandle.readIdentity()).toBeNull()
+  })
+})
+
+describe("sessionless project library", () => {
+  it("recovers an invalid deep link to the catalog only after explicit library recovery", async () => {
+    const { controller } = await ready(snapshot(), true, {
+      url: "/?project=invalid&theme=dark#library",
+      status: "error",
+    })
+    expect(controller.getDocumentControllerState().projectNavigationError).toBe(
+      "invalid-project-url",
+    )
+    expect(await controller.showProjectLibrary()).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "library",
+      projectNavigationError: null,
+      report: null,
+    })
+    expect(`${window.location.search}${window.location.hash}`).toBe("?theme=dark#library")
+    expect(await controller.listLocalProjects()).toMatchObject({ ok: true })
+    expect(ports.create).not.toHaveBeenCalled()
+    expect(ports.open).not.toHaveBeenCalled()
+  })
+
+  it("retries failed sessionless repository initialization without opening or creating a model", async () => {
+    ports.initializeRepository.mockImplementationOnce(() => {
+      throw new Error("Repository unavailable.")
+    })
+    const { controller } = await ready(snapshot(), true, { url: "/", status: "error" })
+    ports.initializeRepository.mockImplementationOnce(() => {
+      throw new Error("Repository still unavailable.")
+    })
+    expect(await controller.showProjectLibrary()).toMatchObject({
+      ok: false,
+      diagnostic: { code: "persistence-failed", retryable: true },
+    })
+    expect(controller.getDocumentControllerState().status).toBe("error")
+    expect(await controller.showProjectLibrary()).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState().status).toBe("library")
+    expect(await controller.listLocalProjects()).toMatchObject({ ok: true })
+    expect(ports.initializeRepository).toHaveBeenCalledTimes(3)
+    expect(ports.create).not.toHaveBeenCalled()
+    expect(ports.open).not.toHaveBeenCalled()
+  })
+
+  it("ignores the last project on bare startup and exposes the existing catalog without creating a document", async () => {
+    const { controller, projects } = await ready(snapshot(), true)
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "library",
+      report: null,
+      authoredSnapshot: null,
+    })
+    expect(ports.create).not.toHaveBeenCalled()
+    expect(ports.open).not.toHaveBeenCalled()
+    expect(projects.size).toBe(2)
+    expect(controller.createActiveDocumentAutomationSession()).toMatchObject({ ok: false })
+    expect(await controller.listLocalProjects()).toMatchObject({
+      ok: true,
+      projects: [{ documentId: initialId }, { documentId: targetId }],
+    })
+    ports.list.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: { code: "storage-unavailable", message: "Unavailable." },
+    })
+    expect(await controller.listLocalProjects()).toMatchObject({
+      ok: false,
+      diagnostic: { code: "storage-unavailable" },
+    })
+    expect(await controller.listLocalProjects()).toMatchObject({ ok: true })
+    expect(controller.getDocumentControllerState().status).toBe("library")
+  })
+  it("starts an empty browser in the library and creates a project only on explicit New", async () => {
+    localStorage.removeItem(storageKey)
+    const { controller, projects } = await ready(snapshot(), true)
+    expect(ports.create).not.toHaveBeenCalled()
+    expect(ports.open).not.toHaveBeenCalled()
+    expect(await controller.createNewLocalProject()).toEqual({ ok: true })
+    expect(ports.create).toHaveBeenCalledTimes(1)
+    const state = controller.getDocumentControllerState()
+    expect(state.status).toBe("ready")
+    expect(state.report?.snapshot.name).toBe("Untitled")
+    expect(projects.size).toBe(3)
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(
+      state.report?.snapshot.id ?? null,
+    )
+    expect(await controller.showProjectLibrary()).toEqual({ ok: true })
+    expect(ports.create).toHaveBeenCalledTimes(1)
+    expect(controller.getDocumentControllerState().report).toBeNull()
+    expect(new URL(window.location.href).searchParams.has("project")).toBe(false)
+    expect(await controller.activateLocalProject(targetId)).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(targetId)
+  })
+  it("opens an explicit project link while preserving guards before returning to the library", async () => {
+    const { controller, source, expected } = await ready()
+    expect(ports.open).toHaveBeenCalledTimes(1)
+    expect(ports.create).not.toHaveBeenCalled()
+    const captured = expected()
+    const factory = controller.createActiveDocumentAutomationSession()
+    if (!factory.ok) throw new Error("Expected active automation.")
+    const release = controller.registerProjectActionGuard(() => "editor-draft")
+    expect(await controller.showProjectLibrary()).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-action-blocked" },
+    })
+    release()
+    ports.review.mockReturnValue({ status: "ready" })
+    expect(await controller.showProjectLibrary()).toMatchObject({ ok: false })
+    expect(source.session.close).not.toHaveBeenCalled()
+    expect(ports.disposeAutomation).not.toHaveBeenCalled()
+    ports.review.mockReturnValue(null)
+    const cancelled = new AbortController()
+    cancelled.abort()
+    expect(await controller.showProjectLibrary(cancelled.signal)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "cancelled" },
+    })
+    expect(source.session.close).not.toHaveBeenCalled()
+    const closing = deferred<{ ok: true; value: undefined }>()
+    source.session.close.mockReturnValueOnce(closing.promise)
+    const pending = controller.showProjectLibrary()
+    expect(controller.getDocumentControllerState().saveStatus).toBe("saving")
+    expect(await controller.showProjectLibrary()).toMatchObject({ ok: false })
+    expect(ports.disposeAutomation).not.toHaveBeenCalled()
+    closing.resolve({ ok: true, value: undefined })
+    expect(await pending).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "library",
+      report: null,
+    })
+    expect(source.session.close).toHaveBeenCalledTimes(1)
+    expect(ports.disposeAutomation).toHaveBeenCalledTimes(1)
+    factory.dispose()
+    expect(ports.disposeAutomation).toHaveBeenCalledTimes(1)
+    expect(ports.create).not.toHaveBeenCalled()
+    expect(await controller.activateLocalProject(targetId, captured)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-revision" },
+    })
+  })
+  it("cancels a pending deep-link open from the library before publishing destination authority", async () => {
+    const { controller } = await ready(snapshot(), true)
+    const destination = openResult(snapshot(targetId))
+    const opening = deferred<ReturnType<typeof openResult>>()
+    ports.open.mockReturnValueOnce(opening.promise)
+    window.history.pushState(null, "", `/?project=${targetId}`)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+    await waitFor(() => expect(ports.open).toHaveBeenCalledTimes(1))
+    window.history.pushState(null, "", "/")
+    window.dispatchEvent(new PopStateEvent("popstate"))
+    opening.resolve(destination)
+    await waitFor(() =>
+      expect(controller.getDocumentControllerState()).toMatchObject({
+        status: "library",
+        saveStatus: "saved",
+        report: null,
+      }),
+    )
+    expect(destination.session.close).toHaveBeenCalledTimes(1)
+    expect(ports.create).not.toHaveBeenCalled()
+    expect(new URL(window.location.href).searchParams.has("project")).toBe(false)
+  })
+
+  it("recovers the saved editor if close or URL clearing fails", async () => {
+    const { controller, source, projects } = await ready()
+    source.session.close.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: {
+        code: "close-failed",
+        message: "Could not write clean marker.",
+        retryable: true,
+        sourceCode: "storage-unavailable",
+      },
+    })
+    expect(await controller.showProjectLibrary()).toMatchObject({
+      ok: false,
+      diagnostic: { code: "storage-unavailable" },
+    })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "ready",
+      report: { snapshot: { id: initialId } },
+    })
+    const sourceAfterRecovery = ports.open.mock.results.at(-1)?.value
+    const opened = await sourceAfterRecovery
+    expect(opened.ok).toBe(true)
+    const write = vi.spyOn(window.history, "pushState").mockImplementation(() => {
+      throw new Error("History unavailable.")
+    })
+    expect(await controller.showProjectLibrary()).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-url-unavailable" },
+    })
+    write.mockRestore()
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe<unknown>(initialId)
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
+    expect(projects.size).toBe(2)
+    expect(ports.create).not.toHaveBeenCalled()
+  })
+  it("imports and duplicates a replay-proven native backup in the library before explicitly opening it", async () => {
+    const { controller, projects } = await ready(snapshot(), true)
+    const { writeVShape } = await import("@vibeshape/formats/vshape")
+    const issuedAt = "2026-10-19T00:00:00.000Z"
+    const created = applyDocumentCommand(null, {
+      kind: "org.vibeshape.document.create",
+      schemaVersion: 1,
+      commandId: featureId,
+      documentId: targetId,
+      baseRevision: 0,
+      issuedAt,
+      actor: { type: "user", userId: null },
+      payload: { name: "Portable source" },
+    })
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const archive = await writeVShape({
+      snapshot: created.snapshot,
+      events: [created.event],
+      exportedAt: issuedAt,
+      createdBy: { application: "VibeShape", version: "test", build: null },
+      engine: null,
+    })
+    if (!archive.ok) throw new Error(archive.diagnostic.message)
+    const imported = await controller.importProjectBackup(
+      archive.value,
+      (name) => `${name} imported`,
+    )
+    if (!imported.ok) throw new Error(imported.diagnostic.message)
+    expect(imported.documentId).not.toBe<unknown>(targetId)
+    expect(projects.get(imported.documentId)?.name).toBe("Portable source imported")
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "library",
+      report: null,
+    })
+    expect(ports.open).not.toHaveBeenCalled()
+    expect(ports.create).not.toHaveBeenCalled()
+    const portable = ports.copy.mock.lastCall?.[0]
+    ports.export.mockResolvedValue({ ok: true, value: portable })
+    ports.thumbnail.mockResolvedValue({ ok: true })
+    expect(
+      await controller.duplicateLocalProject(imported.documentId, 2, "Independent copy"),
+    ).toMatchObject({ ok: true, name: "Independent copy" })
+    expect(ports.copy).toHaveBeenCalledTimes(2)
+    expect(projects.size).toBe(4)
+    expect(await controller.activateLocalProject(imported.documentId)).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(imported.documentId)
+    expect(ports.open).toHaveBeenCalledTimes(1)
+  })
+
+  it("deletes only the selected stored revision from the library", async () => {
+    const { controller, projects } = await ready(snapshot(), true)
+    expect(await controller.deleteLocalProject(targetId, 9)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-revision" },
+    })
+    expect(projects.has(targetId)).toBe(true)
+    expect(await controller.deleteLocalProject(targetId, 1)).toEqual({ ok: true })
+    expect(projects.has(targetId)).toBe(false)
+    expect(projects.has(initialId)).toBe(true)
+    expect(controller.getDocumentControllerState().status).toBe("library")
+    expect(ports.open).not.toHaveBeenCalled()
+    expect(ports.create).not.toHaveBeenCalled()
   })
 })

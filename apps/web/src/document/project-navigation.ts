@@ -23,6 +23,16 @@ export function projectRecoveryUrl(href: string) {
   return url.href
 }
 
+function navigationResultError(
+  result: { ok: true } | { ok: false; diagnostic: { code: string } },
+): ProjectNavigationError | null {
+  if (result.ok) return null
+  const code = result.diagnostic.code
+  return code === "document-not-found" || code === "project-action-blocked"
+    ? code
+    : "project-open-failed"
+}
+
 type NavigationPort = Readonly<{
   href: () => string
   write: (href: string, mode: "push" | "replace") => void
@@ -32,6 +42,9 @@ type NavigationPort = Readonly<{
     documentId: ProjectId,
     signal: AbortSignal,
   ) => Promise<{ ok: true } | { ok: false; diagnostic: { code: string } }>
+  library?:
+    | ((signal: AbortSignal) => Promise<{ ok: true } | { ok: false; diagnostic: { code: string } }>)
+    | undefined
   failed: (error: ProjectNavigationError) => void
 }>
 
@@ -66,14 +79,13 @@ export function createProjectNavigation(port: NavigationPort) {
     signal: AbortSignal,
   ): Promise<ProjectNavigationError | null> {
     try {
-      if (request.kind !== "project") return "invalid-project-url"
+      if (request.kind === "invalid") return "invalid-project-url"
+      if (request.kind === "default") {
+        if (!port.library) return "invalid-project-url"
+        return navigationResultError(await port.library(signal))
+      }
       if (request.documentId === port.activeProjectId()) return null
-      const result = await port.open(request.documentId, signal)
-      if (result.ok) return null
-      const code = result.diagnostic.code
-      return code === "document-not-found" || code === "project-action-blocked"
-        ? code
-        : "project-open-failed"
+      return navigationResultError(await port.open(request.documentId, signal))
     } catch {
       return "project-open-failed"
     }
@@ -109,6 +121,16 @@ export function createProjectNavigation(port: NavigationPort) {
   }
 
   return {
+    clear(mode: "push" | "replace" = "push") {
+      if (readProjectUrl(port.href()).kind === "default") return true
+      try {
+        port.write(projectRecoveryUrl(port.href()), mode)
+        return true
+      } catch {
+        port.failed("project-url-unavailable")
+        return false
+      }
+    },
     sync(documentId: string, mode: "push" | "replace" = "push") {
       if (pending === 0) write(documentId, mode)
     },

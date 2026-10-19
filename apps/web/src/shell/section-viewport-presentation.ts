@@ -10,12 +10,24 @@ type ViewportFactory = (
   options: GeometryViewportOptions,
 ) => GeometryViewport | Promise<GeometryViewport>
 
-export function useSectionViewportFactory(factory: ViewportFactory, section: ViewerSection | null) {
+export function useSectionViewportFactory(
+  factory: ViewportFactory,
+  section: ViewerSection | null,
+  onChange?: (section: ViewerSection) => void,
+) {
   const current = useRef(section)
   current.current = section
+  const change = useRef(onChange)
+  change.current = onChange
   return useCallback(
     async (canvas: HTMLCanvasElement, options: GeometryViewportOptions) => {
-      const viewport = await factory(canvas, options)
+      const viewport = await factory(canvas, {
+        ...options,
+        onSectionChange: (next) => {
+          options.onSectionChange?.(next)
+          change.current?.(next)
+        },
+      })
       viewport.setSection(current.current)
       return viewport
     },

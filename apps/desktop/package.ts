@@ -8,6 +8,7 @@ import { distributionHash } from "../../scripts/local-distribution-files"
 import { verifyControlledEditorBuild } from "../../scripts/local-editor-build"
 import manifest from "./package.json"
 import { withPackageOutput } from "./package-output"
+import { verifyRuntimeFiles } from "./runtime-consistency"
 
 const root = resolve(import.meta.dirname, "../..")
 const dist = join(root, "apps/web/dist")
@@ -79,8 +80,12 @@ async function stageApplication(stage: string, input: ReturnType<typeof packageI
   await cp(dist, editor, { recursive: true })
   if (verifyControlledEditorBuild(editor) !== input.editorHash)
     throw new Error("The editor changed while staging the desktop package.")
-  const main = await readFile(join(root, "apps/desktop/dist/main.cjs"))
-  await writeFile(join(app, "main.cjs"), main)
+  const runtime: Record<string, string> = {}
+  for (const name of ["main.cjs", "preload.cjs", "mcp.cjs"]) {
+    const bytes = await readFile(join(root, "apps/desktop/dist", name))
+    await writeFile(join(app, name), bytes)
+    runtime[name] = distributionHash(bytes)
+  }
   await writeFile(
     join(app, "package.json"),
     JSON.stringify({
@@ -91,7 +96,7 @@ async function stageApplication(stage: string, input: ReturnType<typeof packageI
     }),
   )
   await stageSources(editor, input.commit)
-  return { app, editor, main, editorHash: verifyControlledEditorBuild(editor) }
+  return { app, editor, runtime, editorHash: verifyControlledEditorBuild(editor) }
 }
 
 async function createIcon(stage: string) {
@@ -146,6 +151,7 @@ async function createApp(
   const packaged = paths[0]
   if (!packaged || paths.length !== 1) throw new Error("Expected exactly one Mac application.")
   const appPath = join(packaged, "VibeShape.app")
+  await verifyRuntimeFiles(join(appPath, "Contents/Resources/app"), files.runtime)
   run("codesign", ["--verify", "--deep", "--strict", appPath])
   return appPath
 }
@@ -174,6 +180,7 @@ await withPackageOutput(input.output, async (stage) => {
     run("git", ["rev-parse", "HEAD"]) !== input.commit
   )
     throw new Error("Source or editor changed during packaging; refuse the generated artifacts.")
+  await verifyRuntimeFiles(join(root, "apps/desktop/dist"), files.runtime)
   await writeFile(
     join(input.output, "desktop-build.json"),
     `${JSON.stringify(
@@ -183,7 +190,8 @@ await withPackageOutput(input.output, async (stage) => {
         arch: input.arch,
         sourceCommit: input.commit,
         editorHash: files.editorHash,
-        mainSha256: distributionHash(files.main),
+        mainSha256: files.runtime["main.cjs"],
+        runtimeSha256: files.runtime,
         dmgSha256: image.digest,
         signing: "ad-hoc",
         notarized: false,

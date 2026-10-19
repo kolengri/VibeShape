@@ -26,7 +26,11 @@ async function createBoxes(page: Page) {
     await form.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(page.locator("[data-part-id]")).toHaveCount(n + 1, { timeout: 30_000 })
   }
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
 }
 
 function launch(port: number) {
@@ -105,7 +109,11 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
   try {
     await expectMetadataToolAnnotations(local)
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await createBoxes(page)
@@ -308,7 +316,11 @@ test("cancels a real MCP metadata proposal before writing on browser disconnect"
   let completed = false
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await createBoxes(page)
@@ -330,7 +342,11 @@ test("cancels a real MCP metadata proposal before writing on browser disconnect"
     await page.getByRole("button", { name: "Stop AI", exact: true }).click()
     expect(await pending).toMatchObject({ ok: false, diagnostic: { code: "session-revoked" } })
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await enableLocalAi(page)

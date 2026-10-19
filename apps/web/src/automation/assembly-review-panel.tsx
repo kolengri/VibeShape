@@ -5,6 +5,9 @@ import type { ReactNode } from "react"
 import { AutomationReviewFrame } from "./automation-review-frame"
 
 const changeLabels: Record<AssemblyMutation["kind"], string> = {
+  "motion-study.create": "createAssemblyMotionStudy",
+  "motion-study.update": "updateAssemblyMotionStudy",
+  "motion-study.remove": "removeAssemblyMotionStudy",
   "assembly.upgrade": "upgradeAssembly",
   "definition.create": "createAssemblyDefinition",
   "definition.update": "updateAssemblyDefinition",
@@ -21,6 +24,8 @@ const changeLabels: Record<AssemblyMutation["kind"], string> = {
   "joint.remove": "removeAssemblyJoint",
 }
 function target(change: AssemblyMutation) {
+  if ("study" in change) return change.study.name
+  if ("studyId" in change) return change.studyId
   if ("definition" in change) return change.definition.name
   if ("instance" in change) return change.instance.name
   if ("joint" in change) return change.joint.id

@@ -40,7 +40,11 @@ test("authors registered primitive geometry and review-bound lifecycle changes t
     (await local.callTool({ name, arguments: args })).structuredContent?.result
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     let draft = success(
@@ -252,7 +256,11 @@ test("authors registered primitive geometry and review-bound lifecycle changes t
       )
       .toBe("Lifecycle reviewed")
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 30_000,
     })

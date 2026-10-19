@@ -48,7 +48,11 @@ test("picks a source edge graphically and explicitly repairs a change to a congr
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await addBox(page)
   await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
   await addBox(page)

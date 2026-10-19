@@ -11,6 +11,8 @@ import {
 import { Input } from "@vibeshape/ui/components/input"
 import { useState } from "react"
 import { useDialogOpen } from "../components/use-dialog-open"
+import { getDesktopHost } from "../desktop/desktop-host"
+import { DesktopMcpSettings } from "../desktop/desktop-mcp-settings"
 
 const pages = ["mcp", "files", "reconnect"] as const
 type Page = (typeof pages)[number]
@@ -97,6 +99,11 @@ export function FaqDialog({
 }
 
 function McpHelp({ endpoint }: { endpoint?: string | undefined }) {
+  if (getDesktopHost()) return <DesktopMcpSettings />
+  return <ServerMcpHelp endpoint={endpoint} />
+}
+
+function ServerMcpHelp({ endpoint }: { endpoint?: string | undefined }) {
   const t = useTranslations("app.shell.faq")
   // Built stdio editors share this marker but do not serve HTTP MCP.
   const developmentEndpoint =

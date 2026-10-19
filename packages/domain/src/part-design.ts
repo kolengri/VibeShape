@@ -581,6 +581,23 @@ export const extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Sc
 export type ExtrusionFeatureParametersV7 = Readonly<
   z.infer<typeof extrusionFeatureParametersV7Schema>
 >
+/** Each selected sketch retains its own resolved support frame. */
+export const extrusionFeatureParametersV8Schema = extrusionFeatureParametersV6Schema.safeExtend({
+  profiles: sketchProfileSetSchema,
+  endCondition: z.union([extrusionEndConditionSchema, extrusionFaceEndConditionV7Schema]),
+})
+export type ExtrusionFeatureParametersV8 = Readonly<
+  z.infer<typeof extrusionFeatureParametersV8Schema>
+>
+export function expectedExtrusionV8DependencyIds(
+  target: FeatureId | null,
+  supports: readonly FeatureId[],
+  end: FeatureId | null,
+) {
+  return [target, ...supports, end].filter(
+    (id, index, ids): id is FeatureId => id !== null && ids.indexOf(id) === index,
+  )
+}
 export function expectedExtrusionV6DependencyIds(
   target: FeatureId | null,
   support: FeatureId | null,
@@ -612,11 +629,31 @@ function extrusionV6Invariant(
     parameters.endCondition.kind === "distance"
       ? null
       : parameters.endCondition.targetBody.featureId
-  const expected = expectedExtrusionV6DependencyIds(
-    parameters.targetBody?.featureId ?? null,
-    support,
-    end,
+  return advancedExtrusionDependencyIssues(
+    feature,
+    parameters,
+    expectedExtrusionV6DependencyIds(parameters.targetBody?.featureId ?? null, support, end),
   )
+}
+function extrusionV8Invariant(feature: FeatureRecord) {
+  const parameters = extrusionFeatureParametersV8Schema.parse(feature.parameters)
+  return advancedExtrusionDependencyIssues(
+    feature,
+    parameters,
+    expectedExtrusionV8DependencyIds(
+      parameters.targetBody?.featureId ?? null,
+      feature.references.map(({ featureId }) => featureId),
+      parameters.endCondition.kind === "distance"
+        ? null
+        : parameters.endCondition.targetBody.featureId,
+    ),
+  )
+}
+function advancedExtrusionDependencyIssues(
+  feature: FeatureRecord,
+  parameters: ExtrusionFeatureParametersV6,
+  expected: readonly FeatureId[],
+) {
   const issues =
     JSON.stringify(feature.dependencies) === JSON.stringify(expected)
       ? []
@@ -624,10 +661,12 @@ function extrusionV6Invariant(
           {
             path: "dependencies",
             message:
-              "Extrusion requires its exact target first, optional sketch support, and distinct end support.",
+              "Extrusion requires its exact target first, ordered sketch supports, and distinct end support.",
           },
         ]
-  if (extrusionSupportUsesNamedBody(support, parameters))
+  if (
+    feature.references.some(({ featureId }) => extrusionSupportUsesNamedBody(featureId, parameters))
+  )
     issues.push({
       path: "references",
       message: "A sketch support must retain its whole result slot.",
@@ -639,7 +678,8 @@ function resolveExtrusionV6Parameters(
   variables: VariableValues,
   schema:
     | typeof extrusionFeatureParametersV6Schema
-    | typeof extrusionFeatureParametersV7Schema = extrusionFeatureParametersV6Schema,
+    | typeof extrusionFeatureParametersV7Schema
+    | typeof extrusionFeatureParametersV8Schema = extrusionFeatureParametersV6Schema,
 ) {
   const parsed = schema.safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
@@ -1186,6 +1226,12 @@ export const extrusionFeatureTypeV7 = featureTypeDescriptorSchema.parse({
   ...extrusionFeatureTypeV6,
   type: { ...extrusionFeatureTypeV6.type, schemaVersion: 7 },
 })
+export const extrusionFeatureTypeV8 = featureTypeDescriptorSchema.parse({
+  ...extrusionFeatureTypeV6,
+  type: { ...extrusionFeatureTypeV6.type, schemaVersion: 8 },
+  dependencies: { min: 0, max: 66 },
+  references: { min: 0, max: 64 },
+})
 
 export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -1282,6 +1328,7 @@ export function isExtrusionType(feature: Pick<FeatureRecord, "type">) {
     extrusionFeatureTypeV5.type,
     extrusionFeatureTypeV6.type,
     extrusionFeatureTypeV7.type,
+    extrusionFeatureTypeV8.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1298,6 +1345,7 @@ type ExtrusionParameters =
   | z.infer<typeof extrusionFeatureParametersV5Schema>
   | z.infer<typeof extrusionFeatureParametersV6Schema>
   | z.infer<typeof extrusionFeatureParametersV7Schema>
+  | z.infer<typeof extrusionFeatureParametersV8Schema>
 
 const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>>([
   [1, legacyExtrusionFeatureParametersSchema],
@@ -1307,6 +1355,7 @@ const extrusionParameterSchemas = new Map<number, z.ZodType<ExtrusionParameters>
   [5, extrusionFeatureParametersV5Schema],
   [6, extrusionFeatureParametersV6Schema],
   [7, extrusionFeatureParametersV7Schema],
+  [8, extrusionFeatureParametersV8Schema],
 ])
 
 export function readExtrusionFeatureParameters(
@@ -1589,6 +1638,16 @@ function extrusionDependencyIssue(feature: FeatureRecord) {
 function extrusionFeatureInvariant(feature: FeatureRecord) {
   const issue = extrusionDependencyIssue(feature)
   return issue ? [issue] : []
+}
+
+function advancedExtrusionContentParameters(value: ExtrusionFeatureParametersV6) {
+  return {
+    ...value,
+    distance: value.distance.value,
+    secondDistance: value.secondDistance?.value ?? null,
+    startOffset: value.startOffset.value,
+    draftAngle: value.draftAngle.value,
+  }
 }
 
 export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
@@ -1915,14 +1974,9 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     validateFeature: extrusionV6Invariant,
     resolveParameters: resolveExtrusionV6Parameters,
     contentParameters(parameters) {
-      const value = extrusionFeatureParametersV6Schema.parse(parameters)
-      return {
-        ...value,
-        distance: value.distance.value,
-        secondDistance: value.secondDistance?.value ?? null,
-        startOffset: value.startOffset.value,
-        draftAngle: value.draftAngle.value,
-      }
+      return advancedExtrusionContentParameters(
+        extrusionFeatureParametersV6Schema.parse(parameters),
+      )
     },
   },
   {
@@ -1932,14 +1986,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     resolveParameters: (parameters, variables) =>
       resolveExtrusionV6Parameters(parameters, variables, extrusionFeatureParametersV7Schema),
     contentParameters(parameters) {
-      const value = extrusionFeatureParametersV7Schema.parse(parameters)
-      return {
-        ...value,
-        distance: value.distance.value,
-        secondDistance: value.secondDistance?.value ?? null,
-        startOffset: value.startOffset.value,
-        draftAngle: value.draftAngle.value,
-      }
+      return advancedExtrusionContentParameters(
+        extrusionFeatureParametersV7Schema.parse(parameters),
+      )
+    },
+  },
+  {
+    type: extrusionFeatureTypeV8.type,
+    parametersSchema: extrusionFeatureParametersV8Schema,
+    validateFeature: extrusionV8Invariant,
+    resolveParameters: (parameters, variables) =>
+      resolveExtrusionV6Parameters(parameters, variables, extrusionFeatureParametersV8Schema),
+    contentParameters(parameters) {
+      return advancedExtrusionContentParameters(
+        extrusionFeatureParametersV8Schema.parse(parameters),
+      )
     },
   },
   fdmFeatureTypeHandler,

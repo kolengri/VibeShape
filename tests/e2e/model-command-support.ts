@@ -15,7 +15,11 @@ export async function invokeModelCommand(page: Page, menu: ModelCommandMenu, nam
 }
 
 export async function expandHistoryDetails(page: Page) {
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const details = page.getByRole("button", { name: "Details", exact: true })
   if ((await details.getAttribute("aria-pressed")) !== "true") await details.click()
   await expect(details).toHaveAttribute("aria-pressed", "true")

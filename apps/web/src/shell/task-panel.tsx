@@ -91,6 +91,7 @@ import {
   ineligibleProfileSketchIds,
   profileSelectorsEqual,
   profileSupportReference,
+  profileSupportReferences,
 } from "../features/part-design/profile-feature-selection"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import {
@@ -132,6 +133,7 @@ import {
 import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-texture-task-panel"
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
+import { CadErrorPresentation } from "./cad-error-presentation"
 import { FdmTaskPanel } from "./fdm-task-panel"
 import { HistoryFeatureRepair } from "./history-feature-repair"
 import { MirrorTaskPanel } from "./mirror-task-panel"
@@ -153,6 +155,7 @@ type TaskPanelProps = Readonly<{
   selectedFace?: ViewerSelection | null
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   featurePreviewDiagnostic?: string | undefined
+  featurePreviewDiagnostics?: FeaturePreviewState["diagnostics"] | undefined
   featurePreviewStatus: FeaturePreviewState["status"]
   onCloseTool: () => void
   onCompleteTool: () => void
@@ -463,6 +466,8 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
     ...operationCopy,
     parameters: t("parameters"),
     profile: t("profile"),
+    selectProfiles: t("selectProfiles"),
+    profileSelectionDescription: t("profileSelectionDescription"),
     clearProfiles: t("clearProfiles"),
     removeProfile: (profile: string) => t("removeProfile", { profile }),
     distance: t("distance"),
@@ -728,6 +733,7 @@ function ExtrusionTaskPanel({
   onPreviewChange,
   options,
   previewStatus,
+  diagnostics,
   report,
 }: {
   distanceRequest: ExtrusionDistanceRequest | null
@@ -739,6 +745,7 @@ function ExtrusionTaskPanel({
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   options: readonly ExtrusionTargetOption[]
   previewStatus: FeaturePreviewState["status"]
+  diagnostics?: FeaturePreviewState["diagnostics"] | undefined
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -753,6 +760,13 @@ function ExtrusionTaskPanel({
   const profileLabel = profileLabels.join(", ")
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      {previewStatus === "error" && diagnostics ? (
+        <CadErrorPresentation
+          diagnostics={diagnostics}
+          snapshot={snapshot}
+          contextLabels={profileLabels}
+        />
+      ) : null}
       <ExtrusionForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -763,6 +777,9 @@ function ExtrusionTaskPanel({
         options={options}
         profileLabel={profileLabel}
         profileLabels={profileLabels}
+        onProfileSelectionRequest={() =>
+          document.querySelector<HTMLSelectElement>("[data-saved-profile-picker]")?.focus()
+        }
         onProfileRemove={profileRemovalHandler(mode.profiles, onProfileRemove)}
         onProfilesClear={onProfilesClear}
         variables={snapshot.variables}
@@ -1101,21 +1118,21 @@ function extrusionFormMode(
 ): ExtrusionFormMode | null {
   const profile = profiles[0]
   if (!profile) return null
-  const supportReference = profileSupportReference(report.snapshot, profile)
+  const supportReferences = profileSupportReferences(report.snapshot, profiles)
   if (activeTool.kind === "create-extrusion")
-    return supportReference
+    return supportReferences.length > 0
       ? {
           kind: "create",
           createFeatureId: createBrowserFeatureId,
           featureLabel,
           profiles,
-          supportReference,
+          supportReferences,
         }
       : { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel, profiles }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   if (!feature || !isExtrusionFeature(feature)) return null
-  return supportReference
-    ? { kind: "edit", feature, profiles, supportReference }
+  return supportReferences.length > 0
+    ? { kind: "edit", feature, profiles, supportReferences }
     : { kind: "edit", feature, profiles }
 }
 
@@ -1577,6 +1594,7 @@ function ActiveExtrusionTaskPanel({
   onProfilesClear,
   onPreviewChange,
   previewStatus,
+  diagnostics,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
@@ -1590,6 +1608,7 @@ function ActiveExtrusionTaskPanel({
   onProfilesClear?: (() => void) | undefined
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   previewStatus: FeaturePreviewState["status"]
+  diagnostics?: FeaturePreviewState["diagnostics"] | undefined
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
@@ -1630,6 +1649,7 @@ function ActiveExtrusionTaskPanel({
       onProfilesClear={onProfilesClear}
       onPreviewChange={onPreviewChange}
       previewStatus={previewStatus}
+      diagnostics={diagnostics}
     />
   )
 }
@@ -1692,6 +1712,7 @@ type ActiveTaskPanelProps = Readonly<{
   activeTool: Exclude<ActivePartDesignTool, { kind: "measure" | "surface-texture" }>
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   featurePreviewDiagnostic?: string | undefined
+  featurePreviewDiagnostics?: FeaturePreviewState["diagnostics"] | undefined
   featurePreviewStatus: FeaturePreviewState["status"]
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onFeatureProfileRemove?: TaskPanelProps["onFeatureProfileRemove"] | undefined
@@ -1868,6 +1889,7 @@ function ExtrusionToolTaskPanel({
   extrusionFaceSelection,
   featureProfileSelections,
   featurePreviewStatus,
+  featurePreviewDiagnostics,
   onCloseTool,
   onCompleteTool,
   onCreateSketch,
@@ -1890,6 +1912,7 @@ function ExtrusionToolTaskPanel({
       onProfilesClear={onFeatureProfilesClear}
       onPreviewChange={onFeaturePreviewChange}
       previewStatus={featurePreviewStatus}
+      diagnostics={featurePreviewDiagnostics}
       report={report}
     />
   )
@@ -2346,6 +2369,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
         featureProfileSelections={props.featureProfileSelections}
         featurePreviewStatus={props.featurePreviewStatus}
         featurePreviewDiagnostic={props.featurePreviewDiagnostic}
+        featurePreviewDiagnostics={props.featurePreviewDiagnostics}
         onFeatureProfileRemove={props.onFeatureProfileRemove}
         onFeatureProfilesClear={props.onFeatureProfilesClear}
         report={report}

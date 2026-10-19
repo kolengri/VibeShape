@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-19
+- Superseded in part by: [ADR-0111](0111-native-project-assistant-and-handoffs.md) for native IPC and MCP attachment
 - Related: [ADR-0004](0004-local-first-storage.md), [ADR-0008](0008-bun-workspaces.md),
   [ADR-0043](0043-local-stdio-mcp-browser-session.md), [ADR-0109](0109-local-declarative-ui-plugins.md)
 

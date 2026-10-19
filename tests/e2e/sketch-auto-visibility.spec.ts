@@ -7,7 +7,9 @@ test("auto hides a successful extrusion profile and preserves manual visibility 
   test.setTimeout(120000)
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/")
-  const saved = page.getByText("Saved in this browser", { exact: true })
+  const saved = page
+    .getByRole("status", { name: "Project save status", exact: true })
+    .filter({ hasText: /^Saved$/ })
   await expect(saved).toBeVisible({ timeout: 30000 })
   const commands = page.getByRole("toolbar", { name: "Model commands" })
   await commands.getByRole("button", { name: "Create sketch", exact: true }).click()

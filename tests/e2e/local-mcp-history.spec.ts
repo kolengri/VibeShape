@@ -49,7 +49,11 @@ test("navigates exact saved geometry through named MCP manual history review eve
       false,
     )
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const initial = (await info()).summary
     const documentId = initial.documentId
@@ -238,7 +242,11 @@ test("navigates exact saved geometry through named MCP manual history review eve
       ).occurrences,
     ).toHaveLength(1)
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 20_000,
     })

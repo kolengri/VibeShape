@@ -74,7 +74,11 @@ test.describe("selector-backed extrusion", () => {
     test.setTimeout(120_000)
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     await page
@@ -128,7 +132,11 @@ test.describe("selector-backed extrusion", () => {
   test("starts from an open sketch with every closed profile selected", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     await page
@@ -177,7 +185,11 @@ test.describe("selector-backed extrusion", () => {
       test.setTimeout(120_000)
       await page.setViewportSize({ width: 1440, height: 1000 })
       await page.goto("/")
-      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible({
         timeout: 120_000,
       })
       await invokeModelCommand(page, "Primitives", "Box")
@@ -260,7 +272,11 @@ test.describe("selector-backed extrusion", () => {
   test("reselects a profile without closing create or edit", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 120_000,
     })
     await page
@@ -320,7 +336,11 @@ test.describe("selector-backed extrusion", () => {
   test("selects a saved profile through the compact picker after reload", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -329,7 +349,11 @@ test.describe("selector-backed extrusion", () => {
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
     await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.reload()
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -354,14 +378,22 @@ test.describe("selector-backed extrusion", () => {
   test("selects a saved profile directly in the 3D viewport after reload", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
     await confirmSketchPlane(page, "xy")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
     await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.reload()
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -407,7 +439,11 @@ test.describe("selector-backed extrusion", () => {
   test("creates, rebuilds, edits, and reopens a variable-driven solid", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
     await expect(startPanel.getByRole("heading", { name: "Start with a sketch" })).toBeVisible()
 
@@ -469,7 +505,11 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toBeVisible()
@@ -567,7 +607,11 @@ test.describe("selector-backed extrusion", () => {
   test("creates a separate colored body from a selected planar model face", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
     await boxForm.getByRole("button", { name: "Create box" }).click()
@@ -674,7 +718,11 @@ test.describe("selector-backed extrusion", () => {
   test("starts a sketch from an extrusion cap during support selection", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
 
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
@@ -723,7 +771,11 @@ test.describe("selector-backed extrusion", () => {
   test("creates and rebuilds a sketch on a planar extrusion side", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
 
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
@@ -827,7 +879,11 @@ test.describe("selector-backed extrusion", () => {
   test("chooses an exact sketch support when model faces overlap", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const startPanel = page.getByRole("complementary", { name: "Task panel" })
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -891,7 +947,11 @@ test.describe("selector-backed extrusion", () => {
   }) => {
     test.setTimeout(120_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await invokeModelCommand(page, "Primitives", "Box")
     await page
@@ -950,7 +1010,11 @@ test.describe("selector-backed extrusion", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
     await page.getByRole("button", { name: "Finish sketch" }).click()
     await expect(page.getByRole("button", { name: "Finish sketch", exact: true })).toHaveCount(0)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(support).toHaveValue("feature-face")
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)

@@ -135,6 +135,7 @@ export function assemblyModelView(snapshot: DocumentAuthoritySnapshot) {
     definitions: assembly.definitions.map(definitionView),
     instances: assembly.instances,
     joints: assembly.joints,
+    ...(assembly.motionStudies === undefined ? {} : { motionStudies: assembly.motionStudies }),
   })
 }
 export function definitionView(definition: PinnedAssemblyDefinition) {

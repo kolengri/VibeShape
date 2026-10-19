@@ -127,16 +127,17 @@ describe("document export availability", () => {
   })
   it("shows a recoverable error when slicer preparation unexpectedly rejects", async () => {
     mocks.exportActiveDocument.mockRejectedValueOnce(new Error("Worker unavailable"))
+    mocks.downloadDocumentExport.mockClear()
     const user = userEvent.setup()
     render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
     await user.click(screen.getByRole("button", { name: "Export…" }))
-    await user.click(screen.getByRole("button", { name: "Open in OrcaSlicer" }))
+    await user.click(screen.getByRole("button", { name: "Download 3MF" }))
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "The slicer action could not finish.",
+      "The mesh could not be prepared.",
     )
-    expect(screen.queryByText("Preparing 3MF for OrcaSlicer…")).toBeNull()
+    expect(mocks.downloadDocumentExport).not.toHaveBeenCalled()
     expect(
-      (screen.getByRole("button", { name: "Open in OrcaSlicer" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Download 3MF" }) as HTMLButtonElement).disabled,
     ).toBe(false)
   })
 

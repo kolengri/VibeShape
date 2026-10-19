@@ -33,7 +33,11 @@ test("creates and updates advanced extrusion, recess and thread intent through r
     (await local.callTool({ name, arguments: args })).structuredContent?.result
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const base = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
       .revision

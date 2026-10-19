@@ -25,6 +25,7 @@ import {
   useEditorCommandCopy,
 } from "../commands/editor-command-presentation"
 import { ActionAvailability } from "../components/action-availability"
+import { NativeEditorCommandBridge } from "../desktop/native-editor-commands"
 import { SketchConstraintManagerToolbarSlot } from "../features/sketch/sketch-toolbar-portals"
 
 function ToolbarAction({
@@ -259,11 +260,13 @@ function ToolbarCommandFamilyAction({
 function ToolbarCommandGroup({
   commands,
   framed = false,
+  showLabel = framed,
   getDisabledReason,
   getLabel,
   label,
 }: {
   framed?: boolean
+  showLabel?: boolean
   commands: readonly ResolvedEditorCommand[]
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
@@ -271,15 +274,14 @@ function ToolbarCommandGroup({
 }) {
   return (
     <fieldset
-      aria-label={framed ? label : undefined}
-      className={
-        framed
-          ? "flex shrink-0 items-center gap-1 rounded-md border border-border px-1"
-          : "contents"
-      }
+      aria-label={showLabel ? label : undefined}
+      className={cn(
+        showLabel ? "flex shrink-0 items-center gap-1 px-1" : "contents",
+        framed && "rounded-md border border-border",
+      )}
     >
-      {!framed ? <legend className="sr-only">{label}</legend> : null}
-      {framed ? (
+      {!showLabel ? <legend className="sr-only">{label}</legend> : null}
+      {showLabel ? (
         <span className="px-1 text-xs text-muted-foreground" aria-hidden="true">
           {label}
         </span>
@@ -456,6 +458,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
       className="min-w-0 gap-2 border-b bg-toolbar px-2 py-1"
     >
       <nav>
+        <NativeEditorCommandBridge commands={commands} />
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {sketchMode ? null : (
             <>
@@ -611,7 +614,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         </div>
         {historyCommands.length > 0 ? (
           <ToolbarCommandGroup
-            framed
+            showLabel
             commands={historyCommands}
             getDisabledReason={getDisabledReason}
             getLabel={getLabel}

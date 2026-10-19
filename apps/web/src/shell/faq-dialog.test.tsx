@@ -13,6 +13,7 @@ import { FaqDialog } from "./faq-dialog"
 const endpoint = "https://relay.example/mcp"
 afterEach(() => {
   cleanup()
+  delete window.vibeshapeDesktop
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
   document.querySelector('meta[name="vibeshape-local-automation"]')?.remove()
@@ -25,6 +26,40 @@ function setup(url?: string) {
   )
 }
 describe("FAQ connection guide", () => {
+  it("shows the app-owned stdio setup in the production Mac app without remote or development HTTP instructions", async () => {
+    vi.stubEnv("DEV", false)
+    const configuration = {
+      protocolVersion: 1 as const,
+      mcpServers: {
+        vibeshape: {
+          command: "/Applications/VibeShape.app/Contents/MacOS/VibeShape",
+          args: ["/app/mcp.cjs", "--descriptor", "/private/profile/desktop-mcp.json"] as [
+            string,
+            "--descriptor",
+            string,
+          ],
+          env: { ELECTRON_RUN_AS_NODE: "1" as const },
+        },
+      },
+    }
+    window.vibeshapeDesktop = {
+      protocolVersion: 1,
+      platform: "darwin",
+      windowChrome: "unified",
+      getMcpSetup: async () => configuration,
+      onCommand: () => () => {},
+      updateCommandState: async () => {},
+      editText: async () => {},
+    }
+    const user = userEvent.setup()
+    setup(endpoint)
+    await user.click(screen.getByRole("button", { name: "FAQ" }))
+    const textbox = await screen.findByRole("textbox", { name: "MCP client configuration" })
+    await waitFor(() => expect((textbox as HTMLTextAreaElement).value).toContain("mcp.cjs"))
+    expect((textbox as HTMLTextAreaElement).value).not.toContain(endpoint)
+    expect(screen.queryByRole("textbox", { name: "MCP server URL" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "AI setup prompt" })).toBeNull()
+  })
   it("copies the current development origin and local setup prompt instead of remote OAuth instructions", async () => {
     vi.stubEnv("DEV", true)
     const marker = document.createElement("meta")

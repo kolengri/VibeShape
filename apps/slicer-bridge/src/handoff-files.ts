@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto"
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { randomUUID } from "node:crypto"
 
 const HANDOFF_DIRECTORY_PREFIX = "handoff-"
 const RETAIN_HANDOFF_MS = 12 * 60 * 60 * 1_000
@@ -57,7 +57,7 @@ export function createHandoffFileStore(
         path,
         scheduleCleanup() {
           const timer = setTimeout(() => {
-            void rm(directory, { recursive: true, force: true })
+            void rm(directory, { recursive: true, force: true }).catch(() => undefined)
           }, RETAIN_HANDOFF_MS)
           timer.unref()
         },

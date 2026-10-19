@@ -55,7 +55,11 @@ for (const mode of ["commit", "lease", "stale", "failure", "disconnect"] as cons
   test(scenarios[mode], async ({ page }) => {
     test.setTimeout(180_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     const committing = page.evaluate(
@@ -244,7 +248,11 @@ for (const mode of ["commit", "lease", "stale", "failure", "disconnect"] as cons
     await expect(box).toBeVisible()
     await expect(cylinder).toBeVisible()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", { timeout: 30_000 })

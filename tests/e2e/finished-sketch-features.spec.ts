@@ -4,7 +4,11 @@ import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 for (const command of ["Extrude", "Revolve"] as const) {
   test(`starts ${command} immediately after finishing a closed sketch`, async ({ page }) => {
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const action = toolbar.getByRole("button", { name: command, exact: true })
     await expect(action).toBeDisabled()
@@ -22,7 +26,11 @@ for (const command of ["Extrude", "Revolve"] as const) {
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "1")
     await form.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "0")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
     await expect(action).toBeEnabled()

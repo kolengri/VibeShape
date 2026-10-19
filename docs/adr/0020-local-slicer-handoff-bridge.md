@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-09
+- Superseded in part by: [ADR-0111](0111-native-project-assistant-and-handoffs.md) for native product handoff and browser download
 
 ## Context
 

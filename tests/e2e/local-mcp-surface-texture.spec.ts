@@ -75,7 +75,11 @@ test("authors full packed relief maps and exact faces through manual MCP review,
         .click()
     const result = await pending
     await expect(review).toHaveCount(0)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     return result
   }
   try {
@@ -89,7 +93,11 @@ test("authors full packed relief maps and exact faces through manual MCP review,
       ]),
     )
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await invokeModelCommand(page, "Primitives", "Box")
     const form = page.getByRole("form", { name: "Create box" })
     for (const field of ["Width", "Depth", "Height"])

@@ -31,6 +31,7 @@ const controllerMocks = (() => ({
   exportActiveProjectBackup: vi.fn(),
   importProjectBackup: vi.fn(),
   listLocalProjects: vi.fn(),
+  showProjectLibrary: vi.fn(),
   renameActiveProject: vi.fn(),
   getProjectActionBlock: vi.fn().mockReturnValue(null),
 }))()
@@ -56,11 +57,20 @@ const { downloadProjectBackup } = await import("./document-project-file")
 beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
 afterAll(() => vi.unstubAllGlobals())
 
-function renderDialog(state = controller, blockedReason: string | null = null) {
+function renderDialog(
+  state = controller,
+  blockedReason: string | null = null,
+  presentation: "dialog" | "page" = "dialog",
+) {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
-        <DocumentProjectDialog controller={state} blockedReason={blockedReason} />
+        <DocumentProjectDialog
+          controller={state}
+          blockedReason={blockedReason}
+          presentation={presentation}
+          {...(presentation === "page" ? { open: true, showTrigger: false } : {})}
+        />
       </TooltipProvider>
     </I18nProvider>,
   )
@@ -86,6 +96,8 @@ function dropPayload(files: File[]) {
 }
 
 beforeEach(() => {
+  controllerMocks.getProjectActionBlock.mockReturnValue(null)
+  controllerMocks.showProjectLibrary.mockResolvedValue({ ok: true })
   controllerMocks.activateLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.createNewLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.deleteLocalProject.mockResolvedValue({ ok: true })
@@ -486,5 +498,116 @@ describe("DocumentProjectDialog", () => {
       "cannot be opened as a writable copy",
     )
     expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
+  })
+})
+
+describe("full-page project chooser", () => {
+  const libraryController = {
+    status: "library",
+    saveStatus: "saved",
+    report: null,
+    diagnostic: null,
+    authoredSnapshot: null,
+  } as unknown as DocumentControllerState
+
+  it("lists existing project cards without a modal or creating a blank project", async () => {
+    renderDialog(libraryController, null, "page")
+    expect(screen.getByRole("main")).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "Projects", level: 1 })).toBeTruthy()
+    expect(await screen.findByRole("button", { name: "Open Bracket, revision 3" })).toBeTruthy()
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Save project (.vshape)" })).toBeNull()
+    expect(controllerMocks.createNewLocalProject).not.toHaveBeenCalled()
+    expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
+  })
+
+  it("opens and creates projects only after explicit user actions", async () => {
+    renderDialog(libraryController, null, "page")
+    await userEvent.click(await screen.findByRole("button", { name: "Open Fixture, revision 2" }))
+    expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId)
+    await userEvent.click(screen.getByRole("button", { name: "New project" }))
+    expect(controllerMocks.createNewLocalProject).toHaveBeenCalledTimes(1)
+  })
+
+  it("imports from the sessionless chooser and activates only the verified copy", async () => {
+    controllerMocks.getProjectActionBlock.mockReturnValue("unavailable")
+    controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
+    renderDialog(libraryController, null, "page")
+    await userEvent.upload(screen.getByLabelText("Choose VibeShape project file"), projectFile())
+    await waitFor(() =>
+      expect(controllerMocks.activateLocalProject).toHaveBeenCalledWith(otherDocumentId, undefined),
+    )
+    expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1)
+    expect(controllerMocks.createNewLocalProject).not.toHaveBeenCalled()
+  })
+
+  it("keeps loading visible until catalog startup completes and supports a failed-read retry", async () => {
+    controllerMocks.listLocalProjects.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: { code: "persistence-failed" },
+    })
+    const result = renderDialog({ ...libraryController, status: "loading" }, null, "page")
+    expect(screen.getByRole("status").textContent).toContain("Loading")
+    expect(controllerMocks.listLocalProjects).not.toHaveBeenCalled()
+    result.rerender(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TooltipProvider>
+          <DocumentProjectDialog
+            controller={libraryController}
+            presentation="page"
+            open
+            showTrigger={false}
+          />
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+    expect(await screen.findByRole("alert")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(await screen.findByRole("button", { name: "Open Fixture, revision 2" })).toBeTruthy()
+    expect(controllerMocks.createNewLocalProject).not.toHaveBeenCalled()
+  })
+
+  it("recovers a failed startup before retrying the catalog without creating a document", async () => {
+    controllerMocks.showProjectLibrary.mockResolvedValueOnce({ ok: false })
+    const result = renderDialog({ ...libraryController, status: "error" }, null, "page")
+    expect(await screen.findByRole("alert")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(await screen.findByRole("alert")).toBeTruthy()
+    expect(controllerMocks.showProjectLibrary).toHaveBeenCalledTimes(1)
+    expect(controllerMocks.listLocalProjects).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(controllerMocks.showProjectLibrary).toHaveBeenCalledTimes(2))
+    result.rerender(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TooltipProvider>
+          <DocumentProjectDialog
+            controller={libraryController}
+            presentation="page"
+            open
+            showTrigger={false}
+          />
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+    expect(await screen.findByRole("button", { name: "Open Fixture, revision 2" })).toBeTruthy()
+    expect(controllerMocks.createNewLocalProject).not.toHaveBeenCalled()
+    expect(controllerMocks.activateLocalProject).not.toHaveBeenCalled()
+  })
+
+  it("rejects an import whose file read outlives the chooser", async () => {
+    let finish!: (buffer: ArrayBuffer) => void
+    const file = projectFile()
+    Object.defineProperty(file, "arrayBuffer", {
+      value: () =>
+        new Promise<ArrayBuffer>((resolve) => {
+          finish = resolve
+        }),
+    })
+    const result = renderDialog(libraryController, null, "page")
+    await userEvent.upload(screen.getByLabelText("Choose VibeShape project file"), file)
+    result.unmount()
+    finish(new ArrayBuffer(3))
+    await Promise.resolve()
+    expect(controllerMocks.importProjectBackup).not.toHaveBeenCalled()
   })
 })

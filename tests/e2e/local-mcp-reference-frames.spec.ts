@@ -61,7 +61,11 @@ test("creates and updates reference frames from unsaved exact topology through o
       ]),
     )
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const draft = success(

@@ -7,7 +7,11 @@ for (const kind of ["fillet", "chamfer"] as const) {
   }) => {
     test.setTimeout(90_000)
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     await page
@@ -56,6 +60,10 @@ for (const kind of ["fillet", "chamfer"] as const) {
     await page.getByRole("button", { name: "Redo", exact: true }).click()
     await expect(lines).toHaveCount(kind === "fillet" ? 6 : 7)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
   })
 }

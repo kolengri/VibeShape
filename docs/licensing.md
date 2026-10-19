@@ -45,6 +45,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
 | Zod | MIT | Include a third-party notice |
 | MCP TypeScript SDK 1.30.0 | MIT | Server-only runtime dependency; preserve the Anthropic notice and inventory its locked transitives |
+| Agent Client Protocol TypeScript SDK 1.9.0 | Apache-2.0 | Native agent-process integration; preserve its exact license and applicable notices in desktop bundles |
 | proxy-addr 2.0.8 | MIT | Compatible security override for MCP/CLI transitives; preserve its notice in distributions that include these server or development dependencies |
 | MCP/CLI transitives: qs 6.16.0 / fast-uri 3.1.6 | BSD-3-Clause / BSD-3-Clause | Compatible security overrides; include exact locked notices in the release bundle |
 | is-what | MIT | Include a third-party notice; it is a zero-runtime-dependency ESM guard library shipped only by importing workspaces |

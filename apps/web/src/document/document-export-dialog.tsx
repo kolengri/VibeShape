@@ -445,11 +445,11 @@ export function DocumentExportDialog({
                   setSlicerStatus(message)
                   setOpen(false)
                 }}
-                prepareThreeMf={() =>
+                prepareMesh={(format) =>
                   meshQualityChoice === "default"
-                    ? exportActiveDocument("3mf", selectedPartId)
+                    ? exportActiveDocument(format, selectedPartId)
                     : exportActiveDocument(
-                        "3mf",
+                        format,
                         selectedPartId,
                         meshExportQuality(meshQualityChoice),
                       )

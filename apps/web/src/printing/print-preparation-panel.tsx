@@ -1,3 +1,4 @@
+import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { useTranslations } from "@vibeshape/i18n"
 import {
   type MeshExportQuality,
@@ -294,7 +295,20 @@ function PrintPreparationOutput({
           onBusyChange(busy)
         }}
         onOpened={setSlicerMessage}
-        prepareThreeMf={async () => prepared}
+        prepareMesh={async (format) =>
+          format === "3mf"
+            ? prepared
+            : {
+                ...prepared,
+                format: "stl",
+                file: writeStlMeshes(
+                  prepared.printPreparation?.meshes.map(({ vertices, triangles }) => ({
+                    vertices,
+                    triangles,
+                  })),
+                ),
+              }
+        }
       />
       {slicerMessage ? (
         <p role="status" className="text-sm">

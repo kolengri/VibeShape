@@ -88,7 +88,11 @@ test.describe("Boolean subtraction", () => {
     await expect(page.getByRole("treeitem", { name: "Subtract 1", exact: true })).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Subtract 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit subtraction" })

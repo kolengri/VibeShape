@@ -235,6 +235,59 @@ describe("feature preview worker lifetime", () => {
     await act(async () => rejectSecond(new Error("The preview was unmounted.")))
   })
 
+  it("preserves validated candidate diagnostic evidence without leaking unrelated failures", async () => {
+    const candidate = feature(candidateId)
+    const diagnostic = {
+      code: "org.vibeshape.feature.sketch-profile-missing",
+      values: { reason: "no-matching-region", message: "Original exact kernel context" },
+    }
+    const session = {
+      rebuild: vi.fn(async ({ document }: { document: typeof snapshot }) => ({
+        ...rebuiltResponse([]),
+        documentId: document.id,
+        revision: document.revision,
+        evaluation: {
+          records: document.features.map(({ id }) => ({
+            featureId: id,
+            status: "failed" as const,
+            diagnostics: [
+              id === candidateId ? diagnostic : { code: "org.vibeshape.test.other", values: {} },
+            ],
+          })),
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [],
+          reusedFeatureIds: [],
+        },
+      })),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const committedGeometry: readonly { featureId: string; contentHash: string }[] = []
+    const { result } = renderHook(() => useFeaturePreview(snapshot, candidate, committedGeometry))
+    await act(async () => {})
+    expect(result.current.status).toBe("error")
+    expect(result.current.diagnostics).toEqual([
+      {
+        entity: { kind: "feature", id: candidateId },
+        ...diagnostic,
+        action: "inspect-feature",
+      },
+    ])
+  })
+
+  it("does not attach evidence from an invalid worker response", async () => {
+    createSession.mockReturnValue({
+      rebuild: vi.fn(async () => rebuiltResponse([])),
+      terminate: vi.fn(),
+    })
+    const committedGeometry: readonly { featureId: string; contentHash: string }[] = []
+    const candidate = feature(candidateId)
+    const { result } = renderHook(() => useFeaturePreview(snapshot, candidate, committedGeometry))
+    await act(async () => {})
+    expect(result.current.status).toBe("error")
+    expect(result.current.diagnostics).toBeUndefined()
+  })
+
   it("keeps only the latest pending rebuild while the kernel evaluates a previous candidate", async () => {
     let complete!: (response: DocumentWorkerResponse) => void
     const response = rebuiltResponse([

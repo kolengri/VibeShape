@@ -8,7 +8,11 @@ test("keeps Compound slots exact and separate, fuses Union explicitly, and prese
 }) => {
   test.setTimeout(180_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const evidence = await page.evaluate(
     async (paths) => {
       const domain: typeof import("../../packages/domain/src/index") = await import(paths.domain)
@@ -381,7 +385,11 @@ test("rebuilds Compound slots through edits, suppression and role removal withou
 }) => {
   test.setTimeout(180_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   const evidence = await page.evaluate(
     async (paths) => {
       const domain: typeof import("../../packages/domain/src/index") = await import(paths.domain)

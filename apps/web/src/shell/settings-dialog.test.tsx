@@ -63,19 +63,60 @@ async function choose(label: string, option: string) {
 }
 
 describe("coherent browser and project settings", () => {
+  it("shows one category at a time and navigates categories with the keyboard", async () => {
+    setup()
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }))
+    expect(screen.getAllByRole("tab")).toHaveLength(7)
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1)
+    expect(screen.getByRole("tabpanel", { name: "Appearance" })).toBeTruthy()
+    expect(screen.queryByRole("combobox", { name: "Length unit" })).toBeNull()
+    screen.getByRole("tab", { name: "Appearance" }).focus()
+    await userEvent.keyboard("{ArrowRight}")
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Workspace" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    )
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1)
+    expect(screen.getByRole("tabpanel", { name: "Workspace" })).toBeTruthy()
+    await userEvent.keyboard("{End}")
+    await waitFor(() =>
+      expect(screen.getByRole("tabpanel", { name: "About VibeShape" })).toBeTruthy(),
+    )
+    await userEvent.keyboard("{Home}")
+    await waitFor(() => expect(screen.getByRole("tabpanel", { name: "Appearance" })).toBeTruthy())
+  })
+
+  it("retains unapplied project inputs when changing categories", async () => {
+    setup()
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Project units" }))
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Length unit" }), "in")
+    await userEvent.click(screen.getByRole("tab", { name: "Appearance" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Project units" }))
+    expect((screen.getByRole("combobox", { name: "Length unit" }) as HTMLSelectElement).value).toBe(
+      "in",
+    )
+    expect(applyUnits).not.toHaveBeenCalled()
+  })
+
   it("changes browser preferences without committing project units and restores focus on close", async () => {
     setup()
     const trigger = screen.getByRole("button", { name: "Settings" })
     await userEvent.click(trigger)
     expect(screen.getAllByRole("dialog")).toHaveLength(1)
+    await userEvent.click(screen.getByRole("tab", { name: "About VibeShape" }))
     const sources = screen.getByRole("link", {
       name: "Licenses and corresponding source (opens in a new tab)",
     })
     expect(sources.getAttribute("href")).toBe("/sources/index.html")
     expect(sources.getAttribute("target")).toBe("_blank")
+    await userEvent.click(screen.getByRole("tab", { name: "Appearance" }))
     await choose("Theme", "Light")
     expect(document.documentElement.classList.contains("dark")).toBe(false)
+    await userEvent.click(screen.getByRole("tab", { name: "Export preferences" }))
     await choose("Preferred export format", "STEP")
+    await userEvent.click(screen.getByRole("tab", { name: "Workspace" }))
     const autoHide = screen.getByRole("checkbox", {
       name: /Automatically hide sketches/,
     }) as HTMLInputElement
@@ -104,12 +145,17 @@ describe("coherent browser and project settings", () => {
     )
     setup()
     await userEvent.click(screen.getByRole("button", { name: "Settings" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Project units" }))
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Length unit" }), "in")
     await userEvent.click(screen.getByRole("button", { name: "Apply project units" }))
     expect(applyUnits).toHaveBeenCalledWith(3, { length: "in", angle: "deg" })
     await userEvent.keyboard("{Escape}")
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy()
     expect((screen.getByRole("button", { name: "Done" }) as HTMLButtonElement).disabled).toBe(true)
+    const appearance = screen.getByRole("tab", { name: "Appearance" })
+    expect((appearance as HTMLButtonElement).disabled).toBe(true)
+    await userEvent.click(appearance)
+    expect(screen.getByRole("tabpanel", { name: "Project units" })).toBeTruthy()
     finish({ ok: true })
     await waitFor(() =>
       expect((screen.getByRole("button", { name: "Done" }) as HTMLButtonElement).disabled).toBe(
@@ -122,6 +168,7 @@ describe("coherent browser and project settings", () => {
     applyUnits.mockResolvedValueOnce({ ok: false, diagnostic: { sourceCode: null } })
     setup()
     await userEvent.click(screen.getByRole("button", { name: "Settings" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Project units" }))
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Length unit" }), "in")
     const apply = screen.getByRole("button", { name: "Apply project units" })
     await userEvent.click(apply)
@@ -135,12 +182,14 @@ describe("coherent browser and project settings", () => {
   it("allows appearance changes while an active edit blocks project-unit mutation", async () => {
     setup(true)
     await userEvent.click(screen.getByRole("button", { name: "Settings" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Project units" }))
     expect(
       (screen.getByRole("combobox", { name: "Length unit" }) as HTMLSelectElement).disabled,
     ).toBe(true)
     expect(
       (screen.getByRole("button", { name: "Apply project units" }) as HTMLButtonElement).disabled,
     ).toBe(true)
+    await userEvent.click(screen.getByRole("tab", { name: "Appearance" }))
     await choose("Theme", "Light")
     expect(applyUnits).not.toHaveBeenCalled()
   })

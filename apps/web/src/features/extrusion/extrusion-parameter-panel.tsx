@@ -8,6 +8,8 @@ export type ExtrusionParameterPanelCopy = ParameterPanelCopy &
     profile: string
     clearProfiles: string
     removeProfile: (profile: string) => string
+    selectProfiles?: string
+    profileSelectionDescription?: string
   }>
 
 export function ExtrusionParameterPanel({
@@ -19,6 +21,7 @@ export function ExtrusionParameterPanel({
   profileLabels,
   onProfileRemove,
   onProfilesClear,
+  onProfileSelectionRequest,
   operationField,
   symmetricField,
   extentFields,
@@ -32,6 +35,7 @@ export function ExtrusionParameterPanel({
   profileLabels: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
   onProfilesClear?: (() => void) | undefined
+  onProfileSelectionRequest?: (() => void) | undefined
   operationField: ReactNode
   symmetricField: ReactNode
   extentFields?: ReactNode
@@ -50,13 +54,18 @@ export function ExtrusionParameterPanel({
           clear: copy.clearProfiles,
           label: copy.profile,
           remove: copy.removeProfile,
-          select: copy.profile,
+          select: copy.selectProfiles ?? copy.profile,
         }}
         disabled={disabled}
         labels={profileLabels}
         onClear={onProfilesClear}
         onRemove={onProfileRemove}
+        onSelectionRequest={onProfileSelectionRequest}
+        selectionActive={onProfileSelectionRequest !== undefined}
       />
+      {copy.profileSelectionDescription ? (
+        <p className="text-xs text-muted-foreground">{copy.profileSelectionDescription}</p>
+      ) : null}
       {operationField}
       {targetField}
       {distanceField}

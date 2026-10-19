@@ -84,7 +84,11 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
       ]),
     )
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("textbox", { name: /chat|prompt|message/i })).toHaveCount(0)
     await enableLocalAi(page)
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
@@ -177,7 +181,11 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
       .filter({ has: page.locator('input[value="plateWidth"]') })
     await widthRow.getByRole("combobox", { name: "Variable expression", exact: true }).fill("90 mm")
     await page.getByRole("button", { name: "Apply variables", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const manual = await expectCurrentPlate(90, 4.4, created.revision)
 
     // The external agent reads the current revision and authored intent after the human edit.
@@ -253,9 +261,17 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
     ).toBe("90 mm")
     await toolbar.getByRole("button", { name: "Redo", exact: true }).click()
     const redone = await expectCurrentPlate(90, 5.4, undone.summary.revision)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 30_000,
     })
@@ -354,7 +370,11 @@ test("executes the MCP authoring guide plate example against the real browser ke
       .length(5)
       .parse(JSON.parse(json.replaceAll("0195b5ac-b250", "0195b5ac-d450")))
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
     const info = printingSuccess(localToolOutputs.model_info.parse(await call("model_info", {})))

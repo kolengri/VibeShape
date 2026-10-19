@@ -1090,6 +1090,12 @@ describe("ModelTree History disclosure", () => {
     const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
     expect(within(featureItem).getByText("Box 1").classList.contains("sr-only")).toBe(true)
     expect(featureItem.querySelector("svg")).toBeTruthy()
+    expect(featureItem.getAttribute("data-size")).toBe("icon-sm")
+    expect(featureItem.classList.contains("flex-none")).toBe(true)
+    const compactSketch = timeline().getByRole("treeitem", { name: "Edit Profile" })
+    expect(compactSketch.getAttribute("data-size")).toBe("icon-sm")
+    expect(compactSketch.classList.contains("flex-none")).toBe(true)
+    expect(compactSketch.querySelector("svg")?.classList.contains("mr-1")).toBe(false)
     expect(timeline().queryByRole("button", { name: "Hide Box 1" })).toBeNull()
     expect(browser().getByRole("button", { name: "Hide Profile" })).toBeTruthy()
     await user.click(details)
@@ -1106,7 +1112,7 @@ describe("ModelTree History disclosure", () => {
 describe("ModelTree compact repair evidence", () => {
   it.each(["reference", "support"] as const)(
     "keeps a visible repair badge on compact sketches with a broken %s",
-    (kind) => {
+    async (kind) => {
       const broken =
         kind === "reference"
           ? controllerWithBrokenSketchReference()
@@ -1115,15 +1121,27 @@ describe("ModelTree compact repair evidence", () => {
       const sketchItem = timeline().getByRole("treeitem", { name: `Edit ${broken.target.label}` })
       const row = sketchItem.closest<HTMLElement>("[data-history-id]")
       if (!row) throw new Error("Expected the compact History row.")
-      expect(
-        within(row).getByRole("img", {
-          name: "Missing references — open this item to select replacement inputs.",
-        }),
-      ).toBeTruthy()
+      const diagnostic =
+        kind === "reference"
+          ? "Needs repair: 1 direct failure; no chained failures."
+          : "Needs repair: the support face is missing."
+      expect(within(row).getByRole("img", { name: diagnostic })).toBeTruthy()
       expect(within(sketchItem).getByText(broken.target.label).classList.contains("sr-only")).toBe(
         true,
       )
       expect(timeline().getAllByRole("img")).toHaveLength(1)
+      expect(sketchItem.getAttribute("data-size")).toBe("icon-sm")
+      expect(sketchItem.classList.contains("flex-none")).toBe(true)
+      const repairName =
+        kind === "reference"
+          ? "Open Dependent to repair 1 broken reference"
+          : "Replace the missing support for Face sketch"
+      expect(within(row).queryByRole("button", { name: repairName })).toBeNull()
+      expect(within(row).getByRole("img").classList.contains("bottom-1")).toBe(true)
+      const browserRepair = browser().getByRole("button", { name: repairName })
+      expect(browserRepair).toBeTruthy()
+      await userEvent.hover(sketchItem)
+      expect((await screen.findByRole("tooltip")).textContent).toBe(diagnostic)
     },
   )
 })

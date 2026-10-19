@@ -12,7 +12,12 @@
     "package": "bun run package.ts"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@vibeshape/automation-api": "workspace:*",
     "@vibeshape/mcp-server": "workspace:*",
+    "@vibeshape/slicer-bridge": "workspace:*",
+    "@vibeshape/slicer-handoff": "workspace:*",
     "semver": "7.8.5",
     "use-intl": "catalog:",
     "zod": "catalog:"

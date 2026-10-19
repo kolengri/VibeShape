@@ -72,7 +72,11 @@ test("authors owned assembly and library drafts through paired MCP, exact previe
       (await local.client.readResource({ uri: "vibeshape://session" })).contents.length,
     ).toBeGreaterThan(0)
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const initial = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
     const cad = success(
@@ -350,7 +354,11 @@ test("authors owned assembly and library drafts through paired MCP, exact previe
       ),
     )
     await page.getByRole("button", { name: "Undo", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const undone = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
     expect(undone.revision).toBe(inserted.revision + 1)
     expect(
@@ -361,11 +369,19 @@ test("authors owned assembly and library drafts through paired MCP, exact previe
       ).instances,
     ).toHaveLength(2)
     await page.getByRole("button", { name: "Redo", exact: true }).click()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     const redone = success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary
     expect(redone.revision).toBe(inserted.revision + 2)
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 30_000,
     })

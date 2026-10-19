@@ -66,8 +66,12 @@ export function nextProfileFeatureSelection(
   current: readonly SketchProfileSelector[],
   profile: SketchProfileSelector,
   intent: "replace" | "toggle",
+  multipleSketches = false,
 ): readonly SketchProfileSelector[] {
-  if (intent === "replace" || current.some(({ sketchId }) => sketchId !== profile.sketchId)) {
+  if (
+    intent === "replace" ||
+    (!multipleSketches && current.some(({ sketchId }) => sketchId !== profile.sketchId))
+  ) {
     return [profile]
   }
   const matchingIndex = current.findIndex((candidate) => profileSelectorsEqual(candidate, profile))
@@ -132,6 +136,22 @@ export function profileSupportReference(
   profile: SketchProfileSelector,
 ): TopoRef | undefined {
   return snapshot.sketches.find(({ id }) => id === profile.sketchId)?.support?.reference
+}
+
+export function profileSupportReferences(
+  snapshot: DocumentSnapshot,
+  profiles: readonly SketchProfileSelector[],
+): readonly TopoRef[] {
+  return createSketchProfileSet(profiles)
+    .profiles.flatMap((profile) => {
+      const reference = profileSupportReference(snapshot, profile)
+      return reference ? [reference] : []
+    })
+    .filter(
+      (reference, index, references) =>
+        references.findIndex((candidate) => topologyReferencesEqual(candidate, reference)) ===
+        index,
+    )
 }
 
 export function revolveAxisAfterProfileSelection(

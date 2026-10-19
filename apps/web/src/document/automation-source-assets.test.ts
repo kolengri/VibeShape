@@ -49,6 +49,7 @@ const {
   createActiveDocumentAutomationSession,
   materializeActiveDocumentSourceAssets,
   useDocumentController,
+  createNewLocalProject,
 } = await import("./document-controller")
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -100,6 +101,8 @@ describe("paired draft source materialization", () => {
     }))
     mocks.createHistory.mockImplementation(() => ({ cancel: vi.fn(), dispose: vi.fn() }))
     const controller = renderHook(() => useDocumentController("Source asset boundary"))
+    await waitFor(() => expect(controller.result.current.status).toBe("library"))
+    expect(await createNewLocalProject()).toEqual({ ok: true })
     await waitFor(() => expect(controller.result.current.status).toBe("ready"))
     controller.unmount()
   })

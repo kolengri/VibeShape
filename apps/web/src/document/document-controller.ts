@@ -194,7 +194,7 @@ import { formatProjectCopyName } from "./versioned-project-file"
 const DATABASE_NAME = "vibeshape-product-v0"
 const DOCUMENT_STORAGE_KEY = "vibeshape-active-document-id"
 const SESSION_STORAGE_KEY = "vibeshape-browser-session-id"
-type ControllerStatus = "idle" | "loading" | "ready" | "error"
+type ControllerStatus = "idle" | "loading" | "library" | "ready" | "error"
 type SaveStatus = "saved" | "saving" | "save-error"
 
 export type DocumentControllerState = Readonly<{
@@ -325,6 +325,8 @@ function browserProjectNavigation() {
         window.location.reload()
         return { ok: true }
       }
+      if (state.status === "library")
+        return switchLibraryProject({ kind: "open", documentId }, signal)
       const action = captureProjectAction()
       if (!action) return projectActionUnavailable()
       return switchAutomationProject(
@@ -333,6 +335,10 @@ function browserProjectNavigation() {
         signal,
         false,
       )
+    },
+    library: async (signal) => {
+      await startPromise
+      return showProjectLibrary(signal)
     },
     failed: (projectNavigationError) => publish({ ...state, projectNavigationError }),
   })
@@ -375,6 +381,29 @@ function captureProjectAction() {
       activeRepository === repository &&
       active.snapshot.id === id &&
       active.snapshot.revision === revision,
+  }
+}
+
+function captureProjectCatalogAction() {
+  const active = captureProjectAction()
+  if (active) return active
+  if (
+    state.status !== "library" ||
+    state.saveStatus !== "saved" ||
+    session ||
+    !activeRepository ||
+    getProjectActiveWorkBlock()
+  )
+    return null
+  const repository = activeRepository
+  return {
+    repository,
+    current: (saveStatus: SaveStatus = "saved") =>
+      state.status === "library" &&
+      state.saveStatus === saveStatus &&
+      session === null &&
+      activeRepository === repository &&
+      !getProjectActiveWorkBlock(),
   }
 }
 
@@ -512,11 +541,16 @@ function createCommand(
   } as const
 }
 
-async function openOrCreate(defaultDocumentName: string) {
-  const database = new VibeShapeDatabase(DATABASE_NAME)
+function initializeProjectRepository() {
+  const database = activeDatabase ?? new VibeShapeDatabase(DATABASE_NAME)
   activeDatabase = database
-  const repository = new BrowserProjectRepository(database)
+  const repository = activeRepository ?? new BrowserProjectRepository(database)
   activeRepository = repository
+  return { database, repository }
+}
+
+async function initializeProjectController() {
+  const { database, repository } = initializeProjectRepository()
   const requested = readProjectUrl(window.location.href)
   if (requested.kind === "invalid")
     return {
@@ -530,30 +564,25 @@ async function openOrCreate(defaultDocumentName: string) {
     }
   if (requested.kind === "project")
     return openControllerProject(database, repository, requested.documentId)
-  const storedDocumentId = documentIdSchema.safeParse(
-    readStoredId(localStorage, DOCUMENT_STORAGE_KEY),
-  )
-  if (storedDocumentId.success) {
-    const opened = await openControllerProject(database, repository, storedDocumentId.data)
-    if (opened.ok || opened.diagnostic.sourceCode !== "document-not-found") return opened
-  }
-  const documentId = createBrowserDocumentId()
-  const created = await createPersistentDocumentSession(
-    browserProjectDependencies(database, repository),
-    {
-      sessionId: currentSessionId(),
-      mesh: PRODUCT_MESH_POLICY,
-      command: createCommand(documentId, defaultDocumentName),
-    },
-  )
-  if (created.ok) writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId)
-  return enableAuthoredDocument(created)
+  return { ok: true as const, library: true as const }
 }
 
-async function start(defaultDocumentName: string) {
+function publishProjectLibrary() {
+  session = null
+  publish({
+    status: "library",
+    report: null,
+    saveStatus: "saved",
+    diagnostic: null,
+    historyInsertion: null,
+    projectNavigationError: null,
+  })
+}
+
+async function start() {
   publish({ ...state, status: "loading", diagnostic: null })
   try {
-    const result = await openOrCreate(defaultDocumentName)
+    const result = await initializeProjectController()
     if (!result.ok) {
       const requested = readProjectUrl(window.location.href)
       publish({
@@ -569,6 +598,10 @@ async function start(defaultDocumentName: string) {
                 ? "document-not-found"
                 : "project-open-failed",
       })
+      return
+    }
+    if ("library" in result) {
+      publishProjectLibrary()
       return
     }
     session = result.session
@@ -598,7 +631,7 @@ async function start(defaultDocumentName: string) {
 
 function startDocumentController(defaultDocumentName: string) {
   defaultProjectName = defaultDocumentName
-  startPromise ??= start(defaultDocumentName)
+  startPromise ??= start()
   return startPromise
 }
 
@@ -1281,19 +1314,30 @@ export function createActiveDocumentAutomationSession() {
     }
   })
   function dispose() {
+    if (closed) return
     closed = true
     unsubscribe()
     window.removeEventListener("pagehide", dispose)
-    closeAutomation()
-    metadata.dispose()
-    imports.dispose()
-    planarImports.dispose()
-    assembly.dispose()
-    history.dispose()
-    surfaceTextures.dispose()
-    lightweighting.dispose()
-    quickLightweighting.dispose()
-    exports.dispose()
+    const failures: unknown[] = []
+    for (const release of [
+      closeAutomation,
+      () => metadata.dispose(),
+      () => imports.dispose(),
+      () => planarImports.dispose(),
+      () => assembly.dispose(),
+      () => history.dispose(),
+      () => surfaceTextures.dispose(),
+      () => lightweighting.dispose(),
+      () => quickLightweighting.dispose(),
+      () => exports.dispose(),
+    ]) {
+      try {
+        release()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) throw failures[0]
   }
   window.addEventListener("pagehide", dispose, { once: true })
   return {
@@ -1707,7 +1751,9 @@ export async function previewAssemblyChanges(
       context.authority.assembly,
       changes,
     )
-    const assembly = applyCapturedAssemblyMutations(context.authority.assembly, captured)
+    const assembly = applyCapturedAssemblyMutations(context.authority.assembly, captured, {
+      allowNoop: true,
+    })
     const authority = documentSnapshotV4Schema.parse({
       ...context.authority,
       assets: mergeCapturedAssemblyAssets(context.authority, captured),
@@ -2729,7 +2775,7 @@ export async function importProjectBackup(
   bytes: Uint8Array,
   formatCopyName: (name: string) => string,
 ): Promise<ProjectImportResult> {
-  const action = captureProjectAction()
+  const action = captureProjectCatalogAction()
   if (!action) return projectActionUnavailable()
   const decoded = await readAuthoredVShape(bytes)
   if (!action.current()) return projectActionUnavailable()
@@ -2755,7 +2801,8 @@ export async function importProjectBackup(
 }
 
 export async function listLocalProjects(): Promise<LocalProjectListResult> {
-  if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
+  if (!activeRepository || (state.status !== "ready" && state.status !== "library"))
+    return unavailableProjectFileResult()
   const result = await activeRepository.listProjects()
   return result.ok
     ? { ok: true, projects: result.value }
@@ -3002,10 +3049,12 @@ async function activateAutomationTarget(
   return automationProjectValue(target.session)
 }
 
-async function closePreparedAutomationTarget(transition: AutomationProjectTransition) {
-  if (!transition.prepared) return null
+async function closePreparedProject(
+  prepared: Extract<PersistentDocumentSessionOpenResult, { ok: true }> | null,
+) {
+  if (!prepared) return null
   try {
-    const closed = await transition.prepared.session.close()
+    const closed = await prepared.session.close()
     return closed.ok
       ? null
       : automationProjectFailure(
@@ -3020,6 +3069,10 @@ async function closePreparedAutomationTarget(transition: AutomationProjectTransi
       true,
     )
   }
+}
+
+async function closePreparedAutomationTarget(transition: AutomationProjectTransition) {
+  return closePreparedProject(transition.prepared)
 }
 
 function publishProjectRecoveryFailure(
@@ -3168,18 +3221,190 @@ export async function openAutomationProject(
   )
 }
 
+async function prepareLibraryProject(
+  request: AutomationProjectRequest,
+  database: VibeShapeDatabase,
+  repository: BrowserProjectRepository,
+) {
+  return request.kind === "open"
+    ? openControllerProject(database, repository, request.documentId)
+    : enableAuthoredDocument(
+        await createPersistentDocumentSession(browserProjectDependencies(database, repository), {
+          sessionId: currentSessionId(),
+          mesh: PRODUCT_MESH_POLICY,
+          command: createCommand(request.documentId, request.name, request.actor),
+        }),
+      )
+}
+
+function activateLibraryProject(
+  action: NonNullable<ReturnType<typeof captureProjectCatalogAction>>,
+  target: Extract<PersistentDocumentSessionOpenResult, { ok: true }>,
+): ProjectSwitchResult {
+  if (!action.current("saving")) return projectActionUnavailable()
+  if (!writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, target.session.snapshot.id))
+    return automationProjectFailure(
+      "storage-unavailable",
+      "The active project selection could not be stored in this browser.",
+      true,
+    )
+  publishOpenedProject(target)
+  return { ok: true }
+}
+
+type LibraryProjectTransition = {
+  action: NonNullable<ReturnType<typeof captureProjectCatalogAction>>
+  database: VibeShapeDatabase
+  signal: AbortSignal | undefined
+  prepared: Extract<PersistentDocumentSessionOpenResult, { ok: true }> | null
+}
+
+async function prepareAndActivateLibraryProject(
+  transition: LibraryProjectTransition,
+  request: AutomationProjectRequest,
+): Promise<ProjectSwitchResult> {
+  const target = await prepareLibraryProject(
+    request,
+    transition.database,
+    transition.action.repository,
+  )
+  if (!target.ok) return automationProjectDiagnostic(target.diagnostic)
+  transition.prepared = target
+  if (transition.signal?.aborted)
+    return automationProjectFailure("cancelled", "The project action was cancelled.")
+  const result = activateLibraryProject(transition.action, target)
+  if (result.ok) transition.prepared = null
+  return result
+}
+
+async function finishLibraryTransition(
+  transition: LibraryProjectTransition,
+  result: ProjectSwitchResult,
+) {
+  const cleanupFailure = await closePreparedProject(transition.prepared)
+  if (transition.prepared && session === transition.prepared.session) {
+    browserProjectNavigation().clear("replace")
+    publishProjectLibrary()
+  } else if (transition.action.current("saving")) publishProjectLibrary()
+  return cleanupFailure ?? result
+}
+
+async function switchLibraryProject(
+  request: AutomationProjectRequest,
+  signal?: AbortSignal,
+): Promise<ProjectSwitchResult> {
+  if (signal?.aborted)
+    return automationProjectFailure("cancelled", "The project action was cancelled.")
+  const action = captureProjectCatalogAction()
+  const database = activeDatabase
+  if (!action || !database || state.status !== "library") return projectActionUnavailable()
+  const transition: LibraryProjectTransition = { action, database, signal, prepared: null }
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  let result: ProjectSwitchResult
+  try {
+    result = await prepareAndActivateLibraryProject(transition, request)
+  } catch {
+    result = automationProjectFailure(
+      "persistence-failed",
+      "The project could not be opened.",
+      true,
+    )
+  }
+  return finishLibraryTransition(transition, result)
+}
+
+function showSessionlessProjectLibrary(): ProjectSwitchResult {
+  if (state.status !== "library" && state.status !== "error") return projectActionUnavailable()
+  if (state.saveStatus === "saving" || getProjectActiveWorkBlock())
+    return projectActionUnavailable()
+  try {
+    initializeProjectRepository()
+  } catch {
+    return automationProjectFailure(
+      "persistence-failed",
+      "The project library could not be initialized.",
+      true,
+    )
+  }
+  if (!browserProjectNavigation().clear())
+    return automationProjectFailure(
+      "project-url-unavailable",
+      "The project URL could not be cleared.",
+      true,
+    )
+  publishProjectLibrary()
+  return { ok: true }
+}
+
+async function closeEditorToLibrary(
+  transition: AutomationProjectTransition,
+): Promise<{ ok: true } | Extract<AutomationProjectResult, { ok: false }>> {
+  try {
+    transition.sourceClosed = true
+    const closed = await transition.action.active.close()
+    if (!closed.ok) return automationProjectDiagnostic(closed.diagnostic)
+    const interrupted = projectTransitionInterruption(transition)
+    if (interrupted) return interrupted
+    if (!browserProjectNavigation().clear())
+      return automationProjectFailure(
+        "project-url-unavailable",
+        "The project URL could not be cleared.",
+        true,
+      )
+    publishProjectLibrary()
+    return { ok: true }
+  } catch {
+    return automationProjectFailure(
+      "close-failed",
+      "The active project could not be closed cleanly.",
+      true,
+    )
+  }
+}
+
+export async function showProjectLibrary(signal?: AbortSignal): Promise<ProjectSwitchResult> {
+  if (signal?.aborted)
+    return automationProjectFailure("cancelled", "The project action was cancelled.")
+  if (!session) return showSessionlessProjectLibrary()
+  const action = captureProjectAction()
+  const database = activeDatabase
+  if (!action || !database) return projectActionUnavailable()
+  const transition: AutomationProjectTransition = {
+    action,
+    database,
+    previousState: state,
+    prepared: null,
+    sourceClosed: false,
+    selectionChanged: false,
+    signal,
+    requireWritable: false,
+  }
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await closeEditorToLibrary(transition)
+  return result.ok ? { ok: true } : rollbackAutomationTransition(transition, result)
+}
+
 export async function activateLocalProject(
   documentIdInput: unknown,
   expectedProject?: AutomationProjectExpectation,
 ): Promise<ProjectSwitchResult> {
-  const action = captureProjectAction()
-  if (!action) return projectActionUnavailable()
   const documentId = documentIdSchema.safeParse(documentIdInput)
   if (!documentId.success)
     return {
       ok: false,
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
+  if (state.status === "library") {
+    if (expectedProject)
+      return automationProjectFailure(
+        "stale-revision",
+        "The source project is no longer active.",
+        true,
+      )
+    return switchLibraryProject({ kind: "open", documentId: documentId.data })
+  }
+  const action = captureProjectAction()
+  if (!action) return projectActionUnavailable()
   const result = await switchAutomationProject(
     { kind: "open", documentId: documentId.data },
     expectedProject ?? { documentId: action.id, revision: action.revision },
@@ -3190,6 +3415,13 @@ export async function activateLocalProject(
 }
 
 export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
+  if (state.status === "library")
+    return switchLibraryProject({
+      kind: "create",
+      documentId: createBrowserDocumentId(),
+      name: defaultProjectName,
+      actor: { type: "user", userId: null },
+    })
   const action = captureProjectAction()
   if (!action) return projectActionUnavailable()
   const result = await createAutomationProject(defaultProjectName, {
@@ -3203,9 +3435,8 @@ export async function deleteLocalProject(
   documentIdInput: unknown,
   expectedHeadRevision: number,
 ): Promise<ProjectDeleteResult> {
-  if (!session || !activeRepository || getProjectActionBlock()) {
-    return projectActionUnavailable()
-  }
+  const action = captureProjectCatalogAction()
+  if (!action) return projectActionUnavailable()
   const documentId = documentIdSchema.safeParse(documentIdInput)
   if (!documentId.success) {
     return {
@@ -3213,17 +3444,18 @@ export async function deleteLocalProject(
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
   }
-  if (session.snapshot.id === documentId.data) {
+  if (session?.snapshot.id === documentId.data) {
     return {
       ok: false,
       diagnostic: { code: "invalid-input", message: "The active project cannot be deleted." },
     }
   }
-  const deleted = await activeRepository.deleteProject({
+  const deleted = await action.repository.deleteProject({
     documentId: documentId.data,
     expectedHeadRevision,
     nowMs: Date.now(),
   })
+  if (!action.current()) return projectActionUnavailable()
   return deleted.ok ? { ok: true } : { ok: false, diagnostic: deleted.diagnostic }
 }
 
@@ -3232,7 +3464,8 @@ export async function duplicateLocalProject(
   expectedHeadRevision: number,
   name: string,
 ): Promise<ProjectDuplicateResult> {
-  if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
+  const action = captureProjectCatalogAction()
+  if (!action) return projectActionUnavailable()
   const documentId = documentIdSchema.safeParse(documentIdInput)
   if (!documentId.success) {
     return {
@@ -3240,7 +3473,7 @@ export async function duplicateLocalProject(
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
   }
-  const portable = await activeRepository.exportPortableProject(documentId.data)
+  const portable = await action.repository.exportPortableProject(documentId.data)
   if (!portable.ok) return { ok: false, diagnostic: portable.diagnostic }
   if (portable.value.project.snapshot.revision !== expectedHeadRevision) {
     return {
@@ -3260,15 +3493,17 @@ export async function duplicateLocalProject(
   })
   if (!copied.ok) return { ok: false, diagnostic: copied.diagnostic }
 
-  const stored = await activeRepository.copyPortableProject(copied.value, copiedAt)
+  if (!action.current()) return projectActionUnavailable()
+  const stored = await action.repository.copyPortableProject(copied.value, copiedAt)
   if (!stored.ok) return { ok: false, diagnostic: stored.diagnostic }
-  await activeRepository.copyProjectThumbnail({
+  await action.repository.copyProjectThumbnail({
     sourceDocumentId: documentId.data,
     sourceRevision: expectedHeadRevision,
     targetDocumentId: stored.value.documentId,
     targetRevision: stored.value.revision,
     generatedAt: copiedAt,
   })
+  if (!action.current()) return projectActionUnavailable()
   return { ok: true, documentId: stored.value.documentId, name: copied.value.project.snapshot.name }
 }
 

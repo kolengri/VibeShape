@@ -13,7 +13,11 @@ async function createBox(page: Page, values: Record<string, string>) {
     await form.getByRole("combobox", { name, exact: true }).fill(value)
   await form.getByRole("button", { name: "Create box", exact: true }).click()
   await expect(form).not.toBeVisible()
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
 }
 async function renamePart(page: Page, from: string, to: string) {
   await page.getByRole("button", { name: `Rename part ${from}`, exact: true }).click()
@@ -90,7 +94,11 @@ test("exports a hidden selected part and a named positioned assembly without cha
 }, testInfo) => {
   test.setTimeout(120_000)
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ }),
+  ).toBeVisible()
   await createBox(page, {})
   await createBox(page, {
     Width: "10 mm",

@@ -7,6 +7,7 @@ import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import { EditorSessionProvider, useEditorSession } from "../editor-session/editor-session-provider"
 import { i18n } from "../i18n"
 import {
   authoredTestBody,
@@ -40,6 +41,84 @@ beforeAll(() =>
 afterEach(cleanup)
 
 describe("authored tree controls", () => {
+  it("toggles Part presentation during a draft while rename and durable metadata remain blocked", async () => {
+    const { authority } = authoredTreeFixture()
+    const part = requireAuthoredFixture(authority.parts[0])
+    const onCommit = commit()
+    function DraftParts() {
+      const overrides = useEditorSession((state) => state.partVisibilityOverrides)
+      const actions = useEditorSession((state) => state.actions)
+      return (
+        <AuthoredPartsGroup
+          parts={[{ part, body: authoredTestBody(part), status: "available" }]}
+          revision={authority.revision}
+          selectedPartId={null}
+          disabled
+          presentationOnlyVisibility
+          visibilityDisabled={false}
+          visibility={{
+            overrides,
+            setOverride: actions.setPartVisibilityOverride,
+            clearOverride: actions.clearPartVisibilityOverride,
+          }}
+          onSelect={vi.fn()}
+          onCommit={onCommit}
+        />
+      )
+    }
+    render(
+      providers(
+        <EditorSessionProvider>
+          <DraftParts />
+        </EditorSessionProvider>,
+      ),
+    )
+    expect(
+      (screen.getByRole("button", { name: "Rename part Part 1" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
+    expect(
+      screen.getByRole("button", { name: "Show part Part 1" }).getAttribute("aria-pressed"),
+    ).toBe("false")
+    await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
+    expect(
+      screen.getByRole("button", { name: "Hide part Part 1" }).getAttribute("aria-pressed"),
+    ).toBe("true")
+    expect(onCommit).not.toHaveBeenCalled()
+    expect(authority.parts[0]).toBe(part)
+  })
+
+  it("clears only a successfully committed idle override and retains it on rejection", async () => {
+    const { authority } = authoredTreeFixture()
+    const part = requireAuthoredFixture(authority.parts[0])
+    const clearOverride = vi.fn()
+    const onCommit = commit().mockRejectedValueOnce(new Error("Storage unavailable"))
+    render(
+      providers(
+        <AuthoredPartsGroup
+          parts={[{ part, body: authoredTestBody(part), status: "available" }]}
+          revision={authority.revision}
+          selectedPartId={null}
+          disabled={false}
+          visibility={{ overrides: { [part.id]: false }, setOverride: vi.fn(), clearOverride }}
+          onSelect={vi.fn()}
+          onCommit={onCommit}
+        />,
+      ),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
+    expect(clearOverride).not.toHaveBeenCalled()
+    expect(screen.getByRole("alert")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
+    expect(onCommit).toHaveBeenLastCalledWith(authority.revision, {
+      kind: "part.set-visibility",
+      partId: part.id,
+      visible: true,
+    })
+    expect(clearOverride).toHaveBeenCalledTimes(1)
+    expect(clearOverride).toHaveBeenCalledWith(part.id)
+  })
+
   it("selects stable parts and persists visibility independently of geometry", async () => {
     const { authority } = authoredTreeFixture()
     const part = requireAuthoredFixture(authority.parts[0])

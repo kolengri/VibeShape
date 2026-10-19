@@ -8,9 +8,12 @@ for (const width of [1440, 512, 390]) {
   }) => {
     await page.setViewportSize({ width, height: width === 512 ? 384 : 844 })
     await page.goto("/")
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached({
-      timeout: 30_000,
-    })
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+      {
+        timeout: 30_000,
+      },
+    )
     const trigger = page.getByRole("button", { name: "Application menu", exact: true })
     await expect(trigger).toBeInViewport({ ratio: 1 })
     await openApplicationMenuItem(page, "Files and projects…")
@@ -40,24 +43,32 @@ for (const width of [1440, 512, 390]) {
       animations: "disabled",
       path: test.info().outputPath(`settings-${width}-light.png`),
     })
+    await expect(settings.getByRole("tabpanel")).toHaveCount(1)
+    await settings.getByRole("tab", { name: "Workspace", exact: true }).click()
     await settings.getByRole("checkbox", { name: /Automatically hide sketches/ }).uncheck()
+    await settings.getByRole("tab", { name: "Export preferences", exact: true }).click()
     await settings.getByRole("combobox", { name: "Preferred export format", exact: true }).click()
     await page.getByRole("option", { name: "STEP", exact: true }).click()
     await settings.getByRole("button", { name: "Done", exact: true }).click()
     await expect(trigger).toBeFocused()
     await page.reload()
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeAttached()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
     await expect(page.locator("html")).not.toHaveClass(/dark/)
     await openApplicationMenuItem(page, "Settings…")
     await expect(settings.getByRole("combobox", { name: "Theme", exact: true })).toContainText(
       "Light",
     )
+    await settings.getByRole("tab", { name: "Workspace", exact: true }).click()
     await expect(
       settings.getByRole("checkbox", { name: /Automatically hide sketches/ }),
     ).not.toBeChecked()
+    await settings.getByRole("tab", { name: "Export preferences", exact: true }).click()
     await expect(
       settings.getByRole("combobox", { name: "Preferred export format", exact: true }),
     ).toContainText("STEP")
+    await settings.getByRole("tab", { name: "Appearance", exact: true }).click()
     await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
     await page.getByRole("option", { name: "Dark", exact: true }).click()
     await expect(page.locator("html")).toHaveClass(/dark/)
@@ -82,9 +93,12 @@ test("keeps an active feature draft intact while File explains blocked actions",
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
-    timeout: 30_000,
-  })
+  await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+    "Saved",
+    {
+      timeout: 30_000,
+    },
+  )
   await invokeModelCommand(page, "Primitives", "Box")
   const form = page.getByRole("form", { name: "Create box", exact: true })
   await form.getByRole("combobox", { name: "Width", exact: true }).fill("23 mm")

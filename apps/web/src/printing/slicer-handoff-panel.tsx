@@ -1,197 +1,120 @@
 import { useTranslations } from "@vibeshape/i18n"
-import type { SlicerBridgeDiagnosticCode, SlicerId } from "@vibeshape/slicer-handoff/protocol"
-import { slicerIdSchema } from "@vibeshape/slicer-handoff/protocol"
+import { nativeMeshFormatSchema } from "@vibeshape/slicer-handoff/native"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { useState } from "react"
-import type { ActiveDocumentExportResult } from "../document/document-controller"
-import { createDocumentExportFilename, downloadDocumentExport } from "../document/document-export"
-import { SlicerBridgeConnectionForm } from "./slicer-bridge-connection-form"
-import {
-  handoffThreeMfToSlicer,
-  readPreferredSlicer,
-  readSlicerBridgeToken,
-  removeSlicerBridgeToken,
-  savePreferredSlicer,
-  saveSlicerBridgeToken,
-  slicerTargets,
-} from "./slicer-handoff"
+import { type SlicerHandoffActions, useSlicerHandoff } from "./use-slicer-handoff"
 
-type HandoffStatus = Readonly<{ message: string; failed: boolean }>
-type Translation = ReturnType<typeof useTranslations>
-
-const reasonFallbackKeys = {
-  "not-configured": "fallback.notConfigured",
-  unavailable: "fallback.unavailable",
-  "invalid-response": "fallback.invalidResponse",
-} as const
-
-const diagnosticFallbackKeys: Partial<Record<SlicerBridgeDiagnosticCode, string>> = {
-  "slicer-not-installed": "fallback.notInstalled",
-  unauthorized: "fallback.unauthorized",
-}
-
-function fallbackStatus(
-  result: Exclude<Awaited<ReturnType<typeof handoffThreeMfToSlicer>>, { ok: true }>,
-  slicerName: string,
-  t: Translation,
-): HandoffStatus {
-  const key =
-    result.reason === "rejected"
-      ? (diagnosticFallbackKeys[result.diagnostic.code] ?? "fallback.rejected")
-      : reasonFallbackKeys[result.reason]
-  return { message: t(key, { slicer: slicerName }), failed: true }
-}
-
-function HandoffStatusMessage({ status }: { status: HandoffStatus | null }) {
-  if (!status) return null
+type Handoff = ReturnType<typeof useSlicerHandoff>
+type Controls = { handoff: Handoff; disabled: boolean }
+function MeshFormatField({ handoff, disabled }: Controls) {
+  const t = useTranslations("app.export.slicer.native")
   return (
-    <p
-      className={status.failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
-      role={status.failed ? "alert" : "status"}
-      aria-live="polite"
+    <NativeSelectField
+      label={t("formatLabel")}
+      value={handoff.preference.format}
+      disabled={disabled}
+      onChange={(event) => {
+        const format = nativeMeshFormatSchema.safeParse(event.currentTarget.value)
+        if (format.success) handoff.choosePreference(handoff.selected?.id ?? null, format.data)
+      }}
     >
-      {status.message}
-    </p>
+      <option value="3mf">3MF</option>
+      <option value="stl">STL</option>
+    </NativeSelectField>
   )
 }
-
-function SlicerBridgeSetup({
-  bridgeToken,
-  onStatusReset,
-  onTokenChange,
-  t,
-}: {
-  bridgeToken: string | null
-  onStatusReset: () => void
-  onTokenChange: (token: string | null) => void
-  t: Translation
-}) {
+function SlicerApplicationField({ handoff, disabled }: Controls) {
+  const t = useTranslations("app.export.slicer.native")
+  if (!handoff.native) return null
+  const { targets, selected, loading } = handoff
   return (
-    <details className="group rounded-md border bg-background p-3">
-      <summary className="cursor-pointer text-sm font-medium">{t("bridge.summary")}</summary>
-      <div className="mt-3 grid gap-3">
-        <p className="text-xs text-muted-foreground">{t("bridge.description")}</p>
-        <SlicerBridgeConnectionForm
-          connected={bridgeToken !== null}
-          copy={{
-            connected: t("bridge.connected"),
-            disconnected: t("bridge.disconnected"),
-            disconnect: t("bridge.disconnect"),
-            disconnectFailed: t("bridge.disconnectFailed"),
-            formLabel: t("bridge.formLabel"),
-            tokenLabel: t("bridge.tokenLabel"),
-            tokenDescription: t("bridge.tokenDescription"),
-            invalidToken: t("bridge.invalidToken"),
-            save: t("bridge.save"),
-            saved: t("bridge.saved"),
-            saveFailed: t("bridge.saveFailed"),
-          }}
-          onDisconnect={() => {
-            const removed = removeSlicerBridgeToken()
-            if (removed) onTokenChange(null)
-            onStatusReset()
-            return removed
-          }}
-          onSave={(token) => {
-            const saved = saveSlicerBridgeToken(token)
-            if (saved) onTokenChange(token)
-            onStatusReset()
-            return saved
-          }}
-        />
-      </div>
-    </details>
-  )
-}
-
-export function SlicerHandoffPanel({
-  disabled,
-  onBusyChange,
-  onOpened,
-  prepareThreeMf,
-}: {
-  disabled: boolean
-  onBusyChange: (busy: boolean) => void
-  onOpened: (message: string) => void
-  prepareThreeMf: () => Promise<ActiveDocumentExportResult>
-}) {
-  const t = useTranslations("app.export.slicer")
-  const [slicerId, setSlicerId] = useState<SlicerId>(readPreferredSlicer)
-  const [bridgeToken, setBridgeToken] = useState(readSlicerBridgeToken)
-  const [status, setStatus] = useState<HandoffStatus | null>(null)
-  const slicerName = slicerTargets.find(({ id }) => id === slicerId)?.name ?? slicerId
-
-  const openInSlicer = async () => {
-    onBusyChange(true)
-    setStatus({ message: t("preparing", { slicer: slicerName }), failed: false })
-    try {
-      const exported = await prepareThreeMf()
-      if (!exported.ok || exported.format !== "3mf") {
-        setStatus({ message: t("exportFailed"), failed: true })
-        return
-      }
-      const handoff = await handoffThreeMfToSlicer({
-        file: exported.file,
-        filename: createDocumentExportFilename(exported.documentName, "3mf"),
-        slicerId,
-        token: bridgeToken,
-      })
-      if (handoff.ok) {
-        onOpened(t("opened", { slicer: slicerName }))
-        return
-      }
-      downloadDocumentExport(exported)
-      setStatus(fallbackStatus(handoff, slicerName, t))
-    } catch {
-      setStatus({ message: t("actionFailed"), failed: true })
-    } finally {
-      onBusyChange(false)
-    }
-  }
-
-  return (
-    <section className="grid gap-4 rounded-md border border-primary/30 bg-card p-4">
-      <div className="grid gap-1">
-        <h3 className="text-sm font-medium">{t("title")}</h3>
-        <p className="text-xs text-muted-foreground">{t("description")}</p>
-      </div>
-      <div className="grid items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <NativeSelectField
-          label={t("targetLabel")}
-          description={t("targetDescription")}
-          value={slicerId}
-          disabled={disabled}
-          onChange={(event) => {
-            const next = slicerIdSchema.safeParse(event.currentTarget.value)
-            if (!next.success) return
-            setSlicerId(next.data)
-            savePreferredSlicer(next.data)
-            setStatus(null)
-          }}
-        >
-          {slicerTargets.map((target) => (
+    <div className="grid gap-2">
+      <NativeSelectField
+        label={t("targetLabel")}
+        description={t("targetDescription")}
+        value={selected?.id ?? ""}
+        disabled={disabled || loading || targets.length === 0}
+        onChange={(event) => {
+          const target = targets.find((item) => item.id === event.currentTarget.value)
+          if (target) handoff.choosePreference(target.id, handoff.preference.format)
+        }}
+      >
+        {targets.length === 0 ? (
+          <option value="" />
+        ) : (
+          targets.map((target) => (
             <option key={target.id} value={target.id}>
               {target.name}
             </option>
-          ))}
-        </NativeSelectField>
+          ))
+        )}
+      </NativeSelectField>
+      {!loading && targets.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("noApplications")}</p>
+      ) : null}
+    </div>
+  )
+}
+function SlicerHandoffButtons({ handoff, disabled }: Controls) {
+  const t = useTranslations("app.export.slicer.native")
+  const { native, canSend, canReveal, sendLabel } = handoff
+  return (
+    <div className="flex flex-wrap gap-2">
+      {native ? (
         <Button
           type="button"
-          className="sm:mt-[1.375rem]"
+          variant="outline"
           disabled={disabled}
-          onClick={openInSlicer}
+          onClick={handoff.chooseApplication}
         >
-          {t("action", { slicer: slicerName })}
+          {t("choose")}
         </Button>
+      ) : null}
+      <Button type="button" disabled={disabled || !canSend} onClick={handoff.send}>
+        {sendLabel}
+      </Button>
+      {canReveal ? (
+        <Button type="button" variant="outline" disabled={disabled} onClick={handoff.reveal}>
+          {t("reveal")}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+function HandoffNotice({ status }: { status: Handoff["status"] }) {
+  const t = useTranslations("app.export.slicer.native")
+  if (!status) return null
+  return (
+    <p
+      role={status.failed ? "alert" : "status"}
+      className={status.failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+    >
+      {t(status.key)}
+    </p>
+  )
+}
+export function SlicerHandoffPanel({
+  disabled,
+  ...actions
+}: { disabled: boolean } & SlicerHandoffActions) {
+  const t = useTranslations("app.export.slicer.native")
+  const common = useTranslations("app.export")
+  const handoff = useSlicerHandoff(actions)
+  const busy = disabled || handoff.pending
+  return (
+    <section className="grid gap-4 rounded-md border border-primary/30 bg-card p-4">
+      <div className="grid gap-1">
+        <h3 className="text-sm font-medium">{common("slicer.title")}</h3>
+        <p className="text-xs text-muted-foreground">
+          {t(handoff.native ? "description" : "browserDescription")}
+        </p>
       </div>
-      <HandoffStatusMessage status={status} />
-      <SlicerBridgeSetup
-        bridgeToken={bridgeToken}
-        onStatusReset={() => setStatus(null)}
-        onTokenChange={setBridgeToken}
-        t={t}
-      />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <MeshFormatField handoff={handoff} disabled={busy} />
+        <SlicerApplicationField handoff={handoff} disabled={busy} />
+      </div>
+      <SlicerHandoffButtons handoff={handoff} disabled={busy} />
+      <HandoffNotice status={handoff.status} />
     </section>
   )
 }

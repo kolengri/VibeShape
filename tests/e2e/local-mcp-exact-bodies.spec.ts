@@ -111,7 +111,11 @@ test("repairs and applies exact-body Subtract/Revolve through MCP and restores s
   }
   try {
     await page.goto(local.origin)
-    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
     await enableLocalAi(page)
     const initial = await openDraft()
     await initial.stage("create_box", { featureId: id(1), widthMm: 4, depthMm: 4, heightMm: 4 })
