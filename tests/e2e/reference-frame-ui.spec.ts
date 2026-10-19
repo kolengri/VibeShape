@@ -102,7 +102,10 @@ test("binds current Datum frames and a viewport planar face without consuming su
   await datum.getByRole("combobox", { name: "Offset", exact: true }).fill("5 mm")
   await datum.getByRole("button", { name: "Create datum plane", exact: true }).click()
   await saved(page)
-  await page.getByRole("button", { name: "Hide Datum plane 1", exact: true }).click()
+  await page
+    .getByRole("complementary", { name: "Model tree" })
+    .getByRole("button", { name: "Hide Datum plane 1", exact: true })
+    .click()
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvas = viewport.locator("canvas")
   const bounds = await canvas.boundingBox()

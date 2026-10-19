@@ -843,9 +843,9 @@
           "bodies": "Bodies",
           "features": "Features",
           "history": "History",
-          "origin": "Origin",
           "sketches": "Sketches",
-          "variables": "Variables"
+          "variables": "Variables",
+          "planes": "Planes"
         },
         "projectFeatures": "Project features",
         "hideFeature": "Hide {feature}",
@@ -1252,9 +1252,9 @@
         },
         "datumPlane": {
           "title": "Create datum plane",
-          "description": "Create a reusable sketch support at a signed offset from an origin plane or the selected planar model face.",
+          "description": "Create a reusable sketch support with a signed offset and angle from an origin plane or selected planar model face.",
           "editTitle": "Edit datum plane",
-          "editDescription": "Update the signed offset while preserving the plane identity and dependent sketches.",
+          "editDescription": "Update the offset and angle while preserving the plane identity. A change in orientation may require repairing existing sketch supports.",
           "parameters": "Plane definition",
           "support": "Support",
           "supportDescription": "Select a planar face before starting this command, or choose an origin plane here.",
@@ -1271,11 +1271,19 @@
           "invalidExpression": "Enter a valid expression using supported units and existing variables.",
           "invalidDimension": "This expression must resolve to a length.",
           "invalidRange": "Enter an offset between -1,000,000 mm and 1,000,000 mm.",
-          "validationSummary": "Fix the highlighted offset before creating the datum plane.",
-          "updateValidationSummary": "Fix the highlighted offset before updating the datum plane.",
+          "validationSummary": "Fix the highlighted parameters before creating the datum plane.",
+          "updateValidationSummary": "Fix the highlighted parameters before updating the datum plane.",
           "staleRevision": "The document changed while this datum plane was being edited. Review the current model and try again.",
           "createFailed": "The datum plane could not be created. Your parameter values are preserved.",
-          "updateFailed": "The datum plane could not be updated. Your parameter values are preserved."
+          "updateFailed": "The datum plane could not be updated. Your parameter values are preserved.",
+          "angle": "Angle",
+          "angleDescription": "Enter an angle from -360° to 360°, such as 45 deg, or use an angle variable.",
+          "rotationAxis": "Rotation axis",
+          "rotationAxisX": "Support X axis",
+          "rotationAxisY": "Support Y axis",
+          "rotationDescription": "Rotate around the support’s local axis through the offset origin. Positive angles follow the right-hand rule.",
+          "invalidAngleDimension": "This expression must resolve to an angle.",
+          "invalidAngleRange": "Enter an angle between -360° and 360°."
         },
         "boolean": {
           "title": "Subtract solids",

@@ -22,7 +22,12 @@ mock.module("../document/document-controller", () => ({
 
 const { act, cleanup, render, screen, within } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
-const { documentSnapshotSchema, featureRecordSchema } = await import("@vibeshape/domain")
+const {
+  createLengthQuantity,
+  datumPlaneFeatureTypeV1,
+  documentSnapshotSchema,
+  featureRecordSchema,
+} = await import("@vibeshape/domain")
 const { meshImportFeatureType } = await import("@vibeshape/domain/part-design-mesh-import")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { removeFeature } = await import("../document/document-controller")
@@ -67,7 +72,11 @@ const snapshot = documentSnapshotSchema.parse({
   features: [feature],
 })
 
-function renderImportedTask(mode: "read-write" | "read-only" = "read-write", close = () => {}) {
+function renderFeatureTask(
+  mode: "read-write" | "read-only" = "read-write",
+  close = () => {},
+  selectedFeature = feature,
+) {
   const controller: DocumentControllerState = {
     status: "ready",
     saveStatus: "saved",
@@ -75,7 +84,7 @@ function renderImportedTask(mode: "read-write" | "read-only" = "read-write", clo
     report: {
       status: "clean",
       mode,
-      snapshot,
+      snapshot: { ...snapshot, features: [selectedFeature] },
       historyItems: null,
       rebuild: {
         ok: false,
@@ -97,7 +106,7 @@ function renderImportedTask(mode: "read-write" | "read-only" = "read-write", clo
   const props: ComponentProps<typeof TaskPanel> = {
     controller,
     workspace: "model",
-    activeTool: editPartDesignTool(feature),
+    activeTool: editPartDesignTool(selectedFeature),
     activeSketchId: null,
     activeSketchTool: null,
     extrusionDistanceRequest: null,
@@ -148,6 +157,29 @@ afterEach(() => {
 })
 
 describe("captured-source History task", () => {
+  it("opens the legacy datum edit form through the real feature router without upgrading it", () => {
+    const legacy = featureRecordSchema.parse({
+      ...feature,
+      type: datumPlaneFeatureTypeV1.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(8),
+      },
+      label: "Legacy datum plane",
+    })
+    renderFeatureTask("read-write", undefined, legacy)
+    const form = screen.getByRole("form", { name: "Edit datum plane" })
+    expect(within(form).getByRole<HTMLInputElement>("combobox", { name: "Offset" }).value).toBe(
+      "8 mm",
+    )
+    expect(within(form).getByRole<HTMLInputElement>("combobox", { name: "Angle" }).value).toBe(
+      "0 deg",
+    )
+    expect(legacy.type.schemaVersion).toBe(1)
+    expect(legacy.parameters).not.toHaveProperty("rotation")
+  })
+
   it("closes inspection before navigating to another History row without saving geometry", async () => {
     const store = createEditorSessionStore()
     const tool = editPartDesignTool(feature)
@@ -155,7 +187,7 @@ describe("captured-source History task", () => {
     store.getState().actions.startPartDesignTool(tool)
     const navigation = createHistoryNavigation(store)
     ports.registerSubmission.mockImplementation((submit) => navigation.register(submit))
-    const { onCloseTool } = renderImportedTask(
+    const { onCloseTool } = renderFeatureTask(
       "read-write",
       store.getState().actions.closeActiveTool,
     )
@@ -169,7 +201,7 @@ describe("captured-source History task", () => {
 
   it("deletes an organic lightweighting feature through the ordinary confirmed removal command", async () => {
     const user = userEvent.setup()
-    const { onCompleteTool } = renderImportedTask()
+    const { onCompleteTool } = renderFeatureTask()
     expect(screen.getByRole("heading", { name: "Organic lightweighting" })).toBeTruthy()
     await user.click(screen.getByRole("button", { name: "Delete feature" }))
     expect(removeFeature).not.toHaveBeenCalled()
@@ -183,7 +215,7 @@ describe("captured-source History task", () => {
 
   it("closes the captured-source task without changing History", async () => {
     const user = userEvent.setup()
-    const { onCloseTool } = renderImportedTask()
+    const { onCloseTool } = renderFeatureTask()
     const close = screen.getByRole("button", { name: "Close" })
     const header = close.closest("header")
     expect(header).not.toBeNull()
@@ -200,7 +232,7 @@ describe("captured-source History task", () => {
   })
 
   it("keeps deletion unavailable with a visible reason in a read-only document", () => {
-    renderImportedTask("read-only")
+    renderFeatureTask("read-only")
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Delete feature" }).disabled).toBe(
       true,
     )

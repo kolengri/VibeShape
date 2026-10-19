@@ -527,8 +527,10 @@ exposure, offline installation, and full command/resource coverage remain releas
 
 Local stdio and paired remote MCP expose create/update tools for Datum Plane, Boolean subtraction,
 Union, Compound, Mirror, body Pattern, Shell, Split, Sweep, Loft and custom Thread through shared
-schemas and descriptions. Datum Plane uses the existing origin/planar-face offset contract with
-explicit support inputs. Boolean retains v1 ordered target/tool whole-result scope. Union/Compound
+schemas and descriptions. Datum Plane create/update writes feature schema v2 with explicit
+origin/planar-face support, signed offset and optional support-local X/Y rotation. Strict offset-only
+v1 remains readable; an explicit update upgrades the same feature identity, as specified in
+[ADR-0114](../adr/0114-versioned-angular-datum-planes.md). Boolean retains v1 ordered target/tool whole-result scope. Union/Compound
 use v2 ordered exact-body slots, including several roles from one producer, with deduplicated
 first-occurrence producer dependencies and no topology references. Compound retains authored
 slot UUIDs on update. Missing roles and disjoint Union results fail exact preview.

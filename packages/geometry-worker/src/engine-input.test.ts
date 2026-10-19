@@ -48,6 +48,48 @@ const namedInput: FeatureEvaluationInput = {
 }
 
 describe("direct geometry engine input boundary", () => {
+  it.each([1, 2])(
+    "dispatches datum plane v%s to the existing frame parser",
+    async (schemaVersion) => {
+      const engine = new ReplicadGeometryEngine()
+      const initialize = vi.spyOn(engine, "initialize").mockResolvedValue({} as never)
+      const result = await engine.evaluateFeature(
+        {
+          ...namedInput,
+          dependencies: [],
+          content: {
+            schemaVersion: 0,
+            environment: namedInput.content.environment,
+            feature: {
+              schemaVersion: 0,
+              type: {
+                moduleId: "org.vibeshape.core.reference-geometry",
+                moduleVersion: "0.1.0",
+                typeId: "org.vibeshape.feature.reference-geometry.datum-plane",
+                schemaVersion,
+              },
+              parameters: {
+                size: 64,
+                frame: {
+                  origin: [0, 0, 8],
+                  xAxis: [1, 0, 0],
+                  yAxis: [0, 0, 1],
+                  normal: [0, -1, 0],
+                },
+              },
+              inputs: [],
+              references: [],
+            },
+          },
+        },
+        vi.fn(),
+      )
+      expect(initialize).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-geometry" } })
+      expect(engine.getHealth().ownedShapeCount).toBe(0)
+    },
+  )
+
   it.each([
     {
       operation: "add",

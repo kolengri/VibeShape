@@ -26,7 +26,7 @@
 | [0022](0022-project-display-unit-preferences.md) | Accepted | Revisioned project display units with canonical millimeter/radian geometry |
 | [0023](0023-explicit-target-extrusion-operations.md) | Accepted | New/add/remove/intersect extrusion with an explicit terminal-feature target dependency |
 | [0024](0024-stable-planar-face-sketch-support.md) | Accepted | Stable planar-face sketch support with separate evaluation and body dependencies |
-| [0025](0025-first-class-offset-datum-planes.md) | Accepted | First-class signed offset datum planes that remain outside body ownership and export |
+| [0025](0025-first-class-offset-datum-planes.md) | Accepted; parameter/frame contract superseded by 0114 | First-class signed offset datum planes that remain outside body ownership and export |
 | [0026](0026-document-dependency-graph-and-interleaved-history.md) | Accepted | A document-wide sketch/feature dependency graph with replay-safe interleaved History |
 | [0027](0027-typed-orphan-model-reference-intent.md) | Accepted | Typed orphan intent for model-backed sketch references after feature deletion |
 | [0028](0028-selector-backed-origin-axis-revolve.md) | Accepted | Selector-backed new-body Revolve around a sketch-local origin axis |
@@ -122,6 +122,7 @@
 | [0111](0111-native-project-assistant-and-handoffs.md) | Accepted | Native MCP attachment, local ACP project chat, direct API web chat and mesh handoff |
 | [0112](0112-multi-sketch-extrude.md) | Accepted | Multi-sketch Extrude with per-profile support frames and shared normal-relative extents |
 | [0113](0113-assembly-motion-studies.md) | Accepted | Persisted joint-key studies, exact timeline sampling, bounded cached playback and solved pose/image exports |
+| [0114](0114-versioned-angular-datum-planes.md) | Accepted | Strict legacy offset planes and versioned support-local angular datum frames |
 
 Statuses:
 

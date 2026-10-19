@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
-import { ModelBrowserOrigin } from "./model-browser-origin"
+import { ModelBrowserPlanes } from "./model-browser-planes"
 
 afterEach(cleanup)
 
@@ -14,7 +14,7 @@ function renderOrigin(disabled = false) {
   const onVisibilityChange = vi.fn()
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <ModelBrowserOrigin
+      <ModelBrowserPlanes
         disabled={disabled}
         onSelect={onSelect}
         onVisibilityChange={onVisibilityChange}
@@ -26,11 +26,11 @@ function renderOrigin(disabled = false) {
   return { onSelect, onVisibilityChange }
 }
 
-describe("model browser origin planes", () => {
+describe("model browser planes", () => {
   it("discloses origin planes without changing a selection and keeps visibility independent", async () => {
     const user = userEvent.setup()
     const { onSelect, onVisibilityChange } = renderOrigin()
-    const origin = screen.getByRole("treeitem", { name: "Origin" })
+    const origin = screen.getByRole("treeitem", { name: "Planes" })
     expect(screen.queryByRole("treeitem", { name: "XY" })).toBeNull()
     await user.click(origin)
     expect(origin.getAttribute("aria-expanded")).toBe("true")
@@ -46,7 +46,7 @@ describe("model browser origin planes", () => {
   it("keeps disclosure and display preferences usable while authoring selection is locked", async () => {
     const user = userEvent.setup()
     const { onSelect, onVisibilityChange } = renderOrigin(true)
-    await user.click(screen.getByRole("treeitem", { name: "Origin" }))
+    await user.click(screen.getByRole("treeitem", { name: "Planes" }))
     const plane = screen.getByRole("treeitem", { name: "XY" }) as HTMLButtonElement
     expect(plane.disabled).toBe(true)
     await user.click(plane)

@@ -111,8 +111,10 @@ retrying an interrupted or unconfirmed commit.
 Both local and paired remote MCP expose `create_datum_plane`/`update_datum_plane`,
 `create_boolean`/`update_boolean`, `create_union`/`update_union`, and
 `create_compound`/`update_compound`. Datum Planes retain explicit origin/face support and signed
-offset intent. Boolean subtraction retains legacy whole-result target/tool semantics; Union and
-Compound select ordered exact bodies through schema v2. Read the
+offset intent, with optional variable-aware rotation about support-local X or Y after offsetting.
+Rotation accepts signed typed angles within ±360 degrees, stored in radians. Boolean subtraction
+retains legacy whole-result target/tool semantics; Union and Compound select ordered exact bodies
+through schema v2. Read the
 [modeling contract](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
 before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1/v2/v3 creation
 and same-version edits; Compound and version-upgrade edits still require review.

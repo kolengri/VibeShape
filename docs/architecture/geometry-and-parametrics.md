@@ -205,7 +205,7 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 ### Robust-modeling rules
 
 - By default, attach sketches to origin or datum planes, not arbitrary faces.
-- Signed offset datum planes are implemented; add angular/mid-plane modes, axes, and points in P1.
+- Signed offset and support-local angular datum planes are implemented. Mid-plane, arbitrary line-at-angle, axis and point reference modes remain future work; see [ADR-0114](../adr/0114-versioned-angular-datum-planes.md).
 - Face attachment is allowed, but the UI shows reference stability.
 - Pattern and mirror operations preserve semantic IDs from source elements.
 - Fillet and chamfer select edge sets through reference collections, never positional indices.
@@ -236,9 +236,9 @@ Protocol v8 implements the dependency-aware geometry consumer without importing 
 
 ### Reference geometry execution
 
-The accepted `org.vibeshape.core.reference-geometry` module owns a first-class signed offset Datum Plane feature. Its semantic support is either an origin plane or one stable planar-face `TopoRef`; the latter declares exactly one matching evaluation dependency but never a body dependency. Variable resolution and canonical feature identity use the same Quantity boundary as solid features.
+The accepted `org.vibeshape.core.reference-geometry` module owns first-class Datum Plane features. Strict offset-only feature schema v1 remains registered; v2 adds an optional angle around the support-local X or Y axis. New planes and explicit updates use v2; reading or previewing a legacy plane does not rewrite its persisted version. Semantic support is either an origin plane or one stable planar-face `TopoRef`; the latter declares exactly one matching evaluation dependency but never a body dependency. Offset and angle expressions resolve through the same Quantity boundary as solid features, with canonical millimeters and radians and an inclusive ±360-degree angle bound.
 
-The document worker resolves and translates an exact right-handed support frame. The geometry worker uses a bounded ultra-thin OCCT plate so reference geometry shares the existing native cache, topology, tessellation, selection, and disposal contracts. This plate is display implementation only: body-terminal traversal, project thumbnails, STEP, STL, and 3MF exclude Datum Plane features explicitly. The viewport renders the mesh as translucent selectable reference geometry with independent visibility. Downstream sketches resolve `datum.plane` from the semantic frame rather than transient plate topology. See [ADR-0025](../adr/0025-first-class-offset-datum-planes.md).
+The document worker resolves an exact right-handed support frame, translates its origin along the original normal by the offset, then rotates its basis around the selected support-local axis through that translated origin. Positive angles follow the right-hand rule; absent and zero rotations preserve the exact prior frame. Both feature versions use the existing orthonormal frame protocol and a bounded ultra-thin OCCT display plate. Reference geometry shares native cache, topology, tessellation, selection and disposal contracts while remaining outside body-terminal traversal, thumbnails and STEP/STL/3MF export. The viewport renders translucent selectable geometry with independent visibility. Downstream sketches use the logical frame; changing its normal can invalidate an authored oriented `datum.plane` cap reference and require explicit reselection. Neither transient face order nor plate thickness repairs that reference. [ADR-0114](../adr/0114-versioned-angular-datum-planes.md) supersedes the offset-only frame contract from [ADR-0025](../adr/0025-first-class-offset-datum-planes.md) and retains its ownership and support-health rules.
 
 ## Tessellation
 

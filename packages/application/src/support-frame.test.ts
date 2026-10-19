@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
+  createAngleQuantity,
   createLengthQuantity,
   cylinderFeatureType,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   documentSnapshotSchema,
   extrusionFeatureType,
   extrusionFeatureTypeV5,
@@ -73,7 +75,108 @@ function sketch(support?: unknown, id = sketchId) {
   })
 }
 
+function datumPlane(parameters: unknown, id = datumAId, ownerId?: string) {
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id,
+    type: datumPlaneFeatureType.type,
+    parameters,
+    dependencies: ownerId ? [ownerId] : [],
+    references: ownerId ? [faceReference(ownerId, "datum.plane")] : [],
+    suppressed: false,
+  })
+}
+
 describe("support-frame resolution", () => {
+  it.each([
+    ["xy", "x", 90, [0, 0, 7], [1, 0, 0], [0, 0, 1], [0, -1, 0]],
+    ["xy", "x", -90, [0, 0, 7], [1, 0, 0], [0, 0, -1], [0, 1, 0]],
+    ["xy", "y", 90, [0, 0, 7], [0, 0, -1], [0, 1, 0], [1, 0, 0]],
+    ["xy", "y", -90, [0, 0, 7], [0, 0, 1], [0, 1, 0], [-1, 0, 0]],
+    ["xz", "x", 90, [0, -7, 0], [1, 0, 0], [0, -1, 0], [0, 0, -1]],
+    ["xz", "x", -90, [0, -7, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    ["xz", "y", 90, [0, -7, 0], [0, 1, 0], [0, 0, 1], [1, 0, 0]],
+    ["xz", "y", -90, [0, -7, 0], [0, -1, 0], [0, 0, 1], [-1, 0, 0]],
+    ["yz", "x", 90, [7, 0, 0], [0, 1, 0], [1, 0, 0], [0, 0, -1]],
+    ["yz", "x", -90, [7, 0, 0], [0, 1, 0], [-1, 0, 0], [0, 0, 1]],
+    ["yz", "y", 90, [7, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 1, 0]],
+    ["yz", "y", -90, [7, 0, 0], [1, 0, 0], [0, 0, 1], [0, -1, 0]],
+  ] as const)(
+    "rotates %s around local %s by %s degrees after translating",
+    (plane, axis, degrees, origin, xAxis, yAxis, normal) => {
+      const datum = datumPlane({
+        mode: "offset",
+        support: { kind: "origin-plane", plane },
+        offset: createLengthQuantity(7),
+        rotation: { axis, angle: createAngleQuantity(degrees, "deg") },
+      })
+      const frame = datumPlaneFrame(datum, documentWith([], [datum]), [datum], new Set())
+      if (!frame) throw new Error("Expected a rotated datum frame.")
+      expect(frame.origin).toEqual([...origin])
+      for (const key of ["xAxis", "yAxis", "normal"] as const) {
+        const expected = { xAxis, yAxis, normal }[key]
+        for (const [index, coordinate] of expected.entries()) {
+          expect(frame[key][index]).toBeCloseTo(coordinate, 12)
+        }
+        expect(Math.hypot(...frame[key])).toBeCloseTo(1, 12)
+      }
+      const [x, y, n] = [frame.xAxis, frame.yAxis, frame.normal]
+      expect(x[0] * y[0] + x[1] * y[1] + x[2] * y[2]).toBeCloseTo(0, 12)
+      expect(x[1] * y[2] - x[2] * y[1]).toBeCloseTo(n[0], 12)
+      expect(x[2] * y[0] - x[0] * y[2]).toBeCloseTo(n[1], 12)
+      expect(x[0] * y[1] - x[1] * y[0]).toBeCloseTo(n[2], 12)
+    },
+  )
+
+  it.each(["x", "y"] as const)("keeps the exact legacy frame for zero %s rotation", (axis) => {
+    const parameters = {
+      mode: "offset",
+      support: { kind: "origin-plane", plane: "xz" },
+      offset: createLengthQuantity(-8),
+    }
+    const legacy = { ...datumPlane(parameters), type: datumPlaneFeatureTypeV1.type }
+    const zero = datumPlane({ ...parameters, rotation: { axis, angle: createAngleQuantity(0) } })
+    expect(datumPlaneFrame(zero, documentWith([], [zero]), [zero], new Set())).toEqual(
+      datumPlaneFrame(legacy, documentWith([], [legacy]), [legacy], new Set()),
+    )
+  })
+
+  it("uses the rotated parent normal and local axis for a dependent datum and sketch", () => {
+    const parent = datumPlane({
+      mode: "offset",
+      support: { kind: "origin-plane", plane: "xy" },
+      offset: createLengthQuantity(4),
+      rotation: { axis: "x", angle: createAngleQuantity(90, "deg") },
+    })
+    const child = datumPlane(
+      {
+        mode: "offset",
+        support: { kind: "feature-face", reference: faceReference(datumAId, "datum.plane") },
+        offset: createLengthQuantity(3),
+        rotation: { axis: "y", angle: createAngleQuantity(-90, "deg") },
+      },
+      datumBId,
+      datumAId,
+    )
+    const supported = sketch({
+      kind: "feature-face",
+      reference: faceReference(datumBId, "datum.plane"),
+    })
+    const document = documentWith([supported], [parent, child])
+    const frame = sketchFrame(supported, document, [parent, child])
+    if (!frame) throw new Error("Expected a dependent sketch frame.")
+    for (const [key, expected] of [
+      ["origin", [0, -3, 4]],
+      ["xAxis", [0, -1, 0]],
+      ["yAxis", [0, 0, 1]],
+      ["normal", [-1, 0, 0]],
+    ] as const) {
+      for (const [index, coordinate] of expected.entries()) {
+        expect(frame[key][index]).toBeCloseTo(coordinate, 12)
+      }
+    }
+  })
+
   it.each([
     [false, false, 3, -3, 10],
     [true, false, 3, -10, 3],

@@ -14,7 +14,8 @@ for exact body targeting, focused views, representation limits and complementary
 
 The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,
 `create_boolean`/`update_boolean`, `create_union`/`update_union`, and
-`create_compound`/`update_compound`. Plane support/offset, legacy whole-result subtraction and v2
+`create_compound`/`update_compound`. Datum Plane support/offset and optional support-local X/Y rotation
+(signed typed angles within ±360 degrees, canonical radians), legacy whole-result subtraction and v2
 exact-body selections follow the same [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)
 and owner-bound revisioned drafts as local stdio. An explicit browser session auto-apply grant
 covers Union v2 and Loft v1/v2/v3 creation and same-version edits; Compound and schema upgrades require

@@ -348,6 +348,7 @@ type ModelTreeProps = ComponentProps<typeof ModelTree>
 type RenderTreeOptions = Partial<
   Pick<
     ModelTreeProps,
+    | "origin"
     | "activeSketchId"
     | "activeFeatureId"
     | "activeWorkspace"
@@ -988,7 +989,10 @@ describe("ModelTree History presentation", () => {
     expect(document.querySelector("[data-history-rolled-back='true']")).toBeNull()
   })
 
-  it("keeps datum geometry in History and out of Bodies", () => {
+  it("groups created and base planes with shared editing and visibility while retaining History", async () => {
+    const user = userEvent.setup()
+    const onFeatureActivate = vi.fn()
+    const onFeatureVisibilityChange = vi.fn()
     const datumController = {
       ...controller,
       report: {
@@ -996,16 +1000,71 @@ describe("ModelTree History presentation", () => {
         snapshot: { features: [feature, datumFeature], revision: 7, sketches: [sketch] },
       },
     } as unknown as DocumentControllerState
-    const { container } = renderTree({ controller: datumController })
+    const { container } = renderTree({
+      controller: datumController,
+      activeFeatureId: null,
+      onFeatureActivate,
+      onFeatureVisibilityChange,
+      origin: {
+        selected: null,
+        visibility: { xy: true, xz: true, yz: true },
+        onSelect: vi.fn(),
+        onVisibilityChange: vi.fn(),
+        disabled: false,
+      },
+    })
 
     expect(
       container
         .querySelector(`[data-history-id="${datumFeature.id}"]`)
         ?.getAttribute("data-history-feature-kind"),
     ).toBe("datum")
-    expect(screen.getByRole("treeitem", { name: "Offset plane" }).querySelector("svg")).toBeTruthy()
+    const planes = browser().getByRole("treeitem", { name: "Planes" })
+    expect(planes.getAttribute("aria-expanded")).toBe("true")
+    for (const name of ["XY", "XZ", "YZ", "Offset plane"])
+      expect(browser().getByRole("treeitem", { name })).toBeTruthy()
+    const plane = browser().getByRole("treeitem", { name: "Offset plane" })
+    expect(plane.querySelector("svg")).toBeTruthy()
+    await user.click(plane)
+    expect(onFeatureActivate).toHaveBeenCalledWith(datumFeature.id)
+    await user.click(browser().getByRole("button", { name: "Hide Offset plane" }))
+    expect(onFeatureVisibilityChange).toHaveBeenCalledWith(datumFeature.id, false)
+    plane.focus()
+    await user.keyboard("{ArrowLeft}")
+    expect(document.activeElement).toBe(planes)
     expect(screen.queryByText("Result of Offset plane")).toBeNull()
     expect(screen.getByText("Supported by XZ plane")).toBeTruthy()
+  })
+
+  it("reveals newly created planes in a previously collapsed group", async () => {
+    const user = userEvent.setup()
+    const tree = renderTree({ activeFeatureId: null })
+    const planes = browser().getByRole("treeitem", { name: "Planes" })
+    expect(planes.getAttribute("aria-expanded")).toBe("false")
+    tree.rerenderTree({
+      controller: {
+        ...controller,
+        report: {
+          ...controller.report,
+          snapshot: { features: [feature, datumFeature], revision: 8, sketches: [sketch] },
+        },
+      } as unknown as DocumentControllerState,
+    })
+    await waitFor(() => expect(planes.getAttribute("aria-expanded")).toBe("true"))
+    expect(browser().getByRole("treeitem", { name: "Offset plane" })).toBeTruthy()
+    await user.click(planes)
+    expect(browser().queryByRole("treeitem", { name: "Offset plane" })).toBeNull()
+    tree.rerenderTree({
+      revealRequest: { featureId: datumFeature.id, sequence: 1 },
+      controller: {
+        ...controller,
+        report: {
+          ...controller.report,
+          snapshot: { features: [feature, datumFeature], revision: 8, sketches: [sketch] },
+        },
+      } as unknown as DocumentControllerState,
+    })
+    await waitFor(() => expect(planes.getAttribute("aria-expanded")).toBe("true"))
   })
 })
 
@@ -1057,7 +1116,7 @@ describe("ModelTree History disclosure", () => {
     await user.keyboard("{Home}")
     expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Variables" }))
     await user.keyboard("{ArrowDown}")
-    expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Origin" }))
+    expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Planes" }))
   })
 
   it("navigates horizontal History with left and right arrows and keeps its tab stop scoped", async () => {

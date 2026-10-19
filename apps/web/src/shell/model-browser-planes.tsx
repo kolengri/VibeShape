@@ -6,7 +6,7 @@ import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
-import { useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import {
   modelBrowserChildRow,
   modelBrowserGroupRow,
@@ -14,22 +14,33 @@ import {
   modelBrowserSelectedRow,
 } from "./model-browser-styles"
 
-export function ModelBrowserOrigin({
+export function ModelBrowserPlanes({
+  authoredCount = 0,
+  children,
   disabled,
   onSelect,
   onVisibilityChange,
   selected,
+  showOriginPlanes = true,
+  revealSequence,
   visibility,
 }: {
+  authoredCount?: number
+  children?: ReactNode
   disabled: boolean
-  onSelect: (plane: ViewerOriginPlane) => void
-  onVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
+  onSelect?: ((plane: ViewerOriginPlane) => void) | undefined
+  onVisibilityChange?: ((plane: ViewerOriginPlane, visible: boolean) => void) | undefined
   selected: ViewerOriginPlane | null
+  showOriginPlanes?: boolean
+  revealSequence?: number | undefined
   visibility: ViewerOriginPlaneVisibility
 }) {
   const t = useTranslations("app.shell.modelTree")
   const viewportT = useTranslations("app.shell.viewport")
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(authoredCount > 0)
+  useEffect(() => {
+    if (authoredCount > 0 || revealSequence !== undefined) setExpanded(true)
+  }, [authoredCount, revealSequence])
   return (
     <div role="none">
       <Button
@@ -43,12 +54,12 @@ export function ModelBrowserOrigin({
       >
         <ChevronDown aria-hidden="true" className={cn("size-4", !expanded && "-rotate-90")} />
         <Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />
-        {t("items.origin")}
+        {t("items.planes")}
       </Button>
       {expanded && (
         <fieldset className="min-w-0">
-          <legend className="sr-only">{t("originPlanes")}</legend>
-          {(["xy", "xz", "yz"] as const).map((plane) => (
+          <legend className="sr-only">{t("items.planes")}</legend>
+          {(showOriginPlanes ? (["xy", "xz", "yz"] as const) : []).map((plane) => (
             <div
               key={plane}
               className={cn(modelBrowserItem, selected === plane && modelBrowserSelectedRow)}
@@ -61,7 +72,7 @@ export function ModelBrowserOrigin({
                 size="sm"
                 variant="ghost"
                 className={cn(modelBrowserChildRow, "flex-1")}
-                onClick={() => onSelect(plane)}
+                onClick={() => onSelect?.(plane)}
               >
                 <Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />
                 {plane.toUpperCase()}
@@ -73,12 +84,13 @@ export function ModelBrowserOrigin({
                   plane: plane.toUpperCase(),
                 })}
                 aria-pressed={visibility[plane]}
-                onClick={() => onVisibilityChange(plane, !visibility[plane])}
+                onClick={() => onVisibilityChange?.(plane, !visibility[plane])}
               >
                 {visibility[plane] ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
               </Button>
             </div>
           ))}
+          {children}
         </fieldset>
       )}
     </div>

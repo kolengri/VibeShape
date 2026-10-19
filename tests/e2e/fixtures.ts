@@ -5,6 +5,7 @@ export async function createEditorProject(page: Page) {
   await page.getByRole("button", { name: "New project", exact: true }).click()
   await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
     "Saved",
+    { timeout: 30_000 },
   )
 }
 

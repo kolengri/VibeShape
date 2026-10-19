@@ -6,6 +6,7 @@ import {
   createRectangleSketch,
   createSketchProfileSet,
   datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
   documentSnapshotSchema,
   extrusionFeatureParametersV8Schema,
   extrusionFeatureType,
@@ -24,6 +25,7 @@ import {
   sketchProfileSelectorSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import { extrusionFeatureContentParametersSchema } from "@vibeshape/protocol"
 import {
   createSketchProfileSelector,
   detectSketchProfiles,
@@ -547,46 +549,107 @@ describe("document extrusion content preparation", () => {
     })
   })
 
-  it("resolves a signed origin-offset datum plane into an exact world frame", async () => {
-    const feature = featureRecordSchema.parse({
+  it.each([datumPlaneFeatureTypeV1, datumPlaneFeatureType])(
+    "resolves a signed origin-offset datum v$type.schemaVersion into an exact world frame",
+    async (descriptor) => {
+      const feature = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000003300",
+        type: descriptor.type,
+        parameters: {
+          mode: "offset",
+          support: { kind: "origin-plane", plane: "xz" },
+          offset: createLengthQuantity(12),
+        },
+        dependencies: [],
+        references: [],
+        suppressed: false,
+        label: "Plane 1",
+      })
+      const document = documentSnapshotSchema.parse({
+        schemaVersion: 0,
+        id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+        revision: 1,
+        name: "Datum plane preparation",
+        variables: [],
+        sketches: [],
+        features: [feature],
+        createdAt: "2026-08-20T00:00:00.000Z",
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      })
+      const prepare = createDocumentFeatureContentPreparer(null)
+
+      await expect(prepare({ document, feature })).resolves.toMatchObject({
+        ok: true,
+        parameters: {
+          size: 64,
+          frame: {
+            origin: [0, -12, 0],
+            xAxis: [1, 0, 0],
+            yAxis: [0, 0, 1],
+            normal: [0, -1, 0],
+          },
+        },
+      })
+    },
+  )
+
+  it("prepares an extrusion in its angled datum support frame", async () => {
+    const source = fixture()
+    const datumId = "0195b5ac-b220-7a2c-8c33-000000003300"
+    const reference = {
       schemaVersion: 0,
-      id: "0195b5ac-b220-7a2c-8c33-000000003300",
+      featureId: datumId,
+      kind: "face",
+      semanticRole: "datum.plane",
+      signature: {
+        kind: "face",
+        geometryClass: "PLANE",
+        measure: 1,
+        centroid: [0, 0, 8],
+        bounds: { min: [0, 0, 8], max: [1, 1, 8] },
+        boundaryCount: 4,
+        adjacentGeometryClasses: [],
+      },
+    }
+    const datum = featureRecordSchema.parse({
+      ...source.feature,
+      id: datumId,
       type: datumPlaneFeatureType.type,
       parameters: {
         mode: "offset",
-        support: { kind: "origin-plane", plane: "xz" },
-        offset: createLengthQuantity(12),
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(8),
+        rotation: { axis: "y", angle: createAngleQuantity(30, "deg") },
       },
-      dependencies: [],
-      references: [],
-      suppressed: false,
-      label: "Plane 1",
+    })
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      dependencies: [datumId],
+      references: [reference],
+    })
+    const sketch = sketchRecordSchema.parse({
+      ...source.document.sketches[0],
+      support: { kind: "feature-face", reference },
     })
     const document = documentSnapshotSchema.parse({
-      schemaVersion: 0,
-      id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
-      revision: 1,
-      name: "Datum plane preparation",
-      variables: [],
-      sketches: [],
-      features: [feature],
-      createdAt: "2026-08-20T00:00:00.000Z",
-      updatedAt: "2026-08-20T00:00:00.000Z",
+      ...source.document,
+      sketches: [sketch],
+      features: [datum, feature],
     })
-    const prepare = createDocumentFeatureContentPreparer(null)
-
-    await expect(prepare({ document, feature })).resolves.toMatchObject({
+    const prepare = createDocumentFeatureContentPreparer(() => ({
       ok: true,
-      parameters: {
-        size: 64,
-        frame: {
-          origin: [0, -12, 0],
-          xAxis: [1, 0, 0],
-          yAxis: [0, 0, 1],
-          normal: [0, -1, 0],
-        },
-      },
-    })
+      solution: source.solution,
+    }))
+    const result = await prepare({ document, feature })
+    if (!result?.ok) throw new Error("Expected extrusion content on an angled support.")
+    const { frame } = extrusionFeatureContentParametersSchema.parse(result.parameters)
+    expect(frame?.origin).toEqual([0, 0, 8])
+    expect(frame?.xAxis[0]).toBeCloseTo(Math.sqrt(3) / 2, 12)
+    expect(frame?.xAxis[2]).toBeCloseTo(-0.5, 12)
+    expect(frame?.yAxis).toEqual([0, 1, 0])
+    expect(frame?.normal[0]).toBeCloseTo(0.5, 12)
+    expect(frame?.normal[2]).toBeCloseTo(Math.sqrt(3) / 2, 12)
   })
 
   it("resolves a stable selector into ordered exact profile geometry", async () => {

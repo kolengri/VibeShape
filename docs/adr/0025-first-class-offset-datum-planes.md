@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-20
+- Superseded by: [ADR-0114](0114-versioned-angular-datum-planes.md) for the latest parameter and frame contract; v1, reference ownership and oriented support-health behavior remain supported.
 - Extends: [ADR-0003](0003-parametric-dag-and-toporef.md) and [ADR-0024](0024-stable-planar-face-sketch-support.md)
 
 ## Context

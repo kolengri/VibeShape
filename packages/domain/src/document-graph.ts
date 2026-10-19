@@ -100,7 +100,11 @@ import {
   threadFeatureTypeV2,
 } from "./part-design-thread"
 import { referenceFrameInvariant } from "./reference-frame"
-import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
+import {
+  datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
+  hasCompleteDatumPlaneDependencyModel,
+} from "./reference-geometry"
 import {
   isOrphanedModelReference,
   isSketchExternalModelReference,
@@ -352,7 +356,10 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
     return hasCompleteBodySelectionDependencies(feature, readBodySelectionParameters)
   const readParameters = dependencyModelParameterReaders.get(typeKey)
   if (readParameters) return readParameters(feature) !== null
-  if (typeKey === featureTypeKey(datumPlaneFeatureType.type)) {
+  if (
+    typeKey === featureTypeKey(datumPlaneFeatureTypeV1.type) ||
+    typeKey === featureTypeKey(datumPlaneFeatureType.type)
+  ) {
     return hasCompleteDatumPlaneDependencyModel(feature)
   }
   return dependencyCompleteFeatureTypeKeys.has(typeKey)
