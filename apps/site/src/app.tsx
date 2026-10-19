@@ -21,6 +21,7 @@ import {
 import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
 import { HeroVisual } from "./hero-visual"
 import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
+import { ConstructionPlanes, PrintVisual } from "./spatial-visuals"
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`
 const subscribeToHash = (notify: () => void) => {
@@ -163,6 +164,7 @@ function Hero() {
       className="hero-scroll-section relative scroll-mt-20 border-b border-border"
     >
       <div className="hero-scroll-frame">
+        <ConstructionPlanes />
         <div className="hero-scroll-content mx-auto grid w-full max-w-7xl items-center gap-4 px-6 pb-12 pt-16 md:grid-cols-2 md:pb-20 md:pt-24 lg:px-12">
           <div className="relative z-10">
             <Eyebrow>{t("eyebrow")}</Eyebrow>
@@ -190,20 +192,13 @@ function Hero() {
             </div>
             <p className="mt-5 text-xs leading-relaxed text-muted-foreground">{t("note")}</p>
           </div>
-          <figure className="relative min-w-0">
+          <div className="relative min-w-0">
             <HeroVisual
               source={assetUrl("media/hero-scroll.mp4")}
               poster={assetUrl("media/hero-scroll.jpg")}
               description={t("illustration")}
             />
-            <figcaption className="mt-4 flex flex-wrap justify-between gap-1 px-1 text-[11px] text-muted-foreground">
-              <span>{t("caption")}</span>
-              <span>{t("captionNote")}</span>
-            </figcaption>
-          </figure>
-        </div>
-        <div className="border-t border-border bg-panel/60 px-6 py-5 text-center font-mono text-[11px] tracking-[0.2em] text-muted-foreground">
-          {t("coordinate")}
+          </div>
         </div>
       </div>
     </section>
@@ -213,7 +208,7 @@ function Hero() {
 function UseCases() {
   const t = useTranslations("intro")
   return (
-    <section className="mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
+    <section className="relative mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
       <div className="grid gap-8 md:grid-cols-2 md:gap-16">
         <div>
           <Eyebrow>{t("label")}</Eyebrow>
@@ -225,18 +220,18 @@ function UseCases() {
           {t("description")}
         </p>
       </div>
-      <div className="mt-12 grid gap-8 border-t border-border pt-8 sm:grid-cols-3">
-        {(["bracket", "enclosure", "replacement"] as const).map((key, index) => (
-          <div key={key}>
-            <span aria-hidden="true" className="font-mono text-xs text-primary">
-              0{index + 1}
-            </span>
-            <h3 className="mb-2 mt-4 text-lg font-medium tracking-tight">{t(key)}</h3>
-            <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
-              {t(`${key}Body`)}
-            </p>
-          </div>
-        ))}
+      <div className="mt-12 grid items-center gap-8 border-t border-border pt-8 md:grid-cols-2 md:gap-16">
+        <div className="grid gap-7">
+          {(["bracket", "enclosure", "replacement"] as const).map((key) => (
+            <div key={key} className="border-l border-primary/30 pl-5">
+              <h3 className="mb-2 text-lg font-medium tracking-tight">{t(key)}</h3>
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+                {t(`${key}Body`)}
+              </p>
+            </div>
+          ))}
+        </div>
+        <PrintVisual />
       </div>
     </section>
   )
@@ -295,82 +290,88 @@ function Workflow() {
   const t = useTranslations("workflow")
   const [stage, setStage] = useState<"sketch" | "shape" | "export">("shape")
   return (
-    <section id="workflow" className="mx-auto max-w-7xl scroll-mt-24 px-6 py-20 lg:px-12 lg:py-28">
-      <Eyebrow>{t("label")}</Eyebrow>
-      <h2 tabIndex={-1} className="text-3xl font-medium tracking-tight sm:text-4xl">
-        {t("title")}
-      </h2>
-      <p className="mt-4 text-muted-foreground">{t("description")}</p>
-      <div className="mt-10 grid overflow-hidden rounded-xl border border-border md:grid-cols-2">
-        <div className="p-6 sm:p-9">
-          <fieldset aria-label={t("diagram")} className="flex flex-wrap gap-2">
-            {(["sketch", "shape", "export"] as const).map((key) => (
-              <Button
-                key={key}
-                variant={stage === key ? "default" : "ghost"}
-                onClick={() => setStage(key)}
-                aria-pressed={stage === key}
-                className="h-11 rounded-lg px-3"
-              >
-                {t(key)}
-              </Button>
-            ))}
-          </fieldset>
-          <div aria-live="polite" className="mt-10 min-h-52">
-            <p className="font-mono text-[11px] uppercase tracking-wider text-primary">
-              {t(`${stage}Detail`)}
-            </p>
-            <h3 className="mb-4 mt-4 text-2xl font-medium tracking-tight">{t(`${stage}Title`)}</h3>
-            <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-              {t(`${stage}Body`)}
-            </p>
-          </div>
-          <a
-            href="#docs/getting-started"
-            className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-          >
-            {t("guide")}
-            <ArrowRight size={15} />
-          </a>
-        </div>
-        <div
-          className="blueprint-grid flex min-h-80 flex-col items-center justify-center gap-7 border-t border-border p-8 md:border-l md:border-t-0"
-          aria-hidden="true"
-        >
-          {stage === "sketch" ? (
-            <>
-              <div className="relative flex h-32 w-48 items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/5">
-                <div className="size-12 rounded-full border-2 border-primary" />
-                <span className="absolute -top-6 font-mono text-xs text-primary">80 mm</span>
-                <span className="absolute -bottom-6 font-mono text-xs text-primary">Ø 20 mm</span>
-              </div>
-              <p className="mt-6 font-mono text-[11px] text-muted-foreground">{t("dimensions")}</p>
-            </>
-          ) : stage === "shape" ? (
-            <>
-              <Box size={112} strokeWidth={0.65} className="text-primary" />
-              <p className="font-mono text-[11px] text-muted-foreground">{t("history")}</p>
-            </>
-          ) : (
-            <div className="w-full max-w-xs space-y-3">
-              {[
-                [".vshape", "native"],
-                ["STEP", "exact"],
-                ["3MF / STL", "mesh"],
-              ].map(([format, label]) => (
-                <div
-                  key={format}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-4 text-xs"
+    <section id="workflow" className="workflow-section relative isolate scroll-mt-24">
+      <ConstructionPlanes />
+      <div className="relative mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
+        <Eyebrow>{t("label")}</Eyebrow>
+        <h2 tabIndex={-1} className="text-3xl font-medium tracking-tight sm:text-4xl">
+          {t("title")}
+        </h2>
+        <p className="mt-4 text-muted-foreground">{t("description")}</p>
+        <div className="mt-10 grid overflow-hidden rounded-xl border border-border bg-background md:grid-cols-2">
+          <div className="p-6 sm:p-9">
+            <fieldset aria-label={t("diagram")} className="flex flex-wrap gap-2">
+              {(["sketch", "shape", "export"] as const).map((key) => (
+                <Button
+                  key={key}
+                  variant={stage === key ? "default" : "ghost"}
+                  onClick={() => setStage(key)}
+                  aria-pressed={stage === key}
+                  className="h-11 rounded-lg px-3"
                 >
-                  <span className="font-mono text-primary">{format}</span>
-                  <span className="text-muted-foreground">
-                    {t(label as "native" | "exact" | "mesh")}
-                  </span>
-                </div>
+                  {t(key)}
+                </Button>
               ))}
+            </fieldset>
+            <div aria-live="polite" className="mt-10 min-h-52">
+              <p className="font-mono text-[11px] uppercase tracking-wider text-primary">
+                {t(`${stage}Detail`)}
+              </p>
+              <h3 className="mb-4 mt-4 text-2xl font-medium tracking-tight">
+                {t(`${stage}Title`)}
+              </h3>
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+                {t(`${stage}Body`)}
+              </p>
             </div>
-          )}
-          <p className="text-center text-[10px] text-muted-foreground">{t("illustrative")}</p>
+            <a
+              href="#docs/getting-started"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+            >
+              {t("guide")}
+              <ArrowRight size={15} />
+            </a>
+          </div>
+          <div
+            className="blueprint-grid flex min-h-80 flex-col items-center justify-center gap-7 border-t border-border p-8 md:border-l md:border-t-0"
+            aria-hidden="true"
+          >
+            {stage === "sketch" ? (
+              <>
+                <div className="relative flex h-32 w-48 items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/5">
+                  <div className="size-12 rounded-full border-2 border-primary" />
+                  <span className="absolute -top-6 font-mono text-xs text-primary">80 mm</span>
+                  <span className="absolute -bottom-6 font-mono text-xs text-primary">Ø 20 mm</span>
+                </div>
+                <p className="mt-6 font-mono text-[11px] text-muted-foreground">
+                  {t("dimensions")}
+                </p>
+              </>
+            ) : stage === "shape" ? (
+              <>
+                <Box size={112} strokeWidth={0.65} className="text-primary" />
+                <p className="font-mono text-[11px] text-muted-foreground">{t("history")}</p>
+              </>
+            ) : (
+              <div className="w-full max-w-xs space-y-3">
+                {[
+                  [".vshape", "native"],
+                  ["STEP", "exact"],
+                  ["3MF / STL", "mesh"],
+                ].map(([format, label]) => (
+                  <div
+                    key={format}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-4 text-xs"
+                  >
+                    <span className="font-mono text-primary">{format}</span>
+                    <span className="text-muted-foreground">
+                      {t(label as "native" | "exact" | "mesh")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -414,9 +415,9 @@ function AgentSection() {
               “{t("prompt")}”
             </p>
             <ol className="my-7 space-y-5">
-              {(["inspect", "draft", "review", "export"] as const).map((key, index) => (
+              {(["inspect", "draft", "review", "export"] as const).map((key) => (
                 <li key={key} className="flex gap-4 text-xs leading-relaxed">
-                  <span className="font-mono text-primary">0{index + 1}</span>
+                  <ArrowRight size={14} className="shrink-0 text-primary" aria-hidden="true" />
                   {t(key)}
                 </li>
               ))}
@@ -561,7 +562,6 @@ function Downloads() {
             </ActionLink>
           </div>
         </div>
-        <p className="mt-5 text-xs leading-relaxed text-muted-foreground">{t("availability")}</p>
         <div className="mt-12 flex items-start gap-4 border-t border-border pt-7">
           <LockKeyhole size={19} className="mt-0.5 shrink-0 text-primary" />
           <div>
@@ -644,10 +644,9 @@ function Article({ article }: { article: (typeof articles)[number] }) {
           {t(`articles.${id}.intro`)}
         </p>
         <div className="my-10 max-w-2xl space-y-9">
-          {(["one", "two", "three"] as const).map((key, index) => (
+          {(["one", "two", "three"] as const).map((key) => (
             <section key={key}>
               <h2 className="mb-3 text-xl font-medium tracking-tight">
-                <span className="mr-3 font-mono text-sm text-primary">0{index + 1}</span>
                 {t(`articles.${id}.${key}Title`)}
               </h2>
               <p className="text-base leading-relaxed text-muted-foreground">
