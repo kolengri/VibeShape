@@ -24,9 +24,11 @@ const { act, cleanup, render, screen, within } = await import("@testing-library/
 const { default: userEvent } = await import("@testing-library/user-event")
 const {
   createLengthQuantity,
+  createEmptySketch,
   datumPlaneFeatureTypeV1,
   documentSnapshotSchema,
   featureRecordSchema,
+  sketchIdSchema,
 } = await import("@vibeshape/domain")
 const { meshImportFeatureType } = await import("@vibeshape/domain/part-design-mesh-import")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
@@ -76,6 +78,7 @@ function renderFeatureTask(
   mode: "read-write" | "read-only" = "read-write",
   close = () => {},
   selectedFeature = feature,
+  overrides: Partial<ComponentProps<typeof TaskPanel>> = {},
 ) {
   const controller: DocumentControllerState = {
     status: "ready",
@@ -140,13 +143,14 @@ function renderFeatureTask(
     onSketchSelectedConstraintChange: vi.fn(),
     onSketchSelectedProfileChange: vi.fn(),
     onSketchSaved: vi.fn(),
+    ...overrides,
   }
-  render(
+  const view = render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <TaskPanel {...props} />
     </I18nProvider>,
   )
-  return { onCompleteTool, onCloseTool }
+  return { ...view, props, onCompleteTool, onCloseTool }
 }
 
 beforeEach(() => ports.removeFeature.mockResolvedValue({ ok: true }))
@@ -157,6 +161,39 @@ afterEach(() => {
 })
 
 describe("captured-source History task", () => {
+  it("keeps the selected saved sketch's parameters after removing idle onboarding", () => {
+    const task = renderFeatureTask("read-write", () => {}, feature, { activeTool: null })
+    const report = task.props.controller.report
+    if (!report) throw new Error("Expected a saved document fixture")
+    const sketch = createEmptySketch({
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2790"),
+      label: "Mounting profile",
+      plane: "xy",
+    })
+    task.rerender(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TaskPanel
+          {...task.props}
+          activeSketchId={sketch.id}
+          controller={{
+            ...task.props.controller,
+            report: { ...report, snapshot: { ...report.snapshot, sketches: [sketch] } },
+          }}
+        />
+      </I18nProvider>,
+    )
+    expect(screen.getByRole("heading", { name: "Mounting profile" })).toBeTruthy()
+    expect(screen.queryByText("Start with a sketch")).toBeNull()
+  })
+  it.each(["model", "sketch"] as const)(
+    "leaves no onboarding panel in the idle %s workspace",
+    (workspace) => {
+      renderFeatureTask("read-write", () => {}, feature, { activeTool: null, workspace })
+      expect(screen.queryByRole("complementary")).toBeNull()
+      expect(screen.queryByText("Start with a sketch")).toBeNull()
+      expect(screen.queryByRole("button", { name: "Create sketch" })).toBeNull()
+    },
+  )
   it("opens the legacy datum edit form through the real feature router without upgrading it", () => {
     const legacy = featureRecordSchema.parse({
       ...feature,

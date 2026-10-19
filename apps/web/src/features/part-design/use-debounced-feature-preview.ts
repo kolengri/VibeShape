@@ -3,9 +3,11 @@ import { useEffect, useLayoutEffect, useRef } from "react"
 export function useDebouncedFeaturePreview<Preview>({
   onPreviewChange,
   preview,
+  retainValidPreview = false,
 }: Readonly<{
   onPreviewChange: (preview: Preview | null) => void
   preview: Preview | null
+  retainValidPreview?: boolean
 }>) {
   const currentPreview = useRef(preview)
   currentPreview.current = preview
@@ -13,12 +15,12 @@ export function useDebouncedFeaturePreview<Preview>({
   const previewKey = JSON.stringify(preview)
 
   useLayoutEffect(() => {
-    onPreviewChange(null)
+    if (!retainValidPreview || currentPreview.current === null) onPreviewChange(null)
     const timeout = window.setTimeout(() => {
       onPreviewChange(currentPreview.current)
     }, 180)
     return () => window.clearTimeout(timeout)
-  }, [onPreviewChange, previewKey])
+  }, [onPreviewChange, previewKey, retainValidPreview])
 
   useEffect(() => () => onPreviewChange(null), [onPreviewChange])
 }

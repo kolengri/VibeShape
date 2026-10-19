@@ -4,6 +4,8 @@ import { ASSISTANT_EVENT_CHANNEL } from "@vibeshape/automation-api/assistant"
 import {
   DESKTOP_COMMAND_CHANNEL,
   DESKTOP_COMMAND_STATE_CHANNEL,
+  DESKTOP_FULL_SCREEN_CHANGED_CHANNEL,
+  DESKTOP_FULL_SCREEN_CHANNEL,
   DESKTOP_MCP_DESCRIPTOR_NAME,
   DESKTOP_MCP_SETUP_CHANNEL,
   DESKTOP_TEXT_EDIT_CHANNEL,
@@ -14,6 +16,7 @@ import {
   desktopMcpSetupSchema,
   desktopTextEditSchema,
 } from "@vibeshape/automation-api/desktop-host"
+import { localDocumentSchema } from "@vibeshape/automation-api/local-session"
 import {
   app,
   BrowserWindow,
@@ -127,6 +130,12 @@ function createWindow(url: string) {
   })
   const contents = window.webContents
   ownedContents.add(contents)
+  const publishFullScreen = () => {
+    if (!window.isDestroyed() && canSendNativeEvent(contents, quitting, ownsEditorNavigation))
+      contents.send(DESKTOP_FULL_SCREEN_CHANGED_CHANNEL, window.isFullScreen())
+  }
+  window.on("enter-full-screen", publishFullScreen)
+  window.on("leave-full-screen", publishFullScreen)
   window.once("closed", () => ownedContents.delete(contents))
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
   window.webContents.on("will-attach-webview", (event) => event.preventDefault())
@@ -527,13 +536,13 @@ function requireEditorSender(event: IpcMainInvokeEvent) {
   if (!isEditorSender(event))
     throw new Error("Native controls require the owned editor main frame.")
 }
-function mcpSetup() {
+function mcpSetup(selectedDescriptor = descriptorPath) {
   return desktopMcpSetupSchema.parse({
     protocolVersion: 1,
     mcpServers: {
       vibeshape: {
         command: process.execPath,
-        args: [join(runtimeDirectory, "mcp.cjs"), "--descriptor", descriptorPath],
+        args: [join(runtimeDirectory, "mcp.cjs"), "--descriptor", selectedDescriptor],
         env: { ELECTRON_RUN_AS_NODE: "1" },
       },
     },
@@ -558,12 +567,18 @@ function installAssistant() {
   assistant = createAssistantService({
     cwd: assistantDirectory,
     applicationVersion: app.getVersion(),
-    getMcpSetup: async () => mcpSetup(),
-    async isMcpClientAttached() {
-      await assistantClosing
-      return nativeMcp?.isClientAttached() ?? false
+    async getMcpSetup(projectId) {
+      const id = localDocumentSchema.shape.id.parse(projectId)
+      if (!nativeMcp) throw new Error("Native MCP is unavailable.")
+      const path = await nativeMcp.publishProject(id, join(assistantDirectory, `${id}.mcp.json`))
+      return mcpSetup(path)
     },
-    whenMcpClientReleased: () => nativeMcp?.whenClientReleased() ?? Promise.resolve(),
+    async isMcpClientAttached(projectId?: string) {
+      await assistantClosing
+      return nativeMcp?.isClientAttached(projectId) ?? false
+    },
+    whenMcpClientReleased: (projectId?: string) =>
+      nativeMcp?.whenClientReleased(projectId) ?? Promise.resolve(),
     onEvent(event) {
       const contents = mainWindow?.webContents
       if (contents && canSendNativeEvent(contents, quitting, ownsEditorNavigation))
@@ -598,6 +613,10 @@ function installNativeSlicer() {
 }
 
 function installNativeBridge() {
+  ipcMain.handle(DESKTOP_FULL_SCREEN_CHANNEL, (event) => {
+    requireEditorSender(event)
+    return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false
+  })
   ipcMain.handle(DESKTOP_MCP_SETUP_CHANNEL, (event) => {
     requireEditorSender(event)
     return mcpSetup()

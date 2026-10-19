@@ -6,6 +6,8 @@ export const DESKTOP_MCP_DESCRIPTOR_NAME = "desktop-mcp.json"
 export const DESKTOP_COMMAND_CHANNEL = "vibeshape:desktop:command"
 export const DESKTOP_COMMAND_STATE_CHANNEL = "vibeshape:desktop:command-state"
 export const DESKTOP_TEXT_EDIT_CHANNEL = "vibeshape:desktop:text-edit"
+export const DESKTOP_FULL_SCREEN_CHANNEL = "vibeshape:desktop:full-screen"
+export const DESKTOP_FULL_SCREEN_CHANGED_CHANNEL = "vibeshape:desktop:full-screen-changed"
 
 export const desktopEditorCommandSchema = z.enum([
   "undo",
@@ -86,6 +88,7 @@ export type DesktopHostBridge = Readonly<{
   protocolVersion: 1
   platform: "darwin" | "other"
   windowChrome: "unified" | "standard"
+  onFullScreenChange?(callback: (fullScreen: boolean) => void): () => void
   getMcpSetup(): Promise<DesktopMcpSetup>
   onCommand(callback: (command: DesktopCommand) => void): () => void
   updateCommandState(state: DesktopCommandState): Promise<void>

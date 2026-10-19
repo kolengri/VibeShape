@@ -8,6 +8,13 @@ const chatMessageSchema = z.strictObject({
   id: z.uuid(),
   role: z.enum(["user", "assistant", "thought", "tool"]),
   text: z.string().max(32_000),
+  tool: z
+    .strictObject({ title: z.string().max(512).optional(), status: z.string().max(512).optional() })
+    .optional(),
+  attachments: z
+    .array(z.strictObject({ id: z.string().min(1).max(256), name: z.string().min(1).max(512) }))
+    .max(5)
+    .optional(),
 })
 const historySchema = z.strictObject({
   version: z.literal(1),

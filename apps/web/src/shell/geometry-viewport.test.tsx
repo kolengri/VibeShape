@@ -1832,6 +1832,23 @@ describe("GeometryViewport", () => {
     expect(screen.getByRole("status").textContent).toBe("Unsaved feature preview")
   })
 
+  it("keeps the last exact Placement pose visible while its replacement is pending", async () => {
+    const previewMesh = { featureId: boxId, appearance: "preview" as const, ...mesh }
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const { port } = renderViewport(controller, null, undefined, {
+      status: "loading",
+      retained: true,
+      meshes: [previewMesh],
+    })
+    await waitFor(() => expect(port.setMeshes).toHaveBeenLastCalledWith([previewMesh]))
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("data-preview-status")).toBe("loading")
+    expect(viewport.getAttribute("data-preview-feature-count")).toBe("1")
+  })
+
   it("displays only disposable task meshes and marks them ready after the viewer receives them", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],

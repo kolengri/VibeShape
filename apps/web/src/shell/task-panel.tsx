@@ -1226,197 +1226,11 @@ function revolveOptions(
   )
 }
 
-function StartModelingAction({
-  canCreate,
-  canExtrude,
-  onCreateSketch,
-}: {
-  canCreate: boolean
-  canExtrude: boolean
-  onCreateSketch: () => void
-}) {
-  const t = useTranslations("app.shell.taskPanel")
-  if (canExtrude) return null
-  return (
-    <Button type="button" className="mt-4 w-full" disabled={!canCreate} onClick={onCreateSketch}>
-      {t("createSketch")}
-    </Button>
-  )
-}
-
-function SketchFirstWorkflow() {
-  const t = useTranslations("app.shell.taskPanel")
-  return (
-    <ol aria-label={t("workflowLabel")} className="mt-4 grid gap-2 border-t pt-4 text-xs">
-      <li>
-        <span className="font-medium">1. {t("workflowSketch")}</span>
-        <span className="block text-muted-foreground">{t("workflowSketchDescription")}</span>
-      </li>
-      <li>
-        <span className="font-medium">2. {t("workflowExtrude")}</span>
-        <span className="block text-muted-foreground">{t("workflowExtrudeDescription")}</span>
-      </li>
-      <li>
-        <span className="font-medium">3. {t("workflowRefine")}</span>
-        <span className="block text-muted-foreground">{t("workflowRefineDescription")}</span>
-      </li>
-    </ol>
-  )
-}
-
-function AvailableSubtractAction({
-  available,
-  onCreateSubtract,
-}: {
-  available: boolean
-  onCreateSubtract: () => void
-}) {
-  const t = useTranslations("app.shell.taskPanel")
-  if (!available) return null
-  return (
-    <Button type="button" variant="outline" className="mt-4 w-full" onClick={onCreateSubtract}>
-      {t("createSubtract")}
-    </Button>
-  )
-}
-
-function DirectSolidsActions({
-  canCreate,
-  onCreateBox,
-  onCreateCylinder,
-  onCreateSphere,
-  onCreateCone,
-  onCreatePyramid,
-  onCreateTorus,
-}: {
-  canCreate: boolean
-  onCreateBox: () => void
-  onCreateCylinder: () => void
-  onCreateSphere: () => void
-  onCreateCone: () => void
-  onCreatePyramid: () => void
-  onCreateTorus: () => void
-}) {
-  const t = useTranslations("app.shell.taskPanel")
-  return (
-    <details className="mt-4 border-t pt-3">
-      <summary className="cursor-pointer text-xs font-medium">{t("directSolids")}</summary>
-      <p className="mt-2 text-xs leading-4 text-muted-foreground">{t("directSolidsDescription")}</p>
-      <Button
-        type="button"
-        variant="outline"
-        className="mt-3 w-full"
-        disabled={!canCreate}
-        onClick={onCreateBox}
-      >
-        {t("createBox")}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="mt-2 w-full"
-        disabled={!canCreate}
-        onClick={onCreateCylinder}
-      >
-        {t("createCylinder")}
-      </Button>
-      {(
-        [
-          ["createSphere", onCreateSphere],
-          ["createCone", onCreateCone],
-          ["createPyramid", onCreatePyramid],
-          ["createTorus", onCreateTorus],
-        ] as const
-      ).map(([labelKey, onClick]) => (
-        <Button
-          key={labelKey}
-          type="button"
-          variant="outline"
-          className="mt-2 w-full"
-          disabled={!canCreate}
-          onClick={onClick}
-        >
-          {t(labelKey)}
-        </Button>
-      ))}
-    </details>
-  )
-}
-
-function StartTaskPanel({
-  canCreate,
-  canExtrude,
-  canSubtract,
-  onCreateBox,
-  onCreateCylinder,
-  onCreateSphere,
-  onCreateCone,
-  onCreatePyramid,
-  onCreateTorus,
-  onCreateSketch,
-  onCreateSubtract,
-}: {
-  canCreate: boolean
-  canExtrude: boolean
-  canSubtract: boolean
-  onCreateBox: () => void
-  onCreateCylinder: () => void
-  onCreateSphere: () => void
-  onCreateCone: () => void
-  onCreatePyramid: () => void
-  onCreateTorus: () => void
-  onCreateSketch: () => void
-  onCreateSubtract: () => void
-}) {
-  const t = useTranslations("app.shell.taskPanel")
-
-  return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">
-        {t(canExtrude ? "selectedProfileReady" : "startModeling")}
-      </h2>
-      <p className="mt-2 leading-5 text-muted-foreground">
-        {t(canExtrude ? "selectedProfileDescription" : "description")}
-      </p>
-      <StartModelingAction
-        canCreate={canCreate}
-        canExtrude={canExtrude}
-        onCreateSketch={onCreateSketch}
-      />
-      <SketchFirstWorkflow />
-      <AvailableSubtractAction available={canSubtract} onCreateSubtract={onCreateSubtract} />
-      <DirectSolidsActions
-        canCreate={canCreate}
-        onCreateBox={onCreateBox}
-        onCreateCylinder={onCreateCylinder}
-        onCreateSphere={onCreateSphere}
-        onCreateCone={onCreateCone}
-        onCreatePyramid={onCreatePyramid}
-        onCreateTorus={onCreateTorus}
-      />
-    </aside>
-  )
-}
-
 function canCreateFeature(controller: DocumentControllerState) {
   return (
     controller.status === "ready" &&
     controller.report?.mode === "read-write" &&
     controller.saveStatus !== "saving"
-  )
-}
-
-function canCreateSubtract(controller: DocumentControllerState) {
-  if (!canCreateFeature(controller) || !controller.report) return false
-  const report = controller.report
-  return (
-    exactSolidBodyOptions(
-      report.snapshot,
-      report.rebuild,
-      undefined,
-      currentAuthoredParts(controller),
-      "",
-    ).length >= 2
   )
 }
 
@@ -2014,7 +1828,12 @@ function edgeTreatmentFormMode(
   featureLabel: string,
 ): EdgeTreatmentFormMode | null {
   if (!("featureId" in activeTool)) {
-    return { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel }
+    return {
+      kind: "create",
+      createFeatureId: createBrowserFeatureId,
+      featureLabel,
+      ...("targetFeatureId" in activeTool ? { targetFeatureId: activeTool.targetFeatureId } : {}),
+    }
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   return feature && matches(feature) ? { kind: "edit", feature } : null
@@ -2045,8 +1864,10 @@ function edgeTreatmentCopy(
     validationSummary: t("validationSummary"),
     selectedEdges: t("selectedEdges"),
     selectedEdgesDescription: t("selectedEdgesDescription"),
+    selectedEdgeCount: (count: number) => t("selectedEdgeCount", { count }),
     edgeLabel: (ordinal: number) => t("edgeLabel", { ordinal }),
     removeEdge: t("removeEdge"),
+    removeEdgeLabel: (edge: string) => t("removeEdgeLabel", { edge }),
     clearEdges: t("clearEdges"),
     pickEdges: t("pickEdges"),
     missingEdge: t("missingEdge"),
@@ -2342,19 +2163,6 @@ function ActiveTaskPanel(props: ActiveTaskPanelProps) {
   return <Panel {...props} />
 }
 
-function canExtrudeSelectedSketch(
-  controller: DocumentControllerState,
-  activeSketchId: SketchId | null,
-  selectedProfile: SketchProfileSelector | null,
-) {
-  return Boolean(
-    canCreateFeature(controller) &&
-      activeSketchId &&
-      selectedProfile &&
-      selectedProfile.sketchId === activeSketchId,
-  )
-}
-
 function selectedExtrusionFace(props: TaskPanelProps): ExtrusionFaceSelection | null {
   if (props.activeTool?.kind !== "create-extrusion" || !props.selectedFace) return null
   const planar = selectedSketchSupportFromController(props.controller, props.selectedFace) !== null
@@ -2410,22 +2218,12 @@ function ModelTaskPanel(props: TaskPanelProps) {
     )
   }
   return (
-    <StartTaskPanel
-      canCreate={canCreateFeature(props.controller)}
-      canExtrude={canExtrudeSelectedSketch(
-        props.controller,
-        props.activeSketchId,
-        props.sketchSelectedProfile,
-      )}
-      canSubtract={canCreateSubtract(props.controller)}
-      onCreateBox={props.onCreateBox}
-      onCreateCylinder={props.onCreateCylinder}
-      onCreateSphere={props.onCreateSphere}
-      onCreateCone={props.onCreateCone}
-      onCreatePyramid={props.onCreatePyramid}
-      onCreateTorus={props.onCreateTorus}
-      onCreateSketch={props.onCreateSketch}
-      onCreateSubtract={props.onCreateSubtract}
+    <SketchStartTaskPanel
+      activeSketchId={props.activeSketchId}
+      profiles={props.sketchProfiles}
+      report={report}
+      onSelectedProfileChange={props.onSketchSelectedProfileChange}
+      selectedProfile={props.sketchSelectedProfile}
     />
   )
 }
@@ -2735,31 +2533,6 @@ function SketchPlaneSelectionTaskPanel({
   )
 }
 
-function EmptySketchTaskPanel({
-  canCreate,
-  onCreateSketch,
-}: {
-  canCreate: boolean
-  onCreateSketch: () => void
-}) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  return (
-    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">{t("workspaceTitle")}</h2>
-      <p className="mt-2 text-xs leading-4 text-muted-foreground">{t("workspaceDescription")}</p>
-      <Button
-        type="button"
-        size="sm"
-        className="mt-2 w-full"
-        disabled={!canCreate}
-        onClick={onCreateSketch}
-      >
-        {t("create")}
-      </Button>
-    </aside>
-  )
-}
-
 function SelectedSketchTaskPanel({
   onSelectedProfileChange,
   profiles,
@@ -2804,16 +2577,12 @@ function SelectedSketchTaskPanel({
 
 function SketchStartTaskPanel({
   activeSketchId,
-  canCreate,
-  onCreateSketch,
   onSelectedProfileChange,
   profiles,
   report,
   selectedProfile,
 }: {
   activeSketchId: SketchId | null
-  canCreate: boolean
-  onCreateSketch: () => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
   profiles: readonly SketchProfileSelector[]
   report: DocumentControllerState["report"]
@@ -2827,9 +2596,7 @@ function SketchStartTaskPanel({
       sketch={sketch}
       onSelectedProfileChange={onSelectedProfileChange}
     />
-  ) : (
-    <EmptySketchTaskPanel canCreate={canCreate} onCreateSketch={onCreateSketch} />
-  )
+  ) : null
 }
 
 function SketchTaskPanel(props: TaskPanelProps) {
@@ -2863,10 +2630,8 @@ function SketchTaskPanel(props: TaskPanelProps) {
   return (
     <SketchStartTaskPanel
       activeSketchId={props.activeSketchId}
-      canCreate={canCreateFeature(props.controller)}
       profiles={props.sketchProfiles}
       report={report}
-      onCreateSketch={props.onCreateSketch}
       onSelectedProfileChange={props.onSketchSelectedProfileChange}
       selectedProfile={props.sketchSelectedProfile}
     />

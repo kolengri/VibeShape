@@ -62,7 +62,10 @@ function ApplicationNotices({
             </Notification>
           ))}
       </TooltipProvider>
-      <NotificationViewport label={t("title")} />
+      <NotificationViewport
+        label={t("title")}
+        className="right-auto left-1/2 w-3/4 max-w-sm -translate-x-1/2 sm:right-auto sm:left-1/2"
+      />
     </NotificationProvider>
   )
 }

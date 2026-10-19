@@ -1,4 +1,7 @@
-import { createDisposableDocumentPreview } from "@vibeshape/application/disposable-document-preview"
+import {
+  createDisposableDocumentPreview,
+  type DisposableDocumentPreviewResult,
+} from "@vibeshape/application/disposable-document-preview"
 import { createDisposableSketchInspection } from "@vibeshape/application/disposable-sketch-inspection"
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
 import type { RenderPreviewArguments } from "@vibeshape/automation-api/render-preview"
@@ -6,14 +9,16 @@ import {
   type AutomationDocumentPort,
   type AutomationHostDiagnosticCode,
   createAutomationHost,
+  type DraftReviewInput,
 } from "@vibeshape/automation-host/host"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import type { CommandDispatcher, ModuleRegistry } from "@vibeshape/domain"
 import { type CommandActor, commandActorSchema } from "@vibeshape/domain/commands"
-import { documentSnapshotSchema } from "@vibeshape/domain/document"
+import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { SourceAssetMaterialization } from "@vibeshape/protocol"
 import { renderModelPreview } from "@vibeshape/viewer/model-preview"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
+import { createAutomationDraftViewport } from "./automation-draft-viewport"
 import { automationReviews } from "./automation-review-controller"
 import { createCommittedSketchInspection } from "./committed-sketch-inspection"
 import { createModelPreviewSession } from "./model-preview-session"
@@ -29,6 +34,7 @@ export function createDocumentAutomationSession(
     unsupportedPreviewRepresentation?: (target: RenderPreviewArguments["target"]) => string | null
     createDraftId: () => string
   }>,
+  reviews = automationReviews,
 ) {
   const queries = createQueryDispatcher(input.modules, documentCoreQueryHandlers)
   if (!queries.ok) return queries
@@ -37,8 +43,14 @@ export function createDocumentAutomationSession(
   let autoApplyActor: CommandActor | null = null
   let commitActive = false
   let commitGrant: CommandActor | null = null
+  let previewEpoch = 0
+  let reviewEvaluation: {
+    snapshot: DocumentSnapshot
+    rebuild: NonNullable<Extract<DisposableDocumentPreviewResult, { ok: true }>["rebuild"]>
+  } | null = null
   const reviewOwner = Symbol("browser-automation-review")
   const preview = createDisposableDocumentPreview({
+    retainRebuild: true,
     mesh: PRODUCT_MESH_POLICY,
     createRebuildPort: (documentId) =>
       createDocumentWorkerSession(
@@ -82,27 +94,45 @@ export function createDocumentAutomationSession(
     queries: queries.dispatcher,
     inspection: sketchInspection,
   })
+  async function autoApplyReviewDecision(
+    review: DraftReviewInput,
+    actor: CommandActor,
+    epoch: number,
+  ) {
+    const base = documentSnapshotSchema.safeParse(
+      await input.documents.readSnapshot(review.preview.draft.documentId),
+    )
+    if (closed || epoch !== previewEpoch) return "cancelled"
+    if (!base.success) return null
+    if (
+      base.data.id !== review.preview.draft.documentId ||
+      base.data.revision !== review.preview.draft.baseRevision
+    )
+      return null
+    return mayAutoApplyCadReview(review, actor, base.data.features) ? "approved" : null
+  }
   const factory = createAutomationHost({
     commandDispatcher: input.commands,
     queryDispatcher: queries.dispatcher,
     createDraftId: input.createDraftId,
     review: {
       confirm: async (review) => {
+        // The serialized host reevaluates this draft immediately before confirming it.
+        const evaluated = reviewEvaluation
+        reviewEvaluation = null
+        const epoch = previewEpoch
         if (closed) return "cancelled"
         if (commitGrant) {
-          const base = documentSnapshotSchema.safeParse(
-            await input.documents.readSnapshot(review.preview.draft.documentId),
-          )
-          if (closed) return "cancelled"
-          if (
-            base.success &&
-            base.data.id === review.preview.draft.documentId &&
-            base.data.revision === review.preview.draft.baseRevision &&
-            mayAutoApplyCadReview(review, commitGrant, base.data.features)
-          )
-            return "approved"
+          const decision = await autoApplyReviewDecision(review, commitGrant, epoch)
+          if (decision) return decision
         }
-        return automationReviews.request(reviewOwner, review)
+        return reviews.request(
+          reviewOwner,
+          review,
+          evaluated
+            ? createAutomationDraftViewport(review, evaluated.snapshot, evaluated.rebuild)
+            : null,
+        )
       },
     },
     documents: {
@@ -163,9 +193,15 @@ export function createDocumentAutomationSession(
         return result.edges
       },
       async evaluate(snapshot) {
+        reviewEvaluation = null
+        const epoch = previewEpoch
         if (closed) throw new Error("The browser automation session is closed.")
         const result = await preview.preview(snapshot)
+        if (closed || epoch !== previewEpoch)
+          throw new Error("The browser draft preview was cancelled.")
         if (!result.ok) throw new Error(result.code)
+        if (!closed && commitActive && result.rebuild)
+          reviewEvaluation = { snapshot, rebuild: result.rebuild }
         return { measurements: result.evidence, diagnostics: result.diagnostics }
       },
     },
@@ -186,7 +222,7 @@ export function createDocumentAutomationSession(
       if (
         closed ||
         commitActive ||
-        automationReviews.getSnapshot() ||
+        reviews.getSnapshot() ||
         !parsed.success ||
         parsed.data.type !== "mcp"
       )
@@ -195,7 +231,7 @@ export function createDocumentAutomationSession(
       return true
     },
     disableAutoApply() {
-      if (closed || commitActive || automationReviews.getSnapshot()) return false
+      if (closed || commitActive || reviews.getSnapshot()) return false
       autoApplyActor = null
       return true
     },
@@ -213,49 +249,57 @@ export function createDocumentAutomationSession(
             },
           }
         commitActive = true
+        reviewEvaluation = null
         // A later opt-in cannot authorize a commit that already started under manual review.
         commitGrant = autoApplyActor
-        let committed: Awaited<ReturnType<typeof factory.host.commitDraft>>
         try {
-          committed = await factory.host.commitDraft(actor, request)
+          const committed = await factory.host.commitDraft(actor, request)
+          const result =
+            closed && !committed.ok && committed.diagnostic.code === "automation-operation-failed"
+              ? {
+                  ok: false as const,
+                  diagnostic: {
+                    code: "draft-review-cancelled" as const,
+                    message:
+                      "The browser automation session closed before the commit could proceed.",
+                    retryable: false,
+                    issues: [],
+                  },
+                }
+              : committed
+          if (!result.ok && result.diagnostic.code === "draft-review-rejected")
+            await factory.host.discardDraft(actor, request)
+          reviews.complete(reviewOwner, result)
+          return result
         } finally {
           commitActive = false
           commitGrant = null
+          reviewEvaluation = null
         }
-        const result =
-          closed && !committed.ok && committed.diagnostic.code === "automation-operation-failed"
-            ? {
-                ok: false as const,
-                diagnostic: {
-                  code: "draft-review-cancelled" as const,
-                  message: "The browser automation session closed before the commit could proceed.",
-                  retryable: false,
-                  issues: [],
-                },
-              }
-            : committed
-        if (!result.ok && result.diagnostic.code === "draft-review-rejected")
-          await factory.host.discardDraft(actor, request)
-        automationReviews.complete(reviewOwner, result)
-        return result
       },
     },
     cancel(reason?: AutomationHostDiagnosticCode) {
+      previewEpoch++
+      reviewEvaluation = null
       preview.cancel()
       renderedPreview.cancel()
       committedSketch.cancel()
+      reviews.clearDraftViewport(reviewOwner)
       // The ordinary commit publishes its own new revision before its promise returns.
-      if (!persisting) automationReviews.cancel(reviewOwner, reason)
+      if (!persisting) reviews.cancel(reviewOwner, reason)
     },
     dispose() {
+      previewEpoch++
+      reviewEvaluation = null
       closed = true
       autoApplyActor = null
       commitGrant = null
       preview.dispose()
       renderedPreview.dispose()
       committedSketch.dispose()
+      reviews.clearDraftViewport(reviewOwner)
       // An accepted persistence transaction must report its actual outcome after disconnect.
-      if (!persisting) automationReviews.cancel(reviewOwner)
+      if (!persisting) reviews.cancel(reviewOwner)
     },
   }
 }

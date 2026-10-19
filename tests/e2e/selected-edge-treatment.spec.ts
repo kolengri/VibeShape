@@ -28,14 +28,15 @@ for (const operation of ["fillet", "chamfer"] as const) {
     const title = operation === "fillet" ? "Fillet" : "Chamfer"
     await invokeModelCommand(page, "Modify", title)
     const form = page.getByRole("form", { name: `Create ${operation}` })
-    await form.getByRole("radio", { name: "Selected edges", exact: true }).check()
+    await expect(form.getByRole("radio", { name: "Selected edges", exact: true })).toBeChecked()
+    await expect(form.getByRole("status")).toHaveText("No edges selected")
     await expect(
       form.getByRole("button", { name: `Create ${operation}`, exact: true }),
     ).toBeDisabled()
     const picker = viewport.getByRole("combobox", { name: "Select an edge", exact: true })
     await picker.focus()
     await picker.selectOption({ index: 1 })
-    await expect(form.getByRole("button", { name: "Remove edge", exact: true })).toHaveCount(1)
+    await expect(form.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)
     await form.getByRole("button", { name: `Create ${operation}`, exact: true }).click()
     const treatment = page.getByRole("treeitem", { name: `${title} 1`, exact: true })
     await expect(treatment).toBeVisible()
@@ -53,13 +54,16 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await treatment.click()
     const edit = page.getByRole("form", { name: `Edit ${operation}` })
     await expect(edit.getByRole("radio", { name: "Selected edges", exact: true })).toBeChecked()
-    await expect(edit.getByRole("button", { name: "Remove edge", exact: true })).toHaveCount(1)
+    await expect(edit.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)
     await expect(
       edit.getByRole("button", { name: `Update ${operation}`, exact: true }),
     ).toBeEnabled()
-    await page
-      .locator("html")
-      .evaluate((element, dark) => element.classList.toggle("dark", dark), operation === "fillet")
+    await page.locator("html").evaluate((element, dark) => {
+      const root = element as unknown as {
+        classList: { toggle: (token: string, force: boolean) => boolean }
+      }
+      root.classList.toggle("dark", dark)
+    }, operation === "fillet")
     await page.screenshot({ path: test.info().outputPath(`selected-${operation}.png`) })
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
     const downloading = page.waitForEvent("download")

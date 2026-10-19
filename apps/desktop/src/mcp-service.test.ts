@@ -72,15 +72,141 @@ function initialization() {
   }
 }
 
-function browser(context: Awaited<ReturnType<typeof host>>, route = "status", body: unknown = {}) {
+function browser(
+  context: Awaited<ReturnType<typeof host>>,
+  route = "status",
+  body: unknown = {},
+  projectId?: string,
+  token?: string,
+) {
   return fetch(`${context.origin}/__vibeshape/automation/${route}`, {
     method: "POST",
-    headers: { Origin: context.origin, "Content-Type": "application/json" },
+    headers: {
+      Origin: context.origin,
+      "Content-Type": "application/json",
+      ...(projectId ? { "X-VibeShape-Project": projectId } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   })
 }
 
 describe("app-owned native MCP attachment", () => {
+  it("isolates simultaneous native project clients, consent, pending tools and revocation", async () => {
+    const context = await host()
+    const firstId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
+    const secondId = "0195b5ac-b220-7a2c-8c33-67a36a7f6102"
+    async function project(id: string) {
+      const path = await context.service.publishProject(id, join(context.directory, `${id}.json`))
+      const descriptor = await readMcpDescriptor(path)
+      const attached = await connect(
+        {
+          ...context,
+          descriptor,
+          headers: { ...context.headers, Authorization: `Bearer ${descriptor.token}` },
+        },
+        id,
+      )
+      return { ...attached, descriptor }
+    }
+    const first = await project(firstId)
+    const second = await project(secondId)
+    expect(first.descriptor.token).not.toBe(second.descriptor.token)
+    const document = (id: string) => ({ id, name: id, revision: 0 })
+    expect(
+      (
+        await browser(
+          context,
+          "connect",
+          {
+            protocolVersion: 1,
+            document: document(secondId),
+          },
+          firstId,
+        )
+      ).status,
+    ).toBe(409)
+    const firstGrant = (await (
+      await browser(
+        context,
+        "connect",
+        {
+          protocolVersion: 1,
+          document: document(firstId),
+        },
+        firstId,
+      )
+    ).json()) as { token: string }
+    await browser(
+      context,
+      "connect",
+      {
+        protocolVersion: 1,
+        document: document(secondId),
+      },
+      secondId,
+    )
+    expect(await (await browser(context, "status", {}, firstId)).json()).toMatchObject({
+      paired: true,
+    })
+    expect(await (await browser(context, "status", {}, secondId)).json()).toMatchObject({
+      paired: true,
+    })
+    const pending = first.client.callTool({ name: "model_info", arguments: {} })
+    const polled = (await (
+      await browser(
+        context,
+        "poll",
+        {
+          protocolVersion: 1,
+          sequence: 1,
+          document: document(firstId),
+          progress: null,
+        },
+        firstId,
+        firstGrant.token,
+      )
+    ).json()) as { work: { operation: { tool: string } } | null }
+    // A client may enqueue just after the first heartbeat; another heartbeat delivers its own work.
+    if (!polled.work) await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    const delivered =
+      polled.work ??
+      (
+        (await (
+          await browser(
+            context,
+            "poll",
+            {
+              protocolVersion: 1,
+              sequence: 2,
+              document: document(firstId),
+              progress: null,
+            },
+            firstId,
+            firstGrant.token,
+          )
+        ).json()) as { work: { operation: { tool: string } } }
+      ).work
+    expect(delivered.operation.tool).toBe("model_info")
+    expect(
+      await second.client.callTool({ name: "model_info", arguments: { projectId: firstId } }),
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "project-target-mismatch" } } },
+    })
+    const released = context.service.whenClientReleased(firstId)
+    await browser(context, "revoke", {}, firstId, firstGrant.token)
+    expect(await pending).toMatchObject({ isError: true })
+    await first.client.close()
+    await released
+    expect(context.service.isClientAttached(firstId)).toBe(false)
+    expect(context.service.isClientAttached(secondId)).toBe(true)
+    expect(await (await browser(context, "status", {}, secondId)).json()).toMatchObject({
+      paired: true,
+    })
+    expect(await (await browser(context)).json()).toMatchObject({ paired: false, client: null })
+  })
+
   it("discovers existing tools before consent, reserves one client and revokes it when its stream closes", async () => {
     const context = await host()
     expect((await lstat(context.descriptorPath)).mode & 0o777).toBe(0o600)

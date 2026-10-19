@@ -26,12 +26,13 @@ export function createBrowserHistoryAutomationSession(
       baseRevision: number,
     ) => Promise<Awaited<ReturnType<HistorySessionConfiguration["preview"]>>["assembly"]>
   },
+  reviews = automationReviews,
 ) {
   const owner = Symbol("browser-history-review")
   let preview: DisposableDocumentPreview | null = null
   const session = createHistoryAutomationSession({
     ...configuration,
-    review: (input) => automationReviews.request(owner, input),
+    review: (input) => reviews.request(owner, input),
     async preview(target, baseRevision) {
       const ownedPreview = createDisposableDocumentPreview({
         mesh: PRODUCT_MESH_POLICY,
@@ -70,12 +71,12 @@ export function createBrowserHistoryAutomationSession(
       const abort = () => {
         session.cancel()
         preview?.cancel()
-        if (!session.isPersisting()) automationReviews.cancel(owner)
+        if (!session.isPersisting()) reviews.cancel(owner)
       }
       if (reviewing) signal?.addEventListener("abort", abort, { once: true })
       try {
         const result = await session.execute(actor, operation.data, signal)
-        if (reviewing) automationReviews.complete(owner, result)
+        if (reviewing) reviews.complete(owner, result)
         return result
       } finally {
         if (reviewing) changing = false
@@ -85,12 +86,12 @@ export function createBrowserHistoryAutomationSession(
     cancel(reason?: AutomationHostDiagnosticCode) {
       session.cancel(reason)
       preview?.cancel()
-      if (!session.isPersisting()) automationReviews.cancel(owner, reason)
+      if (!session.isPersisting()) reviews.cancel(owner, reason)
     },
     dispose() {
       session.dispose()
       preview?.dispose()
-      if (!session.isPersisting()) automationReviews.cancel(owner)
+      if (!session.isPersisting()) reviews.cancel(owner)
     },
   }
 }

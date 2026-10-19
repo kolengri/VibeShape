@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { DESKTOP_MCP_PATH } from "@vibeshape/automation-api/desktop-host"
+import { localDocumentSchema } from "@vibeshape/automation-api/local-session"
 import {
   BrowserRequestError,
   createBrowserBroker,
@@ -28,11 +29,15 @@ function reject(response: ServerResponse, status: number, message: string) {
   response.end(JSON.stringify({ error: message }))
 }
 
-export function createDesktopMcpService(origin: string) {
+function createDesktopMcpAttachment(origin: string, projectId?: string) {
   const url = new URL(origin)
   const token = randomBytes(32).toString("hex")
   const resources = createExportResources()
-  const broker = createBrowserBroker({ origin, onRevoke: resources.clear })
+  const broker = createBrowserBroker({
+    origin,
+    onRevoke: resources.clear,
+    ...(projectId ? { projectId } : {}),
+  })
   let client: Client | null = null
   let disposed = false
   let requests = 0
@@ -126,6 +131,7 @@ export function createDesktopMcpService(origin: string) {
 
   return {
     handleBrowser: broker.handle,
+    authenticate,
     isClientAttached() {
       return client !== null
     },
@@ -166,6 +172,92 @@ export function createDesktopMcpService(origin: string) {
       broker.dispose()
       resources.clear()
       await removeDescriptor?.()
+    },
+  }
+}
+
+export function createDesktopMcpService(origin: string) {
+  const external = createDesktopMcpAttachment(origin)
+  const projects = new Map<
+    string,
+    {
+      attachment: ReturnType<typeof createDesktopMcpAttachment>
+      path: string
+      published: Promise<void>
+    }
+  >()
+  let disposed = false
+  return {
+    handles: external.handles,
+    publish: external.publish,
+    isClientAttached(projectId?: string) {
+      return (
+        (projectId ? projects.get(projectId)?.attachment : external)?.isClientAttached() ?? false
+      )
+    },
+    whenClientReleased(projectId?: string) {
+      return (
+        (projectId ? projects.get(projectId)?.attachment : external)?.whenClientReleased() ??
+        Promise.resolve()
+      )
+    },
+    async publishProject(projectId: string, path: string) {
+      const id = localDocumentSchema.shape.id.parse(projectId)
+      if (disposed) throw new Error("Native MCP is closed.")
+      let project = projects.get(id)
+      if (!project) {
+        const attachment = createDesktopMcpAttachment(origin, id)
+        project = { attachment, path, published: attachment.publish(path) }
+        projects.set(id, project)
+      }
+      try {
+        await project.published
+        return project.path
+      } catch (error) {
+        if (projects.get(id) === project) projects.delete(id)
+        await project.attachment.close()
+        throw error
+      }
+    },
+    handleBrowser(request: Request) {
+      const projectId = request.headers.get("X-VibeShape-Project")
+      const attachment = projectId ? projects.get(projectId)?.attachment : external
+      if (attachment) return attachment.handleBrowser(request)
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            diagnostic: {
+              code: "project-session-unavailable",
+              message: "This project's native assistant is not connected.",
+              retryable: true,
+            },
+          }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+          },
+        ),
+      )
+    },
+    handle(request: IncomingMessage, response: ServerResponse, incoming: Request) {
+      const attachment = [
+        external,
+        ...[...projects.values()].map((project) => project.attachment),
+      ].find((candidate) => candidate.authenticate(request))
+      return (attachment ?? external).handle(request, response, incoming)
+    },
+    async close() {
+      if (disposed) return
+      disposed = true
+      await Promise.all([
+        external.close(),
+        ...[...projects.values()].map(async (project) => {
+          await project.published.catch(() => undefined)
+          await project.attachment.close()
+        }),
+      ])
+      projects.clear()
     },
   }
 }

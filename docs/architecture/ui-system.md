@@ -52,11 +52,11 @@ packages/ui/
 provides that instance through context and consumes narrow selectors; Immer middleware implements
 cohesive nested updates without exposing mutable state to components. The provider creates its store
 once per mount through lazy React state. It does not inspect document identity, mutate refs during
-render, or replace the context value in response to a prop change. The current project-switch flow
-closes the active document session and reloads the page, so the provider mount already matches the
-editor-session lifetime. If project switching later becomes in-place, an owning component outside the
-provider must remount the provider with a stable document key; concurrently mounted document tabs
-must each own a separate provider or use an explicitly keyed store registry.
+render, or replace the context value in response to a prop change. The owning application keys the
+provider by the visible document ID, so an in-place project switch remounts transient editor state.
+Document workers, project assistants and pending reviews have separate retained project owners;
+switching the visible provider does not dispose those resources. Concurrently mounted editors must
+each own a separate provider or use an explicitly keyed store registry.
 
 The store owns workspace and active-tool coordination, viewport selection, origin-plane, saved-sketch, and feature visibility,
 unsaved sketch drafts, sketch-local undo and redo, profile selection, and transient shell overlays. It MUST NOT own or clone

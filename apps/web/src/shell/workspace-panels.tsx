@@ -5,14 +5,27 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@vibeshape/ui/components/resizable"
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react"
-import { CompactModelTreeContext, useNarrowWorkspace } from "./compact-model-tree"
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react"
+import {
+  CompactModelTreeContext,
+  CompactModelTreeToggle,
+  useNarrowWorkspace,
+} from "./compact-model-tree"
 import { useCompactTaskPanel } from "./responsive-task-panel"
 import {
   useWorkspaceLayoutPreferences,
   type WorkspaceLayoutPanel,
   type WorkspaceLayoutPreferencesState,
 } from "./workspace-layout-preferences"
+import { useWorkspaceTask } from "./workspace-task-context"
 
 type PanelSize = { width: number; collapsed: boolean; layout: string }
 
@@ -33,16 +46,23 @@ function usePanelSizes(
   preferences: WorkspaceLayoutPreferencesState,
   compact: boolean,
   narrow: boolean,
+  taskActive: boolean,
 ) {
   const { treeWidth, taskWidth, treeCollapsed, taskCollapsed } = preferences
   const tree = useRef<PanelImperativeHandle | null>(null)
   const task = useRef<PanelImperativeHandle | null>(null)
   const applied = useRef<{ tree: PanelSize; task: PanelSize } | null>(null)
   const [initialTreeSize] = useState(() => (narrow || treeCollapsed ? 0 : treeWidth))
-  const [initialTaskSize] = useState(() => (compact || taskCollapsed ? 0 : taskWidth))
+  const [initialTaskSize] = useState(() =>
+    compact || taskCollapsed || !taskActive ? 0 : taskWidth,
+  )
   useEffect(() => {
     const next = {
-      task: { width: taskWidth, collapsed: compact || taskCollapsed, layout: String(compact) },
+      task: {
+        width: taskWidth,
+        collapsed: compact || taskCollapsed || !taskActive,
+        layout: `${compact}:${taskActive}`,
+      },
       tree: {
         width: treeWidth,
         collapsed: narrow || treeCollapsed,
@@ -57,7 +77,7 @@ function usePanelSizes(
       applied.current = next
     })
     return () => cancelAnimationFrame(frame)
-  }, [compact, narrow, taskCollapsed, taskWidth, treeCollapsed, treeWidth])
+  }, [compact, narrow, taskActive, taskCollapsed, taskWidth, treeCollapsed, treeWidth])
   return { tree, task, initialTreeSize, initialTaskSize }
 }
 
@@ -92,9 +112,70 @@ function treePresentation(narrow: boolean, open: boolean, collapsed: boolean) {
   }
 }
 
-function taskPresentation(compact: boolean, collapsed: boolean) {
+function taskPresentation(compact: boolean, collapsed: boolean, active: boolean) {
+  if (!active)
+    return { min: 0, max: 0, centerMin: compact ? 160 : 320, collapsed: true, hidden: true }
   if (compact) return { min: 0, max: 0, centerMin: 160, collapsed: true, hidden: false }
   return { min: 280, max: 480, centerMin: 320, collapsed, hidden: collapsed }
+}
+
+function IdleModelTreeToggle({ taskActive, narrow }: { taskActive: boolean; narrow: boolean }) {
+  if (taskActive || !narrow) return null
+  return (
+    <div className="absolute bottom-2 left-2 z-30">
+      <CompactModelTreeToggle />
+    </div>
+  )
+}
+
+function useModelTreeDrawer(
+  narrow: boolean,
+  revealRequest: number | undefined,
+  actions: WorkspaceLayoutPreferencesState["actions"],
+) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!narrow) setOpen(false)
+  }, [narrow])
+  useEffect(() => {
+    if (!revealRequest) return
+    if (narrow) setOpen(true)
+    else actions.setCollapsed("tree", false)
+  }, [actions, narrow, revealRequest])
+  return { open, toggle: () => setOpen((current) => !current) }
+}
+
+function WorkspacePanelSurface({
+  allowTransparency,
+  children,
+  compact,
+  opacity: { treeOpacity, taskOpacity },
+  root,
+  taskActive,
+}: {
+  allowTransparency: boolean
+  children: ReactNode
+  compact: boolean
+  opacity: Pick<WorkspaceLayoutPreferencesState, "treeOpacity" | "taskOpacity">
+  root: RefObject<HTMLDivElement | null>
+  taskActive: boolean
+}) {
+  return (
+    <div
+      ref={root}
+      className="cad-workspace-grid min-h-0 flex-1"
+      data-task-active={taskActive}
+      data-transparent={allowTransparency && !compact && (treeOpacity < 100 || taskOpacity < 100)}
+      style={
+        {
+          "--workspace-tree-opacity": `${treeOpacity}%`,
+          "--workspace-task-opacity": `${taskOpacity}%`,
+        } as CSSProperties
+      }
+    >
+      {children}
+    </div>
+  )
 }
 
 /** Layout changes never replace the viewport or the mounted task form. */
@@ -105,6 +186,7 @@ export function WorkspacePanels({
   modelTree,
   revealTreeRequest,
   taskPanel,
+  taskPanelActive = true,
 }: {
   allowTransparency: boolean
   children: ReactNode
@@ -112,30 +194,26 @@ export function WorkspacePanels({
   modelTree: ReactNode
   revealTreeRequest?: number | undefined
   taskPanel: ReactNode
+  taskPanelActive?: boolean
 }) {
   const t = useTranslations("app.shell.workspaceLayout")
   const compact = useCompactTaskPanel()
+  const workspaceTask = useWorkspaceTask()
+  const taskActive = taskPanelActive || workspaceTask !== null
   const narrow = useNarrowWorkspace()
-  const [treeOpen, setTreeOpen] = useState(false)
   const treePanelId = useId()
-  useEffect(() => {
-    if (!narrow) setTreeOpen(false)
-  }, [narrow])
   const preferences = useWorkspaceLayoutPreferences((state) => state)
   const root = useRef<HTMLDivElement>(null)
-  const { treeCollapsed, taskCollapsed, treeOpacity, taskOpacity, actions } = preferences
-  useEffect(() => {
-    if (!revealTreeRequest) return
-    if (narrow) setTreeOpen(true)
-    else actions.setCollapsed("tree", false)
-  }, [actions, narrow, revealTreeRequest])
+  const { treeCollapsed, taskCollapsed, actions } = preferences
+  const drawer = useModelTreeDrawer(narrow, revealTreeRequest, actions)
 
-  const treeLayout = treePresentation(narrow, treeOpen, treeCollapsed)
-  const taskLayout = taskPresentation(compact, taskCollapsed)
+  const treeLayout = treePresentation(narrow, drawer.open, treeCollapsed)
+  const taskLayout = taskPresentation(compact, taskCollapsed, taskActive)
   const { tree, task, initialTreeSize, initialTaskSize } = usePanelSizes(
     preferences,
     compact,
     narrow,
+    taskActive,
   )
 
   function trackSize(panel: "tree" | "task", pixels: number) {
@@ -145,33 +223,28 @@ export function WorkspacePanels({
 
   function persistLayout() {
     if (!narrow) persistPanelSize("tree", tree.current, actions)
-    if (!compact) persistPanelSize("task", task.current, actions)
+    if (!compact && taskActive) persistPanelSize("task", task.current, actions)
   }
 
   return (
     <CompactModelTreeContext.Provider
       value={{
         narrow,
-        open: treeOpen,
+        open: drawer.open,
         panelId: treePanelId,
-        toggle: () => setTreeOpen((open) => !open),
+        toggle: drawer.toggle,
       }}
     >
       <div className="flex min-h-0 min-w-0 flex-col">
-        <div
-          ref={root}
-          className="cad-workspace-grid min-h-0 flex-1"
-          data-transparent={
-            allowTransparency && !compact && (treeOpacity < 100 || taskOpacity < 100)
-          }
-          style={
-            {
-              "--workspace-tree-opacity": `${treeOpacity}%`,
-              "--workspace-task-opacity": `${taskOpacity}%`,
-            } as CSSProperties
-          }
+        <WorkspacePanelSurface
+          root={root}
+          taskActive={taskActive}
+          allowTransparency={allowTransparency}
+          compact={compact}
+          opacity={preferences}
         >
           <div className="workspace-viewport">{children}</div>
+          <IdleModelTreeToggle taskActive={taskActive} narrow={narrow} />
           <ResizablePanelGroup
             className="pointer-events-none absolute inset-0 z-20"
             onLayoutChanged={(_layout, { isUserInteraction }) => {
@@ -217,8 +290,8 @@ export function WorkspacePanels({
             />
             <ResizableHandle
               aria-label={t("taskResize")}
-              className="pointer-events-auto max-lg:hidden"
-              disabled={compact}
+              className={taskActive ? "pointer-events-auto max-lg:hidden" : "hidden"}
+              disabled={compact || !taskActive}
               disableDoubleClick
               onDoubleClick={() => {
                 actions.setCollapsed("task", false)
@@ -247,7 +320,7 @@ export function WorkspacePanels({
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
-        </div>
+        </WorkspacePanelSurface>
         {history}
       </div>
     </CompactModelTreeContext.Provider>

@@ -60,6 +60,8 @@ async function openChat(page: Page) {
 }
 async function connect(page: Page) {
   const panel = await openChat(page)
+  await panel.getByRole("combobox", { name: "Provider", exact: true }).click()
+  await page.getByRole("option", { name: "Custom endpoint", exact: true }).click()
   await panel
     .getByRole("textbox", { name: "Chat Completions endpoint URL", exact: true })
     .fill(endpoint)
@@ -68,9 +70,7 @@ async function connect(page: Page) {
   await panel
     .getByRole("button", { name: "Connect and enable project access", exact: true })
     .click()
-  await expect(
-    panel.getByRole("status").filter({ hasText: "Model access is enabled for this project." }),
-  ).toBeVisible()
+  await expect(panel.getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
   return panel
 }
 async function inspectProject(page: Page) {
@@ -195,6 +195,7 @@ async function scriptedBoxApi(page: Page) {
     expect(request.tools.map((tool) => tool.function.name)).toEqual([
       "discover_cad_tools",
       "call_cad_tool",
+      "ask_user_question",
     ])
     expect(route.request().headers().authorization).toBe(`Bearer ${key}`)
     const last = request.messages.at(-1)
@@ -284,6 +285,8 @@ test("Stop discards a real pending CAD review and keeps credentials only in memo
   await expect.poll(async () => (await inspectProject(page)).id).not.toBe(before.id)
   await saved(page)
   const next = await openChat(page)
+  await expect(next.getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
+  await next.getByRole("button", { name: "AI settings", exact: true }).click()
   await expect(next.getByLabel("API key (optional)", { exact: true })).toHaveValue(key)
   await expect(next.getByRole("textbox", { name: "API model", exact: true })).toHaveValue(
     "fixture-model",
@@ -322,6 +325,7 @@ test("ignores a late API response after Stop and switching to another project", 
     .getByRole("navigation", { name: "Open projects", exact: true })
     .getByRole("button", { name: "New project", exact: true })
     .click()
+  await expect.poll(async () => (await inspectProject(page)).id).not.toBe(before.id)
   await saved(page)
   const next = await inspectProject(page)
   expect(next.id).not.toBe(before.id)
@@ -380,13 +384,16 @@ test("shows actionable CORS and invalid-schema failures without executing model 
     }
   })()`)
   const panel = await connect(page)
+  const notices = page.getByRole("region", { name: "Notifications", exact: true })
   await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Inspect the model")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
-  await expect(panel.getByRole("alert")).toContainText("CORS settings")
-  await expect(panel.getByRole("alert")).not.toContainText("private provider detail")
+  await expect(notices.getByText(/CORS settings/)).toBeVisible()
+  await expect(notices).not.toContainText("private provider detail")
+  await expect(panel.getByRole("alert")).toHaveCount(0)
   await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Create a box")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
-  await expect(panel.getByRole("alert")).toContainText("invalid arguments")
+  await expect(notices.getByText(/invalid arguments/)).toBeVisible()
+  await expect(notices).not.toContainText("private provider detail")
   expect(await inspectProject(page)).toEqual(before)
   expect(await storedValues(page)).not.toContain(key)
 })

@@ -1,0 +1,141 @@
+import { describe, expect, it } from "bun:test"
+import type {
+  AssistantBridge,
+  AssistantEvent,
+  AssistantSnapshot,
+} from "@vibeshape/automation-api/assistant"
+import { saveAssistantPreferences } from "./assistant-preferences"
+import { createNativeProjectChatRegistry } from "./native-project-chat-registry"
+
+function fixture() {
+  const values = new Map<string, string>()
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value)
+    },
+    removeItem: (key: string) => {
+      values.delete(key)
+    },
+  }
+  const listeners = new Set<(event: AssistantEvent) => void>()
+  const snapshots = new Map<string, AssistantSnapshot>()
+  const pending = new Map<string, () => void>()
+  const connected: string[] = []
+  const disconnected: string[] = []
+  const result = async (input: { projectId: string }) => {
+    const value = snapshots.get(input.projectId)
+    if (!value) throw new Error("The test project has no agent session.")
+    return { ok: true as const, value }
+  }
+  const bridge: AssistantBridge = {
+    protocolVersion: 1,
+    async connect(input) {
+      connected.push(input.projectId)
+      const value: AssistantSnapshot = {
+        projectId: input.projectId,
+        sessionToken: `token-${input.projectId}`,
+        sessionId: `session-${input.projectId}`,
+        status: "ready",
+        canResume: true,
+        modes: [],
+        models: [],
+        configOptions: [],
+        authMethods: [],
+        currentModeId: null,
+        currentModelId: null,
+        attachmentCapabilities: { text: true, images: true },
+      }
+      snapshots.set(input.projectId, value)
+      return { ok: true, value }
+    },
+    async disconnect(input) {
+      disconnected.push(input.projectId)
+      return result(input)
+    },
+    async prompt(input) {
+      await new Promise<void>((resolve) => pending.set(input.projectId, resolve))
+      return result(input)
+    },
+    async cancel(input) {
+      pending.get(input.projectId)?.()
+      return result(input)
+    },
+    authenticate: result,
+    setMode: result,
+    setModel: result,
+    setConfigOption: result,
+    respondPermission: result,
+    respondQuestion: result,
+    onEvent(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+  }
+  return {
+    bridge,
+    storage,
+    connected,
+    disconnected,
+    emit: (event: AssistantEvent) => {
+      for (const listener of listeners) listener(event)
+    },
+  }
+}
+
+describe("native project chat retention", () => {
+  it("makes the configured agent available per project and preserves background turns and queues", async () => {
+    const f = fixture()
+    saveAssistantPreferences(
+      { version: 1, agent: { command: "/installed/agent", args: ["--acp"] } },
+      f.storage,
+    )
+    const registry = createNativeProjectChatRegistry(f.bridge, f.storage)
+    const first = registry.get("project-a")
+    const ready = (chat: ReturnType<typeof registry.get>) =>
+      new Promise<void>((resolve) => {
+        if (chat.getSnapshot().snapshot?.status === "ready") return resolve()
+        const unsubscribe = chat.subscribe(() => {
+          if (chat.getSnapshot().snapshot?.status === "ready") {
+            unsubscribe()
+            resolve()
+          }
+        })
+      })
+    first.start()
+    await ready(first)
+    const firstTurn = first.send("Author a box")
+    expect(await first.enqueue("Add a fillet")).toBe(true)
+    const second = registry.get("project-b")
+    second.start()
+    await ready(second)
+    expect(second.getSnapshot().snapshot?.projectId).toBe("project-b")
+    expect(registry.get("project-a")).toBe(first)
+    expect(first.getSnapshot().busy).toBe(true)
+    expect(first.getSnapshot().queuedMessages.map((message) => message.text)).toEqual([
+      "Add a fillet",
+    ])
+    f.emit({
+      projectId: "project-a",
+      sessionToken: "token-project-a",
+      type: "text",
+      text: "Working in A",
+    })
+    expect(first.getSnapshot().messages.some((message) => message.text === "Working in A")).toBe(
+      true,
+    )
+    expect(second.getSnapshot().messages).toEqual([])
+    await second.disconnect()
+    second.start()
+    expect(f.connected.filter((id) => id === "project-b")).toHaveLength(1)
+    expect(f.disconnected).toEqual(["project-b"])
+    expect(first.getSnapshot().busy).toBe(true)
+    await first.cancel()
+    await firstTurn
+    expect(first.getSnapshot().queuePaused).toBe(true)
+    registry.dispose()
+    expect(f.disconnected).toContain("project-a")
+  })
+})

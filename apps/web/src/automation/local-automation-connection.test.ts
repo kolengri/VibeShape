@@ -30,8 +30,11 @@ mock.module("./project-tool-port", () => ({
   createProjectToolPort: mocks.projectPort,
 }))
 
-const { act, cleanup, render } = await import("@testing-library/react")
+const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react")
 const { createElement, StrictMode, useEffect } = await import("react")
+const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { i18n } = await import("../i18n")
+const { LocalAutomationStatus } = await import("../shell/local-automation-status")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 const { createLocalAutomationConnection } = await import("./local-automation-connection")
 const { LocalAutomationTransportError } = await import("./local-automation-http")
@@ -189,6 +192,37 @@ describe("unpaired local client discovery", () => {
 })
 
 describe("local AI project management consent", () => {
+  it("keeps a connected embedded session project-bound and hides project management controls", async () => {
+    connection.dispose()
+    connection = createLocalAutomationConnection({ projectId: id })
+    expect(connection.getSnapshot().projectBound).toBe(true)
+    await ready()
+    expect(await connection.enable()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      projectBound: true,
+      projectManagement: false,
+    })
+    expect(connection.setProjectManagement(true)).toBe(false)
+    render(
+      createElement(I18nProvider, {
+        i18n,
+        initialLocale: "en",
+        children: createElement(LocalAutomationStatus, {
+          connection,
+          current: connection.getSnapshot(),
+        }),
+      }),
+    )
+    fireEvent.pointerDown(screen.getByRole("button", { name: "AI connection and approval mode" }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    })
+    expect(screen.getByRole("menuitemradio", { name: "Approve each change" })).toBeTruthy()
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Allow project management" })).toBeNull()
+  })
+
   it("requires an idle explicit grant and clears it across recovery and Stop", async () => {
     await ready()
     expect(connection.setProjectManagement(true)).toBe(false)

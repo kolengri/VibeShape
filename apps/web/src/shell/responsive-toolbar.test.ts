@@ -33,18 +33,33 @@ const sizes = {
 
 describe("measured toolbar fit", () => {
   it("accounts for real menu widths, icon gaps and separators at the exact fit boundary", () => {
-    expect(fitToolbar(groups, priority, { ...sizes, available: 580 })).toEqual({
+    const create = [{ id: "create", commands: ["datum", "loft", "sweep", "generative"] }]
+    expect(fitToolbar(create, ["datum", "loft"], { ...sizes, available: 273 })).toEqual({
       compact: false,
-      inline: ["fillet", "box"],
+      inline: ["datum", "loft"],
     })
-    expect(fitToolbar(groups, priority, { ...sizes, available: 579 })).toEqual({
+    expect(fitToolbar(create, ["datum", "loft"], { ...sizes, available: 272 })).toEqual({
       compact: false,
-      inline: ["fillet"],
+      inline: ["datum"],
     })
     expect(fitToolbar(groups, priority, { ...sizes, available: 507 })).toEqual({
       compact: true,
       inline: [],
     })
+  })
+  it("measures one remaining command as an icon even when it is outside the promotion priority", () => {
+    expect(
+      fitToolbar([{ id: "create", commands: ["generative"] }], [], {
+        ...sizes,
+        available: 153,
+      }),
+    ).toEqual({ compact: false, inline: [] })
+    expect(
+      fitToolbar([{ id: "create", commands: ["generative"] }], [], {
+        ...sizes,
+        available: 152,
+      }),
+    ).toEqual({ compact: true, inline: [] })
   })
   it("fills wide layouts with preferred commands while leaving every other command in a menu", () => {
     const fit = fitToolbar(groups, priority, { ...sizes, available: 1200 })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { localFailure, localToolNameSchema } from "@vibeshape/automation-api/local-tools"
 import { z } from "zod"
-import { apiProviderTools, createApiCadGateway } from "./api-cad-tools"
+import { apiProviderTools, apiQuestionInputSchema, createApiCadGateway } from "./api-cad-tools"
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const otherProjectId = "0195b5ac-b250-7a2c-8c33-000000000102"
@@ -13,7 +13,7 @@ const pageSchema = z.object({
 })
 
 describe("browser CAD gateway", () => {
-  it("offers two provider functions and discovers the full project-safe canonical catalog by pages", async () => {
+  it("offers CAD gateway and structured-question functions and discovers the full project-safe canonical catalog by pages", async () => {
     const gateway = createApiCadGateway({
       projectId,
       isActive: () => true,
@@ -30,7 +30,11 @@ describe("browser CAD gateway", () => {
       names.push(...page.tools.map((tool) => tool.name))
       cursor = page.nextCursor
     }
-    expect(apiProviderTools).toHaveLength(2)
+    expect(apiProviderTools.map((tool) => tool.function.name)).toEqual([
+      "discover_cad_tools",
+      "call_cad_tool",
+      "ask_user_question",
+    ])
     expect(names).toEqual([
       "read_agent_skill",
       ...localToolNameSchema.options.filter(
@@ -46,6 +50,23 @@ describe("browser CAD gateway", () => {
     expect(
       await gateway("call_cad_tool", { name: "read_agent_skill", arguments: {} }, signal),
     ).toMatchObject({ ok: true, value: { mimeType: "application/json" } })
+  })
+  it("retains shared field bounds while rejecting secret requests and invalid question forms", () => {
+    const input = {
+      message: "Choose a size",
+      fields: [{ id: "size", label: "Size", required: true, minLength: 2, maxLength: 10 }],
+    }
+    expect(apiQuestionInputSchema.parse(input).fields[0]?.secret).toBe(false)
+    expect(
+      apiQuestionInputSchema.safeParse({ ...input, fields: [{ ...input.fields[0], secret: true }] })
+        .success,
+    ).toBe(false)
+    expect(
+      apiQuestionInputSchema.safeParse({
+        ...input,
+        fields: [{ ...input.fields[0], minLength: 11 }],
+      }).success,
+    ).toBe(false)
   })
 
   it("rejects project switching, invalid tool arguments, foreign project IDs and stale sessions before execution", async () => {

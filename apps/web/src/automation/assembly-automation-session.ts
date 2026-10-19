@@ -6,11 +6,12 @@ import { automationReviews } from "./automation-review-controller"
 
 export function createBrowserAssemblyAutomationSession(
   configuration: Omit<AssemblySessionConfiguration, "review">,
+  reviews = automationReviews,
 ) {
   const owner = Symbol("browser-assembly-review")
   const session = createAssemblyAutomationSession({
     ...configuration,
-    review: (input) => automationReviews.request(owner, input),
+    review: (input) => reviews.request(owner, input),
   })
   let reviewing = false
   return {
@@ -28,12 +29,12 @@ export function createBrowserAssemblyAutomationSession(
       if (review) reviewing = true
       const abort = () => {
         session.cancel()
-        if (!session.isPersisting()) automationReviews.cancel(owner)
+        if (!session.isPersisting()) reviews.cancel(owner)
       }
       signal?.addEventListener("abort", abort, { once: true })
       try {
         const result = await session.execute(actor, operation, signal)
-        if (review) automationReviews.complete(owner, result)
+        if (review) reviews.complete(owner, result)
         return result
       } finally {
         if (review) reviewing = false
@@ -42,11 +43,11 @@ export function createBrowserAssemblyAutomationSession(
     },
     cancel(reason?: AutomationHostDiagnosticCode) {
       session.cancel()
-      if (!session.isPersisting()) automationReviews.cancel(owner, reason)
+      if (!session.isPersisting()) reviews.cancel(owner, reason)
     },
     dispose() {
       session.dispose()
-      if (!session.isPersisting()) automationReviews.cancel(owner)
+      if (!session.isPersisting()) reviews.cancel(owner)
     },
   }
 }

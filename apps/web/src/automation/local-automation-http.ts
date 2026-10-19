@@ -1,7 +1,13 @@
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 
 // Keep the timeout active through body consumption, not only response headers.
-async function requestOnce(path: string, body: unknown, token?: string, keepalive = false) {
+async function requestOnce(
+  path: string,
+  body: unknown,
+  token?: string,
+  keepalive = false,
+  projectId?: string,
+) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5000)
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
@@ -13,6 +19,7 @@ async function requestOnce(path: string, body: unknown, token?: string, keepaliv
       headers: {
         "content-type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(projectId ? { "X-VibeShape-Project": projectId } : {}),
       },
       body: JSON.stringify(body),
     })
@@ -51,12 +58,13 @@ export async function localAutomationRequest(
   body: unknown,
   token?: string,
   keepalive = false,
+  projectId?: string,
 ) {
   const delivery = ["/poll", "/result"].includes(path)
   const attempts = delivery && !keepalive ? 3 : 1
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await requestOnce(path, body, token, keepalive)
+      const response = await requestOnce(path, body, token, keepalive, projectId)
       if (attempt + 1 === attempts || !transientStatus(response.status)) return response
     } catch (error) {
       if (!transportFailure(error)) throw error

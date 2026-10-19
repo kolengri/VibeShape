@@ -1,26 +1,30 @@
+import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
-import { MessageSquarePlus, Send, Settings, Square, X } from "@vibeshape/ui/components/icons"
-import { Textarea } from "@vibeshape/ui/components/textarea"
+import { MessageSquarePlus, Settings, X } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { type ReactNode, useEffect, useId, useRef, useState } from "react"
+import { type ReactNode, useId, useState } from "react"
 import { useReportApplicationError } from "../shell/application-notices"
+import {
+  AssistantComposer,
+  type AssistantComposerDraft,
+  type AssistantComposerProps,
+} from "./assistant-composer"
 import { AssistantIconAction } from "./assistant-icon-action"
+import { AssistantMessages } from "./assistant-messages"
+import { AssistantQuestionForm } from "./assistant-question"
 import type { ChatMessage } from "./chat-history"
 
-type AssistantPanelProps = {
+type AssistantPanelProps = AssistantComposerProps & {
   open: boolean
   projectName: string
   messages: readonly ChatMessage[]
-  busy: boolean
-  canSend: boolean
   configuration: ReactNode
-  sessionControls?: ReactNode
   permission?: ReactNode
+  question?: AssistantQuestion | null
+  onAnswer?: (answers: Record<string, string> | null) => Promise<boolean>
   error: string | null
   storageFailed: boolean
   onClose: () => void
-  onSend: (text: string) => Promise<void>
-  onCancel: () => Promise<void>
   onReset: () => Promise<void>
 }
 
@@ -63,36 +67,11 @@ function AssistantHeader({
   )
 }
 
-function AssistantMessages({ messages }: { messages: readonly ChatMessage[] }) {
-  const t = useTranslations("app.assistant")
-  const end = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "nearest" })
-  }, [messages])
-  return (
-    <div
-      className="min-h-0 flex-1 overflow-y-auto p-3"
-      role="log"
-      aria-label={t("messages")}
-      aria-live="polite"
-      aria-relevant="additions text"
-    >
-      {messages.length === 0 && <p className="text-sm text-muted-foreground">{t("empty")}</p>}
-      {messages.map((message) => (
-        <article key={message.id} className="mb-4 min-w-0">
-          <h3 className="mb-1 text-xs font-medium text-muted-foreground">
-            {t(`role.${message.role}`)}
-          </h3>
-          <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
-        </article>
-      ))}
-      <div ref={end} />
-    </div>
-  )
-}
-
 function AssistantFeedback(
-  props: Pick<AssistantPanelProps, "permission" | "error" | "storageFailed">,
+  props: Pick<
+    AssistantPanelProps,
+    "permission" | "error" | "storageFailed" | "question" | "onAnswer"
+  >,
 ) {
   const t = useTranslations("app.assistant")
   const centralized = useReportApplicationError(props.error)
@@ -102,6 +81,15 @@ function AssistantFeedback(
   return (
     <>
       {props.permission}
+      {props.question && props.onAnswer && (
+        <div className="max-h-72 overflow-y-auto">
+          <AssistantQuestionForm
+            key={props.question.requestId}
+            question={props.question}
+            onAnswer={props.onAnswer}
+          />
+        </div>
+      )}
       {props.error && !centralized && (
         <p role="alert" className="text-sm text-destructive">
           {props.error}
@@ -116,76 +104,11 @@ function AssistantFeedback(
   )
 }
 
-function AssistantComposer(
-  props: Pick<
-    AssistantPanelProps,
-    "busy" | "canSend" | "permission" | "error" | "storageFailed" | "onSend" | "onCancel"
-  > & { text: string; onTextChange: (text: string) => void },
-) {
-  const t = useTranslations("app.assistant")
-  const id = useId()
-  const composer = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    composer.current?.focus()
-  }, [])
-  const submit = async () => {
-    const value = props.text.trim()
-    if (!value || props.busy || !props.canSend) return
-    props.onTextChange("")
-    await props.onSend(value)
-  }
-  return (
-    <div className="shrink-0 space-y-2 border-t p-3">
-      <AssistantFeedback
-        permission={props.permission}
-        error={props.error}
-        storageFailed={props.storageFailed}
-      />
-      <label htmlFor={id} className="sr-only">
-        {t("prompt")}
-      </label>
-      <Textarea
-        id={id}
-        ref={composer}
-        value={props.text}
-        rows={2}
-        maxLength={16_000}
-        placeholder={t("placeholder")}
-        disabled={!props.canSend}
-        onChange={(event) => props.onTextChange(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault()
-            void submit()
-          }
-        }}
-      />
-      <div className="flex items-center justify-end gap-2">
-        {props.busy ? (
-          <AssistantIconAction key="stop" label={t("stop")} onAction={props.onCancel}>
-            <Square aria-hidden="true" />
-          </AssistantIconAction>
-        ) : (
-          <AssistantIconAction
-            key="send"
-            label={t("send")}
-            disabled={!props.canSend || !props.text.trim()}
-            onAction={submit}
-            primary
-          >
-            <Send aria-hidden="true" />
-          </AssistantIconAction>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export function AssistantPanel(props: AssistantPanelProps) {
   const t = useTranslations("app.assistant")
   const titleId = useId()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [text, setText] = useState("")
+  const [draft, setDraft] = useState<AssistantComposerDraft>({ text: "", attachments: [] })
   if (!props.open) return null
   return (
     <TooltipProvider>
@@ -200,11 +123,8 @@ export function AssistantPanel(props: AssistantPanelProps) {
           onSettings={() => setSettingsOpen(!settingsOpen)}
           onClose={props.onClose}
           onReset={props.onReset}
-          canReset={!props.busy && props.messages.length > 0}
+          canReset={!props.busy && !props.queuedMessages?.length && props.messages.length > 0}
         />
-        {props.sessionControls && (
-          <div className="shrink-0 space-y-2 border-b px-3 py-2">{props.sessionControls}</div>
-        )}
         {(settingsOpen || !props.canSend) && (
           <section
             aria-label={t("settingsTitle")}
@@ -214,7 +134,12 @@ export function AssistantPanel(props: AssistantPanelProps) {
           </section>
         )}
         <AssistantMessages messages={props.messages} />
-        <AssistantComposer {...props} text={text} onTextChange={setText} />
+        <AssistantComposer
+          {...props}
+          draft={draft}
+          onDraftChange={setDraft}
+          feedback={<AssistantFeedback {...props} />}
+        />
       </aside>
     </TooltipProvider>
   )

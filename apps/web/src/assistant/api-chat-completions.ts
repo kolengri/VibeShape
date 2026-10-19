@@ -54,6 +54,24 @@ export type ApiWireMessage = Readonly<{
   tool_calls?: readonly ApiToolCall[]
   tool_call_id?: string
 }>
+
+export function apiCompletionBody(
+  configuration: ApiConfiguration,
+  messages: readonly ApiWireMessage[],
+) {
+  return boundedApiJson(
+    {
+      model: configuration.model,
+      messages,
+      tools: apiProviderTools,
+      parallel_tool_calls: false,
+      stream: configuration.stream,
+      max_completion_tokens: 4096,
+    },
+    768 * 1024,
+    "context-limit",
+  )
+}
 type Completion = { content: string; toolCalls: ApiToolCall[] }
 
 function finish(content: string, tools: ApiToolCall[], reason: string | null): Completion {
@@ -227,18 +245,7 @@ export async function requestApiCompletion(options: {
 }): Promise<Completion> {
   if (!apiConfigurationSchema.safeParse(options.configuration).success)
     throw new ApiAssistantError("invalid-configuration")
-  const body = boundedApiJson(
-    {
-      model: options.configuration.model,
-      messages: options.messages,
-      tools: apiProviderTools,
-      parallel_tool_calls: false,
-      stream: options.configuration.stream,
-      max_completion_tokens: 4096,
-    },
-    768 * 1024,
-    "context-limit",
-  )
+  const body = apiCompletionBody(options.configuration, options.messages)
   const timeout = new AbortController()
   const timer = setTimeout(
     () => timeout.abort(new ApiAssistantError("timeout")),

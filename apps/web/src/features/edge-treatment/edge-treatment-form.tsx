@@ -12,6 +12,7 @@ import {
   filletFeatureType,
   filletFeatureTypeV2,
   type LengthQuantity,
+  type TopologyResolution,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
@@ -54,8 +55,10 @@ export type EdgeTreatmentFormCopy = ParameterPanelCopy &
     allEdges: string
     selectedEdges: string
     selectedEdgesDescription: string
+    selectedEdgeCount: (count: number) => string
     edgeLabel: (ordinal: number) => string
     removeEdge: string
+    removeEdgeLabel: (edge: string) => string
     clearEdges: string
     pickEdges: string
     missingEdge: string
@@ -84,6 +87,7 @@ export type EdgeTreatmentFormMode =
       kind: "create"
       createFeatureId: () => FeatureId
       featureLabel: string
+      targetFeatureId?: FeatureId | null | undefined
     }>
   | Readonly<{
       kind: "edit"
@@ -363,6 +367,44 @@ function EdgeScopeField({
   )
 }
 
+function SelectedEdgeRow({
+  copy,
+  disabled,
+  label,
+  onRemove,
+  ordinal,
+  ownerMatches,
+  status,
+}: Readonly<{
+  copy: EdgeTreatmentFormCopy
+  disabled: boolean
+  label: string | undefined
+  onRemove: () => void
+  ordinal: number
+  ownerMatches: boolean
+  status: TopologyResolution["status"]
+}>) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-accent px-2 py-1 text-sm text-accent-foreground">
+      <span className={status === "resolved" && ownerMatches ? undefined : "text-destructive"}>
+        {ownerMatches
+          ? (label ?? (status === "ambiguous" ? copy.ambiguousEdge : copy.missingEdge))
+          : copy.missingEdge}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label={copy.removeEdgeLabel(label ?? copy.edgeLabel(ordinal))}
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        {copy.removeEdge}
+      </Button>
+    </div>
+  )
+}
+
 function SelectedEdgesField({
   scope,
   candidates,
@@ -383,6 +425,10 @@ function SelectedEdgesField({
   return (
     <fieldset className="grid gap-2" aria-label={copy.selectedEdges}>
       <legend className="text-sm font-medium">{copy.selectedEdges}</legend>
+      <p className="text-xs text-muted-foreground">{copy.selectedEdgesDescription}</p>
+      <p className="text-sm font-medium" role="status" aria-live="polite" aria-atomic="true">
+        {copy.selectedEdgeCount(references.length)}
+      </p>
       <NativeSelectField
         label={copy.pickEdges}
         value=""
@@ -410,27 +456,16 @@ function SelectedEdgesField({
             ? candidates.find(({ candidate }) => candidate.candidateId === result.candidateId)
             : undefined
         return (
-          <div key={`${reference.featureId}:${index}`} className="flex items-center gap-2 text-sm">
-            <span
-              className={
-                result.status === "resolved" && ownerMatches ? undefined : "text-destructive"
-              }
-            >
-              {ownerMatches
-                ? (candidate?.label ??
-                  (result.status === "ambiguous" ? copy.ambiguousEdge : copy.missingEdge))
-                : copy.missingEdge}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              onClick={() => onChange(references.filter((_, item) => item !== index))}
-            >
-              {copy.removeEdge}
-            </Button>
-          </div>
+          <SelectedEdgeRow
+            key={`${reference.featureId}:${index}`}
+            copy={copy}
+            disabled={disabled}
+            label={candidate?.label}
+            ordinal={index + 1}
+            ownerMatches={ownerMatches}
+            status={result.status}
+            onRemove={() => onChange(references.filter((_, item) => item !== index))}
+          />
         )
       })}
       {references.length > 0 ? (
@@ -444,9 +479,7 @@ function SelectedEdgesField({
         >
           {copy.clearEdges}
         </Button>
-      ) : (
-        <p className="text-xs text-muted-foreground">{copy.selectedEdgesDescription}</p>
-      )}
+      ) : null}
     </fieldset>
   )
 }
@@ -527,8 +560,9 @@ function edgeTreatmentInitialState(
     featureId: mode.createFeatureId(),
     values: {
       distance: defaultLengthExpression(1, displayUnit),
-      targetFeatureId: options[0]?.id ?? "",
-      scope: "all",
+      targetFeatureId:
+        mode.targetFeatureId === undefined ? (options[0]?.id ?? "") : (mode.targetFeatureId ?? ""),
+      scope: "selected",
       references: [],
     } satisfies FormValues,
   }

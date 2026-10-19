@@ -79,6 +79,7 @@ function PlacementPreview({
   const parsed = parsePlacementForm(values, variables, units, copy)
   useDebouncedFeaturePreview({
     onPreviewChange,
+    retainValidPreview: true,
     preview: featureEditPreview(
       mode,
       values,

@@ -13,6 +13,8 @@ export type ApiAssistantErrorCode =
   | "stale-project"
   | "invalid-tool"
   | "tool-failed"
+  | "unsupported-attachment"
+  | "queue-full"
 
 export class ApiAssistantError extends Error {
   constructor(readonly code: ApiAssistantErrorCode) {

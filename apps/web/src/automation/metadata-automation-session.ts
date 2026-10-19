@@ -23,6 +23,7 @@ export type MetadataAutomationSessionConfiguration = Omit<
 /** First-party metadata shares the editor review surface and ordinary authored commit path. */
 export function createMetadataAutomationSession(
   configuration: MetadataAutomationSessionConfiguration,
+  reviews = automationReviews,
 ) {
   const owner = Symbol("browser-metadata-review")
   let closed = false
@@ -71,7 +72,7 @@ export function createMetadataAutomationSession(
             },
           },
           review: {
-            confirm: (review) => (closed ? "cancelled" : automationReviews.request(owner, review)),
+            confirm: (review) => (closed ? "cancelled" : reviews.request(owner, review)),
           },
         })
       }
@@ -80,12 +81,12 @@ export function createMetadataAutomationSession(
       const onAbort = () => {
         current.cancel()
         preview.cancel()
-        if (!current.isPersisting()) automationReviews.cancel(owner)
+        if (!current.isPersisting()) reviews.cancel(owner)
       }
       signal?.addEventListener("abort", onAbort, { once: true })
       try {
         const result = await current.change(actor, input, signal)
-        automationReviews.complete(owner, result)
+        reviews.complete(owner, result)
         return result.ok
           ? result
           : localFailure(
@@ -101,13 +102,13 @@ export function createMetadataAutomationSession(
     cancel(reason?: AutomationHostDiagnosticCode) {
       coordinator?.cancel(reason)
       preview.cancel()
-      if (!coordinator?.isPersisting()) automationReviews.cancel(owner, reason)
+      if (!coordinator?.isPersisting()) reviews.cancel(owner, reason)
     },
     dispose() {
       closed = true
       coordinator?.dispose()
       preview.dispose()
-      if (!coordinator?.isPersisting()) automationReviews.cancel(owner)
+      if (!coordinator?.isPersisting()) reviews.cancel(owner)
     },
   }
 }
