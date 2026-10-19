@@ -15,6 +15,7 @@ import {
 import { reportDesktopStartupFailure, reportEditorLoadFailure } from "./editor-load-error"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
 import { desktopMessage as t } from "./messages"
+import { createPendingUpdateWork } from "./update-work"
 import {
   type DesktopRelease,
   DesktopUpdateError,
@@ -39,6 +40,7 @@ let quitting = false
 let shutdownComplete = false
 let updateBusy = false
 let updateController: AbortController | undefined
+const updateWork = createPendingUpdateWork()
 let startup: Promise<void> = Promise.resolve()
 const ownedContents = new Set<WebContents>()
 
@@ -168,10 +170,12 @@ async function downloadRelease(release: DesktopRelease, signal: AbortSignal) {
   const progressWindow = mainWindow
   try {
     setDownloadProgress(progressWindow, 0)
-    await downloadDesktopUpdate(release, destination.filePath, {
-      signal,
-      onProgress: (fraction) => setDownloadProgress(progressWindow, fraction),
-    })
+    await updateWork.run(() =>
+      downloadDesktopUpdate(release, destination.filePath, {
+        signal,
+        onProgress: (fraction) => setDownloadProgress(progressWindow, fraction),
+      }),
+    )
     await showDownloadedUpdate(destination.filePath)
   } finally {
     setDownloadProgress(progressWindow, -1)
@@ -195,9 +199,10 @@ async function offerUpdate(release: DesktopRelease, signal: AbortSignal) {
 }
 
 async function findUpdate(signal: AbortSignal) {
-  if (process.arch !== "arm64" && process.arch !== "x64")
+  const architecture = process.arch
+  if (architecture !== "arm64" && architecture !== "x64")
     throw new Error("Updates are available for Apple Silicon and Intel Macs only.")
-  return findDesktopUpdate(app.getVersion(), process.arch, signal)
+  return updateWork.run(() => findDesktopUpdate(app.getVersion(), architecture, signal))
 }
 
 async function reportUpdateFailure(error: unknown) {
@@ -363,6 +368,7 @@ else {
     if (quitting) return
     quitting = true
     updateController?.abort()
+    const updatesSettled = updateWork.stop()
     void startup
       .catch(() => undefined)
       .then(async () => {
@@ -370,7 +376,8 @@ else {
         session.defaultSession.flushStorageData()
       })
       .catch((error: unknown) => console.error("VibeShape shutdown failed:", errorMessage(error)))
-      .finally(() => {
+      .finally(async () => {
+        await updatesSettled
         shutdownComplete = true
         app.quit()
       })
