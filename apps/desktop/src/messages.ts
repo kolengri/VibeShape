@@ -2,6 +2,8 @@ import { createTranslator } from "use-intl/core"
 
 const messages = {
   desktop: {
+    editorLoadFailed:
+      "The editor could not be loaded. Quit VibeShape and open it again. If the problem continues, reinstall the app.",
     editorErrorTitle: "VibeShape could not open the editor",
     startupErrorTitle: "VibeShape could not start",
     unexpectedError: "An unexpected error occurred. Please try again.",

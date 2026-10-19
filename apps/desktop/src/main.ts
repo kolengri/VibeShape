@@ -12,6 +12,7 @@ import {
   type WebContents,
   type WebFrameMain,
 } from "electron"
+import { reportEditorLoadFailure } from "./editor-load-error"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
 import { desktopMessage as t } from "./messages"
 import {
@@ -94,7 +95,7 @@ function createWindow(url: string) {
   window.once("ready-to-show", () => window.show())
   void window.loadURL(url).catch((error: unknown) => {
     if (!quitting && !window.isDestroyed()) {
-      dialog.showErrorBox(t("editorErrorTitle"), errorMessage(error))
+      reportEditorLoadFailure(error, app.isPackaged, dialog.showErrorBox)
       app.quit()
     }
   })

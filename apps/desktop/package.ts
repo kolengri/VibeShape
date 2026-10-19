@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import { cp, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { packager } from "@electron/packager"
 import { valid } from "semver"
@@ -7,6 +7,7 @@ import { z } from "zod"
 import { distributionHash } from "../../scripts/local-distribution-files"
 import { verifyControlledEditorBuild } from "../../scripts/local-editor-build"
 import manifest from "./package.json"
+import { withPackageOutput } from "./package-output"
 
 const root = resolve(import.meta.dirname, "../..")
 const dist = join(root, "apps/web/dist")
@@ -163,10 +164,7 @@ async function createImage(stage: string, input: ReturnType<typeof packageInput>
 }
 
 const input = packageInput()
-// Only the process that exclusively creates the output owns staging cleanup.
-await mkdir(input.output)
-const stage = await mkdtemp(join(input.output, ".stage-"))
-try {
+await withPackageOutput(input.output, async (stage) => {
   const files = await stageApplication(stage, input)
   const appPath = await createApp(stage, input, files)
   const image = await createImage(stage, input, appPath)
@@ -197,6 +195,4 @@ try {
   console.log(
     `Prepared ${appPath}\nDisk image: ${image.dmg}\nAd-hoc signed local build; not notarized.`,
   )
-} finally {
-  await rm(stage, { recursive: true, force: true })
-}
+})
