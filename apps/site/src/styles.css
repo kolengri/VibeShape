@@ -39,6 +39,25 @@ summary:focus-visible {
   background-size: 40px 40px;
 }
 
+@media (min-width: 1024px) and (min-height: 800px) and (prefers-reduced-motion: no-preference) {
+  .hero-scroll-section {
+    height: calc(180svh - 5rem);
+  }
+
+  .hero-scroll-frame {
+    position: sticky;
+    top: 5rem;
+    display: flex;
+    min-height: calc(100svh - 5rem);
+    flex-direction: column;
+  }
+
+  .hero-scroll-content {
+    flex: 1;
+    padding-block: 2rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto;

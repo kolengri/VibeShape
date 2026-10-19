@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
+import { HeroVisual } from "./hero-visual"
 import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`
@@ -157,63 +158,53 @@ function Header() {
 function Hero() {
   const t = useTranslations("hero")
   return (
-    <section id="overview" className="relative scroll-mt-20 overflow-hidden border-b border-border">
-      <div className="mx-auto grid max-w-7xl items-center gap-4 px-6 pb-12 pt-16 md:grid-cols-2 md:pb-20 md:pt-24 lg:px-12">
-        <div className="relative z-10">
-          <Eyebrow>{t("eyebrow")}</Eyebrow>
-          <h1
-            id="main-heading"
-            tabIndex={-1}
-            className="max-w-xl text-5xl font-medium leading-[1.06] tracking-[-0.055em] outline-none sm:text-6xl lg:text-7xl xl:text-8xl"
-          >
-            {t.rich("title", {
-              accent: (chunks) => <span className="block text-primary">{chunks}</span>,
-            })}
-          </h1>
-          <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
-            {t("description")}
-          </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <ActionLink href={editorUrl}>
-              {t("primary")}
-              <ArrowUpRight size={16} />
-            </ActionLink>
-            <ActionLink href="#docs/getting-started" secondary>
-              {t("secondary")}
-              <ArrowRight size={16} />
-            </ActionLink>
-          </div>
-          <p className="mt-5 text-xs leading-relaxed text-muted-foreground">{t("note")}</p>
-        </div>
-        <figure className="relative min-w-0">
-          <div className="relative aspect-square overflow-hidden rounded-2xl bg-panel">
-            <div className="absolute left-5 top-5 z-10 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              <span className="size-1.5 rounded-full bg-primary" />
-              {t("status")}
-            </div>
-            <img
-              src={assetUrl("brand/og-light.png")}
-              alt={t("illustration")}
-              width="1200"
-              height="630"
-              fetchPriority="high"
-              className="absolute -top-[6%] right-0 h-[112%] w-auto max-w-none mix-blend-multiply"
-            />
-            <span
-              aria-hidden="true"
-              className="absolute bottom-5 left-5 font-mono text-[10px] tracking-widest text-muted-foreground"
+    <section
+      id="overview"
+      className="hero-scroll-section relative scroll-mt-20 border-b border-border"
+    >
+      <div className="hero-scroll-frame">
+        <div className="hero-scroll-content mx-auto grid w-full max-w-7xl items-center gap-4 px-6 pb-12 pt-16 md:grid-cols-2 md:pb-20 md:pt-24 lg:px-12">
+          <div className="relative z-10">
+            <Eyebrow>{t("eyebrow")}</Eyebrow>
+            <h1
+              id="main-heading"
+              tabIndex={-1}
+              className="max-w-xl text-5xl font-medium leading-[1.06] tracking-[-0.055em] outline-none sm:text-6xl lg:text-7xl xl:text-8xl"
             >
-              X / Y / Z
-            </span>
+              {t.rich("title", {
+                accent: (chunks) => <span className="block text-primary">{chunks}</span>,
+              })}
+            </h1>
+            <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
+              {t("description")}
+            </p>
+            <div className="mt-9 flex flex-wrap gap-3">
+              <ActionLink href={editorUrl}>
+                {t("primary")}
+                <ArrowUpRight size={16} />
+              </ActionLink>
+              <ActionLink href="#docs/getting-started" secondary>
+                {t("secondary")}
+                <ArrowRight size={16} />
+              </ActionLink>
+            </div>
+            <p className="mt-5 text-xs leading-relaxed text-muted-foreground">{t("note")}</p>
           </div>
-          <figcaption className="mt-4 flex flex-wrap justify-between gap-1 px-1 text-[11px] text-muted-foreground">
-            <span>{t("caption")}</span>
-            <span>{t("captionNote")}</span>
-          </figcaption>
-        </figure>
-      </div>
-      <div className="border-t border-border bg-panel/60 px-6 py-5 text-center font-mono text-[11px] tracking-[0.2em] text-muted-foreground">
-        {t("coordinate")}
+          <figure className="relative min-w-0">
+            <HeroVisual
+              source={assetUrl("media/hero-scroll.mp4")}
+              poster={assetUrl("media/hero-scroll.jpg")}
+              description={t("illustration")}
+            />
+            <figcaption className="mt-4 flex flex-wrap justify-between gap-1 px-1 text-[11px] text-muted-foreground">
+              <span>{t("caption")}</span>
+              <span>{t("captionNote")}</span>
+            </figcaption>
+          </figure>
+        </div>
+        <div className="border-t border-border bg-panel/60 px-6 py-5 text-center font-mono text-[11px] tracking-[0.2em] text-muted-foreground">
+          {t("coordinate")}
+        </div>
       </div>
     </section>
   )

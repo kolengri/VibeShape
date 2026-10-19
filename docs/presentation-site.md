@@ -21,6 +21,18 @@ Development uses `http://127.0.0.1:5180`; production preview uses port `4180`.
 The browser tests run against the built site, so rebuild before testing changed source.
 The site needs no API keys, hosted database, or model provider.
 
+## Scroll-driven hero
+
+The hero uses a silent six-second H.264 visual in `apps/site/public/media`. Scrolling seeks the
+paused video forward or backward; it does not autoplay. On desktop viewports at least 1024 pixels
+wide and 800 pixels tall, the hero stays visible during this transition. Smaller viewports use normal
+document flow. Reduced-motion preferences show the poster without loading video, and media errors
+also leave the poster visible. Text and branding belong to the page, not the visual.
+
+The original 3DBenchy mesh is CC0; its source and attribution are in `media/NOTICE.txt`. The remaining
+geometry is a presentation illustration, not an editor recording. Every video frame is independently
+seekable, and the site loads no Three.js or CAD runtime for this animation.
+
 ## Automatic GitHub deployment
 
 `.github/workflows/presentation-site.yml` builds, checks, and deploys the presentation after every

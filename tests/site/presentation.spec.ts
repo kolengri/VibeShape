@@ -1,5 +1,72 @@
 import { expect, test } from "@playwright/test"
 
+test("the hero follows scroll in both directions while the video stays paused", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/")
+  const video = page.locator("#overview video")
+  await expect(video).toHaveCSS("opacity", "1")
+  await expect.poll(() => video.evaluate((element) => element.currentTime)).toBeLessThan(0.1)
+  await page.evaluate(() => window.scrollTo({ top: 540, behavior: "instant" }))
+  await expect.poll(() => video.evaluate((element) => element.currentTime)).toBeGreaterThan(3)
+  await expect(page.locator(".hero-visual")).toBeInViewport({ ratio: 1 })
+  expect(await video.evaluate((element) => element.paused)).toBe(true)
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
+  await expect.poll(() => video.evaluate((element) => element.currentTime)).toBeLessThan(0.1)
+  await page.locator("#features").scrollIntoViewIfNeeded()
+  await expect(page.locator("#features h2")).toBeInViewport()
+})
+
+test("reduced motion uses the poster without fetching video or pinning the hero", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  const videoRequests: string[] = []
+  page.on("request", (request) => {
+    if (request.url().endsWith("/media/hero-scroll.mp4")) videoRequests.push(request.url())
+  })
+  await page.goto("/")
+  await expect(page.locator("#overview video")).toHaveCount(0)
+  await expect(page.locator(".hero-scroll-frame")).toHaveCSS("position", "static")
+  await expect(page.locator(".hero-visual img")).toBeVisible()
+  expect(videoRequests).toEqual([])
+})
+
+test("the hero follows mobile scrolling without pinning or horizontal overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/")
+  const video = page.locator("#overview video")
+  await expect(video).toHaveCSS("opacity", "1")
+  const initialTime = await video.evaluate((element) => element.currentTime)
+  await page
+    .locator(".hero-visual")
+    .evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }))
+  await expect
+    .poll(() => video.evaluate((element) => element.currentTime))
+    .toBeGreaterThan(initialTime + 1)
+  await expect(page.locator(".hero-scroll-frame")).toHaveCSS("position", "static")
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
+  await expect
+    .poll(() => video.evaluate((element) => element.currentTime))
+    .toBeLessThan(initialTime + 0.1)
+})
+
+test("a failed hero video leaves a decoded poster visible", async ({ page }) => {
+  await page.route("**/media/hero-scroll.mp4", (route) => route.abort())
+  await page.goto("/")
+  await expect(page.locator("#overview video")).toHaveCount(0)
+  const poster = page.locator(".hero-visual img")
+  await expect(poster).toBeVisible()
+  expect(await poster.evaluate((element) => element.complete && element.naturalWidth > 0)).toBe(
+    true,
+  )
+})
+
 test("the presentation explains the workflow and links to the real editor", async ({ page }) => {
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
