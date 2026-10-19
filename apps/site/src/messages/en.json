@@ -120,7 +120,7 @@
   "downloads": {
     "label": "CHOOSE HOW YOU WANT TO START",
     "title": "Your browser is\na good workshop.",
-    "description": "Open the hosted editor, run from source, or prepare a portable local package. No cloud CAD account is required.",
+    "description": "Open the hosted editor, download the macOS app, or run from source. No cloud CAD account is required.",
     "browser": "In your browser",
     "browserBody": "Start in the hosted editor. Models are stored in this browser by default; export a native backup for portability.",
     "browserAction": "Open VibeShape",
@@ -130,9 +130,10 @@
     "localAction": "Local installation guide",
     "desktop": "macOS desktop build guide",
     "installers": "Desktop installers",
-    "installerStatus": "Not published yet",
-    "installerBody": "Signed VibeShape installers for macOS, Windows, and Linux are not currently available. The existing OCCT source archive is not an application installer.",
-    "releases": "Check GitHub releases",
+    "installerStatus": "macOS · Apple Silicon · v0.1.5",
+    "installerBody": "Download the Apple Silicon DMG and drag VibeShape to Applications. This build is ad-hoc signed and is not notarized by Apple. Intel Mac, Windows, and Linux installers are not published.",
+    "desktopAction": "Download for Apple Silicon",
+    "releases": "All releases & checksums",
     "portable": "Portable packaging guide",
     "privacy": "Your models stay yours.",
     "privacyBody": "Browser storage is local storage, not a backup. Download a native .vshape file before clearing site data or moving to another browser.",
@@ -174,13 +175,13 @@
       "title": "Run VibeShape locally",
       "summary": "Use the source checkout or prepare a portable local package.",
       "category": "INSTALLATION",
-      "intro": "The source workflow uses the Bun version pinned in the repository packageManager field. At the time this site was prepared, that version is Bun 1.4.2. Native signed desktop installers are not published yet.",
+      "intro": "The source workflow uses the Bun version pinned in the repository packageManager field. An Apple Silicon macOS DMG is available from GitHub Releases. It is ad-hoc signed and is not notarized by Apple.",
       "oneTitle": "Start from source",
       "one": "Install the pinned Bun version, clone the repository, install dependencies, and start Vite. Open the Local URL printed by the development server. This is a development checkout; controlled production and kernel builds have additional preparation steps.",
       "twoTitle": "Prepare a portable package",
       "two": "The packager consumes a verified editor build and committed source. Follow the portable distribution reference for controlled build preparation, licensing assets, packaging, installation, updates, and rollback. Do not treat a source archive as a ready-to-run application.",
       "threeTitle": "Understand runtime requirements",
-      "three": "The macOS desktop app bundles its runtime and does not need Bun or Terminal to launch. The separate portable package needs Bun on PATH; it does not bundle Bun. Neither runtime needs a source checkout, node_modules, a cloud account, or a model API. Public desktop installers are not published yet; follow the macOS desktop build guide in the downloads section for source builds."
+      "three": "The macOS desktop app bundles its runtime and does not need Bun or Terminal to launch. Download the Apple Silicon DMG from the downloads section, or follow the macOS desktop build guide for source builds. The separate portable package needs Bun on PATH; it does not bundle Bun. Neither runtime needs a source checkout, node_modules, a cloud account, or a model API."
     },
     "parametric-modeling": {
       "title": "Model with design intent",

@@ -28,13 +28,13 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.3-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.5-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
 
 Every package generates a branded drag-to-Applications disk image. Its background reuses the
-calibration-tugboat artwork with an arrow between the app and Applications. The repository-owned
+Benchy wireframe-to-solid artwork with an arrow between the app and Applications. The repository-owned
 AppKit renderer creates a 144 dpi background; Finder sets the mounted image to a fixed icon view.
 Automation targets only the uniquely mounted staging folder, closes its own window and detaches
 the image before compression and verification. It does not change global Finder settings. An
@@ -43,15 +43,17 @@ the package rather than shipping an unformatted installer.
 
 The generated application icon master is `apps/web/public/brand/app-icon.png` (1024 px).
 Packaging exports all standard macOS icon sizes into the app's `.icns` resource. The browser
-favicon and Apple touch icon use the same original calibration-tugboat artwork.
+favicon and Apple touch icon use the same original Benchy wireframe-to-solid artwork.
 
 Open the disk image, copy `VibeShape.app` to Applications and launch it. The current local artifact
 is ad-hoc signed and verified, without Developer ID or notarization. Local ad-hoc signing leaves
 Hardened Runtime off because it has no Team ID for library validation; the Chromium renderer
 sandbox and context isolation remain enabled. A public signed/notarized release must use the
 appropriate Hardened Runtime signing policy with its Developer ID identity. Do not disable Gatekeeper or
-remove quarantine as part of the application workflow. Public distribution remains gated on
-signing/notarization and the repository's release compliance review.
+remove quarantine as part of the application workflow. The published Apple Silicon release channel
+currently uses this explicitly disclosed ad-hoc delivery type. Developer ID signing and notarization
+are required before describing a build as Apple-authenticated or notarized. Exact-source delivery and
+the repository's release compliance requirements still apply.
 
 ## Projects and lifecycle
 
@@ -192,12 +194,14 @@ offers an explicit download. The native Save dialog chooses its destination, pro
 window, and a completed verified image can be revealed in Finder. Quit VibeShape before replacing
 the installed app. The checker never silently installs or opens downloaded software.
 
-Release owners prepare a source-matched, reviewed build and complete signing/notarization and
-compliance checks before publishing a stable GitHub Release:
+Release owners prepare a source-matched build, complete its applicable runtime and compliance
+checks, and disclose its actual signing/notarization status before publishing a GitHub Release.
+The current Apple Silicon channel is ad-hoc signed and not notarized; it must not claim Developer ID
+authentication. A Developer ID release additionally requires its signing and notarization checks:
 
-- Tag: `desktop-v0.1.3` for desktop package version `0.1.3`.
-- Apple Silicon asset: `VibeShape-0.1.3-mac-arm64.dmg`.
-- Intel asset, only after target verification: `VibeShape-0.1.3-mac-x64.dmg`.
+- Tag: `desktop-v0.1.5` for desktop package version `0.1.5`.
+- Apple Silicon asset: `VibeShape-0.1.5-mac-arm64.dmg`.
+- Intel asset, only after target verification: `VibeShape-0.1.5-mac-x64.dmg`.
 - Upload the image as a GitHub release asset with an advertised `sha256:` digest and matching size.
 - Include checksums and corresponding-source provenance with the release.
 

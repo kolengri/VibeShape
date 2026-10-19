@@ -18,7 +18,14 @@ import {
 } from "lucide-react"
 import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
 import { HeroVisual } from "./hero-visual"
-import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
+import {
+  articles,
+  desktopDownloadUrl,
+  editorUrl,
+  referenceUrl,
+  releasesUrl,
+  repository,
+} from "./links"
 import { AnimatedScene, ConstructionPlanes, FeatureVisual, PrintVisual } from "./spatial-visuals"
 import { type WorkflowStage, WorkflowVisual } from "./workflow-visual"
 
@@ -91,7 +98,7 @@ function Header() {
           aria-label="VibeShape"
           className="flex shrink-0 items-center gap-2.5 text-xl font-semibold tracking-tight"
         >
-          <img src={assetUrl("brand/logo-mark.png")} alt="" width="32" height="32" />
+          <img src={assetUrl("brand/logo-mark.png?v=benchy-mesh")} alt="" width="32" height="32" />
           VibeShape
         </a>
         <nav aria-label={t("nav.label")} className="hidden items-center gap-7 text-sm md:flex">
@@ -492,16 +499,16 @@ function Downloads() {
             <p className="mb-7 mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
               {t("localBody")}
             </p>
+            <a
+              href={referenceUrl("docs/desktop-macos.md")}
+              className="mb-4 text-sm text-primary hover:underline"
+            >
+              {t("desktop")}
+            </a>
             <ActionLink href="#docs/local-installation" secondary>
               {t("localAction")}
               <ArrowRight size={16} />
             </ActionLink>
-            <a
-              href={referenceUrl("docs/desktop-macos.md")}
-              className="mt-4 text-sm text-primary hover:underline"
-            >
-              {t("desktop")}
-            </a>
           </div>
           <div className="flex flex-col rounded-xl border border-border bg-background p-7">
             <Download size={24} strokeWidth={1.5} className="mb-8 text-muted-foreground" />
@@ -510,8 +517,11 @@ function Downloads() {
             <p className="mb-7 mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
               {t("installerBody")}
             </p>
-            <ActionLink href={releasesUrl} secondary>
+            <a href={releasesUrl} className="mb-4 text-sm text-primary hover:underline">
               {t("releases")}
+            </a>
+            <ActionLink href={desktopDownloadUrl} secondary>
+              {t("desktopAction")}
               <ArrowUpRight size={16} />
             </ActionLink>
           </div>
@@ -643,7 +653,12 @@ function Footer() {
             href="#overview"
             className="flex items-center gap-2 text-lg font-semibold tracking-tight"
           >
-            <img src={assetUrl("brand/logo-mark.png")} alt="" width="25" height="25" />
+            <img
+              src={assetUrl("brand/logo-mark.png?v=benchy-mesh")}
+              alt=""
+              width="25"
+              height="25"
+            />
             VibeShape
           </a>
           <p className="mt-3 text-xs text-muted-foreground">{t("line")}</p>
