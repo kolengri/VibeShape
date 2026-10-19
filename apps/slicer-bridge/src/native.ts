@@ -1,2 +1,6 @@
-export { cleanupStaleHandoffFiles, createHandoffFileStore } from "./handoff-files"
+export {
+  cleanupStaleHandoffFiles,
+  createHandoffFileStore,
+  getHandoffFileUsage,
+} from "./handoff-files"
 export { resolveSlicerExecutable, slicerNames } from "./resolver"

@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { spawn } from "node:child_process"
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  truncate,
+  utimes,
+  writeFile,
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createNativeSlicerService } from "./native-slicer"
@@ -30,7 +41,7 @@ const target = {
 } as const
 
 async function service(overrides: Partial<Parameters<typeof createNativeSlicerService>[0]> = {}) {
-  const root = await directory()
+  const root = overrides.directory ?? (await directory())
   const launched: { application: unknown; file: string }[] = []
   const revealed: string[] = []
   const host = createNativeSlicerService({
@@ -129,14 +140,83 @@ describe("native slicer handoff", () => {
     expect(await host.send(request)).toEqual({ ok: false, reason: "write-failed" })
     expect(launched).toHaveLength(0)
   })
-  it("retains only a bounded set of meshes and recognizes files removed by the user", async () => {
-    const { host, launched } = await service()
-    for (let count = 0; count < 32; count++) expect((await host.send(request)).ok).toBe(true)
-    expect(await host.send(request)).toEqual({ ok: false, reason: "capacity" })
+  it("keeps the 32-file disk limit across restart and recovers after user removal", async () => {
+    const { root, host, launched } = await service()
+    const firstResult = await host.send(request)
+    for (let count = 1; count < 32; count++) expect((await host.send(request)).ok).toBe(true)
+    expect(firstResult.ok).toBe(true)
+    host.close()
+    const base = join(root, "mesh-handoffs")
+    const directories = await readdir(base)
+    expect(directories).toHaveLength(32)
+    const retainedTime = new Date(Date.now() - 18 * 60 * 60 * 1_000)
+    for (const entry of directories) await utimes(join(base, entry), retainedTime, retainedTime)
+    const restarted = await service({ directory: root })
+    expect(await restarted.host.reveal(firstResult.fileId)).toBe(false)
+    expect(await restarted.host.send(request)).toEqual({ ok: false, reason: "capacity" })
+    expect(restarted.launched).toHaveLength(0)
+    expect((await readdir(base)).sort()).toEqual(directories.sort())
     const first = launched[0]?.file
     if (!first) throw new Error("Expected retained files.")
     await rm(first)
+    expect((await restarted.host.send(request)).ok).toBe(true)
+    expect(restarted.launched).toHaveLength(1)
+    restarted.host.close()
+  })
+  it("keeps the 512 MiB disk limit across restart until stale cleanup reclaims the file", async () => {
+    const { root, host, launched } = await service()
     expect((await host.send(request)).ok).toBe(true)
+    const file = launched[0]?.file
+    if (!file) throw new Error("Expected a retained file.")
+    await truncate(file, 512 * 1024 * 1024)
+    const handoffDirectory = join(file, "..")
+    const retainedTime = new Date(Date.now() - 18 * 60 * 60 * 1_000)
+    await utimes(handoffDirectory, retainedTime, retainedTime)
+    host.close()
+    const restarted = await service({ directory: root })
+    expect(await restarted.host.send(request)).toEqual({ ok: false, reason: "capacity" })
+    expect(restarted.launched).toHaveLength(0)
+    expect((await stat(file)).size).toBe(512 * 1024 * 1024)
+    restarted.host.close()
+    const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000)
+    await utimes(handoffDirectory, staleTime, staleTime)
+    const afterCleanup = await service({ directory: root })
+    expect((await afterCleanup.host.send(request)).ok).toBe(true)
+    await expect(stat(file)).rejects.toMatchObject({ code: "ENOENT" })
+    expect(afterCleanup.launched).toHaveLength(1)
+    afterCleanup.host.close()
+  })
+  it("does not free the disk budget when session Reveal IDs expire", async () => {
+    let clock = Date.now()
+    const { host, launched } = await service({ now: () => clock })
+    const result = await host.send(request)
+    expect(result.ok).toBe(true)
+    const file = launched[0]?.file
+    if (!file) throw new Error("Expected a retained file.")
+    await truncate(file, 512 * 1024 * 1024)
+    clock += 13 * 60 * 60 * 1_000
+    expect(await host.reveal(result.fileId)).toBe(false)
+    expect(await host.send(request)).toEqual({ ok: false, reason: "capacity" })
+    expect((await stat(file)).size).toBe(512 * 1024 * 1024)
+    host.close()
+  })
+  it("fails closed before persistence when the handoff directory cannot be inspected", async () => {
+    const root = await directory()
+    await writeFile(join(root, "mesh-handoffs"), "not a directory")
+    let persisted = false
+    const { host, launched } = await service({
+      directory: root,
+      files: {
+        async persist() {
+          persisted = true
+          throw new Error("Unexpected file write")
+        },
+      },
+    })
+    expect(await host.send(request)).toEqual({ ok: false, reason: "unavailable" })
+    expect(persisted).toBe(false)
+    expect(launched).toHaveLength(0)
+    host.close()
   })
 })
 

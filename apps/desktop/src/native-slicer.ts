@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto"
 import { stat } from "node:fs/promises"
 import { join } from "node:path"
-import { cleanupStaleHandoffFiles, createHandoffFileStore } from "@vibeshape/slicer-bridge/native"
+import {
+  cleanupStaleHandoffFiles,
+  createHandoffFileStore,
+  getHandoffFileUsage,
+} from "@vibeshape/slicer-bridge/native"
 import {
   type NativeMeshRequest,
   type NativeMeshResult,
@@ -17,7 +21,7 @@ const RETAIN_MS = 12 * 60 * 60 * 1000
 const MAX_RETAINED_BYTES = 512 * 1024 * 1024
 const MAX_RETAINED_FILES = 32
 
-type RetainedFile = { path: string; size: number; expiresAt: number }
+type RetainedFile = { path: string; expiresAt: number }
 export function createNativeSlicerService(options: {
   directory: string
   chooseApplication: () => Promise<string | null>
@@ -41,8 +45,8 @@ export function createNativeSlicerService(options: {
       if (file.expiresAt <= now() || !(await stat(file.path).catch(() => null))?.isFile())
         retained.delete(id)
     }
-    const bytes = [...retained.values()].reduce((total, file) => total + file.size, 0)
-    return retained.size < MAX_RETAINED_FILES && bytes + size <= MAX_RETAINED_BYTES
+    const usage = await getHandoffFileUsage(base)
+    return usage.files < MAX_RETAINED_FILES && usage.bytes + size <= MAX_RETAINED_BYTES
   }
   async function persistAndLaunch(
     request: NativeMeshRequest,
@@ -58,7 +62,6 @@ export function createNativeSlicerService(options: {
     persisted.scheduleCleanup()
     retained.set(fileId, {
       path: persisted.path,
-      size: request.file.byteLength,
       expiresAt: now() + RETAIN_MS,
     })
     if (disposed) return { ok: false, reason: "unavailable", fileId }

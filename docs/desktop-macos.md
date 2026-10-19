@@ -96,6 +96,11 @@ Existing CAD WebWorkers continue to compute geometry on the person's device.
 one selected through the native application chooser. Mesh quality and authored export scope retain
 their ordinary meaning. The app prepares a private temporary file and opens the slicer without a
 separate bridge or pairing token. If launch fails, **Show mesh in Finder** reveals the retained file.
+Before accepting another mesh, the desktop counts files and logical bytes still present in its owned
+handoff directories, including files from earlier app processes. It refuses an addition that would
+exceed 32 files or 512 MiB; an expired reveal ID does not free storage capacity while its file remains.
+Recent handoffs are preserved across restart, and removing a file or stale-file cleanup restores
+capacity. Reveal IDs remain limited to the current app session.
 The browser offers a download for manual opening. Slicer launch does not prove successful import,
 correct printer settings, slicing, or printing.
 
