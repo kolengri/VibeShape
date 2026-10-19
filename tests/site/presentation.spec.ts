@@ -37,6 +37,13 @@ test("reduced motion uses the poster without fetching video or pinning the hero"
   await expect(page.locator("#overview video")).toHaveCount(0)
   await expect(page.locator(".hero-scroll-frame")).toHaveCSS("position", "static")
   await expect(page.locator(".hero-visual img")).toBeVisible()
+  await page.locator(".print-visual").scrollIntoViewIfNeeded()
+  expect(
+    await page
+      .locator(".print-visual")
+      .evaluate((element) => element.getAnimations({ subtree: true }).length),
+  ).toBe(0)
+  await expect(page.locator(".print-reveal")).toHaveCSS("transform", "none")
   expect(videoRequests).toEqual([])
 })
 
@@ -94,13 +101,13 @@ test("the presentation explains the workflow and links to the real editor", asyn
     "content",
     "https://vibeshape.hello-world.cz/brand/og-light.png",
   )
-  await page.getByRole("button", { name: "01 / Sketch", exact: true }).click()
+  await page.getByRole("button", { name: "Sketch", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Start with what has to fit." })).toBeVisible()
-  await expect(page.getByRole("button", { name: "01 / Sketch", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Sketch", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   )
-  await page.getByRole("button", { name: "03 / Export", exact: true }).click()
+  await page.getByRole("button", { name: "Export", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Bring the model with you." })).toBeVisible()
   expect(errors).toEqual([])
 })

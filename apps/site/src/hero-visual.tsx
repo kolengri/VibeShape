@@ -116,7 +116,7 @@ export function HeroVisual({
 }) {
   const reducedMotion = useSyncExternalStore(subscribeToMotion, getReducedMotion, getServerMotion)
   return (
-    <div className="hero-visual relative aspect-square overflow-hidden rounded-2xl bg-panel">
+    <div className="hero-visual relative aspect-square overflow-hidden">
       <img
         src={poster}
         alt={description}

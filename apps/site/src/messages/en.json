@@ -21,10 +21,7 @@
     "primary": "Start designing",
     "secondary": "Explore the docs",
     "note": "Free to use · No account required · GPL-3.0-or-later",
-    "illustration": "Illustration of Benchy transforming into a mechanical housing as you scroll",
-    "caption": "A part starts with a little intent.",
-    "captionNote": "Brand illustration, not an editor screenshot.",
-    "coordinate": "IDEA → SKETCH → SOLID → PART"
+    "illustration": "Illustration of Benchy transforming into a mechanical housing as you scroll"
   },
   "intro": {
     "label": "LESS BETWEEN YOU AND THE PART",
@@ -60,9 +57,9 @@
     "label": "FROM A DIMENSION TO A REAL THING",
     "title": "A short path to your next part.",
     "description": "Keep the design editable all the way to export.",
-    "sketch": "01 / Sketch",
-    "shape": "02 / Shape",
-    "export": "03 / Export",
+    "sketch": "Sketch",
+    "shape": "Shape",
+    "export": "Export",
     "sketchTitle": "Start with what has to fit.",
     "sketchBody": "Choose a plane, draw a closed profile, and add the dimensions that matter. Use variables for sizes you expect to change.",
     "shapeTitle": "Build on your design intent.",
@@ -79,8 +76,7 @@
     "history": "Editable feature history",
     "native": "Native backup",
     "exact": "Exact CAD exchange",
-    "mesh": "Print mesh",
-    "illustrative": "Workflow illustration · not a live CAD session"
+    "mesh": "Print mesh"
   },
   "ai": {
     "label": "YOUR AGENT. YOUR CAD SESSION.",
@@ -127,7 +123,6 @@
     "installerBody": "Signed VibeShape installers for macOS, Windows, and Linux are not currently available. The existing OCCT source archive is not an application installer.",
     "releases": "Check GitHub releases",
     "portable": "Portable packaging guide",
-    "availability": "Installer availability checked against GitHub releases on October 19, 2026.",
     "privacy": "Your models stay yours.",
     "privacyBody": "Browser storage is local storage, not a backup. Download a native .vshape file before clearing site data or moving to another browser.",
     "security": "Storage & privacy reference"
