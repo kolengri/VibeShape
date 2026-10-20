@@ -363,6 +363,81 @@ test("preserves the reading position through tool and answer updates and resumes
   expect(requests).toBe(4)
 })
 
+test("resumes transcript following after closing a scrolled tool result", async ({ page }) => {
+  let requests = 0
+  let pendingAnswer: Route | undefined
+  const longAnswer = Array.from(
+    { length: 60 },
+    (_, index) => `Updated report line ${index + 1}`,
+  ).join("\n")
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    const request = requestSchema.parse(route.request().postDataJSON())
+    requests += 1
+    if (requests === 1) {
+      expect(lastContent(request)).toBe("Inspect available commands")
+      await fulfill(route, tool("discover_cad_tools", { limit: 6 }, "inspect-commands"))
+    } else if (requests === 2) {
+      expect(JSON.parse(lastContent(request))).toHaveProperty("tools")
+      await fulfill(route, answer("Inspection finished."))
+    } else if (requests === 3) {
+      expect(lastContent(request)).toBe("Continue the report")
+      pendingAnswer = route
+    } else {
+      throw new Error("Unexpected tool-scroll regression fixture request")
+    }
+  })
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  await saved(page)
+  const panel = await connect(page)
+  const log = panel.getByRole("log")
+  const input = panel.getByRole("textbox", { name: "Message", exact: true })
+  const send = panel.getByRole("button", { name: "Send", exact: true })
+  await input.fill("Inspect available commands")
+  await send.click()
+  await expect(log).toContainText("Inspection finished.")
+  await expect(panel.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+  const summary = log.locator("summary").filter({ hasText: "Discover cad tools" }).first()
+  await summary.click()
+  const output = log.getByRole("region", { name: "Tool details", exact: true })
+  expect(await output.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(
+    100,
+  )
+  await log.evaluate(async (node) => {
+    node.scrollTop = node.scrollHeight
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+    )
+  })
+  await output.evaluate(async (node) => {
+    node.scrollTop = 100
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+    )
+  })
+  await input.fill("Continue the report")
+  await send.click()
+  await expect.poll(() => Boolean(pendingAnswer)).toBe(true)
+  expect(await output.evaluate((node) => node.scrollTop)).toBe(100)
+  await summary.click()
+  await expect(output).toBeHidden()
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeLessThanOrEqual(48)
+  if (!pendingAnswer) throw new Error("The answer must wait until tool details close.")
+  await fulfill(pendingAnswer, answer(longAnswer))
+  await expect(log).toContainText("Updated report line 60")
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeLessThanOrEqual(48)
+  expect(requests).toBe(3)
+})
+
 test("retains an oversized draft before any request and keeps the light composer usable at 200 percent", async ({
   page,
 }) => {

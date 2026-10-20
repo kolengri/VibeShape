@@ -64,8 +64,11 @@ export function AssistantMessages({ messages }: { messages: readonly ChatMessage
   useEffect(() => {
     const element = log.current
     if (!element) return
-    const observeToggle = () => {
-      following.current = following.current && nearBottom(element)
+    const observeToggle = (event: Event) => {
+      const target = event.target
+      const closedTool =
+        target instanceof HTMLDetailsElement && target.parentElement === element && !target.open
+      following.current = (closedTool || following.current) && nearBottom(element)
     }
     element.addEventListener("toggle", observeToggle, true)
     return () => element.removeEventListener("toggle", observeToggle, true)

@@ -222,4 +222,49 @@ describe("assistant tool messages", () => {
     rerender(view([{ ...tool, text: "At the end of the report" }]))
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
   })
+
+  it.each([600, 100])(
+    "restores following after closing tool output only at the transcript bottom (scrollTop %i)",
+    (scrollTop) => {
+      const tool: ChatMessage = {
+        id: "tool",
+        role: "tool",
+        text: "A detailed report",
+        tool: { title: "preview_draft", status: "in_progress" },
+      }
+      const { rerender } = transcript([tool])
+      const log = screen.getByRole("log")
+      const details = screen.getByText("Preview draft").closest("details")
+      const output = screen.getByRole("region", { name: "Tool details", hidden: true })
+      const technical = screen.getByText("Technical details").closest("details")
+      expect(details).toBeTruthy()
+      expect(technical).toBeTruthy()
+      if (!details || !technical) throw new Error("Tool disclosures must exist.")
+      Object.defineProperties(log, {
+        clientHeight: { configurable: true, value: 300 },
+        scrollHeight: { configurable: true, value: 900 },
+      })
+      Object.defineProperties(output, {
+        clientHeight: { configurable: true, value: 200 },
+        scrollHeight: { configurable: true, value: 700 },
+      })
+      log.scrollTop = scrollTop
+      fireEvent.scroll(log)
+      details.open = true
+      fireEvent(details, new Event("toggle"))
+      output.scrollTop = 100
+      fireEvent.scroll(output)
+      technical.open = false
+      fireEvent(technical, new Event("toggle"))
+      rerender(view([{ ...tool, text: "Reading tool output" }]))
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(output.scrollTop).toBe(100)
+
+      details.open = false
+      fireEvent(details, new Event("toggle"))
+      rerender(view([{ ...tool, text: "The next assistant update" }]))
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(scrollTop === 600 ? 2 : 1)
+      expect(log.scrollTop).toBe(scrollTop)
+    },
+  )
 })
