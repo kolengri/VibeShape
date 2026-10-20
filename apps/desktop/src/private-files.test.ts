@@ -43,6 +43,10 @@ if ($env:VIBESHAPE_TEST_ACL_OPERATION -eq 'expose') {
     ConvertTo-Json -Compress -Depth 4
 }
 `
+  // PowerShell 5.1 must rebuild its module path when Bun was launched by PowerShell 7.
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PSMODULEPATH"),
+  )
   return execFileSync(
     join(process.env.SystemRoot || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe"),
     [
@@ -53,7 +57,7 @@ if ($env:VIBESHAPE_TEST_ACL_OPERATION -eq 'expose') {
     ],
     {
       env: {
-        ...process.env,
+        ...environment,
         VIBESHAPE_TEST_PRIVATE_PATH: path,
         VIBESHAPE_TEST_ACL_OPERATION: operation,
       },
@@ -139,7 +143,7 @@ describe("native private files", () => {
     "creates current-user Windows ownership and protected ACLs even with an elevated token's default owner",
     async () => {
       const root = await directory()
-      const path = join(root, "private ' $([Environment]::Exit(23)) [record]")
+      const path = join(root, "private ' $(exit 23) [record]")
       preparePrivateDirectory(path)
       const acl = JSON.parse(windowsAcl(path, "inspect"))
       expect(acl.owner).toBe(acl.user)
