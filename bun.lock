@@ -88,6 +88,7 @@
         "react-dom": "catalog:",
         "three": "catalog:",
         "use-intl": "catalog:",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@tailwindcss/vite": "catalog:",

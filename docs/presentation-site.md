@@ -21,6 +21,33 @@ Development uses `http://127.0.0.1:5180`; production preview uses port `4180`.
 The browser tests run against the built site, so rebuild before testing changed source.
 The site needs no API keys, hosted database, or model provider.
 
+## Downloads and release maintenance
+
+The downloads section links to the Apple Silicon macOS DMG and to the GitHub release index for
+release notes, checksums, and source provenance. The package is ad-hoc signed and is not notarized
+by Apple; the site states this beside the download. Intel Mac, Windows, and Linux installers are
+not published. The separate OCCT source archive is not an application installer.
+
+The downloads section fetches the public GitHub Releases API when mounted, independently of the
+site build. It checks the first 100 releases and selects the most recently published non-draft,
+non-prerelease `desktop-vX.Y.Z` release with an uploaded `VibeShape-X.Y.Z-mac-arm64.dmg` asset.
+Technical releases and incomplete uploads are skipped. The displayed version and download URL
+come from the same validated release; neither is pinned in the site bundle. Reloading the page
+revalidates the API response, so publishing a new desktop release needs no site rebuild.
+
+Until a release resolves, the action opens the GitHub release listing and shows no version.
+That fallback remains available on network errors, API rate limits, an invalid response, an
+eight-second timeout, or no matching installer within the first 100 releases. The browser calls
+GitHub without credentials or API tokens; there is no proxy, polling, or persistent release cache.
+The bundled Zod MIT notice is shipped at `third-party/zod-MIT.txt`.
+
+To publish a desktop update, publish a stable `desktop-vX.Y.Z` GitHub release and upload its
+`VibeShape-X.Y.Z-mac-arm64.dmg` asset. Verify the published asset and reload the site's downloads
+section to check that its version and link match. Routine releases need no edits to site links,
+catalogs, or browser-test fixtures and no site deployment. Changes to the tag or asset naming
+contract, supported platforms, or signing status require the corresponding site code, copy,
+tests, and deployment to be updated.
+
 ## Hero playback
 
 The hero plays its silent six-second H.264 introduction independently of scrolling, then plays
@@ -105,18 +132,6 @@ part of the domain setup handoff.
 - Documentation uses `#docs/<topic>` links; section links and browser Back work on static hosts.
 - The canonical technical documents remain under `docs/`; update introductory copy when those
   contracts change. This site does not expand the CAD or MCP feature contract.
-
-## Downloads and release maintenance
-
-The downloads section links to the Apple Silicon macOS DMG for desktop v0.1.5 and to the
-GitHub release index for release notes, checksums, and source provenance. The package is ad-hoc
-signed and is not notarized by Apple; the site states this beside the download. Intel Mac,
-Windows, and Linux installers are not published. The separate OCCT source archive is not an
-application installer.
-
-When publishing a desktop release, update the version and asset URL in `links.ts`, the typed
-English availability copy, and the download browser test in the same task. Verify the asset
-exists before deploying the site. The site does not fetch GitHub on visitor load.
 
 ## Static handoff
 
