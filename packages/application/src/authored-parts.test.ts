@@ -287,6 +287,70 @@ function report(
 }
 
 describe("current authored Pattern parts", () => {
+  it("reuses validated topology while resolving current parts from unchanged rebuild records", () => {
+    const authority = fixture(3)
+    const current = report(authority, 3)
+    const first = resolveAuthoredParts(authority, current)?.find(({ body }) => body)?.body
+    if (!first) throw new Error("Expected an available fixture body.")
+    const again = resolveAuthoredParts(authority, { ...current })?.find(({ body }) => body)?.body
+    expect(again?.topologyCandidates).toBe(first.topologyCandidates)
+    expect(again?.mesh).toBe(first.mesh)
+  })
+
+  it("validates replacement rebuild records instead of reusing geometry from a previous response", () => {
+    const authority = fixture(3)
+    const current = report(authority, 3)
+    if (!current.rebuild.ok) throw new Error("Expected the report fixture to rebuild.")
+    expect(resolveAuthoredParts(authority, current)).not.toBeNull()
+    const invalid = {
+      ...current,
+      rebuild: {
+        ok: true as const,
+        response: {
+          ...current.rebuild.response,
+          generation: 2,
+          geometry: current.rebuild.response.geometry.map((record) => ({
+            ...record,
+            contentHash: "invalid",
+          })),
+        },
+      },
+    }
+    expect(resolveAuthoredParts(authority, invalid)).toBeNull()
+    expect(resolveAuthoredParts(authority, current)).not.toBeNull()
+  })
+
+  it("uses replacement body geometry at the same feature identity after rebuilding", () => {
+    const authority = fixture(3)
+    const current = report(authority, 3)
+    if (!current.rebuild.ok) throw new Error("Expected the report fixture to rebuild.")
+    const before = resolveAuthoredParts(authority, current)?.find(({ body }) => body)?.body
+    const rebuilt = {
+      ...current,
+      rebuild: {
+        ok: true as const,
+        response: {
+          ...current.rebuild.response,
+          generation: 2,
+          geometry: current.rebuild.response.geometry.map((record) => ({
+            ...record,
+            geometry: {
+              ...record.geometry,
+              bodies: record.geometry.bodies?.map((body) => ({
+                ...body,
+                shape: { ...body.shape, volume: 200 },
+              })),
+            },
+          })),
+        },
+      },
+    }
+    const after = resolveAuthoredParts(authority, rebuilt)?.find(({ body }) => body)?.body
+    expect(before?.shape.volume).toBe(100)
+    expect(after?.shape.volume).toBe(200)
+    expect(after?.topologyCandidates).not.toBe(before?.topologyCandidates)
+  })
+
   it("removes count-shrunk rows and restores captured identities and metadata on growth, Undo, Redo, and reopen", () => {
     let large = fixture()
     for (const payload of [

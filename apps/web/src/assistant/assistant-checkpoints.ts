@@ -61,6 +61,7 @@ export function createAssistantCheckpoints(
   let boundaryCandidate: Candidate | null = null
   let boundary: Promise<void> | null = null
   let finishing: Promise<void> | null = null
+  let applying = false
   let error: AssistantCheckpointState["checkpointError"] = null
   const read = (candidate: Candidate | null) => candidate?.port.read(candidate.handle) ?? null
   const completedState = () => {
@@ -70,11 +71,11 @@ export function createAssistantCheckpoints(
   const notify = () =>
     publish({
       canUndoAgentChanges:
-        !active && !pending && !boundary && !finishing && completedState() !== null,
+        !active && !pending && !boundary && !finishing && !applying && completedState() !== null,
       undoingAgentChanges: undoing,
       viewingBefore: completed?.port.isViewingBefore(completed.handle) ?? false,
       preparingBefore,
-      settlingCheckpoint: boundary !== null || finishing !== null,
+      settlingCheckpoint: boundary !== null || finishing !== null || applying,
       checkpointError: error,
     })
   function clearPreview() {
@@ -117,7 +118,7 @@ export function createAssistantCheckpoints(
     return candidate
   }
   function lifecycleBusy() {
-    return Boolean(undoing || pending || boundary || finishing)
+    return Boolean(undoing || pending || boundary || finishing || applying)
   }
   function actionableCompleted() {
     if (lifecycleBusy() || active || preparingBefore) return null
@@ -315,5 +316,31 @@ export function createAssistantCheckpoints(
       notify()
     }
   }
-  return { begin, acceptSteer, discardSteer, finish, undo, clear, viewBefore, clearPreview }
+  async function applyDraft(operation: () => Promise<boolean>) {
+    if (!begin(crypto.randomUUID())) return false
+    const at = generation
+    applying = true
+    notify()
+    try {
+      return await operation()
+    } finally {
+      try {
+        if (at === generation) await finish()
+      } finally {
+        applying = false
+        notify()
+      }
+    }
+  }
+  return {
+    begin,
+    acceptSteer,
+    discardSteer,
+    finish,
+    undo,
+    clear,
+    viewBefore,
+    clearPreview,
+    applyDraft,
+  }
 }

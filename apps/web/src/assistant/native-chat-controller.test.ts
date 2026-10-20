@@ -263,6 +263,44 @@ function queuedId(chat: ReturnType<typeof createNativeChatController>, index = 0
 }
 
 describe("queued native steering", () => {
+  it("applies an idle draft without prompting the native agent and retains checkpoint inspection and Undo", async () => {
+    const f = fixture()
+    const model = checkpointFixture()
+    const chat = createNativeChatController({
+      projectId,
+      bridge: f.bridge,
+      storage: storage(),
+      checkpointHost: model.host,
+    })
+    chat.start()
+    await chat.connect(agent)
+    const pending = deferred()
+    const applied = chat.applyDraft(async () => {
+      await pending.promise
+      model.save()
+      return true
+    })
+    expect(chat.getSnapshot().settlingCheckpoint).toBe(true)
+    expect(
+      await chat.applyDraft(async () => {
+        throw new Error("Duplicate Apply")
+      }),
+    ).toBe(false)
+    await chat.reset()
+    expect(chat.getSnapshot().settlingCheckpoint).toBe(true)
+    pending.resolve()
+    expect(await applied).toBe(true)
+    expect(f.prompts).toEqual([])
+    expect(chat.getSnapshot()).toMatchObject({
+      settlingCheckpoint: false,
+      canUndoAgentChanges: true,
+    })
+    expect(await chat.viewBefore()).toBe(true)
+    expect(await chat.undoAgentChanges()).toBe(true)
+    expect(model.restores).toEqual([{ baseline: 1, revision: 2 }])
+    chat.dispose()
+  })
+
   it.each([false, true])(
     "waits for a delayed accepted save after Stop (prior save: %s) before capturing another prompt",
     async (priorSave) => {

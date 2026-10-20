@@ -69,6 +69,7 @@ function RemoveFolder({
               type="button"
               size="icon-xs"
               variant="ghost"
+              className="relative z-30"
               aria-label={t("removeFolder", { name: folder.name })}
               disabled={disabled}
             >

@@ -33,6 +33,14 @@ session. Retry only the safe `model_info` identity read after recovery, inspect 
 and affected records, and decide what remains. Never replay an uncertain write. Explicit Stop AI
 still prevents automatic reconnection and requires the person's intentional Enable action.
 
+The embedded desktop chat retries temporary ACP and native project-connection failures up to five
+times before exposing manual retry. When the provider supports loading the exact previous session,
+an interrupted turn resumes with instructions to reconcile the current model and pending draft
+before further changes. The interrupted prompt and uncertain writes are never replayed by the
+controller. If restoration is unsupported, authentication is required, or retries are exhausted,
+report the actual state rather than asking for another pairing grant. External clients retain their
+own recovery and consent rules.
+
 The app's ACP chat retains its own document session, tool authority, transcript and queue when another
 project tab is selected. Background tools remain bound to their original project, including exact
 preview, revisions, persistence and connected model authority. Exact construction previews appear

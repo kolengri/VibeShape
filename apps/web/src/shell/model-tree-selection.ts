@@ -42,13 +42,28 @@ export function extendModelTreeSelection(
     : [...selected, target]
 }
 
+const partsByBody = new WeakMap<
+  readonly ResolvedAuthoredPart[],
+  ReadonlyMap<string, ResolvedAuthoredPart | null>
+>()
+
+function currentBodyOwners(parts: readonly ResolvedAuthoredPart[]) {
+  const cached = partsByBody.get(parts)
+  if (cached) return cached
+  const owners = new Map<string, ResolvedAuthoredPart | null>()
+  for (const part of parts) {
+    if (!part.body) continue
+    const key = authoredBodyKey(part.body)
+    owners.set(key, owners.has(key) ? null : part)
+  }
+  partsByBody.set(parts, owners)
+  return owners
+}
+
 /** A face belongs to a part only when its exact current body binding is unique. */
 export function partForModelBody(
   parts: readonly ResolvedAuthoredPart[],
   body: ModelBodySelection,
 ): ResolvedAuthoredPart | undefined {
-  const matches = parts.filter(
-    (part) => part.body && authoredBodyKey(part.body) === authoredBodyKey(body),
-  )
-  return matches.length === 1 ? matches[0] : undefined
+  return currentBodyOwners(parts).get(authoredBodyKey(body)) ?? undefined
 }

@@ -17,6 +17,7 @@ import {
   type PartVisibilityControl,
 } from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
+import { useReportApplicationError } from "./application-notices"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { selectedAuthoredBody } from "./authored-tree-state"
 import {
@@ -125,6 +126,19 @@ function PartVisibilityButton({
   )
 }
 
+function PartVisibilityError({ message, attempt }: { message: string | null; attempt: number }) {
+  const applicationOwnsError = useReportApplicationError(message, attempt)
+  if (!message || applicationOwnsError) return null
+  return (
+    <p
+      role="alert"
+      className="fixed inset-x-4 bottom-4 z-50 rounded-md border border-destructive bg-popover p-3 text-sm text-destructive shadow-lg"
+    >
+      {message}
+    </p>
+  )
+}
+
 function AuthoredPartRow({
   resolved,
   ...props
@@ -132,11 +146,13 @@ function AuthoredPartRow({
   const t = useTranslations("app.authoredTree")
   const { part, status } = resolved
   const [error, setError] = useState<string | null>(null)
+  const [visibilityAttempt, setVisibilityAttempt] = useState(0)
   const selected = props.selectedPartIds?.includes(part.id) ?? props.selectedPartId === part.id
   const highlighted = props.highlightedPartIds?.includes(part.id)
   const visible = effectivePartVisibility(part, props.visibility?.overrides)
   const highlight = selectedAuthoredBody([resolved], part.id, props.visibility?.overrides)
   const toggleVisibility = async () => {
+    setVisibilityAttempt((attempt) => attempt + 1)
     setError(null)
     if (props.presentationOnlyVisibility) {
       props.visibility?.setOverride(part.id, !visible)
@@ -155,10 +171,11 @@ function AuthoredPartRow({
             result.diagnostic.sourceCode === "stale-revision"
               ? "visibilityStale"
               : "visibilityFailed",
+            { name: part.name },
           ),
         )
     } catch {
-      setError(t("visibilityFailed"))
+      setError(t("visibilityFailed", { name: part.name }))
     }
   }
   return (
@@ -225,11 +242,7 @@ function AuthoredPartRow({
           atInsertionPoint={Boolean(props.selectionRequiresBody)}
         />
         <MeshOperationNotice selected={selected} resolved={resolved} />
-        {error && (
-          <p role="alert" className="px-2 text-xs text-destructive">
-            {error}
-          </p>
-        )}
+        <PartVisibilityError message={error} attempt={visibilityAttempt} />
       </div>
     </PartTextureContext>
   )

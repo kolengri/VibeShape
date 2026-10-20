@@ -100,7 +100,8 @@ function ownsEditorNavigation(value: string | undefined) {
 }
 
 function createWindow(url: string) {
-  const unified = process.platform === "darwin" && new URL(url).pathname === "/"
+  const editorWindow = new URL(url).pathname === "/"
+  const unified = process.platform === "darwin" && editorWindow
   const window = new BrowserWindow({
     title: "VibeShape",
     width: 1440,
@@ -113,6 +114,8 @@ function createWindow(url: string) {
       ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 20 } }
       : {}),
     webPreferences: {
+      // The editor owns native MCP heartbeats even while minimized or occluded.
+      backgroundThrottling: !editorWindow,
       preload: join(runtimeDirectory, "preload.cjs"),
       additionalArguments: unified ? ["--vibeshape-unified-chrome"] : [],
       sandbox: true,

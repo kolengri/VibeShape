@@ -1,6 +1,7 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import { printExportWorkerFailure } from "./print-export-error.test-fixture"
 
 const { exportDocument, download, handoff, placeFace } = (() => ({
   exportDocument: vi.fn(),
@@ -44,14 +45,29 @@ mock.module("./slicer-handoff-panel", () => ({
   ),
 }))
 
-const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+)
+const { documentExportFailure } = await import("@vibeshape/application/persistent-document-session")
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { i18n } = await import("../i18n")
 const { ViewerPreferencesProvider } = await import("../shell/viewer-preferences")
 const { PrintPreparationPanel } = await import("./print-preparation-panel")
+const { ApplicationNoticesProvider } = await import("../shell/application-notices")
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.hasPointerCapture = () => false
+  HTMLElement.prototype.setPointerCapture = vi.fn()
+  HTMLElement.prototype.releasePointerCapture = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -64,11 +80,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function panel(onBusyChange = vi.fn()) {
+function panel(onBusyChange = vi.fn(), applicationNotices = false) {
+  const content = <PrintPreparationPanel disabled={false} onBusyChange={onBusyChange} />
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <ViewerPreferencesProvider>
-        <PrintPreparationPanel disabled={false} onBusyChange={onBusyChange} />
+        {applicationNotices ? (
+          <ApplicationNoticesProvider>{content}</ApplicationNoticesProvider>
+        ) : (
+          content
+        )}
       </ViewerPreferencesProvider>
     </I18nProvider>,
   )
@@ -86,6 +107,71 @@ const result = {
 }
 
 describe("print preparation interaction", () => {
+  it("reports known preparation details in fixed notices without adding panel rows and retries after dismissal", async () => {
+    exportDocument.mockResolvedValue(documentExportFailure(printExportWorkerFailure()))
+    const busy = vi.fn()
+    const user = userEvent.setup()
+    panel(busy, true)
+    const section = screen
+      .getByRole("button", { name: "Generate print preview" })
+      .closest("section") as HTMLElement
+    const children = section.childElementCount
+    const generate = screen.getByRole("button", { name: "Generate print preview" })
+    await act(async () => {
+      fireEvent.click(generate)
+      fireEvent.click(generate)
+    })
+    expect(exportDocument).toHaveBeenCalledTimes(1)
+    const error = await screen.findByRole("alert")
+    expect(error.textContent).toContain(
+      "Print preparation failed: Body Lid contains a degenerate triangle.",
+    )
+    expect(error.closest('[data-slot="notification-viewport"]')?.classList.contains("fixed")).toBe(
+      true,
+    )
+    expect(within(section).queryByRole("alert")).toBeNull()
+    expect(section.childElementCount).toBe(children)
+    await user.click(screen.getByRole("button", { name: "Dismiss notification" }))
+    expect(screen.queryByRole("alert")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Body Lid contains a degenerate triangle.",
+    )
+    expect(exportDocument).toHaveBeenCalledTimes(2)
+    expect(busy).toHaveBeenLastCalledWith(false)
+  })
+  it("validates rejected worker evidence and keeps the accessible standalone diagnostic out of flow", async () => {
+    exportDocument.mockRejectedValueOnce(printExportWorkerFailure())
+    const user = userEvent.setup()
+    panel()
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    const error = await screen.findByRole("alert")
+    expect(error.textContent).toContain(
+      "Print preparation failed: Body Lid contains a degenerate triangle.",
+    )
+    expect(error.classList.contains("fixed")).toBe(true)
+  })
+  it("does not publish a late worker failure after the preparation panel unmounts", async () => {
+    let reject: ((reason: unknown) => void) | undefined
+    exportDocument.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail
+        }),
+    )
+    const busy = vi.fn()
+    const user = userEvent.setup()
+    const view = panel(busy, true)
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    view.unmount()
+    expect(exportDocument.mock.calls[0]?.[1].aborted).toBe(true)
+    await act(async () => {
+      reject?.(printExportWorkerFailure())
+    })
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(busy).toHaveBeenLastCalledWith(false)
+    expect(download).not.toHaveBeenCalled()
+  })
   it("prepares with selected tessellation quality and invalidates the old copy when quality changes", async () => {
     exportDocument.mockResolvedValue(result)
     panel()
@@ -152,7 +238,10 @@ describe("print preparation interaction", () => {
     const user = userEvent.setup()
     panel(busy)
     await user.click(screen.getByRole("button", { name: "Generate print preview" }))
-    expect(await screen.findByRole("alert")).toBeDefined()
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Print preparation failed or the project changed.",
+    )
+    expect(screen.getByRole("alert").textContent).not.toContain("Worker unavailable")
     await waitFor(() => expect(busy).toHaveBeenLastCalledWith(false))
     expect((screen.getByLabelText("Tilt around X (degrees)") as HTMLInputElement).value).toBe("45")
   })

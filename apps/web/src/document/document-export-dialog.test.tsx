@@ -48,6 +48,9 @@ class ResizeObserverMock {
 beforeAll(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverMock)
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.hasPointerCapture = () => false
+  HTMLElement.prototype.setPointerCapture = vi.fn()
+  HTMLElement.prototype.releasePointerCapture = vi.fn()
 })
 afterAll(() => vi.unstubAllGlobals())
 beforeEach(() => {
@@ -273,6 +276,77 @@ describe("document export availability", () => {
     expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
       "step",
     )
+  })
+
+  it("keeps primary actions outside the scrolling fields and print preparation subordinate", async () => {
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    const modal = screen.getByRole("dialog", { name: "Export model" })
+    const body = modal.querySelector('[data-slot="export-dialog-body"]')
+    const footer = modal.querySelector('[data-slot="dialog-footer"]')
+    expect(body?.classList.contains("overflow-y-auto")).toBe(true)
+    expect(modal.classList.contains("overflow-hidden")).toBe(true)
+    expect(body?.contains(footer)).toBe(false)
+    expect(footer?.parentElement).toBe(modal)
+    expect(footer?.contains(screen.getByRole("button", { name: "Save 3MF file" }))).toBe(true)
+    const prepare = screen.getByRole("button", { name: /^Prepare print/ })
+    expect(body?.contains(prepare)).toBe(true)
+    expect(prepare.getAttribute("aria-expanded")).toBe("false")
+    expect(prepare.getAttribute("aria-controls")).toBeNull()
+    expect(footer?.contains(prepare)).toBe(false)
+  })
+
+  it("reports successful exports as neutral fixed notices and reannounces the same format on a later attempt", async () => {
+    const user = userEvent.setup()
+    mocks.exportActiveDocument.mockResolvedValue({
+      ok: true,
+      format: "step",
+      documentName: "Bracket",
+      file: new Uint8Array([1]),
+      bodyCount: 1,
+    })
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }, "step", true))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.click(screen.getByRole("button", { name: "Save STEP file" }))
+    const notice = screen
+      .getByText("STEP download started", { exact: true })
+      .closest('[data-slot="notification"]')
+    expect(notice?.getAttribute("role")).toBe("status")
+    expect(notice?.getAttribute("data-tone")).toBe("success")
+    expect(notice?.classList.contains("border-destructive")).toBe(false)
+    expect(
+      notice?.closest('[data-slot="notification-viewport"]')?.classList.contains("fixed"),
+    ).toBe(true)
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.queryByRole("dialog")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Dismiss notification" }))
+    expect(screen.queryByText("STEP download started", { exact: true })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.click(screen.getByRole("button", { name: "Save STEP file" }))
+    expect(screen.getByText("STEP download started", { exact: true })).toBeTruthy()
+    expect(mocks.exportActiveDocument).toHaveBeenCalledTimes(2)
+    expect(mocks.exportActiveDocument).toHaveBeenLastCalledWith("step", undefined)
+  })
+
+  it("keeps a failed native mesh preparation visible and leaves the selected slicer available for retry", async () => {
+    const send = vi.fn(nativeSlicer().send)
+    window.vibeshapeSlicer = nativeSlicer({ send })
+    mocks.exportActiveDocument.mockResolvedValueOnce({ ok: false })
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "slicer")
+    await user.click(screen.getByRole("button", { name: "Open in slicer" }))
+    expect(screen.getByRole("alert").textContent).toContain("The mesh could not be prepared.")
+    expect(send).not.toHaveBeenCalled()
+    expect(screen.getByRole("dialog", { name: "Export model" })).toBeTruthy()
+    expect((screen.getByRole("combobox", { name: "Slicer" }) as HTMLSelectElement).value).toBe(
+      "orca-slicer",
+    )
+    expect(
+      (screen.getByRole("button", { name: "Open in slicer" }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it("explains browser handoff without offering an unsupported native launch", async () => {

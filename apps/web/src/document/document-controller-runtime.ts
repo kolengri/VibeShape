@@ -183,6 +183,7 @@ import { createBrowserSurfaceTextureAutomationSession } from "../automation/surf
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { lightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
+import { AssistantCheckpointBaselines } from "./assistant-checkpoint-baselines"
 import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-presentation"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
@@ -331,6 +332,10 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     handle: DocumentHistoryCheckpoint
     session: PersistentDocumentSession
   } | null = null
+  const checkpointBaselines = new AssistantCheckpointBaselines<PersistentDocumentSession>(
+    64 * 1024 * 1024,
+    (handle) => checkpointPreviewBase?.handle === handle,
+  )
 
   function invalidateAssistantCheckpointPreview() {
     checkpointPreviewEpoch += 1
@@ -435,7 +440,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     )
   }
 
+  function releaseInactiveCheckpointBaselines(next: DocumentControllerState) {
+    if (next.status !== "ready") checkpointBaselines.clear()
+    else checkpointBaselines.pruneOwner(session)
+  }
+
   function publish(next: DocumentControllerState) {
+    releaseInactiveCheckpointBaselines(next)
     if (checkpointPreviewStale(next)) {
       invalidateAssistantCheckpointPreview()
       next = { ...next, assistantCheckpointPresentation: null }
@@ -1659,11 +1670,54 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       )
       return result.inspection
     }
-    function finishCheckpointPreview(preview: DisposableDocumentPreview, epoch: number) {
-      preview.dispose()
+    function finishCheckpointPreview(preview: DisposableDocumentPreview | null, epoch: number) {
+      preview?.dispose()
       if (checkpointPreview === preview) checkpointPreview = null
       if (epoch === checkpointPreviewEpoch && !state.assistantCheckpointPresentation)
         clearAssistantCheckpointPreview()
+    }
+    function retainCheckpointBaseline(
+      handle: DocumentHistoryCheckpoint,
+      report: PersistentDocumentSessionReport,
+    ) {
+      try {
+        if (!report.rebuild.ok) return
+        const diagnostics = createModelDiagnosticsEvidence(report.snapshot, report.rebuild)
+        if (!diagnostics.ok || diagnostics.evidence.status !== "valid") return
+        if (
+          !report.rebuild.response.evaluation.records.every(
+            (record) => record.status !== "failed" && record.status !== "blocked",
+          )
+        )
+          return
+        checkpointBaselines.set(handle, {
+          session: active,
+          snapshot: canonicalJson(report.snapshot),
+          authority: canonicalJson(active.authoredSnapshot ?? report.snapshot),
+          // Cache admission owns the copy; budget misses retain the cold-worker fallback.
+          rebuild: report.rebuild.response,
+        })
+      } catch {
+        // A baseline without retainable exact evidence still uses the isolated worker fallback.
+      }
+    }
+    function captureCheckpoint(acceptsActor: (actor: CommandActor) => boolean) {
+      if (!available() || state.saveStatus === "saving" || active.hasPendingOperations) return null
+      const handle = active.captureHistoryCheckpoint(acceptsActor)
+      const report = state.report
+      if (handle && report?.snapshot === active.snapshot) retainCheckpointBaseline(handle, report)
+      return handle
+    }
+    function retainedCheckpointRebuild(
+      handle: DocumentHistoryCheckpoint,
+      target: DocumentHistoryPreview,
+    ) {
+      const baseline = checkpointBaselines.get(handle)
+      return baseline?.session === active &&
+        baseline.snapshot === canonicalJson(target.snapshot) &&
+        baseline.authority === canonicalJson(target.authority)
+        ? baseline.rebuild
+        : null
     }
     return {
       subscribe: subscribeDocumentController,
@@ -1672,13 +1726,14 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         const revision = await active.settleAcceptedOperations()
         return available() ? revision : null
       },
-      capture: (acceptsActor: (actor: CommandActor) => boolean) =>
-        available() && state.saveStatus !== "saving" && !active.hasPendingOperations
-          ? active.captureHistoryCheckpoint(acceptsActor)
-          : null,
+      capture: captureCheckpoint,
       read: (handle: DocumentHistoryCheckpoint) =>
         available() ? active.readHistoryCheckpoint(handle) : null,
-      release: (handle: DocumentHistoryCheckpoint) => active.releaseHistoryCheckpoint(handle),
+      release: (handle: DocumentHistoryCheckpoint) => {
+        checkpointBaselines.delete(handle)
+        active.releaseHistoryCheckpoint(handle)
+        if (checkpointPreviewBase?.handle === handle) clearAssistantCheckpointPreview()
+      },
       seal: (handle: DocumentHistoryCheckpoint, revision: number) =>
         available() && active.sealHistoryCheckpoint(handle, revision),
       clearPreview: clearAssistantCheckpointPreview,
@@ -1699,11 +1754,17 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
           available() &&
           active.snapshot.revision === revision &&
           matches(handle, revision)
-        const preview = createCheckpointPreview(target, current)
-        checkpointPreview = preview
+        let preview: DisposableDocumentPreview | null = null
         try {
-          const result = await preview.preview(target.snapshot)
-          if (!result.ok || !result.valid || !result.rebuild || !current()) return false
+          let rebuild = retainedCheckpointRebuild(handle, target)
+          if (!rebuild) {
+            preview = createCheckpointPreview(target, current)
+            checkpointPreview = preview
+            const result = await preview.preview(target.snapshot)
+            if (!result.ok || !result.valid || !result.rebuild) return false
+            rebuild = result.rebuild
+          }
+          if (!current()) return false
           const assembly = await previewCheckpointAssembly(target, revision, abort.signal)
           if (!current()) return false
           publish({
@@ -1713,7 +1774,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
               documentId,
               baseRevision: revision,
               target,
-              rebuild: result.rebuild,
+              rebuild,
               assembly,
             },
           })

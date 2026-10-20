@@ -4,6 +4,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Eye, EyeOff, MessageSquarePlus, Settings, Undo2, X } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { type ReactNode, useId, useState } from "react"
+import { ReviewActions } from "../automation/automation-review-actions"
 import { useReportApplicationError } from "../shell/application-notices"
 import {
   AssistantComposer,
@@ -23,7 +24,9 @@ type AssistantPanelProps = AssistantComposerProps & {
   messages: readonly ChatMessage[]
   onToolHighlight?: AssistantToolHighlight | undefined
   draftDisplay?: AssistantDraftDisplay | undefined
+  onApplyDraft?: (apply: () => Promise<boolean>) => Promise<boolean>
   configuration: ReactNode
+  configurationRequired?: boolean
   permission?: ReactNode
   question?: AssistantQuestion | null
   onAnswer?: (answers: Record<string, string> | null) => Promise<boolean>
@@ -87,40 +90,109 @@ function AssistantCheckpointActions({ checkpoint }: { checkpoint: AssistantCheck
   )
 }
 
-function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
+function AssistantDraftModes({ display }: { display: AssistantPanelProps["draftDisplay"] }) {
+  const t = useTranslations("app.shell.viewport")
+  if (!display || display.application?.status === "error") return null
+  return (
+    <fieldset className="flex items-center gap-1">
+      <legend className="sr-only">{t("assistantPreviewDisplay")}</legend>
+      <Button
+        size="sm"
+        variant={display.mode === "changes" ? "secondary" : "ghost"}
+        aria-pressed={display.mode === "changes"}
+        onClick={() => display.onChange("changes")}
+      >
+        {t("assistantPreviewChanges")}
+      </Button>
+      <Button
+        size="sm"
+        variant={display.mode === "result" ? "secondary" : "ghost"}
+        aria-pressed={display.mode === "result"}
+        onClick={() => display.onChange("result")}
+      >
+        {t("assistantPreviewResult")}
+      </Button>
+    </fieldset>
+  )
+}
+
+function AssistantDraftActions({
+  display,
+  busy,
+  onApplyDraft,
+}: {
+  display: AssistantPanelProps["draftDisplay"]
+  busy: boolean
+  onApplyDraft: AssistantPanelProps["onApplyDraft"]
+}) {
+  const t = useTranslations("app.assistant")
+  const reviewTranslations = useTranslations("app.shell.taskPanel.automationReview")
+  if (!display) return null
+  const { application, review } = display
+  if (review)
+    return (
+      <ReviewActions
+        review={review}
+        commands={"kind" in review.input ? [] : review.input.commands}
+        t={reviewTranslations}
+        applyLabel={t("applyChanges")}
+      />
+    )
+  if (!application || application.status === "error" || !onApplyDraft) return null
+  return (
+    <Button
+      size="sm"
+      disabled={busy || application.status === "applying"}
+      isLoading={application.status === "applying"}
+      onClick={() => onApplyDraft(application.onApply)}
+    >
+      {t("applyChanges")}
+    </Button>
+  )
+}
+
+function AssistantDraftCaption({ display }: { display: AssistantPanelProps["draftDisplay"] }) {
   const t = useTranslations("app.assistant")
   const preview = useTranslations("app.shell.viewport")
+  if (display?.application?.status === "error")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        {t("applyChangesFailed", {
+          code: display.application.diagnostic ?? "automation-operation-failed",
+        })}
+      </p>
+    )
+  return (
+    <p className="text-xs text-muted-foreground">
+      {display ? preview("assistantPreviewUnsaved") : t("changesSaved")}
+    </p>
+  )
+}
+
+function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
+  const t = useTranslations("app.assistant")
+  const display = props.draftDisplay
+  const applying =
+    display?.application?.status === "applying" || display?.review?.status === "applying"
   return (
     <section
       aria-label={t("changeReview")}
       className="mb-3 space-y-2 rounded-md border bg-panel-muted p-2"
     >
-      <p className="text-xs text-muted-foreground">
-        {props.draftDisplay ? preview("assistantPreviewUnsaved") : t("changesSaved")}
-      </p>
+      <AssistantDraftCaption display={display} />
       <div className="flex flex-wrap items-center gap-1">
-        {props.draftDisplay && (
-          <fieldset className="flex items-center gap-1">
-            <legend className="sr-only">{preview("assistantPreviewDisplay")}</legend>
-            <Button
-              size="sm"
-              variant={props.draftDisplay.mode === "changes" ? "secondary" : "ghost"}
-              aria-pressed={props.draftDisplay.mode === "changes"}
-              onClick={() => props.draftDisplay?.onChange("changes")}
-            >
-              {preview("assistantPreviewChanges")}
-            </Button>
-            <Button
-              size="sm"
-              variant={props.draftDisplay.mode === "result" ? "secondary" : "ghost"}
-              aria-pressed={props.draftDisplay.mode === "result"}
-              onClick={() => props.draftDisplay?.onChange("result")}
-            >
-              {preview("assistantPreviewResult")}
-            </Button>
-          </fieldset>
+        <AssistantDraftModes display={display} />
+        <AssistantDraftActions
+          display={display}
+          busy={props.busy}
+          onApplyDraft={props.onApplyDraft}
+        />
+        {applying && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {t("applyingChanges")}
+          </p>
         )}
-        <AssistantCheckpointActions checkpoint={props} />
+        <AssistantCheckpointActions checkpoint={{ ...props, busy: props.busy || applying }} />
       </div>
     </section>
   )
@@ -223,7 +295,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
           onReset={props.onReset}
           canReset={!props.busy && !props.queuedMessages?.length && props.messages.length > 0}
         />
-        {(settingsOpen || !props.canSend) && (
+        {(settingsOpen || (props.configurationRequired ?? !props.canSend)) && (
           <section
             aria-label={t("settingsTitle")}
             className="shrink-0 overflow-y-auto border-b p-3 max-h-[45%]"
@@ -235,7 +307,10 @@ export function AssistantPanel(props: AssistantPanelProps) {
           messages={props.messages}
           onHighlight={props.onToolHighlight}
           footer={
-            !props.busy && (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
+            (!props.busy ||
+              props.draftDisplay?.review ||
+              props.draftDisplay?.application?.status === "applying") &&
+            (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
               <AssistantChangeReview props={props} />
             ) : null
           }

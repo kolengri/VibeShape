@@ -26,6 +26,7 @@ import {
   type DocumentExportOptions,
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
+  documentWorkerResponseSchema,
   type FeatureMeshPolicy,
   featureMeshPolicySchema,
   type GeometryExportFormat,
@@ -371,6 +372,29 @@ function diagnostic(
   sourceCode: string | null = null,
 ): PersistentDocumentSessionDiagnostic {
   return { code, message, retryable, sourceCode }
+}
+
+const workerExportErrorSchema = z.object({ response: documentWorkerResponseSchema })
+
+/** Retains bounded worker evidence without exposing unvalidated exception payloads. */
+export function documentExportFailure(
+  error: unknown,
+  fallbackMessage = "The current document geometry could not be exported.",
+): Extract<PersistentDocumentExportResult, { ok: false }> {
+  const parsed = workerExportErrorSchema.safeParse(error)
+  const source =
+    parsed.success && parsed.data.response.type === "failure"
+      ? parsed.data.response.diagnostic
+      : null
+  return {
+    ok: false,
+    diagnostic: diagnostic(
+      "export-failed",
+      source?.message ?? fallbackMessage,
+      source?.retryable ?? true,
+      source?.code ?? null,
+    ),
+  }
 }
 
 function portDiagnostic(
@@ -1130,15 +1154,8 @@ export class PersistentDocumentSession {
     }
     try {
       return { ok: true, response: await this.#rebuildPort.exportDocument(format, options) }
-    } catch {
-      return {
-        ok: false,
-        diagnostic: diagnostic(
-          "export-failed",
-          "The current document geometry could not be exported.",
-          true,
-        ),
-      }
+    } catch (error) {
+      return documentExportFailure(error)
     }
   }
 

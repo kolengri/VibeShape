@@ -1,10 +1,13 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, spyOn } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { type FeatureId, featureIdSchema } from "@vibeshape/domain/identifiers"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
-import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { createModelBodyTopologyEvidence } from "./model-body-topology"
+import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
+import {
+  createModelBodyTopologyEvidence,
+  createModelBodyTopologyEvidenceResolver,
+} from "./model-body-topology"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-000000000001"
 const featureIds: readonly [FeatureId, FeatureId] = [
@@ -148,6 +151,202 @@ function geometry(featureId: string, bodies: unknown[], rootSolidCount = 1) {
     geometry: engineGeometry(bodies, [], rootSolidCount),
   }
 }
+
+function validResponse() {
+  return response([
+    geometry(featureIds[0], [body("result", [candidate("first"), candidate("second")])]),
+    geometry(featureIds[1], [body("result", [candidate("other"), candidate("other-second")])]),
+  ])
+}
+
+describe("createModelBodyTopologyEvidenceResolver", () => {
+  it("fully parses once and resolves each exact feature and body independently", () => {
+    const current = snapshot()
+    const rebuilt = response([
+      geometry(
+        featureIds[0],
+        [
+          body("left", [candidate("same"), candidate("left-second")]),
+          body("right", [candidate("same"), candidate("right-second")]),
+        ],
+        2,
+      ),
+      geometry(featureIds[1], [body("result", [candidate("other"), candidate("other-second")])]),
+    ])
+    const parse = spyOn(documentWorkerResponseSchema, "safeParse")
+    try {
+      const resolve = createModelBodyTopologyEvidenceResolver(current, {
+        ok: true,
+        response: rebuilt,
+      })
+      for (const [featureId, outputRole, candidateId] of [
+        [featureIds[0], "left", "left-second"],
+        [featureIds[0], "right", "right-second"],
+        [featureIds[1], "result", "other-second"],
+      ] as const) {
+        expect(resolve({ featureId, outputRole, kind: "edge" })).toMatchObject({
+          ok: true,
+          evidence: { featureId, outputRole, candidates: [{}, { candidateId }] },
+        })
+        // A valid edge request must not bypass the separate face count check.
+        expect(resolve({ featureId, outputRole, kind: "face" })).toEqual({
+          ok: false,
+          code: "invalid-geometry-evidence",
+        })
+      }
+      expect(resolve({ featureId: featureIds[0], outputRole: "result", kind: "edge" })).toEqual({
+        ok: false,
+        code: "body-not-found",
+      })
+      expect(parse).toHaveBeenCalledTimes(1)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
+  it("rejects incomplete, duplicate and malformed unrelated response data before any target", () => {
+    const current = snapshot()
+    const valid = validResponse()
+    const invalid = [
+      undefined,
+      { ...valid, protocolVersion: -1 },
+      { ...valid, geometry: valid.geometry.slice(0, 1) },
+      { ...valid, geometry: [...valid.geometry, valid.geometry[0]] },
+      {
+        ...valid,
+        geometry: [valid.geometry[0], { ...geometry(featureIds[1], []), contentHash: 42 }],
+      },
+      {
+        ...valid,
+        evaluation: { ...valid.evaluation, records: valid.evaluation.records.slice(0, 1) },
+      },
+      {
+        ...valid,
+        evaluation: {
+          ...valid.evaluation,
+          records: [valid.evaluation.records[0], valid.evaluation.records[0]],
+        },
+      },
+      response([
+        geometry(featureIds[0], [body("result", [candidate("first"), candidate("second")])]),
+        geometry(featureIds[1], [body("duplicate", []), body("duplicate", [])], 2),
+      ]),
+    ]
+    for (const rebuilt of invalid) {
+      const resolve = createModelBodyTopologyEvidenceResolver(current, {
+        ok: true,
+        response: rebuilt,
+      })
+      for (const featureId of featureIds)
+        expect(resolve({ featureId, outputRole: "result", kind: "edge" })).toEqual({
+          ok: false,
+          code: "invalid-geometry-evidence",
+        })
+    }
+  })
+
+  it("keeps per-body evidence schema checks and missing-feature failures", () => {
+    const current = snapshot()
+    const resolve = createModelBodyTopologyEvidenceResolver(current, {
+      ok: true,
+      response: response([
+        geometry(featureIds[0], [body("result", [candidate("duplicate"), candidate("duplicate")])]),
+        geometry(featureIds[1], [body("result", [candidate("other"), candidate("other-second")])]),
+      ]),
+    })
+    expect(resolve({ featureId: featureIds[0], outputRole: "result", kind: "edge" })).toEqual({
+      ok: false,
+      code: "invalid-geometry-evidence",
+    })
+    expect(resolve({ featureId: featureIds[1], outputRole: "result", kind: "edge" }).ok).toBe(true)
+    expect(
+      resolve({
+        featureId: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000000099"),
+        outputRole: "result",
+        kind: "edge",
+      }),
+    ).toEqual({
+      ok: false,
+      code: "body-not-found",
+    })
+  })
+
+  it("never reuses evidence across stale, changed, unavailable or suppressed invocations", () => {
+    const current = snapshot()
+    const target = { featureId: featureIds[0], outputRole: "result", kind: "edge" as const }
+    const valid = validResponse()
+    const original = createModelBodyTopologyEvidenceResolver(current, { ok: true, response: valid })
+    expect(original(target)).toMatchObject({
+      ok: true,
+      evidence: { generation: 7, contentHash: hash },
+    })
+    for (const stale of [
+      { ...valid, revision: 3 },
+      { ...valid, documentId: featureIds[0] },
+    ])
+      expect(
+        createModelBodyTopologyEvidenceResolver(current, { ok: true, response: stale })(target),
+      ).toEqual({
+        ok: false,
+        code: "stale-geometry",
+      })
+    expect(createModelBodyTopologyEvidenceResolver(current, { ok: false })(target)).toEqual({
+      ok: false,
+      code: "geometry-unavailable",
+    })
+    const suppressed = {
+      ...current,
+      features: current.features.map((feature) => ({ ...feature, suppressed: true })),
+    }
+    expect(
+      createModelBodyTopologyEvidenceResolver(suppressed, { ok: true, response: valid })(target),
+    ).toEqual({
+      ok: false,
+      code: "geometry-unavailable",
+    })
+    const changedHash = "b".repeat(64)
+    const changed = {
+      ...valid,
+      generation: 8,
+      requestId: "new-rebuild",
+      geometry: featureIds.map((featureId) => ({
+        ...geometry(featureId, [
+          body("result", [candidate("changed"), candidate("changed-second")]),
+        ]),
+        contentHash: changedHash,
+      })),
+    }
+    expect(
+      createModelBodyTopologyEvidenceResolver(current, { ok: true, response: changed })(target),
+    ).toEqual({
+      ok: false,
+      code: "invalid-geometry-evidence",
+    })
+    changed.evaluation = {
+      ...valid.evaluation,
+      records: featureIds.map((featureId) => ({
+        featureId,
+        status: "succeeded",
+        contentHash: changedHash,
+      })),
+    }
+    expect(
+      createModelBodyTopologyEvidenceResolver(current, { ok: true, response: changed })(target),
+    ).toMatchObject({
+      ok: true,
+      evidence: {
+        generation: 8,
+        rebuildId: "new-rebuild",
+        contentHash: changedHash,
+        candidates: [{ candidateId: "changed" }, {}],
+      },
+    })
+    expect(original(target)).toMatchObject({
+      ok: true,
+      evidence: { generation: 7, contentHash: hash },
+    })
+  })
+})
 
 describe("createModelBodyTopologyEvidence", () => {
   it.each([{ valid: false }, { volume: 0 }])(

@@ -197,6 +197,169 @@ describe("embedded project access", () => {
     connection = createLocalAutomationConnection({ projectId, accessPolicy: "native-project" })
   }
 
+  it.each(["restored", "unavailable"] as const)(
+    "keeps no-resume native recovery scheduled when discovery becomes %s before its retry",
+    async (discovery) => {
+      useNativeProject()
+      const original = mocks.request.getMockImplementation()
+      let firstConnect = true
+      let outage = false
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+        if (path === "/connect" && firstConnect) {
+          firstConnect = false
+          throw new LocalAutomationTransportError("Fixture initial connection outage")
+        }
+        if (path === "/status" && outage)
+          throw new LocalAutomationTransportError("Fixture discovery outage")
+        return original?.(path, ...args)
+      })
+      await ready()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sessionStorage.getItem(`vibeshape-local-ai-resume:${id}`)).toBeNull()
+      expect(connection.getSnapshot()).toMatchObject({ connected: false, recovering: true })
+      outage = true
+      await connection.status()
+      expect(connection.getSnapshot()).toMatchObject({ available: false, client })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot().recoveryAttempt).toBe(1)
+      if (discovery === "restored") {
+        outage = false
+        await connection.status()
+        await vi.advanceTimersByTimeAsync(2000)
+        expect(connection.getSnapshot()).toMatchObject({
+          connected: true,
+          recovering: false,
+          recoveryAttempt: 0,
+          recoveryFailed: false,
+          client,
+        })
+        const connects = mocks.request.mock.calls.filter(([path]) => path === "/connect")
+        expect(connects).toHaveLength(2)
+        expect(connects.every((call) => call[4] === id)).toBe(true)
+      } else {
+        await vi.advanceTimersByTimeAsync(22_000)
+        expect(connection.getSnapshot()).toMatchObject({
+          connected: false,
+          recovering: false,
+          recoveryAttempt: 5,
+          recoveryFailed: true,
+          error: true,
+        })
+        outage = false
+        await connection.status()
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+      }
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(0)
+    },
+  )
+
+  it("bounds native transport recovery at five attempts, retains the error through discovery, and resets on manual recovery", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    const original = mocks.request.getMockImplementation()
+    let unavailable = true
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (unavailable && (path === "/poll" || path === "/resume"))
+        throw new LocalAutomationTransportError("Fixture transport outage")
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recovering: true })
+    for (const [index, delay] of [1000, 2000, 4000, 8000, 8000].entries()) {
+      await vi.advanceTimersByTimeAsync(delay)
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(
+        index + 1,
+      )
+    }
+    expect(connection.getSnapshot()).toMatchObject({
+      recovering: false,
+      error: true,
+      recoveryAttempt: 5,
+      recoveryFailed: true,
+    })
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(5)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+    expect(connection.getSnapshot().error).toBe(true)
+    unavailable = false
+    expect(await connection.retryRecovery()).toBe(true)
+    expect(await connection.retryRecovery()).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      error: false,
+      recoveryAttempt: 0,
+      recoveryFailed: false,
+    })
+    unavailable = true
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(connection.getSnapshot().recoveryAttempt).toBe(1)
+    await connection.disable()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(7)
+    expect(connection.getSnapshot().connected).toBe(false)
+  })
+
+  it("does not retry a changed approved native client or let status reset its permanent failure", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/poll") throw new LocalAutomationTransportError("Fixture transport outage")
+      if (path === "/status")
+        return ok({
+          protocolVersion: 1,
+          client: { ...client, name: "Changed client" },
+          paired: false,
+        })
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      recovering: false,
+      error: true,
+      recoveryFailed: true,
+      recoveryAttempt: 1,
+    })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(0)
+  })
+
+  it.each([503, 401])(
+    "does not reset the native attempt budget when a connection succeeds but its authenticated poll keeps failing (%s)",
+    async (status) => {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(0)
+      const original = mocks.request.getMockImplementation()
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+        if (path === "/poll") return { ok: false, status, data: {} }
+        return original?.(path, ...args)
+      })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(connection.getSnapshot()).toMatchObject({
+        connected: false,
+        recovering: false,
+        recoveryAttempt: 5,
+        recoveryFailed: true,
+        error: true,
+      })
+      const attempts = mocks.request.mock.calls.filter(
+        ([path]) => path === "/connect" || path === "/resume",
+      ).length
+      expect(attempts).toBe(6)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(
+        mocks.request.mock.calls.filter(([path]) => path === "/connect" || path === "/resume"),
+      ).toHaveLength(attempts)
+    },
+  )
+
   it.each([401, 410])(
     "recovers native access after result credential loss (%s) without replaying queued work",
     async (status) => {

@@ -17,9 +17,13 @@ import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { ApiAssistantProvider } from "./assistant/api-assistant-provider"
-import { BrowserProjectAssistant } from "./assistant/browser-project-assistant"
+import {
+  BrowserProjectAssistant,
+  getBrowserProjectChatController,
+} from "./assistant/browser-project-assistant"
 import { getNativeAssistant } from "./assistant/native-assistant-bridge"
 import { NativeProjectAssistant } from "./assistant/native-project-assistant"
+import { getNativeProjectChatController } from "./assistant/native-project-chat-registry"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { editorCommandIds, type ResolvedEditorCommand } from "./commands/editor-command"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
@@ -96,6 +100,7 @@ import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-wor
 import { historyInsertionAnchor, historyInsertionContext } from "./shell/history-insertion-context"
 import { historyFeatureForEditing, historySketchForEditing } from "./shell/history-repair-context"
 import { partForModelBody } from "./shell/model-tree-selection"
+import type { ProjectAssistantActivity } from "./shell/project-assistant-status"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import { SketchNavigationControl } from "./shell/sketch-navigation-control"
 import {
@@ -1021,12 +1026,35 @@ function lightweightingWorkspaceActive(session: EditorApplicationSession) {
   )
 }
 
+function useProjectAssistantActivity(
+  projectId: string | undefined,
+  bridge: ReturnType<typeof getNativeAssistant>,
+) {
+  const [activity, setActivity] = useState<{
+    projectId: string
+    source: ProjectAssistantActivity
+  } | null>(null)
+  useEffect(() => {
+    if (!projectId) {
+      setActivity(null)
+      return
+    }
+    const source = bridge
+      ? getNativeProjectChatController(bridge, projectId)
+      : getBrowserProjectChatController(projectId)
+    setActivity({ projectId, source })
+  }, [bridge, projectId])
+  return activity?.projectId === projectId ? activity?.source : undefined
+}
+
 function useProjectAssistant(controller: ReturnType<typeof useDocumentController>) {
   const t = useTranslations("app.assistant")
   const [open, setOpen] = useState(false)
   const bridge = getNativeAssistant()
+  const activity = useProjectAssistantActivity(controller.report?.snapshot.id, bridge)
   const close = () => setOpen(false)
   return {
+    activity,
     toggle: (
       <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
         {t("title")}
@@ -1133,6 +1161,7 @@ function EditorApplication({
       data-window-chrome={getDesktopHost()?.windowChrome}
     >
       <ApplicationBar
+        assistantActivity={assistant.activity}
         controller={controller}
         projectNavigation={<LocalizedProjectTabs controller={controller} />}
         hideModelExport={assemblyMode.active}

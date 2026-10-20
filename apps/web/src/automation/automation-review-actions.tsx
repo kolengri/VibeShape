@@ -31,12 +31,14 @@ export function ReviewActions({
   t,
   destructive: explicitDestructive,
   ready = true,
+  applyLabel,
 }: {
   commands?: readonly DocumentCommand[]
   review: AutomationReviewState
   t: ReturnType<typeof useTranslations>
   destructive?: boolean
   ready?: boolean
+  applyLabel?: string
 }) {
   const destructive = explicitDestructive ?? commands.some(isDestructiveCommand)
   const apply = async () => {
@@ -57,7 +59,7 @@ export function ReviewActions({
     <TaskPanelLifecycleActions
       ariaLabel={t("title")}
       cancelLabel={t("discard")}
-      acceptLabel={t("apply")}
+      acceptLabel={applyLabel ?? t("apply")}
       acceptDisabled={disabled}
       acceptLoading={loading}
       cancelDisabled={review.status !== "ready"}
@@ -70,7 +72,7 @@ export function ReviewActions({
                 disabled={disabled}
                 isLoading={loading}
                 onApply={apply}
-                label={t("apply")}
+                label={applyLabel ?? t("apply")}
                 t={t}
                 describedBy={describedBy}
               />

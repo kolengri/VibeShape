@@ -37,7 +37,7 @@ test("checks current CAD placement and a rotated print copy against a persistent
   await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
   await openApplicationMenuItem(page, "Export geometry…")
   const exportDialog = page.getByRole("dialog", { name: "Export model" })
-  await exportDialog.getByRole("button", { name: "Prepare print / breakaway fins…" }).click()
+  await exportDialog.getByRole("button", { name: "Prepare print…" }).click()
   await exportDialog.getByLabel("Tilt around X (degrees)").fill("0")
   await exportDialog.getByLabel("Generate experimental breakaway fins").uncheck()
   await exportDialog.getByRole("button", { name: "Generate print preview" }).click()

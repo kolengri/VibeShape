@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { spawn } from "node:child_process"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
@@ -18,6 +18,9 @@ import { createNativeChatController } from "./native-chat-controller"
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const fixture = String.raw`
 const fs = require("node:fs"), path = require("node:path");
+const recoveryMode = fs.existsSync(path.join(__dirname,"recovery-mode"));
+let selectedModel = "small";
+const configs = () => [{id:"model",name:"Model",category:"model",type:"select",currentValue:selectedModel,options:[{value:"small",name:"Small"},{value:"large",name:"Large"}]}];
 const deferredAckWatch = fs.existsSync(path.join(__dirname,"defer-ack-watch"));
 if (deferredAckWatch) {
  const watchFile = fs.watchFile;
@@ -31,7 +34,7 @@ if (deferredAckWatch) {
  };
 }
 const input = require("node:readline").createInterface({ input: process.stdin });
-const sessionId = "continuation-controls";
+let sessionId = "continuation-controls";
 let original;
 const send = value => process.stdout.write(JSON.stringify({jsonrpc:"2.0", ...value})+"\n");
 const reply = (id,result) => send({id,result});
@@ -52,10 +55,28 @@ input.on("line", line => {
    if (id === "question") text(result.action === "accept" && result.content.size === "Large" ? "question accepted" : "question declined");
    return;
  }
- if (method === "initialize") return reply(id,{protocolVersion:1,agentInfo:{name:"@agentclientprotocol/codex-acp",version:"2.2.2"},agentCapabilities:{promptCapabilities:{embeddedContext:true}},_meta:{steering:{supported:true}}});
- if (method === "session/new") return reply(id,{sessionId});
+ if (method === "initialize") return reply(id,{protocolVersion:1,agentInfo:{name:"@agentclientprotocol/codex-acp",version:"2.2.2"},agentCapabilities:{loadSession:recoveryMode,promptCapabilities:{embeddedContext:true}},_meta:{steering:{supported:true}}});
+ if (method === "session/new") return reply(id,{sessionId,...(recoveryMode ? {configOptions:configs()} : {})});
+ if (method === "session/load") {
+   sessionId = params.sessionId;
+   fs.appendFileSync(path.join(__dirname,"loads"),sessionId+"\n");
+   text("historical replay from session/load");
+   return reply(id,{configOptions:configs()});
+ }
+ if (method === "session/set_config_option") { selectedModel = params.value; return reply(id,{configOptions:configs()}); }
  if (method === "session/prompt") {
    const prompt = params.prompt.filter(block=>block.type === "text").at(-1).text;
+   if (recoveryMode) {
+     fs.appendFileSync(path.join(__dirname,"prompts"),JSON.stringify({prompt,selectedModel})+"\n");
+     const ledger = path.join(__dirname,"accepted-cad-write");
+     if (prompt === "Make exactly one CAD change") {
+       fs.appendFileSync(ledger,"accepted\n");
+       return process.exit(3);
+     }
+     if (!prompt.includes("First read model_info") || fs.readFileSync(ledger,"utf8") !== "accepted\n") return process.exit(12);
+     text("Authoritative CAD state reconciled; remaining work completed with "+selectedModel);
+     return reply(id,{stopReason:"end_turn"});
+   }
    text("received:"+prompt);
    if (prompt !== "queued original") return reply(id,{stopReason:"end_turn"});
    original = id; status("active"); return;
@@ -90,12 +111,19 @@ afterEach(async () => {
   for (const close of cleanups.splice(0).reverse()) await close()
 })
 
-async function host({ ackTiming }: { ackTiming?: "preexisting" | "during-registration" } = {}) {
+async function host({
+  ackTiming,
+  recoveryMode = false,
+}: {
+  ackTiming?: "preexisting" | "during-registration"
+  recoveryMode?: boolean
+} = {}) {
   const directory = await mkdtemp(join(tmpdir(), "vibeshape-continuation-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
   if (ackTiming === "preexisting") await writeFile(join(directory, "ack"), "")
   if (ackTiming === "during-registration") await writeFile(join(directory, "defer-ack-watch"), "")
   const script = join(directory, "agent.cjs")
+  if (recoveryMode) await writeFile(join(directory, "recovery-mode"), "")
   await writeFile(script, fixture)
   const listeners = new Set<(event: AssistantEvent) => void>()
   const events: AssistantEvent[] = []
@@ -207,18 +235,21 @@ process.on("SIGTERM",()=>{service.close().finally(()=>process.exit(0));});
   chat.start()
   await chat.connect({ command: "node", args: [script] })
   expect(chat.getSnapshot()).toMatchObject({ error: null, snapshot: { status: "ready" } })
-  await chat.enqueue("queued original")
-  await chat.resumeQueue()
-  await until(() =>
-    events.some((event) => event.type === "text" && event.text === "received:queued original"),
-  )
-  await chat.enqueue("queued continuation")
-  const queued = chat.getSnapshot().queuedMessages[0]
-  if (!queued) throw new Error("Missing queued continuation")
-  const steering = chat.steerQueued(queued.id)
-  await until(() =>
-    events.some((event) => event.type === "text" && event.text === "steering received"),
-  )
+  let steering = Promise.resolve(false)
+  if (!recoveryMode) {
+    await chat.enqueue("queued original")
+    await chat.resumeQueue()
+    await until(() =>
+      events.some((event) => event.type === "text" && event.text === "received:queued original"),
+    )
+    await chat.enqueue("queued continuation")
+    const queued = chat.getSnapshot().queuedMessages[0]
+    if (!queued) throw new Error("Missing queued continuation")
+    steering = chat.steerQueued(queued.id)
+    await until(() =>
+      events.some((event) => event.type === "text" && event.text === "steering received"),
+    )
+  }
   if (ackTiming === "during-registration")
     await until(() =>
       events.some((event) => event.type === "text" && event.text === "ack observation ready"),
@@ -238,6 +269,7 @@ process.on("SIGTERM",()=>{service.close().finally(()=>process.exit(0));});
       for (const listener of listeners) listener(event)
     },
     signal: (name: string) => writeFile(join(directory, name), ""),
+    read: (name: string) => readFile(join(directory, name), "utf8"),
     holdResult(operation: AssistantRequest["operation"]) {
       let capture = (_result: AssistantResult) => {}
       const observed = new Promise<AssistantResult>((resolve) => {
@@ -266,6 +298,42 @@ async function until(predicate: () => boolean | Promise<boolean>) {
 }
 
 describe("native continuation controls through the real service", () => {
+  it("recovers a crashed ACP process through session/load, restores its model, and reconciles an accepted write without replay", async () => {
+    const context = await host({ recoveryMode: true })
+    await context.chat.setConfigOption("model", "large")
+    expect(await context.chat.send("Make exactly one CAD change")).toBe(true)
+    await until(() => context.chat.getSnapshot().recovery?.status === "retrying")
+    expect(context.chat.getSnapshot().busy).toBe(true)
+    await until(() =>
+      context.chat
+        .getSnapshot()
+        .messages.some((message) => message.text.includes("remaining work completed with large")),
+    )
+    await until(() => !context.chat.getSnapshot().busy)
+    expect(await context.read("loads")).toBe("continuation-controls\n")
+    expect(await context.read("accepted-cad-write")).toBe("accepted\n")
+    const prompts = (await context.read("prompts"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(prompts).toHaveLength(2)
+    expect(prompts[0]).toEqual({ prompt: "Make exactly one CAD change", selectedModel: "large" })
+    expect(prompts[1].selectedModel).toBe("large")
+    expect(prompts[1].prompt).not.toContain("Make exactly one CAD change")
+    expect(
+      context.chat.getSnapshot().messages.filter((message) => message.role === "user"),
+    ).toHaveLength(1)
+    expect(
+      context.chat
+        .getSnapshot()
+        .messages.some((message) => message.text.includes("historical replay")),
+    ).toBe(false)
+    expect(context.chat.getSnapshot()).toMatchObject({
+      configured: true,
+      recovery: null,
+      snapshot: { currentModelId: "large", sessionId: "continuation-controls", status: "ready" },
+    })
+  })
   it("accepts a preexisting ACK when steering registers its signal handler", async () => {
     const context = await host({ ackTiming: "preexisting" })
     expect(await context.steering).toBe(true)

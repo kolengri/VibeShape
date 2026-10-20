@@ -71,6 +71,37 @@ async function setTheme(page: Page, theme: string) {
   await page.getByRole("option", { name: theme, exact: true }).click()
   await settings.getByRole("button", { name: "Done", exact: true }).click()
 }
+
+test("reports a visibility save failure without moving model browser rows", async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.addInitScript(`(() => {
+    const transaction = IDBDatabase.prototype.transaction
+    IDBDatabase.prototype.transaction = function (...args) {
+      if (args[1] === "readwrite" && Reflect.get(globalThis, "rejectMetadataSave")) {
+        throw new DOMException("The fixture rejected the metadata save.", "QuotaExceededError")
+      }
+      return Reflect.apply(transaction, this, args)
+    }
+  })()`)
+  await page.goto("/")
+  await createSolids(page)
+  await page.evaluate('Reflect.set(globalThis, "rejectMetadataSave", true)')
+  const tree = page.getByRole("complementary", { name: "Model tree", exact: true })
+  const box = tree.getByRole("treeitem", { name: "Part Box 1", exact: true })
+  const cylinder = tree.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })
+  const positions = [await box.boundingBox(), await cylinder.boundingBox()]
+  await tree.getByRole("button", { name: /Hide.*Box 1/ }).click()
+  const error = page.getByRole("alert").filter({ hasText: /Visibility.*could not be saved/ })
+  await expect(error).toBeVisible()
+  await expect(error).toContainText("Box 1")
+  await page.evaluate('Reflect.set(globalThis, "rejectMetadataSave", false)')
+  expect([await box.boundingBox(), await cylinder.boundingBox()]).toEqual(positions)
+  await expect(tree.getByRole("alert")).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath("visibility-error-stable-rows.png") })
+  await error.getByRole("button", { name: "Dismiss notification", exact: true }).click()
+  await expect(error).toHaveCount(0)
+})
+
 async function renameItem(page: Page, trigger: string, name: string) {
   await page.getByRole("button", { name: trigger, exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Rename item", exact: true })

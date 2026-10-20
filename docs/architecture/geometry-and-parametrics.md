@@ -98,6 +98,10 @@ producer and output role. Legacy results without catalogs retain whole-result ex
 
 The web viewport, body tree, and exact preview use the same terminal-body projection. Display and
 picking identity includes both producer and output role; sibling face IDs cannot alias one another.
+Authored-part inspection reuses the validated geometry projection of each immutable rebuild record.
+Repeated selection and hover reads do not revalidate or copy its topology polylines; replacement
+records still pass the complete schema. The weakly keyed projection follows the source record's
+lifetime and does not reuse geometry merely because a feature ID or revision matches.
 Body selection is distinct from face selection and active feature editing. Missing selected or hovered
 roles are cleared without falling back to another body. Preview styling preserves unchanged siblings.
 Legacy outputs with no declared roles retain whole-result selection. Until body-bound topology
@@ -258,6 +262,24 @@ Mesh payload:
 
 Tessellation runs in the worker. The UI never builds an OCCT mesh. Changing display quality invalidates display mesh cache independently of B-Rep.
 
+The viewer keeps rendering and picking on the main thread, but prepares display crease edges in one
+reusable viewer-owned worker at the existing 28-degree threshold. Surface geometry is available
+immediately. The worker receives owned copies, never transferred live display arrays; its bounded queue,
+owner cancellation and generation checks reject obsolete results. Displayed-body highlights borrow the
+current surface and edge geometry. Historical highlights own their fallback geometry and release it
+independently. A preparation failure reports a notification and leaves surfaces and picking available;
+it does not retry the expensive constructor synchronously on the UI thread.
+
+Face ordinals are indexed per immutable metadata snapshot. Ordinary hover picks are coalesced to one
+animation frame and stop at the first eligible, section-visible hit; activation remains synchronous and
+candidate cycling retains the complete eligible stack. The tree resolves authored parts once per exact
+immutable authority/report pair, so History rows share the same projection. Replacement authority or
+geometry, including a Before presentation, invalidates that reuse rather than matching by revision alone.
+
+Model diagnostics and measurement projections share one fully schema-validated, snapshot-bound response
+within an invocation. This avoids validating the same rebuild twice without caching mutable caller input
+or weakening stale, coverage, content-hash or semantic diagnostic checks.
+
 ### Surface relief meshes
 
 Authored texture layers are separate from feature-content identity and source B-Rep geometry.
@@ -386,6 +408,16 @@ only after worker response, coverage, hash, and count validation. The scoped res
 producer and body role before applying the legacy conservative matcher. Congruent sibling topology
 never substitutes for a missing body. Ordinary persisted TopoRef v0, canonical identity, native file
 schemas, and worker protocols remain unchanged by this read-only increment.
+
+Reference-frame, Extrude-body and Loft-support catalogues create one synchronous invocation-local
+evidence resolver. It fully validates the unknown rebuild response and indexes evaluation, geometry
+and exact body roles once, retaining each target's shape, hash, count and candidate checks. The
+resolver is discarded with the catalogue invocation; it does not reuse evidence across rebuilds.
+
+Sketch-reference health similarly indexes one committed source graph per inspection. Iterative
+reverse-tree traversal and source-path intervals avoid repeated ancestor walks and copied visited
+sets. Draft targets remain distinct from committed sources even when their IDs match; model evidence
+is memoized only within that inspection by both owner sketch and reference-object identity.
 
 Body-bound Fillet/Chamfer execution still requires per-output native topology snapshots and explicit
 feature versions. Sketch supports, persistent repair, and a real native multi-copy producer remain

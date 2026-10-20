@@ -75,8 +75,10 @@ function NativeProjectChat({
       messages={state.messages}
       draftDisplay={draftDisplay}
       onToolHighlight={onToolHighlight}
+      onApplyDraft={chat.applyDraft}
       busy={state.busy}
       canSend={canSend && !assistantCheckpointBusy(state)}
+      configurationRequired={!state.configured}
       canUndoAgentChanges={state.canUndoAgentChanges}
       undoingAgentChanges={state.undoingAgentChanges}
       viewingBefore={state.viewingBefore}
@@ -103,11 +105,15 @@ function NativeProjectChat({
       error={error}
       configuration={<AgentConnection chat={chat} state={state} />}
       sessionControls={
-        <NativeSessionControls
-          chat={chat}
-          snapshot={state.snapshot}
-          busy={state.busy || state.connecting}
-        />
+        <>
+          <NativeRecoveryControls chat={chat} state={state} />
+          <AgentAuthentication chat={chat} snapshot={state.snapshot} />
+          <NativeSessionControls
+            chat={chat}
+            snapshot={state.snapshot}
+            busy={state.busy || state.connecting}
+          />
+        </>
       }
       permission={<AgentPermission chat={chat} state={state} />}
     />
@@ -131,9 +137,56 @@ function useNativeChat(projectId: string, bridge: AssistantBridge) {
   return {
     chat,
     state,
-    canSend: status === "ready" || state.busy,
+    canSend: nativeCanSend(state),
     activeSteerTurn: state.busy && status === "prompting",
   }
+}
+function nativeCanSend(state: NativeChatState) {
+  return !state.recovery && (state.snapshot?.status === "ready" || state.busy)
+}
+
+function NativeRecoveryControls({ chat, state }: { chat: NativeChat; state: NativeChatState }) {
+  const t = useTranslations("app.assistant")
+  if (!state.recovery) return null
+  const retrying = state.recovery.status === "retrying"
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <NativeRecoveryStatus recovery={state.recovery} />
+      <Button size="sm" variant="outline" onClick={retrying ? chat.disconnect : chat.retryRecovery}>
+        {t(retrying ? "cancelReconnect" : "retryConnection")}
+      </Button>
+    </div>
+  )
+}
+function NativeRecoveryStatus({
+  recovery,
+}: {
+  recovery: NonNullable<NativeChatState["recovery"]>
+}) {
+  const t = useTranslations("app.assistant")
+  if (recovery.automation) return <NativeAutomationRecoveryStatus recovery={recovery.automation} />
+  return (
+    <span role="status">
+      {recovery.status === "retrying"
+        ? t("reconnecting", { attempt: recovery.attempt, limit: 5 })
+        : t("reconnectFailed", { attempts: recovery.attempt })}
+    </span>
+  )
+}
+
+function NativeAutomationRecoveryStatus({
+  recovery,
+}: {
+  recovery: { attempt: number; failed: boolean }
+}) {
+  const t = useTranslations("app.assistant")
+  return (
+    <span role="status">
+      {recovery.failed
+        ? t("modelReconnectFailed", { attempts: recovery.attempt })
+        : t("modelReconnecting", { attempt: recovery.attempt, limit: 5 })}
+    </span>
+  )
 }
 
 function nativeProjectActionBlocked(state: NativeChatState) {
@@ -154,17 +207,14 @@ function useNativeChatError(state: NativeChatState) {
 function AgentConnection({ chat, state }: { chat: NativeChat; state: NativeChatState }) {
   const snapshot = state.snapshot
   return (
-    <>
-      <NativeAgentConfiguration
-        chat={chat}
-        connecting={state.connecting}
-        connected={
-          snapshot !== null &&
-          ["ready", "prompting", "cancelling", "authentication-required"].includes(snapshot.status)
-        }
-      />
-      <AgentAuthentication chat={chat} snapshot={snapshot} />
-    </>
+    <NativeAgentConfiguration
+      chat={chat}
+      connecting={state.connecting}
+      connected={
+        snapshot !== null &&
+        ["ready", "prompting", "cancelling", "authentication-required"].includes(snapshot.status)
+      }
+    />
   )
 }
 

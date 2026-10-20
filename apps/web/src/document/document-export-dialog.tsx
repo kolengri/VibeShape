@@ -11,15 +11,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
-import { Download } from "@vibeshape/ui/components/icons"
+import { Download, PrintIcon } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { useRef, useState } from "react"
+import { cn } from "@vibeshape/ui/lib/cn"
+import { useId, useRef, useState } from "react"
 import { useDialogOpen } from "../components/use-dialog-open"
 import { PrintPreparationPanel } from "../printing/print-preparation-panel"
 import { SlicerHandoffOptions } from "../printing/slicer-handoff-panel"
 import { useSlicerHandoff } from "../printing/use-slicer-handoff"
-import { useReportApplicationError } from "../shell/application-notices"
+import {
+  useReportApplicationError,
+  useReportApplicationSuccess,
+} from "../shell/application-notices"
 import type { DocumentControllerState } from "./document-controller"
 import { exportActiveDocument } from "./document-controller"
 import { downloadDocumentExport } from "./document-export"
@@ -212,26 +216,33 @@ function ExportPreparation({
   onBusyChange: (busy: boolean) => void
 }) {
   const t = useTranslations("app.export")
+  const panelId = useId()
   if (!available) return null
   return (
-    <>
+    <div className={cn("grid gap-3", !shown && "border-t pt-3")}>
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
+        size="sm"
+        className="h-auto min-h-8 justify-self-start whitespace-normal text-left"
         disabled={disabled}
         aria-expanded={shown}
+        aria-controls={shown ? panelId : undefined}
         onClick={() => onShowChange(!shown)}
       >
+        {shown ? <Download aria-hidden="true" /> : <PrintIcon aria-hidden="true" />}
         {t(shown ? "originalExport" : "preparePrint")}
       </Button>
       {shown ? (
-        <PrintPreparationPanel
-          key={`${controller.report?.snapshot.id}:${controller.report?.snapshot.revision}`}
-          disabled={panelDisabled}
-          onBusyChange={onBusyChange}
-        />
+        <div id={panelId}>
+          <PrintPreparationPanel
+            key={`${controller.report?.snapshot.id}:${controller.report?.snapshot.revision}`}
+            disabled={panelDisabled}
+            onBusyChange={onBusyChange}
+          />
+        </div>
       ) : null}
-    </>
+    </div>
   )
 }
 
@@ -354,7 +365,7 @@ function ExportDialogHeader({ controller }: { controller: DocumentControllerStat
     "surfaceTextures" in authority &&
     authority.surfaceTextures.some(({ enabled }) => enabled)
   return (
-    <DialogHeader>
+    <DialogHeader className="shrink-0 border-b px-5 py-4">
       <DialogTitle>{t("title")}</DialogTitle>
       <DialogDescription>{t("description")}</DialogDescription>
       {hasTextures ? (
@@ -373,30 +384,37 @@ function ExportOriginalModelFields({
 }) {
   const { handoff, actionDisabled, activity } = session
   return (
-    <>
-      <DocumentExportOptions
-        destination={session.destination}
-        onDestinationChange={session.setDestination}
-        format={session.format}
-        onFormatChange={session.changeFormat}
-        disabled={actionDisabled}
-        native={handoff.native !== undefined}
-      />
-      <ExportPartSelection
-        controller={controller}
-        value={session.exportPart}
-        onChange={session.setExportPart}
-        disabled={actionDisabled}
-      />
-      {session.format !== "step" ? (
-        <MeshExportQualityField
-          value={session.meshQualityChoice}
-          onChange={session.setMeshQualityChoice}
+    <div className="grid content-start gap-3">
+      {/* These selectors report operation failures separately, so empty error slots need no space. */}
+      <div className="grid gap-2 [&_[data-slot=field-error]:not([role=alert])]:hidden">
+        <DocumentExportOptions
+          destination={session.destination}
+          onDestinationChange={session.setDestination}
+          format={session.format}
+          onFormatChange={session.changeFormat}
+          disabled={actionDisabled}
+          native={handoff.native !== undefined}
+        />
+      </div>
+      <div className="grid items-start gap-3 sm:grid-cols-2 [&>*:only-child]:col-span-full">
+        <ExportPartSelection
+          controller={controller}
+          value={session.exportPart}
+          onChange={session.setExportPart}
           disabled={actionDisabled}
         />
-      ) : null}
+        {session.format !== "step" ? (
+          <MeshExportQualityField
+            value={session.meshQualityChoice}
+            onChange={session.setMeshQualityChoice}
+            disabled={actionDisabled}
+          />
+        ) : null}
+      </div>
       {session.nativeDestination && handoff.native ? (
-        <SlicerHandoffOptions handoff={handoff} disabled={actionDisabled} />
+        <div className="border-t pt-3">
+          <SlicerHandoffOptions handoff={handoff} disabled={actionDisabled} />
+        </div>
       ) : null}
       <ExportStatus messageKey={activity.failed ? null : activity.statusKey} />
       <ExportNotice
@@ -404,7 +422,7 @@ function ExportOriginalModelFields({
         failed={activity.failed}
         errorKey={activity.errorKey}
       />
-    </>
+    </div>
   )
 }
 
@@ -419,7 +437,7 @@ function ExportDialogActions({
   const { handoff, nativeDestination, format, activity } = session
   const slicerUnavailable = nativeDestination && (!handoff.native || !handoff.canSend)
   return (
-    <DialogFooter>
+    <DialogFooter className="shrink-0 flex-row flex-wrap justify-end border-t px-5 py-3">
       <Button type="button" variant="outline" disabled={session.pending} onClick={onClose}>
         {t("close")}
       </Button>
@@ -447,7 +465,10 @@ function ExportDialogContent(props: ExportContentProps) {
       onCloseAutoFocus={props.onCloseAutoFocus}
       closeLabel={t("closeLabel")}
       showCloseButton={false}
-      className={session.showPreparation ? "max-w-3xl" : "max-w-xl"}
+      className={cn(
+        "flex flex-col gap-0 overflow-hidden p-0",
+        session.showPreparation ? "max-w-3xl" : "max-w-xl",
+      )}
       onEscapeKeyDown={(event) => {
         if (session.pending) event.preventDefault()
       }}
@@ -456,18 +477,23 @@ function ExportDialogContent(props: ExportContentProps) {
       }}
     >
       <ExportDialogHeader controller={props.controller} />
-      {!session.showPreparation ? (
-        <ExportOriginalModelFields controller={props.controller} session={session} />
-      ) : null}
-      <ExportPreparation
-        controller={props.controller}
-        available={session.exportPart === "all"}
-        shown={session.showPreparation}
-        onShowChange={session.setShowPreparation}
-        disabled={session.actionDisabled}
-        panelDisabled={session.preparationDisabled}
-        onBusyChange={session.setPrintPending}
-      />
+      <div
+        data-slot="export-dialog-body"
+        className="grid min-h-0 content-start gap-3 overflow-y-auto px-5 py-4"
+      >
+        {!session.showPreparation ? (
+          <ExportOriginalModelFields controller={props.controller} session={session} />
+        ) : null}
+        <ExportPreparation
+          controller={props.controller}
+          available={session.exportPart === "all"}
+          shown={session.showPreparation}
+          onShowChange={session.setShowPreparation}
+          disabled={session.actionDisabled}
+          panelDisabled={session.preparationDisabled}
+          onBusyChange={session.setPrintPending}
+        />
+      </div>
       <ExportDialogActions session={session} onClose={props.onClose} />
     </DialogContent>
   )
@@ -489,13 +515,23 @@ export function DocumentExportDialog({
   onCloseAutoFocus?: ((event: Event) => void) | undefined
 }) {
   const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
-  const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
+  const [success, setSuccess] = useState<{ message: string; attempt: number } | null>(null)
+  const appOwnsSuccess = useReportApplicationSuccess(
+    success?.message ?? null,
+    success?.attempt ?? 0,
+  )
+  const reportSuccess = (message: string) =>
+    setSuccess((current) => ({ message, attempt: (current?.attempt ?? 0) + 1 }))
   return (
     <>
-      {slicerStatus ? (
-        <span className="text-xs text-muted-foreground" role="status">
-          {slicerStatus}
-        </span>
+      {success && !appOwnsSuccess ? (
+        <p
+          className="fixed inset-x-4 bottom-4 z-50 rounded-md border bg-popover p-3 text-sm text-popover-foreground shadow-lg"
+          role="status"
+          aria-live="polite"
+        >
+          {success.message}
+        </p>
       ) : null}
       <Dialog open={open} onOpenChange={setOpen}>
         <ExportDialogTrigger shown={showTrigger} controller={controller} />
@@ -505,10 +541,10 @@ export function DocumentExportDialog({
             preferredFormat={preferredFormat}
             onClose={() => setOpen(false)}
             onSlicerOpened={(message) => {
-              setSlicerStatus(message)
+              reportSuccess(message)
               setOpen(false)
             }}
-            onExported={setSlicerStatus}
+            onExported={reportSuccess}
             onCloseAutoFocus={onCloseAutoFocus}
           />
         ) : null}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { DocumentExportOptions } from "@vibeshape/protocol"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import { printExportWorkerFailure } from "./print-export-error.test-fixture"
 
 const worker = (() => ({ rebuild: vi.fn(), exportDocument: vi.fn(), terminate: vi.fn() }))()
 mock.module("@vibeshape/document-worker/session", () => ({
@@ -34,6 +35,82 @@ beforeEach(() => {
   })
 })
 describe("disposable print worker lifecycle", () => {
+  for (const stage of ["rebuild", "exportDocument"] as const) {
+    it(`retains validated worker evidence when ${stage} fails`, async () => {
+      worker[stage].mockRejectedValueOnce(printExportWorkerFailure())
+      const result = await prepareDocumentPrint(
+        snapshot,
+        settings,
+        new AbortController().signal,
+        () => true,
+      )
+      expect(result).toEqual({
+        ok: false,
+        diagnostic: {
+          code: "export-failed",
+          sourceCode: "export-failed",
+          retryable: false,
+          message: "Body Lid contains a degenerate triangle.",
+        },
+      })
+      expect(worker.terminate).toHaveBeenCalledTimes(1)
+    })
+  }
+  it.each([
+    new Error("Unvalidated private worker details"),
+    {
+      response: { type: "failure", diagnostic: { message: "Unvalidated private worker details" } },
+    },
+  ])(
+    "uses the generic fallback when an exception has no validated worker envelope",
+    async (error) => {
+      worker.exportDocument.mockRejectedValueOnce(error)
+      expect(
+        await prepareDocumentPrint(snapshot, settings, new AbortController().signal, () => true),
+      ).toEqual({
+        ok: false,
+        diagnostic: {
+          code: "export-failed",
+          sourceCode: null,
+          retryable: true,
+          message: "The print copy could not be prepared.",
+        },
+      })
+      expect(worker.terminate).toHaveBeenCalledTimes(1)
+    },
+  )
+  it("does not attach stale worker evidence after the source changes", async () => {
+    let current = true
+    worker.exportDocument.mockImplementationOnce(async () => {
+      current = false
+      throw printExportWorkerFailure()
+    })
+    expect(
+      await prepareDocumentPrint(snapshot, settings, new AbortController().signal, () => current),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        sourceCode: null,
+        message: "Print preparation was canceled or its source changed.",
+      },
+    })
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
+  })
+  it("keeps abort semantics when a terminated export also carries a validated failure", async () => {
+    const abort = new AbortController()
+    worker.exportDocument.mockImplementationOnce(async () => {
+      abort.abort()
+      throw printExportWorkerFailure()
+    })
+    expect(await prepareDocumentPrint(snapshot, settings, abort.signal, () => true)).toMatchObject({
+      ok: false,
+      diagnostic: {
+        sourceCode: null,
+        message: "Print preparation was canceled or its source changed.",
+      },
+    })
+    expect(worker.terminate).toHaveBeenCalled()
+  })
   it("terminates its worker after export and keeps the captured document name", async () => {
     const result = await prepareDocumentPrint(
       snapshot,

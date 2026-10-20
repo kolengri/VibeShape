@@ -20,6 +20,7 @@ import {
   type DocumentHistoryPort,
   type DocumentLeasePort,
   type DocumentRebuildPort,
+  documentExportFailure,
   openPersistentDocumentSession,
   type PersistedRecoveryMigration,
   type PersistenceDraftValidationInput,
@@ -1163,6 +1164,56 @@ describe("persistent document session", () => {
       diagnostic: { code: "session-closed" },
     })
     await created.session.close()
+  })
+
+  it("preserves validated worker export failures through the persistent session", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const port = state.rebuildPorts[0]
+    if (!port) throw new Error("The rebuild port was not created.")
+    const response = {
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21fe",
+      documentId,
+      revision: 1,
+      generation: 1,
+      type: "failure",
+      diagnostic: {
+        code: "export-failed",
+        message: "Body Lid contains a degenerate triangle.",
+        retryable: false,
+      },
+    }
+    vi.spyOn(port, "exportDocument").mockRejectedValue(
+      Object.assign(new Error("worker"), { response }),
+    )
+    await expect(created.session.exportDocument("3mf")).resolves.toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: response.diagnostic.message,
+        retryable: false,
+        sourceCode: "export-failed",
+      },
+    })
+    await created.session.close()
+  })
+
+  it.each([
+    undefined,
+    null,
+    new Error("Unexpected internal details"),
+    { response: { type: "failure", diagnostic: { message: "Unvalidated" } } },
+  ])("keeps unvalidated export exceptions behind the bounded fallback (%j)", (error) => {
+    expect(documentExportFailure(error, "The print copy could not be prepared.")).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The print copy could not be prepared.",
+        retryable: true,
+        sourceCode: null,
+      },
+    })
   })
 
   it("opens read-only while another live writer owns the lease and retries write access later", async () => {

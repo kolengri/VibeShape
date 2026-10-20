@@ -11,7 +11,7 @@ import {
 import type { PartRecord } from "@vibeshape/domain/parts"
 import { evaluateVariableDefinitions, resolveQuantityExpression } from "@vibeshape/domain/variables"
 import type { DocumentExportBodies } from "@vibeshape/protocol"
-import { featureGeometryRecordSchema } from "./feature-rebuild"
+import { type FeatureGeometryRecord, featureGeometryRecordSchema } from "./feature-rebuild"
 import { type ModelBodyGeometry, terminalBodyGeometry } from "./model-bodies"
 import type { PersistentDocumentSessionReport } from "./persistent-document-session"
 
@@ -25,13 +25,24 @@ function bodyKey(body: Pick<BodyReference, "featureId"> & { outputRole?: string 
   return `${body.featureId}:${body.outputRole ?? "result"}`
 }
 
+const validatedGeometry = new WeakMap<object, FeatureGeometryRecord>()
+
+function authoredGeometryRecord(record: object): FeatureGeometryRecord {
+  const cached = validatedGeometry.get(record)
+  if (cached) return cached
+  // Rebuild records are immutable; validate each topology payload once while its source is live.
+  const parsed = featureGeometryRecordSchema.parse(record)
+  validatedGeometry.set(record, parsed)
+  return parsed
+}
+
 function currentTerminalBodies(report: PersistentDocumentSessionReport) {
   if (!report.rebuild.ok) return null
   const response = report.rebuild.response
   try {
     return terminalBodyGeometry({
       features: report.snapshot.features,
-      geometry: response.geometry.map((record) => featureGeometryRecordSchema.parse(record)),
+      geometry: response.geometry.map(authoredGeometryRecord),
       evaluation: {
         records: response.evaluation.records.map((record) =>
           featureEvaluationRecordSchema.parse(record),

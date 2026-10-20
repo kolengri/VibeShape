@@ -374,6 +374,13 @@ owned draft. Expiry, a changed document, or session closure cancels a pending re
 bounded message that can be dismissed. A request-specific UI identity prevents an old button from
 approving a later review. Only one session can own the confirmation surface at a time.
 
+Chat can initiate **Apply changes** for the exact valid disposable draft retained by its current
+session owner. The callback captures the displayed document, committed base, draft ID, private
+revision, and command count; replacement or changed authority rejects stale activation. It calls the
+ordinary session `commitDraft`, retaining the same manual, destructive, or connected-assistant
+policy and atomic persistence path. The chat checkpoint owner captures the baseline and seals the
+saved result. A display-only preview or already-saved checkpoint cannot acquire an Apply callback.
+
 For external clients, an idle paired user may explicitly opt in to the supported first-party CAD scope in
 [ADR-0099](../adr/0099-complete-session-cad-auto-apply.md), including feature/sketch/variable lifecycle
 edits and removal, supported schema upgrades and all shipped CAD feature versions. Import features,
@@ -434,6 +441,13 @@ stable internal server name avoids collisions with external provider configurati
 commits without separate Apply prompts under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md). Explicit Stop persists across reload until Enable AI session. This policy uses the
 ordinary broker, credentials, exact previews, revisions and commit path; it grants no project
 management authority. External clients retain the initial pairing action below.
+
+The embedded native chat and its project automation connection bound transient recovery to five
+attempts before explicit retry. Exact ACP session loading, effective setting restoration and settled
+document persistence precede automatic continuation of an interrupted turn. The continuation reads
+authoritative state; neither the original prompt nor uncertain CAD operations are replayed. Explicit
+Stop or Disconnect, lost consent, permanent configuration errors and required authentication remain
+terminal until the person acts. Generic external and remote recovery policies are unchanged.
 
 The loopback origin has these requirements:
 

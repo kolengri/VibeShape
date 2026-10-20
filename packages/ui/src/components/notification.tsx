@@ -1,3 +1,4 @@
+import { cva, type VariantProps } from "class-variance-authority"
 import { Toast as ToastPrimitive } from "radix-ui"
 import type * as React from "react"
 import { cn } from "#lib/cn"
@@ -6,18 +7,30 @@ function NotificationProvider(props: React.ComponentProps<typeof ToastPrimitive.
   return <ToastPrimitive.Provider duration={Infinity} {...props} />
 }
 
-function Notification({ className, ...props }: React.ComponentProps<typeof ToastPrimitive.Root>) {
+const notificationVariants = cva(
+  "pointer-events-auto flex items-start gap-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg",
+  {
+    variants: {
+      tone: { error: "border-destructive", success: "border-border" },
+    },
+    defaultVariants: { tone: "error" },
+  },
+)
+
+function Notification({
+  className,
+  tone = "error",
+  ...props
+}: React.ComponentProps<typeof ToastPrimitive.Root> & VariantProps<typeof notificationVariants>) {
   return (
     <ToastPrimitive.Root
       data-slot="notification"
       duration={Infinity}
       type="background"
-      role="alert"
+      role={tone === "success" ? "status" : "alert"}
       aria-live="off"
-      className={cn(
-        "pointer-events-auto flex items-start gap-2 rounded-md border border-destructive bg-popover p-3 text-popover-foreground shadow-lg",
-        className,
-      )}
+      data-tone={tone}
+      className={cn(notificationVariants({ tone }), className)}
       {...props}
     />
   )

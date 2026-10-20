@@ -72,7 +72,8 @@ function projectEntries(response: RebuiltResponse): readonly unknown[] | null {
   return entries
 }
 
-function measurementSource(
+/** Pairs one fully validated rebuild with the exact snapshot for measurement and diagnostics. */
+export function createModelMeasurementSource(
   snapshot: DocumentSnapshot,
   rebuild: DocumentRebuildOutcome,
 ):
@@ -119,7 +120,7 @@ export function createModelMeasurementEvidence(
   snapshot: DocumentSnapshot,
   rebuild: DocumentRebuildOutcome,
 ): ModelMeasurementResult {
-  const source = measurementSource(snapshot, rebuild)
+  const source = createModelMeasurementSource(snapshot, rebuild)
   return source.ok ? { ok: true, evidence: source.evidence } : source
 }
 
@@ -157,7 +158,7 @@ export function createModelBodyMeasurementEvidence(
   snapshot: DocumentSnapshot,
   rebuild: DocumentRebuildOutcome,
 ): ModelBodyMeasurementResult {
-  const source = measurementSource(snapshot, rebuild)
+  const source = createModelMeasurementSource(snapshot, rebuild)
   if (!source.ok) return source
   const bodies = projectBodyEntries(snapshot, source.response)
   if (!bodies) return { ok: false, code: "invalid-geometry-evidence" }

@@ -30,7 +30,7 @@ async function renameMeshPart(page: Page, part: { id: string; name: string }) {
 }
 async function printMeshCopy(page: Page) {
   const dialog = await openExport(page)
-  await dialog.getByRole("button", { name: "Prepare print / breakaway fins…", exact: true }).click()
+  await dialog.getByRole("button", { name: "Prepare print…", exact: true }).click()
   await dialog.getByLabel("Generate experimental breakaway fins", { exact: true }).uncheck()
   await dialog.getByRole("button", { name: "Generate print preview", exact: true }).click()
   await expect(

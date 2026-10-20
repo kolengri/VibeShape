@@ -54,3 +54,18 @@ Undo retention, stale/forged handles, failed persistence, rotated/foreign actors
 Cover before/current display without persistence or History mutations, baseline visibility and
 assembly placement, asynchronous invalidation, and accessible pending/disabled controls. Preserve
 geometry validation and revision-conflict tests.
+
+## Implementation clarification: retained Before geometry (2026-10-20)
+
+Before may reuse exact validated geometry retained by the opaque checkpoint instead of rebuilding
+the same baseline in a cold worker. Full captured model and authority content, live handle ownership,
+session/head, actor and cancellation checks remain authoritative. Missing or mismatched evidence uses
+the original isolated-worker path with captured source assets. Assembly placement retains its own
+captured-authority inspection. Release and owner teardown discard retained buffers. This refines the
+comparison implementation without changing persistence, public History or rollback authority.
+
+Retained geometry has a separate 64 MiB conservative charge budget per runtime, measured before
+cloning. Accounting includes unique backing buffers and topology/object/string costs. Admission
+evicts the oldest unpinned copies; a preparing or displayed Before remains charged and pinned.
+Oversize or unavailable copies use the existing worker fallback. Cache eviction never invalidates
+semantic checkpoints or changes Undo, and the charge is not a claim of exact engine heap or RSS.

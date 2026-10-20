@@ -20,6 +20,42 @@ function nearBottom(element: HTMLElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
 }
 
+function sameToolSummary(left: ChatMessage["tool"], right: ChatMessage["tool"]) {
+  return (["title", "status", "hasFailureDetails"] as const).every(
+    (key) => left?.[key] === right?.[key],
+  )
+}
+
+function sameAttachments(
+  left: ChatMessage["attachments"] = [],
+  right: ChatMessage["attachments"] = [],
+) {
+  return (
+    left.length === right.length &&
+    left.every(
+      (attachment, index) =>
+        attachment.id === right[index]?.id && attachment.name === right[index]?.name,
+    )
+  )
+}
+
+function sameTranscript(left: readonly ChatMessage[], right: readonly ChatMessage[]) {
+  return (
+    left.length === right.length &&
+    left.every((message, index) => {
+      const other = right[index]
+      return (
+        other &&
+        message.id === other.id &&
+        message.role === other.role &&
+        message.text === other.text &&
+        sameToolSummary(message.tool, other.tool) &&
+        sameAttachments(message.attachments, other.attachments)
+      )
+    })
+  )
+}
+
 type MessageGroup = [ChatMessage, ...ChatMessage[]]
 
 function groupMessages(messages: readonly ChatMessage[]) {
@@ -287,7 +323,7 @@ export function AssistantMessages({
   const end = useRef<HTMLDivElement>(null)
   const log = useRef<HTMLDivElement>(null)
   const following = useRef(true)
-  const hasFooter = Boolean(footer)
+  const previousMessages = useRef<readonly ChatMessage[] | null>(null)
   useEffect(() => {
     const element = log.current
     if (!element) return
@@ -301,8 +337,12 @@ export function AssistantMessages({
     return () => element.removeEventListener("toggle", observeToggle, true)
   }, [])
   useEffect(() => {
-    if (following.current) end.current?.scrollIntoView({ block: "nearest" })
-  }, [messages, hasFooter])
+    const previous = previousMessages.current
+    previousMessages.current = messages
+    // Checkpoint/display publications may clone the transcript without adding content.
+    if (following.current && (!previous || !sameTranscript(previous, messages)))
+      end.current?.scrollIntoView({ block: "nearest" })
+  }, [messages])
   return (
     <div
       ref={log}

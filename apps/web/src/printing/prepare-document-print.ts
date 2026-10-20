@@ -1,3 +1,4 @@
+import { documentExportFailure } from "@vibeshape/application/persistent-document-session"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import type { DocumentSnapshot } from "@vibeshape/domain"
 import type {
@@ -50,8 +51,10 @@ export async function prepareDocumentPrint(
       bodyCount: response.bodyCount,
       ...(response.printPreparation ? { printPreparation: response.printPreparation } : {}),
     }
-  } catch {
-    return failed("The print copy could not be prepared.")
+  } catch (error) {
+    if (signal.aborted || !isCurrent())
+      return failed("Print preparation was canceled or its source changed.")
+    return documentExportFailure(error, "The print copy could not be prepared.")
   } finally {
     signal.removeEventListener("abort", cancel)
     worker.terminate()

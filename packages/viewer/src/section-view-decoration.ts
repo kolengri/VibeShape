@@ -132,14 +132,18 @@ export class SectionViewDecoration {
     window.addEventListener("keydown", this.#keyDown, true)
   }
 
-  setMeshes(meshes: readonly ViewerMesh[]) {
+  setMeshes(meshes: readonly ViewerMesh[], bounds?: Box3) {
     this.#meshes = meshes.filter(
       (mesh) => mesh.appearance !== "datum" && mesh.appearance !== "selection-source",
     )
-    this.#bounds.makeEmpty()
-    for (const mesh of this.#meshes) {
-      for (let index = 0; index < mesh.positions.length; index += 3)
-        this.#bounds.expandByPoint(new Vector3().fromArray(mesh.positions, index))
+    if (bounds) this.#bounds.copy(bounds)
+    else {
+      this.#bounds.makeEmpty()
+      const point = new Vector3()
+      for (const mesh of this.#meshes) {
+        for (let index = 0; index < mesh.positions.length; index += 3)
+          this.#bounds.expandByPoint(point.fromArray(mesh.positions, index))
+      }
     }
     this.#rebuild()
   }

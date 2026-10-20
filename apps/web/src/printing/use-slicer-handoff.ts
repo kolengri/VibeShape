@@ -1,3 +1,4 @@
+import { documentExportFailure } from "@vibeshape/application/persistent-document-session"
 import { useTranslations } from "@vibeshape/i18n"
 import type {
   NativeMeshFormat,
@@ -14,7 +15,7 @@ import {
   saveNativeSlicerPreference,
 } from "./native-slicer-client"
 
-type Status = { key: string; failed: boolean; fileId?: string }
+type Status = { key: string; failed: boolean; fileId?: string; details?: string }
 export type SlicerHandoffActions = {
   onBusyChange: (busy: boolean) => void
   onOpened: (message: string) => void
@@ -30,6 +31,14 @@ const failures: Record<NativeSlicerFailure["reason"], string> = {
   "launch-failed": "launchFailed",
   "choose-failed": "chooseFailed",
   unavailable: "unavailable",
+}
+function preparationFailureStatus(
+  result?: Extract<ActiveDocumentExportResult, { ok: false }>,
+): Status {
+  const diagnostic = result?.diagnostic
+  return diagnostic?.sourceCode != null
+    ? { key: "exportFailedDetails", failed: true, details: diagnostic.message }
+    : { key: "exportFailed", failed: true }
 }
 function useSlicerApplications(native: NativeSlicerApi | undefined) {
   const [targets, setTargets] = useState<NativeSlicerTarget[]>([])
@@ -57,6 +66,37 @@ function useSlicerApplications(native: NativeSlicerApi | undefined) {
   }, [native])
   return { targets, setTargets, loading, error, clearError: () => setError(null) }
 }
+function useSlicerHandoffAction(onBusyChange: (busy: boolean) => void) {
+  const [pending, setPending] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const locked = useRef(false)
+  const [status, setStatus] = useState<Status | null>(null)
+  const isCurrent = () => mounted.current
+  async function run(action: () => Promise<void>) {
+    if (locked.current || !isCurrent()) return
+    locked.current = true
+    setAttempt((current) => current + 1)
+    setPending(true)
+    onBusyChange(true)
+    try {
+      await action()
+    } catch {
+      if (isCurrent()) setStatus({ key: "unavailable", failed: true })
+    } finally {
+      locked.current = false
+      if (isCurrent()) setPending(false)
+      onBusyChange(false)
+    }
+  }
+  return { pending, attempt, status, setStatus, isCurrent, run }
+}
 export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: SlicerHandoffActions) {
   const t = useTranslations("app.export.slicer.native")
   const common = useTranslations("app.export")
@@ -69,9 +109,8 @@ export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: Slicer
     error: discoveryError,
     clearError,
   } = useSlicerApplications(native)
-  const [pending, setPending] = useState(false)
-  const locked = useRef(false)
-  const [status, setStatus] = useState<Status | null>(null)
+  const { pending, attempt, status, setStatus, isCurrent, run } =
+    useSlicerHandoffAction(onBusyChange)
   const selected = targets.find((target) => target.id === preference.slicerId) ?? targets[0]
   function choosePreference(slicerId: NativeSlicerTarget["id"] | null, format: NativeMeshFormat) {
     setPreference({ slicerId, format })
@@ -79,25 +118,11 @@ export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: Slicer
     setStatus(null)
     clearError()
   }
-  async function run(action: () => Promise<void>) {
-    if (locked.current) return
-    locked.current = true
-    setPending(true)
-    onBusyChange(true)
-    try {
-      await action()
-    } catch {
-      setStatus({ key: "unavailable", failed: true })
-    } finally {
-      locked.current = false
-      setPending(false)
-      onBusyChange(false)
-    }
-  }
   async function chooseApplication() {
     if (!native) return
     await run(async () => {
       const result = await native.chooseApplication()
+      if (!isCurrent()) return
       if (!result.ok) {
         setStatus({ key: failures[result.reason], failed: true })
         return
@@ -111,18 +136,19 @@ export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: Slicer
   async function prepare() {
     try {
       const exported = await prepareMesh(preference.format)
+      if (!isCurrent()) return null
       if (exported.ok && exported.format === preference.format) return exported
-    } catch {
-      /* The export failure has catalog copy below. */
+      setStatus(preparationFailureStatus(exported.ok ? undefined : exported))
+    } catch (error) {
+      if (isCurrent()) setStatus(preparationFailureStatus(documentExportFailure(error)))
     }
-    setStatus({ key: "exportFailed", failed: true })
     return null
   }
   async function send() {
     await run(async () => {
       setStatus(null)
       const exported = await prepare()
-      if (!exported) return
+      if (!exported || !isCurrent()) return
       if (!native) {
         downloadDocumentExport(exported)
         onOpened(
@@ -140,6 +166,7 @@ export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: Slicer
         filename: createDocumentExportFilename(exported.documentName, preference.format),
         file: exported.file,
       })
+      if (!isCurrent()) return
       if (result.ok) onOpened(t("started", { slicer: result.slicerName }))
       else
         setStatus({
@@ -150,7 +177,8 @@ export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: Slicer
     })
   }
   async function reveal() {
-    if (status?.fileId && native && !(await native.reveal(status.fileId)))
+    if (!isCurrent()) return
+    if (status?.fileId && native && !(await native.reveal(status.fileId)) && isCurrent())
       setStatus({ key: "unavailable", failed: true })
   }
   const canSend = !loading && (native === undefined || selected !== undefined)
@@ -169,6 +197,7 @@ export function useSlicerHandoff({ onBusyChange, onOpened, prepareMesh }: Slicer
     targets,
     loading,
     pending,
+    attempt,
     status: status ?? discoveryError,
     selected,
     choosePreference,

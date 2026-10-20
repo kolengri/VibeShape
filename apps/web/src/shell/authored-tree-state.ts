@@ -28,19 +28,35 @@ export function currentAuthoredSnapshot(
     : null
 }
 
+const authoredPartsBySource = new WeakMap<
+  AuthoredDocumentSnapshot,
+  WeakMap<NonNullable<DocumentControllerState["report"]>, readonly ResolvedAuthoredPart[]>
+>()
+
 export function currentAuthoredParts(
   controller: DocumentControllerState,
 ): readonly ResolvedAuthoredPart[] {
   const authority = currentAuthoredSnapshot(controller)
-  if (!authority || !controller.report) return []
-  return (
-    resolveAuthoredParts(authority, controller.report) ??
+  const report = controller.report
+  if (!authority || !report) return []
+  let byReport = authoredPartsBySource.get(authority)
+  const cached = byReport?.get(report)
+  if (cached) return cached
+  // Rows share immutable sources even when hover publishes a new controller wrapper. A new
+  // authority (including metadata) or report (including Before) must resolve independently.
+  const parts: readonly ResolvedAuthoredPart[] =
+    resolveAuthoredParts(authority, report) ??
     authority.parts.map((part) => ({
       part,
       body: null,
       status: part.consumedBy ? "consumed" : "unavailable",
     }))
-  )
+  if (!byReport) {
+    byReport = new WeakMap()
+    authoredPartsBySource.set(authority, byReport)
+  }
+  byReport.set(report, parts)
+  return parts
 }
 
 function authoredHistoryRepairKeys(

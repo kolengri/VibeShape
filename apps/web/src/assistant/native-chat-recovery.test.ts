@@ -1,0 +1,420 @@
+import { afterEach, describe, expect, it } from "bun:test"
+import type {
+  AssistantBridge,
+  AssistantErrorCode,
+  AssistantEvent,
+  AssistantSnapshot,
+} from "@vibeshape/automation-api/assistant"
+import { vi } from "../../../../tests/unit/support/bun-test"
+import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
+import { createNativeChatController } from "./native-chat-controller"
+
+const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
+const agent = { command: "/fixture/acp", args: ["--fixture"] }
+const controllers: ReturnType<typeof createNativeChatController>[] = []
+afterEach(() => {
+  for (const chat of controllers.splice(0)) chat.dispose()
+  vi.useRealTimers()
+})
+
+function fixture(resumable = true) {
+  vi.useFakeTimers()
+  let listener: ((event: AssistantEvent) => void) | undefined
+  let snapshot: AssistantSnapshot
+  let failure: AssistantErrorCode | undefined
+  let gate: Promise<void> | undefined
+  let authenticationRequired = false
+  let sequence = 0
+  const connections: Parameters<AssistantBridge["connect"]>[0][] = []
+  const prompts: Parameters<AssistantBridge["prompt"]>[0][] = []
+  const pending: (() => void)[] = []
+  const disconnected: string[] = []
+  const storage = new Map<string, string>()
+  function emit(event: AssistantEvent) {
+    listener?.(event)
+  }
+  function publish(status: AssistantSnapshot["status"]) {
+    snapshot = { ...snapshot, status }
+    emit({ projectId, sessionToken: snapshot.sessionToken, type: "snapshot", snapshot })
+  }
+  const bridge: AssistantBridge = {
+    protocolVersion: 1,
+    async connect(input) {
+      connections.push(input)
+      await gate
+      if (failure) return { ok: false, code: failure }
+      snapshot = {
+        projectId,
+        sessionToken: `connection-${++sequence}`,
+        sessionId: input.resumeSessionId ?? "provider-session",
+        canResume: resumable,
+        status: authenticationRequired ? "authentication-required" : "ready",
+        modes: [],
+        models: [],
+        configOptions: [],
+        currentModeId: null,
+        currentModelId: null,
+        attachmentCapabilities: { text: true, images: true },
+        authMethods: [],
+      }
+      return { ok: true, value: snapshot }
+    },
+    async disconnect(input) {
+      disconnected.push(input.sessionToken)
+      return { ok: true, value: { ...snapshot, status: "disconnected" } }
+    },
+    async prompt(input) {
+      prompts.push(input)
+      publish("prompting")
+      const captured = snapshot
+      await new Promise<void>((resolve) =>
+        pending.push(() => {
+          if (snapshot.sessionToken === captured.sessionToken) publish("ready")
+          resolve()
+        }),
+      )
+      return { ok: true, value: { ...captured, status: "ready" } }
+    },
+    async cancel() {
+      publish("ready")
+      return { ok: true, value: snapshot }
+    },
+    setMode: async () => ({ ok: true, value: snapshot }),
+    setModel: async () => ({ ok: true, value: snapshot }),
+    setConfigOption: async () => ({ ok: true, value: snapshot }),
+    authenticate: async () => {
+      authenticationRequired = false
+      snapshot = { ...snapshot, status: "ready" }
+      return { ok: true, value: snapshot }
+    },
+    respondPermission: async () => ({ ok: true, value: snapshot }),
+    respondQuestion: async () => ({ ok: true, value: snapshot }),
+    onEvent(callback) {
+      listener = callback
+      return () => {
+        listener = undefined
+      }
+    },
+  }
+  const model = checkpointFixture()
+  const automationListeners = new Set<() => void>()
+  let automationState = {
+    connected: true,
+    recovering: false,
+    error: false,
+    recoveryFailed: false,
+    recoveryBlocked: false,
+    recoveryAttempt: 0,
+  }
+  const automation = {
+    getSnapshot: () => automationState,
+    subscribe(callback: () => void) {
+      automationListeners.add(callback)
+      return () => {
+        automationListeners.delete(callback)
+      }
+    },
+    async retryRecovery() {
+      return true
+    },
+  }
+  const chat = createNativeChatController({
+    projectId,
+    bridge,
+    checkpointHost: model.host,
+    automation,
+    storage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => {
+        storage.set(key, value)
+      },
+      removeItem: (key) => {
+        storage.delete(key)
+      },
+    },
+  })
+  controllers.push(chat)
+  chat.start()
+  return {
+    chat,
+    bridge,
+    model,
+    connections,
+    prompts,
+    disconnected,
+    fail(code?: AssistantErrorCode) {
+      failure = code
+    },
+    requireAuthentication() {
+      authenticationRequired = true
+    },
+    gate(value: Promise<void> | undefined) {
+      gate = value
+    },
+    crash() {
+      emit({ projectId, sessionToken: snapshot.sessionToken, type: "error", code: "agent-exited" })
+    },
+    disconnectEvent() {
+      publish("disconnected")
+    },
+    staleText(sessionToken: string) {
+      emit({ projectId, sessionToken, type: "text", text: "obsolete" })
+    },
+    finish(index: number) {
+      pending[index]?.()
+    },
+    automate(value: Partial<typeof automationState>) {
+      automationState = { ...automationState, ...value }
+      for (const notify of automationListeners) notify()
+    },
+  }
+}
+
+describe("internal native connection recovery", () => {
+  it("bounds an initial configured transport failure", async () => {
+    const f = fixture()
+    f.fail("launch-failed")
+    await f.chat.connect(agent)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(f.connections).toHaveLength(6)
+    expect(f.chat.getSnapshot()).toMatchObject({
+      configured: true,
+      recovery: { attempt: 5, status: "failed" },
+    })
+  })
+
+  it("continues safely unsent queued work after the recovered turn, without restoring the already sent original", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Original")
+    await f.chat.enqueue("Unsent next")
+    f.crash()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.prompts).toHaveLength(2)
+    f.finish(1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(
+      f.prompts.map((prompt) => prompt.text).filter((text) => text === "Original"),
+    ).toHaveLength(1)
+    expect(f.prompts.at(-1)?.text).toBe("Unsent next")
+    expect(f.chat.getSnapshot().queuedMessages).toHaveLength(0)
+  })
+  it("loads the exact session and continues once after authoritative accepted writes settle, without replaying the original prompt", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Create exactly one bracket")
+    const token = f.chat.getSnapshot().snapshot?.sessionToken ?? ""
+    const save = f.model.deferSave()
+    f.crash()
+    f.crash()
+    expect(f.chat.getSnapshot()).toMatchObject({
+      busy: true,
+      configured: true,
+      recovery: { attempt: 1, status: "retrying" },
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.connections).toHaveLength(2)
+    expect(f.connections[1]).toEqual({ projectId, agent, resumeSessionId: "provider-session" })
+    expect(f.prompts).toHaveLength(1)
+    save()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.prompts).toHaveLength(2)
+    expect(f.prompts[1]?.text).toContain("First read model_info")
+    expect(f.prompts[1]?.text).not.toContain("Create exactly one bracket")
+    expect(f.chat.getSnapshot().messages.filter((m) => m.role === "user")).toHaveLength(1)
+    f.staleText(token)
+    f.finish(0)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.chat.getSnapshot().busy).toBe(true)
+    expect(f.chat.getSnapshot().messages.some((m) => m.text === "obsolete")).toBe(false)
+    f.finish(1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.chat.getSnapshot()).toMatchObject({
+      busy: false,
+      recovery: null,
+      canUndoAgentChanges: true,
+    })
+  })
+
+  it("makes exactly five automatic attempts with bounded backoff, latches failure, and permits one manual restart", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    f.fail("agent-exited")
+    f.disconnectEvent()
+    for (const [index, delay] of [1000, 2000, 4000, 8000, 8000].entries()) {
+      await vi.advanceTimersByTimeAsync(delay - 1)
+      expect(f.connections).toHaveLength(index + 1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(f.connections).toHaveLength(index + 2)
+    }
+    expect(f.chat.getSnapshot()).toMatchObject({
+      busy: false,
+      recovery: { attempt: 5, status: "failed" },
+    })
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(f.connections).toHaveLength(6)
+    f.fail()
+    expect(await f.chat.retryRecovery()).toBe(true)
+    expect(await f.chat.retryRecovery()).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.chat.getSnapshot().recovery).toBeNull()
+    await vi.advanceTimersByTimeAsync(30_000)
+    f.disconnectEvent()
+    expect(f.chat.getSnapshot().recovery?.attempt).toBe(1)
+  })
+
+  it("keeps the same five-attempt episode across idle connection flapping until a healthy idle window", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    for (const delay of [1000, 2000, 4000, 8000, 8000]) {
+      f.crash()
+      await vi.advanceTimersByTimeAsync(delay)
+      expect(f.chat.getSnapshot().recovery).toBeNull()
+    }
+    f.crash()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.connections).toHaveLength(6)
+    expect(f.chat.getSnapshot().recovery).toEqual({ status: "failed", attempt: 5 })
+  })
+
+  it.each(["cancel", "disconnect", "dispose"] as const)(
+    "keeps %s authoritative over a late successful reconnect",
+    async (action) => {
+      const f = fixture()
+      await f.chat.connect(agent)
+      await f.chat.send("Do work")
+      let release = () => {}
+      f.gate(
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      )
+      f.crash()
+      await vi.advanceTimersByTimeAsync(1000)
+      await f.chat[action]()
+      release()
+      await vi.advanceTimersByTimeAsync(90_000)
+      expect(f.connections).toHaveLength(2)
+      expect(f.prompts).toHaveLength(1)
+      expect(f.disconnected).toContain("connection-2")
+      expect(f.chat.getSnapshot()).toMatchObject({ busy: false, recovery: null, snapshot: null })
+    },
+  )
+
+  it("stops deterministically for unsupported resume and permanent policy failures", async () => {
+    const f = fixture(false)
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    f.crash()
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(f.connections).toHaveLength(1)
+    expect(f.chat.getSnapshot()).toMatchObject({
+      error: "unsupported",
+      recovery: { attempt: 0, status: "failed" },
+    })
+    const g = fixture()
+    await g.chat.connect(agent)
+    g.fail("settings-recovery-failed")
+    g.crash()
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(g.connections).toHaveLength(2)
+    expect(g.chat.getSnapshot().error).toBe("settings-recovery-failed")
+  })
+
+  it("pauses for permanent authentication and resumes the same interrupted session once after explicit authentication", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    f.requireAuthentication()
+    f.crash()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.chat.getSnapshot()).toMatchObject({
+      error: "authentication-required",
+      busy: false,
+      recovery: { status: "failed" },
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.connections).toHaveLength(2)
+    await f.chat.authenticate("login")
+    expect(f.prompts).toHaveLength(2)
+    expect(f.chat.getSnapshot()).toMatchObject({ busy: true, error: null, recovery: null })
+  })
+
+  it("honors native Stop AI while waiting for the existing automation grant", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    f.automate({ connected: false, recovering: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    f.automate({ recovering: false, recoveryBlocked: true })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.connections).toHaveLength(2)
+    expect(f.prompts).toHaveLength(1)
+    expect(f.chat.getSnapshot()).toMatchObject({ busy: false, snapshot: null, recovery: null })
+  })
+
+  it("uses the remaining retry budget if the replacement ACP process exits while automation is still recovering", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    f.automate({ connected: false, recovering: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    f.crash()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.chat.getSnapshot().recovery).toMatchObject({ attempt: 2, status: "retrying" })
+    f.automate({ connected: true, recovering: false })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(f.connections).toHaveLength(3)
+    expect(f.prompts).toHaveLength(2)
+    expect(f.chat.getSnapshot().recovery).toBeNull()
+  })
+
+  it("keeps Stop effective if a late transport error follows cancellation of the original turn", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    await f.chat.cancel()
+    f.crash()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.connections).toHaveLength(1)
+    expect(f.chat.getSnapshot().recovery).toBeNull()
+  })
+
+  it("waits for recovery of the existing automation grant before continuing and honors its exhausted state", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    f.automate({ connected: false, recovering: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.prompts).toHaveLength(1)
+    f.automate({ connected: true, recovering: false })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.prompts).toHaveLength(2)
+    f.automate({ connected: false, recovering: true })
+    await vi.advanceTimersByTimeAsync(2000)
+    f.automate({ recovering: false, recoveryFailed: true, error: true, recoveryAttempt: 5 })
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(f.prompts).toHaveLength(2)
+    expect(f.chat.getSnapshot().recovery?.status).toBe("failed")
+    expect(f.chat.getSnapshot().recovery?.automation).toEqual({ attempt: 5, failed: true })
+  })
+
+  it("lets the automation owner exhaust its own bounded attempts instead of exposing manual retry on an unrelated wait deadline", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Do work")
+    f.automate({ connected: false, recovering: true, recoveryAttempt: 3 })
+    await vi.advanceTimersByTimeAsync(40_000)
+    expect(f.chat.getSnapshot()).toMatchObject({
+      busy: true,
+      recovery: { status: "retrying", automation: { attempt: 3 } },
+    })
+    expect(f.connections).toHaveLength(2)
+    f.automate({ recovering: false, recoveryFailed: true, recoveryAttempt: 5, error: true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.chat.getSnapshot()).toMatchObject({
+      busy: false,
+      recovery: { status: "failed", automation: { attempt: 5, failed: true } },
+    })
+  })
+})

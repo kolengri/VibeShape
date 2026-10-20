@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event"
 import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import type { ReactNode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { AssistantMessages } from "./assistant-messages"
@@ -15,10 +16,14 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-function view(messages: readonly ChatMessage[], onHighlight?: AssistantToolHighlight) {
+function view(
+  messages: readonly ChatMessage[],
+  onHighlight?: AssistantToolHighlight,
+  footer?: ReactNode,
+) {
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <AssistantMessages messages={messages} onHighlight={onHighlight} />
+      <AssistantMessages messages={messages} onHighlight={onHighlight} footer={footer} />
     </I18nProvider>
   )
 }
@@ -401,6 +406,68 @@ describe("assistant tool messages", () => {
     fireEvent.scroll(log)
     rerender(view([{ ...message, text: "Near the bottom again" }]))
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([600, 560, 100])(
+    "preserves scrollTop %i across cloned transcripts and footer/display changes, then follows real content only when pinned",
+    (scrollTop) => {
+      const message: ChatMessage = {
+        id: "reply",
+        role: "assistant",
+        text: "A saved batch.",
+        attachments: [{ id: "file", name: "Part.step" }],
+      }
+      const rendered = render(
+        view([message], undefined, <button type="button">View before</button>),
+      )
+      const log = screen.getByRole("log")
+      Object.defineProperties(log, {
+        clientHeight: { configurable: true, value: 300 },
+        scrollHeight: { configurable: true, value: 900 },
+      })
+      log.scrollTop = scrollTop
+      fireEvent.scroll(log)
+      const initial = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+      for (const footer of [
+        null,
+        <button key="current" type="button">
+          View current
+        </button>,
+        <button key="changes" type="button">
+          Changes
+        </button>,
+        <button key="result" type="button">
+          Result
+        </button>,
+      ]) {
+        rendered.rerender(view([structuredClone(message)], undefined, footer))
+        expect(log.scrollTop).toBe(scrollTop)
+        expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(initial)
+      }
+      rendered.rerender(view([{ ...message, text: "The next streamed reply." }]))
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(
+        initial + (scrollTop >= 552 ? 1 : 0),
+      )
+    },
+  )
+
+  it("follows new messages and changed attachments or tool status without following highlight metadata", () => {
+    const tool: ChatMessage = {
+      id: "tool",
+      role: "tool",
+      text: "",
+      tool: { title: "create_box", status: "in_progress" },
+    }
+    const rendered = render(view([tool]))
+    rendered.rerender(view([structuredClone(tool)]))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    rendered.rerender(view([{ ...tool, tool: { ...tool.tool, status: "completed" } }]))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    const reply: ChatMessage = { id: "reply", role: "assistant", text: "Ready." }
+    rendered.rerender(view([tool, reply]))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3)
+    rendered.rerender(view([tool, { ...reply, attachments: [{ id: "file", name: "Part.step" }] }]))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(4)
   })
 
   it("does not jump to streaming updates after expanded tool content moves the bottom away", () => {

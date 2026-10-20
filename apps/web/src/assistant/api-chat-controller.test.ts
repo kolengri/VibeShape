@@ -99,6 +99,47 @@ function deferredApiRequests() {
 }
 
 describe("browser API project chat", () => {
+  it("applies an idle draft through the existing checkpoint without sending an API prompt", async () => {
+    const model = checkpointFixture()
+    const api = deferredApiRequests()
+    const chat = createApiChatController({
+      projectId,
+      storage: disk(),
+      fetch: api.fetch,
+      createTools: tools,
+      checkpointHost: () => model.host,
+    })
+    await chat.connect(configuration)
+    let release = () => {}
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const applied = chat.applyDraft(async () => {
+      await pending
+      model.save()
+      return true
+    })
+    expect(chat.getSnapshot().settlingCheckpoint).toBe(true)
+    expect(
+      await chat.applyDraft(async () => {
+        throw new Error("Duplicate Apply")
+      }),
+    ).toBe(false)
+    await chat.reset()
+    expect(chat.getSnapshot().settlingCheckpoint).toBe(true)
+    release()
+    expect(await applied).toBe(true)
+    expect(api.requests).toEqual([])
+    expect(chat.getSnapshot()).toMatchObject({
+      settlingCheckpoint: false,
+      canUndoAgentChanges: true,
+    })
+    expect(await chat.viewBefore()).toBe(true)
+    expect(await chat.undoAgentChanges()).toBe(true)
+    expect(model.restores).toEqual([{ baseline: 1, revision: 2 }])
+    chat.dispose()
+  })
+
   it.each([
     ["success", { title: "create_box", status: "completed" }],
     ["diagnostic", { title: "create_box", status: "failed", hasFailureDetails: false }],

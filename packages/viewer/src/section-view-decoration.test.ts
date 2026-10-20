@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import {
+  Box3,
   BoxGeometry,
   BufferAttribute,
   LineSegments,
@@ -122,6 +123,30 @@ function expectPlaneCoordinate(attribute: BufferAttribute, coordinate: number, v
 describe("retained section decoration geometry", () => {
   beforeEach(() => vi.stubGlobal("window", new EventTarget()))
   afterEach(() => vi.unstubAllGlobals())
+
+  it("accepts retained model bounds without reading vertices when the section is inactive", () => {
+    const { decoration } = decorationFixture()
+    try {
+      decoration.setSection(null)
+      const source = sectionMesh()
+      const bounded = {
+        ...source,
+        get positions(): Float32Array {
+          throw new Error("Retained bounds must avoid a vertex scan.")
+        },
+      }
+      const bounds = new Box3(new Vector3(-5, -5, -5), new Vector3(5, 5, 5))
+      decoration.setMeshes([bounded], bounds)
+      expect(decoration.group.visible).toBe(false)
+      decoration.setMeshes([source], bounds)
+      bounds.makeEmpty()
+      decoration.setSection({ axis: "z", offset: 0, flipped: false })
+      expect(decoration.group.visible).toBe(true)
+      expect(decoration.group.children[0]?.children).toHaveLength(1)
+    } finally {
+      decoration.dispose()
+    }
+  })
 
   it("refreshes projected handles across orbit and width changes without reallocating or uploading world geometry", () => {
     const { decoration, canvas, camera, plane, outline, stem } = decorationFixture()

@@ -547,7 +547,7 @@ Status changes that do not move focus use the appropriate live-region semantics.
 - Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
-- Otherwise animate a printing shimmer through the complete VibeShape wordmark, preserving its text, width, and height. No other animated loaders appear on buttons, tabs, panels, or dialogs. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark.
+- Otherwise animate a printing shimmer through the complete VibeShape wordmark, preserving its text, width, and height. A reserved-width application-bar status additionally identifies when the active project's AI is working, including while chat is closed; it uses the project's authoritative busy state and a static icon with reduced motion. Other buttons, tabs, panels, and dialogs do not add animated loaders. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark.
 - Keep camera navigation and unaffected document inspection responsive.
 - Distinguish `Cancel requested` from `Canceled`; logical cancellation may wait for the active kernel call to return.
 - Discard stale worker generations and state this in diagnostics only when relevant.

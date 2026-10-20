@@ -12,11 +12,19 @@ import {
 import { type ReactNode, useState } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
-import { ApplicationNoticesProvider, useReportApplicationError } from "./application-notices"
+import {
+  ApplicationNoticesProvider,
+  useReportApplicationError,
+  useReportApplicationSuccess,
+} from "./application-notices"
 
 function ErrorSource({ message, attempt = 0 }: { message: string | null; attempt?: number }) {
   const centralized = useReportApplicationError(message, attempt)
   return message && !centralized ? <p role="alert">{message}</p> : null
+}
+function SuccessSource({ message, attempt = 0 }: { message: string | null; attempt?: number }) {
+  useReportApplicationSuccess(message, attempt)
+  return null
 }
 function App({
   message,
@@ -61,6 +69,41 @@ afterEach(() => {
 })
 
 describe("application error notices", () => {
+  it("keeps success neutral and dismissible without changing an existing error", async () => {
+    const view = render(
+      <App message="Save failed.">
+        <SuccessSource message="STEP download started" />
+      </App>,
+    )
+    const error = screen.getByRole("alert")
+    expect(error.classList.contains("border-destructive")).toBe(true)
+    const success = screen
+      .getByText("STEP download started", { exact: true })
+      .closest('[data-slot="notification"]')
+    expect(success?.getAttribute("role")).toBe("status")
+    expect(success?.classList.contains("border-border")).toBe(true)
+    expect(success?.classList.contains("border-destructive")).toBe(false)
+    const dismiss = within(success as HTMLElement).getByRole("button", {
+      name: "Dismiss notification",
+    })
+    await userEvent.click(dismiss)
+    expect(screen.getByRole("alert")).toBe(error)
+    view.rerender(
+      <App message="Save failed.">
+        <SuccessSource message="STEP download started" />
+      </App>,
+    )
+    expect(screen.queryByText("STEP download started", { exact: true })).toBeNull()
+    view.rerender(
+      <App message="Save failed.">
+        <SuccessSource message="STEP download started" attempt={1} />
+      </App>,
+    )
+    expect(screen.getByText("STEP download started", { exact: true })).toBeTruthy()
+    view.rerender(<App message="Save failed." />)
+    expect(screen.queryByText("STEP download started", { exact: true })).toBeNull()
+    expect(screen.getByRole("alert").textContent).toBe("Save failed.")
+  })
   it("reports outside the header without moving its controls or stealing input focus", () => {
     const view = render(<App message={null} />)
     const header = screen.getByRole("banner")

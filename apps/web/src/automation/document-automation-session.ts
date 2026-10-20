@@ -24,6 +24,15 @@ import { createCommittedSketchInspection } from "./committed-sketch-inspection"
 import { createModelPreviewSession } from "./model-preview-session"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
 
+function sameDraftRevision(
+  left: DraftReviewInput["preview"]["draft"],
+  right: DraftReviewInput["preview"]["draft"],
+) {
+  return (["draftId", "documentId", "baseRevision", "revision", "commandCount"] as const).every(
+    (key) => left[key] === right[key],
+  )
+}
+
 // Client identity and pairing remain the transport's responsibility.
 export function createDocumentAutomationSession(
   input: Readonly<{
@@ -43,6 +52,7 @@ export function createDocumentAutomationSession(
   let autoApplyActor: CommandActor | null = null
   let commitActive = false
   let commitGrant: CommandActor | null = null
+  let applicationDraft: DraftReviewInput["preview"]["draft"] | null = null
   let previewEpoch = 0
   let reviewEvaluation: {
     snapshot: DocumentSnapshot
@@ -122,6 +132,9 @@ export function createDocumentAutomationSession(
         reviewEvaluation = null
         const epoch = previewEpoch
         if (closed) return "cancelled"
+        // A chat click authorizes only the exact private revision that was displayed.
+        if (applicationDraft && !sameDraftRevision(review.preview.draft, applicationDraft))
+          return "cancelled"
         if (commitGrant) {
           const decision = await autoApplyReviewDecision(review, commitGrant, epoch)
           if (decision) return decision
@@ -212,6 +225,46 @@ export function createDocumentAutomationSession(
     return factory
   }
   const host = factory.host
+  async function commitDraft(actor: unknown, request: unknown) {
+    if (commitActive)
+      return {
+        ok: false as const,
+        diagnostic: {
+          code: "automation-operation-failed" as const,
+          message: "Another browser commit is in progress.",
+          retryable: true,
+          issues: [],
+        },
+      }
+    commitActive = true
+    reviews.clearDraftViewport(reviewOwner)
+    reviewEvaluation = null
+    // A later opt-in cannot authorize a commit that already started under manual review.
+    commitGrant = autoApplyActor
+    try {
+      const committed = await host.commitDraft(actor, request)
+      const result =
+        closed && !committed.ok && committed.diagnostic.code === "automation-operation-failed"
+          ? {
+              ok: false as const,
+              diagnostic: {
+                code: "draft-review-cancelled" as const,
+                message: "The browser automation session closed before the commit could proceed.",
+                retryable: false,
+                issues: [],
+              },
+            }
+          : committed
+      if (!result.ok && result.diagnostic.code === "draft-review-rejected")
+        await host.discardDraft(actor, request)
+      reviews.complete(reviewOwner, result)
+      return result
+    } finally {
+      commitActive = false
+      commitGrant = null
+      reviewEvaluation = null
+    }
+  }
   async function presentDraftPreview(actor: unknown, request: unknown, epoch: number) {
     const result = await host.previewDraft(actor, request)
     if (closed || epoch !== previewEpoch || !result.ok || commitActive) return result
@@ -224,7 +277,16 @@ export function createDocumentAutomationSession(
           evaluated.rebuild,
         )
       : null
-    if (viewport) reviews.presentDraftViewport(reviewOwner, viewport)
+    if (viewport)
+      reviews.presentDraftViewport(reviewOwner, viewport, async () => {
+        if (commitActive) return commitDraft(actor, request)
+        applicationDraft = viewport.draft
+        try {
+          return await commitDraft(actor, request)
+        } finally {
+          applicationDraft = null
+        }
+      })
     return result
   }
   return {
@@ -271,47 +333,7 @@ export function createDocumentAutomationSession(
         if (result.ok) reviews.clearDraftViewport(reviewOwner)
         return result
       },
-      async commitDraft(actor: unknown, request: unknown) {
-        if (commitActive)
-          return {
-            ok: false as const,
-            diagnostic: {
-              code: "automation-operation-failed" as const,
-              message: "Another browser commit is in progress.",
-              retryable: true,
-              issues: [],
-            },
-          }
-        commitActive = true
-        reviews.clearDraftViewport(reviewOwner)
-        reviewEvaluation = null
-        // A later opt-in cannot authorize a commit that already started under manual review.
-        commitGrant = autoApplyActor
-        try {
-          const committed = await host.commitDraft(actor, request)
-          const result =
-            closed && !committed.ok && committed.diagnostic.code === "automation-operation-failed"
-              ? {
-                  ok: false as const,
-                  diagnostic: {
-                    code: "draft-review-cancelled" as const,
-                    message:
-                      "The browser automation session closed before the commit could proceed.",
-                    retryable: false,
-                    issues: [],
-                  },
-                }
-              : committed
-          if (!result.ok && result.diagnostic.code === "draft-review-rejected")
-            await host.discardDraft(actor, request)
-          reviews.complete(reviewOwner, result)
-          return result
-        } finally {
-          commitActive = false
-          commitGrant = null
-          reviewEvaluation = null
-        }
-      },
+      commitDraft,
     },
     cancel(reason?: AutomationHostDiagnosticCode) {
       previewEpoch++

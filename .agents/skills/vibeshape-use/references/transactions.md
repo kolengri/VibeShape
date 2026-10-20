@@ -21,6 +21,12 @@ no preview. Explicit `preview_draft` still supplies the authoritative validation
 visible preview does not advance the saved revision, create Undo or grant Apply permission. Later
 commands replace it, and cancellation, discard, disposal or a changed committed base removes it.
 
+The person can use **Apply changes** in chat for the exact valid retained preview before the client
+next calls `commit_draft`. This uses the same session authority, approval policy and ordinary atomic
+commit; the preview remains unsaved until that commit succeeds. If the draft was consumed or the
+committed base changed, reread `model_info` and the affected intent before continuing. Do not blindly
+replay the old draft or assume that its ID still identifies pending work.
+
 An open CAD draft review has no time limit. Its draft's `expiresAt` describes idle expiry, not an
 Apply deadline: the host retains it while review is pending and rechecks access and the committed
 base before saving. Cancellation, disconnection and revision changes can still invalidate review.

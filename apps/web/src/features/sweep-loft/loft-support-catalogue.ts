@@ -1,4 +1,4 @@
-import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
+import { createModelBodyTopologyEvidenceResolver } from "@vibeshape/application/model-body-topology"
 import type { DocumentSnapshot } from "@vibeshape/domain"
 import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { createBodyTopologyReferenceProjector } from "@vibeshape/domain/model-body-topology"
@@ -20,6 +20,7 @@ export function loftSupportCatalogue(
   ) => string,
 ): LoftSupportOption[] {
   if (!rebuild.ok) return []
+  const topology = createModelBodyTopologyEvidenceResolver(snapshot, rebuild)
   const index = editingId
     ? snapshot.features.findIndex(({ id }) => id === editingId)
     : snapshot.features.length
@@ -31,7 +32,7 @@ export function loftSupportCatalogue(
     if (!feature) return []
     return (
       geometry.geometry.bodies?.flatMap(({ outputRole }) => {
-        const result = createModelBodyTopologyEvidence(snapshot, rebuild, {
+        const result = topology({
           featureId: feature.id,
           outputRole,
           kind: "face",

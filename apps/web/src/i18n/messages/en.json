@@ -207,7 +207,8 @@
       "finsDisabled": "Breakaway fins are disabled. The print copy contains only the rotated model."
     },
     "export": {
-      "preparePrint": "Prepare print / breakaway fins…",
+      "printPreparationFailedDetails": "Print preparation failed: {details}",
+      "preparePrint": "Prepare print…",
       "originalExport": "Back to original model export",
       "trigger": "Export…",
       "title": "Export model",
@@ -252,7 +253,7 @@
         "native": {
           "description": "Send a 3MF or STL mesh directly to an installed slicer. Review the model in the slicer before slicing or printing.",
           "targetLabel": "Slicer",
-          "targetDescription": "Installed applications and slicers you choose on this Mac.",
+          "targetDescription": "Detected applications and slicers you choose on this Mac.",
           "choose": "Choose slicer application…",
           "noApplications": "No supported slicer was found. Choose an installed slicer application.",
           "formatLabel": "Mesh format",
@@ -269,7 +270,8 @@
           "browserDescription": "Download a 3MF or STL mesh, then open it in your slicer.",
           "download": "Download {format}",
           "capacity": "Temporary mesh storage is full. Remove earlier handoff files in Finder and try again.",
-          "exportFailed": "The mesh could not be prepared. Try again after the model finishes rebuilding."
+          "exportFailed": "The mesh could not be prepared. Try again after the model finishes rebuilding.",
+          "exportFailedDetails": "The mesh could not be prepared: {details}"
         }
       },
       "threeMf": {
@@ -299,7 +301,7 @@
       "parts": {
         "label": "Export scope",
         "all": "All parts",
-        "description": "Exports include hidden parts. 3MF keeps the relative positions and names of the exported bodies."
+        "description": "Includes hidden parts. 3MF keeps body names and relative positions."
       },
       "textureExportHint": "STL and 3MF include surface relief. STEP exports the original CAD geometry.",
       "meshStepError": "STEP export requires exact solids. Export mesh parts as STL or 3MF.",
@@ -308,7 +310,7 @@
         "default": "Default",
         "coarse": "Coarse",
         "fine": "Fine",
-        "description": "Controls curved-surface tessellation for STL, 3MF, and print copies. Finer meshes increase file size. Imported meshes retain their source resolution.",
+        "description": "Finer meshes increase file size. Imported meshes keep their source resolution.",
         "tolerance": "Chord tolerance: {chord} mm; angular tolerance: {angle} rad."
       },
       "destination": {
@@ -750,6 +752,7 @@
         "saving": "Saving…",
         "saved": "Saved",
         "saveStatusLabel": "Project save status",
+        "assistantWorking": "AI working…",
         "untitledProject": "Untitled project",
         "enableAi": "Enable AI session",
         "disableAi": "Disable AI session",
@@ -1718,6 +1721,7 @@
         "ariaLabel": "3D viewport",
         "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",
+        "edgePreparationFailed": "Model outlines could not be prepared. Surfaces and selection remain available.",
         "fit": "Fit view",
         "standardViews": "Standard views",
         "viewBack": "Back",
@@ -2211,8 +2215,8 @@
       "unavailable": "No current body; inspect History.",
       "hidePart": "Hide part {name}",
       "showPart": "Show part {name}",
-      "visibilityFailed": "Visibility could not be saved. Try again.",
-      "visibilityStale": "The document changed. Check the current visibility and try again.",
+      "visibilityFailed": "Visibility for {name} could not be saved. Try again.",
+      "visibilityStale": "The document changed. Check the current visibility for {name} and try again.",
       "cancel": "Cancel",
       "name": "Name",
       "nameDescription": "Use 1–120 characters. Identity stays unchanged.",
@@ -3615,6 +3619,12 @@
       "storageFailed": "Open project tabs could not be remembered on this device."
     },
     "assistant": {
+      "reconnecting": "Reconnecting… attempt {attempt} of {limit}",
+      "reconnectFailed": "Connection recovery stopped after {attempts, plural, =0 {a permanent error} one {# attempt} other {# attempts}}.",
+      "retryConnection": "Retry connection",
+      "cancelReconnect": "Cancel reconnect",
+      "modelReconnecting": "{attempt, plural, =0 {Waiting to restore the model connection…} other {Restoring the model connection… attempt # of {limit}}}",
+      "modelReconnectFailed": "Model connection recovery stopped after {attempts, plural, one {# attempt} other {# attempts}}. Retry the connection to continue.",
       "toolDetails": "Tool details",
       "toolCallCount": "{count, plural, one {# tool call} other {# tool calls}}",
       "toolCalls": "Tool calls",
@@ -3623,6 +3633,9 @@
       "toolFailureUnavailable": "The agent did not provide an error message for this call.",
       "changeReview": "Agent changes",
       "changesSaved": "Changes saved to this project",
+      "applyChanges": "Apply changes",
+      "applyingChanges": "Applying changes…",
+      "applyChangesFailed": "Changes could not be applied ({code}). Review the current model and preview again.",
       "toolAction": "{action, select, create_cylinder {Create cylinder} draft_body_measurements {Measure draft body} create_union {Union bodies} preview_draft {Preview draft} create_draft {Create draft} commit_draft {Apply draft changes} discard_draft {Discard draft} create_variable {Create draft variable} set_variable_expression {Edit draft variable} replace_variable_table {Replace draft variables} draft_variables {Inspect draft variables} render_preview {Render preview} create_box {Create box} create_boolean {Create Boolean operation} create_body_subtract {Subtract bodies} other {{name}}}",
       "toolPurpose": "{action, select, create_cylinder {Add a cylinder to an unsaved CAD draft.} draft_body_measurements {Measure one body in the current draft.} create_union {Combine bodies in an unsaved CAD draft.} preview_draft {Check draft geometry before applying changes.} create_draft {Start an unsaved set of proposed CAD changes.} commit_draft {Validate draft changes and request Apply or use existing auto-apply consent.} discard_draft {Discard proposed draft changes without changing the saved model.} create_variable {Add a variable to an unsaved CAD draft.} set_variable_expression {Change a variable expression in an unsaved CAD draft.} replace_variable_table {Replace variable definitions in an unsaved CAD draft.} draft_variables {Inspect the variables defined in the draft.} render_preview {Render the selected model or draft revision.} create_box {Add a box to an unsaved CAD draft.} create_boolean {Propose a Boolean operation in an unsaved CAD draft.} create_body_subtract {Subtract bodies in an unsaved CAD draft.} other {Inspect this tool’s parameters and reported output.}}",
       "toolParameters": "Parameters",

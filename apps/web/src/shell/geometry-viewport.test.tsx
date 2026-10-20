@@ -64,6 +64,7 @@ const {
   withActiveSketchDisplay,
 } = await import("./geometry-viewport")
 const { WorkspaceTaskProvider } = await import("./workspace-task-context")
+const { ApplicationNoticesProvider } = await import("./application-notices")
 
 class ResizeObserverMock {
   observe() {}
@@ -450,29 +451,31 @@ function renderViewport(
   ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
-        <WorkspaceTaskProvider value={nextWorkspaceTask}>
-          <GeometryViewport
-            controller={nextController}
-            createViewport={createViewport}
-            selection={selection}
-            onSelectionChange={onSelectionChange}
-            {...optionalProp("sketchContext", nextSketchContext)}
-            {...featureHighlight}
-            partVisibilityOverrides={nextPartVisibility}
-            {...optionalProp("featurePreview", nextFeaturePreview)}
-            {...optionalProp("originPlaneSelection", originPlaneSelection)}
-            {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
-            {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
-            {...optionalProp("sketchProfileSelection", sketchProfileSelection)}
-            {...optionalProp("sketchProfilePreview", nextSketchProfilePreview)}
-            hiddenSketchIds={nextHiddenSketchIds}
-            {...optionalProp("translationGizmo", translationGizmo)}
-            {...optionalProp("axialGizmo", nextAxialGizmo ?? undefined)}
-            axialGizmoPending={nextAxialGizmoPending}
-            {...optionalProp("angularGizmo", angularGizmo)}
-            toolPlane={nextToolPlane}
-          />
-        </WorkspaceTaskProvider>
+        <ApplicationNoticesProvider>
+          <WorkspaceTaskProvider value={nextWorkspaceTask}>
+            <GeometryViewport
+              controller={nextController}
+              createViewport={createViewport}
+              selection={selection}
+              onSelectionChange={onSelectionChange}
+              {...optionalProp("sketchContext", nextSketchContext)}
+              {...featureHighlight}
+              partVisibilityOverrides={nextPartVisibility}
+              {...optionalProp("featurePreview", nextFeaturePreview)}
+              {...optionalProp("originPlaneSelection", originPlaneSelection)}
+              {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
+              {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
+              {...optionalProp("sketchProfileSelection", sketchProfileSelection)}
+              {...optionalProp("sketchProfilePreview", nextSketchProfilePreview)}
+              hiddenSketchIds={nextHiddenSketchIds}
+              {...optionalProp("translationGizmo", translationGizmo)}
+              {...optionalProp("axialGizmo", nextAxialGizmo ?? undefined)}
+              axialGizmoPending={nextAxialGizmoPending}
+              {...optionalProp("angularGizmo", angularGizmo)}
+              toolPlane={nextToolPlane}
+            />
+          </WorkspaceTaskProvider>
+        </ApplicationNoticesProvider>
       </TooltipProvider>
     </I18nProvider>
   )
@@ -714,6 +717,27 @@ describe("assistant draft preview display", () => {
 })
 
 describe("GeometryViewport", () => {
+  it("reports outline preparation failure outside the viewport without disabling surfaces or selection", async () => {
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const { port, createViewport, onSelectionChange, unmount } = renderViewport(controller)
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalled())
+    const options = createViewport.mock.calls[0]?.[1]
+    if (!options?.onEdgePreparationError) throw new Error("Expected outline failure reporting.")
+    act(() => options.onEdgePreparationError?.(new Error("Fixture worker failure")))
+    expect(screen.getByRole("alert").textContent).toContain("Model outlines could not be prepared")
+    expect(
+      screen.getByRole("region", { name: "3D viewport" }).querySelector('[role="alert"]'),
+    ).toBeNull()
+    expect(screen.queryByText(/WebGL2 is unavailable/)).toBeNull()
+    act(() => options.onSelectionChange?.({ featureId: boxId, faceId: 1, faceOrdinal: 1 }))
+    expect(onSelectionChange).toHaveBeenCalledWith({ featureId: boxId, faceId: 1, faceOrdinal: 1 })
+    unmount()
+    act(() => options.onEdgePreparationError?.(new Error("Late fixture failure")))
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
   it("renders baseline authority and visibility without current previews, selection, or persistence", async () => {
     const { controller, current, presentation } = checkpointViewportFixture()
     const firstPart = requireAuthoredFixture(presentation.target.authority.parts[0])
