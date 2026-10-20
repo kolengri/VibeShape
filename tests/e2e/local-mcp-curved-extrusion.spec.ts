@@ -221,7 +221,9 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
     await item.click()
     const edit = page.getByRole("form", { name: "Edit extrusion" })
     await expect(edit.getByLabel("End condition")).toHaveValue("up-to-face")
-    await expect(edit.getByLabel("End face")).toHaveValue(JSON.stringify(selected.reference))
+    await expect(edit.locator('select[name="endFace"]')).toHaveValue(
+      JSON.stringify(selected.reference),
+    )
     await edit.getByRole("combobox", { name: "Start offset", exact: true }).fill("2 mm")
     await expect(viewport).toHaveAttribute("data-preview-status", "ready")
     await edit.getByRole("button", { name: "Update extrusion", exact: true }).click()
@@ -242,7 +244,9 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
     await expect(edit.getByRole("combobox", { name: "Start offset", exact: true })).toHaveValue(
       "2 mm",
     )
-    await expect(edit.getByLabel("End face")).toHaveValue(JSON.stringify(selected.reference))
+    await expect(edit.locator('select[name="endFace"]')).toHaveValue(
+      JSON.stringify(selected.reference),
+    )
     expect(await saved()).toMatchObject({ type: { schemaVersion: 7 } })
   } finally {
     await page.goto("about:blank").catch(() => undefined)

@@ -572,11 +572,17 @@ export async function renderModelPreview(
 /** Keeps every surface triangle; image size is bounded by resolution rather than missing geometry. */
 export async function renderProjectThumbnail(
   meshes: readonly ViewerMesh[],
+  options: Readonly<{ signal?: AbortSignal }> = {},
 ): Promise<ProjectThumbnail | null> {
-  if (meshes.length === 0) return null
-  const request = snapshotRequest(meshes, { views: ["isometric"] })
-  return enqueuePreview(() =>
-    withPreviewRenderer(request, async (renderer, scene, output, context, assertContext) => {
+  const { signal } = options
+  if (meshes.length === 0 || signal?.aborted) return null
+  // Cancellable background jobs borrow immutable display snapshots until the queue accepts them.
+  // Explicit calls keep their eager snapshot semantics.
+  const prepared = signal ? undefined : snapshotRequest(meshes, { views: ["isometric"] })
+  return enqueuePreview(async () => {
+    if (signal?.aborted) return null
+    const request = prepared ?? snapshotRequest(meshes, { views: ["isometric"] })
+    return withPreviewRenderer(request, async (renderer, scene, output, context, assertContext) => {
       output.width = 240
       output.height = 160
       renderer.setSize(output.width, output.height, false)
@@ -586,10 +592,12 @@ export async function renderProjectThumbnail(
       context.drawImage(renderer.domElement, 0, 0)
       const png = await encodePng(output)
       assertContext()
+      if (signal?.aborted) return null
       if (png.size > 128 * 1_024) throw previewError("the project thumbnail exceeds 128 KiB.")
       const bytes = new Uint8Array(await png.arrayBuffer())
       assertContext()
+      if (signal?.aborted) return null
       return { mediaType: "image/png", bytes }
-    }),
-  )
+    })
+  })
 }

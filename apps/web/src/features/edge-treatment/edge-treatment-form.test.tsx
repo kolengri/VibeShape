@@ -1,5 +1,5 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -107,7 +107,21 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof EdgeTreatment
   return { ...view, props, onSave: props.onSave }
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("EdgeTreatmentForm", () => {
   it("projects every retained edge into the selected source's viewport overlay and rejects a stale task context", () => {
@@ -197,9 +211,11 @@ describe("EdgeTreatmentForm", () => {
         screen.getByRole<HTMLInputElement>("radio", { name: copy.selectedEdges }).checked,
       ).toBe(true)
       expect(screen.getByRole("status").textContent).toBe("0 edges selected")
-      expect(screen.getByRole<HTMLSelectElement>("combobox", { name: copy.target }).value).toBe(
+      const form = screen.getByRole("form") as HTMLFormElement
+      expect((form.elements.namedItem("targetFeatureId") as HTMLSelectElement).value).toBe(
         secondTargetId,
       )
+      expect(screen.getByRole("combobox", { name: copy.target }).textContent).toContain("Box 2")
       expect(onPickingContextChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
           targetFeatureId: secondTargetId,
@@ -415,7 +431,8 @@ describe("EdgeTreatmentForm", () => {
     })
     const user = userEvent.setup()
     await user.click(screen.getByRole("combobox", { name: copy.target }))
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), secondTargetId)
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Box 2")
+    await user.click(screen.getByRole("option", { name: "Box 2" }))
     await waitFor(() => expect(onPreviewChange).toHaveBeenLastCalledWith(null))
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(await screen.findByText(copy.missingEdge)).toBeTruthy()

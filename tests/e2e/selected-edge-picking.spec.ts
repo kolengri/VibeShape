@@ -68,8 +68,12 @@ test("picks a source edge graphically and explicitly repairs a change to a congr
   await expect(submit).toBeEnabled()
   await page.screenshot({ path: test.info().outputPath("graphical-selected-edge.png") })
   const targetBody = form.getByRole("combobox", { name: "Target body", exact: true })
-  await expect(targetBody.locator("option:checked")).toHaveText("Box 1")
-  await targetBody.selectOption({ label: "Box 2" })
+  await expect(
+    form.getByRole("button", { name: "Select Target body in 3D", exact: true }),
+  ).toHaveText("Box 1")
+  await targetBody.click()
+  await page.getByRole("combobox", { name: "Search options…", exact: true }).fill("Box 2")
+  await page.getByRole("option", { name: "Box 2", exact: true }).click()
   await expect(
     form.getByText("Missing edge — remove it and select a replacement.", { exact: true }),
   ).toBeVisible()

@@ -34,8 +34,8 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
@@ -846,7 +846,7 @@ function ExtrusionOperationField({ controller }: { controller: ExtrusionFormCont
   return (
     <form.Field name="operation">
       {(field) => (
-        <SelectField
+        <ChoiceField
           name={field.name}
           value={field.state.value}
           label={controller.copy.operation}
@@ -856,12 +856,13 @@ function ExtrusionOperationField({ controller }: { controller: ExtrusionFormCont
             controller.clearSubmissionErrors()
             field.handleChange(value)
           }}
-        >
-          <SelectOption value="new">{controller.copy.operationNew}</SelectOption>
-          <SelectOption value="add">{controller.copy.operationAdd}</SelectOption>
-          <SelectOption value="remove">{controller.copy.operationRemove}</SelectOption>
-          <SelectOption value="intersect">{controller.copy.operationIntersect}</SelectOption>
-        </SelectField>
+          options={[
+            { value: "new", label: controller.copy.operationNew },
+            { value: "add", label: controller.copy.operationAdd },
+            { value: "remove", label: controller.copy.operationRemove },
+            { value: "intersect", label: controller.copy.operationIntersect },
+          ]}
+        />
       )}
     </form.Field>
   )

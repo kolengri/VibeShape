@@ -167,7 +167,7 @@
 }
 
 .workspace-panel--task[data-collapsed="true"] {
-  visibility: hidden;
+  display: none;
 }
 
 .cad-workspace-grid[data-transparent="false"] .workspace-panel {

@@ -23,48 +23,10 @@ import {
 } from "../commands/editor-command-presentation"
 
 const recentStorageKey = "vibeshape.editor-command-recents.v1"
-const recentCommandIdsSchema = z
-  .array(
-    z.enum([
-      editorCommandIds.openShortcutHelp,
-      editorCommandIds.cancelActive,
-      editorCommandIds.documentUndo,
-      editorCommandIds.documentRedo,
-      editorCommandIds.createFillet,
-      editorCommandIds.createChamfer,
-      editorCommandIds.createBox,
-      editorCommandIds.createCylinder,
-      editorCommandIds.createExtrusion,
-      editorCommandIds.createRevolve,
-      editorCommandIds.createSketch,
-      editorCommandIds.createSubtract,
-      editorCommandIds.sketchAlignedRectangle,
-      editorCommandIds.sketchArc,
-      editorCommandIds.sketchEllipticalArc,
-      editorCommandIds.sketchMidpointLine,
-      editorCommandIds.sketchThreePointArc,
-      editorCommandIds.sketchThreePointCircle,
-      editorCommandIds.sketchCenterRectangle,
-      editorCommandIds.sketchCenteredAlignedRectangle,
-      editorCommandIds.sketchCenteredSlot,
-      editorCommandIds.sketchCircle,
-      editorCommandIds.sketchConstruction,
-      editorCommandIds.sketchDimension,
-      editorCommandIds.sketchLine,
-      editorCommandIds.sketchPoint,
-      editorCommandIds.sketchRectangle,
-      editorCommandIds.sketchRedo,
-      editorCommandIds.sketchSelect,
-      editorCommandIds.sketchSlot,
-      editorCommandIds.sketchSlotAroundLine,
-      editorCommandIds.sketchTangentArc,
-      editorCommandIds.sketchUse,
-      editorCommandIds.sketchUndo,
-      editorCommandIds.workspaceModel,
-      editorCommandIds.workspaceSketch,
-    ]),
-  )
-  .max(6)
+const recentCommandIdsSchema = z.array(z.string().catch("")).max(100)
+const knownCommandIds = new Map<string, EditorCommandId>(
+  Object.values(editorCommandIds).map((id) => [id, id]),
+)
 
 const groupOrder: readonly EditorCommandGroup[] = ["workspace", "modeling", "sketch", "history"]
 
@@ -89,7 +51,12 @@ function readRecentCommandIds(): readonly EditorCommandId[] {
     const source = localStorage.getItem(recentStorageKey)
     if (!source) return []
     const parsed = recentCommandIdsSchema.safeParse(JSON.parse(source))
-    return parsed.success ? parsed.data : []
+    if (!parsed.success) return []
+    const known = parsed.data.flatMap((value) => {
+      const id = knownCommandIds.get(value)
+      return id ? [id] : []
+    })
+    return [...new Set(known)].slice(0, 6)
   } catch {
     return []
   }

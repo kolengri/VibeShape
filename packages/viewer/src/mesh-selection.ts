@@ -5,6 +5,24 @@ import type { ViewerMesh, ViewerSelection } from "./three-viewport"
 
 // Display snapshots are immutable; replacing face metadata gets a new, independently collectible index.
 const faceOrdinals = new WeakMap<Uint32Array, ReadonlyMap<number, number>>()
+const faceTriangles = new WeakMap<Uint32Array, ReadonlyMap<number, readonly number[]>>()
+
+function trianglesForFace(ids: Uint32Array, faceId: number) {
+  let faces = faceTriangles.get(ids)
+  if (!faces) {
+    const index = new Map<number, number[]>()
+    for (let triangle = 0; triangle < ids.length; triangle += 1) {
+      const id = ids[triangle]
+      if (id === undefined) continue
+      const triangles = index.get(id)
+      if (triangles) triangles.push(triangle)
+      else index.set(id, [triangle])
+    }
+    faces = index
+    faceTriangles.set(ids, faces)
+  }
+  return faces.get(faceId)
+}
 
 export function viewerFaceOrdinal(mesh: ViewerMesh, faceId: number) {
   let ordinals = faceOrdinals.get(mesh.triangleFaceIds)
@@ -57,16 +75,12 @@ export function firstViewerSelectionHit(
 }
 
 export function createFaceHighlightGeometry(mesh: ViewerMesh, faceId: number) {
-  const triangleCount = mesh.triangleFaceIds.reduce(
-    (count, candidate) => count + Number(candidate === faceId),
-    0,
-  )
-  if (triangleCount === 0) return null
-  const positions = new Float32Array(triangleCount * 9)
-  const normals = new Float32Array(triangleCount * 9)
+  const triangles = trianglesForFace(mesh.triangleFaceIds, faceId)
+  if (!triangles) return null
+  const positions = new Float32Array(triangles.length * 9)
+  const normals = new Float32Array(triangles.length * 9)
   let targetOffset = 0
-  for (let triangle = 0; triangle < mesh.triangleFaceIds.length; triangle += 1) {
-    if (mesh.triangleFaceIds[triangle] !== faceId) continue
+  for (const triangle of triangles) {
     for (let corner = 0; corner < 3; corner += 1) {
       const vertexIndex = mesh.indices[triangle * 3 + corner]
       if (vertexIndex === undefined) return null

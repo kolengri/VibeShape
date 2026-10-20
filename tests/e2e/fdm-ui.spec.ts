@@ -1,4 +1,5 @@
 import { readFdmFeatureParameters } from "../../packages/domain/src/part-design-fdm"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
@@ -91,6 +92,11 @@ test("switches directly between differently typed FDM edits without replacing au
       timeout: 30_000,
     })
     await form.getByRole("button", { name: "Create", exact: true }).click()
+    await expect(form).not.toBeVisible()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+      "data-preview-status",
+      "idle",
+    )
     await saved(page)
   }
   await page.getByRole("treeitem", { name: "FDM feature 1", exact: true }).click()
@@ -98,11 +104,33 @@ test("switches directly between differently typed FDM edits without replacing au
   await expect(form.getByRole("combobox", { name: "Tool", exact: true })).toContainText(
     "Calibration coupon",
   )
+  await expect(form.getByRole("button", { name: "Update", exact: true })).toBeEnabled({
+    timeout: 30_000,
+  })
   await page.getByRole("treeitem", { name: "FDM feature 2", exact: true }).click()
   form = page.getByRole("form", { name: "Edit FDM feature", exact: true })
   await expect(form.getByRole("combobox", { name: "Tool", exact: true })).toContainText(
     "Flexible sleeve",
   )
+  const toolBounds = await form.getByRole("combobox", { name: "Tool", exact: true }).boundingBox()
+  expect(toolBounds?.height).toBeLessThan(64)
+  const toolFieldHeight = await form
+    .getByRole("combobox", { name: "Tool", exact: true })
+    .evaluate((element) => element.closest('[data-slot="field"]')?.getBoundingClientRect().height)
+  expect(toolFieldHeight).toBeLessThan(100)
+  for (const theme of ["dark", "light"] as const) {
+    await openApplicationMenuItem(page, "Settings…")
+    const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+    await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
+    await page
+      .getByRole("option", { name: theme === "dark" ? "Dark" : "Light", exact: true })
+      .click()
+    await settings.getByRole("button", { name: "Done", exact: true }).click()
+    await page.screenshot({
+      path: test.info().outputPath(`fdm-edit-switch-${theme}.png`),
+      animations: "disabled",
+    })
+  }
   await expect(form.getByRole("combobox", { name: "Outer diameter", exact: true })).toHaveValue(
     "14 mm",
   )

@@ -1,5 +1,5 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, beforeAll, expect, it } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
@@ -17,7 +17,20 @@ const units = { length: "mm", angle: "deg" } as const
 beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 function setup(
   onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({ ok: true as const })),
   kind: FdmToolKind = "calibration-coupon",
@@ -111,11 +124,9 @@ it("restores the coupon feature with its authored dimensions", () => {
 it("limits wall extension to Web and clears the incompatible setting when choosing Rib", async () => {
   setup(undefined, "web")
   await userEvent.click(screen.getByRole("checkbox", { name: "Extend lines to cavity walls" }))
-  fireEvent.keyDown(screen.getByRole("combobox", { name: "Reinforcement type" }), { key: "Enter" })
-  await userEvent.click(screen.getByRole("option", { name: "Rib / gusset" }))
+  await userEvent.click(screen.getByRole("radio", { name: "Rib / gusset" }))
   expect(screen.queryByRole("checkbox", { name: "Extend lines to cavity walls" })).toBeNull()
-  fireEvent.keyDown(screen.getByRole("combobox", { name: "Reinforcement type" }), { key: "Enter" })
-  await userEvent.click(screen.getByRole("option", { name: /^Web$/ }))
+  await userEvent.click(screen.getByRole("radio", { name: /^Web$/ }))
   expect(
     (screen.getByRole("checkbox", { name: "Extend lines to cavity walls" }) as HTMLInputElement)
       .checked,
@@ -124,9 +135,9 @@ it("limits wall extension to Web and clears the incompatible setting when choosi
 
 it("pairs all twelve FDM tool choices with distinct decorative artwork", async () => {
   setup()
-  fireEvent.keyDown(screen.getByRole("combobox", { name: messages.app.fdm.kind }), { key: "Enter" })
-  const options = await screen.findAllByRole("option")
-  expect(options).toHaveLength(12)
+  await userEvent.click(screen.getByRole("combobox", { name: messages.app.fdm.kind }))
+  await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(12))
+  const options = screen.getAllByRole("option")
   const ids = options.map((option) =>
     option.querySelector("svg[data-icon]")?.getAttribute("data-icon"),
   )

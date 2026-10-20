@@ -42,6 +42,14 @@ async function choose(label: string, option: string) {
 beforeEach(() => {
   vi.stubGlobal("crypto", webcrypto)
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
 })
 afterEach(() => {
   cleanup()
@@ -245,6 +253,26 @@ describe("Assembly forms", () => {
     const quaternion = a.onApply.mock.calls[0]?.[0]?.[0].instance.worldFrame.quaternion
     expect(quaternion[2]).toBeCloseTo(Math.SQRT1_2, 14)
     expect(quaternion[3]).toBeCloseTo(Math.SQRT1_2, 14)
+  })
+
+  it("closes definition search before Escape cancels the assembly task", async () => {
+    const f = assemblyUiFixture(),
+      a = actions()
+    setup(<AssemblyInstanceForm assembly={f.assembly} actions={a} />, "Add instance")
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Unsaved bracket" } })
+    fireEvent.change(screen.getByLabelText("X (mm)"), { target: { value: "30" } })
+    const trigger = screen.getByRole("combobox", { name: "Definition" })
+    await userEvent.click(trigger)
+    await userEvent.type(screen.getByRole("combobox", { name: "Search options…" }), "missing")
+    await userEvent.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull())
+    expect(a.onCancel).not.toHaveBeenCalled()
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Unsaved bracket")
+    expect((screen.getByLabelText("X (mm)") as HTMLInputElement).value).toBe("30")
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    await userEvent.keyboard("{Escape}")
+    expect(a.onCancel).toHaveBeenCalledTimes(1)
+    expect(a.onApply).not.toHaveBeenCalled()
   })
 
   it("locks header actions during apply and preserves edited instance fields after failure", async () => {

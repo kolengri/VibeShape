@@ -28,6 +28,7 @@ import { ActionAvailability } from "../components/action-availability"
 import { NativeEditorCommandBridge } from "../desktop/native-editor-commands"
 import { SketchConstraintManagerToolbarSlot } from "../features/sketch/sketch-toolbar-portals"
 import { useResponsiveToolbar } from "./responsive-toolbar"
+import { ToolbarCommandPicker } from "./toolbar-command-picker"
 
 function ToolbarAction({
   buttonClassName,
@@ -352,7 +353,11 @@ function ToolbarCommandMenu(props: ToolbarCommandMenuProps) {
         label={props.getLabel(first)}
       />
     )
-  return <ToolbarCommandDropdown {...props} triggerRef={triggerRef} />
+  return props.commands.length > 6 ? (
+    <ToolbarCommandPicker {...props} triggerRef={triggerRef} />
+  ) : (
+    <ToolbarCommandDropdown {...props} triggerRef={triggerRef} />
+  )
 }
 
 function ToolbarCommandDropdown({

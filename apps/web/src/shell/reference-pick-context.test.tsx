@@ -1,16 +1,31 @@
 import "../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { type ReactNode, useLayoutEffect, useState } from "react"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import { ReferencePickField } from "../features/part-design/reference-pick-field"
 import { i18n } from "../i18n"
 import { ReferencePickProvider, useReferencePicking } from "./reference-pick-context"
 import type { ReferencePickCandidate } from "./reference-picking"
 
-afterEach(cleanup)
+beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const mesh = {
   positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
@@ -180,7 +195,7 @@ function App({
 }
 
 describe("workspace reference picking", () => {
-  it("keeps joined controls keyboard reachable and cancels 3D picking when the native list changes", async () => {
+  it("keeps joined controls keyboard reachable and cancels 3D picking after searching a large body list", async () => {
     const user = userEvent.setup()
     const onChange = mock((_value: string) => {})
     const onBlur = mock(() => {})
@@ -197,6 +212,10 @@ describe("workspace reference picking", () => {
             options={[
               { value: "right", label: "Split · right" },
               { value: "left", label: "Split · left", disabled: true },
+              ...Array.from({ length: 64 }, (_, index) => ({
+                value: `body-${index}`,
+                label: `Additional body ${index + 1}`,
+              })),
             ]}
             candidates={candidates}
             required
@@ -217,58 +236,90 @@ describe("workspace reference picking", () => {
       </App>,
     )
     const pick = screen.getByRole("button", { name: "Select Target solid in 3D" })
-    const select = screen.getByRole("combobox", { name: "Target solid" }) as HTMLSelectElement
-    expect(select.name).toBe("targetBody")
-    expect(select.required).toBe(true)
-    expect(select.checkValidity()).toBe(false)
+    const trigger = screen.getByRole("combobox", { name: "Target solid" })
+    const form = screen.getByRole("form", { name: "References" }) as HTMLFormElement
+    const backingSelect = form.elements.namedItem("targetBody") as HTMLSelectElement
+    expect(backingSelect.name).toBe("targetBody")
+    expect(backingSelect.required).toBe(true)
+    expect(backingSelect.validity.valueMissing).toBe(true)
 
     await user.tab()
-    expect(document.activeElement).toBe(pick)
+    expect(document.activeElement === pick).toBe(true)
     await user.keyboard("{Enter}")
     expect(pick.getAttribute("aria-pressed")).toBe("true")
     expect(latest?.viewportContext).toBeTruthy()
     await user.tab()
-    expect(document.activeElement).toBe(select)
+    expect(document.activeElement === trigger).toBe(true)
     expect(onBlur).toHaveBeenCalledTimes(1)
-    await user.selectOptions(select, "right")
+    expect(backingSelect.checkValidity()).toBe(false)
+    await user.keyboard("{Enter}")
+    expect(screen.getAllByRole("option")).toHaveLength(67)
+    expect(screen.getByRole("option", { name: "Choose a body" })).toBeTruthy()
+    const search = screen.getByRole("combobox", { name: "Search options…" })
+    expect(document.activeElement === search).toBe(true)
+    expect(onBlur).toHaveBeenCalledTimes(1)
+    await user.type(search, "Split · right")
+    expect(onBlur).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByRole("option")).toHaveLength(1)
+    expect(pick.getAttribute("aria-pressed")).toBe("true")
+    expect(latest?.viewportContext).toBeTruthy()
+    await user.click(screen.getByRole("option", { name: "Split · right" }))
+    expect(onBlur).toHaveBeenCalledTimes(1)
     expect(onChange).toHaveBeenCalledWith("right")
     expect(pick.textContent).toContain("Split · right")
     expect(pick.getAttribute("aria-pressed")).toBe("false")
     expect(latest?.viewportContext).toBeUndefined()
-    expect(select.checkValidity()).toBe(true)
-    await user.selectOptions(select, "left")
+    expect(backingSelect.checkValidity()).toBe(true)
+    expect(new FormData(form).get("targetBody")).toBe("right")
+    await user.click(trigger)
+    const disabledOption = screen.getByRole("option", { name: "Split · left" })
+    expect(disabledOption.getAttribute("aria-disabled")).toBe("true")
+    await user.click(disabledOption)
     expect(onChange).toHaveBeenCalledTimes(1)
-    expect(select.value).toBe("right")
+    expect(backingSelect.value).toBe("right")
+    await user.keyboard("{Escape}")
+    expect(document.activeElement === trigger).toBe(true)
+    expect(onBlur).toHaveBeenCalledTimes(1)
     await user.tab()
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Next control" }))
+    expect(document.activeElement === screen.getByRole("button", { name: "Next control" })).toBe(
+      true,
+    )
     expect(onBlur).toHaveBeenCalledTimes(2)
   })
 
   it("retains missing references and associated errors when both joined controls are disabled", () => {
     render(
       <App state={controller()}>
-        <ReferencePickField
-          id="unavailable-solid"
-          label="Tool solid"
-          value="missing-body"
-          placeholder="Choose a body"
-          options={[]}
-          candidates={candidates}
-          disabled
-          required
-          description="Choose a committed body."
-          error="The selected body is unavailable."
-          onValueChange={() => {}}
-        />
+        <form aria-label="References">
+          <ReferencePickField
+            id="unavailable-solid"
+            name="toolBody"
+            label="Tool solid"
+            value="missing-body"
+            placeholder="Choose a body"
+            options={[]}
+            candidates={candidates}
+            disabled
+            required
+            description="Choose a committed body."
+            error="The selected body is unavailable."
+            onValueChange={() => {}}
+          />
+        </form>
       </App>,
     )
-    const select = screen.getByRole("combobox", { name: "Tool solid" }) as HTMLSelectElement
+    const select = screen.getByRole("combobox", { name: "Tool solid" }) as HTMLButtonElement
+    const form = screen.getByRole("form", { name: "References" }) as HTMLFormElement
+    const backingSelect = form.elements.namedItem("toolBody") as HTMLSelectElement
     const pick = screen.getByRole("button", {
       name: "Select Tool solid in 3D",
     }) as HTMLButtonElement
     expect(select.disabled).toBe(true)
     expect(pick.disabled).toBe(true)
-    expect(select.value).toBe("missing-body")
+    expect(backingSelect.disabled).toBe(true)
+    expect(backingSelect.required).toBe(true)
+    expect(backingSelect.value).toBe("missing-body")
+    expect(new FormData(form).has("toolBody")).toBe(false)
     expect(select.getAttribute("aria-invalid")).toBe("true")
     expect(pick.getAttribute("aria-invalid")).toBe("true")
     const descriptions =

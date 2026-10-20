@@ -1,6 +1,16 @@
+import type { Locator, Page } from "@playwright/test"
 import { createSolids, saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
+
+async function selectElement(page: Page, trigger: Locator, search: string, name: string | RegExp) {
+  await trigger.click()
+  await page.getByRole("combobox", { name: "Search options…", exact: true }).fill(search)
+  const option = page.getByRole("option", { name, exact: typeof name === "string" }).first()
+  const label = await option.innerText()
+  await option.click()
+  return label
+}
 
 test("measures revision-bound analytical edges, faces and explicit point pairs", async ({
   page,
@@ -15,29 +25,31 @@ test("measures revision-bound analytical edges, faces and explicit point pairs",
   const topology = page.getByRole("region", { name: "Topology measurements", exact: true })
   await expect(topology.getByLabel("Element", { exact: true })).toBeVisible()
   const element = topology.getByLabel("Element", { exact: true })
-  const faces = element.locator("option").filter({ hasText: /^Face \d+ · PLANE$/ })
-  const face = await faces.first().getAttribute("value")
-  if (!face) throw new Error("Box must expose analytical planar faces.")
-  await element.selectOption(face)
+  const face = await selectElement(page, element, "PLANE", /^Face \d+ · PLANE$/)
   await expect(topology.getByText("Face area", { exact: true })).toBeVisible()
   await topology.getByLabel("Compare with another element").check()
-  await topology.getByLabel("Second element").selectOption(face)
+  await selectElement(
+    page,
+    topology.getByRole("combobox", { name: "Second element", exact: true }),
+    face,
+    face,
+  )
   await expect(topology.getByText("Selected point distance", { exact: true })).toBeVisible()
   await expect(
     topology.getByText("Parallel supporting plane separation", { exact: true }),
   ).toBeVisible()
   await expect(topology.locator("dd").filter({ hasText: /^0 mm$/ })).toHaveCount(2)
-  const edge = await element
-    .locator("option")
-    .filter({ hasText: /^Edge \d+ · LINE$/ })
-    .first()
-    .getAttribute("value")
-  if (!edge) throw new Error("Box must expose analytical straight edges.")
-  await element.selectOption(edge)
+  const edge = await selectElement(page, element, "LINE", /^Edge \d+ · LINE$/)
   await expect(topology.getByText("Edge length", { exact: true })).toBeVisible()
-  await topology.getByLabel("Measurement point").first().selectOption("start")
-  await topology.getByLabel("Second element").selectOption(edge)
-  await topology.getByLabel("Measurement point").nth(1).selectOption("end")
+  const pointGroups = topology.getByRole("group", { name: "Measurement point", exact: true })
+  await pointGroups.first().getByRole("radio", { name: "Start point", exact: true }).check()
+  await selectElement(
+    page,
+    topology.getByRole("combobox", { name: "Second element", exact: true }),
+    edge,
+    edge,
+  )
+  await pointGroups.nth(1).getByRole("radio", { name: "End point", exact: true }).check()
   const length = topology
     .locator("dt")
     .filter({ hasText: /^Edge length$/ })
@@ -51,13 +63,7 @@ test("measures revision-bound analytical edges, faces and explicit point pairs",
   await expect(distance).toHaveText(await length.innerText())
   await page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true }).click()
   await expect(topology.getByLabel("Element", { exact: true })).toBeVisible()
-  const circle = await element
-    .locator("option")
-    .filter({ hasText: /^Edge \d+ · CIRCLE$/ })
-    .first()
-    .getAttribute("value")
-  if (!circle) throw new Error("Cylinder must expose analytical circular edges.")
-  await element.selectOption(circle)
+  await selectElement(page, element, "CIRCLE", /^Edge \d+ · CIRCLE$/)
   await expect(topology.getByText("Diameter", { exact: true })).toBeVisible()
-  await expect(topology.getByLabel("Measurement point", { exact: true })).toHaveValue("centroid")
+  await expect(pointGroups.getByRole("radio", { name: "Centroid", exact: true })).toBeChecked()
 })

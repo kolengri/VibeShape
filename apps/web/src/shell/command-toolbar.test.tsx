@@ -160,8 +160,15 @@ function measuredToolbar(initialWidth: number) {
   }
 }
 
-beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
-afterAll(() => vi.unstubAllGlobals())
+const originalScrollIntoView = Element.prototype.scrollIntoView
+beforeAll(() => {
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock)
+  Element.prototype.scrollIntoView = vi.fn()
+})
+afterAll(() => {
+  vi.unstubAllGlobals()
+  Element.prototype.scrollIntoView = originalScrollIntoView
+})
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -238,10 +245,10 @@ describe("CommandToolbar", () => {
     await waitFor(() => expect(document.activeElement).toBe(overflow))
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Redo" })).toBeTruthy()
-    await user.keyboard("{ArrowDown}")
+    await user.keyboard("{Enter}")
     expect(
       screen
-        .getAllByRole("menuitem")
+        .getAllByRole("option")
         .map((item) => item.getAttribute("data-command-id"))
         .sort(),
     ).toEqual(
@@ -253,11 +260,38 @@ describe("CommandToolbar", () => {
         .map((command) => command.descriptor.id)
         .sort(),
     )
-    expect(screen.getByRole("menuitem", { name: "Create sketch" })).toBeTruthy()
-    expect(screen.getByRole("menuitem", { name: "Box" })).toBeTruthy()
-    expect(screen.getByRole("menuitem", { name: "Measure" })).toBeTruthy()
-    await user.click(screen.getByRole("menuitem", { name: "Box" }))
+    expect(screen.getByRole("option", { name: "Create sketch" })).toBeTruthy()
+    expect(screen.getByRole("option", { name: "Box" })).toBeTruthy()
+    expect(screen.getByRole("option", { name: "Measure" })).toBeTruthy()
+    await user.click(screen.getByRole("option", { name: "Box" }))
     expect(actions.createBox).toHaveBeenCalledTimes(1)
+  })
+
+  it("filters the compact tool picker by name and invokes the keyboard choice once", async () => {
+    measuredToolbar(100)
+    const user = userEvent.setup()
+    renderToolbar(
+      commands().map((command) => ({ ...command, eligibility: { enabled: true as const } })),
+    )
+    const trigger = screen.getByRole("button", { name: "Modeling actions" })
+    await user.click(trigger)
+    const search = screen.getByRole("combobox", { name: "Search tools…" })
+    await user.type(search, "lightweight")
+    expect(
+      screen
+        .getAllByRole("option")
+        .map((option) => option.getAttribute("aria-label"))
+        .sort(),
+    ).toEqual(["Generative Design", "Lightweighting", "Quick lightweighting"])
+    await user.clear(search)
+    await user.type(search, "unavailable-tool-name")
+    expect(screen.getByText("No matching tools")).toBeTruthy()
+    await user.clear(search)
+    await user.type(search, "sphere")
+    await user.keyboard("{Enter}")
+    expect(actions.createSphere).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("shows tooltips only for icon-only command menu triggers", async () => {
@@ -280,10 +314,10 @@ describe("CommandToolbar", () => {
     const user = userEvent.setup()
     renderToolbar()
     await user.click(screen.getByRole("button", { name: "Modify" }))
-    const button = screen.getByRole("menuitem", { name: "Lightweighting" })
+    const button = screen.getByRole("option", { name: "Lightweighting" })
     expect(button.querySelector("svg")).toBeTruthy()
     expect(button.querySelector("img")).toBeNull()
-    const quickButton = screen.getByRole("menuitem", { name: "Quick lightweighting" })
+    const quickButton = screen.getByRole("option", { name: "Quick lightweighting" })
     expect(quickButton.querySelector("svg")?.innerHTML).not.toBe(
       button.querySelector("svg")?.innerHTML,
     )
@@ -572,7 +606,7 @@ describe("CommandToolbar", () => {
     expect(screen.queryByRole("menuitem", { name: "Subtract" })).toBeNull()
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Modify" }))
-    expect(screen.getByRole("menuitem", { name: "Subtract" })).toBeTruthy()
+    expect(screen.getByRole("option", { name: "Subtract" })).toBeTruthy()
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Measure" }))
     expect(actions.measure).toHaveBeenCalledTimes(1)
@@ -618,10 +652,11 @@ describe("CommandToolbar", () => {
       const menu = screen.queryByRole("button", { name })
       if (!menu) continue
       await user.click(menu)
-      const labels = screen.getAllByRole("menuitem").map((item) => item.ariaLabel ?? "")
+      const role = screen.queryByRole("dialog") ? "option" : "menuitem"
+      const labels = screen.getAllByRole(role).map((item) => item.ariaLabel ?? "")
       for (const [index, label] of labels.entries()) {
         if (index > 0) await user.click(screen.getByRole("button", { name }))
-        await user.click(screen.getByRole("menuitem", { name: label }))
+        await user.click(screen.getByRole(role, { name: label }))
       }
     }
     for (const command of modelCommands) {
@@ -642,7 +677,7 @@ describe("CommandToolbar", () => {
       ),
     )
     await user.click(screen.getByRole("button", { name: "Modify" }))
-    await user.click(screen.getByRole("menuitem", { name: "Box" }))
+    await user.click(screen.getByRole("option", { name: "Box" }))
     expect(actions.createBox).toHaveBeenCalledTimes(1)
   })
 
@@ -724,7 +759,7 @@ describe("CommandToolbar", () => {
     )
 
     await user.click(screen.getByRole("button", { name: "Sketch modification tools" }))
-    await user.click(screen.getByRole("menuitem", { name: "Extend" }))
+    await user.click(screen.getByRole("option", { name: "Extend" }))
 
     expect(actions.setSketchTool).toHaveBeenCalledWith("extend")
   })

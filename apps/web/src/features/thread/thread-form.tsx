@@ -1,9 +1,9 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { metricThreadPresets } from "@vibeshape/domain/part-design-thread"
 import { referenceAxisSchema } from "@vibeshape/domain/reference-frame"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -207,8 +207,9 @@ export function ThreadForm({
                   />
                 }
               >
-                <SelectField
+                <LocalizedSearchableSelectField
                   label={copy.metricSize}
+                  placeholder={copy.metricSize}
                   value={metricSize}
                   onValueChange={(value) => {
                     setMetricSize(value)
@@ -218,12 +219,14 @@ export function ThreadForm({
                     form.setFieldValue("nominalDiameter", `${preset.nominalDiameter} mm`)
                     form.setFieldValue("pitch", `${preset.pitch} mm`)
                   }}
-                >
-                  <SelectOption value="custom">{copy.customSize}</SelectOption>
-                  {metricThreadPresets.map(({ id, pitch }) => (
-                    <SelectOption key={id} value={id}>{`${id} × ${pitch}`}</SelectOption>
-                  ))}
-                </SelectField>
+                  options={[
+                    { value: "custom", label: copy.customSize },
+                    ...metricThreadPresets.map(({ id, pitch }) => ({
+                      value: id,
+                      label: `${id} × ${pitch}`,
+                    })),
+                  ]}
+                />
                 <p className="text-xs text-muted-foreground">{copy.metricSizeDescription}</p>
                 <form.Field name="kind">
                   {(field) => (

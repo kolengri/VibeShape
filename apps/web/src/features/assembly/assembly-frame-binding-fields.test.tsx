@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { assemblyFrameBindingSchema } from "@vibeshape/domain/assembly-mates"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -14,7 +14,20 @@ import { assemblyUiFixture } from "./assembly-test-fixture"
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 function fixture() {
   const f = assemblyUiFixture()
   const body = f.definition.pinnedModels[0]?.selectedBody
@@ -100,7 +113,8 @@ describe("saved frame binding identity", () => {
       const control = screen.getByRole("combobox", { name: "Child frame geometry" })
       expect(control.textContent).toContain("Unresolved saved reference")
       expect(onChange).not.toHaveBeenCalled()
-      fireEvent.keyDown(control, { key: "Enter" })
+      await userEvent.click(control)
+      await userEvent.type(screen.getByRole("combobox", { name: "Search options…" }), "PLANE")
       await userEvent.click(screen.getByRole("option", { name: /PLANE/ }))
       expect(onChange).toHaveBeenCalledWith(
         expect.objectContaining({ pinRevision: 2, body: f.body, sourceIndex: 0 }),
@@ -128,7 +142,7 @@ describe("saved frame binding identity", () => {
     )
     const control = screen.getByRole("combobox", { name: "Child frame geometry" })
     expect(control.textContent).toContain("Unresolved saved reference")
-    fireEvent.keyDown(control, { key: "Enter" })
+    await userEvent.click(control)
     expect(screen.queryByRole("option", { name: /PLANE/ })).toBeNull()
     expect(onChange).not.toHaveBeenCalled()
   })

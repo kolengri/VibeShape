@@ -7,7 +7,7 @@ import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { topoRefSchema } from "@vibeshape/domain/topology"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection, TopologyCandidate } from "@vibeshape/protocol"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { AssemblyNumberField, formNumber } from "./assembly-fields"
 
 function frameRecipe(candidate: TopologyCandidate): AssemblyFrameBinding["geometry"] | null {
@@ -141,8 +141,9 @@ export function AssemblyFrameBindingFields({
   const value = binding ? (selected?.key ?? "unresolved") : "explicit"
   return (
     <fieldset className="grid gap-2">
-      <SelectField
+      <LocalizedSearchableSelectField
         label={t(prefix === "parent" ? "parentBinding" : "childBinding")}
+        placeholder={t(prefix === "parent" ? "parentBinding" : "childBinding")}
         value={value}
         onValueChange={(key) => {
           if (key === "explicit") {
@@ -179,23 +180,26 @@ export function AssemblyFrameBindingFields({
             }),
           )
         }}
-      >
-        <SelectOption value="explicit">{t("explicitFrame")}</SelectOption>
-        {binding && !selected && (
-          <SelectOption value="unresolved">{t("unresolvedBinding")}</SelectOption>
-        )}
-        {options.map(({ key, candidate, occurrence }) => (
-          <SelectOption key={key} value={key}>
-            {t("topologyOption", {
+        options={[
+          { value: "explicit", label: t("explicitFrame") },
+          ...(binding && !selected
+            ? [{ value: "unresolved", label: t("unresolvedBinding"), disabled: true }]
+            : []),
+          ...options.map(({ key, candidate, occurrence }) => ({
+            value: key,
+            label: t("topologyOption", {
               kind: candidate.signature.geometryClass,
               source: occurrence.sourceIndex + 1,
               label:
                 candidate.semanticRole ??
                 candidate.signature.centroid.map((v) => v.toFixed(2)).join(", "),
-            })}
-          </SelectOption>
-        ))}
-      </SelectField>
+            }),
+            description:
+              assembly.definitions.find((definition) => definition.id === occurrence.definitionId)
+                ?.name ?? occurrence.definitionId,
+          })),
+        ]}
+      />
       {binding && (
         <div key={value} className="grid gap-2">
           <p className="text-xs text-muted-foreground">{t("frameBindingExplanation")}</p>

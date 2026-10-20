@@ -69,7 +69,7 @@ const triangle: ViewerMesh = {
   triangleFaceIds: new Uint32Array([1]),
 }
 
-function browserStub(sizes = [1_000], webglAvailable = true) {
+function browserStub(sizes = [1_000], webglAvailable = true, holdEncoding = false) {
   const labels: string[] = []
   const encodedWidths: number[] = []
   const context = {
@@ -82,6 +82,7 @@ function browserStub(sizes = [1_000], webglAvailable = true) {
     stroke: vi.fn(),
   }
   let encodingCount = 0
+  const pendingEncodings: (() => void)[] = []
   vi.stubGlobal("document", {
     createElement: () => {
       const canvas = Object.assign(new EventTarget(), {
@@ -96,13 +97,15 @@ function browserStub(sizes = [1_000], webglAvailable = true) {
         toBlob: (callback: BlobCallback) => {
           encodedWidths.push(canvas.width)
           const size = sizes[Math.min(encodingCount++, sizes.length - 1)] ?? 1_000
-          queueMicrotask(() => callback(new Blob([new Uint8Array(size)], { type: "image/png" })))
+          const finish = () => callback(new Blob([new Uint8Array(size)], { type: "image/png" }))
+          if (holdEncoding) pendingEncodings.push(finish)
+          else queueMicrotask(finish)
         },
       })
       return canvas
     },
   })
-  return { labels, encodedWidths }
+  return { labels, encodedWidths, pendingEncodings }
 }
 
 beforeEach(() => {
@@ -319,6 +322,68 @@ describe("model preview", () => {
 })
 
 describe("project thumbnail", () => {
+  it("skips superseded queued snapshots and keeps the latest revision behind an explicit preview", async () => {
+    const { pendingEncodings } = browserStub([1_000], true, true)
+    const explicit = renderModelPreview([triangle], { views: ["front"] })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances).toHaveLength(1)
+    const abort = new AbortController()
+    const obsolete = renderProjectThumbnail(
+      [
+        {
+          ...triangle,
+          get positions(): Float32Array {
+            throw new Error("Obsolete snapshot was prepared.")
+          },
+        },
+      ],
+      { signal: abort.signal },
+    )
+    abort.abort()
+    const latest = renderProjectThumbnail(
+      [
+        {
+          ...triangle,
+          indices: new Uint32Array([0, 1, 2, 2, 1, 0]),
+          triangleFaceIds: new Uint32Array([4, 5]),
+        },
+      ],
+      { signal: new AbortController().signal },
+    )
+    pendingEncodings.shift()?.()
+    await expect(explicit).resolves.toMatchObject({ views: ["front"] })
+    await expect(obsolete).resolves.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances).toHaveLength(2)
+    expect(rendererState.draws.at(-1)?.indexLengths).toEqual([6])
+    pendingEncodings.shift()?.()
+    await expect(latest).resolves.toMatchObject({ mediaType: "image/png" })
+    expect(rendererState.previousDisposed).toEqual([true, true])
+    for (const renderer of rendererState.instances) {
+      expect(renderer.dispose).toHaveBeenCalledTimes(1)
+      expect(renderer.forceContextLoss).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it("discards an in-flight thumbnail after cancellation while disposing resources and releasing the queue", async () => {
+    const { pendingEncodings } = browserStub([1_000], true, true)
+    const abort = new AbortController()
+    const obsolete = renderProjectThumbnail([triangle], { signal: abort.signal })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances).toHaveLength(1)
+    abort.abort()
+    const latest = renderProjectThumbnail([triangle])
+    pendingEncodings.shift()?.()
+    await expect(obsolete).resolves.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledTimes(1)
+    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledTimes(1)
+    expect(rendererState.instances).toHaveLength(2)
+    pendingEncodings.shift()?.()
+    await expect(latest).resolves.toMatchObject({ mediaType: "image/png" })
+    expect(rendererState.instances[1]?.dispose).toHaveBeenCalledTimes(1)
+  })
+
   it("renders all dense surface triangles in one unlabeled isometric image and releases resources", async () => {
     const { labels, encodedWidths } = browserStub()
     const indices = Uint32Array.from({ length: 12_000 }, (_, index) => index % 3)

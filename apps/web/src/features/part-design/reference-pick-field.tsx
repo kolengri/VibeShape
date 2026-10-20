@@ -2,13 +2,14 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Scan } from "@vibeshape/ui/components/icons"
-import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import type { SearchableSelectOption } from "@vibeshape/ui/components/searchable-select-field"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type FocusEventHandler, type ReactNode, useLayoutEffect, useRef, useState } from "react"
+import { LocalizedSearchableSelectControl } from "../../components/localized-searchable-select-field"
 import { useReferencePicking } from "../../shell/reference-pick-context"
 import type { ReferencePickCandidate } from "../../shell/reference-picking"
 
-export type ReferencePickOption = Readonly<{ value: string; label: string; disabled?: boolean }>
+export type ReferencePickOption = SearchableSelectOption
 export type ReferencePickFieldProps = Readonly<{
   id: string
   label: string
@@ -69,10 +70,11 @@ function ReferenceSelectControl({
   compact = false,
   onBeforeChange,
 }: ReferenceControlProps & Readonly<{ compact?: boolean; onBeforeChange?: () => void }>) {
-  const retainMissingValue =
-    field.value !== "" && !field.options.some((option) => option.value === field.value)
+  const options = field.options.some((option) => option.value === "")
+    ? field.options
+    : [{ value: "", label: field.placeholder }, ...field.options]
   return (
-    <NativeSelect
+    <LocalizedSearchableSelectControl
       id={field.id}
       name={field.name}
       value={field.value}
@@ -82,27 +84,19 @@ function ReferenceSelectControl({
       aria-describedby={describedBy}
       aria-invalid={field.error ? true : undefined}
       onBlur={field.onBlur}
+      options={options}
+      placeholder={field.placeholder}
+      iconOnly={compact}
       className={
         compact
-          ? cn(
-              "h-full w-full rounded-l-none border-0 border-l border-input px-0",
-              "bg-transparent text-transparent dark:bg-transparent [&_option]:bg-background [&_option]:text-foreground",
-            )
+          ? "h-full rounded-l-none border-0 border-l border-input bg-transparent shadow-none dark:bg-transparent"
           : undefined
       }
-      onChange={(event) => {
+      onValueChange={(value) => {
         onBeforeChange?.()
-        field.onValueChange(event.currentTarget.value)
+        field.onValueChange(value)
       }}
-    >
-      <option value="">{field.placeholder}</option>
-      {retainMissingValue ? <option value={field.value}>{field.placeholder}</option> : null}
-      {field.options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </option>
-      ))}
-    </NativeSelect>
+    />
   )
 }
 
@@ -156,9 +150,8 @@ function ReferencePickControls({
         data-active={binding.active || undefined}
         data-invalid={Boolean(field.error) || undefined}
         className={cn(
-          "flex h-8 min-w-0 rounded-md border border-input bg-background",
+          "flex min-h-8 min-w-0 rounded-md border border-input bg-background",
           "focus-within:border-ring data-[active=true]:border-ring data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[invalid=true]:border-destructive",
-          "[&>[data-slot=native-select-wrapper]]:h-full [&>[data-slot=native-select-wrapper]]:w-9 [&>[data-slot=native-select-wrapper]]:shrink-0",
         )}
       >
         <Button
@@ -166,7 +159,7 @@ function ReferencePickControls({
           type="button"
           variant="outline"
           size="sm"
-          className="h-full min-w-0 flex-1 justify-start rounded-r-none border-0 bg-transparent font-normal shadow-none"
+          className="h-auto min-h-8 min-w-0 flex-1 justify-start rounded-r-none border-0 bg-transparent py-1.5 text-left font-normal whitespace-normal shadow-none"
           aria-label={t("pick", { field: field.label })}
           aria-pressed={binding.active}
           aria-describedby={describedBy}
@@ -176,7 +169,7 @@ function ReferencePickControls({
           onClick={binding.toggle}
         >
           <Scan className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate">{selectedLabel}</span>
+          <span className="min-w-0 wrap-anywhere">{selectedLabel}</span>
         </Button>
         <ReferenceSelectControl
           field={field}
