@@ -67,6 +67,8 @@ language model supplies open arguments. Images require an explicit experimental 
 Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
 and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
 apply; this client horizon does not extend consent or guarantee that a review remains available.
+The native host has no default whole-turn ACP deadline, so waiting for review does not end the agent
+after ten minutes. Stop and its bounded process-termination grace period remain available.
 The controller stops on uncertain writes, schema rejection, low selected-branch confidence or its
 step limit. Inspect the saved model before continuing; a `done` decision is not verification.
 After an uncertain dispatch, this process permits read-only inspection only. Inspect saved state

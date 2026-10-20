@@ -59,6 +59,8 @@ request timer, so these calls use the maximum safe platform timer, `2147483647` 
 in both client layers. This practical client ceiling does not extend any server-side review expiry.
 Local CAD draft review otherwise remains pending while the browser stays authorized; other review
 services retain their advertised limits.
+The native desktop host has no default whole-turn ACP deadline, including steering continuations;
+Stop still cancels a turn and terminates an unresponsive agent after its separate grace period.
 
 The helper endpoint must use HTTPS or loopback HTTP, without URL credentials, query parameters or
 a fragment. For an already configured local compatible model, an endpoint can be

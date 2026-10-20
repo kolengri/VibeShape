@@ -22,6 +22,11 @@ scope. ACP readiness, MCP attachment and project authority remain distinct state
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
 
+Native ACP prompts and steering-owned continuation turns have no default whole-turn deadline,
+so a pending manual review does not terminate the agent after ten minutes. Explicit host timeout
+overrides still apply. Connection/settings requests, permission/question expiry and the Stop
+escalation keep their separate bounds; a stalled turn remains cancellable by the person.
+
 A native completion/error event can belong to a predecessor request while a steering continuation
 is still active. Aggregate terminal/cancelling host snapshots own control and tool cleanup, so the
 continuation keeps its questions and permissions. Newer streamed snapshots take precedence over
