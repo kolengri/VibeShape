@@ -1,8 +1,10 @@
-# Printed lid fits and compliant retention
+# FDM/FFF lid fits and compliant retention
 
-Use this reference for an insert-style printed lid, plug, or removable cover that
-must fit inside a measured opening. Combine [mechanical design](mechanical-design.md)
-with the applicable process guidance in [3D-printing design](3d-printing.md).
+Use this reference for an FDM/FFF insert-style lid, plug, or removable cover that
+must fit inside a measured opening. Establish FDM/FFF as the intended process before
+applying these construction and calibration checks. For resin, SLS, MJF, or another
+process, use its own design guidance instead. Combine [mechanical design](mechanical-design.md)
+with the FDM/FFF section of [3D-printing design](3d-printing.md).
 Threaded, gasketed, and positive-lock closures need their own interface design;
 do not replace them with friction fins without preserving the requested function.
 
