@@ -18,7 +18,7 @@ decision. See [3D-printing workflow](../3d-printing.md) and [ADR-0006](../adr/00
 
 ## Current vertical slice
 
-The current flow is **Export → Prepare print / breakaway fins**:
+The current flow is **Export → Prepare print…** (the compact label replaces **Prepare print / breakaway fins**):
 
 1. The document worker exports the exact terminal body meshes through the existing print-mesh path.
 2. `@vibeshape/print-analysis` creates a disposable print copy. It rotates around X/Y, centers the

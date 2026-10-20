@@ -13,6 +13,9 @@ export function createNativeProjectChatRegistry(
   bridge: AssistantBridge,
   storage: StoragePort,
   checkpointHost?: (projectId: string) => AssistantCheckpointHost,
+  automation?: (
+    projectId: string,
+  ) => NonNullable<Parameters<typeof createNativeChatController>[0]["automation"]>,
 ) {
   const projects = new Map<string, Chat>()
   const releases = new Map<string, () => void>()
@@ -29,6 +32,7 @@ export function createNativeProjectChatRegistry(
       bridge,
       storage,
       ...(checkpointHost ? { checkpointHost: checkpointHost(projectId) } : {}),
+      ...(automation ? { automation: automation(projectId) } : {}),
     })
     let attempted = false
     let explicitlyDisconnected = false
@@ -124,12 +128,17 @@ const registries = new WeakMap<
 export function getNativeProjectChatRegistry(bridge: AssistantBridge) {
   let registry = registries.get(bridge)
   if (!registry) {
-    registry = createNativeProjectChatRegistry(bridge, assistantStorage(), (projectId) => ({
-      open: () => getProjectRuntime(projectId)?.createAssistantCheckpointPort() ?? null,
-      currentActor: () => getNativeProjectAutomationConnection(projectId).currentActor(),
-      subscribeActor: (listener) =>
-        getNativeProjectAutomationConnection(projectId).subscribe(listener),
-    }))
+    registry = createNativeProjectChatRegistry(
+      bridge,
+      assistantStorage(),
+      (projectId) => ({
+        open: () => getProjectRuntime(projectId)?.createAssistantCheckpointPort() ?? null,
+        currentActor: () => getNativeProjectAutomationConnection(projectId).currentActor(),
+        subscribeActor: (listener) =>
+          getNativeProjectAutomationConnection(projectId).subscribe(listener),
+      }),
+      getNativeProjectAutomationConnection,
+    )
     registries.set(bridge, registry)
   }
   return registry

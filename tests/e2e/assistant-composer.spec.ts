@@ -1,6 +1,7 @@
 import type { Locator, Page, Route } from "@playwright/test"
 import { z } from "zod"
 import { openApplicationMenuItem } from "./application-menu-support"
+import { saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -219,6 +220,18 @@ test("transfers selected files, answers structured model questions, collapses to
   await composer.getByRole("textbox", { name: "Message", exact: true }).fill("Hold the active turn")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
   await expect.poll(() => Boolean(held)).toBe(true)
+  const activity = page
+    .locator(".application-bar")
+    .getByRole("status")
+    .filter({ hasText: "AI working…" })
+  await expect(activity).toBeVisible()
+  await panel.getByRole("button", { name: "Close chat", exact: true }).click()
+  await expect(panel).not.toBeVisible()
+  await expect(activity).toBeVisible()
+  await contained(page, page.locator(".application-bar"))
+  await page.screenshot({ path: test.info().outputPath("assistant-working-chat-closed.png") })
+  await page.getByRole("button", { name: "AI chat", exact: true }).click()
+  await expect(panel).toBeVisible()
   await attach(page, panel, "hole.txt", "text/plain", "hole=5 mm")
   await composer.getByRole("textbox", { name: "Message", exact: true }).fill("Add the hole later")
   await panel.getByRole("button", { name: "Queue message", exact: true }).click()
@@ -235,6 +248,7 @@ test("transfers selected files, answers structured model questions, collapses to
   await expect(
     panel.getByRole("button", { name: "Resume queued messages", exact: true }),
   ).toBeVisible()
+  await expect(activity).toHaveCount(0)
   await expect(panel.locator('[data-slot="spinner"]')).toHaveCount(0)
   await held
     ?.fulfill({
@@ -566,14 +580,25 @@ test("compares and atomically undoes a connected assistant turn spanning saved s
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
   const before = panel.getByRole("button", { name: "View before", exact: true })
   await expect(before).toBeEnabled()
+  const log = panel.getByRole("log")
+  const readingPosition = await log.evaluate((node) => {
+    node.style.flex = "0 0 180px"
+    node.style.height = "180px"
+    node.scrollTop = node.scrollHeight - node.clientHeight - 24
+    node.dispatchEvent(new Event("scroll"))
+    return node.scrollTop
+  })
+  await expect(before).toBeInViewport({ ratio: 1 })
   await before.click()
   await expect(panel.getByRole("button", { name: "View current", exact: true })).toBeEnabled()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+  expect(await log.evaluate((node) => node.scrollTop)).toBeCloseTo(readingPosition, 0)
   await expect(page.getByRole("treeitem", { name: "Assistant stage 1", exact: true })).toBeVisible()
   await expect(page.getByRole("treeitem", { name: "Assistant stage 2", exact: true })).toBeVisible()
   await page.screenshot({ path: test.info().outputPath("assistant-view-before.png") })
   await panel.getByRole("button", { name: "View current", exact: true }).click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+  expect(await log.evaluate((node) => node.scrollTop)).toBeCloseTo(readingPosition, 0)
   await page.screenshot({ path: test.info().outputPath("assistant-view-current.png") })
   await panel.getByRole("button", { name: "Undo agent changes", exact: true }).click()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
@@ -592,4 +617,64 @@ test("compares and atomically undoes a connected assistant turn spanning saved s
   await page.reload()
   await saved(page)
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+})
+
+test("applies a retained assistant preview from chat without another model request", async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  let requests = 0
+  const valueSchema = z.object({ ok: z.literal(true), value: z.record(z.string(), z.unknown()) })
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    requests += 1
+    const request = requestSchema.parse(route.request().postDataJSON())
+    const call = (name: string, args: unknown) =>
+      tool("call_cad_tool", { name, arguments: args }, `apply-${requests}`)
+    if (requests === 1) await fulfill(route, call("model_info", {}))
+    else if (requests === 2) {
+      const result = valueSchema.parse(JSON.parse(lastContent(request))).value
+      const summary = z.object({ revision: z.number() }).parse(result.summary)
+      await fulfill(route, call("create_draft", { baseRevision: summary.revision }))
+    } else if (requests === 3) {
+      const result = valueSchema.parse(JSON.parse(lastContent(request))).value
+      const draft = z.object({ draftId: z.string(), revision: z.number() }).parse(result)
+      await fulfill(
+        route,
+        call("create_box", {
+          draftId: draft.draftId,
+          baseRevision: draft.revision,
+          commandId: "0195b5ac-b250-7a2c-8c33-000000000901",
+          featureId: "0195b5ac-b250-7a2c-8c33-000000000902",
+          label: "Chat approved box",
+          widthMm: 20,
+          depthMm: 15,
+          heightMm: 30,
+        }),
+      )
+    } else if (requests === 4) await fulfill(route, answer("The draft is ready for inspection."))
+    else throw new Error("Applying the preview must not send another model request.")
+  })
+  await page.goto("/")
+  await saved(page)
+  const panel = await connect(page)
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Prepare a box preview")
+  await panel.getByRole("button", { name: "Send", exact: true }).click()
+  const apply = panel.getByRole("button", { name: "Apply changes", exact: true })
+  await expect(apply).toBeEnabled({ timeout: 30_000 })
+  expect((await saveProject(page)).project.snapshot.features).toHaveLength(0)
+  await apply.click()
+  await expect(apply).toHaveCount(0)
+  await saved(page)
+  expect((await saveProject(page)).project.snapshot.features).toHaveLength(1)
+  expect(requests).toBe(4)
+  await expect(panel.getByRole("button", { name: "View before", exact: true })).toBeEnabled()
+  await page.screenshot({ path: test.info().outputPath("assistant-applied-preview.png") })
+  await page.reload()
+  await saved(page)
+  expect((await saveProject(page)).project.snapshot.features).toHaveLength(1)
+  await expect(page.getByRole("treeitem", { name: "Chat approved box", exact: true })).toBeVisible()
 })

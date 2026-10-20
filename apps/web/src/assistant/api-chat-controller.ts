@@ -529,12 +529,18 @@ export function createApiChatController(options: ApiChatOptions) {
       if (active) return false
       return checkpoints?.undo() ?? false
     },
+    async applyDraft(operation: () => Promise<boolean>) {
+      if (disposed || active || state.busy || queued.length || !checkpoints) return false
+      const applied = await checkpoints.applyDraft(operation)
+      drainQueue()
+      return applied
+    },
     async viewBefore() {
       if (active) return false
       return checkpoints?.viewBefore() ?? false
     },
     async reset() {
-      if (disposed || active || queued.length) return
+      if (disposed || active || state.settlingCheckpoint || queued.length) return
       releaseTools()
       context = []
       checkpoints?.clear()

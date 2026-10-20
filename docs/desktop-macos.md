@@ -28,7 +28,7 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.8-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.9-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
@@ -77,6 +77,12 @@ an idle tab releases its session and chat resources; a tab with a running turn, 
 pending review must finish or cancel that work before closing. Ordinary tab switching keeps it alive.
 Page exit closes the retained runtimes and native chat owners.
 
+Editor windows disable Electron background throttling so their renderer-owned local MCP heartbeat
+can continue while minimized or fully occluded. Auxiliary windows retain normal throttling. This
+does not change pairing, broker expiry, OS sleep or explicit close/quit behavior, and it can increase
+background CPU/GPU activity and battery use. A healthy background heartbeat does not prove that an
+ACP subprocess or its upstream provider connection remains available.
+
 Browser profiles do not automatically become desktop projects. Save `.vshape` backups from the
 browser with **Save project (.vshape)**, then import them from the Projects page in the app. Saved document
 transactions survive restart. Uncommitted drafts and transient session Undo/Redo do not. Keep native
@@ -117,10 +123,22 @@ new session's advertised catalog, applies the model before dependent options, an
 values. Choices are isolated by project and agent configuration; stale responses cannot overwrite a
 replacement session. These recovery choices are held in memory, not persisted across application
 restart. Reconnecting does not replay modeling commands.
-If recovery fails temporarily, the choices remain available for another explicit reconnect. If the
-agent no longer advertises a saved choice, recovery fails visibly and removes only unavailable
-choices; the next explicit reconnect restores supported values and lets the person choose
-replacements. Neither failure is reported as a ready connection with restored settings.
+Temporary failures of the embedded ACP or its project automation connection trigger up to five
+automatic recovery attempts with backoff. The chat shows recovery progress; after exhaustion it
+offers an explicit retry. Stop, Disconnect, revoked access, authentication requirements and permanent
+configuration failures do not silently reconnect. A brief ready notification does not reset the
+failure budget. Accepted settings remain available throughout recovery. If the agent no longer
+advertises a saved choice, restoration fails visibly instead of claiming the settings were restored.
+
+An interrupted turn continues only after the provider reloads the exact resumable session and the
+project settles accepted persistence work. The new turn first reconciles the authoritative model,
+draft and revisions; it never resends the interrupted prompt or uncertain CAD writes. A provider
+without session restoration reports that limitation instead of starting an unrelated conversation.
+Recovery does not open the configuration drawer or move the transcript reading position.
+Each recovery owner has its own five-attempt budget; ordinary bounded delivery-envelope retries
+remain separate. Accepted writes from the interrupted turn are sealed before continuation takes a
+new internal checkpoint under the recovered actor. If continuation changes the model, its latest
+Undo/View before target covers that continuation; earlier accepted writes remain in document history.
 
 
 Session controls use fixed grid tracks determined by the composer's width. Changing a selected
@@ -143,7 +161,9 @@ request and project/session scope; expiration, cancellation, and disconnect rele
 
 Sending while a turn is running queues the message rather than silently canceling or steering it.
 The controller accepts up to eight queued messages with a bounded memory budget and sends them in
-order after successful turns. Failure, Stop, or disconnect pauses the queue; Resume is explicit.
+order after successful turns. Stop, explicit disconnect or terminal failure pauses the queue;
+Resume is explicit. Successful automatic recovery continues previously unpaused, unsent work only
+after the interrupted turn has been reconciled and completed.
 Pending queued messages can be removed, and New chat does not discard them implicitly. Queued
 attachment bytes remain in memory and are not a durable job store. Accepted turn text is saved in
 the transcript so an asynchronous provider failure does not overwrite a newly edited composer.
@@ -224,9 +244,9 @@ checks, and disclose its actual signing/notarization status before publishing a 
 The current Apple Silicon channel is ad-hoc signed and not notarized; it must not claim Developer ID
 authentication. A Developer ID release additionally requires its signing and notarization checks:
 
-- Tag: `desktop-v0.1.8` for desktop package version `0.1.8`.
-- Apple Silicon asset: `VibeShape-0.1.8-mac-arm64.dmg`.
-- Intel asset, only after target verification: `VibeShape-0.1.8-mac-x64.dmg`.
+- Tag: `desktop-v0.1.9` for desktop package version `0.1.9`.
+- Apple Silicon asset: `VibeShape-0.1.9-mac-arm64.dmg`.
+- Intel asset, only after target verification: `VibeShape-0.1.9-mac-x64.dmg`.
 - Upload the image as a GitHub release asset with an advertised `sha256:` digest and matching size.
 - Include checksums and corresponding-source provenance with the release.
 
@@ -261,3 +281,9 @@ Bun on its runtime `PATH`; it catches signing/loader failures that a development
 signature verification alone cannot establish. It also checks the packaged license endpoints.
 Packaged-app verification must also check its code signature and controlled assets. These local checks do not prove
 Gatekeeper acceptance of a downloaded public binary or notarization.
+
+`test:desktop` rebuilds the native host but serves the existing `apps/web/dist` renderer. Run the
+current web build before integrated UI acceptance; an old renderer directory cannot establish the
+freshness of icons or frontend behavior. The background-session regression uses a temporary profile
+and dynamic port, minimizes the actual editor for more than its broker lease, and verifies continued
+authenticated polling and fake ACP CAD reads without opening the installed app.

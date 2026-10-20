@@ -4,7 +4,7 @@ import {
   sketchEntityIdSchema,
   sketchExternalReferenceIdSchema,
 } from "./identifiers"
-import { type SketchRecord, sketchRecordSchema } from "./sketch"
+import { projectedExternalSketchEntities, type SketchRecord, sketchRecordSchema } from "./sketch"
 import { inspectSketchReferenceHealth } from "./sketch-reference-health"
 
 const id = (value: number) => `0195b5ac-b220-7a2c-8c33-${value.toString().padStart(12, "0")}`
@@ -55,6 +55,59 @@ function projectedPointSketch(
   })
 }
 
+function modelPointSketch(value: number) {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: id(value),
+    label: "Model reference",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: sketchExternalReferenceIdSchema.parse(id(value + 200)),
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId: featureIdSchema.parse(id(value + 400)),
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: id(value + 300),
+      },
+    ],
+  })
+}
+
+function externalReferenceId(sketch: SketchRecord) {
+  const reference = sketch.externalReferences?.[0]
+  if (!reference) throw new Error("The external reference fixture is required.")
+  return reference.id
+}
+
+function pointSourceReference(sketch: SketchRecord) {
+  const reference = sketch.externalReferences?.[0]
+  if (!reference || !("sourcePointId" in reference)) {
+    throw new Error("The source point reference fixture is required.")
+  }
+  return reference
+}
+
+function projectedPointId(sketch: SketchRecord) {
+  const entity = projectedExternalSketchEntities(sketch.externalReferences ?? [])[0]
+  if (!entity) throw new Error("The projected point fixture is required.")
+  return entity.id
+}
+
 describe("inspectSketchReferenceHealth", () => {
   it("distinguishes healthy authored references from direct identity failures", () => {
     const source = pointSketch(1, "Source")
@@ -71,7 +124,7 @@ describe("inspectSketchReferenceHealth", () => {
     })
     expect(health.get(broken.id)).toEqual<unknown>({
       status: "broken",
-      directBrokenReferenceIds: [broken.externalReferences?.[0]?.id],
+      directBrokenReferenceIds: [externalReferenceId(broken)],
       transitiveBrokenReferenceIds: [],
       unknownReferenceIds: [],
     })
@@ -105,11 +158,11 @@ describe("inspectSketchReferenceHealth", () => {
 
     expect(inspectSketchReferenceHealth([], [missingSource]).get(missingSource.id)).toMatchObject({
       status: "broken",
-      directBrokenReferenceIds: [missingSource.externalReferences?.[0]?.id],
+      directBrokenReferenceIds: [externalReferenceId(missingSource)],
     })
     expect(inspectSketchReferenceHealth([source], [wrongType]).get(wrongType.id)).toMatchObject({
       status: "broken",
-      directBrokenReferenceIds: [wrongType.externalReferences?.[0]?.id],
+      directBrokenReferenceIds: [externalReferenceId(wrongType)],
     })
   })
 
@@ -138,7 +191,7 @@ describe("inspectSketchReferenceHealth", () => {
 
     expect(inspectSketchReferenceHealth([source, dependent]).get(dependent.id)).toMatchObject({
       status: "broken",
-      directBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
+      directBrokenReferenceIds: [externalReferenceId(dependent)],
     })
   })
 
@@ -160,12 +213,12 @@ describe("inspectSketchReferenceHealth", () => {
     const health = inspectSketchReferenceHealth([deletedSource, middle, target])
 
     expect(health.get(middle.id)?.directBrokenReferenceIds).toEqual<unknown>([
-      middle.externalReferences?.[0]?.id,
+      externalReferenceId(middle),
     ])
     expect(health.get(target.id)).toMatchObject({
       status: "broken",
       directBrokenReferenceIds: [],
-      transitiveBrokenReferenceIds: [target.externalReferences?.[0]?.id],
+      transitiveBrokenReferenceIds: [externalReferenceId(target)],
     })
   })
 
@@ -209,49 +262,27 @@ describe("inspectSketchReferenceHealth", () => {
       ],
     })
 
-    expect(inspectSketchReferenceHealth([first, second]).get(first.id)).toMatchObject({
-      status: "broken",
-      transitiveBrokenReferenceIds: [first.externalReferences?.[0]?.id],
-    })
+    const downstream = projectedPointSketch(42, "Downstream", first, firstProjectedPointId)
+    const independent = pointSketch(43, "Independent")
+    const health = inspectSketchReferenceHealth([first, second, downstream, independent])
+    for (const sketch of [first, second, downstream]) {
+      expect(health.get(sketch.id)).toMatchObject({
+        status: "broken",
+        directBrokenReferenceIds: [],
+        transitiveBrokenReferenceIds: [externalReferenceId(sketch)],
+      })
+    }
+    expect(health.get(independent.id)?.status).toBe("healthy")
   })
 
   it("merges worker model evidence and propagates a broken projection through sketch chains", () => {
-    const sketch = sketchRecordSchema.parse({
-      schemaVersion: 0,
-      id: id(50),
-      label: "Model reference",
-      plane: "xy",
-      entities: [],
-      constraints: [],
-      externalReferences: [
-        {
-          schemaVersion: 0,
-          id: sketchExternalReferenceIdSchema.parse(id(250)),
-          kind: "model-point",
-          reference: {
-            schemaVersion: 0,
-            featureId: featureIdSchema.parse(id(450)),
-            kind: "vertex",
-            signature: {
-              kind: "vertex",
-              geometryClass: "POINT",
-              measure: 0,
-              centroid: [0, 0, 0],
-              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
-              boundaryCount: 0,
-              adjacentGeometryClasses: [],
-            },
-          },
-          projectedPointId: id(350),
-        },
-      ],
-    })
+    const sketch = modelPointSketch(50)
 
     expect(inspectSketchReferenceHealth([sketch]).get(sketch.id)).toEqual<unknown>({
       status: "unknown",
       directBrokenReferenceIds: [],
       transitiveBrokenReferenceIds: [],
-      unknownReferenceIds: [sketch.externalReferences?.[0]?.id],
+      unknownReferenceIds: [externalReferenceId(sketch)],
     })
 
     expect(
@@ -277,7 +308,7 @@ describe("inspectSketchReferenceHealth", () => {
     expect(broken.get(dependent.id)).toMatchObject({
       status: "broken",
       directBrokenReferenceIds: [],
-      transitiveBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
+      transitiveBrokenReferenceIds: [externalReferenceId(dependent)],
     })
   })
 
@@ -326,7 +357,273 @@ describe("inspectSketchReferenceHealth", () => {
     })
     expect(health.get(dependent.id)).toMatchObject({
       status: "broken",
-      transitiveBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
+      transitiveBrokenReferenceIds: [externalReferenceId(dependent)],
     })
+    let resolverCalls = 0
+    inspectSketchReferenceHealth([orphan, dependent], undefined, () => {
+      resolverCalls++
+      return "resolved"
+    })
+    expect(resolverCalls).toBe(0)
+  })
+
+  it("keeps draft reference changes separate from committed source chains in either target order", () => {
+    const authored = pointSketch(70, "Authored")
+    const committed = projectedPointSketch(71, "Committed", authored)
+    const dependent = projectedPointSketch(72, "Dependent", committed, projectedPointId(committed))
+    const draft = sketchRecordSchema.parse({
+      ...committed,
+      externalReferences: committed.externalReferences?.map((reference) => ({
+        ...reference,
+        sourcePointId: id(999),
+      })),
+    })
+
+    for (const targets of [
+      [draft, dependent],
+      [dependent, draft],
+    ]) {
+      const health = inspectSketchReferenceHealth([authored, committed, dependent], targets)
+      expect(health.get(draft.id)?.directBrokenReferenceIds).toEqual([externalReferenceId(draft)])
+      expect(health.get(dependent.id)?.status).toBe("healthy")
+    }
+
+    const changedSource = { ...authored, entities: [] }
+    const changed = inspectSketchReferenceHealth([changedSource, committed, dependent])
+    expect(changed.get(committed.id)?.directBrokenReferenceIds).toEqual([
+      externalReferenceId(committed),
+    ])
+    expect(changed.get(dependent.id)?.transitiveBrokenReferenceIds).toEqual([
+      externalReferenceId(dependent),
+    ])
+    expect(
+      inspectSketchReferenceHealth([authored, committed, dependent]).get(dependent.id)?.status,
+    ).toBe("healthy")
+  })
+
+  it("preserves a draft root's ID cycle check without poisoning committed nodes", () => {
+    const authored = pointSketch(80, "Authored")
+    const committed = projectedPointSketch(81, "Committed", authored)
+    const dependent = projectedPointSketch(82, "Dependent", committed, projectedPointId(committed))
+    const draft = sketchRecordSchema.parse({
+      ...committed,
+      externalReferences: committed.externalReferences?.map((reference) => ({
+        ...reference,
+        sourceSketchId: dependent.id,
+        sourcePointId: projectedPointId(dependent),
+      })),
+    })
+
+    for (const targets of [
+      [draft, dependent],
+      [dependent, draft],
+    ]) {
+      const health = inspectSketchReferenceHealth([authored, committed, dependent], targets)
+      expect(health.get(draft.id)?.transitiveBrokenReferenceIds).toEqual([
+        externalReferenceId(draft),
+      ])
+      expect(health.get(dependent.id)?.status).toBe("healthy")
+    }
+  })
+
+  it("isolates changed draft model evidence and memoizes only identical owner/reference pairs", () => {
+    const committed = modelPointSketch(90)
+    const dependent = projectedPointSketch(91, "Dependent", committed, projectedPointId(committed))
+    const draft = sketchRecordSchema.parse({
+      ...committed,
+      externalReferences: committed.externalReferences?.map((reference) => {
+        if (reference.kind !== "model-point") throw new Error("Expected a model point.")
+        return { ...reference, reference: { ...reference.reference, featureId: id(999) } }
+      }),
+    })
+    for (const targets of [
+      [draft, dependent],
+      [dependent, draft],
+    ]) {
+      const calls: unknown[] = []
+      const health = inspectSketchReferenceHealth([committed, dependent], targets, (owner, ref) => {
+        calls.push([owner, ref])
+        return ref.reference.featureId === id(999) ? "broken" : "resolved"
+      })
+      expect(health.get(draft.id)?.directBrokenReferenceIds).toEqual([externalReferenceId(draft)])
+      expect(health.get(dependent.id)?.status).toBe("healthy")
+      expect(calls).toHaveLength(2)
+      expect(calls).toContainEqual([committed.id, committed.externalReferences?.[0]])
+      expect(calls).toContainEqual([draft.id, draft.externalReferences?.[0]])
+    }
+  })
+
+  it("resolves a committed model terminal before applying draft ID cycle tracking", () => {
+    const committed = modelPointSketch(94)
+    const dependent = projectedPointSketch(95, "Dependent", committed, projectedPointId(committed))
+    const draft = sketchRecordSchema.parse({
+      ...committed,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: externalReferenceId(committed),
+          sourceSketchId: dependent.id,
+          sourcePointId: projectedPointId(dependent),
+          projectedPointId: projectedPointId(committed),
+        },
+      ],
+    })
+    const calls: unknown[] = []
+    const health = inspectSketchReferenceHealth(
+      [committed, dependent],
+      [draft, dependent],
+      (owner, ref) => {
+        calls.push([owner, ref])
+        return "resolved"
+      },
+    )
+    expect(health.get(draft.id)?.status).toBe("healthy")
+    expect(health.get(dependent.id)?.status).toBe("healthy")
+    expect(calls).toEqual([[committed.id, committed.externalReferences?.[0]]])
+  })
+
+  it("does not confuse repeated sketch-reference IDs in different owners with a cycle", () => {
+    const authored = pointSketch(96, "Authored")
+    const first = projectedPointSketch(97, "First", authored)
+    const second = projectedPointSketch(98, "Second", first, projectedPointId(first))
+    const repeated = sketchRecordSchema.parse({
+      ...second,
+      externalReferences: second.externalReferences?.map((reference) => ({
+        ...reference,
+        id: externalReferenceId(first),
+      })),
+    })
+    const health = inspectSketchReferenceHealth([authored, first, repeated])
+    expect(health.get(first.id)?.status).toBe("healthy")
+    expect(health.get(repeated.id)?.status).toBe("healthy")
+  })
+
+  it("keeps owner-dependent model evidence distinct even for a shared reference object", () => {
+    const first = modelPointSketch(100)
+    const second = {
+      ...pointSketch(101, "Second owner"),
+      entities: [],
+      externalReferences: first.externalReferences,
+    }
+    const firstDependent = projectedPointSketch(
+      102,
+      "First dependent",
+      first,
+      projectedPointId(first),
+    )
+    const secondDependent = projectedPointSketch(
+      103,
+      "Second dependent",
+      second,
+      projectedPointId(second),
+    )
+    let calls = 0
+    const health = inspectSketchReferenceHealth(
+      [first, second, firstDependent, secondDependent],
+      undefined,
+      (owner) => {
+        calls++
+        return owner === first.id ? "resolved" : "broken"
+      },
+    )
+
+    expect(calls).toBe(2)
+    expect(health.get(first.id)?.status).toBe("healthy")
+    expect(health.get(firstDependent.id)?.status).toBe("healthy")
+    expect(health.get(second.id)?.directBrokenReferenceIds).toEqual([externalReferenceId(first)])
+    expect(health.get(secondDependent.id)?.transitiveBrokenReferenceIds).toEqual([
+      externalReferenceId(secondDependent),
+    ])
+  })
+
+  it("shares unknown model results across branches only within the current inspection", () => {
+    const model = modelPointSketch(110)
+    const branches = Array.from({ length: 30 }, (_, index) =>
+      projectedPointSketch(111 + index, "Branch", model, projectedPointId(model)),
+    )
+    let calls = 0
+    const unknown = inspectSketchReferenceHealth([model, ...branches], undefined, () => {
+      calls++
+      return "unknown"
+    })
+    expect(calls).toBe(1)
+    for (const sketch of [model, ...branches]) {
+      expect(unknown.get(sketch.id)?.unknownReferenceIds).toEqual([externalReferenceId(sketch)])
+    }
+    expect(
+      [
+        ...inspectSketchReferenceHealth([model, ...branches], undefined, () => "resolved").values(),
+      ].every(({ status }) => status === "healthy"),
+    ).toBe(true)
+
+    let unusedCalls = 0
+    inspectSketchReferenceHealth([model], [], () => {
+      unusedCalls++
+      return "broken"
+    })
+    expect(unusedCalls).toBe(0)
+  })
+
+  it("distinguishes authored identities from unrelated broken projections in the same source", () => {
+    const authored = pointSketch(150, "Authored")
+    const broken = projectedPointSketch(
+      151,
+      "Broken",
+      authored,
+      sketchEntityIdSchema.parse(id(999)),
+    )
+    const mixed = { ...broken, entities: authored.entities }
+    const authoredDependent = projectedPointSketch(152, "Authored dependent", mixed)
+    const projectedDependent = projectedPointSketch(
+      153,
+      "Projected dependent",
+      mixed,
+      projectedPointId(mixed),
+    )
+    const health = inspectSketchReferenceHealth([
+      authored,
+      mixed,
+      authoredDependent,
+      projectedDependent,
+    ])
+
+    expect(health.get(authoredDependent.id)?.status).toBe("healthy")
+    expect(health.get(projectedDependent.id)?.transitiveBrokenReferenceIds).toEqual([
+      externalReferenceId(projectedDependent),
+    ])
+  })
+
+  it("resolves deep chains in either target order with a linear number of source identity reads", () => {
+    const chain = [pointSketch(10_000, "Root")]
+    for (let index = 1; index < 12_000; index++) {
+      const previous = chain[index - 1]
+      if (!previous) throw new Error("Expected the preceding sketch.")
+      chain.push(
+        projectedPointSketch(
+          10_000 + index,
+          "Projected",
+          previous,
+          index === 1 ? previous.entities[0]?.id : projectedPointId(previous),
+        ),
+      )
+    }
+    let reads = 0
+    for (const sketch of chain.slice(1)) {
+      const reference = pointSourceReference(sketch)
+      const sourcePointId = reference.sourcePointId
+      Object.defineProperty(reference, "sourcePointId", {
+        get() {
+          reads++
+          return sourcePointId
+        },
+      })
+    }
+    for (const targets of [chain, [...chain].reverse()]) {
+      reads = 0
+      const health = inspectSketchReferenceHealth(chain, targets)
+      expect(health.size).toBe(12_000)
+      expect([...health.values()].every(({ status }) => status === "healthy")).toBe(true)
+      expect(reads).toBeLessThanOrEqual(4 * chain.length)
+    }
   })
 })

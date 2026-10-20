@@ -12,6 +12,50 @@ function fixture() {
   return { ...f, checkpoints, state: () => state }
 }
 
+it("checkpoints a user-applied draft, locks repeated activation through persistence, and restores its baseline", async () => {
+  const f = fixture()
+  let release = () => {}
+  const saving = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let calls = 0
+  const operation = async () => {
+    calls += 1
+    await saving
+    f.save()
+    return true
+  }
+  const applied = f.checkpoints.applyDraft(operation)
+  expect(f.state()).toMatchObject({ settlingCheckpoint: true, canUndoAgentChanges: false })
+  expect(await f.checkpoints.applyDraft(operation)).toBe(false)
+  expect(f.checkpoints.begin("new prompt")).toBeNull()
+  expect(await f.checkpoints.undo()).toBe(false)
+  expect(await f.checkpoints.viewBefore()).toBe(false)
+  expect(calls).toBe(1)
+  release()
+  expect(await applied).toBe(true)
+  expect(f.state()).toMatchObject({ settlingCheckpoint: false, canUndoAgentChanges: true })
+  expect(await f.checkpoints.viewBefore()).toBe(true)
+  expect(await f.checkpoints.undo()).toBe(true)
+  expect(f.restores).toEqual([{ baseline: 1, revision: 2 }])
+})
+
+it("releases the Apply lock on rejection and retains the previous saved checkpoint", async () => {
+  const f = fixture()
+  f.checkpoints.begin("previous turn")
+  f.save()
+  await f.checkpoints.finish()
+  await expect(
+    f.checkpoints.applyDraft(async () => {
+      throw new Error("Rejected")
+    }),
+  ).rejects.toThrow("Rejected")
+  expect(f.state()).toMatchObject({ settlingCheckpoint: false, canUndoAgentChanges: true })
+  expect(await f.checkpoints.applyDraft(async () => false)).toBe(false)
+  expect(await f.checkpoints.undo()).toBe(true)
+  expect(f.restores).toEqual([{ baseline: 1, revision: 2 }])
+})
+
 it("binds the verified lazy grant before saving and retains stopped-turn changes for one locked restore", async () => {
   const f = fixture()
   f.pair(null)

@@ -30,6 +30,9 @@ type Snapshot = Readonly<{
   busy: boolean
   client: LocalConnection["client"] | null
   error: boolean
+  recoveryAttempt?: number
+  recoveryFailed?: boolean
+  recoveryBlocked?: boolean
 }>
 type Pair = {
   credential: LocalConnection
@@ -159,7 +162,7 @@ export function createLocalAutomationConnection(
       return true
     } catch {
       automaticConnectionBlocked = true
-      publish({ ...snapshot, error: true })
+      nativeRecoveryFailure(new Error("Native access preferences are unavailable."))
       return false
     }
   }
@@ -194,14 +197,25 @@ export function createLocalAutomationConnection(
   let generation = 0
   let revokedThroughGeneration = -1
   let automaticConnectionBlocked = savedConnectionBlocked()
+  let nativeStopped = automaticConnectionBlocked
   let connecting = false
   let disposed = false
   let restoreTimer: ReturnType<typeof setTimeout> | null = null
   let statusTimer: ReturnType<typeof setTimeout> | null = null
   let statusRequest: Promise<void> | null = null
+  let nativeRecoveryAttempt = 0
+  let nativeRecoveryFailed = false
+  let nativeRecoveryPending = false
   const listeners = new Set<() => void>()
   function publish(next: Snapshot) {
-    snapshot = next
+    snapshot = nativeProjectAccess
+      ? {
+          ...next,
+          recoveryAttempt: nativeRecoveryAttempt,
+          recoveryFailed: nativeRecoveryFailed,
+          recoveryBlocked: nativeStopped,
+        }
+      : next
     for (const listener of listeners) listener()
   }
   function retainedIdentity(current: Pair) {
@@ -245,6 +259,7 @@ export function createLocalAutomationConnection(
       return
     }
     generation += 1
+    if (nativeProjectAccess) nativeRecoveryPending = true
     closeLocal(current)
     publish({
       ...snapshot,
@@ -255,7 +270,11 @@ export function createLocalAutomationConnection(
       busy: false,
       error: true,
     })
-    retryRestore()
+    if (nativeProjectAccess)
+      nativeRecoveryFailure(
+        new LocalAutomationTransportError("The native session was interrupted."),
+      )
+    else retryRestore()
   }
   async function revokeCredential(credential: Pick<LocalConnection, "token">) {
     try {
@@ -272,13 +291,14 @@ export function createLocalAutomationConnection(
     current.handle.dispose()
     if (pair === current) pair = null
   }
-  async function disconnect() {
+  async function disconnect(preserveRecovery = false) {
     generation += 1
     revokedThroughGeneration = generation
     const saved = readResume()
     clearResume()
     if (restoreTimer) clearTimeout(restoreTimer)
     restoreTimer = null
+    nativeRecoveryPending = preserveRecovery
     const current = pair
     if (current) closeLocal(current)
     if (snapshot.connected || snapshot.recovering)
@@ -294,6 +314,7 @@ export function createLocalAutomationConnection(
     if (credential && !(await revokeCredential(credential))) publish({ ...snapshot, error: true })
   }
   async function disable() {
+    nativeStopped = nativeProjectAccess
     automaticConnectionBlocked = true
     if (reserveNativeAccessState()) clearPreference()
     await disconnect()
@@ -357,10 +378,17 @@ export function createLocalAutomationConnection(
       if (!response.ok || generation !== at) return
       publishBridgeStatus(value)
     } catch {
-      if (generation === at)
-        publish({ ...snapshot, available: false, recovering: readResume() !== null })
-      if (readResume()) retryRestore()
+      statusUnavailable(at)
     }
+  }
+  function statusUnavailable(at: number) {
+    if (generation === at)
+      publish({
+        ...snapshot,
+        available: false,
+        recovering: !nativeRecoveryFailed && (readResume() !== null || nativeRecoveryPending),
+      })
+    if (readResume()) retryRestore()
   }
   async function status() {
     if (statusRequest) return statusRequest
@@ -391,8 +419,8 @@ export function createLocalAutomationConnection(
       ...snapshot,
       available: true,
       client: value.client,
-      recovering: !pair && saved !== null,
-      error: false,
+      recovering: !pair && (saved !== null || nativeRecoveryPending) && !nativeRecoveryFailed,
+      error: nativeRecoveryFailed || (nativeRecoveryPending && snapshot.error),
     })
     if (saved) retryRestore()
     else {
@@ -403,6 +431,7 @@ export function createLocalAutomationConnection(
   function connectDiscoveredClient(client: LocalConnection["client"] | null) {
     if (automaticConnectionBlocked || !client) return
     if (nativeProjectAccess) {
+      if (nativeRecoveryPending || nativeRecoveryFailed) return
       void enable(client)
       return
     }
@@ -567,13 +596,20 @@ export function createLocalAutomationConnection(
     current.sequence = sequence
     if (!response.ok || value.cancelledRequestIds.length)
       throw new Error("The session was revoked.")
+    nativeHeartbeatAccepted()
     if (value.work) acceptWork(current, value.work)
   }
   async function handleSessionFailure(current: Pair, error: unknown) {
     if (pair !== current) return
     if (error instanceof LocalAutomationTransportError) await recover(current)
-    else if (error instanceof LocalAutomationSessionLostError) await disconnect()
+    else if (error instanceof LocalAutomationSessionLostError) await recoverLostCredential()
     else await fail(current)
+  }
+  async function recoverLostCredential() {
+    const at = generation + 1
+    await disconnect(nativeProjectAccess)
+    if (nativeProjectAccess && connectionAttemptCurrent(at))
+      nativeRecoveryFailure(new LocalAutomationTransportError("The native credential expired."))
   }
   async function pollSession(current: Pair) {
     try {
@@ -602,6 +638,8 @@ export function createLocalAutomationConnection(
     }
   }
   function publishConnection(current: Pair, restoreAutoApply: boolean) {
+    if (restoreTimer) clearTimeout(restoreTimer)
+    restoreTimer = null
     const autoApply = restoreAutoApply && current.handle.enableAutoApply(current.credential.actor)
     publish({
       ...snapshot,
@@ -614,6 +652,13 @@ export function createLocalAutomationConnection(
       client: current.credential.client,
       error: false,
     })
+  }
+  function nativeHeartbeatAccepted() {
+    if (!nativeProjectAccess || !nativeRecoveryPending) return
+    nativeRecoveryAttempt = 0
+    nativeRecoveryFailed = false
+    nativeRecoveryPending = false
+    publish({ ...snapshot, error: false })
   }
   function connectionAttemptCurrent(at: number) {
     if (generation !== at || disposed) return false
@@ -704,7 +749,7 @@ export function createLocalAutomationConnection(
     if (!client || !reserveNativeAccessState()) return false
     if (writePreference(client, preferredAutoApply(client))) return true
     automaticConnectionBlocked = true
-    publish({ ...snapshot, error: true })
+    nativeRecoveryFailure(new Error("Native access preferences could not be saved."))
     return false
   }
   async function enable(expectedClient?: LocalConnection["client"]) {
@@ -716,9 +761,12 @@ export function createLocalAutomationConnection(
     try {
       if (!created.ok) throw new Error("The active document is unavailable.")
       return await connect(created, at, undefined, expectedClient)
-    } catch {
+    } catch (error) {
       if (created.ok) created.dispose()
-      if (generation === at) publish({ ...snapshot, connected: false, error: true })
+      if (generation === at) {
+        publish({ ...snapshot, connected: false, error: true })
+        if (nativeProjectAccess) nativeRecoveryFailure(error)
+      }
       return false
     } finally {
       connecting = false
@@ -738,14 +786,27 @@ export function createLocalAutomationConnection(
     saved: NonNullable<ReturnType<typeof readResume>>,
     at: number,
   ) {
-    if (generation === at && error instanceof LocalAutomationTransportError) {
-      retryRestore()
-    } else if (generation === at) {
-      automaticConnectionBlocked = !(error instanceof LocalAutomationSessionLostError)
-      clearResume()
-      await revokeCredential(saved)
-      if (generation === at) publish({ ...snapshot, recovering: false, error: true })
+    if (generation !== at) return
+    if (error instanceof LocalAutomationTransportError) {
+      if (nativeProjectAccess) nativeRecoveryFailure(error)
+      else retryRestore()
+      return
     }
+    automaticConnectionBlocked = !(error instanceof LocalAutomationSessionLostError)
+    clearResume()
+    await revokeCredential(saved)
+    if (generation === at) finishRejectedRecovery(error)
+  }
+  function finishRejectedRecovery(error: unknown) {
+    if (nativeProjectAccess && error instanceof LocalAutomationSessionLostError) {
+      nativeRecoveryFailure(new LocalAutomationTransportError("The native credential expired."))
+      return
+    }
+    if (nativeProjectAccess) {
+      nativeRecoveryFailed = true
+      nativeRecoveryPending = false
+    }
+    publish({ ...snapshot, recovering: false, error: true })
   }
   async function restore() {
     if (connecting || pair || !connectionAttemptCurrent(generation)) return
@@ -771,25 +832,60 @@ export function createLocalAutomationConnection(
     if (
       disposed ||
       restoreTimer ||
-      (nativeProjectAccess && automaticConnectionBlocked) ||
-      !readResume()
+      pair ||
+      (nativeProjectAccess && (nativeRecoveryFailed || automaticConnectionBlocked)) ||
+      (!readResume() && !nativeRecoveryPending)
     )
       return
     restoreTimer = setTimeout(() => {
       restoreTimer = null
-      void restore()
-    }, 1000)
+      if (connecting) {
+        retryRestore()
+        return
+      }
+      if (nativeProjectAccess) {
+        nativeRecoveryAttempt += 1
+        publish({ ...snapshot, recovering: true, error: false })
+      }
+      if (readResume()) void restore()
+      else if (nativeProjectAccess && snapshot.client && snapshot.available)
+        void enable(snapshot.client)
+      else if (nativeProjectAccess)
+        nativeRecoveryFailure(
+          new LocalAutomationTransportError("The native client is unavailable."),
+        )
+    }, recoveryDelay())
+  }
+  function recoveryDelay() {
+    return nativeProjectAccess ? Math.min(1000 * 2 ** nativeRecoveryAttempt, 8000) : 1000
+  }
+  function nativeRecoveryFailure(error: unknown) {
+    nativeRecoveryPending = true
+    if (!(error instanceof LocalAutomationTransportError) || nativeRecoveryAttempt >= 5) {
+      nativeRecoveryFailed = true
+      nativeRecoveryPending = false
+      if (restoreTimer) clearTimeout(restoreTimer)
+      restoreTimer = null
+      publish({ ...snapshot, recovering: false, error: true })
+      return
+    }
+    publish({ ...snapshot, recovering: true, error: false })
+    retryRestore()
   }
   async function resumeDocument(saved: NonNullable<ReturnType<typeof readResume>>, at: number) {
     const created = createActiveDocumentAutomationSession()
     if (!created.ok) {
-      retryRestore()
+      if (nativeProjectAccess)
+        nativeRecoveryFailure(new LocalAutomationTransportError("The document is unavailable."))
+      else retryRestore()
       return
     }
     const info = created.readIdentity()
     if (!info) {
       created.dispose()
-      retryRestore()
+      if (nativeProjectAccess)
+        nativeRecoveryFailure(new LocalAutomationTransportError("The document is unavailable."))
+      else retryRestore()
       return
     }
     if (info.id !== saved.documentId) {
@@ -837,7 +933,20 @@ export function createLocalAutomationConnection(
     void status()
   }
   return {
-    disconnect,
+    disconnect: () => disconnect(),
+    async retryRecovery() {
+      if (!nativeProjectAccess || !nativeRecoveryFailed || disposed || connecting || pair)
+        return false
+      automaticConnectionBlocked = savedConnectionBlocked()
+      if (automaticConnectionBlocked) return false
+      nativeStopped = false
+      nativeRecoveryAttempt = 0
+      nativeRecoveryFailed = false
+      nativeRecoveryPending = true
+      publish({ ...snapshot, recovering: true, error: false })
+      retryRestore()
+      return true
+    },
     currentActor(): CommandActor | null {
       const current = pair
       const identity = current?.handle.readIdentity()
@@ -850,7 +959,14 @@ export function createLocalAutomationConnection(
         return null
       return { ...current.credential.actor }
     },
-    enable: () => enable(),
+    enable: () => {
+      if (!canEnable()) return Promise.resolve(false)
+      nativeStopped = false
+      nativeRecoveryAttempt = 0
+      nativeRecoveryFailed = false
+      nativeRecoveryPending = false
+      return enable()
+    },
     validateDocumentScope,
     isProjectActionPending: () =>
       pair !== null && snapshot.projectManagement && isProjectChange(pair),

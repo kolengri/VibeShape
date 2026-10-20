@@ -1,4 +1,7 @@
-import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
+import {
+  createModelBodyTopologyEvidenceResolver,
+  type ModelBodyTopologyEvidenceResolver,
+} from "@vibeshape/application/model-body-topology"
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
 import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
 import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
@@ -47,16 +50,15 @@ function addDatumOptions(feature: FeatureRecord, options: MutableOptions) {
 }
 function addBodyOptions(
   context: {
-    snapshot: DocumentSnapshot
-    rebuild: Rebuilt
+    topology: ModelBodyTopologyEvidenceResolver
     feature: FeatureRecord
     body: Body
     kind: "face" | "edge"
   },
   options: MutableOptions,
 ) {
-  const { snapshot, rebuild, feature, body, kind } = context
-  const result = createModelBodyTopologyEvidence(snapshot, rebuild, {
+  const { topology, feature, body, kind } = context
+  const result = topology({
     featureId: feature.id,
     outputRole: body.outputRole,
     kind,
@@ -96,7 +98,7 @@ function addCandidateOptions(
   if (axis.success) options.axes.push({ key, label, support: axis.data })
 }
 function addFeatureOptions(
-  snapshot: DocumentSnapshot,
+  topology: ModelBodyTopologyEvidenceResolver,
   rebuild: Rebuilt,
   feature: FeatureRecord,
   options: MutableOptions,
@@ -107,7 +109,7 @@ function addFeatureOptions(
   if (readDatumPlaneFeatureParameters(feature)) addDatumOptions(feature, options)
   for (const body of record.geometry.bodies ?? [])
     for (const kind of ["face", "edge"] as const)
-      addBodyOptions({ snapshot, rebuild, feature, body, kind }, options)
+      addBodyOptions({ topology, feature, body, kind }, options)
 }
 export function referenceFrameOptions(
   snapshot: DocumentSnapshot,
@@ -116,10 +118,11 @@ export function referenceFrameOptions(
 ): ReferenceFrameOptions {
   const options: MutableOptions = { planes: [], axes: [] }
   if (!rebuild.ok) return options
+  const topology = createModelBodyTopologyEvidenceResolver(snapshot, rebuild)
   const stop = excludedFeatureId
     ? snapshot.features.findIndex(({ id }) => id === excludedFeatureId)
     : -1
   const features = stop >= 0 ? snapshot.features.slice(0, stop) : snapshot.features
-  for (const feature of features) addFeatureOptions(snapshot, rebuild, feature, options)
+  for (const feature of features) addFeatureOptions(topology, rebuild, feature, options)
   return options
 }

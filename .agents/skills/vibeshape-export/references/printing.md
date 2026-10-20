@@ -6,7 +6,7 @@ For a requested printable part, retain the supplied printer/material/nozzle, mat
 
 ## Prepared-print copy
 
-The editor's **Export → Prepare print / breakaway fins…** creates a disposable derived copy for print preparation. It does not rewrite the saved parametric model. The current slice rotates around X/Y, centers/seats the copy, and can add up to two breakaway fins on suitable sloped planar facets of a validated convex closed body. Unsupported cases retain the transformed copy without fins and report a warning; even supported cases provide partial coverage. Use only the current dialog's requested controls. Preview the prepared copy, identify any added geometry, and keep its file distinguishable from the original export.
+The editor's **Export → Prepare print…** creates a disposable derived copy for print preparation. It does not rewrite the saved parametric model. The current slice rotates around X/Y, centers/seats the copy, and can add up to two breakaway fins on suitable sloped planar facets of a validated convex closed body. Unsupported cases retain the transformed copy without fins and report a warning; even supported cases provide partial coverage. Use only the current dialog's requested controls. Preview the prepared copy, identify any added geometry, and keep its file distinguishable from the original export.
 
 Prepared-copy controls are not exposed as MCP tools. Exported 3MF records millimetres; it is not a native Bambu Studio project with an established printer, process, filament, and plate profile. Avoid interpreting geometric preparation as slicing evidence.
 

@@ -8,6 +8,7 @@ import {
   Vector3,
 } from "three"
 import { vi } from "../../../tests/unit/support/bun-test"
+import { edgePreparationFixture } from "../tests/edge-preparation-fixture"
 import { ModelMeshPresentation } from "./model-meshes"
 import type { ViewerMesh } from "./three-viewport"
 
@@ -24,18 +25,46 @@ function fixture() {
     preview: { surface: new MeshBasicMaterial(), edges: new LineBasicMaterial() },
     datum: { surface: new MeshBasicMaterial(), edges: new LineBasicMaterial() },
   }
-  const presentation = new ModelMeshPresentation(materials)
+  const preparation = edgePreparationFixture()
+  const presentation = new ModelMeshPresentation(materials, preparation.client, () => undefined)
   const dispose = () => {
     presentation.dispose()
+    preparation.client.dispose()
     for (const pair of Object.values(materials)) {
       pair.surface.dispose()
       pair.edges.dispose()
     }
   }
-  return { presentation, materials, dispose }
+  return { presentation, materials, preparation, dispose }
 }
 
 describe("current model mesh resource ownership", () => {
+  it("retains equal pending work and prevents replaced owners from publishing late edges", async () => {
+    const { presentation, preparation, dispose } = fixture()
+    try {
+      const [old] = presentation.setMeshes([mesh])
+      if (!old) throw new Error("Expected a displayed body.")
+      const [equal] = presentation.setMeshes([structuredClone(mesh)])
+      expect(equal).toBe(old)
+      expect(preparation.worker.requests.length).toBe(1)
+      const changed = structuredClone(mesh)
+      changed.positions[0] = -5
+      const [next] = presentation.setMeshes([changed])
+      if (!next) throw new Error("Expected a replacement body.")
+      expect(next.surface.geometry.getAttribute("position").array).toBe(changed.positions)
+      expect(next.edges.geometry.getAttribute("position")).toBeUndefined()
+      preparation.worker.complete()
+      await Promise.resolve()
+      expect(old.edges.geometry.getAttribute("position")).toBeUndefined()
+      expect(preparation.worker.requests.length).toBe(2)
+      preparation.worker.complete(1)
+      await Promise.resolve()
+      expect(next.edges.geometry.getAttribute("position").count).toBe(6)
+    } finally {
+      dispose()
+    }
+  })
+
   it("reuses equal transferred geometry and updates face identity and CPU buffer references", () => {
     const { presentation, dispose } = fixture()
     const [first] = presentation.setMeshes([mesh])

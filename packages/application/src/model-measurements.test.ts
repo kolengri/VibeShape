@@ -1,10 +1,10 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, spyOn } from "bun:test"
 import { datumPlaneFeatureType } from "@vibeshape/domain"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
-import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { createDisposableDocumentPreview } from "./disposable-document-preview"
 import { createModelDiagnosticsEvidence } from "./model-diagnostics"
 import {
@@ -123,6 +123,41 @@ function successGeometry(overrides: Record<string, unknown> = {}) {
     geometry: { ...validGeometry, ...overrides },
   }
 }
+
+it("validates diagnostic geometry once per call and rechecks the same response after mutation", () => {
+  const current = snapshot()
+  const source = response(
+    [
+      { featureId: featureIds[0], status: "succeeded", contentHash: successHash },
+      { featureId: featureIds[1], status: "suppressed" },
+      { featureId: featureIds[2], status: "suppressed" },
+    ],
+    { geometry: [successGeometry()] },
+  )
+  const parse = spyOn(documentWorkerResponseSchema, "safeParse")
+  try {
+    expect(createModelDiagnosticsEvidence(current, rebuild(source))).toMatchObject({
+      ok: true,
+      evidence: { status: "valid", entries: [] },
+    })
+    expect(parse).toHaveBeenCalledTimes(1)
+    source.revision = 3
+    expect(createModelDiagnosticsEvidence(current, rebuild(source))).toEqual({
+      ok: false,
+      code: "stale-geometry",
+    })
+    expect(parse).toHaveBeenCalledTimes(2)
+    source.revision = 4
+    source.evaluation.records.pop()
+    expect(createModelDiagnosticsEvidence(current, rebuild(source))).toEqual({
+      ok: false,
+      code: "invalid-geometry-evidence",
+    })
+    expect(parse).toHaveBeenCalledTimes(3)
+  } finally {
+    parse.mockRestore()
+  }
+})
 
 describe("createModelMeasurementEvidence", () => {
   it("reports unavailable and stale rebuilds", () => {

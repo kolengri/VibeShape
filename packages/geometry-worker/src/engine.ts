@@ -137,6 +137,7 @@ import {
   getWasmHeapBytes,
   type OpenCascadeMemoryModule,
 } from "./memory-profile"
+import { removeCollapsedNativePrintTriangles } from "./native-print-mesh"
 import { exportOcctAssemblyStep } from "./occt-assembly-export"
 import {
   createOcctBodyCompound,
@@ -946,7 +947,7 @@ async function exportNativePrintMesh(
       angularTolerance: quality?.angularTolerance ?? PRINT_MESH_ANGULAR_TOLERANCE_RAD,
     })
     const mesh = await texturePrintMesh(
-      source,
+      removeCollapsedNativePrintTriangles(source),
       exportTextureLayers(input, feature),
       budget.currentQuality(),
     )

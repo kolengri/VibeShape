@@ -5,17 +5,14 @@ import {
   type modelDiagnosticEntrySchema,
   modelDiagnosticsEvidenceSchema,
 } from "@vibeshape/domain/model-diagnostics"
-import { documentWorkerResponseSchema } from "@vibeshape/protocol"
-import { createModelMeasurementEvidence } from "./model-measurements"
+import type { DocumentWorkerResponse } from "@vibeshape/protocol"
+import { createModelMeasurementSource } from "./model-measurements"
 import type { DocumentRebuildOutcome } from "./persistent-document-session"
 import { datumPlaneFrame, sketchFrame } from "./support-frame"
 import { inspectPlanarSupportHealth } from "./support-health"
 
 type Entry = import("zod").input<typeof modelDiagnosticEntrySchema>
-type RebuiltResponse = Extract<
-  ReturnType<typeof documentWorkerResponseSchema.parse>,
-  { type: "documentRebuilt" }
->
+type RebuiltResponse = Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>
 function featureDiagnostics(current: RebuiltResponse): Entry[] {
   const entries: Entry[] = []
   for (const record of current.evaluation.records) {
@@ -127,13 +124,9 @@ export function createModelDiagnosticsEvidence(
 ):
   | { ok: true; evidence: ModelDiagnosticsEvidence }
   | { ok: false; code: "geometry-unavailable" | "stale-geometry" | "invalid-geometry-evidence" } {
-  const measured = createModelMeasurementEvidence(snapshot, rebuild)
+  const measured = createModelMeasurementSource(snapshot, rebuild)
   if (!measured.ok) return measured
-  if (!rebuild.ok) return { ok: false, code: "geometry-unavailable" }
-  const response = documentWorkerResponseSchema.safeParse(rebuild.response)
-  if (!response.success || response.data.type !== "documentRebuilt")
-    return { ok: false, code: "invalid-geometry-evidence" }
-  const current = response.data
+  const current = measured.response
   const entries = [
     ...featureDiagnostics(current),
     ...datumDiagnostics(snapshot, current),

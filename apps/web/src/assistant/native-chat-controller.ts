@@ -83,6 +83,12 @@ type ChatState = Readonly<
     busy: boolean
     connecting: boolean
     storageFailed: boolean
+    configured: boolean
+    recovery: {
+      attempt: number
+      status: "retrying" | "failed"
+      automation?: { attempt: number; failed: boolean }
+    } | null
   } & AssistantCheckpointState
 >
 
@@ -91,11 +97,24 @@ export function createNativeChatController({
   bridge,
   storage,
   checkpointHost,
+  automation,
 }: {
   projectId: string
   bridge: AssistantBridge
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">
   checkpointHost?: AssistantCheckpointHost
+  automation?: {
+    getSnapshot: () => {
+      connected: boolean
+      recovering: boolean
+      error: boolean
+      recoveryFailed?: boolean
+      recoveryBlocked?: boolean
+      recoveryAttempt?: number
+    }
+    subscribe: (listener: () => void) => () => void
+    retryRecovery: () => Promise<boolean>
+  }
 }) {
   const saved = readChatHistory(projectId, storage)
   let agentSession: AgentChatSession | undefined = saved?.agentSession
@@ -113,6 +132,8 @@ export function createNativeChatController({
     busy: false,
     connecting: false,
     storageFailed: false,
+    configured: false,
+    recovery: null,
     canUndoAgentChanges: false,
     undoingAgentChanges: false,
     viewingBefore: false,
@@ -131,6 +152,21 @@ export function createNativeChatController({
   let activeControl: symbol | null = null
   let activePrompt: PromptTurn | null = null
   let terminalToolStatus: "cancelled" | "failed" | undefined
+  let recoveryAttempt = 0
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined
+  let healthyIdleTimer: ReturnType<typeof setTimeout> | undefined
+  let recovery: {
+    at: number
+    agent: AssistantAgent
+    interrupted: boolean
+    queuePaused: boolean
+    resumeSessionId: string | undefined
+    shutdown: Promise<unknown>
+    failure: AssistantErrorCode | undefined
+  } | null = null
+  let automaticRecoveryAllowed = false
+  let unsubscribeAutomation: (() => void) | undefined
+  let releaseRecoveryWait: (() => void) | undefined
   const queued: QueuedPrompt[] = []
   let steering: QueuedSteer | null = null
   const questions = new Map<string, AssistantQuestion>()
@@ -189,6 +225,7 @@ export function createNativeChatController({
     return isCurrent(at) && snapshotEpoch === epoch && state.snapshot === snapshot
   }
   function acceptSnapshot(snapshot: AssistantSnapshot) {
+    if (acceptRecoverySnapshot(snapshot)) return
     const at = generation
     const epoch = snapshotEpoch
     const cleanup =
@@ -200,13 +237,28 @@ export function createNativeChatController({
       supportsActiveSteer: snapshot.canSteer === true && typeof bridge.steer === "function",
     })
     if (!snapshotCurrent(snapshot, at, epoch)) return
-    if (agent && snapshot.canResume && snapshot.sessionId) {
-      agentSession = { agent, sessionId: snapshot.sessionId }
-      save()
-    }
+    rememberSession(snapshot)
     if (snapshot.status === "ready" && snapshotCurrent(snapshot, at, epoch)) {
       settleCheckpoints()
       drainQueue()
+    }
+  }
+  function acceptRecoverySnapshot(snapshot: AssistantSnapshot) {
+    if (recovery) {
+      if (state.recovery?.status !== "failed") publish({ snapshot, busy: recovery.interrupted })
+      if (["error", "disconnected"].includes(snapshot.status)) recordRecoveryFailure("agent-exited")
+      return true
+    }
+    if (automaticRecoveryAllowed && ["disconnected", "error"].includes(snapshot.status)) {
+      beginRecovery(state.error ?? "agent-exited")
+      return true
+    }
+    return false
+  }
+  function rememberSession(snapshot: AssistantSnapshot) {
+    if (agent && snapshot.canResume && snapshot.sessionId) {
+      agentSession = { agent, sessionId: snapshot.sessionId }
+      save()
     }
   }
   function updateTool(event: Extract<AssistantEvent, { type: "tool" }>) {
@@ -277,6 +329,7 @@ export function createNativeChatController({
     return { ...patch, permission: null, question: null }
   }
   function completeTurn(stopReason: string) {
+    resetRecoveryBudget()
     terminalToolStatus =
       stopReason === "cancelled" ? "cancelled" : stopReason === "error" ? "failed" : undefined
     // A predecessor RPC can complete while the same session still owns a continuation.
@@ -295,6 +348,14 @@ export function createNativeChatController({
     publish({ question: questions.values().next().value ?? null })
   }
   function receiveError(code: AssistantErrorCode) {
+    if (recovery) {
+      recordRecoveryFailure(code)
+      return
+    }
+    if (automaticRecoveryAllowed && ["agent-exited", "timeout", "stale-session"].includes(code)) {
+      beginRecovery(code)
+      return
+    }
     if (!activePrompt?.continued) terminalToolStatus = "failed"
     publish({
       ...(!hostTurnActive() ? { ...clearTurnState(), busy: false } : {}),
@@ -302,6 +363,11 @@ export function createNativeChatController({
       queuePaused: true,
     })
     save()
+  }
+  function recordRecoveryFailure(code: AssistantErrorCode) {
+    if (!recovery || state.recovery?.status !== "retrying") return
+    recovery.failure ??= code
+    releaseRecoveryWait?.()
   }
   function dispatchEvent(event: AssistantEvent) {
     switch (event.type) {
@@ -358,6 +424,8 @@ export function createNativeChatController({
     }
   }
   function beginDisconnect() {
+    cancelRecovery()
+    automaticRecoveryAllowed = false
     checkpoints?.clearPreview()
     const current = scope()
     const at = ++generation
@@ -378,6 +446,7 @@ export function createNativeChatController({
       queuePaused: queued.length > 0,
       supportsActiveSteer: false,
       steerStartedNewTurn: false,
+      recovery: null,
     })
     save()
     const done = (
@@ -417,6 +486,9 @@ export function createNativeChatController({
       await done
       if (!isCurrent(at)) return
       agent = configuration
+      automaticRecoveryAllowed = true
+      recoveryAttempt = 0
+      publish({ configured: true })
       const resume = matchingResume(configuration)
       const result = await bridge.connect({
         projectId,
@@ -424,11 +496,311 @@ export function createNativeChatController({
         ...(resume ? { resumeSessionId: resume } : {}),
       })
       await receiveConnection(at, result)
+      recoverConnectFailure(at, result)
     } catch {
-      if (isCurrent(at)) publish({ error: "request-failed" })
+      if (isCurrent(at)) beginRecovery("request-failed")
     } finally {
       finishConnecting(at)
     }
+  }
+  function recoverConnectFailure(at: number, result: AssistantResult) {
+    if (isCurrent(at) && !result.ok) beginRecovery(result.code)
+  }
+  function cancelRecovery() {
+    clearHealthyIdleTimer()
+    if (recoveryTimer) clearTimeout(recoveryTimer)
+    recoveryTimer = undefined
+    releaseRecoveryWait?.()
+    releaseRecoveryWait = undefined
+    recovery = null
+  }
+  function recoveryRetryable(code: AssistantErrorCode) {
+    return [
+      "agent-exited",
+      "timeout",
+      "stale-session",
+      "request-failed",
+      "launch-failed",
+      "initialization-failed",
+    ].includes(code)
+  }
+  function failRecovery(code: AssistantErrorCode) {
+    if (!recovery) return
+    if (recoveryTimer) clearTimeout(recoveryTimer)
+    recoveryTimer = undefined
+    releaseRecoveryWait?.()
+    publish({
+      ...clearTurnState("failed"),
+      snapshot: state.snapshot && {
+        ...state.snapshot,
+        status:
+          state.snapshot.status === "authentication-required" ? "authentication-required" : "error",
+      },
+      recovery: recoveryFeedback("failed", recoveryAttempt),
+      connecting: false,
+      busy: false,
+      error: code,
+      queuePaused: true,
+    })
+    save()
+    settleCheckpoints()
+  }
+  function scheduleRecovery(code: AssistantErrorCode) {
+    if (!recovery || disposed || !automaticRecoveryAllowed) return
+    if (!recoveryRetryable(code) || recoveryAttempt >= 5) {
+      failRecovery(code)
+      return
+    }
+    const owner = recovery
+    publish({
+      recovery: recoveryFeedback("retrying", recoveryAttempt + 1),
+      connecting: true,
+      error: null,
+    })
+    if (recovery !== owner || !automaticRecoveryAllowed) return
+    recoveryTimer = setTimeout(
+      () => {
+        recoveryTimer = undefined
+        void attemptRecovery(owner).catch(() => {
+          if (recovery === owner && canRecover(owner.at)) failRecovery("request-failed")
+        })
+      },
+      Math.min(1000 * 2 ** recoveryAttempt, 8000),
+    )
+  }
+  function recoveryFeedback(
+    status: "retrying" | "failed",
+    attempt: number,
+  ): NonNullable<ChatState["recovery"]> {
+    const model = automation?.getSnapshot()
+    const base = { status, attempt }
+    return model && (model.recovering || model.recoveryFailed)
+      ? {
+          ...base,
+          automation: {
+            attempt: model.recoveryAttempt ?? 0,
+            failed: model.recoveryFailed === true,
+          },
+        }
+      : base
+  }
+  function refreshRecoveryFeedback() {
+    if (state.recovery)
+      publish({ recovery: recoveryFeedback(state.recovery.status, state.recovery.attempt) })
+  }
+  function beginRecovery(code: AssistantErrorCode) {
+    if (recovery || !agent || !automaticRecoveryAllowed || disposed) return
+    clearHealthyIdleTimer()
+    const previous = state.snapshot
+    const owner = captureRecoveryOwner(agent)
+    clearInterruptedTurn()
+    if (!isCurrent(owner.at)) return
+    recovery = owner
+    publish({
+      ...clearTurnState("failed"),
+      busy: owner.interrupted,
+      supportsActiveSteer: false,
+      steeringQueuedId: null,
+    })
+    if (!recoveryRetryable(code)) failRecovery(code)
+    else if (requiresUnsupportedResume(owner, previous)) failRecovery("unsupported")
+    else scheduleRecovery(code)
+  }
+  function captureRecoveryOwner(configuration: AssistantAgent) {
+    const previous = state.snapshot
+    const current = scope()
+    const interrupted = state.busy || hostTurnActive() || promptInFlight
+    const resumeSessionId = matchingResume(configuration) ?? previous?.sessionId ?? undefined
+    const at = ++generation
+    if (current) ignoredTokens.add(current.sessionToken)
+    return {
+      at,
+      agent: { command: configuration.command, args: [...configuration.args] },
+      interrupted,
+      queuePaused: state.queuePaused,
+      resumeSessionId,
+      failure: undefined,
+      shutdown: current ? bridge.disconnect(current).catch(() => undefined) : Promise.resolve(),
+    }
+  }
+  function requiresUnsupportedResume(
+    owner: NonNullable<typeof recovery>,
+    previous: AssistantSnapshot | null,
+  ) {
+    return (
+      (owner.interrupted || previous?.sessionId) && (!owner.resumeSessionId || !previous?.canResume)
+    )
+  }
+  function clearInterruptedTurn() {
+    // A sent prompt or steer has an unknown outcome. Never put it back in the send queue.
+    if (steering) {
+      removeQueuedPrompt(steering.item)
+      settleSteerCheckpoint(steering, false)
+      steering.settle()
+      steering = null
+    }
+    activeControl = null
+    activePrompt = null
+    promptInFlight = false
+    connecting = null
+  }
+  function waitForAutomation(at: number) {
+    if (!automation?.getSnapshot().recovering)
+      return Promise.resolve(automation?.getSnapshot().recoveryFailed !== true)
+    return new Promise<boolean>((resolve) => {
+      const finish = (ok: boolean) => {
+        unsubscribeWait()
+        if (releaseRecoveryWait === cancel) releaseRecoveryWait = undefined
+        resolve(ok && isCurrent(at))
+      }
+      const check = () => {
+        const value = automation.getSnapshot()
+        if (value.connected) finish(true)
+        else if (!value.recovering || value.recoveryFailed) finish(false)
+      }
+      const cancel = () => finish(false)
+      const unsubscribeWait = automation.subscribe(check)
+      releaseRecoveryWait = cancel
+      check()
+    })
+  }
+  async function attemptRecovery(owner: NonNullable<typeof recovery>) {
+    if (recovery !== owner || !canRecover(owner.at)) return
+    recoveryAttempt += 1
+    owner.failure = undefined
+    connecting = owner.at
+    let result: AssistantResult
+    try {
+      await owner.shutdown
+      if (!isCurrent(owner.at)) return
+      result = await bridge.connect({
+        projectId,
+        agent: owner.agent,
+        ...(owner.resumeSessionId ? { resumeSessionId: owner.resumeSessionId } : {}),
+      })
+    } catch {
+      result = { ok: false, code: "request-failed" }
+    }
+    if (!canRecover(owner.at) || recovery !== owner) {
+      await discardConnection(result)
+      return
+    }
+    connecting = null
+    if (!result.ok) {
+      scheduleRecovery(result.code)
+      return
+    }
+    await restoreConnection(owner, result.value)
+  }
+  async function restoreConnection(
+    owner: NonNullable<typeof recovery>,
+    snapshot: AssistantSnapshot,
+  ) {
+    acceptSnapshot(snapshot)
+    const error = recoveryConnectionError(owner, snapshot)
+    if (error) {
+      failRecovery(error)
+      return
+    }
+    const reconciled = !owner.interrupted || (await reconcileRecovery(owner.at))
+    if (!canRecover(owner.at) || recovery !== owner) return
+    if (owner.failure) {
+      retryBrokenRecovery(owner, owner.failure)
+      return
+    }
+    if (!reconciled) {
+      failRecovery("request-failed")
+      return
+    }
+    resumeRecoveredTurn(owner, snapshot)
+  }
+  function retryBrokenRecovery(owner: NonNullable<typeof recovery>, code: AssistantErrorCode) {
+    if (recoveryRetryable(code)) {
+      const current = scope()
+      if (current) {
+        ignoredTokens.add(current.sessionToken)
+        owner.shutdown = bridge.disconnect(current).catch(() => undefined)
+      }
+    }
+    scheduleRecovery(code)
+  }
+  function resumeRecoveredTurn(owner: NonNullable<typeof recovery>, snapshot: AssistantSnapshot) {
+    rememberSession(snapshot)
+    recovery = null
+    publish({
+      recovery: null,
+      connecting: false,
+      busy: owner.interrupted,
+      error: null,
+      queuePaused: owner.queuePaused,
+      supportsActiveSteer: snapshot.canSteer === true && typeof bridge.steer === "function",
+    })
+    if (owner.interrupted) {
+      if (!continueInterruptedTurn()) {
+        recovery = owner
+        failRecovery("request-failed")
+      }
+    } else {
+      resetAfterHealthyIdle(owner.at)
+      settleCheckpoints()
+      drainQueue()
+    }
+  }
+  function clearHealthyIdleTimer() {
+    if (healthyIdleTimer) clearTimeout(healthyIdleTimer)
+    healthyIdleTimer = undefined
+  }
+  function resetRecoveryBudget() {
+    clearHealthyIdleTimer()
+    recoveryAttempt = 0
+  }
+  function resetAfterHealthyIdle(at: number) {
+    clearHealthyIdleTimer()
+    healthyIdleTimer = setTimeout(() => {
+      healthyIdleTimer = undefined
+      if (isCurrent(at) && !recovery && state.snapshot?.status === "ready") recoveryAttempt = 0
+    }, 30_000)
+  }
+  function recoveryConnectionError(
+    owner: NonNullable<typeof recovery>,
+    snapshot: AssistantSnapshot,
+  ): AssistantErrorCode | null {
+    if (snapshot.status !== "ready")
+      return snapshot.status === "authentication-required"
+        ? "authentication-required"
+        : "protocol-error"
+    if (owner.resumeSessionId && snapshot.sessionId !== owner.resumeSessionId)
+      return "stale-session"
+    return null
+  }
+  async function retryAutomationRecovery() {
+    return automation?.getSnapshot().recoveryFailed ? automation.retryRecovery() : true
+  }
+  function manualRecoveryCurrent(owner: NonNullable<typeof recovery>) {
+    return recovery === owner && isCurrent(owner.at) && state.recovery?.status === "failed"
+  }
+  function canRecover(at: number) {
+    return isCurrent(at) && automaticRecoveryAllowed && state.recovery?.status === "retrying"
+  }
+  async function reconcileRecovery(at: number) {
+    if (!(await waitForAutomation(at)) || !isCurrent(at)) return false
+    if (!checkpointHost) return true
+    const port = checkpointHost.open()
+    if (!port) return false
+    const revision = await port.settleAccepted()
+    if (revision === null || !port.isSettled() || !isCurrent(at)) return false
+    // A continuation is a new ACP turn with a baseline bound to the recovered actor.
+    await checkpoints?.finish()
+    return isCurrent(at)
+  }
+  function continueInterruptedTurn() {
+    // This is a new normal ACP turn in the loaded session, never a replay of the interrupted RPC.
+    return launchPrompt(
+      "The connection interrupted the previous turn. Continue its remaining work in this resumed session. First read model_info and inspect the authoritative current document, pending draft, and revisions. An earlier CAD request may have completed without a response: reconcile its outcome before doing anything else. Never repeat an uncertain mutation or reapply an already completed change. If its outcome cannot be determined, stop and explain the uncertainty. Respect the user's latest instructions and finish only the remaining work.",
+      [],
+      undefined,
+      true,
+    )
   }
   function validPrompt(text: string, attachments: readonly AssistantAttachment[]) {
     const current = scope()
@@ -483,7 +855,7 @@ export function createNativeChatController({
     return activeControl !== null || steering !== null
   }
   function promptReady() {
-    return !promptInFlight && !controlLocked() && state.snapshot?.status === "ready"
+    return !recovery && !promptInFlight && !controlLocked() && state.snapshot?.status === "ready"
   }
   function removeQueuedPrompt(item: QueuedPrompt) {
     const index = queued.indexOf(item)
@@ -540,6 +912,15 @@ export function createNativeChatController({
   async function finishPrompt(turn: PromptTurn, at: number, result: AssistantResult) {
     if (!result.ok) await awaitSteerReceipt(turn)
     if (!isCurrent(at)) return
+    if (
+      !result.ok &&
+      automaticRecoveryAllowed &&
+      ["agent-exited", "timeout", "stale-session"].includes(result.code)
+    ) {
+      beginRecovery(result.code)
+      return
+    }
+    if (result.ok) resetRecoveryBudget()
     if (!result.ok) recoverFailedPrompt(turn)
     publish({
       busy: hostTurnActive(),
@@ -551,6 +932,7 @@ export function createNativeChatController({
     text: string,
     attachments: readonly AssistantAttachment[],
     queuedPrompt?: QueuedPrompt,
+    recoveryContinuation = false,
   ) {
     const current = scope()
     if (!current || !promptReady()) return false
@@ -561,12 +943,13 @@ export function createNativeChatController({
     const at = generation
     const turn: PromptTurn = { queuedPrompt, transcript: null, continued: false }
     activePrompt = turn
+    automaticRecoveryAllowed = true
     terminalToolStatus = undefined
     promptInFlight = true
     if (queuedPrompt) removeQueuedPrompt(queuedPrompt)
     publish({ busy: true, error: null })
     toolMessages.clear()
-    recordPrompt(text, attachments, queuedPrompt)
+    recordTurnPrompt(text, attachments, queuedPrompt, recoveryContinuation)
     turn.transcript = state.messages
     const complete = async () => {
       const result = await run(() =>
@@ -590,6 +973,14 @@ export function createNativeChatController({
         drainQueue()
       })
     return true
+  }
+  function recordTurnPrompt(
+    text: string,
+    attachments: readonly AssistantAttachment[],
+    item: QueuedPrompt | undefined,
+    internal: boolean,
+  ) {
+    if (!internal) recordPrompt(text, attachments, item)
   }
   function prepareQueuedSteer(id: string) {
     if (controlLocked() || !state.busy || state.snapshot?.status !== "prompting") return null
@@ -702,6 +1093,14 @@ export function createNativeChatController({
       if (unsubscribe) return
       disposed = false
       unsubscribe = bridge.onEvent(event)
+      unsubscribeAutomation = automation?.subscribe(() => {
+        const value = automation.getSnapshot()
+        if (value.recoveryBlocked && automaticRecoveryAllowed) void disconnect()
+        else if (value.recoveryFailed && recovery) failRecovery("request-failed")
+        else if (value.recovering && !recovery && hostTurnActive() && automaticRecoveryAllowed)
+          beginRecovery("request-failed")
+        refreshRecoveryFeedback()
+      })
     },
     subscribe(listener: () => void) {
       listeners.add(listener)
@@ -709,6 +1108,16 @@ export function createNativeChatController({
     },
     connect,
     disconnect,
+    async retryRecovery() {
+      if (!recovery || state.recovery?.status !== "failed" || disposed) return false
+      const owner = recovery
+      if (!(await retryAutomationRecovery()) || !manualRecoveryCurrent(owner)) return false
+      recoveryAttempt = 0
+      automaticRecoveryAllowed = true
+      publish({ busy: recovery.interrupted })
+      scheduleRecovery("request-failed")
+      return true
+    },
     async send(text: string, attachments: readonly AssistantAttachment[] = []) {
       if (
         state.busy ||
@@ -729,6 +1138,21 @@ export function createNativeChatController({
       if (state.busy || promptInFlight || steering || activeControl) return false
       return checkpoints?.undo() ?? false
     },
+    async applyDraft(operation: () => Promise<boolean>) {
+      if (
+        disposed ||
+        state.busy ||
+        promptInFlight ||
+        steering ||
+        activeControl ||
+        queued.length ||
+        !checkpoints
+      )
+        return false
+      const applied = await checkpoints.applyDraft(operation)
+      drainQueue()
+      return applied
+    },
     async viewBefore() {
       if (state.busy || promptInFlight || steering || activeControl) return false
       return checkpoints?.viewBefore() ?? false
@@ -746,6 +1170,11 @@ export function createNativeChatController({
       return true
     },
     async cancel() {
+      automaticRecoveryAllowed = false
+      if (recovery) {
+        await beginDisconnect().done
+        return
+      }
       checkpoints?.clearPreview()
       const current = scope()
       permissions.clear()
@@ -756,7 +1185,7 @@ export function createNativeChatController({
       if (current) await run(() => bridge.cancel(current))
     },
     async reset() {
-      if (queued.length || state.busy || promptInFlight) return
+      if (queued.length || state.busy || promptInFlight || state.settlingCheckpoint) return
       const { at, done } = beginDisconnect()
       await done
       if (!isCurrent(at)) return
@@ -811,11 +1240,35 @@ export function createNativeChatController({
     },
     async authenticate(methodId: string) {
       const current = scope()
-      if (current) await run(() => bridge.authenticate({ ...current, methodId }))
+      if (!current || activeControl) return
+      const owner = recovery
+      const token = Symbol("assistant-authentication")
+      const at = generation
+      activeControl = token
+      try {
+        const result = await run(() => bridge.authenticate({ ...current, methodId }))
+        if (
+          owner &&
+          recovery === owner &&
+          isCurrent(at) &&
+          result.ok &&
+          result.value.status === "ready"
+        ) {
+          publish({ recovery: { attempt: recoveryAttempt, status: "retrying" }, connecting: true })
+          activeControl = null
+          await restoreConnection(owner, result.value)
+        }
+      } finally {
+        if (activeControl === token) activeControl = null
+      }
     },
     dispose() {
       if (disposed) return
       const current = scope()
+      cancelRecovery()
+      automaticRecoveryAllowed = false
+      unsubscribeAutomation?.()
+      unsubscribeAutomation = undefined
       steering?.settle()
       finishToolMessages("cancelled")
       save()
@@ -833,6 +1286,7 @@ export function createNativeChatController({
         snapshot: null,
         busy: false,
         connecting: false,
+        recovery: null,
         permission: null,
         question: null,
         queuePaused: queued.length > 0,

@@ -29,17 +29,23 @@ const executableNames: Record<SlicerId, readonly string[]> = {
 }
 
 function macApplicationPaths(slicerId: SlicerId, home: string) {
-  const [bundleName, executableName] = (
-    {
-      "orca-slicer": ["OrcaSlicer.app", "OrcaSlicer"],
-      "bambu-studio": ["BambuStudio.app", "BambuStudio"],
-      "prusa-slicer": ["PrusaSlicer.app", "PrusaSlicer"],
-      "snapmaker-orca": ["Snapmaker Orca.app", "Snapmaker Orca"],
-      "ultimaker-cura": ["UltiMaker Cura.app", "UltiMaker-Cura"],
-    } satisfies Record<SlicerId, readonly [string, string]>
-  )[slicerId]
-  const relativePath = join(bundleName, "Contents", "MacOS", executableName)
-  return [join("/Applications", relativePath), join(home, "Applications", relativePath)]
+  const relativePaths: Record<SlicerId, readonly string[]> = {
+    "orca-slicer": ["OrcaSlicer.app/Contents/MacOS/OrcaSlicer"],
+    "bambu-studio": ["BambuStudio.app/Contents/MacOS/BambuStudio"],
+    "prusa-slicer": [
+      "PrusaSlicer.app/Contents/MacOS/PrusaSlicer",
+      "Original Prusa Drivers/PrusaSlicer.app/Contents/MacOS/PrusaSlicer",
+    ],
+    "snapmaker-orca": [
+      "Snapmaker Orca.app/Contents/MacOS/Snapmaker Orca",
+      "Snapmaker Orca.app/Contents/MacOS/Snapmaker_Orca",
+    ],
+    "ultimaker-cura": ["UltiMaker Cura.app/Contents/MacOS/UltiMaker-Cura"],
+  }
+  return relativePaths[slicerId].flatMap((relativePath) => [
+    join("/Applications", relativePath),
+    join(home, "Applications", relativePath),
+  ])
 }
 
 function windowsApplicationPaths(slicerId: SlicerId, environment: NodeJS.ProcessEnv) {

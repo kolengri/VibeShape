@@ -32,7 +32,7 @@ An action control that observes a Promise-like handler result follows a single-f
 - preserve `aria-disabled` behavior and block activation when using `asChild` with a non-button element;
 - leave error presentation to the owning command or form; a spinner is not an error boundary or diagnostic surface.
 
-The application mounts one `ActivityProvider`. Pending Buttons and standalone Spinners register owned work with that scope; the application wordmark renders the only visual loading indicator. Concurrent owners keep it active until every owner settles or unmounts. `useReportActivity` connects work that has no Button or Spinner. Controls retain their action locks and accessible pending state; they do not insert spinners or change width. Isolated primitives outside the provider retain their inline-spinner fallback.
+The application mounts one `ActivityProvider`. Pending Buttons and standalone Spinners register owned work with that scope; the application wordmark renders the global loading indicator. Concurrent owners keep it active until every owner settles or unmounts. `useReportActivity` connects work that has no Button or Spinner. The application bar also names the active project's assistant work with a reserved-width status and a reduced-motion-aware icon, driven by that project's existing chat controller even when chat is closed. An idle connection is not work. Other controls retain their action locks and accessible pending state; they do not insert spinners or change width. Isolated primitives outside the provider retain their inline-spinner fallback.
 
 The component detects the returned value instead of inspecting `Function.prototype.constructor`. Transpilation, wrappers, and ordinary functions that return a Promise make function-name checks unreliable.
 
@@ -41,6 +41,12 @@ The guard prevents accidental duplicate activation; it does not make a non-idemp
 ## Viewport-bounded overlays
 
 Shared `Dialog` and `AlertDialog` content must stay within the small viewport height with an outer gutter. Long content scrolls inside the overlay; its actions remain reachable by keyboard and scrolling. Feature-specific size overrides must preserve this contract. Command palettes keep their search field visible and shrink the scrollable results region instead of pushing content outside the dialog. Test compact effective viewport sizes in both themes, including Escape, focus restoration, and destructive-action cancellation.
+
+The export dialog keeps its heading and action footer outside the scrolling settings body. Destination
+and format, then scope and quality, form compact responsive groups; application choice and print
+preparation remain secondary actions. Empty field-error slots do not reserve blank rows. Export and
+handoff success use neutral fixed notifications with `role=status`; operational errors retain the
+destructive `role=alert` tone. Neither notification changes the editor or dialog layout.
 
 ## Form adapter contract
 

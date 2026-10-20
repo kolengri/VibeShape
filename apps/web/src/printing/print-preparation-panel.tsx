@@ -1,3 +1,4 @@
+import { documentExportFailure } from "@vibeshape/application/persistent-document-session"
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { useTranslations } from "@vibeshape/i18n"
 import {
@@ -19,6 +20,7 @@ import {
   MeshExportQualityField,
   meshExportQuality,
 } from "../document/mesh-export-quality-field"
+import { useReportApplicationError } from "../shell/application-notices"
 import { useViewerPreferences } from "../shell/viewer-preferences"
 import { PreparedPrintPreview } from "./prepared-print-preview"
 import { placePreparedPrintFace } from "./print-face-placement"
@@ -44,8 +46,18 @@ type PrintPreparationPort = (
 
 function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: PrintPreparationPort) {
   const t = useTranslations("app.printPreparation")
+  const exportT = useTranslations("app.export")
   const [prepared, setPrepared] = useState<PreparedExport | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setErrorMessage] = useState<string | null>(null)
+  const [errorAttempt, setErrorAttempt] = useState(0)
+  const setError = (message: string | null) => {
+    setErrorMessage(message)
+    if (message !== null) setErrorAttempt((attempt) => attempt + 1)
+  }
+  const failureMessage = (failure?: Extract<ActiveDocumentExportResult, { ok: false }>) =>
+    failure?.diagnostic?.sourceCode != null
+      ? exportT("printPreparationFailedDetails", { details: failure.diagnostic.message })
+      : t("failed")
   const [pending, setPending] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
   const [slicerMessage, setSlicerMessage] = useState<string | null>(null)
@@ -62,6 +74,13 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: Pri
     }
   }, [onBusyChange])
   const defaults = printPreparationSettingsSchema.parse({})
+  function applyPreparationResult(result: ActiveDocumentExportResult) {
+    if (!result.ok || !result.printPreparation) {
+      setError(failureMessage(result.ok ? undefined : result))
+      return
+    }
+    setPrepared(result)
+  }
   const form = useAppForm({
     defaultValues: {
       rotationX: String(defaults.rotationX),
@@ -75,6 +94,7 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: Pri
       reach: String(defaults.reach),
     },
     onSubmit: async ({ value }) => {
+      if (preparation.current) return
       const settings = printPreparationSettingsSchema.safeParse({
         ...Object.fromEntries(
           numericFields.map((key) => [
@@ -90,28 +110,29 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: Pri
         setError(t("invalid"))
         return
       }
+      const abort = new AbortController()
+      preparation.current = abort
+      const isActiveAttempt = () =>
+        mounted.current && !abort.signal.aborted && preparation.current === abort
       setError(null)
       setPending(true)
       onBusyChange(true)
       try {
-        const abort = new AbortController()
-        preparation.current = abort
         const quality = meshExportQuality(meshQualityChoice)
         const result = quality
           ? await prepare(settings.data, abort.signal, quality)
           : await prepare(settings.data, abort.signal)
-        if (!mounted.current) return
-        if (!result.ok || !result.printPreparation) {
-          setError(t("failed"))
-          return
-        }
-        setPrepared(result)
-      } catch {
-        if (mounted.current) setError(t("failed"))
+        if (!isActiveAttempt()) return
+        applyPreparationResult(result)
+      } catch (error) {
+        if (isActiveAttempt()) setError(failureMessage(documentExportFailure(error)))
       } finally {
-        if (mounted.current) {
-          setPending(false)
-          onBusyChange(false)
+        if (preparation.current === abort) {
+          preparation.current = null
+          if (mounted.current) {
+            setPending(false)
+            onBusyChange(false)
+          }
         }
       }
     },
@@ -120,6 +141,7 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: Pri
     form,
     prepared,
     error,
+    errorAttempt,
     pending,
     downloaded,
     setPrepared,
@@ -147,6 +169,7 @@ export function PrintPreparationPanel({
 }) {
   const t = useTranslations("app.printPreparation")
   const state = usePrintPreparation(onBusyChange, prepare)
+  const appOwnsError = useReportApplicationError(state.error, state.errorAttempt)
   const {
     form,
     error,
@@ -221,8 +244,11 @@ export function PrintPreparationPanel({
           {t("prepare")}
         </form.SubmitButton>
       </Form>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
+      {error && !appOwnsError ? (
+        <p
+          role="alert"
+          className="fixed inset-x-4 bottom-4 z-50 break-words rounded-md border border-destructive bg-popover p-3 text-sm text-destructive shadow-lg"
+        >
           {error}
         </p>
       ) : null}

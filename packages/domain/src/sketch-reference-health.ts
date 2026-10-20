@@ -32,8 +32,19 @@ export type SketchReferenceHealth = Readonly<{
 type SourceGeometryIndex = Readonly<{
   authoredEntityIds: ReadonlySet<SketchEntityId>
   entities: ReadonlyMap<SketchEntityId, SketchEntity>
-  projectedOwners: ReadonlyMap<SketchEntityId, SketchExternalReference>
+  projectedOwners: ReadonlyMap<SketchEntityId, SourceReferenceNode>
+  references: ReadonlyMap<SketchExternalReferenceId, SourceReferenceNode>
 }>
+
+type SourceReferenceNode = {
+  ownerSketchId: SketchId
+  reference: SketchExternalReference
+  dependents: SourceReferenceNode[]
+  terminal?: SourceReferenceNode
+  resolution?: ReferenceResolution
+  start: number
+  end: number
+}
 
 function referenceSourceEntityId(reference: SketchBackedExternalReference) {
   if (reference.kind === "line") return reference.sourceLineId
@@ -50,10 +61,19 @@ function referenceExpectedType(reference: SketchBackedExternalReference): Sketch
 }
 
 function sourceGeometryIndex(sketch: SketchRecord): SourceGeometryIndex {
-  const projectedOwners = new Map<SketchEntityId, SketchExternalReference>()
+  const projectedOwners = new Map<SketchEntityId, SourceReferenceNode>()
+  const references = new Map<SketchExternalReferenceId, SourceReferenceNode>()
   for (const reference of sketch.externalReferences ?? []) {
+    const node: SourceReferenceNode = {
+      ownerSketchId: sketch.id,
+      reference,
+      dependents: [],
+      start: 0,
+      end: 0,
+    }
+    references.set(reference.id, node)
     for (const entity of projectedExternalSketchEntities([reference])) {
-      projectedOwners.set(entity.id, reference)
+      projectedOwners.set(entity.id, node)
     }
   }
   const entities = [
@@ -64,6 +84,7 @@ function sourceGeometryIndex(sketch: SketchRecord): SourceGeometryIndex {
     authoredEntityIds: new Set(sketch.entities.map(({ id }) => id)),
     entities: new Map(entities.map((entity) => [entity.id, entity])),
     projectedOwners,
+    references,
   }
 }
 
@@ -82,65 +103,135 @@ function referencedSourceEntity(
   return { entity, geometry } as const
 }
 
-function modelReferenceResolution(
-  ownerSketchId: SketchId,
-  reference: SketchExternalModelReference,
-  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
-): ReferenceResolution {
-  const resolution = resolveModelReference?.(ownerSketchId, reference) ?? "unknown"
-  if (resolution === "resolved") return "healthy"
-  return resolution === "broken" ? "direct-broken" : "unknown"
-}
-
-function resolveReference(
-  ownerSketchId: SketchId,
-  reference: SketchExternalReference,
+function sourceReferenceStep(
+  reference: SketchBackedExternalReference,
   sourceGeometry: ReadonlyMap<SketchId, SourceGeometryIndex>,
-  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
-  visiting: ReadonlySet<string>,
-): ReferenceResolution {
-  if (isOrphanedModelReference(reference)) return "direct-broken"
-  if (isSketchExternalModelReference(reference)) {
-    return modelReferenceResolution(ownerSketchId, reference, resolveModelReference)
-  }
-  const visitKey = `${ownerSketchId}:${reference.id}`
-  if (visiting.has(visitKey)) return "transitive-broken"
-
+): ReferenceResolution | SourceReferenceNode {
   const target = referencedSourceEntity(reference, sourceGeometry)
   if (!target) return "direct-broken"
   const { entity, geometry } = target
   if (geometry.authoredEntityIds.has(entity.id)) return "healthy"
+  return geometry.projectedOwners.get(entity.id) ?? "direct-broken"
+}
 
-  const owner = geometry.projectedOwners.get(entity.id)
-  if (!owner) return "direct-broken"
-  return inheritedResolution(
-    resolveReference(
-      reference.sourceSketchId,
-      owner,
-      sourceGeometry,
-      resolveModelReference,
-      new Set([...visiting, visitKey]),
-    ),
+function indexSourceReferenceTree(terminal: SourceReferenceNode, start: number): number {
+  terminal.terminal = terminal
+  terminal.start = start++
+  const stack = [{ node: terminal, nextDependent: 0 }]
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1]
+    if (!frame) break
+    const dependent = frame.node.dependents[frame.nextDependent++]
+    if (dependent) {
+      dependent.terminal = terminal
+      dependent.start = start++
+      stack.push({ node: dependent, nextDependent: 0 })
+    } else {
+      frame.node.end = start
+      stack.pop()
+    }
+  }
+  return start
+}
+
+function indexSourceReferences(sourceGeometry: ReadonlyMap<SketchId, SourceGeometryIndex>) {
+  const terminals: SourceReferenceNode[] = []
+  for (const geometry of sourceGeometry.values()) {
+    for (const node of geometry.references.values()) {
+      const { reference } = node
+      if (isOrphanedModelReference(reference)) {
+        node.resolution = "direct-broken"
+      } else if (!isSketchExternalModelReference(reference)) {
+        const step = sourceReferenceStep(reference, sourceGeometry)
+        if (typeof step !== "string") {
+          step.dependents.push(node)
+          continue
+        }
+        node.resolution = step
+      }
+      terminals.push(node)
+    }
+  }
+
+  // Reversing the single-dependency graph gives disjoint trees rooted at terminal references.
+  // Nodes outside those trees reach a cycle and remain transitively broken.
+  let start = 0
+  for (const terminal of terminals) start = indexSourceReferenceTree(terminal, start)
+}
+
+function sourcePathContains(
+  source: SourceReferenceNode,
+  candidate: SourceReferenceNode | undefined,
+) {
+  return (
+    candidate !== undefined &&
+    !isSketchExternalModelReference(candidate.reference) &&
+    candidate.terminal === source.terminal &&
+    candidate.start <= source.start &&
+    source.start < candidate.end
   )
+}
+
+function createReferenceResolver(
+  sourceGeometry: ReadonlyMap<SketchId, SourceGeometryIndex>,
+  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
+) {
+  // Identity includes both owner and reference object: a draft may retain committed reference IDs.
+  const modelResolutions = new Map<
+    SketchId,
+    Map<SketchExternalModelReference, ReferenceResolution>
+  >()
+  function modelResolution(
+    ownerSketchId: SketchId,
+    reference: SketchExternalModelReference,
+  ): ReferenceResolution {
+    let ownerResolutions = modelResolutions.get(ownerSketchId)
+    if (!ownerResolutions) {
+      ownerResolutions = new Map()
+      modelResolutions.set(ownerSketchId, ownerResolutions)
+    }
+    const cached = ownerResolutions.get(reference)
+    if (cached) return cached
+    const evidence = resolveModelReference?.(ownerSketchId, reference) ?? "unknown"
+    const resolution =
+      evidence === "resolved" ? "healthy" : evidence === "broken" ? "direct-broken" : "unknown"
+    ownerResolutions.set(reference, resolution)
+    return resolution
+  }
+
+  return (ownerSketchId: SketchId, reference: SketchExternalReference): ReferenceResolution => {
+    if (isOrphanedModelReference(reference)) return "direct-broken"
+    if (isSketchExternalModelReference(reference)) return modelResolution(ownerSketchId, reference)
+
+    const source = sourceReferenceStep(reference, sourceGeometry)
+    if (typeof source === "string") return source
+    const terminal = source.terminal
+    if (!terminal) return "transitive-broken"
+
+    // Preserve the root's ID-based cycle check even when a draft differs from its committed node.
+    // Reverse-tree intervals answer source-path membership without rewalking the source chain.
+    const committed = sourceGeometry.get(ownerSketchId)?.references.get(reference.id)
+    if (sourcePathContains(source, committed)) return "transitive-broken"
+
+    const resolution =
+      terminal.resolution ??
+      (isSketchExternalModelReference(terminal.reference)
+        ? modelResolution(terminal.ownerSketchId, terminal.reference)
+        : "direct-broken")
+    return inheritedResolution(resolution)
+  }
 }
 
 function inspectSketch(
   sketch: SketchRecord,
-  sourceGeometry: ReadonlyMap<SketchId, SourceGeometryIndex>,
-  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
+  resolveReference: ReturnType<typeof createReferenceResolver>,
 ): SketchReferenceHealth {
   const directBrokenReferenceIds: SketchExternalReferenceId[] = []
   const transitiveBrokenReferenceIds: SketchExternalReferenceId[] = []
   const unknownReferenceIds: SketchExternalReferenceId[] = []
 
   for (const reference of sketch.externalReferences ?? []) {
-    const resolution = resolveReference(
-      sketch.id,
-      reference,
-      sourceGeometry,
-      resolveModelReference,
-      new Set(),
-    )
+    const resolution = resolveReference(sketch.id, reference)
     if (resolution === "direct-broken") directBrokenReferenceIds.push(reference.id)
     if (resolution === "transitive-broken") transitiveBrokenReferenceIds.push(reference.id)
     if (resolution === "unknown") unknownReferenceIds.push(reference.id)
@@ -168,10 +259,9 @@ export function inspectSketchReferenceHealth(
   const sourceGeometry = new Map(
     sources.map((source) => [source.id, sourceGeometryIndex(source)] as const),
   )
+  indexSourceReferences(sourceGeometry)
+  const resolveReference = createReferenceResolver(sourceGeometry, resolveModelReference)
   return new Map(
-    targets.map(
-      (target) =>
-        [target.id, inspectSketch(target, sourceGeometry, resolveModelReference)] as const,
-    ),
+    targets.map((target) => [target.id, inspectSketch(target, resolveReference)] as const),
   )
 }

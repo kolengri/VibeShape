@@ -39,8 +39,18 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js"
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
 import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysis-overlays"
+import { createBrowserEdgePreparation } from "./edge-preparation-browser"
+import { FaceHighlightPresentation } from "./face-highlights"
+import { FeatureHighlightPresentation } from "./feature-highlights"
 import { InfiniteGridDecoration } from "./infinite-grid"
-import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
+import { createLatestFramePublisher } from "./latest-frame-publisher"
+import { viewerBodyKey } from "./mesh-geometry"
+import {
+  createFaceHighlightGeometry,
+  firstViewerSelectionHit,
+  sameViewerSelection as sameSelection,
+  viewerSelectionFromSource,
+} from "./mesh-selection"
 import { ModelMeshPresentation } from "./model-meshes"
 import { preserveOrbitPivot } from "./orbit-pivot"
 import { orientationInsetPlacement } from "./orientation-inset"
@@ -52,6 +62,7 @@ import {
   type ViewerOriginPlaneVisibility,
   viewerOriginPlanes,
 } from "./origin-planes"
+import { PointerHoverPicking } from "./pointer-hover"
 import { PrintBedDecoration, type ViewerPrintBed } from "./print-bed"
 import {
   sameViewerSection,
@@ -116,33 +127,8 @@ function sameViewerSketchPlaneProjection(
   )
 }
 
-export function createLatestFramePublisher<Value>(
-  publish: (value: Value) => void,
-  schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame,
-  cancelScheduled: (handle: number) => void = cancelAnimationFrame,
-) {
-  let frame: number | null = null
-  let pending: Readonly<{ value: Value }> | null = null
-  const flush = () => {
-    if (frame !== null) cancelScheduled(frame)
-    frame = null
-    const sample = pending
-    pending = null
-    if (sample) publish(sample.value)
-  }
-  return {
-    cancel: () => {
-      if (frame !== null) cancelScheduled(frame)
-      frame = null
-      pending = null
-    },
-    flush,
-    push: (value: Value) => {
-      pending = { value }
-      if (frame === null) frame = schedule(flush)
-    },
-  }
-}
+export { createLatestFramePublisher } from "./latest-frame-publisher"
+export { viewerFaceOrdinal } from "./mesh-selection"
 
 export type ViewerMesh = Readonly<{
   textureSource?: Omit<ViewerMesh, "textureSource">
@@ -661,12 +647,15 @@ export function orderedEligibleViewerSelections(
 }
 
 export type GeometryViewportOptions = Readonly<{
+  /** Reports asynchronous display-edge failures; surfaces and picking remain usable. */
+  onEdgePreparationError?: (error: Error) => void
   /** The element's width reserves a left safe area for the orientation scene. */
   orientationInsetOffsetElement?: HTMLElement | null
   /** Additional drawing surface above the canvas whose inset owns navigation input. */
   orientationInputElement?: () => HTMLElement | SVGSVGElement | null
   /** Runs before a marker drag's first rotation or a valid axis click's view change. */
   onOrientationNavigationStart?: () => void
+  /** Filters face/support candidates, independently of ordinary body activation. */
   isSelectionCandidateEligible?: (selection: ViewerSelection) => boolean
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane | null) => void
@@ -921,61 +910,7 @@ export function createViewerSketchProfileGeometry(
   return geometry
 }
 
-export function viewerFaceOrdinal(mesh: ViewerMesh, faceId: number) {
-  const seen = new Set<number>()
-  for (const candidate of mesh.triangleFaceIds) {
-    if (seen.has(candidate)) continue
-    seen.add(candidate)
-    if (candidate === faceId) return seen.size
-  }
-  return null
-}
-
-export function createFaceHighlightGeometry(mesh: ViewerMesh, faceId: number) {
-  const triangleCount = mesh.triangleFaceIds.reduce(
-    (count, candidate) => count + Number(candidate === faceId),
-    0,
-  )
-  if (triangleCount === 0) return null
-  const positions = new Float32Array(triangleCount * 9)
-  const normals = new Float32Array(triangleCount * 9)
-  let targetOffset = 0
-  for (let triangle = 0; triangle < mesh.triangleFaceIds.length; triangle += 1) {
-    if (mesh.triangleFaceIds[triangle] !== faceId) continue
-    for (let corner = 0; corner < 3; corner += 1) {
-      const vertexIndex = mesh.indices[triangle * 3 + corner]
-      if (vertexIndex === undefined) return null
-      const sourceOffset = vertexIndex * 3
-      const x = mesh.positions[sourceOffset]
-      const y = mesh.positions[sourceOffset + 1]
-      const z = mesh.positions[sourceOffset + 2]
-      const normalX = mesh.normals[sourceOffset]
-      const normalY = mesh.normals[sourceOffset + 1]
-      const normalZ = mesh.normals[sourceOffset + 2]
-      if (
-        x === undefined ||
-        y === undefined ||
-        z === undefined ||
-        normalX === undefined ||
-        normalY === undefined ||
-        normalZ === undefined
-      ) {
-        return null
-      }
-      positions[targetOffset] = x
-      positions[targetOffset + 1] = y
-      positions[targetOffset + 2] = z
-      normals[targetOffset] = normalX
-      normals[targetOffset + 1] = normalY
-      normals[targetOffset + 2] = normalZ
-      targetOffset += 3
-    }
-  }
-  const geometry = new BufferGeometry()
-  geometry.setAttribute("position", new BufferAttribute(positions, 3))
-  geometry.setAttribute("normal", new BufferAttribute(normals, 3))
-  return geometry
-}
+export { createFaceHighlightGeometry } from "./mesh-selection"
 
 function setCameraFrustum(camera: OrthographicCamera, viewHeight: number, aspect: number) {
   const frustum = orthographicFrustum(viewHeight, aspect)
@@ -1011,11 +946,6 @@ function disposeModelGroup(group: Group) {
       child.geometry.dispose()
     }
   }
-}
-
-function sameSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
-  if (left === null || right === null) return left === right
-  return viewerBodyKey(left) === viewerBodyKey(right) && left.faceId === right.faceId
 }
 
 function sameSelectionStack(left: readonly ViewerSelection[], right: readonly ViewerSelection[]) {
@@ -1369,10 +1299,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     transparent: true,
     opacity: 0.8,
   })
-  readonly #modelPresentation = new ModelMeshPresentation({
-    preview: { surface: this.#previewSurfaceMaterial, edges: this.#previewEdgeMaterial },
-    datum: { surface: this.#datumSurfaceMaterial, edges: this.#datumEdgeMaterial },
-  })
+  readonly #onEdgePreparationError: GeometryViewportOptions["onEdgePreparationError"]
+  readonly #edgePreparation = createBrowserEdgePreparation((error) =>
+    (this.#onEdgePreparationError ?? console.error)(error),
+  )
+  readonly #modelPresentation = new ModelMeshPresentation(
+    {
+      preview: { surface: this.#previewSurfaceMaterial, edges: this.#previewEdgeMaterial },
+      datum: { surface: this.#datumSurfaceMaterial, edges: this.#datumEdgeMaterial },
+    },
+    this.#edgePreparation,
+    () => this.#render(),
+  )
   readonly #modelGroup = this.#modelPresentation.group
   readonly #preselectionMaterial = new MeshBasicMaterial({
     color: new Color("#65a9ee"),
@@ -1443,6 +1381,28 @@ class ThreeGeometryViewport implements GeometryViewport {
     depthTest: false,
     opacity: 0.96,
     transparent: true,
+  })
+  readonly #faceSelectionPresentation = new FaceHighlightPresentation(
+    this.#faceSelectionGroup,
+    this.#selectionMaterial,
+    this.#meshSources,
+  )
+  readonly #featurePreselectionPresentation = new FeatureHighlightPresentation(
+    this.#featurePreselectionGroup,
+    this.#modelPresentation,
+    this.#featurePreselectionMaterial,
+    this.#featurePreselectionEdgeMaterial,
+    2,
+  )
+  readonly #featureSelectionPresentation = new FeatureHighlightPresentation(
+    this.#featureSelectionGroup,
+    this.#modelPresentation,
+    this.#featureSelectionMaterial,
+    this.#featureSelectionEdgeMaterial,
+    3,
+  )
+  readonly #hoverPicking = new PointerHoverPicking((event) => {
+    if (!this.#disposed) this.#updatePointerPreselection(event)
   })
   readonly #resizeObserver: ResizeObserver
   readonly #orientationInsetOffsetElement: GeometryViewportOptions["orientationInsetOffsetElement"]
@@ -1537,6 +1497,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
+    this.#onEdgePreparationError = options.onEdgePreparationError
     this.#orientationInsetOffsetElement = options.orientationInsetOffsetElement
     const sketchProfileCallbacks = viewerSketchProfileCallbacks(options)
     this.#isSelectionCandidateEligible = viewerSelectionEligibilityCallback(
@@ -1629,6 +1590,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       inputElement: () => options.orientationInputElement?.() ?? null,
       navigationEnabled: () => this.#controls.enabled,
       setNavigationEnabled: (enabled) => {
+        if (!enabled) this.#hoverPicking.cancel()
         this.#controls.enabled = enabled
       },
       onStart: () => {
@@ -1658,6 +1620,7 @@ class ThreeGeometryViewport implements GeometryViewport {
         !this.#surfaceTextureBrush,
       navigationEnabled: () => this.#controls.enabled,
       setNavigationEnabled: (enabled) => {
+        if (!enabled) this.#hoverPicking.cancel()
         this.#controls.enabled = enabled
       },
       onChange: (section) => {
@@ -1752,6 +1715,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   setSection(section: ViewerSection | null) {
     if (this.#disposed) return
     if (sameViewerSection(this.#section, section)) return
+    this.#hoverPicking.cancel()
     this.#sectionPlanes = sectionClipPlanes(section)
     this.#section = section
     this.#sectionDecoration.setSection(section)
@@ -1774,22 +1738,35 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   setMeshes(meshes: readonly ViewerMesh[]) {
+    this.#hoverPicking.cancel()
     if (this.#disposed) return
     this.#selectionCandidateStackPreserved = false
     this.#clearSelectionCandidateStack()
     this.clearSelection()
-    disposeModelGroup(this.#faceSelectionGroup)
+    this.#faceSelectionPresentation.clear()
     this.#setPreselection(null)
     this.#surfaceMeshes.length = 0
     this.#textureSourceMeshes.clear()
     this.#meshSources.clear()
-    this.#sectionDecoration.setMeshes(meshes)
-    for (const { source, surface, textureSource } of this.#modelPresentation.setMeshes(meshes)) {
+    const entries = this.#modelPresentation.setMeshes(meshes)
+    const sectionBounds = new Box3()
+    for (const { source, surface, textureSource } of entries) {
+      if (
+        source.appearance !== "datum" &&
+        source.appearance !== "selection-source" &&
+        surface.geometry.boundingBox
+      )
+        sectionBounds.union(surface.geometry.boundingBox)
       if (source.appearance === "preview") continue
       this.#meshSources.set(viewerBodyKey(source), source)
       this.#surfaceMeshes.push(surface)
       if (textureSource) this.#textureSourceMeshes.set(viewerBodyKey(source), textureSource)
     }
+    this.#sectionDecoration.setMeshes(meshes, sectionBounds)
+    this.#featureSelectionPresentation.setMeshes(viewerHighlightMeshes(this.#featureSelection))
+    this.#featurePreselectionPresentation.setMeshes(
+      viewerHighlightMeshes(this.#featurePreselection),
+    )
     this.#render()
   }
 
@@ -1798,25 +1775,13 @@ class ThreeGeometryViewport implements GeometryViewport {
     const selected = new Set(viewerHighlightMeshes(this.#featureSelection).map(viewerBodyKey))
     const visible = viewerHighlightMeshes(mesh).filter((item) => !selected.has(viewerBodyKey(item)))
     this.#featurePreselection = visible
-    this.#replaceFeatureHighlight(
-      this.#featurePreselectionGroup,
-      this.#featurePreselectionMaterial,
-      this.#featurePreselectionEdgeMaterial,
-      visible,
-      2,
-    )
+    if (this.#featurePreselectionPresentation.setMeshes(visible)) this.#render()
   }
 
   setFeatureSelection(mesh: ViewerFeatureHighlight) {
-    if (this.#disposed || mesh === this.#featureSelection) return
+    if (this.#disposed) return
     this.#featureSelection = mesh
-    this.#replaceFeatureHighlight(
-      this.#featureSelectionGroup,
-      this.#featureSelectionMaterial,
-      this.#featureSelectionEdgeMaterial,
-      mesh,
-      3,
-    )
+    if (this.#featureSelectionPresentation.setMeshes(viewerHighlightMeshes(mesh))) this.#render()
     this.setFeaturePreselection(this.#featurePreselection)
   }
 
@@ -1992,6 +1957,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     ) {
       return
     }
+    this.#hoverPicking.cancel()
     this.#originPlaneSelection = selectedPlane
     this.#originPlaneSelectionActive = active
     this.#originPlaneIdleSelectionEnabled = idleSelectionEnabled
@@ -2194,6 +2160,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setPointerOrbit(enabled: boolean) {
     if (this.#disposed || enabled === this.#pointerOrbit) return
+    this.#hoverPicking.cancel()
     this.#onNavigationBlur()
     this.#orientationInteraction.cancel()
     this.#pointerOrbit = enabled
@@ -2211,6 +2178,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setInteractionMode(mode: ViewerInteractionMode) {
     if (this.#disposed || mode === this.#interactionMode) return
+    this.#hoverPicking.cancel()
     this.#interactionMode = mode
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
@@ -2229,6 +2197,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   fit() {
+    this.#hoverPicking.cancel()
     if (this.#disposed) return
     this.#onNavigationBlur()
     this.#orientationInteraction.cancel()
@@ -2277,17 +2246,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   setFaceSelections(selections: readonly ViewerSelection[]) {
-    if (this.#disposed) return
-    disposeModelGroup(this.#faceSelectionGroup)
-    for (const selection of selections) {
-      const source = this.#meshSources.get(viewerBodyKey(selection))
-      const geometry = source ? createFaceHighlightGeometry(source, selection.faceId) : null
-      if (geometry) {
-        const mesh = new Mesh(geometry, this.#selectionMaterial)
-        mesh.renderOrder = 4
-        this.#faceSelectionGroup.add(mesh)
-      }
-    }
+    if (this.#disposed || !this.#faceSelectionPresentation.setSelections(selections)) return
     this.#applySectionClipping()
     this.#render()
   }
@@ -2305,6 +2264,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   dispose() {
+    this.#hoverPicking.cancel()
     this.#sectionDecoration.dispose()
     this.#toolPlaneDecoration.dispose()
     this.#printDecoration.dispose()
@@ -2352,7 +2312,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationControls.detach()
     this.#scene.remove(this.#translationHelper)
     this.#translationControls.dispose()
+    this.#featurePreselectionPresentation.dispose()
+    this.#featureSelectionPresentation.dispose()
     this.#modelPresentation.dispose()
+    this.#edgePreparation.dispose()
     disposeModelGroup(this.#sketchGroup)
     disposeModelGroup(this.#sketchPointCandidateGroup)
     disposeModelGroup(this.#sketchPointPreselectionGroup)
@@ -2360,11 +2323,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#sketchProfilePreselectionGroup)
     disposeModelGroup(this.#sketchProfileSelectionGroup)
     disposeModelGroup(this.#originPlaneGroup)
-    disposeModelGroup(this.#featurePreselectionGroup)
-    disposeModelGroup(this.#featureSelectionGroup)
     disposeModelGroup(this.#preselectionGroup)
     disposeModelGroup(this.#selectionGroup)
-    disposeModelGroup(this.#faceSelectionGroup)
+    this.#faceSelectionPresentation.clear()
     disposeModelGroup(this.#angularGizmoGroup)
     this.#scene.remove(this.#translationObject)
     this.#previewSurfaceMaterial.dispose()
@@ -2502,11 +2463,11 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #pickIdleSelectionTarget(event: PointerEvent): IdleSelectionTarget {
     if (!this.#prepareRaycaster(event)) return { kind: "empty" }
-    const modelHit = this.#raycaster.intersectObjects(this.#surfaceMeshes, false).flatMap((hit) => {
-      if (!sectionPointVisible(this.#sectionPlanes, hit.point)) return []
-      const selection = this.#selectionFromIntersection(hit)
-      return selection ? [{ selection, distance: hit.distance }] : []
-    })[0]
+    const modelHit = firstViewerSelectionHit(
+      this.#raycaster.intersectObjects(this.#surfaceMeshes, false),
+      this.#meshSources,
+      this.#sectionPlanes,
+    )
     const profileHits = this.#raycaster
       .intersectObjects([...this.#sketchProfiles.keys()], false)
       .flatMap((hit) => {
@@ -2719,6 +2680,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onNavigationStart = () => {
+    this.#hoverPicking.cancel()
     this.#setOriginPlanePreselection(null)
     this.#setPreselection(null)
     this.#setSketchProfilePreselection(null)
@@ -2744,11 +2706,13 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onNavigationBlur = () => {
+    this.#hoverPicking.cancel()
     this.#onControlsEnd()
     this.#pointerOrbitPosition = null
   }
 
   #onControlsChange = () => {
+    this.#hoverPicking.cancel()
     const orientation = this.#controlsNavigationOrientation
     if (orientation) {
       if (!orientation.equals(this.#camera.quaternion)) {
@@ -2804,6 +2768,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onTranslationControlsMouseDown = () => {
+    this.#hoverPicking.cancel()
     this.#translationGizmoInteracting = true
     this.#translationGizmoPointerId = this.#pointerDown?.pointerId ?? null
     this.#canvas.dataset.translationGizmoDragging = "true"
@@ -3132,28 +3097,6 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
-  #replaceFeatureHighlight(
-    group: Group,
-    surfaceMaterial: MeshBasicMaterial,
-    edgeMaterial: LineBasicMaterial,
-    source: ViewerFeatureHighlight,
-    renderOrder: number,
-  ) {
-    disposeModelGroup(group)
-    for (const mesh of viewerHighlightMeshes(source)) {
-      const geometry = createViewerGeometry(mesh)
-      const surface = new Mesh(geometry, surfaceMaterial)
-      surface.name = `${viewerBodyKey(mesh)}:feature-highlight`
-      surface.renderOrder = renderOrder
-      group.add(surface)
-      const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
-      edges.name = `${viewerBodyKey(mesh)}:feature-highlight-edges`
-      edges.renderOrder = renderOrder
-      group.add(edges)
-    }
-    this.#render()
-  }
-
   #handleAngularGizmoPointerMove(event: PointerEvent) {
     if (this.#angularGizmoInteracting) {
       this.#updateAngularGizmoInteraction(event)
@@ -3219,6 +3162,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   setSurfaceTextureBrush(brush: ViewerSurfaceTextureBrush | null, active = false) {
+    this.#hoverPicking.cancel()
     if (textureBrushTargetChanged(this.#surfaceTextureBrush, brush))
       this.#finishSurfaceTextureStroke(true)
     this.#surfaceTextureBrush = brush
@@ -3314,6 +3258,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerDown = (event: PointerEvent) => {
+    this.#hoverPicking.cancel()
     if (this.#pointerOrbit) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -3350,12 +3295,22 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerMove = (event: PointerEvent) => {
-    if (this.#consumeOwnedPointerMove(event)) return
-    if (!event.isPrimary) return
-    if (this.#handleAngularGizmoPointerMove(event)) return
-    if (this.#translationGizmoInteracting) return
-    if (event.buttons !== 0) return
-    this.#updatePointerPreselection(event)
+    if (
+      this.#consumeOwnedPointerMove(event) ||
+      !event.isPrimary ||
+      this.#handleAngularGizmoPointerMove(event) ||
+      this.#translationGizmoInteracting ||
+      event.buttons !== 0
+    ) {
+      this.#hoverPicking.cancel()
+      return
+    }
+    this.#hoverPicking.update(
+      event,
+      this.#interactionMode === "select" &&
+        !this.#originPlaneSelectionActive &&
+        !this.#surfaceTextureBrush,
+    )
   }
 
   #updatePointerPreselection(event: PointerEvent) {
@@ -3413,6 +3368,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerUp = (event: PointerEvent) => {
+    this.#hoverPicking.cancel()
     if (this.#surfaceTexturePointer === event.pointerId) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -3512,6 +3468,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerLeave = () => {
+    this.#hoverPicking.cancel()
     if (this.#angularGizmoInteracting) return
     this.#pointerDown = null
     if (this.#interactionMode === "camera-only") return
@@ -3740,23 +3697,6 @@ function textureBrushAcceptsSelection(
     selection.featureId === brush.featureId &&
     (selection.outputRole ?? "result") === (brush.outputRole ?? "result")
   )
-}
-
-function viewerSelectionFromSource(
-  source: ViewerMesh,
-  faceIndex: number | null | undefined,
-): ViewerSelection | null {
-  if (faceIndex === null || faceIndex === undefined) return null
-  const faceId = source.triangleFaceIds[faceIndex]
-  if (faceId === undefined) return null
-  const faceOrdinal = viewerFaceOrdinal(source, faceId)
-  if (faceOrdinal === null) return null
-  return {
-    featureId: source.featureId,
-    ...(source.outputRole === undefined ? {} : { outputRole: source.outputRole }),
-    faceId,
-    faceOrdinal,
-  }
 }
 
 function textureBrushTargetChanged(

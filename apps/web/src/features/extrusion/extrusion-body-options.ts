@@ -1,4 +1,7 @@
-import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
+import {
+  createModelBodyTopologyEvidenceResolver,
+  type ModelBodyTopologyEvidenceResolver,
+} from "@vibeshape/application/model-body-topology"
 import type { DocumentRebuildOutcome } from "@vibeshape/application/persistent-document-session"
 import type { BodyTopoRef, DocumentSnapshot, FeatureId, FeatureRecord } from "@vibeshape/domain"
 import { readExtrusionFeatureParameters } from "@vibeshape/domain"
@@ -30,6 +33,7 @@ export function extrusionBodyOptions(
   legacyLabel: (name: string | undefined) => string,
 ): readonly ExtrusionTargetOption[] {
   if (!rebuild.ok) return []
+  const topology = createModelBodyTopologyEvidenceResolver(snapshot, rebuild)
   const stop = excludedFeatureId
     ? snapshot.features.findIndex(({ id }) => id === excludedFeatureId)
     : -1
@@ -47,7 +51,7 @@ export function extrusionBodyOptions(
         outputRole: body.outputRole,
         contentHash: record.contentHash,
         label: label(feature.label, body.outputRole),
-        faces: finiteEndFaceOptions(snapshot, rebuild, feature, body.outputRole),
+        faces: finiteEndFaceOptions(topology, feature, body),
       }))
     byFeature.set(feature.id, options)
   }
@@ -67,19 +71,22 @@ function uniqueMeshFaceId(candidates: readonly TopologyCandidate[], candidateId:
 }
 
 function finiteEndFaceOptions(
-  snapshot: DocumentSnapshot,
-  rebuild: Extract<DocumentRebuildOutcome, { ok: true }>,
+  resolveTopology: ModelBodyTopologyEvidenceResolver,
   feature: FeatureRecord,
-  outputRole: string,
+  body: NonNullable<
+    Extract<
+      DocumentRebuildOutcome,
+      { ok: true }
+    >["response"]["geometry"][number]["geometry"]["bodies"]
+  >[number],
 ) {
-  const topology = createModelBodyTopologyEvidence(snapshot, rebuild, {
+  const { outputRole } = body
+  const topology = resolveTopology({
     featureId: feature.id,
     outputRole,
     kind: "face",
   })
   if (!topology.ok) return []
-  const source = rebuild.response.geometry.find((record) => record.featureId === feature.id)
-  const body = source?.geometry.bodies?.find((candidate) => candidate.outputRole === outputRole)
   const project = createBodyTopologyReferenceProjector(topology.evidence)
   const resolve = createBodyTopologyReferenceResolver(topology.evidence)
   return topology.evidence.candidates.flatMap((candidate) => {
@@ -87,7 +94,7 @@ function finiteEndFaceOptions(
     if (!reference.success) return []
     const resolved = resolve(reference.data)
     if (resolved.status !== "resolved" || resolved.candidateId !== candidate.candidateId) return []
-    const meshFaceId = uniqueMeshFaceId(body?.topologyCandidates ?? [], candidate.candidateId)
+    const meshFaceId = uniqueMeshFaceId(body.topologyCandidates, candidate.candidateId)
     return [
       {
         label: `${feature.label ?? feature.type.typeId} · ${outputRole} · ${candidate.semanticRole ?? candidate.candidateId}`,

@@ -321,6 +321,16 @@ describe("native application allowlist", () => {
       file,
       { spawn: start },
     )
+    await launchNativeSlicer(
+      {
+        id: "bambu-studio",
+        name: "Bambu Studio",
+        kind: "bundle",
+        path: "/Applications/BambuStudio.app",
+      },
+      file,
+      { spawn: start },
+    )
     expect(calls[0]).toEqual({
       command: "/usr/bin/open",
       args: ["-a", target.path, file],
@@ -328,5 +338,7 @@ describe("native application allowlist", () => {
     })
     expect(calls[1]?.args).toEqual([file])
     expect(calls[1]?.command).toBe("/private/Custom slicer")
+    expect(calls[2]?.command).toBe("/usr/bin/open")
+    expect(calls[2]?.args).toEqual(["-a", "/Applications/BambuStudio.app", file])
   })
 })

@@ -21,7 +21,7 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
   await expect(page.getByRole("button", { name: "Actions for Box 1" })).toBeVisible()
   await openApplicationMenuItem(page, "Export geometry…")
   const dialog = page.getByRole("dialog", { name: "Export model" })
-  await dialog.getByRole("button", { name: "Prepare print / breakaway fins…" }).click()
+  await dialog.getByRole("button", { name: "Prepare print…" }).click()
   await dialog.getByRole("button", { name: "Generate print preview" }).click()
   await expect(dialog.getByText(/1 body · [1-9]\d* fin/)).toBeVisible()
   await expect(dialog.getByLabel("Prepared print model and breakaway fins")).toBeVisible()
@@ -59,7 +59,7 @@ test("previews breakaway fins on a print copy and exports without changing CAD h
     dialog.getByText("Prepared 3MF download started. The CAD model was not changed."),
   ).toBeVisible()
   const slicerDownload = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "Open in OrcaSlicer" }).click()
+  await dialog.getByRole("button", { name: "Download 3MF", exact: true }).click()
   const slicerPath = await (await slicerDownload).path()
   if (!slicerPath) throw new Error("The slicer fallback download must be available.")
   expect(await readFile(slicerPath)).toEqual(preparedBytes)

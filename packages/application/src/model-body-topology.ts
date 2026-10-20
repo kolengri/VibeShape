@@ -9,6 +9,11 @@ import { documentWorkerResponseSchema } from "@vibeshape/protocol"
 import { projectTopologyCandidate } from "./topology-candidate-projection"
 
 type TopologyKind = "edge" | "face"
+type TopologyTarget = { featureId: FeatureId; outputRole: string; kind: TopologyKind }
+
+export type ModelBodyTopologyEvidenceResolver = (
+  target: TopologyTarget,
+) => ModelBodyTopologyEvidenceResult
 
 function completeFeatureCoverage(snapshot: DocumentSnapshot, response: RebuiltResponse) {
   const expected = snapshot.features.map((feature) => feature.id)
@@ -46,6 +51,7 @@ type SourceEvidence =
       ok: true
       response: RebuiltResponse
       geometry: RebuiltGeometry
+      bodies: ReadonlyMap<string, RebuiltBody>
     }
 
 const invalidEvidence = (): SourceEvidence => ({
@@ -72,42 +78,35 @@ function validateResponse(
 }
 
 function validateFeatureSource(
-  snapshot: DocumentSnapshot,
+  feature: DocumentSnapshot["features"][number],
   response: RebuiltResponse,
-  target: { featureId: FeatureId },
+  evaluation: RebuiltResponse["evaluation"]["records"][number] | undefined,
+  geometry: RebuiltGeometry | undefined,
 ): SourceEvidence {
-  const feature = snapshot.features.find((candidate) => candidate.id === target.featureId)
-  if (!feature) return { ok: false, result: { ok: false, code: "body-not-found" } }
   if (feature.suppressed || readDatumPlaneFeatureParameters(feature) !== null) {
     return { ok: false, result: { ok: false, code: "geometry-unavailable" } }
   }
-  const evaluation = response.evaluation.records.find(
-    (record) => record.featureId === target.featureId,
-  )
   if (evaluation?.status !== "succeeded") {
     return { ok: false, result: { ok: false, code: "geometry-unavailable" } }
   }
-  const geometry = response.geometry.find((record) => record.featureId === target.featureId)
   if (!geometry || geometry.contentHash !== evaluation.contentHash) return invalidEvidence()
-  return { ok: true, response, geometry }
-}
-
-function validateSource(
-  snapshot: DocumentSnapshot,
-  response: RebuiltResponse,
-  target: { featureId: FeatureId },
-): SourceEvidence {
-  const responseError = validateResponse(snapshot, response)
-  return responseError
-    ? { ok: false, result: responseError }
-    : validateFeatureSource(snapshot, response, target)
+  return {
+    ok: true,
+    response,
+    geometry,
+    bodies: new Map(geometry.geometry.bodies?.map((body) => [body.outputRole, body])),
+  }
 }
 
 type BodySelection =
   | { ok: false; result: ModelBodyTopologyEvidenceResult }
   | { ok: true; body: RebuiltBody }
 
-function selectBody(geometry: RebuiltGeometry, outputRole: string): BodySelection {
+function selectBody(
+  source: Extract<SourceEvidence, { ok: true }>,
+  outputRole: string,
+): BodySelection {
+  const { geometry } = source
   const root = geometry.geometry.shape
   if (!root.valid || root.volume <= 0 || root.solidCount < 1) {
     return { ok: false, result: { ok: false, code: "geometry-unavailable" } }
@@ -119,14 +118,14 @@ function selectBody(geometry: RebuiltGeometry, outputRole: string): BodySelectio
   if (bodies.length !== geometry.geometry.shape.solidCount) {
     return { ok: false, result: invalidResult() }
   }
-  const body = bodies.find((candidate) => candidate.outputRole === outputRole)
+  const body = source.bodies.get(outputRole)
   return body ? { ok: true, body } : { ok: false, result: { ok: false, code: "body-not-found" } }
 }
 
 function projectEvidence(
   snapshot: DocumentSnapshot,
   source: Extract<SourceEvidence, { ok: true }>,
-  target: { featureId: FeatureId; outputRole: string; kind: TopologyKind },
+  target: TopologyTarget,
   body: RebuiltBody,
 ): ModelBodyTopologyEvidenceResult {
   const candidates = body.topologyCandidates
@@ -150,19 +149,50 @@ function projectEvidence(
     : { ok: false, code: "invalid-geometry-evidence" }
 }
 
-export function createModelBodyTopologyEvidence(
+/** Own one resolver per synchronous catalogue invocation; retain no cross-rebuild cache. */
+export function createModelBodyTopologyEvidenceResolver(
   snapshot: DocumentSnapshot,
   rebuild: { ok: false } | { ok: true; response: unknown },
-  target: { featureId: FeatureId; outputRole: string; kind: TopologyKind },
-): ModelBodyTopologyEvidenceResult {
-  if (!rebuild.ok) return { ok: false, code: "geometry-unavailable" }
+): ModelBodyTopologyEvidenceResolver {
+  if (!rebuild.ok) return () => ({ ok: false, code: "geometry-unavailable" })
 
   const parsed = documentWorkerResponseSchema.safeParse(rebuild.response)
   if (!parsed.success || parsed.data.type !== "documentRebuilt") {
-    return { ok: false, code: "invalid-geometry-evidence" }
+    return invalidResult
   }
-  const source = validateSource(snapshot, parsed.data, target)
-  if (!source.ok) return source.result
-  const body = selectBody(source.geometry, target.outputRole)
-  return body.ok ? projectEvidence(snapshot, source, target, body.body) : body.result
+  const response = parsed.data
+  const responseError = validateResponse(snapshot, response)
+  if (responseError) return () => responseError
+  const evaluations = new Map(
+    response.evaluation.records.map((record) => [record.featureId, record]),
+  )
+  const geometries = new Map(response.geometry.map((geometry) => [geometry.featureId, geometry]))
+  const sources = new Map<FeatureId, SourceEvidence>()
+  for (const feature of snapshot.features) {
+    if (!sources.has(feature.id))
+      sources.set(
+        feature.id,
+        validateFeatureSource(
+          feature,
+          response,
+          evaluations.get(feature.id),
+          geometries.get(feature.id),
+        ),
+      )
+  }
+  return (target) => {
+    const source = sources.get(target.featureId)
+    if (!source) return { ok: false, code: "body-not-found" }
+    if (!source.ok) return source.result
+    const body = selectBody(source, target.outputRole)
+    return body.ok ? projectEvidence(snapshot, source, target, body.body) : body.result
+  }
+}
+
+export function createModelBodyTopologyEvidence(
+  snapshot: DocumentSnapshot,
+  rebuild: { ok: false } | { ok: true; response: unknown },
+  target: TopologyTarget,
+): ModelBodyTopologyEvidenceResult {
+  return createModelBodyTopologyEvidenceResolver(snapshot, rebuild)(target)
 }

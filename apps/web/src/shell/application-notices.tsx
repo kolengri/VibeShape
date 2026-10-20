@@ -23,8 +23,9 @@ import {
   useState,
 } from "react"
 
-type Notice = Readonly<{ message: string; attempt: number; dismissed: boolean }>
-type Report = (id: string, message: string | null, attempt: number) => void
+type NoticeTone = "error" | "success"
+type Notice = Readonly<{ message: string; attempt: number; tone: NoticeTone; dismissed: boolean }>
+type Report = (id: string, message: string | null, attempt: number, tone: NoticeTone) => void
 const ApplicationNoticesContext = createContext<Report | null>(null)
 
 function ApplicationNotices({
@@ -44,6 +45,7 @@ function ApplicationNotices({
             <Notification
               key={id}
               open
+              tone={notice.tone}
               onOpenChange={(open) => {
                 if (!open) onDismiss(id)
               }}
@@ -72,14 +74,15 @@ function ApplicationNotices({
 
 export function ApplicationNoticesProvider({ children }: { children: ReactNode }) {
   const [notices, setNotices] = useState<ReadonlyMap<string, Notice>>(() => new Map())
-  const report = useCallback<Report>((id, message, attempt) => {
+  const report = useCallback<Report>((id, message, attempt, tone) => {
     setNotices((current) => {
       const previous = current.get(id)
-      if (previous?.message === message && previous.attempt === attempt) return current
+      if (previous?.message === message && previous.attempt === attempt && previous.tone === tone)
+        return current
       if (message === null && !previous) return current
       const next = new Map(current)
       if (message === null) next.delete(id)
-      else next.set(id, { message, attempt, dismissed: false })
+      else next.set(id, { message, attempt, tone, dismissed: false })
       return next
     })
   }, [])
@@ -102,11 +105,19 @@ export function ApplicationNoticesProvider({ children }: { children: ReactNode }
 
 /** Returns whether the app owns presentation; standalone consumers may retain a fallback. */
 export function useReportApplicationError(message: string | null, attempt = 0) {
+  return useReportApplicationNotice(message, attempt, "error")
+}
+
+export function useReportApplicationSuccess(message: string | null, attempt = 0) {
+  return useReportApplicationNotice(message, attempt, "success")
+}
+
+function useReportApplicationNotice(message: string | null, attempt: number, tone: NoticeTone) {
   const report = useContext(ApplicationNoticesContext)
   const id = useId()
   useEffect(() => {
-    report?.(id, message, attempt)
-    return () => report?.(id, null, 0)
-  }, [id, message, attempt, report])
+    report?.(id, message, attempt, tone)
+    return () => report?.(id, null, 0, tone)
+  }, [id, message, attempt, report, tone])
   return report !== null
 }

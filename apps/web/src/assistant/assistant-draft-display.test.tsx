@@ -13,6 +13,7 @@ import {
 } from "@vibeshape/domain"
 import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import type { ReactNode } from "react"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { AutomationDraftViewport } from "../automation/automation-draft-viewport"
 import {
   getActiveAutomationReviews,
@@ -185,6 +186,96 @@ function renderDisplay(controller: DocumentControllerState) {
 }
 
 describe("assistant draft display integration", () => {
+  it("exposes an owner-bound Apply only for an actionable private preview and ignores a replaced revision", async () => {
+    const f = fixture()
+    const reviews = getActiveAutomationReviews()
+    const apply = vi.fn(async () => ({ ok: true as const, value: null }))
+    reviews.presentDraftViewport(f.owner, f.viewport)
+    const view = renderDisplay(f.controller)
+    expect(view.result.current.display?.application).toBeUndefined()
+    act(() => reviews.presentDraftViewport(f.owner, f.viewport, apply))
+    const oldApply = view.result.current.display?.application?.onApply
+    expect(oldApply).toBeFunction()
+    expect(apply).not.toHaveBeenCalled()
+    const updated = {
+      ...f.viewport,
+      draft: { ...f.viewport.draft, revision: f.viewport.draft.revision + 1 },
+    }
+    act(() => reviews.presentDraftViewport(f.owner, updated, apply))
+    await act(async () => {
+      expect(await oldApply?.()).toBe(false)
+    })
+    expect(apply).not.toHaveBeenCalled()
+    await act(async () => {
+      expect(await view.result.current.display?.application?.onApply()).toBe(true)
+    })
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(view.result.current.display?.application).toBeUndefined()
+  })
+
+  it("retains pending and localized-error data while commit removes its disposable viewport", async () => {
+    const f = fixture()
+    const reviews = getActiveAutomationReviews()
+    let fail = () => {}
+    const gate = new Promise<void>((resolve) => {
+      fail = resolve
+    })
+    reviews.presentDraftViewport(f.owner, f.viewport, async () => {
+      reviews.clearDraftViewport(f.owner)
+      await gate
+      return {
+        ok: false,
+        diagnostic: {
+          code: "document-commit-failed",
+          message: "Storage failed",
+          retryable: false,
+          issues: [],
+        },
+      }
+    })
+    const view = renderDisplay(f.controller)
+    const action = view.result.current.display?.application?.onApply
+    let result: Promise<boolean> | undefined
+    act(() => {
+      result = action?.()
+    })
+    expect(reviews.getDraftViewportSnapshot()).toBeNull()
+    expect(view.result.current.display?.application?.status).toBe("applying")
+    await act(async () => {
+      expect(await action?.()).toBe(false)
+    })
+    await act(async () => {
+      fail()
+      expect(await result).toBe(false)
+    })
+    expect(view.result.current.display?.application).toMatchObject({
+      status: "error",
+      diagnostic: "document-commit-failed",
+    })
+    expect(f.controller.report?.snapshot).toBe(f.snapshot)
+    view.rerender({
+      controller: controllerFor({ ...f.snapshot, revision: f.snapshot.revision + 1 }),
+    })
+    expect(view.result.current.display).toBeUndefined()
+  })
+
+  it("never applies a callback to a newly selected project review owner", async () => {
+    const f = fixture()
+    const first = getActiveAutomationReviews()
+    const apply = vi.fn(async () => ({ ok: true as const, value: null }))
+    first.presentDraftViewport(f.owner, f.viewport, apply)
+    const view = renderDisplay(f.controller)
+    const oldApply = view.result.current.display?.application?.onApply
+    const second = createAutomationReviewController()
+    second.presentDraftViewport(f.owner, f.viewport, apply)
+    act(() => setActiveAutomationReviews(second))
+    await act(async () => {
+      expect(await oldApply?.()).toBe(false)
+    })
+    expect(apply).not.toHaveBeenCalled()
+    expect(second.getDraftApplicationSnapshot()?.status).toBe("ready")
+  })
+
   it("subscribes through the real proxy and changes only presentation metadata", () => {
     const f = fixture()
     const reviews = getActiveAutomationReviews()

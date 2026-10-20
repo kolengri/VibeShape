@@ -15,6 +15,7 @@ import {
   authoredTreeFixture,
   requireAuthoredFixture,
 } from "../test-support/authored-tree-fixture"
+import { ApplicationNoticesProvider } from "./application-notices"
 import type { AuthoredMetadataCommit } from "./authored-item-rename"
 import { AuthoredPartsGroup } from "./authored-parts-group"
 import { HistoryFolderDialog } from "./history-folder-dialog"
@@ -28,7 +29,7 @@ function providers(children: ReactNode) {
   )
 }
 const commit = () => vi.fn<AuthoredMetadataCommit>().mockResolvedValue({ ok: true })
-beforeAll(() =>
+beforeAll(() => {
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -36,8 +37,11 @@ beforeAll(() =>
       unobserve() {}
       disconnect() {}
     },
-  ),
-)
+  )
+  HTMLElement.prototype.hasPointerCapture = () => false
+  HTMLElement.prototype.setPointerCapture = vi.fn()
+  HTMLElement.prototype.releasePointerCapture = vi.fn()
+})
 afterEach(cleanup)
 
 describe("authored tree controls", () => {
@@ -147,6 +151,7 @@ describe("authored tree controls", () => {
     await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
     expect(clearOverride).not.toHaveBeenCalled()
     expect(screen.getByRole("alert")).toBeTruthy()
+    expect(screen.getByRole("alert").classList.contains("fixed")).toBe(true)
     await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
     expect(onCommit).toHaveBeenLastCalledWith(authority.revision, {
       kind: "part.set-visibility",
@@ -155,6 +160,62 @@ describe("authored tree controls", () => {
     })
     expect(clearOverride).toHaveBeenCalledTimes(1)
     expect(clearOverride).toHaveBeenCalledWith(part.id)
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("reports visibility failures outside part rows and resurfaces a dismissed failure on retry", async () => {
+    const { authority } = authoredTreeFixture()
+    const parts = authority.parts.slice(0, 2).map((part) => ({
+      part,
+      body: authoredTestBody(part),
+      status: "available" as const,
+    }))
+    const onCommit = commit()
+      .mockRejectedValueOnce(new Error("Storage unavailable"))
+      .mockRejectedValueOnce(new Error("Storage unavailable"))
+      .mockResolvedValueOnce({
+        ok: false,
+        diagnostic: {
+          code: "command-rejected",
+          message: "Stale revision",
+          retryable: true,
+          sourceCode: "stale-revision",
+        },
+      })
+    const view = render(
+      providers(
+        <ApplicationNoticesProvider>
+          <AuthoredPartsGroup
+            parts={parts}
+            revision={authority.revision}
+            selectedPartId={null}
+            disabled={false}
+            onSelect={vi.fn()}
+            onCommit={onCommit}
+          />
+        </ApplicationNoticesProvider>,
+      ),
+    )
+    const rows = [...view.container.querySelectorAll("[data-part-id]")]
+    const markup = rows.map((row) => row.innerHTML)
+    const toggle = screen.getByRole("button", { name: "Hide part Part 1" })
+    await userEvent.click(toggle)
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Visibility for Part 1 could not be saved. Try again.",
+    )
+    expect(rows.map((row) => row.innerHTML)).toEqual(markup)
+    for (const row of rows) expect(within(row as HTMLElement).queryByRole("alert")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss notification" }))
+    expect(screen.queryByRole("alert")).toBeNull()
+    await userEvent.click(toggle)
+    expect(screen.getByRole("alert").textContent).toContain("Visibility for Part 1")
+    await userEvent.click(toggle)
+    expect(screen.getByRole("alert").textContent).toContain(
+      "The document changed. Check the current visibility for Part 1 and try again.",
+    )
+    await userEvent.click(toggle)
+    expect(onCommit).toHaveBeenCalledTimes(4)
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 
   it("selects stable parts and persists visibility independently of geometry", async () => {

@@ -74,9 +74,20 @@ After a batch finishes, its available inspection controls appear after the messa
 not in the viewport toolbar or chat header. An unsaved agent preview defaults to **Result**, using
 normal model materials; **Changes** uses the blue preview material. Both remain disposable previews
 without topology-picking authority. The caption explicitly distinguishes unsaved preview from saved
-changes. Saved batches expose **View before** / **View current** and **Undo agent changes** through
+changes. A ready, owner-bound unsaved draft offers **Apply changes** in the chat; it uses the existing
+commit and approval policy, stays pending through persistence, and reports failures without asking
+the model to send another command. Saved batches expose **View before** / **View current** and **Undo agent changes** through
 the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
-move the transcript when the person is reading earlier messages.
+move the transcript when the person is reading earlier messages. Inspection locks do not open
+connection settings, and footer/display changes do not trigger transcript following without new
+message content. The application bar names active-project AI work even while chat is closed.
+
+An interrupted embedded desktop connection shows automatic recovery progress for up to five attempts
+per connection owner, followed by an explicit retry action. Recovery retains settings and the reading
+position. A resumable provider session continues only after accepted writes settle and the agent
+reconciles current model state; it does not resend the interrupted prompt. Continuation starts a new
+internal checkpoint, so its Undo/View before controls cover its own saved changes. Stop, Disconnect
+and permanent authentication or configuration failures require the person's action.
 
 Failed calls retain the reported diagnostic in their expandable output. If the agent supplied no
 error detail, the row says so explicitly instead of offering an empty disclosure.

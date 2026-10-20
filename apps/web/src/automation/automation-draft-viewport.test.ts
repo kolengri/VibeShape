@@ -30,6 +30,7 @@ import {
   setActiveAutomationReviews,
 } from "./automation-review-controller"
 import { createAutomationReviewController } from "./automation-review-state"
+import { createConnectedAssistantReviews } from "./connected-assistant-reviews"
 import { createDocumentAutomationSession } from "./document-automation-session"
 
 const id = (n: number) => `0195b5ac-b220-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -116,7 +117,7 @@ function rebuild(snapshot: DocumentSnapshot, roles = ["result"]) {
   return response
 }
 
-function fixture(roles?: string[]) {
+function fixture(roles?: string[], connected = false) {
   const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
   if (!modules.ok) throw new Error(modules.diagnostic.message)
   const types = createFeatureTypeRegistry(modules.registry, partDesignFeatureTypeHandlers)
@@ -156,7 +157,7 @@ function fixture(roles?: string[]) {
       createDraftId: () => id(draftNumber++),
       documents: { readSnapshot: () => current, compareAndCommitDraft: commit },
     },
-    reviews,
+    connected ? createConnectedAssistantReviews(reviews, () => true) : reviews,
   )
   if (!createdSession.ok) throw new Error(createdSession.diagnostic.message)
   const session = createdSession
@@ -230,6 +231,122 @@ afterEach(() => {
 })
 
 describe("exact automation review viewport", () => {
+  it("commits a chat-clicked private draft through connected authority and the ordinary document port once", async () => {
+    const f = fixture(undefined, true)
+    const base = f.snapshot()
+    await f.draft()
+    const application = f.reviews.getDraftApplicationSnapshot()
+    if (!application) throw new Error("Expected an actionable private draft.")
+    expect(application.status).toBe("ready")
+    expect(f.commit).not.toHaveBeenCalled()
+    const applied = f.reviews.applyDraftViewport(application)
+    expect(f.reviews.getDraftApplicationSnapshot()?.status).toBe("applying")
+    expect(await f.reviews.applyDraftViewport(application)).toBe(false)
+    expect(await applied).toBe(true)
+    expect(f.commit).toHaveBeenCalledTimes(1)
+    expect(f.snapshot().revision).toBe(base.revision + 1)
+    expect(f.snapshot().features).toHaveLength(1)
+    expect(f.reviews.getDraftApplicationSnapshot()).toBeNull()
+    expect(f.reviews.getDraftViewportSnapshot()).toBeNull()
+    expect(await f.reviews.applyDraftViewport(application)).toBe(false)
+    f.session.dispose()
+  })
+
+  it("keeps manual approval pending through the same review identity and waits for persistence", async () => {
+    const f = fixture()
+    await f.draft()
+    const application = f.reviews.getDraftApplicationSnapshot()
+    if (!application) throw new Error("Expected an actionable private draft.")
+    const applied = f.reviews.applyDraftViewport(application)
+    for (let i = 0; i < 20 && !f.reviews.getSnapshot(); i += 1) await Promise.resolve()
+    const review = f.reviews.getSnapshot()
+    if (!review) throw new Error("Expected host review.")
+    expect(review.status).toBe("ready")
+    expect("kind" in review.input ? null : review.input.preview.draft).toMatchObject(
+      application.viewport.draft,
+    )
+    expect(f.commit).not.toHaveBeenCalled()
+    await f.reviews.decide("stale-review", "approved")
+    expect(f.commit).not.toHaveBeenCalled()
+    const persisted = f.commit.getMockImplementation()
+    let save = () => {}
+    const saving = new Promise<void>((resolve) => {
+      save = resolve
+    })
+    f.commit.mockImplementation(async (...args) => {
+      await saving
+      return (
+        persisted?.(...args) ?? {
+          ok: false,
+          diagnostic: {
+            code: "document-commit-failed",
+            message: "Unavailable",
+            retryable: false,
+            issues: [],
+          },
+        }
+      )
+    })
+    const decided = f.reviews.decide(review.id, "approved")
+    expect(f.reviews.getSnapshot()?.status).toBe("applying")
+    expect(f.reviews.getDraftApplicationSnapshot()?.status).toBe("applying")
+    save()
+    await decided
+    expect(await applied).toBe(true)
+    expect(f.commit).toHaveBeenCalledTimes(1)
+    f.session.dispose()
+  })
+
+  it("rejects a changed private revision rather than applying more commands than the click reviewed", async () => {
+    const f = fixture(undefined, true)
+    const request = await f.draft()
+    const application = f.reviews.getDraftApplicationSnapshot()
+    if (!application) throw new Error("Expected an actionable private draft.")
+    const queuedEdit = f.session.host.applyCommand(actor, {
+      ...request,
+      command: {
+        kind: "org.vibeshape.document.rename",
+        schemaVersion: 1,
+        commandId: id(799),
+        documentId: f.snapshot().id,
+        baseRevision: application.viewport.draft.revision,
+        issuedAt: new Date().toISOString(),
+        actor,
+        payload: { name: "Later private edit" },
+      },
+    })
+    const applied = f.reviews.applyDraftViewport(application)
+    await queuedEdit
+    expect(await applied).toBe(false)
+    expect(f.commit).not.toHaveBeenCalled()
+    expect(f.snapshot().name).toBe("Project A")
+    f.session.dispose()
+  })
+
+  it("reports a persistence failure without claiming that the draft was saved or allowing a repeated stale Apply", async () => {
+    const f = fixture(undefined, true)
+    await f.draft()
+    const application = f.reviews.getDraftApplicationSnapshot()
+    if (!application) throw new Error("Expected an actionable private draft.")
+    f.commit.mockImplementation(() => ({
+      ok: false,
+      diagnostic: {
+        code: "document-commit-failed",
+        message: "Unconfirmed persistence",
+        retryable: false,
+        issues: [],
+      },
+    }))
+    expect(await f.reviews.applyDraftViewport(application)).toBe(false)
+    expect(f.reviews.getDraftApplicationSnapshot()).toMatchObject({
+      status: "error",
+      diagnostic: "document-commit-failed",
+    })
+    expect(await f.reviews.applyDraftViewport(application)).toBe(false)
+    expect(f.commit).toHaveBeenCalledTimes(1)
+    f.session.dispose()
+  })
+
   it("draws private commands before review without saving, and clears them on discard and disposal", async () => {
     const f = fixture()
     const base = f.snapshot()

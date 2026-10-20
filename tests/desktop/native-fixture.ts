@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process"
 import { once } from "node:events"
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
@@ -36,6 +36,9 @@ export async function createNativeFixture(
   const origin = packagedApp ? "http://127.0.0.1:43115" : await isolatedOrigin()
   const applications = new Map<ElectronApplication, ChildProcess>()
   if (options.bootstrap) {
+    const desktopPackage = z
+      .object({ version: z.string() })
+      .parse(JSON.parse(await readFile(join(nativeTestRoot, "apps/desktop/package.json"), "utf8")))
     await mkdir(join(directory, "dist"), { recursive: true })
     for (const name of ["preload.cjs", "mcp.cjs"])
       await cp(join(nativeTestRoot, "apps/desktop/dist", name), join(directory, "dist", name))
@@ -43,7 +46,7 @@ export async function createNativeFixture(
       join(directory, "package.json"),
       JSON.stringify({
         name: "native-acceptance-fixture",
-        version: "0.1.0",
+        version: desktopPackage.version,
         main: "bootstrap.cjs",
       }),
     )

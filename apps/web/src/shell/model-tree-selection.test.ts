@@ -56,4 +56,17 @@ describe("Model tree selection", () => {
     expect(partForModelBody([resolved], { ...body, outputRole: "other" })).toBeUndefined()
     expect(partForModelBody([resolved, resolved], body)).toBeUndefined()
   })
+
+  it("indexes each current projection independently and preserves missing and ambiguous ownership", () => {
+    const { authority } = authoredTreeFixture()
+    const part = requireAuthoredFixture(authority.parts[0])
+    const body = authoredTestBody(part)
+    const resolved = { part, body, status: "available" as const }
+    const current = [resolved]
+    expect(partForModelBody(current, body)).toBe(resolved)
+    expect(partForModelBody(current, body)).toBe(resolved)
+    expect(partForModelBody([{ ...resolved, body: null }], body)).toBeUndefined()
+    expect(partForModelBody([resolved, { ...resolved }], body)).toBeUndefined()
+    expect(partForModelBody(current, body)).toBe(resolved)
+  })
 })

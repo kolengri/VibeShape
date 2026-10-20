@@ -56,14 +56,21 @@ function SlicerApplicationField({ handoff, disabled }: Controls) {
     </div>
   )
 }
-function SlicerSecondaryActions({ handoff, disabled }: Controls) {
+function SlicerSecondaryActions({
+  handoff,
+  disabled,
+  compact = false,
+}: Controls & { compact?: boolean }) {
   const t = useTranslations("app.export.slicer.native")
+  if (!handoff.native && !handoff.canReveal) return null
   return (
     <div className="flex flex-wrap gap-2">
       {handoff.native ? (
         <Button
           type="button"
-          variant="outline"
+          variant={compact ? "ghost" : "outline"}
+          size="sm"
+          className="h-auto min-h-8 whitespace-normal text-left"
           disabled={disabled}
           onClick={handoff.chooseApplication}
         >
@@ -71,33 +78,52 @@ function SlicerSecondaryActions({ handoff, disabled }: Controls) {
         </Button>
       ) : null}
       {handoff.canReveal ? (
-        <Button type="button" variant="outline" disabled={disabled} onClick={handoff.reveal}>
+        <Button
+          type="button"
+          size="sm"
+          variant={compact ? "ghost" : "outline"}
+          disabled={disabled}
+          onClick={handoff.reveal}
+        >
           {t("reveal")}
         </Button>
       ) : null}
     </div>
   )
 }
-function HandoffNotice({ status }: { status: Handoff["status"] }) {
+function useHandoffMessage(status: Handoff["status"]) {
   const t = useTranslations("app.export.slicer.native")
-  const appOwnsError = useReportApplicationError(status?.failed ? t(status.key) : null)
-  if (!status || (status.failed && appOwnsError)) return null
+  if (!status) return null
+  return status.details ? t("exportFailedDetails", { details: status.details }) : t(status.key)
+}
+function HandoffNotice({ status, attempt }: { status: Handoff["status"]; attempt: number }) {
+  const message = useHandoffMessage(status)
+  const failed = status?.failed ?? false
+  const appOwnsError = useReportApplicationError(failed ? message : null, attempt)
+  if (!message) return null
+  if (!failed)
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        {message}
+      </p>
+    )
+  if (appOwnsError) return null
   return (
     <p
-      role={status.failed ? "alert" : "status"}
-      className={status.failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+      role="alert"
+      className="fixed inset-x-4 bottom-4 z-50 break-words rounded-md border border-destructive bg-popover p-3 text-sm text-destructive shadow-lg"
     >
-      {t(status.key)}
+      {message}
     </p>
   )
 }
 
 export function SlicerHandoffOptions({ handoff, disabled }: Controls) {
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2 [&_[data-slot=field-error]:not([role=alert])]:hidden">
       <SlicerApplicationField handoff={handoff} disabled={disabled} />
-      <SlicerSecondaryActions handoff={handoff} disabled={disabled} />
-      <HandoffNotice status={handoff.status} />
+      <SlicerSecondaryActions handoff={handoff} disabled={disabled} compact />
+      <HandoffNotice status={handoff.status} attempt={handoff.attempt} />
     </div>
   )
 }
@@ -127,7 +153,7 @@ export function SlicerHandoffPanel({
           {handoff.sendLabel}
         </Button>
       </div>
-      <HandoffNotice status={handoff.status} />
+      <HandoffNotice status={handoff.status} attempt={handoff.attempt} />
     </section>
   )
 }

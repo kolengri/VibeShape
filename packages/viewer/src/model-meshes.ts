@@ -1,7 +1,7 @@
 import {
   type BufferAttribute,
+  type BufferGeometry,
   Color,
-  EdgesGeometry,
   Group,
   LineBasicMaterial,
   LineSegments,
@@ -9,7 +9,9 @@ import {
   type MeshBasicMaterial,
   MeshStandardMaterial,
 } from "three"
+import type { EdgePreparationPort } from "./edge-preparation"
 import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
+import { PreparedEdges } from "./prepared-edges"
 import type { ViewerMesh } from "./three-viewport"
 import { viewerBodyColor } from "./viewer-appearance"
 
@@ -22,6 +24,7 @@ type ModelMeshEntry = {
   source: ViewerMesh
   surface: Mesh
   edges: LineSegments
+  preparedEdges: PreparedEdges
   textureSource: { surface: Mesh; source: ViewerMesh } | null
   ownsMaterials: boolean
 }
@@ -35,7 +38,7 @@ function sameArray(left: Float32Array | Uint32Array, right: Float32Array | Uint3
   return true
 }
 
-function sameGeometry(left: ViewerMesh, right: ViewerMesh) {
+export function sameViewerGeometry(left: ViewerMesh, right: ViewerMesh) {
   return (
     sameArray(left.positions, right.positions) &&
     sameArray(left.normals, right.normals) &&
@@ -45,14 +48,14 @@ function sameGeometry(left: ViewerMesh, right: ViewerMesh) {
 
 function sameTextureSource(left: ViewerMesh, right: ViewerMesh) {
   return left.textureSource && right.textureSource
-    ? sameGeometry(left.textureSource, right.textureSource)
+    ? sameViewerGeometry(left.textureSource, right.textureSource)
     : left.textureSource === right.textureSource
 }
 
 function samePresentation(left: ViewerMesh, right: ViewerMesh) {
   return (
     (left.appearance ?? "model") === (right.appearance ?? "model") &&
-    sameGeometry(left, right) &&
+    sameViewerGeometry(left, right) &&
     sameTextureSource(left, right)
   )
 }
@@ -81,7 +84,7 @@ function disposeEntryMaterials(entry: ModelMeshEntry) {
 
 function disposeEntry(entry: ModelMeshEntry) {
   entry.surface.geometry.dispose()
-  entry.edges.geometry.dispose()
+  entry.preparedEdges.dispose()
   entry.textureSource?.surface.geometry.dispose()
   disposeEntryMaterials(entry)
 }
@@ -90,11 +93,28 @@ function disposeEntry(entry: ModelMeshEntry) {
 export class ModelMeshPresentation {
   readonly group = new Group()
   readonly #materials: SharedMaterials
+  readonly #preparation: EdgePreparationPort
+  readonly #onChange: () => void
   #entries: ModelMeshEntry[] = []
   #disposed = false
 
-  constructor(materials: SharedMaterials) {
+  constructor(materials: SharedMaterials, preparation: EdgePreparationPort, onChange: () => void) {
     this.#materials = materials
+    this.#preparation = preparation
+    this.#onChange = onChange
+  }
+
+  createEdges(source: ViewerMesh, surface: BufferGeometry) {
+    return new PreparedEdges(this.#preparation, source, surface, this.#onChange)
+  }
+
+  geometryFor(source: ViewerMesh) {
+    const entry = this.#entries.find(
+      (candidate) =>
+        viewerBodyKey(candidate.source) === viewerBodyKey(source) &&
+        sameViewerGeometry(candidate.source, source),
+    )
+    return entry ? { surface: entry.surface.geometry, edges: entry.edges.geometry } : null
   }
 
   setMeshes(meshes: readonly ViewerMesh[]): readonly ModelMeshEntry[] {
@@ -155,12 +175,14 @@ export class ModelMeshPresentation {
     const materials = this.#entryMaterials(source)
     const surface = new Mesh(createViewerGeometry(source), materials.surface)
     surface.name = viewerBodyKey(source)
-    const edges = new LineSegments(new EdgesGeometry(surface.geometry, 28), materials.edges)
+    const preparedEdges = this.createEdges(source, surface.geometry)
+    const edges = new LineSegments(preparedEdges.geometry, materials.edges)
     edges.name = `${surface.name}:edges`
     return {
       source,
       surface,
       edges,
+      preparedEdges,
       textureSource:
         source.appearance !== "preview" && source.textureSource
           ? {

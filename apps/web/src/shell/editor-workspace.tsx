@@ -2354,11 +2354,13 @@ function workspaceHoveredPartBodies(
   featureIds: ReadonlyMap<string, FeatureId>,
 ) {
   if (props.preselectedBody) return []
-  return parts.flatMap(({ part }) => {
+  return parts.flatMap((resolved) => {
+    const { part } = resolved
     const related = part.bodyHistory.some(
       (body) => body.featureId === props.preselectedFeatureId || featureIds.has(body.featureId),
     )
-    const body = related && selectedAuthoredBody(parts, part.id, props.partVisibility?.overrides)
+    const body =
+      related && selectedAuthoredBody([resolved], part.id, props.partVisibility?.overrides)
     return body ? [body] : []
   })
 }

@@ -3,14 +3,34 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
+import { createI18n, defaultFormats } from "@vibeshape/i18n"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { ActivityProvider, useActivityPending } from "@vibeshape/ui/components/activity"
 import type { ComponentProps } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import { i18n } from "../i18n"
+import { messages } from "../i18n"
 import { AssistantPanel } from "./assistant-panel"
 
 type PanelProps = ComponentProps<typeof AssistantPanel>
+const i18n = createI18n({
+  defaultLocale: "en",
+  formats: defaultFormats,
+  messages: {
+    en: {
+      ...messages.en,
+      app: {
+        ...messages.en.app,
+        assistant: {
+          ...messages.en.app.assistant,
+          applyChanges: "Apply changes",
+          applyingChanges: "Applying changes…",
+          applyChangesFailed:
+            "Changes could not be applied ({code}). Review the current model and preview again.",
+        },
+      },
+    },
+  },
+})
 const defaults: PanelProps = {
   open: true,
   projectName: "Bracket",
@@ -61,6 +81,73 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it("applies only a ready private draft through its checkpoint wrapper and keeps the action pending", async () => {
+    const pending = deferred<boolean>()
+    const apply = vi.fn(() => pending.promise)
+    const withCheckpoint = vi.fn((operation: () => Promise<boolean>) => operation())
+    const props: Partial<PanelProps> = {
+      draftDisplay: {
+        mode: "result",
+        onChange: () => {},
+        application: { status: "ready", diagnostic: null, onApply: apply },
+      },
+      onApplyDraft: withCheckpoint,
+    }
+    const rendered = render(panel(props))
+    expect(apply).not.toHaveBeenCalled()
+    const button = screen.getByRole("button", { name: "Apply changes" })
+    await userEvent.dblClick(button)
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(withCheckpoint).toHaveBeenCalledTimes(1)
+    expect(button.getAttribute("aria-busy")).toBe("true")
+    expect(button.hasAttribute("disabled")).toBe(true)
+    rendered.rerender(
+      panel({
+        ...props,
+        busy: true,
+        draftDisplay: {
+          mode: "changes",
+          onChange: () => {},
+          application: { status: "applying", diagnostic: null, onApply: apply },
+        },
+      }),
+    )
+    expect(screen.getByRole("button", { name: "Apply changes" }).getAttribute("aria-busy")).toBe(
+      "true",
+    )
+    expect(screen.getByText("Applying changes…").getAttribute("role")).toBe("status")
+    await act(async () => pending.resolve(true))
+    rendered.rerender(panel({ canUndoAgentChanges: true, onViewBefore: async () => true }))
+    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    expect(screen.getByText("Changes saved to this project")).toBeTruthy()
+  })
+
+  it("keeps saved checkpoints and display-only previews free of Apply and reports an unconfirmed apply failure", () => {
+    const rendered = render(panel({ canUndoAgentChanges: true }))
+    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    rendered.rerender(panel({ draftDisplay: { mode: "result", onChange: () => {} } }))
+    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    rendered.rerender(
+      panel({
+        draftDisplay: {
+          mode: "result",
+          onChange: () => {},
+          application: {
+            status: "error",
+            diagnostic: "document-commit-failed",
+            onApply: async () => false,
+          },
+        },
+      }),
+    )
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Changes could not be applied (document-commit-failed)",
+    )
+    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    expect(screen.queryByText("Agent preview · not saved yet")).toBeNull()
+    expect(screen.queryByText("Changes saved to this project")).toBeNull()
+  })
+
   it("places change inspection after the finished batch inside the transcript", async () => {
     const changeDisplay = vi.fn()
     const before = vi.fn().mockResolvedValue(true)
@@ -126,6 +213,87 @@ describe("assistant transcript and composer", () => {
     expect(screen.getByRole("button", { name: "View current" }).getAttribute("aria-pressed")).toBe(
       "true",
     )
+  })
+
+  it("keeps settings closed and scroll position steady during Before/current checkpoint locks", () => {
+    const props = {
+      messages: [{ id: "reply", role: "assistant", text: "Saved batch." }],
+      configuration: <span>Connection setup</span>,
+      configurationRequired: false,
+      canUndoAgentChanges: true,
+      onViewBefore: async () => true,
+    } satisfies Partial<PanelProps>
+    const rendered = render(panel(props))
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 900 },
+    })
+    log.scrollTop = 560
+    fireEvent.scroll(log)
+    const calls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    rendered.rerender(
+      panel({
+        ...props,
+        canSend: false,
+        preparingBefore: true,
+        messages: structuredClone(props.messages),
+      }),
+    )
+    expect(screen.queryByText("Connection setup")).toBeNull()
+    expect(log.scrollTop).toBe(560)
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    rendered.rerender(
+      panel({ ...props, viewingBefore: true, messages: structuredClone(props.messages) }),
+    )
+    expect(screen.getByRole("button", { name: "View current" })).toBeTruthy()
+    expect(screen.queryByText("Connection setup")).toBeNull()
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    rendered.rerender(panel({ ...props, canSend: false, configurationRequired: true }))
+    expect(screen.getByText("Connection setup")).toBeTruthy()
+  })
+
+  it("preserves a reader's position and closed settings through temporary reconnect attempts and manual recovery feedback", () => {
+    const props = {
+      messages: [{ id: "reply", role: "assistant", text: "An interrupted answer." }],
+      configuration: <span>Connection setup</span>,
+      configurationRequired: false,
+    } satisfies Partial<PanelProps>
+    const rendered = render(panel(props))
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 900 },
+    })
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    const calls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    for (const attempt of [1, 2, 3, 4, 5]) {
+      rendered.rerender(
+        panel({
+          ...props,
+          canSend: false,
+          busy: true,
+          sessionControls: <span role="status">Reconnecting… attempt {attempt} of 5</span>,
+        }),
+      )
+      expect(screen.queryByText("Connection setup")).toBeNull()
+      expect(log.scrollTop).toBe(100)
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    }
+    rendered.rerender(
+      panel({
+        ...props,
+        canSend: false,
+        busy: false,
+        error: "Connection recovery stopped",
+        sessionControls: <button type="button">Retry connection</button>,
+      }),
+    )
+    expect(screen.getByRole("button", { name: "Retry connection" })).toBeTruthy()
+    expect(screen.queryByText("Connection setup")).toBeNull()
+    expect(log.scrollTop).toBe(100)
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
   })
 
   it("collapses tool output behind its structured name and status without interpreting assistant prose", async () => {

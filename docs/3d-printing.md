@@ -162,14 +162,21 @@ SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its lo
 
 The product dialog exports successful terminal exact B-Rep bodies through the print-mesh path. The geometry worker retessellates each body with a fixed `0.02 mm` chord tolerance and `0.1 rad` angular tolerance, clears the temporary OCCT triangulation after extraction, and returns bounded triangle soups. The document worker verifies body identity and order, welds face-local duplicate vertices at `1e-7 mm`, and validates the resulting manifold mesh through the Core writer.
 
+Native OCCT print preparation removes a tessellation triangle only when finite endpoint coordinates
+coincide exactly, proving zero area at a pole or seam. It preserves source coordinates, winding, body
+identity and B-Rep ownership; viewport meshes and imported meshes are unchanged. Distinct close vertices
+are not merged by this preparation. The strict 3MF writer still rejects collapsed, open, intersecting
+or otherwise invalid meshes. Validated worker failure details survive export and print preparation and
+appear in fixed notifications rather than being replaced by an unrelated rebuild suggestion.
+
 Export scope selects all current terminal bodies or one available authored part. Display-hidden parts remain
 exportable; stale or unavailable selections fail instead of substituting another cached shape. Authored names
 label their 3MF mesh resources, with feature labels as the unmanaged-body fallback. Multiple meshes share one
 component build item that retains their world positions; slicers may offer their own grouping or rearrangement
 controls. Selected STL and STEP use the same exact semantic body selection. Export does not change the model.
 
-The current prepared-print slice adds a disposable derived copy from **Export → Prepare print /
-breakaway fins**. It rotates around X/Y, centers the copy over the XY build area, seats its lowest
+The current prepared-print slice adds a disposable derived copy from **Export → Prepare print…**.
+It rotates around X/Y, centers the copy over the XY build area, seats its lowest
 point at Z=0, and can add at most two coplanar disjoint comb-prism fins to selected sloped planar
 facets. Fin contacts are aligned to the requested layer height and the prepared export contains one
 3MF build item with model and fin components. The prepared file can be downloaded or sent through the
@@ -232,9 +239,15 @@ Print placement is a derived configuration, not a change to design coordinates:
 The Mac application's export dialog prepares STL or 3MF and opens a detected installed slicer directly.
 Choose a detected application or use the native application chooser. The app remembers the target and
 format, retains quality controls, and writes a private temporary mesh without asking for a save path.
+The dialog groups settings in a scrolling body and keeps its primary action visible in a fixed footer.
+Download and handoff confirmation appear in neutral notifications outside the dialog layout.
 A failed launch preserves the mesh for **Show mesh in Finder** recovery. No bridge process or pairing
 token is required. A static browser downloads the mesh for manual opening in the slicer instead.
 See [ADR-0111](adr/0111-native-project-assistant-and-handoffs.md).
+
+Reviewed macOS discovery includes PrusaSlicer under `Original Prusa Drivers/` and Snapmaker Orca's
+`Snapmaker_Orca` executable, in addition to the existing direct application layouts. Other applications
+can still be registered with the native chooser; discovery does not execute them.
 
 Launching an application does not establish successful import, correct scale, printer settings,
 slicing, or printing. These remain separate acceptance steps. Handoffs never send printer traffic.

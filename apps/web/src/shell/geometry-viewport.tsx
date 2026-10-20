@@ -81,6 +81,7 @@ import {
   usePrintViewportFactory,
   usePrintViewportSynchronization,
 } from "../printing/print-viewport-presentation"
+import { useReportApplicationError } from "./application-notices"
 import { assistantCheckpointDisplayController } from "./assistant-checkpoint-display"
 import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
 import { SectionViewControls } from "./section-view-controls"
@@ -107,6 +108,7 @@ type ViewportFactory = (
 type ViewportMount = {
   cancelled: boolean
   viewport: GeometryViewportPort | null
+  onEdgePreparationError: () => void
 }
 
 export type GeometryViewportSketchContext = Readonly<{
@@ -406,6 +408,9 @@ async function initializeViewport(
 ) {
   try {
     const viewport = await createViewport(canvas, {
+      onEdgePreparationError: () => {
+        if (!mount.cancelled) mount.onEdgePreparationError()
+      },
       orientationInsetOffsetElement: orientationInsetOffsetElement(canvas),
       orientationInputElement: () =>
         latestSketchContextRef.current?.projectionStore?.getState().navigationElement ?? null,
@@ -775,6 +780,14 @@ function useViewportGizmoSynchronization(
   }, [angularGizmo, axialGizmo, axialGizmoPending, translationGizmo, viewportRef])
 }
 
+function useViewportRendererStatus() {
+  const [rendererFailed, setRendererFailed] = useState(false)
+  const [edgePreparationFailed, setEdgePreparationFailed] = useState(false)
+  const t = useTranslations("app.shell.viewport")
+  useReportApplicationError(edgePreparationFailed ? t("edgePreparationFailed") : null)
+  return { rendererFailed, setRendererFailed, setEdgePreparationFailed }
+}
+
 function useViewportRenderer(
   createViewport: ViewportFactory,
   controller: DocumentControllerState,
@@ -822,7 +835,8 @@ function useViewportRenderer(
       onSelectionChange,
     },
   })
-  const [rendererFailed, setRendererFailed] = useState(false)
+  const { rendererFailed, setRendererFailed, setEdgePreparationFailed } =
+    useViewportRendererStatus()
   const sketchReferenceInteraction = useViewportSketchReferenceInteractionState()
   const profileInteraction = useViewportProfileInteractionState()
   const selectionCandidates = useSelectionCandidateEvents(originPlaneSelectionActive)
@@ -831,7 +845,12 @@ function useViewportRenderer(
   useEffect(() => {
     const canvas = canvasRef.current
     if (!shouldInitialize || !canvas) return
-    const mount: ViewportMount = { cancelled: false, viewport: null }
+    setEdgePreparationFailed(false)
+    const mount: ViewportMount = {
+      cancelled: false,
+      viewport: null,
+      onEdgePreparationError: () => setEdgePreparationFailed(true),
+    }
     void initializeViewport(
       canvas,
       createViewport,
@@ -1764,6 +1783,15 @@ function useClearInvalidBodyHighlight(
   }, [mesh, selection, onChange])
 }
 
+function bodyHighlightMeshes(
+  meshes: readonly ViewerMesh[],
+  bodies: readonly ModelBodySelection[] | undefined,
+) {
+  if (bodies === undefined) return undefined
+  const keys = new Set(bodies.map(viewerBodyKey))
+  return meshes.filter((mesh) => keys.has(viewerBodyKey(mesh)))
+}
+
 function useGeometryViewportScene(props: GeometryViewportProps) {
   const { controller, featurePreview, preselectedFeatureId, selectedFeatureId } = props
   const {
@@ -1839,21 +1867,11 @@ function useGeometryViewportScene(props: GeometryViewportProps) {
   useClearInvalidBodyHighlight(selectedBody, bodySelection, props.onBodySelectionChange)
   useClearInvalidBodyHighlight(preselectedBody, bodyPreselection, props.onBodyPreselectionChange)
   const featurePreselections = useMemo(
-    () =>
-      props.preselectedBodies !== undefined
-        ? meshes.filter((mesh) =>
-            props.preselectedBodies?.some((body) => viewerBodyKey(body) === viewerBodyKey(mesh)),
-          )
-        : undefined,
+    () => bodyHighlightMeshes(meshes, props.preselectedBodies),
     [meshes, props.preselectedBodies],
   )
   const featureSelections = useMemo(
-    () =>
-      props.selectedBodies === undefined
-        ? undefined
-        : meshes.filter((mesh) =>
-            props.selectedBodies?.some((body) => viewerBodyKey(body) === viewerBodyKey(mesh)),
-          ),
+    () => bodyHighlightMeshes(meshes, props.selectedBodies),
     [meshes, props.selectedBodies],
   )
   return {

@@ -45,6 +45,12 @@ export type AutomationReviewState = Readonly<{
   draftViewport?: AutomationDraftViewport | null
 }>
 
+type AutomationDraftApplicationState = Readonly<{
+  viewport: AutomationDraftViewport
+  status: "ready" | "applying" | "error"
+  diagnostic: AutomationHostDiagnosticCode | null
+}>
+
 type PendingReview = {
   owner: symbol
   id: string
@@ -102,11 +108,20 @@ export function createAutomationReviewController() {
   let state: AutomationReviewState | null = null
   let pending: PendingReview | null = null
   let draftPresentation: { owner: symbol; viewport: AutomationDraftViewport } | null = null
+  let draftApplication: {
+    owner: symbol
+    state: AutomationDraftApplicationState
+    apply: () => Promise<AutomationHostResult<unknown>>
+  } | null = null
   const listeners = new Set<() => void>()
+
+  function notify() {
+    for (const listener of listeners) listener()
+  }
 
   function publish(next: AutomationReviewState | null) {
     state = next
-    for (const listener of listeners) listener()
+    notify()
   }
 
   function settle(record: PendingReview, decision: Decision) {
@@ -136,6 +151,7 @@ export function createAutomationReviewController() {
     if (pending) return Promise.resolve("cancelled")
     const previous = draftPresentation?.owner === owner ? draftPresentation.viewport : null
     draftPresentation = null
+    if (draftApplication?.state.status !== "applying") draftApplication = null
     const expiresIn = hasReviewDeadline(input) ? Date.parse(expiresAt(input)) - Date.now() : null
     if (expiresIn !== null && (!Number.isFinite(expiresIn) || expiresIn <= 0))
       return Promise.resolve("cancelled")
@@ -218,11 +234,65 @@ export function createAutomationReviewController() {
     if (!viewport || viewport.draft.draftId !== draftId) return false
     const next = withDraftViewportDisplay(viewport, display)
     if (next === viewport) return true
+    updateDraftApplicationViewport(viewport, next)
     if (draftPresentation?.viewport === viewport) {
       draftPresentation = { ...draftPresentation, viewport: next }
-      for (const listener of listeners) listener()
+      notify()
     } else if (state?.draftViewport === viewport) publish({ ...state, draftViewport: next })
     return true
+  }
+
+  function updateDraftApplicationViewport(
+    previous: AutomationDraftViewport,
+    next: AutomationDraftViewport,
+  ) {
+    if (draftApplication?.state.viewport !== previous) return
+    draftApplication = { ...draftApplication, state: { ...draftApplication.state, viewport: next } }
+  }
+
+  function clearDraftApplication(owner: symbol) {
+    if (draftApplication?.owner !== owner || draftApplication.state.status === "applying")
+      return false
+    draftApplication = null
+    return true
+  }
+
+  function clearDraftPresentation(owner: symbol) {
+    if (draftPresentation?.owner !== owner) return false
+    draftPresentation = null
+    return true
+  }
+
+  async function applyDraftViewport(expected: AutomationDraftApplicationState): Promise<boolean> {
+    const application = draftApplication
+    if (!application || application.state !== expected || expected.status !== "ready") return false
+    const applying = { ...application, state: { ...expected, status: "applying" as const } }
+    draftApplication = applying
+    notify()
+    let result: AutomationHostResult<unknown>
+    try {
+      result = await application.apply()
+    } catch {
+      result = {
+        ok: false,
+        diagnostic: {
+          code: "automation-operation-failed",
+          message: "The browser draft could not be applied.",
+          retryable: true,
+          issues: [],
+        },
+      }
+    }
+    if (draftApplication === applying) {
+      draftApplication = result.ok
+        ? null
+        : {
+            ...applying,
+            state: { ...applying.state, status: "error", diagnostic: result.diagnostic.code },
+          }
+      notify()
+    }
+    return result.ok
   }
 
   return {
@@ -230,20 +300,33 @@ export function createAutomationReviewController() {
     decide,
     cancel,
     complete,
+    applyDraftViewport,
+    getDraftApplicationSnapshot: () => draftApplication?.state ?? null,
     setDraftViewportDisplay,
     clearDraftViewport(owner: symbol) {
-      if (draftPresentation?.owner === owner) {
-        draftPresentation = null
-        for (const listener of listeners) listener()
-      }
+      const applicationCleared = clearDraftApplication(owner)
+      const presentationCleared = clearDraftPresentation(owner)
+      if (applicationCleared || presentationCleared) notify()
       if (pending?.owner === owner && state?.draftViewport)
         publish({ ...state, draftViewport: null })
     },
-    presentDraftViewport(owner: symbol, viewport: AutomationDraftViewport) {
-      if (pending) return
+    presentDraftViewport(
+      owner: symbol,
+      viewport: AutomationDraftViewport,
+      apply?: () => Promise<AutomationHostResult<unknown>>,
+    ) {
+      if (pending || draftApplication?.state.status === "applying") return
       const previous = draftPresentation?.owner === owner ? draftPresentation.viewport : null
       draftPresentation = { owner, viewport: retainDraftViewportDisplay(viewport, previous) }
-      for (const listener of listeners) listener()
+      draftApplication =
+        apply && viewport.draft.commandCount > 0
+          ? {
+              owner,
+              apply,
+              state: { viewport: draftPresentation.viewport, status: "ready", diagnostic: null },
+            }
+          : null
+      notify()
     },
     getDraftViewportSnapshot,
     dismiss(id: string) {

@@ -26,6 +26,10 @@ const chats = createApiChatRegistry({
     ),
 })
 
+export function getBrowserProjectChatController(projectId: string) {
+  return chats.get(projectId)
+}
+
 export function BrowserProjectAssistant({
   controller,
   open,
@@ -79,8 +83,10 @@ function BrowserProjectChat({
       messages={state.messages}
       draftDisplay={draftDisplay}
       onToolHighlight={onToolHighlight}
+      onApplyDraft={chat.applyDraft}
       busy={state.busy}
       canSend={state.connected && !assistantCheckpointBusy(state)}
+      configurationRequired={!state.connected}
       canUndoAgentChanges={state.canUndoAgentChanges}
       undoingAgentChanges={state.undoingAgentChanges}
       viewingBefore={state.viewingBefore}
