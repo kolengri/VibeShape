@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
@@ -134,7 +144,7 @@ describe("native private files", () => {
       expect(chosen).toMatchObject({ name: "Custom slicer" })
       if (!chosen) throw new Error("Expected an EXE custom slicer.")
       expect(await createNativeSlicerApplications(options).resolve(chosen.id)).toMatchObject({
-        path: executable,
+        path: await realpath(executable),
         kind: "executable",
       })
     },
