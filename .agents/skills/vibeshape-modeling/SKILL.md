@@ -20,6 +20,7 @@ Its Gyroid, Schwarz P and Schwarz D geometry reports measured removal and makes 
 | Every CAD model | The common intent rules below and [modeling contracts and recipes](references/modeling.md) |
 | Functional parts, load-bearing details, fits, or mechanisms | [Mechanical design](references/mechanical-design.md) |
 | Models intended for 3D printing | [3D-printing design](references/3d-printing.md), using the section for the intended process |
+| FDM/FFF insert lids, corner binding, or compliant perimeter retention | [Lid fits and compliant retention](references/lid-fits.md) |
 | Assemblies or reusable components | [Assembly and library transactions](references/assembly-and-library.md) |
 
 Combine applicable categories: a printed latch needs both mechanical and printing guidance. Apply manufacturing rules only when the intended process is established; preserve requested appearance and exact source geometry for visualization or reconstruction. For another manufacturing process, use its current process-specific guidance instead of importing FDM rules.
