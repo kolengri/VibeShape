@@ -234,17 +234,39 @@ test("every documentation article supports direct links and return navigation", 
 })
 
 test("downloads show the published Mac release with aligned primary actions", async ({ page }) => {
+  await page.route(
+    "https://api.github.com/repos/kolengri/VibeShape/releases?per_page=100",
+    (route) =>
+      route.fulfill({
+        json: [
+          {
+            tag_name: "desktop-v9.8.7",
+            draft: false,
+            prerelease: false,
+            published_at: "2026-10-20T12:00:00Z",
+            assets: [
+              {
+                name: "VibeShape-9.8.7-mac-arm64.dmg",
+                state: "uploaded",
+                browser_download_url:
+                  "https://github.com/kolengri/VibeShape/releases/download/desktop-v9.8.7/VibeShape-9.8.7-mac-arm64.dmg",
+              },
+            ],
+          },
+        ],
+      }),
+  )
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/#downloads")
   const downloads = page.locator("#downloads")
-  await expect(downloads.getByText("macOS · Apple Silicon · v0.1.5", { exact: true })).toBeVisible()
+  await expect(downloads.getByText("macOS · Apple Silicon · v9.8.7", { exact: true })).toBeVisible()
   await expect(downloads.getByRole("link", { name: "All releases & checksums" })).toHaveAttribute(
     "href",
     "https://github.com/kolengri/VibeShape/releases",
   )
   await expect(downloads.getByRole("link", { name: "Download for Apple Silicon" })).toHaveAttribute(
     "href",
-    "https://github.com/kolengri/VibeShape/releases/download/desktop-v0.1.5/VibeShape-0.1.5-mac-arm64.dmg",
+    "https://github.com/kolengri/VibeShape/releases/download/desktop-v9.8.7/VibeShape-9.8.7-mac-arm64.dmg",
   )
   await expect(downloads).toContainText("not notarized by Apple")
   const actions = ["Open VibeShape", "Local installation guide", "Download for Apple Silicon"]

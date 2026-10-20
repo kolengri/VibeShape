@@ -21,6 +21,21 @@ Development uses `http://127.0.0.1:5180`; production preview uses port `4180`.
 The browser tests run against the built site, so rebuild before testing changed source.
 The site needs no API keys, hosted database, or model provider.
 
+## Desktop release downloads
+
+The downloads section fetches the public GitHub Releases API when mounted, independently of the
+site build. It checks the first 100 releases and selects the most recently published non-draft,
+non-prerelease `desktop-vX.Y.Z` release with an uploaded `VibeShape-X.Y.Z-mac-arm64.dmg` asset.
+Technical releases and incomplete uploads are skipped. The displayed version and download URL
+come from the same validated release; neither is pinned in the site bundle. Reloading the page
+revalidates the API response, so publishing a new desktop release needs no site rebuild.
+
+Until a release resolves, the action opens the GitHub release listing and shows no version.
+That fallback remains available on network errors, API rate limits, an invalid response, an
+eight-second timeout, or no matching installer within the first 100 releases. The browser calls
+GitHub without credentials or API tokens; there is no proxy, polling, or persistent release cache.
+The bundled Zod MIT notice is shipped at `third-party/zod-MIT.txt`.
+
 ## Hero playback
 
 The hero plays its silent six-second H.264 introduction independently of scrolling, then plays
