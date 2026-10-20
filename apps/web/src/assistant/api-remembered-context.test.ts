@@ -64,3 +64,24 @@ it("restores saved tool display evidence without fabricating provider tool calls
   expect(JSON.stringify(result.messages)).not.toContain("private reasoning")
   expect(JSON.stringify(result.messages)).not.toContain("tool_call_id")
 })
+
+it.each(["", "Use these dimensions"])(
+  "marks unavailable restored attachments without creating an empty user turn: %s",
+  (text) => {
+    const result = rememberedContext([
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        text,
+        attachments: [{ id: "file", name: "dimensions.txt" }],
+      },
+      { id: crypto.randomUUID(), role: "assistant", text: "Received" },
+    ])
+    expect(result.omittedMessages).toBe(0)
+    expect(result.messages).toHaveLength(2)
+    const content = result.messages[0]?.content
+    expect(content).toContain('"unavailableAttachments":["dimensions.txt"]')
+    expect(content).toContain("Ask the user to attach these files again")
+    if (text) expect(content).toStartWith(`${text}\n\n`)
+  },
+)

@@ -23,11 +23,28 @@ export function budgetApiContext(messages: readonly ApiWireMessage[]) {
   const selected = turns.slice(first).flat()
   return { messages: selected, omittedMessages: messages.length - selected.length }
 }
-export function rememberedContext(messages: readonly ChatMessage[]) {
-  return budgetApiContext(
-    messages.flatMap<ApiWireMessage>((message) => {
-      if (message.role === "user" || message.role === "assistant")
-        return [{ role: message.role, content: message.text }]
+function rememberedUserContent(message: ChatMessage) {
+  if (!message.attachments?.length) return message.text
+  return [
+    message.text,
+    JSON.stringify({
+      unavailableAttachments: message.attachments.map(({ name }) => name),
+      note: "Attachment contents were not retained. Ask the user to attach these files again before relying on their contents.",
+    }),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+export function rememberedContext(
+  messages: readonly ChatMessage[],
+  liveContext: readonly ApiWireMessage[] = [],
+) {
+  return budgetApiContext([
+    ...liveContext,
+    ...messages.flatMap<ApiWireMessage>((message) => {
+      if (message.role === "user")
+        return [{ role: "user", content: rememberedUserContent(message) }]
+      if (message.role === "assistant") return [{ role: message.role, content: message.text }]
       if (message.role === "tool")
         return [
           {
@@ -44,5 +61,5 @@ export function rememberedContext(messages: readonly ChatMessage[]) {
         ]
       return []
     }),
-  )
+  ])
 }

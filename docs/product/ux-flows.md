@@ -64,9 +64,17 @@ bytes, credentials and raw provider payloads are excluded.
 
 The API request context is separate from transcript storage. It retains complete conversational
 turns within a 128 KiB UTF-8 budget, includes whitelisted tool display summaries, and excludes private
-thoughts. An omitted-message count is visible when older context is outside that request budget;
+thoughts. An omitted-message count is visible when older messages are excluded from the request;
 the complete saved conversation remains readable. This byte budget does not claim any provider's
 token-window size.
+
+An API failure retains available in-memory attachment content within that context budget. After
+reopening a project, restored attachment turns explicitly mark their file contents as unavailable;
+the assistant must request the files again before relying on them. Attachment-only turns therefore
+remain meaningful context rather than becoming empty user messages.
+Once a live turn starts, storage retries update display history without replacing its provider
+context. Older messages recovered after that point remain readable and contribute to the visible
+omitted count; reopening the project can restore them into the next bounded context.
 
 Consecutive tool calls with the same title and status share one compact row with a count on the
 right. A different action, status, or conversational message starts a new row, preserving order

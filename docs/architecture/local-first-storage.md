@@ -109,6 +109,13 @@ committed transcript intact and exposes retry without truncating live conversati
 storage version-1 history is deleted only after successful import. Reset retains a revisioned empty
 head and affects only the selected project. Transcript history is independent of the API request's
 bounded context; older stored messages are not silently deleted to satisfy provider request limits.
+API context rebuilt from disk includes explicit unavailable-file markers for stored attachment
+names. Live failure recovery preserves the existing bounded wire context and the failed prompt's
+attachment content; neither path adds file bytes to transcript storage.
+After the first admitted API turn, the live controller owns its request context until reset or
+recreation. Late storage loads may prepend recovered display rows, but cannot rebuild live turns
+from attachment metadata or overwrite their omission count. Newly recovered older rows are counted
+as excluded request context without being removed from storage.
 
 ## Immutable local parts library
 

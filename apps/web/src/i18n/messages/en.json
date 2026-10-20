@@ -3710,7 +3710,7 @@
       "toolStatus": "{status, select, pending {Pending} in_progress {Running} completed {Completed} failed {Failed} cancelled {Canceled} other {}}",
       "attachFiles": "Attach files",
       "historyRetry": "Retry chat storage",
-      "historyContextLimited": "{count, plural, one {# earlier message is} other {# earlier messages are}} outside the API context budget. The full conversation remains in chat history; the provider receives only the recent complete turns that fit.",
+      "historyContextLimited": "{count, plural, one {# earlier message is} other {# earlier messages are}} not included in the current API request. The full conversation remains in chat history.",
       "captureView": "Attach current view",
       "working": "AI working…",
       "captureViewFailed": "Could not capture the current view. Try again or attach an image file.",

@@ -118,6 +118,33 @@ function deferredApiRequests() {
   }
 }
 
+async function delayedHistoryRetry() {
+  const storage = disk()
+  const store = historyStoreFor(storage)
+  const saved = [
+    { id: crypto.randomUUID(), role: "user", text: "Earlier question" },
+    { id: crypto.randomUUID(), role: "assistant", text: "Earlier answer" },
+  ]
+  await store.commit({
+    projectId,
+    expectedRevision: 0,
+    upserts: saved.map((value, position) => ({ id: value.id, position, value })),
+    deletedIds: [],
+  })
+  store.failure = new Error("Storage unavailable")
+  const api = deferredApiRequests()
+  const chat = createApiChatController({ projectId, storage, createTools: tools, fetch: api.fetch })
+  await chat.connect(configuration)
+  expect(chat.getSnapshot().storageFailed).toBe(true)
+  store.failure = undefined
+  let release = () => {}
+  store.loadGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const retry = chat.retryHistory()
+  return { chat, api, storage, retry, release }
+}
+
 describe("browser API project chat", () => {
   it("applies an idle draft through the existing checkpoint without sending an API prompt", async () => {
     const model = checkpointFixture()
@@ -602,6 +629,169 @@ describe("browser API project chat", () => {
     expect(bodies).toHaveLength(1)
     chat.dispose()
   })
+
+  it("retains both earlier and failed live attachment inputs before continuing after a provider error", async () => {
+    const api = deferredApiRequests()
+    const storage = disk()
+    const chat = createApiChatController({
+      projectId,
+      storage,
+      createTools: tools,
+      fetch: api.fetch,
+    })
+    await chat.connect(configuration)
+    await chat.send("First file", [textFile("earlier private dimensions")])
+    api.respond(0, completion("Received the first file"))
+    await idle(chat)
+    await chat.send("", [textFile("failed private dimensions")])
+    api.respond(1, new Response("Unavailable", { status: 503 }))
+    await idle(chat)
+    expect(chat.getSnapshot().error).toBe("endpoint")
+    await chat.send("Continue with both files")
+    const users = api.requests[2]?.messages.filter(({ role }) => role === "user")
+    expect(users).toEqual([
+      { role: "user", content: api.content(0) },
+      { role: "user", content: api.content(1) },
+      { role: "user", content: "Continue with both files" },
+    ])
+    expect(JSON.stringify(users)).toContain("earlier private dimensions")
+    expect(JSON.stringify(users)).toContain("failed private dimensions")
+    api.respond(2, completion("Done"))
+    await idle(chat)
+    expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+      "private dimensions",
+    )
+    chat.dispose()
+  })
+
+  it("keeps a failed file prompt unique when storage retry prepends history during Send", async () => {
+    const { chat, api, storage, retry, release } = await delayedHistoryRetry()
+    await chat.send("", [textFile("retained private dimensions")])
+    release()
+    await retry
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual([
+      "Earlier question",
+      "Earlier answer",
+      "",
+    ])
+    api.respond(0, new Response("Unavailable", { status: 503 }))
+    await idle(chat)
+    await chat.send("Continue")
+    expect(api.requests[1]?.messages.filter(({ role }) => role !== "system")).toEqual([
+      { role: "user", content: api.content(0) },
+      { role: "user", content: "Continue" },
+    ])
+    api.respond(1, completion("Done"))
+    await idle(chat)
+    expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+      "private dimensions",
+    )
+    chat.dispose()
+  })
+
+  it.each(["failed", "cancelled", "completed"] as const)(
+    "keeps live file context when late storage retry resolves after a %s turn",
+    async (outcome) => {
+      const { chat, api, storage, retry, release } = await delayedHistoryRetry()
+      await chat.send("", [textFile("retained private dimensions")])
+      if (outcome === "cancelled") {
+        const cancelled = chat.cancel()
+        api.respond(0, completion("Ignored after Stop"))
+        await cancelled
+      } else {
+        api.respond(
+          0,
+          outcome === "completed"
+            ? completion("Received")
+            : new Response("Unavailable", { status: 503 }),
+        )
+      }
+      await idle(chat)
+      release()
+      await retry
+      await chat.retryHistory()
+      await chat.send("Continue")
+      expect(api.requests[1]?.messages.filter(({ role }) => role !== "system")).toEqual([
+        { role: "user", content: api.content(0) },
+        ...(outcome === "completed" ? [{ role: "assistant", content: "Received" }] : []),
+        { role: "user", content: "Continue" },
+      ])
+      expect(chat.getSnapshot().contextOmittedMessages).toBe(2)
+      api.respond(1, completion("Done"))
+      await idle(chat)
+      expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+        "private dimensions",
+      )
+      chat.dispose()
+    },
+  )
+
+  it("retains recovered display history when a queued attachment fails after storage retry", async () => {
+    const { chat, api, storage, retry, release } = await delayedHistoryRetry()
+    await chat.send("First")
+    await chat.enqueue("Queued", [textFile("queued private dimensions")])
+    api.respond(0, completion("First answer"))
+    await until(chat, () => api.requests.length === 2)
+    release()
+    await retry
+    api.respond(1, new Response("Unavailable", { status: 503 }))
+    await idle(chat)
+    const expected = ["Earlier question", "Earlier answer", "First", "First answer", "Queued"]
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual(expected)
+    expect((await readChatHistory(projectId, storage))?.messages.map(({ text }) => text)).toEqual(
+      expected,
+    )
+    expect(await chat.resumeQueue()).toBe(true)
+    await until(chat, () => api.requests.length === 3)
+    expect(api.requests[2]?.messages.filter(({ role }) => role === "user")).toEqual([
+      { role: "user", content: "First" },
+      { role: "user", content: api.content(1) },
+    ])
+    api.respond(2, completion("Done"))
+    await idle(chat)
+    expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+      "private dimensions",
+    )
+    chat.dispose()
+  })
+
+  it.each(["", "Use the file"])(
+    "marks restored attachment contents as unavailable in the next actual request: %s",
+    async (text) => {
+      const storage = disk()
+      const firstApi = deferredApiRequests()
+      const first = createApiChatController({
+        projectId,
+        storage,
+        createTools: tools,
+        fetch: firstApi.fetch,
+      })
+      await first.connect(configuration)
+      await first.send(text, [textFile("private dimensions")])
+      firstApi.respond(0, completion("Received"))
+      await idle(first)
+      await first.flushHistory()
+      first.dispose()
+      const api = deferredApiRequests()
+      const reopened = createApiChatController({
+        projectId,
+        storage,
+        createTools: tools,
+        fetch: api.fetch,
+      })
+      await reopened.connect(configuration)
+      await reopened.send("Continue")
+      const users = api.requests[0]?.messages.filter(({ role }) => role === "user")
+      expect(users).toHaveLength(2)
+      expect(users?.[0]?.content).toContain('"unavailableAttachments":["dimensions.txt"]')
+      expect(users?.[0]?.content).toContain("Ask the user to attach these files again")
+      expect(JSON.stringify(users)).not.toContain("private dimensions")
+      expect(users?.[1]?.content).toBe("Continue")
+      api.respond(0, completion("Please attach the file again"))
+      await idle(reopened)
+      reopened.dispose()
+    },
+  )
 
   it("drains a bounded FIFO, removes queued messages, and preserves a failed attachment turn until explicit resume", async () => {
     const api = deferredApiRequests()

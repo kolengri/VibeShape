@@ -117,6 +117,7 @@ export function createApiChatController(options: ApiChatOptions) {
   }
   let agentSession: AgentChatSession | undefined
   let context: ApiWireMessage[] = []
+  let liveContextOwned = false
   let configuration: ApiConfiguration | null = null
   let tools: BrowserToolSession | null = null
   let resettingHistory = false
@@ -145,8 +146,19 @@ export function createApiChatController(options: ApiChatOptions) {
     current: () => ({ messages: state.messages, agentSession }),
     restored: (saved) => {
       agentSession = saved.agentSession
+      if (liveContextOwned) {
+        const knownIds = new Set(state.messages.map(({ id }) => id))
+        const recoveredCount = saved.messages.filter(
+          ({ id, role }) => role !== "thought" && !knownIds.has(id),
+        ).length
+        publish({
+          messages: saved.messages,
+          contextOmittedMessages: state.contextOmittedMessages + recoveredCount,
+        })
+        return
+      }
       const remembered = rememberedContext(saved.messages)
-      if (!active) context = remembered.messages
+      context = remembered.messages
       publish({ messages: saved.messages, contextOmittedMessages: remembered.omittedMessages })
     },
     failed: (storageFailed) => {
@@ -332,13 +344,21 @@ export function createApiChatController(options: ApiChatOptions) {
   function failTurn(turn: ActiveTurn, finishTools: (status: "failed" | "cancelled") => void) {
     finishTools(turn.canceled ? "cancelled" : "failed")
     releaseTools()
+    // Storage retry can prepend saved rows while this turn is active.
+    const promptId = turn.transcript.at(-1)?.id
+    const promptIndex = state.messages.findIndex(({ id }) => id === promptId)
     if (turn.queued) {
-      messages(turn.transcript)
+      messages(promptIndex < 0 ? turn.transcript : state.messages.slice(0, promptIndex + 1))
       queued.unshift(turn.queued)
     } else {
-      const remembered = rememberedContext(state.messages)
+      const remembered = rememberedContext(
+        promptIndex < 0 ? [] : state.messages.slice(promptIndex + 1),
+        [...context, turn.wire],
+      )
       context = remembered.messages
-      publish({ contextOmittedMessages: remembered.omittedMessages })
+      publish({
+        contextOmittedMessages: state.contextOmittedMessages + remembered.omittedMessages,
+      })
     }
     publishQueue()
   }
@@ -423,6 +443,7 @@ export function createApiChatController(options: ApiChatOptions) {
       transcript: state.messages,
     }
     active = turn
+    liveContextOwned = true
     publish({ busy: true, error: null, queuePaused: item ? state.queuePaused : false })
     beginPromptTranscript(prompt, item)
     turn.transcript = state.messages
@@ -552,6 +573,7 @@ export function createApiChatController(options: ApiChatOptions) {
       if (!cleared || disposed || active) return
       releaseTools()
       context = []
+      liveContextOwned = false
       agentSession = undefined
       checkpoints?.clear()
       publish({
