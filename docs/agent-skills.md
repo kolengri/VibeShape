@@ -7,7 +7,7 @@ This pack teaches an external agent to operate VibeShape as a CAD application th
 No checkout or local skill installation is needed for a connected client:
 
 1. Read `vibeshape://agent-skills` through MCP resources/read. Its JSON index contains the entrypoint, skill descriptions, document URIs, and conditional references.
-2. Read the `vibeshape-use` entrypoint and only the task workflows/references needed. Markdown links in served documents point to other MCP resource URIs, not repository paths.
+2. Read the `vibeshape-use` entrypoint and only the task workflows/references needed. Cross-document Markdown links in served documents use exact MCP catalog URIs. The server returns whole documents, so cross-document heading fragments are omitted in the bundle and retained in the source Markdown.
 3. For clients that expose only tools to the model, call `read_agent_skill` with `{}` for the index, then `{ "uri": "<listed document URI>" }`. The same content is available through both interfaces.
 
 Local skill reads work before document pairing. Remote reads require the existing OAuth scope and live approved browser tab, like every request to `/mcp`. They never dispatch browser work or consume a CAD draft operation. The remote server still omits local session/authoring-guide resources and binary exports.
