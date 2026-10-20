@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs"
-import { extname, join, relative } from "node:path"
+import { existsSync, readFileSync, realpathSync } from "node:fs"
+import { extname, isAbsolute, join, relative, sep } from "node:path"
 import { fileURLToPath, pathToFileURL, URL } from "node:url"
 import GithubSlugger from "github-slugger"
 import { JSDOM } from "jsdom"
@@ -28,6 +28,18 @@ function markdownReferences(path: string) {
   return { links, anchors }
 }
 
+function isWithinRepository(root: string, target: string): boolean {
+  const path = relative(root, target)
+  return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path)
+}
+
+function localTargetViolation(root: string, target: string): string | undefined {
+  if (!isWithinRepository(root, target)) return "local link escapes repository root"
+  if (!existsSync(target)) return "missing local link target"
+  if (!isWithinRepository(realpathSync(root), realpathSync(target)))
+    return "local link escapes repository root"
+}
+
 function localLinkViolation(
   href: string,
   source: string,
@@ -39,7 +51,8 @@ function localLinkViolation(
     const base = href.startsWith("/") ? join(repositoryRoot, "index.md") : source
     const url = new URL(href.replace(/^\//u, ""), pathToFileURL(base))
     const target = fileURLToPath(url)
-    if (!existsSync(target)) return `missing local link target: ${href}`
+    const targetViolation = localTargetViolation(repositoryRoot, target)
+    if (targetViolation) return `${targetViolation}: ${href}`
     const anchor = decodeURIComponent(url.hash.slice(1))
     if (anchor && extname(target).toLowerCase() === ".md" && !read(target).anchors.has(anchor))
       return `missing anchor ${anchor} in ${relative(repositoryRoot, target)}`

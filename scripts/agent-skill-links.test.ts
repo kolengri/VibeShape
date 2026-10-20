@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { validateAgentSkillLinks } from "./agent-skill-links"
 
 const roots: string[] = []
@@ -53,6 +53,37 @@ it("reports missing files in skill entrypoints and nested references", () => {
   expect(validateAgentSkillLinks(root).sort()).toEqual([
     ".agents/skills/developer/SKILL.md: missing local link target: references/missing.md",
     ".agents/skills/developer/references/nested.md: missing local link target: missing.svg",
+  ])
+})
+
+it("rejects traversal to existing files outside the repository, including encoded paths", () => {
+  const root = fixture({})
+  const sibling = `${root}-sibling`
+  roots.push(sibling)
+  mkdirSync(sibling)
+  writeFileSync(join(sibling, "outside.md"), "# Outside")
+  const href = `../../../../${basename(sibling)}/outside.md#outside`
+  const encoded = href.replaceAll("..", "%2e%2e")
+  const source = join(root, ".agents/skills/developer/SKILL.md")
+  mkdirSync(dirname(source), { recursive: true })
+  writeFileSync(source, `[plain](${href})\n[encoded](${encoded})`)
+  expect(validateAgentSkillLinks(root)).toEqual([
+    `.agents/skills/developer/SKILL.md: local link escapes repository root: ${href}`,
+    `.agents/skills/developer/SKILL.md: local link escapes repository root: ${encoded}`,
+  ])
+})
+
+it("rejects links through external symlinks while allowing repository-local symlinks", () => {
+  const outside = fixture({ "outside.md": "# Outside" })
+  const root = fixture({
+    ".agents/skills/developer/SKILL.md":
+      "[outside](/external/outside.md#outside)\n[inside](/alias/inside.md#inside)",
+    "docs/inside.md": "# Inside",
+  })
+  symlinkSync(outside, join(root, "external"), "dir")
+  symlinkSync(join(root, "docs"), join(root, "alias"), "dir")
+  expect(validateAgentSkillLinks(root)).toEqual([
+    ".agents/skills/developer/SKILL.md: local link escapes repository root: /external/outside.md#outside",
   ])
 })
 
