@@ -5071,14 +5071,6 @@ export const SendIcon = /* @__PURE__ */ coloredIcon(
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path
-        d="M14 32 5 55l22-18Z"
-        fill="var(--icon-geometry-shade, #8fb2dc)"
-        stroke="var(--icon-geometry-stroke, #326db2)"
-        strokeWidth="4.3043"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </g>
   </g>,
 )
