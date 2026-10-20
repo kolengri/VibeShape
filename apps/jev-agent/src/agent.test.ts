@@ -22,6 +22,7 @@ function fixture(
   ) => Promise<acp.CreateElicitationResponse>,
 ) {
   let forward: Parameters<typeof connectMcp>[2] | undefined
+  let connectionTimeout: number | undefined
   const calls: string[] = []
   const updates: acp.SessionUpdate[] = []
   const port: ToolPort = {
@@ -60,13 +61,17 @@ function fixture(
     },
     ...overrides,
   }
-  const adapter = createJevAgent(readConfiguration({ TYPESAFE_API_KEY: "test" }), {
-    decide,
-    connect: async (_server, _cwd, elicit) => {
-      forward = elicit
-      return port
+  const adapter = createJevAgent(
+    readConfiguration({ TYPESAFE_API_KEY: "test", JEV_TIMEOUT_MS: "120000" }),
+    {
+      decide,
+      connect: async (_server, _cwd, elicit, timeoutMs) => {
+        forward = elicit
+        connectionTimeout = timeoutMs
+        return port
+      },
     },
-  })
+  )
   const toAgent = new TransformStream<Uint8Array>()
   const toClient = new TransformStream<Uint8Array>()
   const agentConnection = adapter.app.connect(acp.ndJsonStream(toClient.writable, toAgent.readable))
@@ -88,6 +93,9 @@ function fixture(
     client,
     updates,
     calls,
+    get connectionTimeout() {
+      return connectionTimeout
+    },
     elicit: (...args: Parameters<Parameters<typeof connectMcp>[2]>) => {
       if (!forward) throw new Error("Not connected")
       return forward(...args)
@@ -110,6 +118,11 @@ async function open(f: ReturnType<typeof fixture>) {
   return { ...created, initialization }
 }
 describe("Jev ACP adapter", () => {
+  it("passes the configured operation timeout to the MCP connection", async () => {
+    const f = fixture(async () => ({ kind: "done", confidence: 1 }))
+    await open(f)
+    expect(f.connectionTimeout).toBe(120_000)
+  })
   it.each([undefined, "form" as const])(
     "forwards legacy and explicit MCP form elicitations with an ACP discriminator: %s",
     async (mode) => {

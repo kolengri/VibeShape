@@ -119,6 +119,7 @@ export function createJevAgent(configuration: Configuration, dependencies: Depen
               { cancellationSignal: requestSignal },
             )
           },
+          configuration.timeoutMs,
         )
         if (signal.aborted) {
           await port.close()

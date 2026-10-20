@@ -26,6 +26,7 @@ export async function connectMcp(
   server: McpServer,
   cwd: string,
   elicit: Elicit,
+  timeoutMs: number,
 ): Promise<ToolPort> {
   if ("type" in server)
     throw new Error("The Jev adapter currently accepts one injected stdio MCP server.")
@@ -77,7 +78,7 @@ export async function connectMcp(
         const result = CallToolResultSchema.parse(
           await client.callTool({ name, arguments: args }, CallToolResultSchema, {
             signal,
-            timeout: 60_000,
+            timeout: timeoutMs,
           }),
         )
         const photos: Photo[] = []

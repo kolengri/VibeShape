@@ -100,6 +100,43 @@ function fixture(
 }
 
 describe("Jev CAD control loop", () => {
+  it("keeps authoring available when cancelled during the pre-dispatch notification", async () => {
+    let decisions = 0
+    const f = fixture({
+      decide: async (state, offered) => {
+        expect(state.uncertainOutcome).toBeUndefined()
+        expect(offered.some((entry) => entry.name === tool.name)).toBe(true)
+        return decisions++ < 2
+          ? {
+              kind: "tool",
+              tool,
+              arguments: { baseRevision: 0 },
+              needsArguments: false,
+              confidence: 1,
+            }
+          : { kind: "done", confidence: 1 }
+      },
+    })
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      signal.throwIfAborted()
+      return original(name, args, signal)
+    }
+    const cancellation = new AbortController()
+    await expect(
+      f.controller.run("Create", [], cancellation.signal, async (event) => {
+        if (event.status === "in_progress") {
+          await Promise.resolve()
+          cancellation.abort(new Error("Cancelled before dispatch"))
+        }
+      }),
+    ).rejects.toThrow("Cancelled before dispatch")
+    expect(f.calls).not.toContain("create_draft")
+    expect(
+      await f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+    expect(f.calls.filter((name) => name === tool.name)).toHaveLength(1)
+  })
   it("preserves explicit Jev omissions when an argument helper tries to restore them", async () => {
     const removal: Tool = { name: "remove_assembly_instance", inputSchema: { type: "object" } }
     const f = fixture()

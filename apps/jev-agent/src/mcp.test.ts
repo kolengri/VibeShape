@@ -1,7 +1,8 @@
-import { expect, it } from "bun:test"
+import { expect, it, spyOn } from "bun:test"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { connectMcp } from "./mcp"
 
 it("connects an actual stdio MCP process, restricts its catalog and forwards only explicit environment", async () => {
@@ -10,6 +11,7 @@ it("connects an actual stdio MCP process, restricts its catalog and forwards onl
   const privateName = "VIBESHAPE_JEV_TEST_PRIVATE"
   const previous = process.env[privateName]
   process.env[privateName] = "private-fixture-value"
+  const callTool = spyOn(Client.prototype, "callTool")
   const source = `
 import { Server } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/index.js"))};
 import { StdioServerTransport } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/stdio.js"))};
@@ -31,11 +33,17 @@ await server.connect(new StdioServerTransport());
       },
       directory,
       async () => ({ action: "decline" }),
+      120_000,
     )
     try {
       expect(port.tools.map((tool) => tool.name)).toEqual(["read_agent_skill", "create_draft"])
       const first = await port.call("model_info", {}, new AbortController().signal)
       expect(first.value).toEqual({ calls: 1, privatePresent: false, explicit: "forwarded" })
+      expect(callTool).toHaveBeenLastCalledWith(
+        { name: "model_info", arguments: {} },
+        expect.anything(),
+        expect.objectContaining({ timeout: 120_000 }),
+      )
       await expect(port.call("create_project", {}, new AbortController().signal)).rejects.toThrow(
         "contract",
       )
@@ -49,6 +57,7 @@ await server.connect(new StdioServerTransport());
       await port.close()
     }
   } finally {
+    callTool.mockRestore()
     if (previous === undefined) delete process.env[privateName]
     else process.env[privateName] = previous
     await rm(directory, { recursive: true, force: true })

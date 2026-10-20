@@ -117,6 +117,7 @@ export function createController(options: ControllerOptions) {
   ) {
     const id = crypto.randomUUID()
     await onTool({ id, name, arguments: args, status: "in_progress" })
+    signal.throwIfAborted()
     let result: ToolResult
     try {
       result = await call(name, args, signal)
