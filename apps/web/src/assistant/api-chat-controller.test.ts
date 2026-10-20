@@ -4,10 +4,30 @@ import {
   assistantToolTargetsSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { ApiToolCall } from "./api-chat-completions"
-import { createApiChatController, createApiChatRegistry } from "./api-chat-controller"
+import {
+  createApiChatController as createController,
+  createApiChatRegistry as createRegistry,
+} from "./api-chat-controller"
 import { checkpointActor, checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import type { BrowserToolSession } from "./browser-tool-session"
-import { readChatHistory } from "./chat-history"
+import {
+  historyStoreFor,
+  readChatHistory,
+  trackHistoryController,
+} from "./chat-history.test-fixture"
+
+function createApiChatController(options: Parameters<typeof createController>[0]) {
+  return trackHistoryController(
+    options.storage,
+    createController({
+      ...options,
+      historyStore: options.historyStore ?? historyStoreFor(options.storage),
+    }),
+  )
+}
+function createApiChatRegistry(options: Parameters<typeof createRegistry>[0]) {
+  return createRegistry({ ...options, historyStore: historyStoreFor(options.storage) })
+}
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const otherProjectId = "0195b5ac-b250-7a2c-8c33-000000000102"
@@ -189,7 +209,7 @@ describe("browser API project chat", () => {
         ...(outcome === "success" ? { targets } : {}),
       })
       if (outcome !== "throw") expect(JSON.parse(message?.text ?? "").truncated).toBe(true)
-      expect(readChatHistory(projectId, storage)?.messages).toEqual([
+      expect((await readChatHistory(projectId, storage))?.messages).toEqual([
         ...chat.getSnapshot().messages,
       ])
       chat.dispose()
@@ -263,7 +283,7 @@ describe("browser API project chat", () => {
       expect(chat.getSnapshot().messages.at(-1)?.text).toBe(
         "The preview failed; I can correct the model.",
       )
-      expect(readChatHistory(projectId, storage)?.messages).toEqual([
+      expect((await readChatHistory(projectId, storage))?.messages).toEqual([
         ...chat.getSnapshot().messages,
       ])
       chat.dispose()
@@ -381,8 +401,10 @@ describe("browser API project chat", () => {
       arguments: { query: "model info" },
       result: { total: 1, tools: [] },
     })
-    expect(readChatHistory(projectId, storage)?.messages).toEqual([...chat.getSnapshot().messages])
-    expect(readChatHistory(otherProjectId, storage)).toBeNull()
+    expect((await readChatHistory(projectId, storage))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
+    expect(await readChatHistory(otherProjectId, storage)).toBeNull()
     expect([...storage.values.values()].join()).not.toContain("runtime-secret")
     expect(JSON.stringify(chat.getSnapshot())).not.toContain("runtime-secret")
     chat.dispose()
@@ -687,7 +709,9 @@ describe("browser API project chat", () => {
       "Queued",
       "Complete answer",
     ])
-    expect(readChatHistory(projectId, storage)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect((await readChatHistory(projectId, storage))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
     chat.dispose()
   })
 
@@ -750,6 +774,74 @@ describe("browser API project chat", () => {
     expect(chat.getSnapshot().question).toBeNull()
     chat.dispose()
   })
+
+  it.each(["answer", "dismiss", "expire", "stop"])(
+    "blocks same-batch CAD and queued prompts until question resolution: %s",
+    async (resolution) => {
+      let cadCalls = 0,
+        requests = 0
+      const chat = createApiChatController({
+        projectId,
+        storage: disk(),
+        createTools: () => ({
+          ...tools(),
+          execute: async () => {
+            cadCalls += 1
+            return {}
+          },
+        }),
+        fetch: async () =>
+          ++requests === 1
+            ? completion("", [
+                call("blocking-question", "ask_user_question", {
+                  message: "Choose",
+                  fields: [{ id: "size", label: "Size", required: true }],
+                }),
+                call("dependent-cad", "call_cad_tool", { name: "model_info", arguments: {} }),
+              ])
+            : completion("Done"),
+      })
+      try {
+        await chat.connect(configuration)
+        await chat.send("Ask then act")
+        await until(chat, () => chat.getSnapshot().question !== null)
+        await chat.enqueue("Queued continuation")
+        expect(cadCalls).toBe(0)
+        expect(requests).toBe(1)
+        expect(await chat.respondQuestion({ size: "" })).toBe(false)
+        if (resolution === "stop") await chat.cancel()
+        else if (resolution === "expire") {
+          const question = chat.getSnapshot().question
+          if (!question) throw new Error("Missing question")
+          const now = Date.now
+          Date.now = () => question.expiresAt
+          try {
+            expect(await chat.respondQuestion({ size: "10 mm" })).toBe(false)
+          } finally {
+            Date.now = now
+          }
+        } else
+          expect(
+            await chat.respondQuestion(resolution === "dismiss" ? null : { size: "10 mm" }),
+          ).toBe(true)
+        await idle(chat)
+        if (resolution === "answer") {
+          expect(cadCalls).toBe(1)
+          expect(requests).toBe(3)
+        } else {
+          expect(cadCalls).toBe(0)
+          expect(requests).toBe(1)
+          expect(chat.getSnapshot()).toMatchObject({
+            queuePaused: true,
+            queuedMessages: [{ text: "Queued continuation" }],
+          })
+        }
+        expect(await chat.respondQuestion({ size: "late answer" })).toBe(false)
+      } finally {
+        chat.dispose()
+      }
+    },
+  )
 
   it("settles pending structured questions on Stop and keeps queued text for recovery", async () => {
     let requests = 0
@@ -939,4 +1031,41 @@ describe("retained browser project chats", () => {
     expect(disposals).toBe(2)
     expect(guards.size).toBe(0)
   })
+})
+
+it("delivers successive requests without replacing earlier queued work or its context", async () => {
+  const api = deferredApiRequests()
+  const chat = createApiChatController({
+    projectId,
+    storage: disk(),
+    createTools: tools,
+    fetch: api.fetch,
+  })
+  await chat.connect(configuration)
+  await chat.send("Create the body")
+  await chat.enqueue("Add a lid")
+  await chat.send("Also round the corners")
+  api.respond(0, completion("Body saved"))
+  await until(chat, () => api.requests.length === 2)
+  expect(
+    api.requests[1]?.messages.filter(({ role }) => role === "user").map(({ content }) => content),
+  ).toEqual(["Create the body", "Add a lid"])
+  api.respond(1, completion("Lid saved"))
+  await until(chat, () => api.requests.length === 3)
+  expect(
+    api.requests[2]?.messages.filter(({ role }) => role === "user").map(({ content }) => content),
+  ).toEqual(["Create the body", "Add a lid", "Also round the corners"])
+  expect(api.requests[2]?.messages[0]?.content).toContain(
+    "Keep every unresolved request in session context",
+  )
+  api.respond(2, completion("All requested geometry saved"))
+  await idle(chat)
+  expect(chat.getSnapshot().queuedMessages).toEqual([])
+  expect(
+    chat
+      .getSnapshot()
+      .messages.filter(({ role }) => role === "user")
+      .map(({ text }) => text),
+  ).toEqual(["Create the body", "Add a lid", "Also round the corners"])
+  chat.dispose()
 })

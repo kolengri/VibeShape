@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
-import { BufferAttribute, OrthographicCamera, Plane, Raycaster, Vector2, Vector3 } from "three"
+import { BufferAttribute, OrthographicCamera, Raycaster, Vector2, Vector3 } from "three"
 import { InfiniteGridDecoration } from "./infinite-grid"
 
 function numericUniformValues(value: unknown): number[] {
@@ -32,13 +32,16 @@ function phaseError(left: number, right: number, period: number) {
   return Math.min(difference, period - difference)
 }
 
+function groundProjection(camera: OrthographicCamera, x: number, y: number) {
+  const near = new Vector3(x, y, -1).unproject(camera)
+  const direction = new Vector3(x, y, 1).unproject(camera).sub(near)
+  return near.addScaledVector(direction, -near.z / direction.z)
+}
+
 describe("infinite XY background grid", () => {
   it("maps every viewport edge onto the world XY plane through orbit, large pan, and zoom", () => {
     const grid = new InfiniteGridDecoration()
     grid.setEnabled(true)
-    const raycaster = new Raycaster()
-    const plane = new Plane(new Vector3(0, 0, 1), 0)
-    const hit = new Vector3()
     const cameras = [
       cameraAt(new Vector3(0, 0, 100)),
       cameraAt(new Vector3(80, -80, 65)),
@@ -58,9 +61,7 @@ describe("infinite XY background grid", () => {
         const period = spacing * 100
         for (const x of [-1, 0, 1]) {
           for (const y of [-1, 0, 1]) {
-            raycaster.setFromCamera(new Vector2(x, y), camera)
-            // Some near-horizon rays meet the plane behind the camera; the shader discards those.
-            if (!raycaster.ray.intersectPlane(plane, hit)) continue
+            const hit = groundProjection(camera, x, y)
             const projected = gridProjection(grid, x, y)
             expect(phaseError(projected.x, hit.x, period)).toBeLessThan(spacing * 0.00001)
             expect(phaseError(projected.y, hit.y, period)).toBeLessThan(spacing * 0.00001)
@@ -72,6 +73,46 @@ describe("infinite XY background grid", () => {
       grid.dispose()
     }
   })
+
+  it.each([0.01, -1_000])(
+    "keeps background render inputs invariant across camera-plane crossings with near=%s",
+    (near) => {
+      const grid = new InfiniteGridDecoration()
+      grid.setEnabled(true)
+      const target = new Vector3(3.75, -7.125, 0)
+      const camera = cameraAt(target.clone().add(new Vector3(80, -80, 65)), target, 0.48)
+      camera.near = near
+      camera.updateProjectionMatrix()
+      try {
+        grid.update(camera, 800, 600)
+        expect(grid.mesh.visible).toBe(true)
+        const before = Object.values(grid.mesh.material.uniforms).flatMap(({ value }) =>
+          numericUniformValues(value),
+        )
+        const forward = camera.getWorldDirection(new Vector3())
+        const bottom = groundProjection(camera, 0, -1)
+        const bottomAtCameraPlane = bottom.clone().applyMatrix4(camera.matrixWorldInverse)
+        // Production's positive-near camera has valid affine background coordinates behind its eye plane.
+        expect(bottomAtCameraPlane.z).toBeGreaterThan(0)
+        const bottomClip = bottom.clone().project(camera)
+        expect(bottomClip.y).toBeCloseTo(-1, 10)
+        if (near < 0) expect(Math.abs(bottomClip.z)).toBeLessThan(1)
+        else expect(bottomClip.z).toBeLessThan(-1)
+        camera.position.addScaledVector(forward, -500)
+        camera.updateMatrixWorld()
+        expect(bottom.clone().applyMatrix4(camera.matrixWorldInverse).z).toBeLessThan(0)
+        grid.update(camera, 800, 600)
+        expect(grid.mesh.visible).toBe(true)
+        const after = Object.values(grid.mesh.material.uniforms).flatMap(({ value }) =>
+          numericUniformValues(value),
+        )
+        expect(after).toHaveLength(before.length)
+        for (const [index, value] of before.entries()) expect(after[index]).toBeCloseTo(value, 8)
+      } finally {
+        grid.dispose()
+      }
+    },
+  )
 
   it("keeps world line phases stable when a large pan moves the same point across the viewport", () => {
     const grid = new InfiniteGridDecoration()
@@ -163,6 +204,11 @@ describe("infinite XY background grid", () => {
     const material = grid.mesh.material
     const uniforms = material.uniforms
     const origin = uniforms.gridOrigin?.value
+    const retainedUniforms = Object.entries(uniforms).map(([name, uniform]) => ({
+      name,
+      uniform,
+      value: uniform.value,
+    }))
     try {
       for (let i = 0; i < 100; i++) {
         grid.setEnabled(i % 3 !== 0)
@@ -175,6 +221,10 @@ describe("infinite XY background grid", () => {
       expect(grid.mesh.material).toBe(material)
       expect(material.uniforms).toBe(uniforms)
       expect(uniforms.gridOrigin?.value).toBe(origin)
+      for (const { name, uniform, value } of retainedUniforms) {
+        expect(material.uniforms[name]).toBe(uniform)
+        if (typeof value === "object") expect(material.uniforms[name]?.value).toBe(value)
+      }
       expect(geometry.getAttribute("position")).toBe(positions)
       expect(positions.count).toBe(4)
       expect(geometry.index?.count).toBe(6)

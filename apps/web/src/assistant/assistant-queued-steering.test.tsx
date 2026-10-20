@@ -1,6 +1,6 @@
 import "../../../../tests/unit/support/dom"
-import { afterEach, expect, it } from "bun:test"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, expect, it } from "bun:test"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -8,7 +8,20 @@ import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { AssistantComposer, type AssistantComposerProps } from "./assistant-composer"
 
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 function composer(props: Partial<AssistantComposerProps> = {}) {
   return (
@@ -57,6 +70,18 @@ it("keeps queued steering unavailable while a supported agent is stopping", () =
       .getAllByRole("button", { name: "Steer now" })
       .every((button) => button.hasAttribute("disabled")),
   ).toBe(true)
+})
+
+it("uses an accessible shared icon action and supports keyboard steering", async () => {
+  const steer = vi.fn().mockResolvedValue(true)
+  render(composer({ supportsActiveSteer: true, onSteerQueued: steer }))
+  const action = screen.getAllByRole("button", { name: "Steer now" })[0]
+  if (!action) throw new Error("Missing queued steering action.")
+  expect(action.querySelector("svg[aria-hidden=true]")).toBeTruthy()
+  expect(action.textContent).toBe("")
+  await act(async () => action.focus())
+  await userEvent.keyboard("{Enter}")
+  expect(steer).toHaveBeenCalledWith("first")
 })
 
 it("locks promotion and its removal while pending, retains queue content on failure, and preserves the draft", async () => {

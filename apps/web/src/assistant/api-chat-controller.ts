@@ -2,6 +2,7 @@ import {
   type AssistantAttachment,
   type AssistantQuestion,
   assistantAttachmentsSchema,
+  assistantQuestionAnswersMatch,
   assistantQuestionResponseSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { CommandActor } from "@vibeshape/domain/commands"
@@ -11,19 +12,16 @@ import { type ApiConfiguration, apiConfigurationSchema } from "./api-assistant-p
 import type { ApiQuestionInput } from "./api-cad-tools"
 import { type ApiFetch, type ApiWireMessage, apiCompletionBody } from "./api-chat-completions"
 import { ApiAssistantError, type ApiAssistantErrorCode, apiErrorCode } from "./api-errors"
+import { budgetApiContext, rememberedContext } from "./api-remembered-context"
 import {
   type AssistantCheckpointHost,
   type AssistantCheckpointState,
   createAssistantCheckpoints,
 } from "./assistant-checkpoints"
 import type { BrowserToolSession } from "./browser-tool-session"
-import {
-  type ChatMessage,
-  clearChatHistory,
-  readChatHistory,
-  retainChatMessages,
-  writeChatHistory,
-} from "./chat-history"
+import { type AgentChatSession, type ChatMessage, retainChatMessages } from "./chat-history"
+import { createChatHistoryCoordinator } from "./chat-history-coordinator"
+import type { ChatHistoryStore } from "./chat-history-storage"
 
 type QueuedPrompt = {
   id: string
@@ -38,6 +36,7 @@ type ApiChatState = Readonly<
     busy: boolean
     error: ApiAssistantErrorCode | null
     storageFailed: boolean
+    contextOmittedMessages: number
     queuedMessages: readonly {
       id: string
       text: string
@@ -53,6 +52,7 @@ type StoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">
 type ApiChatOptions = {
   projectId: string
   storage: StoragePort
+  historyStore?: ChatHistoryStore | undefined
   createTools: (projectId: string) => BrowserToolSession
   fetch?: ApiFetch | undefined
   checkpointHost?: (
@@ -79,17 +79,6 @@ const promptSchema = z
   })
   .refine((value) => value.text.length > 0 || value.attachments.length > 0)
 
-function rememberedContext(messages: readonly ChatMessage[]): ApiWireMessage[] {
-  const result: ApiWireMessage[] = messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-20)
-    .map((message) => ({
-      role: message.role === "user" ? "user" : "assistant",
-      content: message.text,
-    }))
-  while (result.length && JSON.stringify(result).length > 64_000) result.shift()
-  return result
-}
 function promptMessage(text: string, attachments: readonly AssistantAttachment[]): ApiWireMessage {
   const files = attachments.flatMap((attachment) =>
     attachment.type === "text"
@@ -106,25 +95,14 @@ function promptMessage(text: string, attachments: readonly AssistantAttachment[]
 function attachmentMetadata(attachments: readonly AssistantAttachment[]) {
   return attachments.map(({ id, name }) => ({ id, name }))
 }
-function answersMatchQuestion(question: AssistantQuestion, answers: Record<string, string>) {
-  if (Object.keys(answers).some((key) => !question.fields.some((field) => field.id === key)))
-    return false
-  return question.fields.every((field) => {
-    const value = Object.hasOwn(answers, field.id) ? (answers[field.id] ?? "") : ""
-    if (!value) return !field.required
-    if (field.options && !field.options.some((option) => option.id === value)) return false
-    return value.length >= (field.minLength ?? 0) && value.length <= (field.maxLength ?? 16_384)
-  })
-}
-
 export function createApiChatController(options: ApiChatOptions) {
-  const saved = readChatHistory(options.projectId, options.storage)
   let state: ApiChatState = {
-    messages: saved?.messages ?? [],
+    messages: [],
     connected: false,
     busy: false,
     error: null,
     storageFailed: false,
+    contextOmittedMessages: 0,
     queuedMessages: [],
     queuePaused: false,
     supportsActiveSteer: false,
@@ -137,12 +115,13 @@ export function createApiChatController(options: ApiChatOptions) {
     settlingCheckpoint: false,
     checkpointError: null,
   }
-  let context = rememberedContext(state.messages)
+  let agentSession: AgentChatSession | undefined
+  let context: ApiWireMessage[] = []
   let configuration: ApiConfiguration | null = null
   let tools: BrowserToolSession | null = null
+  let resettingHistory = false
   let disposed = false
   let active: ActiveTurn | null = null
-  let saveTimer: ReturnType<typeof setTimeout> | undefined
   const queued: QueuedPrompt[] = []
   const listeners = new Set<() => void>()
   let pendingQuestion: {
@@ -159,20 +138,25 @@ export function createApiChatController(options: ApiChatOptions) {
     () => tools?.currentActor?.() ?? null,
   )
   const checkpoints = checkpointHost ? createAssistantCheckpoints(checkpointHost, publish) : null
-  const save = () => {
-    clearTimeout(saveTimer)
-    saveTimer = undefined
-    const storageFailed = !writeChatHistory(
-      options.projectId,
-      state.messages,
-      options.storage,
-      saved?.agentSession,
-    )
-    if (state.storageFailed !== storageFailed) publish({ storageFailed })
-  }
+  const history = createChatHistoryCoordinator({
+    projectId: options.projectId,
+    storage: options.storage,
+    store: options.historyStore,
+    current: () => ({ messages: state.messages, agentSession }),
+    restored: (saved) => {
+      agentSession = saved.agentSession
+      const remembered = rememberedContext(saved.messages)
+      if (!active) context = remembered.messages
+      publish({ messages: saved.messages, contextOmittedMessages: remembered.omittedMessages })
+    },
+    failed: (storageFailed) => {
+      if (state.storageFailed !== storageFailed) publish({ storageFailed })
+    },
+  })
+  const save = () => history.save()
   const messages = (next: readonly ChatMessage[]) => {
     publish({ messages: retainChatMessages(next) })
-    saveTimer ??= setTimeout(save, 200)
+    void save()
   }
   const append = (
     role: "user" | "assistant",
@@ -182,12 +166,12 @@ export function createApiChatController(options: ApiChatOptions) {
     const next = [...state.messages],
       last = next.at(-1)
     if (role === "assistant" && last?.role === role)
-      next[next.length - 1] = { ...last, text: (last.text + text).slice(0, 32_000) }
+      next[next.length - 1] = { ...last, text: last.text + text }
     else
       next.push({
         id: crypto.randomUUID(),
         role,
-        text: text.slice(0, 32_000),
+        text,
         ...(attachments.length ? { attachments: attachmentMetadata(attachments) } : {}),
       })
     messages(next)
@@ -221,8 +205,11 @@ export function createApiChatController(options: ApiChatOptions) {
     tools = created
     return created
   }
+  function promptConnectionReady() {
+    return !disposed && !resettingHistory && state.connected
+  }
   function validPrompt(text: string, attachments: readonly AssistantAttachment[], pending = false) {
-    if (disposed || !state.connected || !configuration) return null
+    if (!promptConnectionReady() || !configuration) return null
     const parsed = promptSchema.safeParse({ text, attachments })
     if (!parsed.success) {
       publish({ error: "context-limit" })
@@ -301,6 +288,7 @@ export function createApiChatController(options: ApiChatOptions) {
     }
   }
   function askQuestion(input: ApiQuestionInput, signal: AbortSignal) {
+    const turn = active
     const question: AssistantQuestion = {
       ...input,
       fields: input.fields.map((field) => ({ ...field, secret: false })),
@@ -316,6 +304,10 @@ export function createApiChatController(options: ApiChatOptions) {
         signal.removeEventListener("abort", aborted)
         pendingQuestion = null
         publish({ question: null })
+        if (answers === null && !error) {
+          if (turn) turn.canceled = true
+          error = new ApiAssistantError("tool-failed")
+        }
         if (error) reject(error)
         else resolve({ answers })
       }
@@ -343,7 +335,11 @@ export function createApiChatController(options: ApiChatOptions) {
     if (turn.queued) {
       messages(turn.transcript)
       queued.unshift(turn.queued)
-    } else context = rememberedContext(state.messages)
+    } else {
+      const remembered = rememberedContext(state.messages)
+      context = remembered.messages
+      publish({ contextOmittedMessages: remembered.omittedMessages })
+    }
     publishQueue()
   }
   async function finishTurn(
@@ -389,7 +385,9 @@ export function createApiChatController(options: ApiChatOptions) {
         fetch: options.fetch,
       })
       if (!disposed && !turn.abort.signal.aborted) {
-        context = nextContext
+        const budgeted = budgetApiContext(nextContext)
+        context = budgeted.messages
+        publish({ contextOmittedMessages: state.contextOmittedMessages + budgeted.omittedMessages })
         succeeded = true
       }
     } catch (error) {
@@ -468,7 +466,8 @@ export function createApiChatController(options: ApiChatOptions) {
       disposed = false
     },
     async connect(input: unknown) {
-      if (disposed || active) return false
+      await history.ready
+      if (disposed || resettingHistory || active) return false
       const parsed = apiConfigurationSchema.safeParse(input)
       if (!parsed.success) {
         publish({ error: "invalid-configuration" })
@@ -491,9 +490,10 @@ export function createApiChatController(options: ApiChatOptions) {
       configuration = null
       releaseTools()
       publish({ connected: false, model: null, error: null })
-      save()
+      await save()
     },
     async send(text: string, attachments: readonly AssistantAttachment[] = []) {
+      await history.ready
       if (active || state.settlingCheckpoint || queued.length) return enqueue(text, attachments)
       const parsed = validPrompt(text, attachments)
       return parsed ? launchPrompt(parsed) : false
@@ -503,11 +503,15 @@ export function createApiChatController(options: ApiChatOptions) {
     },
     async respondQuestion(answers: Record<string, string> | null) {
       const pending = pendingQuestion
-      if (!pending || Date.now() >= pending.question.expiresAt) return false
+      if (!pending) return false
+      if (Date.now() >= pending.question.expiresAt) {
+        pending.settle(null, new ApiAssistantError("timeout"))
+        return false
+      }
       const parsed = assistantQuestionResponseSchema.shape.answers.safeParse(answers)
       if (
         !parsed.success ||
-        (parsed.data !== null && !answersMatchQuestion(pending.question, parsed.data))
+        (parsed.data !== null && !assistantQuestionAnswersMatch(pending.question, parsed.data))
       )
         return false
       pending.settle(parsed.data)
@@ -541,16 +545,28 @@ export function createApiChatController(options: ApiChatOptions) {
     },
     async reset() {
       if (disposed || active || state.settlingCheckpoint || queued.length) return
+      if (resettingHistory) return
+      resettingHistory = true
+      const cleared = await history.reset()
+      resettingHistory = false
+      if (!cleared || disposed || active) return
       releaseTools()
       context = []
+      agentSession = undefined
       checkpoints?.clear()
       publish({
         messages: [],
+        contextOmittedMessages: 0,
         error: null,
         queuePaused: false,
-        storageFailed: !clearChatHistory(options.projectId, options.storage),
+        storageFailed: false,
       })
     },
+    async retryHistory() {
+      if (active) return
+      await history.retry()
+    },
+    flushHistory: () => history.flush(),
     dispose() {
       if (disposed) return
       active?.abort.abort(new DOMException("Closed", "AbortError"))

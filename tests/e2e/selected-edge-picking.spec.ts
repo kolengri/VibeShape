@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
+import { pickSourceEdge } from "./source-edge-picking-support"
 
 async function addBox(page: Page) {
   await invokeModelCommand(page, "Primitives", "Box")
@@ -10,39 +11,7 @@ async function addBox(page: Page) {
   await form.getByRole("button", { name: "Create box", exact: true }).click()
 }
 
-async function pickSourceEdge(page: Page) {
-  const viewport = page.getByRole("region", { name: "3D viewport" })
-  const bounds = await viewport.locator("canvas").boundingBox()
-  if (!bounds) throw new Error("Expected the source-edge picking canvas.")
-  const status = viewport.getByRole("status").filter({ hasText: /^Source edge: Edge \d+$/ })
-  const offsets = Array.from({ length: 42 }, (_, i) => (i + 1) * 4).flatMap(
-    (radius) =>
-      [
-        [radius, 0],
-        [-radius, 0],
-        [0, radius],
-        [0, -radius],
-        [radius, radius],
-        [-radius, radius],
-        [radius, -radius],
-        [-radius, -radius],
-      ] as const,
-  )
-  for (const [dx, dy] of offsets) {
-    const x = bounds.x + bounds.width / 2 + dx
-    const y = bounds.y + bounds.height / 2 + dy
-    await page.mouse.move(x, y)
-    await page.evaluate("new Promise(resolve => requestAnimationFrame(resolve))")
-    if (!(await status.isVisible())) continue
-    await page.mouse.click(x, y)
-    const overlap = viewport.getByRole("listbox", { name: "Select other reference" })
-    if (await overlap.isVisible()) await overlap.getByRole("option").first().click()
-    return
-  }
-  throw new Error("No source edge was available to graphical selection.")
-}
-
-test("picks a source edge graphically and explicitly repairs a change to a congruent target", async ({
+test("picks a source edge graphically and clears incompatible selection when switching bodies", async ({
   page,
 }) => {
   test.setTimeout(120_000)
@@ -67,17 +36,11 @@ test("picks a source edge graphically and explicitly repairs a change to a congr
   const submit = form.getByRole("button", { name: "Create fillet", exact: true })
   await expect(submit).toBeEnabled()
   await page.screenshot({ path: test.info().outputPath("graphical-selected-edge.png") })
-  const targetBody = form.getByRole("combobox", { name: "Target body", exact: true })
-  await expect(targetBody.locator("option:checked")).toHaveText("Box 1")
-  await targetBody.selectOption({ label: "Box 2" })
-  await expect(
-    form.getByText("Missing edge — remove it and select a replacement.", { exact: true }),
-  ).toBeVisible()
-  await expect(submit).toBeDisabled()
-  await form.getByRole("button", { name: /^Remove Edge \d+$/ }).click()
-  await form
-    .getByRole("combobox", { name: "Choose an edge", exact: true })
-    .selectOption({ index: 1 })
+  await expect(form.getByRole("combobox", { name: "Target body", exact: true })).toHaveCount(0)
+  await form.getByText("Keyboard choices", { exact: true }).click()
+  await form.getByRole("button", { name: "Box 2 · Edge 1", exact: true }).click()
+  await expect(form.locator("[data-edge-treatment-body]")).toHaveText("Box 2")
+  await expect(form.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)
   await expect(submit).toBeEnabled()
   await submit.click()
   await expect(page.getByRole("treeitem", { name: "Fillet 1", exact: true })).toBeVisible()

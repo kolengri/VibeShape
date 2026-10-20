@@ -37,12 +37,14 @@ import {
 } from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
+import { readEdgeTreatmentPreselection } from "../features/edge-treatment/edge-treatment-activation"
 import {
   EdgeTreatmentForm,
   type EdgeTreatmentFormMode,
   type EdgeTreatmentPickingContext,
   type EdgeTreatmentPickRequest,
 } from "../features/edge-treatment/edge-treatment-form"
+import { edgeTreatmentTargetOptions } from "../features/edge-treatment/edge-treatment-options"
 import { extrusionBodyOptions } from "../features/extrusion/extrusion-body-options"
 import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
 import {
@@ -84,7 +86,6 @@ import {
   isRevolveFeature,
   isSphereFeature,
   isTorusFeature,
-  modifyingSolidTargetFeatures,
 } from "../features/part-design/part-design-tool"
 import type { PrimitivePlacementRequest } from "../features/part-design/primitive-placement"
 import {
@@ -1833,6 +1834,9 @@ function edgeTreatmentFormMode(
       createFeatureId: createBrowserFeatureId,
       featureLabel,
       ...("targetFeatureId" in activeTool ? { targetFeatureId: activeTool.targetFeatureId } : {}),
+      ...("edgeSelection" in activeTool
+        ? { edgeSelection: readEdgeTreatmentPreselection(activeTool.edgeSelection) ?? undefined }
+        : {}),
     }
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
@@ -1894,11 +1898,14 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   if (!mode) return null
   const editingId = mode.kind === "edit" ? mode.feature.id : undefined
   const task = featureTaskContext(mode, report.snapshot.revision)
-  const options = modifyingSolidTargetFeatures(
-    report.snapshot.features,
-    editingId,
+  const options = edgeTreatmentTargetOptions(
+    report.snapshot,
     report.rebuild,
-  ).map(({ id, label }) => ({ id, label: label ?? treeT("unnamedFeature") }))
+    editingId,
+    props.parts,
+    treeT("unnamedFeature"),
+    operation,
+  )
   const copy = edgeTreatmentCopy(t, operation, mode.kind)
 
   return (

@@ -1,80 +1,275 @@
 import { describe, expect, it } from "bun:test"
-import { assistantToolTargetsSchema } from "@vibeshape/automation-api/assistant"
-import { documentIdSchema } from "@vibeshape/domain/identifiers"
-import { type ChatMessage, readChatHistory, writeChatHistory } from "./chat-history"
+import { type ChatMessage, legacyChatHistoryKey, retainChatMessages } from "./chat-history"
+import { MemoryTranscriptStore } from "./chat-history.test-fixture"
+import { createChatHistoryCoordinator } from "./chat-history-coordinator"
+import { loadChatHistory } from "./chat-history-storage"
 
-const projectId = documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000101")
-const entityId = "0195b5ac-b250-7a2c-8c33-000000000102"
+const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
+const otherProjectId = "0195b5ac-b250-7a2c-8c33-000000000102"
 function disk() {
-  let value: string | null = null
+  const values = new Map<string, string>()
   return {
-    getItem: () => value,
-    setItem: (_key: string, next: string) => {
-      value = next
+    values,
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value)
     },
-    removeItem: () => {
-      value = null
+    removeItem: (key: string) => {
+      values.delete(key)
     },
   }
 }
-const oldMessage: ChatMessage = {
-  id: "a5d39d65-095e-4de7-abf6-0a55e5ed3607",
-  role: "tool",
-  text: "Legacy detail",
-  tool: { title: "Tool", status: "completed" },
+function message(text = "message"): ChatMessage {
+  return { id: crypto.randomUUID(), role: "user", text }
+}
+function fixture(store = new MemoryTranscriptStore(), storage = disk(), id = projectId) {
+  let messages: readonly ChatMessage[] = []
+  let failed = false
+  const history = createChatHistoryCoordinator({
+    projectId: id,
+    store,
+    storage,
+    current: () => ({ messages }),
+    restored: (saved) => {
+      messages = saved.messages
+    },
+    failed: (value) => {
+      failed = value
+    },
+  })
+  return {
+    history,
+    store,
+    storage,
+    get messages() {
+      return messages
+    },
+    set messages(value: readonly ChatMessage[]) {
+      messages = value
+    },
+    get failed() {
+      return failed
+    },
+  }
 }
 
-describe("assistant history display metadata", () => {
+describe("complete assistant transcript persistence", () => {
+  it("round-trips more than 150 messages and 750k characters without truncating long message text", async () => {
+    const f = fixture()
+    await f.history.ready
+    f.messages = Array.from({ length: 210 }, (_, i) =>
+      message(`${i}:${"x".repeat(i === 5 ? 80_000 : 5_000)}`),
+    )
+    const expected = [...f.messages]
+    expect(retainChatMessages(expected)).toEqual(expected)
+    await f.history.save()
+    const reopened = fixture(f.store, f.storage)
+    await reopened.history.ready
+    expect(reopened.messages).toEqual(expected)
+    expect(reopened.messages[5]?.text.length).toBe(80_002)
+    expect(f.storage.values.size).toBe(0)
+    // Updating one streaming message writes one record, not the entire transcript.
+    f.messages = f.messages.map((entry, i) =>
+      i === 209 ? { ...entry, text: `${entry.text}tail` } : entry,
+    )
+    await f.history.save()
+    expect(f.store.patches.at(-1)?.upserts).toHaveLength(1)
+  })
   it.each([true, false])(
-    "persists failure evidence independently of retained text: %s",
-    (hasFailureDetails) => {
-      const storage = disk()
-      const message: ChatMessage = {
-        ...oldMessage,
-        text: "Preparing preview",
-        tool: { title: "Preview draft", status: "failed", hasFailureDetails },
+    "migrates strict v1 metadata only after an atomic durable write: %s",
+    async (hasFailureDetails) => {
+      const store = new MemoryTranscriptStore(),
+        storage = disk()
+      const original = {
+        ...message("old"),
+        attachments: [{ id: "view", name: "view.png" }],
+        tool: { status: "failed", hasFailureDetails },
       }
-      expect(writeChatHistory(projectId, [message], storage)).toBe(true)
-      expect(readChatHistory(projectId, storage)?.messages).toEqual([message])
+      storage.setItem(
+        legacyChatHistoryKey(projectId),
+        JSON.stringify({ version: 1, projectId, messages: [original] }),
+      )
+      store.commitFailure = new DOMException("quota", "QuotaExceededError")
+      await expect(loadChatHistory(projectId, storage, store)).rejects.toThrow("quota")
+      expect(storage.values.size).toBe(1)
+      expect(store.projects.size).toBe(0)
+      store.commitFailure = undefined
+      expect(await store.load(projectId)).toBeNull()
+      expect((await loadChatHistory(projectId, storage, store)).messages).toEqual([original])
+      expect(storage.values.size).toBe(0)
+      expect((await loadChatHistory(projectId, storage, store)).messages).toEqual([original])
     },
   )
-  it("reads the original v1 history unchanged without metadata", () => {
-    const storage = disk()
-    const history = { version: 1 as const, projectId, messages: [oldMessage] }
-    storage.setItem("", JSON.stringify(history))
-    expect(readChatHistory(projectId, storage)).toEqual(history)
-  })
-
-  it("round-trips semantic feature and sketch IDs independently of detail truncation", () => {
-    const storage = disk()
-    const targets = assistantToolTargetsSchema.parse({
+  it.each([
+    { version: 2, projectId, messages: [] },
+    { version: 1, projectId: otherProjectId, messages: [] },
+    {
+      version: 1,
       projectId,
-      featureIds: [entityId],
-      sketchIds: [entityId],
+      messages: [{ ...message(), attachments: [{ id: "raw", name: "raw", data: "private" }] }],
+    },
+    { version: 1, projectId, messages: [{ ...message(), providerPayload: { secret: "private" } }] },
+    {
+      version: 1,
+      projectId,
+      messages: [
+        { ...message(), tool: { targets: { projectId, featureIds: ["invalid"], sketchIds: [] } } },
+      ],
+    },
+  ])("preserves corrupt or unsupported legacy data for recovery", async (value) => {
+    const storage = disk(),
+      store = new MemoryTranscriptStore()
+    storage.setItem(legacyChatHistoryKey(projectId), JSON.stringify(value))
+    await expect(loadChatHistory(projectId, storage, store)).rejects.toThrow()
+    expect(storage.values.size).toBe(1)
+    expect(store.projects.size).toBe(0)
+  })
+  it("merges asynchronous startup with new live events instead of replacing them", async () => {
+    const f = fixture()
+    await f.history.ready
+    f.messages = [message("saved")]
+    await f.history.save()
+    let release = () => {}
+    f.store.loadGate = new Promise<void>((resolve) => {
+      release = resolve
     })
-    const message = {
-      ...oldMessage,
-      text: "x".repeat(40_000),
-      tool: { ...oldMessage.tool, targets },
-    }
-    expect(writeChatHistory(projectId, [message], storage)).toBe(true)
-    expect(readChatHistory(projectId, storage)?.messages).toEqual([
-      { ...message, text: "x".repeat(32_000) },
+    const reopened = fixture(f.store, f.storage)
+    reopened.messages = [message("live")]
+    const save = reopened.history.save()
+    release()
+    await save
+    expect(reopened.messages.map(({ text }) => text)).toEqual(["saved", "live"])
+    expect((await loadChatHistory(projectId, f.storage, f.store)).messages).toEqual([
+      ...reopened.messages,
     ])
   })
-
-  it("rejects invalid or oversized imported target metadata", () => {
-    const storage = disk()
-    for (const targets of [
-      { projectId, featureIds: ["invalid"], sketchIds: [] },
-      { projectId, featureIds: [], sketchIds: Array(33).fill(entityId) },
-      { projectId, featureIds: [], sketchIds: [], allow: true },
-    ]) {
-      storage.setItem(
-        "",
-        JSON.stringify({ version: 1, projectId, messages: [{ ...oldMessage, tool: { targets } }] }),
-      )
-      expect(readChatHistory(projectId, storage)).toBeNull()
-    }
+  it("keeps history on write/reset failure and isolates projects with durable reset tombstones", async () => {
+    const f = fixture()
+    await f.history.ready
+    f.messages = [message("first")]
+    await f.history.save()
+    const other = fixture(f.store, f.storage, otherProjectId)
+    await other.history.ready
+    other.messages = [message("second")]
+    await other.history.save()
+    f.store.failure = new DOMException("quota", "QuotaExceededError")
+    f.messages = [...f.messages, message("unsaved")]
+    await f.history.save()
+    expect(f.failed).toBe(true)
+    expect(f.messages).toHaveLength(2)
+    expect(await f.history.reset()).toBe(false)
+    f.store.failure = undefined
+    await f.history.save()
+    expect(f.failed).toBe(false)
+    expect(await f.history.reset()).toBe(true)
+    f.messages = []
+    f.storage.setItem(
+      legacyChatHistoryKey(projectId),
+      JSON.stringify({ version: 1, projectId, messages: [message("stale legacy")] }),
+    )
+    expect((await loadChatHistory(projectId, f.storage, f.store)).messages).toEqual([])
+    expect((await loadChatHistory(otherProjectId, f.storage, f.store)).messages).toEqual([
+      ...other.messages,
+    ])
   })
+  it("does not overwrite unavailable history with a fresh live transcript", async () => {
+    const store = new MemoryTranscriptStore()
+    store.failure = new Error("unavailable")
+    const f = fixture(store)
+    await f.history.ready
+    f.messages = [message("live")]
+    await f.history.save()
+    expect(f.failed).toBe(true)
+    expect(store.patches).toHaveLength(0)
+    expect(f.messages[0]?.text).toBe("live")
+  })
+  it("rejects concurrent writer revisions without dropping the existing transcript", async () => {
+    const first = fixture()
+    await first.history.ready
+    const second = fixture(first.store, first.storage)
+    await second.history.ready
+    first.messages = [message("first writer")]
+    await first.history.save()
+    second.messages = [message("second writer")]
+    await second.history.save()
+    expect(second.failed).toBe(true)
+    expect((await loadChatHistory(projectId, first.storage, first.store)).messages).toEqual([
+      ...first.messages,
+    ])
+  })
+})
+
+it("retries a failed load without dropping new live messages", async () => {
+  const store = new MemoryTranscriptStore(),
+    storage = disk()
+  const original = fixture(store, storage)
+  await original.history.ready
+  original.messages = [message("saved")]
+  await original.history.save()
+  store.failure = new Error("unavailable")
+  const reopened = fixture(store, storage)
+  await reopened.history.ready
+  reopened.messages = [message("live")]
+  store.failure = undefined
+  await reopened.history.retry()
+  expect(reopened.failed).toBe(false)
+  expect(reopened.messages.map(({ text }) => text)).toEqual(["saved", "live"])
+})
+it("serializes disposal writes ahead of immediate same-project reopen", async () => {
+  const store = new MemoryTranscriptStore(),
+    storage = disk()
+  const first = fixture(store, storage)
+  await first.history.ready
+  first.messages = [message("last event before closing")]
+  void first.history.save()
+  const reopened = fixture(store, storage)
+  await reopened.history.ready
+  expect(reopened.messages).toEqual([...first.messages])
+})
+it("does not resurrect startup history after a reset transaction completes", async () => {
+  const f = fixture()
+  await f.history.ready
+  f.messages = [message("old")]
+  await f.history.save()
+  let release = () => {}
+  f.store.loadGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const reopened = fixture(f.store, f.storage)
+  const reset = reopened.history.reset()
+  release()
+  expect(await reset).toBe(true)
+  reopened.messages = []
+  await reopened.history.flush()
+  expect((await loadChatHistory(projectId, f.storage, f.store)).messages).toEqual([])
+})
+
+it("refuses a stale save after another writer resets the project", async () => {
+  const f = fixture()
+  await f.history.ready
+  f.messages = [message("saved")]
+  await f.history.save()
+  await f.store.reset(projectId, 1)
+  f.messages = [...f.messages, message("late event")]
+  await f.history.save()
+  expect(f.failed).toBe(true)
+  expect((await f.store.load(projectId))?.entries).toEqual([])
+})
+
+it("rolls back a reset whose project owner changed before the storage transaction", async () => {
+  const f = fixture()
+  await f.history.ready
+  f.messages = [message("keep after switching")]
+  await f.history.save()
+  let release = () => {},
+    current = true
+  f.store.resetGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const reset = f.history.reset(() => current)
+  current = false
+  release()
+  expect(await reset).toBe(false)
+  expect(f.failed).toBe(false)
+  expect((await f.store.load(projectId))?.entries).toHaveLength(1)
 })

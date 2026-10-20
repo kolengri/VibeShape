@@ -1,0 +1,240 @@
+import "../../../../tests/unit/support/dom"
+import { afterEach, beforeEach, expect, it } from "bun:test"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { I18nProvider } from "@vibeshape/i18n/provider"
+import { type ComponentProps, useEffect } from "react"
+import { vi } from "../../../../tests/unit/support/bun-test"
+import { i18n } from "../i18n"
+import { AssistantPanel } from "./assistant-panel"
+
+type PanelProps = ComponentProps<typeof AssistantPanel>
+beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
+
+function panel(props: Partial<PanelProps> = {}) {
+  return (
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <button type="button">Chat toggle</button>
+      <AssistantPanel
+        open
+        projectName="Bracket"
+        messages={[]}
+        busy={false}
+        canSend
+        configuration={null}
+        error={null}
+        storageFailed={false}
+        onClose={() => {}}
+        onSend={async () => true}
+        onCancel={async () => {}}
+        onReset={async () => {}}
+        {...props}
+      />
+    </I18nProvider>
+  )
+}
+
+it("uses the panel's real busy prop for polite header activity and retains the reserved status slot while idle", () => {
+  const view = render(panel())
+  const heading = screen.getByRole("heading", { name: "AI chat" })
+  const titleRow = heading.parentElement
+  if (!titleRow) throw new Error("Missing assistant header title row.")
+  const status = within(titleRow).getByRole("status")
+  const reserved = status.previousElementSibling
+  const layout = titleRow.className
+  const settings = screen.getByRole("button", { name: "AI settings" })
+  expect(status.textContent).toBe("")
+  expect(status.getAttribute("aria-live")).toBe("polite")
+  expect(status.getAttribute("aria-atomic")).toBe("true")
+  expect(reserved?.getAttribute("aria-hidden")).toBe("true")
+  expect(reserved?.classList.contains("invisible")).toBe(true)
+  expect(reserved?.textContent).toBe("AI working…")
+  view.rerender(panel({ busy: true }))
+  expect(within(titleRow).getByRole("status")).toBe(status)
+  expect(status.textContent).toBe("AI working…")
+  expect(status.querySelector("svg")?.classList.contains("motion-safe:animate-spin")).toBe(true)
+  expect(status.previousElementSibling).toBe(reserved)
+  expect(titleRow.className).toBe(layout)
+  expect(screen.getByRole("button", { name: "AI settings" })).toBe(settings)
+  view.rerender(panel({ busy: false }))
+  expect(status.textContent).toBe("")
+  expect(status.previousElementSibling).toBe(reserved)
+  expect(titleRow.className).toBe(layout)
+})
+
+function ConnectionControls({ mount, disconnect }: { mount: () => void; disconnect: () => void }) {
+  useEffect(() => {
+    mount()
+    return disconnect
+  }, [mount, disconnect])
+  return <input aria-label="Connection label" defaultValue="Connected" />
+}
+
+it("retains mounted composer, pending attachments, transcript expansion, settings, questions, and reading position through hide and reopen", async () => {
+  const readers: { onload: (() => void) | null; result: ArrayBuffer }[] = []
+  vi.stubGlobal(
+    "FileReader",
+    class {
+      onload = null
+      onerror = null
+      onabort = null
+      result = new TextEncoder().encode("retained content").buffer
+      readAsArrayBuffer() {
+        readers.push(this)
+      }
+    },
+  )
+  const mount = vi.fn(),
+    disconnect = vi.fn(),
+    cancel = vi.fn(),
+    reset = vi.fn()
+  const props: Partial<PanelProps> = {
+    configuration: <ConnectionControls mount={mount} disconnect={disconnect} />,
+    attachmentCapabilities: { text: true, images: false },
+    onClose: () => screen.getByRole("button", { name: "Chat toggle" }).focus(),
+    onCancel: cancel,
+    onReset: reset,
+    onAnswer: async () => true,
+    question: {
+      requestId: "preserved-question",
+      message: "Choose the finish",
+      expiresAt: Date.now() + 60_000,
+      fields: [{ id: "finish", label: "Finish", required: false, secret: false }],
+    },
+    messages: [
+      {
+        id: "tool",
+        role: "tool",
+        text: "Full operation output",
+        tool: { title: "Inspect model", status: "completed" },
+      },
+    ],
+  }
+  const view = render(panel(props))
+  const aside = screen.getByRole("complementary", { name: "AI chat" })
+  const draft = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement
+  fireEvent.change(draft, { target: { value: "Unsent description" } })
+  await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
+  const setting = screen.getByRole("textbox", { name: "Connection label" }) as HTMLInputElement
+  const answer = screen.getByRole("textbox", { name: "Finish" }) as HTMLInputElement
+  fireEvent.change(setting, { target: { value: "Keep this connection" } })
+  fireEvent.change(answer, { target: { value: "Round corners" } })
+  const summary = screen.getByText("Inspect model", { selector: "summary span" }).closest("summary")
+  if (!summary) throw new Error("Missing tool output disclosure.")
+  await userEvent.click(summary)
+  const details = summary.closest("details")
+  expect(details?.open).toBe(true)
+  const log = screen.getByRole("log")
+  Object.defineProperties(log, {
+    clientHeight: { configurable: true, value: 300 },
+    scrollHeight: { configurable: true, value: 900 },
+  })
+  log.scrollTop = 120
+  fireEvent.scroll(log)
+  const scrollCalls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+  fireEvent.change(screen.getByLabelText("Attach files", { selector: "input" }), {
+    target: { files: [new File(["pending"], "pending.txt", { type: "text/plain" })] },
+  })
+  const attachment = screen.getByText("pending.txt").parentElement
+  expect(attachment?.getAttribute("aria-busy")).toBe("true")
+  await userEvent.click(screen.getByRole("button", { name: "Close chat" }))
+  const toggle = screen.getByRole("button", { name: "Chat toggle" })
+  view.rerender(panel({ ...props, open: false }))
+  expect(aside.hasAttribute("hidden")).toBe(true)
+  expect(aside.classList.contains("hidden")).toBe(true)
+  expect(aside.classList.contains("flex")).toBe(false)
+  expect(aside.getAttribute("aria-modal")).toBeNull()
+  expect(screen.queryByRole("complementary")).toBeNull()
+  expect(document.activeElement).toBe(toggle)
+  expect(draft.isConnected && log.isConnected && setting.isConnected && answer.isConnected).toBe(
+    true,
+  )
+  expect(disconnect).not.toHaveBeenCalled()
+  view.rerender(panel(props))
+  expect(screen.getByRole("textbox", { name: "Message" })).toBe(draft)
+  expect(attachment?.getAttribute("aria-busy")).toBe("true")
+  view.rerender(
+    panel({
+      ...props,
+      open: false,
+      messages: [
+        ...(props.messages ?? []),
+        { id: "next", role: "assistant", text: "Another update" },
+      ],
+    }),
+  )
+  await act(async () => {
+    readers[0]?.onload?.()
+  })
+  expect(attachment?.getAttribute("aria-busy")).toBe("false")
+  expect(document.activeElement).toBe(toggle)
+  view.rerender(panel(props))
+  expect(aside.hasAttribute("hidden")).toBe(false)
+  expect(aside.classList.contains("flex")).toBe(true)
+  expect(aside.classList.contains("hidden")).toBe(false)
+  expect(screen.getByRole("log")).toBe(log)
+  expect(draft.value).toBe("Unsent description")
+  expect(setting.value).toBe("Keep this connection")
+  expect(answer.value).toBe("Round corners")
+  expect(screen.getByRole("button", { name: "AI settings" }).getAttribute("aria-expanded")).toBe(
+    "true",
+  )
+  expect(details?.open).toBe(true)
+  expect(log.scrollTop).toBe(120)
+  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(scrollCalls)
+  expect(screen.getByRole("button", { name: "Remove pending.txt" })).toBeTruthy()
+  expect(mount).toHaveBeenCalledTimes(1)
+  expect(disconnect).not.toHaveBeenCalled()
+  expect(cancel).not.toHaveBeenCalled()
+  expect(reset).not.toHaveBeenCalled()
+})
+
+it("distinguishes retained transcript from bounded provider context and exposes a single-flight storage retry", async () => {
+  let resolve = () => {}
+  let retries = 0
+  const retry = new Promise<void>((done) => {
+    resolve = done
+  })
+  const view = render(
+    panel({
+      contextOmittedMessages: 24,
+      storageFailed: true,
+      onRetryHistory: () => {
+        retries += 1
+        return retry
+      },
+    }),
+  )
+  expect(
+    screen.getByText(/24 earlier messages are outside the API context budget/).textContent,
+  ).toContain("full conversation remains in chat history")
+  const button = screen.getByRole("button", { name: "Retry chat storage" })
+  fireEvent.click(button)
+  fireEvent.click(button)
+  expect(retries).toBe(1)
+  expect(button.getAttribute("aria-busy")).toBe("true")
+  await act(async () => {
+    resolve()
+    await retry
+  })
+  expect(button.hasAttribute("disabled")).toBe(false)
+  view.rerender(
+    panel({ contextOmittedMessages: 0, storageFailed: false, onRetryHistory: async () => {} }),
+  )
+  expect(screen.queryByText(/outside the API context budget/)).toBeNull()
+  expect(screen.queryByRole("button", { name: "Retry chat storage" })).toBeNull()
+})

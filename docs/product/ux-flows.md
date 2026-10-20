@@ -32,7 +32,7 @@ The shell uses Tailwind CSS v4 and source-owned shadcn/Radix primitives from `@v
 
 The implemented command surface composes stable localized presentation descriptors with trusted application handlers. One resolved eligibility result drives the toolbar, command palette, cursor-near sketch shortcuts, and keyboard path, so a command cannot be enabled in one surface and blocked in another. The application bar opens the palette, and `Ctrl/Cmd+K` opens or closes it even while a text control owns focus. Search matches localized labels and keywords, retains disabled commands with a visible unmet requirement, and ranks the six most recently invoked commands in local UI preference storage. Palette close restores focus to its trigger. During active sketch creation or editing, `S` opens a collision-aware non-modal icon toolbar at the latest canvas pointer position, or at the viewport center when no pointer position exists. It exposes a curated high-frequency subset of the same commands, keeps disabled profile features visible with their reason, restores focus on close, and contains no duplicate Finish or Cancel action. Single-letter sketch shortcuts run only outside text-entry and IME composition; `Escape` first closes the shortcut toolbar, then remains available to clear an in-progress placement before the global active-command cancellation handler runs.
 
-The implemented viewport shows terminal authoritative meshes only after a successful document rebuild. Raw Three.js owns the canvas scene and GPU lifecycle outside React reconciliation; localized loading, empty, rebuild-failure, and WebGL2-unavailable states remain ordinary DOM overlays. It supports orthographic orbit, pan, pointer-centered zoom, responsive fit, shaded faces, derived feature edges, hover face preselection, and primary-click face selection. Hovering or keyboard-focusing a visible feature-tree row adds a cyan whole-feature preselection overlay, while activating the row opens edit and keeps an amber overlay on that exact feature until the task closes. These overlays use the feature's own rebuild result even when downstream operations consume it; an exact unsaved candidate mesh replaces the committed highlight during preview, and hidden features remain hidden. Whole-feature highlighting stays independent from transient face selection. XY, XZ, and YZ remain visible as translucent origin datums by default and each can be hidden independently through an icon-only, tooltip-labeled control. They are selectable only while choosing sketch support, so visible datums never block solid clicks. Independent terminal bodies use a stable display-only palette derived from their feature identities; merged or consumed features do not create a second body color. Primary drag and middle drag rotate, modifier-primary and secondary drag pan, and movement beyond the click threshold never activates a face or sketch plane. A camera-relative world-axis inset stays visible and updates during orbit without resetting the camera; its semantic X/Y/Z colors are paired with an accessible DOM legend. The selected feature and friendly face ordinal are mirrored into the DOM status bar, and an explicit canvas control clears face selection. Empty primary click and every geometry replacement clear transient face selection while preserving the current camera and any open-feature highlight. Fit runs once when the viewport is initialized and later only through the explicit user action. The icon-only camera menu exposes isometric and six orthographic standard views with localized labels and tooltips. Choosing one preserves the current orbit target and scale, and the same navigation remains available in sketch orbit mode. Fit frames the model, sketches, and print envelope independently of the ground grid and origin datums. Render-depth bounds include those visible decorations; the orthographic camera can retreat along its view direction to keep them in front of the near plane without changing screen position or scale. Current rendered-face identity is deliberately transient; body/edge/vertex selection, stable `TopoRef` selection, filters, perspective mode, and additional command overlays remain open.
+The implemented viewport shows terminal authoritative meshes only after a successful document rebuild. Raw Three.js owns the canvas scene and GPU lifecycle outside React reconciliation; localized loading, empty, rebuild-failure, and WebGL2-unavailable states remain ordinary DOM overlays. It supports orthographic orbit, pan, pointer-centered zoom, responsive fit, shaded faces, derived feature edges, hover face preselection, and primary-click face selection. Hovering or keyboard-focusing a visible feature-tree row adds a cyan whole-feature preselection overlay, while activating the row opens edit and keeps an amber overlay on that exact feature until the task closes. These overlays use the feature's own rebuild result even when downstream operations consume it; an exact unsaved candidate mesh replaces the committed highlight during preview, and hidden features remain hidden. Whole-feature highlighting stays independent from transient face selection. XY, XZ, and YZ remain visible as translucent origin datums by default and each can be hidden independently through an icon-only, tooltip-labeled control. They are selectable only while choosing sketch support, so visible datums never block solid clicks. Independent terminal bodies use a stable display-only palette derived from their feature identities; merged or consumed features do not create a second body color. Primary drag and middle drag rotate, modifier-primary and secondary drag pan, and movement beyond the click threshold never activates a face or sketch plane. A camera-relative world-axis inset stays visible and updates during orbit without resetting the camera; its semantic X/Y/Z colors are paired with an accessible DOM legend. The selected feature and friendly face ordinal are mirrored into the DOM status bar, and an explicit canvas control clears face selection. Empty primary click and every geometry replacement clear transient face selection while preserving the current camera and any open-feature highlight. Fit runs once when the viewport is initialized and later only through the explicit user action. The icon-only camera menu exposes isometric and six orthographic standard views with localized labels and tooltips. Choosing one preserves the current orbit target and scale, and the same navigation remains available in sketch orbit mode. Fit frames the model, sketches, and print envelope independently of the ground grid and origin datums. Render-depth bounds include those visible decorations; the orthographic camera can retreat along its view direction to keep them in front of the near plane without changing screen position or scale. Rendered face IDs remain transient. Idle exact-edge selection is available through the status-bar Edges filter and seeds Fillet or Chamfer; vertex selection, perspective mode and further selection filters remain open.
 
 ### Planes
 
@@ -54,6 +54,19 @@ can leave an oriented sketch support unresolved; use explicit support repair rat
 retargeting it.
 
 ## Assistant transcript
+
+Human messages use a compact, right-aligned bubble distinct from assistant prose and tool rows.
+The full display transcript is retained per project in IndexedDB rather than a truncated local
+storage tail. Existing version-1 chat records are removed only after a successful transactional
+migration. Persistence failures keep live messages, expose Retry chat storage and preserve the
+previous saved transcript. Only display transcript text, validated tool metadata and attachment names are retained. File
+bytes, credentials and raw provider payloads are excluded.
+
+The API request context is separate from transcript storage. It retains complete conversational
+turns within a 128 KiB UTF-8 budget, includes whitelisted tool display summaries, and excludes private
+thoughts. An omitted-message count is visible when older context is outside that request budget;
+the complete saved conversation remains readable. This byte budget does not claim any provider's
+token-window size.
 
 Consecutive tool calls with the same title and status share one compact row with a count on the
 right. A different action, status, or conversational message starts a new row, preserving order
@@ -80,7 +93,19 @@ the model to send another command. Saved batches expose **View before** / **View
 the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
 move the transcript when the person is reading earlier messages. Inspection locks do not open
 connection settings, and footer/display changes do not trigger transcript following without new
-message content. The application bar names active-project AI work even while chat is closed.
+message content. The chat header names active-project AI work from the actual controller busy state,
+with reserved space and reduced-motion support. Hiding chat preserves its mounted transcript, draft,
+attachment reads, scroll position, settings and active connection. The header AI chat toggle reopens
+the same panel; show/hide and message updates do not resize or remount the viewport canvas.
+
+Files can be dropped into the composer or chosen through Attach files. Both routes enforce the same
+provider capabilities and per-file, count and total-byte limits. Unsupported files remain explicit
+errors; dropping files never navigates away. A provider advertising image support also exposes
+**Attach current view**. This explicit action renders the existing viewport at the current camera,
+copies only its canvas pixels into a bounded PNG, and adds an ordinary removable attachment thumbnail.
+The message field supplies its description. Capture never includes the surrounding UI, changes the
+camera, or sends automatically. The direct browser API currently advertises text attachments only.
+Queued-message steering uses a compact upper-right icon button with its full accessible name.
 
 An interrupted embedded desktop connection shows automatic recovery progress for up to five attempts
 per connection owner, followed by an explicit retry action. Recovery retains settings and the reading
@@ -91,6 +116,27 @@ and permanent authentication or configuration failures require the person's acti
 
 Failed calls retain the reported diagnostic in their expandable output. If the agent supplied no
 error detail, the row says so explicitly instead of offering an empty disclosure.
+
+The native and API queues retain accepted messages in FIFO order; later messages do not overwrite
+older pending requests. Both assistant instruction contexts require successive requests to remain
+additive unless the person explicitly cancels or replaces earlier work. The provider must reconcile
+steering with active work and identify blocked requests before reporting completion; the application
+cannot certify a language model's semantic fulfillment from delivery alone.
+
+The embedded native and browser API assistants expose `ask_user_question` for a bounded non-secret
+form. A required answer pauses dependent CAD work, queued delivery, steering and automatic recovery
+continuation. A premature provider ready event cannot dismiss the form. A valid unexpired reply
+releases the wait; dismissal, timeout, Stop or disconnection pauses the queue and grants no answer.
+The API also stops later tool calls in the same response after an unanswered question is abandoned.
+Native forms normally expire after five minutes and API forms after two; a provider may impose a
+shorter MCP request timeout. The native tool uses a captured session/transport callback and does not
+depend on provider-specific elicitation forwarding or questions inferred from prose.
+
+During an active AI operation or review, a blocked durable visibility change can use the existing
+project-local view override for inspection. A neutral status explicitly states that it was not
+saved. Returning to the saved visibility clears that override without a metadata command. Idle
+visibility changes still use ordinary durable metadata and Undo; stale, read-only and storage
+failures retain their specific diagnostics.
 
 ## Application menu
 
@@ -411,15 +457,30 @@ Only one field owns selection at a time. Committed eligible geometry is shown du
 New Fillet and Chamfer tasks start in Selected edges scope with viewport picking active and a visible
 zero-selection count. A selected eligible body or face seeds its source body; an ineligible selected
 source never falls back to an unrelated body. A face does not imply a particular boundary edge.
-All edges remains an explicit option, and editing preserves the feature's authored scope.
-Selected edges are picked in the viewport or either accessible edge chooser and highlighted during
-exact preview. The live count, persistent hint, and individually named Remove controls keep multiple
-selections visible and keyboard-removable. Clicking a selected
-edge again removes it. The task preserves missing or ambiguous references as explicit repair rows;
-remove the broken row and choose a replacement before Apply. Changing the target does not transfer
-references to geometrically identical edges on another body. Apply creates one ordinary committed
-edit, Cancel discards the task, and Undo/Redo uses the shared session history. Existing all-edge
-features retain version 1 semantics. See [ADR-0040](../adr/0040-selected-edge-treatments.md).
+The idle status-bar Selection filter offers Edges, so an exact edge set can be selected before
+opening either tool. Activation captures that body's exact output role and references before
+clearing ordinary editor selection. All edges remains an explicit option, and editing preserves
+the feature's authored scope.
+
+The graphical pick field accepts another eligible body directly from its edge or face; switching
+bodies clears incompatible selections rather than transferring them to congruent topology.
+Keyboard choices are an explicit, paged fallback with at most 32 rows per page. Edges without display
+polylines remain selectable by their exact references there. The live count, persistent hint, and
+individually named Remove controls keep multiple selections visible and keyboard-removable. Clicking
+a selected edge again removes it. Missing and ambiguous references require explicit repair before
+Apply. Escape cancels the picker and restores its trigger focus. Closed circular rims use the same
+reference path; periodic seams and unbuildable oversized treatments report actionable diagnostics.
+
+Chamfer additionally accepts face targets and exposes equal distance, two distances, and distance
+plus angle. Advanced records retain quantity expressions, Offset/Tangent measurement, tangent
+propagation, global flip and per-edge direction overrides. Asymmetric edge targets require an
+explicit side face; the exact worker preview validates incidence. Advanced geometry is limited to
+proven planar supports, with explicit unsupported feedback for curved cases. Simple circular-rim
+treatments retain the existing version-2 path. Apply creates one ordinary committed edit, Cancel
+discards the task, and Undo/Redo uses shared session history. Existing all-edge features retain
+version-1 semantics, and explicit-edge features are not migrated automatically. See
+[ADR-0040](../adr/0040-selected-edge-treatments.md) and
+[ADR-0118](../adr/0118-body-bound-directional-chamfer.md).
 
 
 ## Parts, folders, placement, and export
@@ -525,7 +586,10 @@ is the keyboard equivalent. Pointer capture prevents accidental orbiting, and Es
 cancellation restores the starting offset. Closed render meshes receive derived solid cut caps with
 hole preservation. Open, nonmanifold, intersecting, or over-budget contours conservatively omit caps.
 Sectioning changes no authored geometry, revision, or export. Closing the control panel returns focus
-to its trigger.
+to its trigger. Starting Fillet, Chamfer, Shell, Hole or another orbitable reference-picking task
+retains the active section. Reference points, curves and face candidates respect the same clipping
+plane for display and hit testing. Normal 2D sketch presentation temporarily suppresses sectioning;
+returning to the model restores its parameters.
 
 ## FDM tools
 

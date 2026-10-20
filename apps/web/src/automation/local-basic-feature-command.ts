@@ -5,6 +5,7 @@ import {
   type CommandActor,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  chamferFeatureTypeV3,
   createLengthQuantity,
   type EdgeTopoRef,
   type FeatureTypeDescriptor,
@@ -59,6 +60,13 @@ function featureContent(operation: BasicFeatureOperation) {
     }
   }
   const input = operation.arguments
+  if ("parameters" in input)
+    return {
+      type: chamferFeatureTypeV3.type,
+      parameters: input.parameters,
+      dependencies: [input.parameters.targetBody.featureId],
+      references: [],
+    }
   return {
     ...treatmentScope(input.edges, chamferFeatureType, chamferFeatureTypeV2),
     parameters: {

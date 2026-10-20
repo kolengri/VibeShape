@@ -22,6 +22,7 @@ import {
   readCompoundFeatureParameters,
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
+import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
@@ -146,14 +147,17 @@ function classifyExactSubtract(feature: FeatureRecordV1): PartOperation | null {
 function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation | null {
   const boolean = classifyExactSubtract(feature)
   if (boolean) return boolean
-  const thread = readThreadFeatureParameters(feature)
-  if (thread) return { kind: "modify", target: thread.targetBody, consumed: [] }
-  const placement = readPlacementFeatureParameters(feature)
+  const target = [
+    readThreadFeatureParameters,
+    readShellFeatureParameters,
+    readChamferFeatureParametersV3,
+    readPlacementFeatureParameters,
+  ]
+    .map((read) => read(feature)?.targetBody)
+    .find((body) => body !== undefined)
+  if (target) return { kind: "modify", target, consumed: [] }
   const mirror = classifyMirrorOperation(feature)
-  const shell = readShellFeatureParameters(feature)
-  if (shell) return { kind: "modify", target: shell.targetBody, consumed: [] }
   if (mirror) return mirror
-  if (placement) return { kind: "modify", target: placement.targetBody, consumed: [] }
   const compound = readCompoundFeatureParameters(feature)
   if (compound)
     return {

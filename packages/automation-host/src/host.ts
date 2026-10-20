@@ -3,6 +3,13 @@ import {
   automationDraftInspectionViewSchema,
 } from "@vibeshape/automation-api/draft-inspection"
 import {
+  DRAFT_RECOVERY_MAX_BYTES,
+  type DraftRecoveryCapture,
+  type DraftRecoveryJournal,
+  draftRecoveryCaptureSchema,
+  draftRecoveryJournalSchema,
+} from "@vibeshape/automation-api/draft-recovery"
+import {
   type AutomationCommandEnvelope,
   type AutomationDraftCommitView,
   type AutomationDraftDiscardView,
@@ -46,7 +53,12 @@ import {
   type DraftCommitResult,
   type DraftDiagnosticCode,
 } from "@vibeshape/domain/drafts"
-import { type DocumentId, type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
+import {
+  commandIdSchema,
+  type DocumentId,
+  type DraftId,
+  draftIdSchema,
+} from "@vibeshape/domain/identifiers"
 import { type SketchRecord, sketchRecordSchema } from "@vibeshape/domain/sketch"
 import { z } from "zod"
 import { type DraftInspectionCache, inspectDraftQuery } from "./draft-inspection"
@@ -98,6 +110,8 @@ export type AutomationHostConfiguration = Readonly<{
   geometry: DraftGeometryPort
   review: DraftReviewPort
   createDraftId: () => unknown
+  createCommandId?: () => unknown
+  validateRecoverySources?: (snapshot: DocumentSnapshot) => Awaitable<unknown>
   now?: () => number
   draftTtlMs?: number
   maxDraftsPerActor?: number
@@ -135,6 +149,9 @@ export type AutomationHostDiagnosticCode =
   | "request-cancelled"
   | "render-preview-unavailable"
   | "preview-representation-unsupported"
+  | "draft-recovery-invalid"
+  | "draft-recovery-too-large"
+  | "draft-recovery-source-unavailable"
 
 export type AutomationHostDiagnostic = Readonly<{
   code: AutomationHostDiagnosticCode
@@ -148,6 +165,12 @@ export type AutomationHostResult<Value> =
   | { ok: false; diagnostic: AutomationHostDiagnostic }
 
 export type AutomationHost = Readonly<{
+  /** Trusted composition only; these journals never grant tool authority. */
+  captureDraftRecovery?: (actor: unknown) => Promise<AutomationHostResult<DraftRecoveryCapture>>
+  restoreDraft?: (
+    actor: unknown,
+    journal: unknown,
+  ) => Promise<AutomationHostResult<AutomationDraftState>>
   renderDraft?: (
     actor: unknown,
     input: unknown,
@@ -185,6 +208,7 @@ export type AutomationHostFactoryResult =
   | { ok: false; diagnostic: AutomationHostDiagnostic }
 
 type ManagedDraft = Readonly<{
+  recoveryOrigin?: Readonly<{ draftId: DraftId; actor: CommandActor }>
   commands: readonly DocumentCommand[]
   draft: DocumentDraft
   expiresAt: number
@@ -724,6 +748,7 @@ export function createAutomationHost(
 
     const record = renew(
       {
+        ...owned.value,
         draft: dispatched.value,
         commands: [...owned.value.commands, command.command],
         expiresAt: owned.value.expiresAt,
@@ -1158,9 +1183,200 @@ export function createAutomationHost(
     }
   }
 
+  async function captureDraftRecovery(
+    actorInput: unknown,
+  ): Promise<AutomationHostResult<DraftRecoveryCapture>> {
+    const actor = parseActor(actorInput)
+    if (!actor.ok) return actor
+    const time = currentTime()
+    if (!time.ok) return time
+    purgeExpired(time.value)
+    const journals = [...drafts.values()]
+      .filter(
+        (record) => record.commands.length && commandActorsEqual(record.draft.actor, actor.value),
+      )
+      .map((record) => ({
+        schemaVersion: 1,
+        originalDraftId: record.draft.id,
+        documentId: record.draft.documentId,
+        baseRevision: record.draft.baseRevision,
+        privateRevision: record.draft.snapshot?.revision,
+        originalActor: record.draft.actor,
+        origin: record.recoveryOrigin ?? { draftId: record.draft.id, actor: record.draft.actor },
+        expiresAt: record.expiresAt,
+        commands: record.commands,
+      }))
+    const capture = { schemaVersion: 1, journals }
+    if (
+      journals.length > 4 ||
+      journals.some((journal) => journal.commands.length > 64) ||
+      serializedQueryBytes(capture) > DRAFT_RECOVERY_MAX_BYTES
+    )
+      return failure(
+        hostDiagnostic(
+          "draft-recovery-too-large",
+          "The complete recovery journal exceeds its draft, command or 128 KiB budget; no partial journal was retained.",
+        ),
+      )
+    const parsed = draftRecoveryCaptureSchema.safeParse(JSON.parse(JSON.stringify(capture)))
+    return parsed.success
+      ? { ok: true, value: parsed.data }
+      : failure(
+          hostDiagnostic(
+            "draft-recovery-invalid",
+            "The accepted private intent could not be captured completely.",
+          ),
+        )
+  }
+
+  function readRecoveryJournal(
+    journalInput: unknown,
+  ): AutomationHostResult<{ journal: DraftRecoveryJournal; at: number }> {
+    const journal = draftRecoveryJournalSchema.safeParse(journalInput)
+    if (!journal.success)
+      return failure(hostDiagnostic("draft-recovery-invalid", "The recovery journal is invalid."))
+    const time = currentTime()
+    if (!time.ok) return time
+    if (journal.data.expiresAt <= time.value)
+      return failure(hostDiagnostic("draft-expired", "The recovery intent expired."))
+    if (serializedQueryBytes(journal.data) > DRAFT_RECOVERY_MAX_BYTES)
+      return failure(
+        hostDiagnostic(
+          "draft-recovery-too-large",
+          "The complete recovery journal exceeds 128 KiB.",
+        ),
+      )
+    return { ok: true, value: { journal: journal.data, at: time.value } }
+  }
+
+  async function seedRecoveryDraft(
+    actor: CommandActor,
+    journal: DraftRecoveryJournal,
+  ): Promise<AutomationHostResult<ManagedDraft>> {
+    const base = await readDraftBase(journal.documentId, journal.baseRevision)
+    if (!base.ok) return base
+    const generated = generateDraftId()
+    if (!generated.ok) return generated
+    if (generated.value === journal.originalDraftId)
+      return failure(
+        hostDiagnostic("draft-id-collision", "Recovery requires a new draft identity."),
+      )
+    const created = createDocumentDraft({
+      draftId: generated.value,
+      documentId: journal.documentId,
+      actor,
+      snapshot: base.value,
+    })
+    if (!created.ok) return created
+    return {
+      ok: true,
+      value: {
+        draft: created.draft,
+        recoveryOrigin: journal.origin ?? {
+          draftId: journal.originalDraftId,
+          actor: journal.originalActor,
+        },
+        commands: [],
+        expiresAt: journal.expiresAt,
+      },
+    }
+  }
+
+  function compileRecoveryDraft(
+    initial: ManagedDraft,
+    journal: DraftRecoveryJournal,
+    at: number,
+  ): AutomationHostResult<ManagedDraft> {
+    let record = initial
+    for (const original of journal.commands) {
+      const id = commandIdSchema.safeParse(
+        (configuration.createCommandId ?? configuration.createDraftId)(),
+      )
+      if (!id.success || journal.commands.some((command) => command.commandId === id.data))
+        return failure(
+          hostDiagnostic("draft-recovery-invalid", "Recovery requires fresh command identities."),
+        )
+      const command = {
+        ...original,
+        commandId: id.data,
+        actor: initial.draft.actor,
+        issuedAt: new Date(at).toISOString(),
+        baseRevision: record.draft.snapshot?.revision ?? 0,
+      }
+      const policy = validateDraftCommand(initial.draft.actor, record, command)
+      if (!policy.ok) return policy
+      const applied = dispatchDraftCommand(record, command)
+      if (!applied.ok) return applied
+      record = { ...record, draft: applied.value, commands: [...record.commands, command] }
+    }
+    return { ok: true, value: record }
+  }
+
+  async function publishRecoveryDraft(
+    record: ManagedDraft,
+  ): Promise<AutomationHostResult<AutomationDraftState>> {
+    drafts.set(record.draft.id, record)
+    let accepted = false
+    try {
+      const sources = await validateRecoverySources(record)
+      if (!sources.ok) return sources
+      const validated = await validateDraftIntent(record)
+      if (!validated.ok) return validated
+      accepted = true
+      return { ok: true, value: createDraftState(record, options.maxCommandsPerDraft) }
+    } finally {
+      if (!accepted) forgetDraft(record.draft.id)
+    }
+  }
+
+  async function validateRecoverySources(
+    record: ManagedDraft,
+  ): Promise<AutomationHostResult<null>> {
+    if (!configuration.validateRecoverySources || !record.draft.snapshot)
+      return failure(
+        hostDiagnostic(
+          "draft-recovery-source-unavailable",
+          "This host cannot verify the complete captured source ownership.",
+        ),
+      )
+    try {
+      await configuration.validateRecoverySources(record.draft.snapshot)
+      return { ok: true, value: null }
+    } catch {
+      return failure(
+        hostDiagnostic(
+          "draft-recovery-source-unavailable",
+          "Captured source assets are unavailable to this project owner; the complete intent was not restored.",
+        ),
+      )
+    }
+  }
+
+  async function restoreDraft(
+    actorInput: unknown,
+    journalInput: unknown,
+  ): Promise<AutomationHostResult<AutomationDraftState>> {
+    const actor = parseActor(actorInput)
+    if (!actor.ok) return actor
+    const recovered = readRecoveryJournal(journalInput)
+    if (!recovered.ok) return recovered
+    const capacity = requireDraftCapacity(actor.value)
+    if (!capacity.ok) return capacity
+    const initial = await seedRecoveryDraft(actor.value, recovered.value.journal)
+    if (!initial.ok) return initial
+    const compiled = compileRecoveryDraft(
+      initial.value,
+      recovered.value.journal,
+      recovered.value.at,
+    )
+    return compiled.ok ? publishRecoveryDraft(compiled.value) : compiled
+  }
+
   return {
     ok: true,
     host: {
+      captureDraftRecovery: (actor) => enqueue(() => captureDraftRecovery(actor)),
+      restoreDraft: (actor, journal) => enqueue(() => restoreDraft(actor, journal)),
       createDraft: (actor, input) => enqueue(() => createDraft(actor, input)),
       applyCommand: (actor, input) => enqueue(() => applyCommand(actor, input)),
       previewDraft: (actor, input) => enqueue(() => previewDraft(actor, input)),

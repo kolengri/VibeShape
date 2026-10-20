@@ -9,6 +9,7 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  chamferFeatureTypeV3,
   coneFeatureType,
   cylinderFeatureType,
   extrusionFeatureType,
@@ -106,6 +107,7 @@ const emptySemanticInputTypeKeys = new Set(
     chamferFeatureType,
     filletFeatureTypeV2,
     chamferFeatureTypeV2,
+    chamferFeatureTypeV3,
   ].map((feature) => featureTypeKey(feature.type)),
 )
 

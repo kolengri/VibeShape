@@ -10,7 +10,6 @@ import { ApplicationHeader } from "./application-header"
 import { useReportApplicationError } from "./application-notices"
 import { useAutomationConnections } from "./automation-status"
 import { EditorApplicationMenu as ApplicationMenu } from "./editor-application-menu"
-import { type ProjectAssistantActivity, ProjectAssistantStatus } from "./project-assistant-status"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -48,13 +47,11 @@ export function ApplicationBar({
   onOpenCommandPalette,
   onOpenShortcutHelp,
   hideModelExport = false,
-  assistantActivity,
 }: {
   children?: ReactNode
   projectNavigation?: ReactNode
   controller: DocumentControllerState
   hideModelExport?: boolean
-  assistantActivity?: ProjectAssistantActivity | undefined
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
 }) {
@@ -95,7 +92,6 @@ export function ApplicationBar({
         <DocumentRenameDialog controller={controller} />
       </div>
       <div className="col-span-2 flex min-w-0 items-center justify-end gap-1 sm:shrink-0">
-        <ProjectAssistantStatus activity={assistantActivity} />
         {children}
       </div>
       <span className="sr-only" role="status" aria-label={t("saveStatusLabel")}>

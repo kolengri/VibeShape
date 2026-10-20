@@ -4,7 +4,7 @@ import {
   type AssistantAttachment,
 } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
-import { FileText, Image, X } from "@vibeshape/ui/components/icons"
+import { FileText, X } from "@vibeshape/ui/components/icons"
 import { AssistantIconAction } from "./assistant-icon-action"
 
 type AttachmentIssue = "unsupported" | "too-large" | "invalid-text" | "read-failed"
@@ -139,7 +139,13 @@ export function AssistantAttachments({
             aria-busy={file.status === "pending"}
           >
             {file.attachment?.type === "image" ? (
-              <Image aria-hidden="true" className="size-3 shrink-0" />
+              <img
+                src={`data:${file.attachment.mimeType};base64,${file.attachment.data}`}
+                alt=""
+                width={32}
+                height={32}
+                className="size-8 shrink-0 rounded-sm object-contain"
+              />
             ) : (
               <FileText aria-hidden="true" className="size-3 shrink-0" />
             )}

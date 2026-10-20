@@ -10,6 +10,7 @@ import {
   binaryExportResultMatches,
   isLocalBinaryExport,
 } from "@vibeshape/automation-api/binary-exports"
+import { recoveryResultContextMatches } from "@vibeshape/automation-api/draft-recovery"
 import {
   automationDraftCommitViewSchema,
   automationDraftDiscardViewSchema,
@@ -358,10 +359,12 @@ function resultContextMatches(
   operation: LocalOperation,
   result: LocalToolResult,
   documentId: string,
+  actor: LocalConnection["actor"],
 ) {
   const { projectId: _projectId, ...command } = operation
   operation = command
   const context = [
+    recoveryResultContextMatches(operation, result, documentId, actor),
     renderPreviewResultContextMatches(operation, result, documentId),
     historyResultContextMatches(operation, result, documentId),
     assemblyResultContextMatches(operation, result, documentId),
@@ -890,7 +893,14 @@ export function createBrowserBroker({
     const output = localToolOutputs[data.tool].safeParse(data.result)
     if (!output.success)
       return response(400, failure("invalid-result", "The tool result does not match its schema."))
-    if (!resultContextMatches(pending.operation, output.data, authorized.document.id))
+    if (
+      !resultContextMatches(
+        pending.operation,
+        output.data,
+        authorized.document.id,
+        authorized.actor,
+      )
+    )
       return response(
         400,
         failure(

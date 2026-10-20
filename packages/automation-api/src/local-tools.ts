@@ -8,6 +8,7 @@ import {
 } from "@vibeshape/domain/identifiers"
 import { structuralMaterialCatalogSchema } from "@vibeshape/domain/lightweighting-materials"
 import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
+import { chamferFeatureParametersV3Schema } from "@vibeshape/domain/part-design"
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
@@ -41,6 +42,11 @@ import {
   localBinaryExportOperations,
 } from "./binary-exports"
 import { automationDraftInspectionViewSchema } from "./draft-inspection"
+import {
+  recoverableDraftsViewSchema,
+  restoreDraftArgumentsSchema,
+  restoredDraftViewSchema,
+} from "./draft-recovery"
 import {
   automationDraftCommitViewSchema,
   automationDraftDiscardViewSchema,
@@ -180,7 +186,7 @@ const fillet = z
     edges: z.array(edgeTopoRefSchema).min(1).max(256).optional(),
   })
   .strict()
-const chamfer = z
+const legacyChamfer = z
   .object({
     ...feature,
     targetFeatureId: featureIdSchema,
@@ -189,6 +195,10 @@ const chamfer = z
     edges: z.array(edgeTopoRefSchema).min(1).max(256).optional(),
   })
   .strict()
+const chamfer = z.union([
+  legacyChamfer,
+  z.object({ ...feature, parameters: chamferFeatureParametersV3Schema }).strict(),
+])
 export const localToolInputs = {
   list_lightweighting_materials: z.object({}).strict(),
   ...projectToolInputs,
@@ -239,6 +249,8 @@ export const localToolInputs = {
     documentId: true,
   }),
   model_info: z.object({}).strict(),
+  list_recoverable_drafts: z.object({}).strict(),
+  restore_draft: restoreDraftArgumentsSchema,
   create_draft: z.object({ baseRevision: revisionSchema }).strict(),
   create_box: z.object({ ...feature, widthMm: length, depthMm: length, heightMm: length }).strict(),
   create_fillet: fillet,
@@ -287,6 +299,8 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  list_recoverable_drafts: resultOf(recoverableDraftsViewSchema),
+  restore_draft: resultOf(restoredDraftViewSchema),
   list_lightweighting_materials: resultOf(structuralMaterialCatalogSchema),
   analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
   request_lightweighting: resultOf(lightweightingRequestSchema),
@@ -449,6 +463,8 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "list_recoverable_drafts",
+  "restore_draft",
   "list_lightweighting_materials",
   ...projectToolNames,
   ...lightweightingToolNames,
@@ -638,6 +654,13 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("model_tree"), arguments: localToolInputs.model_tree }).strict(),
   z.object({ tool: z.literal("model_entity"), arguments: localToolInputs.model_entity }).strict(),
   z.object({ tool: z.literal("model_info"), arguments: localToolInputs.model_info }).strict(),
+  z
+    .object({
+      tool: z.literal("list_recoverable_drafts"),
+      arguments: localToolInputs.list_recoverable_drafts,
+    })
+    .strict(),
+  z.object({ tool: z.literal("restore_draft"), arguments: localToolInputs.restore_draft }).strict(),
   z.object({ tool: z.literal("create_draft"), arguments: localToolInputs.create_draft }).strict(),
   z.object({ tool: z.literal("create_box"), arguments: localToolInputs.create_box }).strict(),
   z.object({ tool: z.literal("create_fillet"), arguments: localToolInputs.create_fillet }).strict(),
@@ -670,6 +693,11 @@ export function isProjectOperation(operation: LocalOperation): operation is Proj
   return projectToolNames.some((name) => name === operation.tool)
 }
 export function mcpToolInputSchema(name: LocalToolName) {
+  if (name === "create_chamfer" || name === "update_chamfer")
+    return z.union([
+      chamfer.options[0].extend({ projectId: documentIdSchema.optional() }),
+      chamfer.options[1].extend({ projectId: documentIdSchema.optional() }),
+    ])
   if (name === "render_preview")
     return z.discriminatedUnion("source", [
       localToolInputs.render_preview.options[0].extend({ projectId: documentIdSchema.optional() }),

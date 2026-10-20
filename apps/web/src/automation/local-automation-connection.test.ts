@@ -1,7 +1,12 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { commandActorSchema } from "@vibeshape/domain/commands"
+import {
+  recoveryActor,
+  recoveryFixture,
+} from "../../../../packages/automation-host/src/draft-recovery.test-fixtures"
 import { vi } from "../../../../tests/unit/support/bun-test"
-
+import type { DraftRecoveryPort } from "./draft-recovery-owner"
 import type { createProjectToolPort } from "./project-tool-port"
 
 const mocks = (() => ({
@@ -865,7 +870,12 @@ describe("local AI project management consent", () => {
     expect(connection.setProjectManagement(false)).toBe(false)
     expect(connection.isProjectActionPending()).toBe(true)
     expect(dispose).toHaveBeenCalledTimes(1)
-    expect(mocks.createExecutor).toHaveBeenLastCalledWith(next, credential.actor, expect.anything())
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(
+      next,
+      credential.actor,
+      expect.anything(),
+      expect.objectContaining({ execute: expect.any(Function) }),
+    )
     const pollCount = mocks.request.mock.calls.filter(([path]) => path === "/poll").length
     await vi.advanceTimersByTimeAsync(2000)
     expect(mocks.request.mock.calls.filter(([path]) => path === "/poll")).toHaveLength(pollCount)
@@ -1130,6 +1140,7 @@ describe("local AI project management consent", () => {
       replacement,
       credential.actor,
       expect.anything(),
+      expect.objectContaining({ execute: expect.any(Function) }),
     )
     expect(dispose).toHaveBeenCalledTimes(1)
     expect(replacement.dispose).not.toHaveBeenCalled()
@@ -1597,6 +1608,67 @@ describe("local AI reload recovery", () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot()).toMatchObject({ connected: true, error: false })
     expect(mocks.request).not.toHaveBeenCalledWith("/connect", expect.anything(), expect.anything())
+  })
+  it("captures accepted intent before disposing a transiently interrupted handle and clears it on Stop", async () => {
+    const f = recoveryFixture()
+    const old = f.host()
+    const actor = commandActorSchema.parse(credential.actor)
+    const staged = await f.stage(old, actor)
+    const cancel = vi.fn()
+    const capture = vi.fn(old.captureDraftRecovery)
+    const ports: DraftRecoveryPort[] = []
+    const handles = [old, f.host()]
+    mocks.createHandle.mockImplementation(() => ({
+      ok: true,
+      host: { ...handles.shift(), captureDraftRecovery: capture },
+      dispose,
+      cancel,
+      documentId: f.saved.id,
+      revision: 1,
+      readIdentity: () => ({ id: f.saved.id, revision: f.saved.revision, name: f.saved.name }),
+      enableAutoApply,
+      disableAutoApply: optOut,
+    }))
+    mocks.createExecutor.mockImplementation(
+      (_handle: unknown, _actor: unknown, _projects: unknown, recovery: DraftRecoveryPort) => {
+        ports.push(recovery)
+        return { execute: mocks.execute }
+      },
+    )
+    const polling = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/poll"
+        ? polling.promise
+        : path === "/resume"
+          ? ok({ ...credential, actor: recoveryActor(9), token: "B".repeat(43) })
+          : original?.(path, ...args),
+    )
+    await ready()
+    await connection.enable()
+    polling.reject(new LocalAutomationTransportError("The network failed."))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cancel).toHaveBeenCalledWith("request-cancelled")
+    expect(capture).toHaveBeenCalledWith(actor)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/resume"
+        ? ok({ ...credential, actor: recoveryActor(9), token: "B".repeat(43) })
+        : original?.(path, ...args),
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    const port = ports.at(-1)
+    if (!port) throw new Error("The resumed executor must receive a recovery port.")
+    expect(await port.execute({ tool: "list_recoverable_drafts", arguments: {} })).toMatchObject({
+      ok: true,
+      value: { items: [{ recoveryId: staged.draft.draftId }] },
+    })
+    await connection.disable()
+    expect(await port.execute({ tool: "list_recoverable_drafts", arguments: {} })).toMatchObject({
+      ok: false,
+      diagnostic: { code: "request-cancelled" },
+    })
+    expect(f.commits).toHaveLength(0)
   })
   it("restores the same project in a fresh connection with the reviewed auto-apply grant", async () => {
     await ready()

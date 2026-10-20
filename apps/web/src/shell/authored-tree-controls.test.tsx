@@ -1,12 +1,13 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { historyFolderIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import type { DocumentMutationResult } from "../document/document-controller"
 import { EditorSessionProvider, useEditorSession } from "../editor-session/editor-session-provider"
 import { i18n } from "../i18n"
 import {
@@ -142,25 +143,223 @@ describe("authored tree controls", () => {
           revision={authority.revision}
           selectedPartId={null}
           disabled={false}
-          visibility={{ overrides: { [part.id]: false }, setOverride: vi.fn(), clearOverride }}
+          visibility={{ overrides: { [part.id]: true }, setOverride: vi.fn(), clearOverride }}
           onSelect={vi.fn()}
           onCommit={onCommit}
         />,
       ),
     )
-    await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
+    await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
     expect(clearOverride).not.toHaveBeenCalled()
     expect(screen.getByRole("alert")).toBeTruthy()
     expect(screen.getByRole("alert").classList.contains("fixed")).toBe(true)
-    await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
+    await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
     expect(onCommit).toHaveBeenLastCalledWith(authority.revision, {
       kind: "part.set-visibility",
       partId: part.id,
-      visible: true,
+      visible: false,
     })
     expect(clearOverride).toHaveBeenCalledTimes(1)
     expect(clearOverride).toHaveBeenCalledWith(part.id)
     expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it.each([
+    ["automation-busy", "Wait for the AI operation or review to finish"],
+    ["editor-draft", "Finish or cancel the active edit"],
+    ["surface-texture-draft", "Finish or cancel the active edit"],
+    ["save-in-progress", "Wait for saving to finish"],
+    ["read-only", "Open the document with write access"],
+    ["document-unavailable", "Reopen the project"],
+  ])(
+    "reports the precise %s guard without pretending visibility changed",
+    async (sourceCode, message) => {
+      const { authority } = authoredTreeFixture()
+      const part = requireAuthoredFixture(authority.parts[0])
+      const onCommit = commit().mockResolvedValue({
+        ok: false,
+        diagnostic: {
+          code: "command-rejected",
+          message: "Guard rejected.",
+          retryable: true,
+          sourceCode,
+        },
+      })
+      render(
+        providers(
+          <AuthoredPartsGroup
+            parts={[{ part, body: null, status: "unavailable" }]}
+            revision={authority.revision}
+            selectedPartId={null}
+            disabled={false}
+            onSelect={vi.fn()}
+            onCommit={onCommit}
+          />,
+        ),
+      )
+      await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
+      expect(screen.getByRole("alert").textContent).toContain(message)
+      expect(
+        screen.getByRole("button", { name: "Hide part Part 1" }).getAttribute("aria-pressed"),
+      ).toBe("true")
+      expect(screen.queryByRole("status")).toBeNull()
+    },
+  )
+
+  it("never converts a real persistence failure to a temporary override", async () => {
+    const { authority } = authoredTreeFixture()
+    const part = requireAuthoredFixture(authority.parts[0])
+    const setOverride = vi.fn()
+    const clearOverride = vi.fn()
+    const onCommit = commit().mockResolvedValue({
+      ok: false,
+      diagnostic: {
+        code: "persistence-failed",
+        message: "Storage rejected.",
+        retryable: true,
+        sourceCode: "automation-busy",
+      },
+    })
+    render(
+      providers(
+        <AuthoredPartsGroup
+          parts={[{ part, body: null, status: "unavailable" }]}
+          revision={authority.revision}
+          selectedPartId={null}
+          disabled={false}
+          visibility={{ overrides: {}, setOverride, clearOverride }}
+          onSelect={vi.fn()}
+          onCommit={onCommit}
+        />,
+      ),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
+    expect(screen.getByRole("alert").textContent).toContain("could not be saved")
+    expect(setOverride).not.toHaveBeenCalled()
+    expect(clearOverride).not.toHaveBeenCalled()
+    expect(screen.queryByRole("status")).toBeNull()
+  })
+
+  it("compares override cancellation against the current rendered authority", async () => {
+    const { authority } = authoredTreeFixture()
+    const part = requireAuthoredFixture(authority.parts[0])
+    const clearOverride = vi.fn()
+    const setOverride = vi.fn()
+    const onCommit = commit()
+    const content = (visible: boolean, revision: number) =>
+      providers(
+        <AuthoredPartsGroup
+          parts={[{ part: { ...part, visible }, body: null, status: "unavailable" }]}
+          revision={revision}
+          selectedPartId={null}
+          disabled={false}
+          visibility={{ overrides: { [part.id]: false }, setOverride, clearOverride }}
+          onSelect={vi.fn()}
+          onCommit={onCommit}
+        />,
+      )
+    const view = render(content(true, authority.revision))
+    view.rerender(content(false, authority.revision + 1))
+    await userEvent.click(screen.getByRole("button", { name: "Show part Part 1" }))
+    expect(onCommit).toHaveBeenCalledWith(authority.revision + 1, {
+      kind: "part.set-visibility",
+      partId: part.id,
+      visible: true,
+    })
+    expect(clearOverride).toHaveBeenCalledWith(part.id)
+    expect(screen.queryByRole("status")).toBeNull()
+  })
+
+  it.each(["part", "owner", "authority", "override"])(
+    "discards a delayed busy rejection after the %s changes",
+    async (changed) => {
+      const { authority } = authoredTreeFixture()
+      const part = requireAuthoredFixture(authority.parts[0])
+      const other = requireAuthoredFixture(authority.parts[1])
+      let settle!: (result: DocumentMutationResult) => void
+      const onCommit = vi.fn<AuthoredMetadataCommit>(
+        () =>
+          new Promise((resolve) => {
+            settle = resolve
+          }),
+      )
+      const setOverride = vi.fn()
+      const clearOverride = vi.fn()
+      const content = (updated: boolean) =>
+        providers(
+          <AuthoredPartsGroup
+            parts={[
+              {
+                part: updated && changed === "part" ? other : part,
+                body: null,
+                status: "unavailable",
+              },
+            ]}
+            revision={authority.revision + (updated && changed === "authority" ? 1 : 0)}
+            selectedPartId={null}
+            disabled={false}
+            visibility={{
+              overrides: updated && changed === "override" ? { [part.id]: true } : {},
+              setOverride,
+              clearOverride,
+            }}
+            onSelect={vi.fn()}
+            onCommit={updated && changed === "owner" ? commit() : onCommit}
+          />,
+        )
+      const view = render(content(false))
+      await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
+      view.rerender(content(true))
+      await act(async () => {
+        settle({
+          ok: false,
+          diagnostic: {
+            code: "command-rejected",
+            message: "Busy.",
+            retryable: true,
+            sourceCode: "automation-busy",
+          },
+        })
+      })
+      expect(setOverride).not.toHaveBeenCalled()
+      expect(clearOverride).not.toHaveBeenCalled()
+      expect(screen.queryByRole("status")).toBeNull()
+      expect(screen.queryByRole("alert")).toBeNull()
+    },
+  )
+
+  it("does not clear a newer override after an old durable commit completes", async () => {
+    const { authority } = authoredTreeFixture()
+    const part = requireAuthoredFixture(authority.parts[0])
+    let settle!: (result: DocumentMutationResult) => void
+    const onCommit = vi.fn<AuthoredMetadataCommit>(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve
+        }),
+    )
+    const setOverride = vi.fn()
+    const clearOverride = vi.fn()
+    const content = (revision: number) =>
+      providers(
+        <AuthoredPartsGroup
+          parts={[{ part, body: null, status: "unavailable" }]}
+          revision={revision}
+          selectedPartId={null}
+          disabled={false}
+          visibility={{ overrides: { [part.id]: true }, setOverride, clearOverride }}
+          onSelect={vi.fn()}
+          onCommit={onCommit}
+        />,
+      )
+    const view = render(content(authority.revision))
+    await userEvent.click(screen.getByRole("button", { name: "Hide part Part 1" }))
+    view.rerender(content(authority.revision + 2))
+    await act(async () => {
+      settle({ ok: true })
+    })
+    expect(clearOverride).not.toHaveBeenCalled()
+    expect(setOverride).not.toHaveBeenCalled()
   })
 
   it("reports visibility failures outside part rows and resurfaces a dismissed failure on retry", async () => {
