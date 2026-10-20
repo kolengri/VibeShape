@@ -29,8 +29,9 @@ const status = type => update({sessionUpdate:"session_info_update",_meta:{codex:
 const after = (name, action) => {
  const file = path.join(__dirname,name);
  let triggered = false;
- const check = () => { if(!triggered && fs.existsSync(file)){triggered = true; fs.unwatchFile(file,check); action();} };
- fs.watchFile(file,{interval:10},check); check();
+ const check = () => { if(!triggered && fs.existsSync(file)){triggered = true; clearInterval(interval); action();} };
+ const interval = setInterval(check,10);
+ check();
 };
 input.on("line", line => {
  const {id,method,params,result} = JSON.parse(line);
@@ -76,9 +77,10 @@ afterEach(async () => {
   for (const close of cleanups.splice(0).reverse()) await close()
 })
 
-async function host() {
+async function host({ preexistingAck = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "vibeshape-continuation-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
+  if (preexistingAck) await writeFile(join(directory, "ack"), "")
   const script = join(directory, "agent.cjs")
   await writeFile(script, fixture)
   const listeners = new Set<(event: AssistantEvent) => void>()
@@ -246,6 +248,18 @@ async function until(predicate: () => boolean | Promise<boolean>) {
 }
 
 describe("native continuation controls through the real service", () => {
+  it("accepts a preexisting ACK when steering registers its signal handler", async () => {
+    const context = await host({ preexistingAck: true })
+    expect(await context.steering).toBe(true)
+    expect(context.chat.getSnapshot().queuedMessages).toEqual([])
+    expect(
+      context.chat
+        .getSnapshot()
+        .messages.filter((message) => message.role === "user")
+        .map((message) => message.text),
+    ).toEqual(["queued original", "queued continuation"])
+  })
+
   it.each(["disconnect", "newer snapshot"] as const)(
     "does not overwrite a reentrant %s during terminal cleanup",
     async (replacement) => {
