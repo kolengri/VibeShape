@@ -17,15 +17,9 @@ import {
   X,
 } from "lucide-react"
 import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
+import { useDesktopRelease } from "./desktop-release"
 import { HeroVisual } from "./hero-visual"
-import {
-  articles,
-  desktopDownloadUrl,
-  editorUrl,
-  referenceUrl,
-  releasesUrl,
-  repository,
-} from "./links"
+import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
 import { AnimatedScene, ConstructionPlanes, FeatureVisual, PrintVisual } from "./spatial-visuals"
 import { type WorkflowStage, WorkflowVisual } from "./workflow-visual"
 
@@ -461,6 +455,30 @@ function Documentation() {
   )
 }
 
+function DesktopInstallerCard() {
+  const t = useTranslations("downloads")
+  const release = useDesktopRelease()
+  return (
+    <div className="flex flex-col rounded-xl border border-border bg-background p-7">
+      <Download size={24} strokeWidth={1.5} className="mb-8 text-muted-foreground" />
+      <h3 className="text-xl font-medium tracking-tight">{t("installers")}</h3>
+      <p aria-live="polite" className="mt-2 text-xs font-medium text-primary">
+        {release ? t("installerVersion", { version: release.version }) : t("installerStatus")}
+      </p>
+      <p className="mb-7 mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
+        {t("installerBody")}
+      </p>
+      <a href={releasesUrl} className="mb-4 text-sm text-primary hover:underline">
+        {t("releases")}
+      </a>
+      <ActionLink href={release ? release.downloadUrl : releasesUrl} secondary>
+        {release ? t("desktopAction") : t("desktopReleasesAction")}
+        <ArrowUpRight size={16} />
+      </ActionLink>
+    </div>
+  )
+}
+
 function Downloads() {
   const t = useTranslations("downloads")
   return (
@@ -510,21 +528,7 @@ function Downloads() {
               <ArrowRight size={16} />
             </ActionLink>
           </div>
-          <div className="flex flex-col rounded-xl border border-border bg-background p-7">
-            <Download size={24} strokeWidth={1.5} className="mb-8 text-muted-foreground" />
-            <h3 className="text-xl font-medium tracking-tight">{t("installers")}</h3>
-            <p className="mt-2 text-xs font-medium text-primary">{t("installerStatus")}</p>
-            <p className="mb-7 mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
-              {t("installerBody")}
-            </p>
-            <a href={releasesUrl} className="mb-4 text-sm text-primary hover:underline">
-              {t("releases")}
-            </a>
-            <ActionLink href={desktopDownloadUrl} secondary>
-              {t("desktopAction")}
-              <ArrowUpRight size={16} />
-            </ActionLink>
-          </div>
+          <DesktopInstallerCard />
         </div>
         <div className="mt-12 flex items-start gap-4 border-t border-border pt-7">
           <LockKeyhole size={19} className="mt-0.5 shrink-0 text-primary" />

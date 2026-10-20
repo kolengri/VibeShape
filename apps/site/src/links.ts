@@ -1,7 +1,8 @@
-export const repository = "https://github.com/kolengri/VibeShape"
+const repositorySlug = "kolengri/VibeShape"
+export const repository = `https://github.com/${repositorySlug}`
 export const editorUrl = "https://cad.hello-world.cz"
 export const releasesUrl = `${repository}/releases`
-export const desktopDownloadUrl = `${repository}/releases/download/desktop-v0.1.5/VibeShape-0.1.5-mac-arm64.dmg`
+export const releasesApiUrl = `https://api.github.com/repos/${repositorySlug}/releases?per_page=100`
 export const referenceUrl = (path: string) => `${repository}/blob/main/${path}`
 
 export const articles = [
