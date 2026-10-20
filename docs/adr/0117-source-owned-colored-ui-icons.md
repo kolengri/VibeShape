@@ -1,4 +1,4 @@
-# ADR-0116: Source-owned colored UI icons
+# ADR-0117: Source-owned colored UI icons
 
 - Status: **Accepted**
 - Date: 2026-10-20

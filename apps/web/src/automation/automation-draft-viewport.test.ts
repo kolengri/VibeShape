@@ -229,6 +229,36 @@ afterEach(() => {
 })
 
 describe("exact automation review viewport", () => {
+  it("draws private commands before review without saving, and clears them on discard and disposal", async () => {
+    const f = fixture()
+    const base = f.snapshot()
+    const request = await f.draft()
+    const presentation = f.reviews.getDraftViewportSnapshot()
+    expect(automationDraftViewportPreview(null, base, presentation)?.meshes).toHaveLength(1)
+    expect(f.reviews.getSnapshot()).toBeNull()
+    expect(f.commit).not.toHaveBeenCalled()
+    expect(f.snapshot()).toBe(base)
+    expect(
+      automationDraftViewportPreview(null, { ...base, revision: base.revision + 1 }, presentation),
+    ).toBeNull()
+    expect(
+      automationDraftViewportPreview(
+        null,
+        { ...base, id: documentSnapshotSchema.parse({ ...base, id: id(50) }).id },
+        presentation,
+      ),
+    ).toBeNull()
+    f.reviews.clearDraftViewport(Symbol("different-session"))
+    expect(f.reviews.getDraftViewportSnapshot()).toBe(presentation)
+    await f.session.host.discardDraft(actor, request)
+    expect(f.reviews.getDraftViewportSnapshot()).toBeNull()
+    await f.draft()
+    expect(f.reviews.getDraftViewportSnapshot()).not.toBeNull()
+    f.session.dispose()
+    expect(f.reviews.getDraftViewportSnapshot()).toBeNull()
+    expect(f.commit).not.toHaveBeenCalled()
+  })
+
   it("retains the exact evaluated buffers until Apply and keeps the document unchanged before approval", async () => {
     const f = fixture()
     const base = f.snapshot()
@@ -241,8 +271,8 @@ describe("exact automation review viewport", () => {
     expect(f.snapshot()).toBe(base)
     expect(f.snapshot().features).toHaveLength(0)
     expect(f.commit).not.toHaveBeenCalled()
-    expect(f.worker).toHaveBeenCalledTimes(1)
-    expect(f.terminated).toHaveBeenCalledTimes(1)
+    expect(f.worker).toHaveBeenCalledTimes(2)
+    expect(f.terminated).toHaveBeenCalledTimes(2)
     const applying = f.reviews.decide(review.id, "approved")
     expect(automationDraftViewportPreview(f.reviews.getSnapshot(), base)).toBe(projected)
     await expect(committed).resolves.toMatchObject({ ok: true })
@@ -385,7 +415,7 @@ describe("exact automation review viewport", () => {
         }),
     )
     const committed = f.session.host.commitDraft(actor, request)
-    await vi.waitFor(() => expect(f.worker).toHaveBeenCalled())
+    await vi.waitFor(() => expect(f.worker).toHaveBeenCalledTimes(2))
     finish()
     f.session.cancel()
     await expect(committed).resolves.toMatchObject({ ok: false })
@@ -406,6 +436,13 @@ describe("exact automation review viewport", () => {
     await applying
     expect(f.reviews.getSnapshot()).toMatchObject({ status: "error", draftViewport: null })
     expect(automationDraftViewportPreview(f.reviews.getSnapshot(), f.snapshot())).toBeNull()
+    await f.draft()
+    const fresh = f.reviews.getDraftViewportSnapshot()
+    if (!fresh) throw new Error("Expected the new private construction preview.")
+    expect(automationDraftViewportPreview(f.reviews.getSnapshot(), f.snapshot(), fresh)).toBe(
+      fresh.preview,
+    )
+    expect(f.snapshot().features).toHaveLength(0)
     f.session.dispose()
   })
 

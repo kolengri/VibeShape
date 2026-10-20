@@ -41,15 +41,15 @@ export function VariablesTable({
 }) {
   return (
     <div className="grid gap-3">
-      <div className="overflow-x-auto rounded-md border bg-background">
-        <table className="w-full min-w-[44rem] border-collapse text-left text-xs">
+      <div className="max-h-80 overflow-auto rounded-md border bg-background">
+        <table className="w-full min-w-[40rem] table-fixed border-collapse text-left text-xs">
           <caption className="sr-only">{copy.caption}</caption>
-          <thead className="bg-panel-muted text-muted-foreground">
+          <thead className="sticky top-0 z-10 bg-panel-muted text-muted-foreground">
             <tr>
-              <th className="w-44 px-2 py-2 font-medium" scope="col">
+              <th className="w-40 px-2 py-2 font-medium" scope="col">
                 {copy.name}
               </th>
-              <th className="min-w-64 px-2 py-2 font-medium" scope="col">
+              <th className="px-2 py-2 font-medium" scope="col">
                 {copy.expression}
               </th>
               <th className="w-32 px-2 py-2 text-right font-medium" scope="col">
@@ -58,7 +58,7 @@ export function VariablesTable({
               <th className="w-24 px-2 py-2 font-medium" scope="col">
                 {copy.status}
               </th>
-              <th className="w-40 px-2 py-2 text-right font-medium" scope="col">
+              <th className="w-24 px-2 py-2 text-right font-medium" scope="col">
                 {copy.actions}
               </th>
             </tr>
@@ -72,10 +72,10 @@ export function VariablesTable({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-t align-top">
-                  <td className="px-2 py-2">
-                    <div className="flex items-start gap-1">
-                      <span className="pt-2 font-mono text-muted-foreground" aria-hidden="true">
+                <tr key={row.id} className="h-10 border-t align-middle">
+                  <td className="px-2 py-1">
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-muted-foreground" aria-hidden="true">
                         #
                       </span>
                       <div className="min-w-0 flex-1">
@@ -84,13 +84,15 @@ export function VariablesTable({
                       </div>
                     </div>
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-1">
                     {row.expressionField}
                     <FieldError id={`${row.id}-expression-error`}>{row.expressionError}</FieldError>
                   </td>
-                  <td className="px-2 py-3 text-right font-mono tabular-nums">{row.result}</td>
-                  <td className="px-2 py-3">{row.status}</td>
-                  <td className="px-2 py-2 text-right">{row.actions}</td>
+                  <td className="break-words px-2 py-1 text-right font-mono tabular-nums">
+                    {row.result}
+                  </td>
+                  <td className="break-words px-2 py-1">{row.status}</td>
+                  <td className="px-2 py-1 text-right">{row.actions}</td>
                 </tr>
               ))
             )}

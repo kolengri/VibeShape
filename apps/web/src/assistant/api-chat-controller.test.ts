@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import type { AssistantAttachment } from "@vibeshape/automation-api/assistant"
 import type { ApiToolCall } from "./api-chat-completions"
 import { createApiChatController, createApiChatRegistry } from "./api-chat-controller"
+import { checkpointActor, checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import type { BrowserToolSession } from "./browser-tool-session"
 import { readChatHistory } from "./chat-history"
 
@@ -95,6 +96,64 @@ function deferredApiRequests() {
 }
 
 describe("browser API project chat", () => {
+  it("does not dispatch a prompt whose captured baseline is immediately unreadable", async () => {
+    const model = checkpointFixture(),
+      api = deferredApiRequests(),
+      port = model.host.open()
+    if (!port) throw new Error("Missing checkpoint fixture port")
+    const chat = createApiChatController({
+      projectId,
+      storage: disk(),
+      fetch: api.fetch,
+      createTools: tools,
+      checkpointHost: () => ({ ...model.host, open: () => ({ ...port, read: () => null }) }),
+    })
+    await chat.connect(configuration)
+    expect(await chat.send("Must be reversible")).toBe(false)
+    expect(chat.getSnapshot().checkpointError).toBe("checkpointUnavailable")
+    expect(chat.getSnapshot().messages).toEqual([])
+    expect(api.requests).toEqual([])
+    expect(model.retained()).toBe(0)
+    chat.dispose()
+  })
+
+  it("keeps a canceled turn's saved changes internally undoable after its tool grant is released", async () => {
+    const model = checkpointFixture(),
+      api = deferredApiRequests()
+    let live = true
+    const chat = createApiChatController({
+      projectId,
+      storage: disk(),
+      fetch: api.fetch,
+      createTools: () => ({
+        ...tools(),
+        currentActor: () => (live ? checkpointActor : null),
+        dispose() {
+          live = false
+        },
+      }),
+      checkpointHost: (_project, currentActor) => ({ ...model.host, currentActor }),
+    })
+    await chat.connect(configuration)
+    expect(await chat.send("Change model")).toBe(true)
+    model.save()
+    const save = model.deferSave(),
+      canceled = chat.cancel()
+    api.respond(0, completion("Canceled provider result"))
+    await until(chat, () => chat.getSnapshot().settlingCheckpoint)
+    expect(chat.getSnapshot().busy).toBe(true)
+    expect(await chat.send("Queued after Stop")).toBe(true)
+    expect(api.requests).toHaveLength(1)
+    save()
+    await canceled
+    expect(chat.getSnapshot()).toMatchObject({ canUndoAgentChanges: true, busy: false })
+    expect(await chat.viewBefore()).toBe(true)
+    expect(model.restores).toEqual([])
+    expect(await chat.undoAgentChanges()).toBe(true)
+    expect(model.restores).toEqual([{ baseline: 1, revision: 3 }])
+    chat.dispose()
+  })
+
   it("starts no CAD session or request before Connect and Send, then reuses bounded per-project transcript persistence", async () => {
     const storage = disk()
     let sessions = 0,
@@ -368,6 +427,8 @@ describe("browser API project chat", () => {
       ).toBe(true)
     expect(await chat.enqueue("Overflow")).toBe(false)
     expect(chat.getSnapshot().error).toBe("queue-full")
+    expect(chat.getSnapshot()).toMatchObject({ busy: true, supportsActiveSteer: false })
+    expect(api.requests).toHaveLength(1)
     const removed = chat.getSnapshot().queuedMessages[0]?.id
     if (!removed) throw new Error("Expected the first queued item")
     chat.removeQueued(removed)
@@ -554,6 +615,39 @@ describe("browser API project chat", () => {
 })
 
 describe("retained browser project chats", () => {
+  it("retains its runtime resource while a user checkpoint restore is pending", async () => {
+    const model = checkpointFixture(),
+      api = deferredApiRequests()
+    let resource: { isBusy: () => boolean; dispose: () => void } | undefined
+    const registry = createApiChatRegistry({
+      storage: disk(),
+      fetch: api.fetch,
+      createTools: () => ({ ...tools(), currentActor: () => checkpointActor }),
+      checkpointHost: () => model.host,
+      registerResource(_id, value) {
+        resource = value
+        return () => {
+          resource = undefined
+        }
+      },
+    })
+    const chat = registry.get(projectId)
+    await registry.connect(projectId, configuration)
+    await chat.send("Save a model change")
+    model.save()
+    api.respond(0, completion("Saved"))
+    await idle(chat)
+    const resolve = model.deferRestore(),
+      pending = chat.undoAgentChanges()
+    expect(resource?.isBusy()).toBe(true)
+    resource?.dispose()
+    expect(registry.get(projectId)).toBe(chat)
+    resolve(true)
+    expect(await pending).toBe(true)
+    expect(resource?.isBusy()).toBe(false)
+    registry.dispose()
+  })
+
   it("blocks release while a project owns work and disposes its idle chat without erasing the shared connection", async () => {
     const resources = new Map<string, { isBusy: () => boolean; dispose: () => void }>()
     let release: ((response: Response) => void) | undefined

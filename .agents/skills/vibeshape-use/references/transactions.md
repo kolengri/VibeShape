@@ -7,7 +7,19 @@
 3. Issue supported named commands sequentially. For each command, supply the current **draft** revision as `baseRevision`, a fresh lowercase UUIDv7 `commandId`, and the returned draft ID. Advance only to the revision in a successful result.
 4. Updates replace authored records. Read `draft_entity` at the current draft revision, or the original `model_entity` before drafting. Preserve existing IDs and every unaffected parameter, placement, dependency, reference, label, expression, constraint, and suppression value.
 5. Call `preview_draft` with `{ "draftId": draftId }`. It first simulates retained commands through the current document authority, including ordered History and authored Part rules, without writing storage or opening review. A failed preflight identifies the command index, ID, kind and cause; repair that intent before proceeding. Features cannot depend on an item later in History, even when the disposable geometry graph can evaluate them. Then check exact `geometry.status`, `geometry.diagnostics`, bounds, and volume against the requested design. Valid solids do not establish healthy sketch support or external references. Fix invalid intent through a supported update with a new command ID; inspect the updated draft revision before continuing.
-6. Call `commit_draft` with `{ "draftId": draftId }`. It repeats document-authority validation before exact geometry and review. The default waits for browser Apply/Discard; an existing explicit session auto-apply grant applies supported first-party CAD changes, including lifecycle removal and suppression, without repeated confirmation. Local commits have no absolute broker wall-clock deadline while the authorized browser remains live; cancellation, revocation, heartbeat loss and credential/approval expiry still apply. Successful preflight cannot guarantee disk quota, writer access or an unchanged revision at the eventual write. A successful commit saves once and creates one Undo entry. Verify the returned result and observe the saved revision with `model_info`.
+6. Call `commit_draft` with `{ "draftId": draftId }`. It repeats document-authority validation before exact geometry and review. External clients default to browser Apply/Discard; an existing explicit session auto-apply grant applies supported first-party CAD changes, including lifecycle removal and suppression, without repeated confirmation. The built-in native and browser API chats use connected model authority and commit valid stages without a second Apply action; see [session policy](session.md). Local commits have no absolute broker wall-clock deadline while the authorized browser remains live; cancellation, revocation, heartbeat loss and credential/approval expiry still apply. Successful preflight cannot guarantee disk quota, writer access or an unchanged revision at the eventual write. A successful commit saves once and creates one Undo entry. Verify the returned result and observe the saved revision with `model_info`.
+
+Build usable stages rather than accumulating the entire model in one private draft. Draft results
+advertise `commandBudget.limit` and `remaining`; the normal limit is 64 commands, including updates
+and corrections. Leave capacity to repair geometry, validate and commit each coherent stage, then
+start the next draft at the actual saved revision. Existing saved features remain in the project.
+Do not discard a saved stage or reconstruct it just to obtain a new draft budget.
+
+Successful browser draft commands also request an exact disposable viewport preview. Valid geometry
+is visible before review and remains unsaved; incomplete or invalid intermediate geometry may have
+no preview. Explicit `preview_draft` still supplies the authoritative validation diagnostics. A
+visible preview does not advance the saved revision, create Undo or grant Apply permission. Later
+commands replace it, and cancellation, discard, disposal or a changed committed base removes it.
 
 An open CAD draft review has no time limit. Its draft's `expiresAt` describes idle expiry, not an
 Apply deadline: the host retains it while review is pending and rechecks access and the committed
@@ -27,7 +39,7 @@ fresh draft with dependencies inserted before consumers. Do not retry commit unc
 
 If the committed model changes while drafting, read the updated model and create a new draft, retaining the person's changes. Do not replay a stale full record. Use `discard_draft` to abandon private intent; it does not alter the saved model. MCP cancellation interrupts disposable work and cannot undo a transaction already accepted by persistence. Local pairing can recover automatically without replaying that work; remote access retains its existing revocation rules.
 
-After a timeout or unconfirmed commit, re-pair if needed and inspect the saved revision and affected IDs/parameters before retrying. Do not treat a reused command ID as an idempotency key. For committed Undo/Redo, follow the [saved-change History workflow](../../vibeshape-organization/SKILL.md), using its document/revision-bound tools and manual browser review.
+After a timeout or unconfirmed commit, re-pair if needed and inspect the saved revision and affected IDs/parameters before retrying. Do not treat a reused command ID as an idempotency key. For committed Undo/Redo, follow the [saved-change History workflow](../../vibeshape-organization/SKILL.md), using its document/revision-bound tools and the connection's approval policy.
 
 ## Quantity and ID contract
 

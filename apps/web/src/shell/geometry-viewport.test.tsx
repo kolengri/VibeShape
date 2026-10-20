@@ -13,7 +13,10 @@ import type { DocumentControllerState } from "../document/document-controller"
 import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
-
+import {
+  assistantCheckpointDisplayController,
+  assistantCheckpointForController,
+} from "./assistant-checkpoint-display"
 import type { GeometryViewportSketchContext } from "./geometry-viewport"
 
 type WorkspaceTask = Parameters<typeof WorkspaceTaskProvider>[0]["value"]
@@ -269,6 +272,47 @@ function readyController(
       },
     },
   } as unknown as DocumentControllerState
+}
+
+function checkpointViewportFixture() {
+  const { authority, snapshot } = authoredTreeFixture()
+  const source = readyController(
+    snapshot.features.map(({ id, dependencies }) => ({ id, dependencies })),
+    snapshot.features.map(({ id }) => ({ featureId: id, geometry: { mesh } })),
+  )
+  if (!source.report?.rebuild.ok) throw new Error("The baseline must have exact rebuilt geometry.")
+  const baselineAuthority = {
+    ...authority,
+    parts: authority.parts.map((part, index) => ({ ...part, visible: index !== 1 })),
+  }
+  const head = { ...snapshot, revision: snapshot.revision + 1 }
+  const current: DocumentControllerState = {
+    ...source,
+    authoredSnapshot: {
+      ...authority,
+      revision: head.revision,
+      parts: authority.parts.map((part) => ({ ...part, visible: false })),
+    },
+    report: { ...source.report, snapshot: head },
+  }
+  const presentation = {
+    kind: "assistant-checkpoint" as const,
+    documentId: snapshot.id,
+    baseRevision: head.revision,
+    target: { snapshot, authority: baselineAuthority, targetRevision: snapshot.revision },
+    rebuild: {
+      ...source.report.rebuild.response,
+      type: "documentRebuilt" as const,
+      documentId: snapshot.id,
+      revision: snapshot.revision,
+    },
+    assembly: null,
+  }
+  return {
+    current,
+    presentation,
+    controller: { ...current, assistantCheckpointPresentation: presentation },
+  }
 }
 
 function optionalProp<Value>(name: string, value: Value | undefined) {
@@ -540,6 +584,91 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("renders baseline authority and visibility without current previews, selection, or persistence", async () => {
+    const { controller, current, presentation } = checkpointViewportFixture()
+    const firstPart = requireAuthoredFixture(presentation.target.authority.parts[0])
+    const bodyChange = vi.fn()
+    const { port, createViewport, onSelectionChange, rerenderController } = renderViewport(
+      controller,
+      { featureId: boxId, faceId: 1, faceOrdinal: 1 },
+      undefined,
+      { status: "ready", meshes: [taskPreviewMesh] },
+      undefined,
+      {
+        partVisibilityOverrides: { [firstPart.id]: false },
+        selectedFeatureId: boxId,
+        onBodySelectionChange: bodyChange,
+      },
+    )
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalled())
+    const visible = vi.mocked(port.setMeshes).mock.calls.at(-1)?.[0]
+    expect(visible?.map(({ featureId }) => featureId)).toEqual([
+      requireAuthoredFixture(presentation.target.snapshot.features[0]).id,
+      requireAuthoredFixture(presentation.target.snapshot.features[2]).id,
+    ])
+    expect(visible?.[0]?.positions).toBe(presentation.rebuild.geometry[0]?.geometry.mesh.positions)
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onSelectionChange?.({ featureId: boxId, faceId: 1, faceOrdinal: 1 }))
+    expect(onSelectionChange).not.toHaveBeenCalled()
+    expect(bodyChange).not.toHaveBeenCalled()
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
+    expect(controller.report).toBe(current.report)
+    expect(controller.authoredSnapshot).toBe(current.authoredSnapshot)
+    const fits = vi.mocked(port.fit).mock.calls.length
+    rerenderController(current)
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("select")
+    expect(port.setMeshes).toHaveBeenLastCalledWith([taskPreviewMesh])
+    expect(port.fit).toHaveBeenCalledTimes(fits)
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.dispose).not.toHaveBeenCalled()
+  })
+
+  it("ignores current task meshes and readiness callbacks while viewing the baseline", async () => {
+    const { controller } = checkpointViewportFixture()
+    const onReady = vi.fn()
+    const onFacePick = vi.fn(() => true)
+    const overlays = [
+      { kind: "face" as const, mesh: taskPreviewMesh, faceIds: [1], role: "load" as const },
+    ]
+    const { port } = renderTaskViewport(controller, {
+      activityKey: "lightweighting",
+      panel: null,
+      interaction: { sourceMesh: taskPreviewMesh, picking: false, onFacePick, overlays },
+      preview: { meshes: [taskPreviewMesh], onReady },
+    })
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalled())
+    expect(vi.mocked(port.setMeshes).mock.calls.at(-1)?.[0]).toHaveLength(2)
+    expect(onReady).not.toHaveBeenCalled()
+    expect(port.setAnalysisOverlays).not.toHaveBeenCalledWith(overlays)
+  })
+
+  it("rejects stale checkpoint heads and mismatched baseline rebuilds", () => {
+    const { controller, presentation } = checkpointViewportFixture()
+    const display = assistantCheckpointDisplayController(controller)
+    expect(display?.report?.mode).toBe("read-only")
+    expect(display?.report?.rebuild.ok && display.report.rebuild.response).toBe(
+      presentation.rebuild,
+    )
+    expect(display?.authoredSnapshot).toBe(presentation.target.authority)
+    for (const invalid of [
+      { ...presentation, baseRevision: presentation.baseRevision + 1 },
+      { ...presentation, documentId: "another-project" },
+      {
+        ...presentation,
+        rebuild: { ...presentation.rebuild, revision: presentation.rebuild.revision + 1 },
+      },
+    ]) {
+      expect(
+        assistantCheckpointForController({
+          ...controller,
+          assistantCheckpointPresentation: invalid,
+        }),
+      ).toBeNull()
+    }
+  })
+
   it("filters an active preview and clears picking without changing its authority or draft", async () => {
     const { authority, snapshot } = authoredTreeFixture()
     const first = requireAuthoredFixture(authority.parts[0])
@@ -1488,6 +1617,39 @@ describe("GeometryViewport", () => {
 
     rerenderSketchContext({ frame, mode: "normal", projectionStore: store })
     expect(port.setSketchProjection).toHaveBeenLastCalledWith(frame, firstBounds)
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.dispose).not.toHaveBeenCalled()
+  })
+
+  it("routes normal-sketch inset navigation through the current input and camera-mode callback", async () => {
+    const store = createSketchProjectionStore()
+    const drawing = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    store.getState().setNavigationElement(drawing)
+    const onOrientationNavigationStart = vi.fn()
+    const { createViewport, port, rerenderSketchContext } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { frame: null, mode: "normal", projectionStore: store, onOrientationNavigationStart },
+    )
+    await waitFor(() => expect(createViewport).toHaveBeenCalledTimes(1))
+    const options = createViewport.mock.calls[0]?.[1]
+    if (!options) throw new Error("The viewer must receive its orientation input callbacks.")
+    expect(options.orientationInputElement?.()).toBe(drawing)
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    act(() => options.onOrientationNavigationStart?.())
+    expect(onOrientationNavigationStart).toHaveBeenCalledTimes(1)
+
+    const replacement = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    act(() => store.getState().setNavigationElement(replacement))
+    expect(options.orientationInputElement?.()).toBe(replacement)
+    rerenderSketchContext({ frame: null, mode: "orbit", projectionStore: store })
+    act(() => options.onOrientationNavigationStart?.())
+    expect(onOrientationNavigationStart).toHaveBeenCalledTimes(1)
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(replacement)
     expect(createViewport).toHaveBeenCalledTimes(1)
     expect(port.dispose).not.toHaveBeenCalled()
   })

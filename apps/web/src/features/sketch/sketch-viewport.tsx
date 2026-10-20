@@ -233,6 +233,7 @@ import {
   type SketchDimensionGeometry,
   sketchDimensionCanonicalValue,
   sketchDimensionWitnessPoints,
+  sketchLinearDimensionLines,
 } from "./sketch-dimension-placement"
 import { defaultSketchDimensionExpression } from "./sketch-dimension-value"
 import {
@@ -3321,6 +3322,11 @@ type ConstraintGlyph = Readonly<{
   coordinatePoint?: SketchPoint2
   coordinatePointId?: string
   manuallyPositioned?: boolean
+  geometryOrigin?: SketchPoint2
+  linearDimension?: Readonly<{
+    kind: SketchDimensionKind
+    witnesses: readonly SketchPoint2[]
+  }> | null
   constraintType: SketchRecord["constraints"][number]["type"]
   entityIds: readonly string[]
   external: boolean
@@ -3426,15 +3432,23 @@ function drivingDimensionLabel(constraint: SketchRecord["constraints"][number]) 
   )
 }
 
-function dimensionalLabel(
+const literalDimensionExpressionPattern =
+  /^\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*[a-z]+)?\s*$/
+
+function constraintMeasurementLabel(
   constraint: SketchRecord["constraints"][number],
   entities: readonly SketchEntity[],
   geometry: SketchGeometryPresentation,
   displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
   formatNumber: (value: number) => string,
 ) {
-  const drivingLabel = drivingDimensionLabel(constraint)
-  if (drivingLabel) return drivingLabel
+  if ("value" in constraint) {
+    const expression = constraint.value.source.expression
+    if (expression && !literalDimensionExpressionPattern.test(expression)) return expression
+    return constraint.type === "angle"
+      ? formatDisplayAngle(constraint.value.value, displayUnits.angle, formatNumber)
+      : formatDisplayLength(constraint.value.value, displayUnits.length, formatNumber)
+  }
   if (!isReferenceSketchDimension(constraint)) return null
   const value = sketchDimensionCanonicalValue(
     constraint.type,
@@ -3631,19 +3645,43 @@ function constraintGlyphs(
         const entity = entities.get(id)
         return entity ? [entity] : []
       })
-      const glyph = constraintGlyph(
+      let glyph = constraintGlyph(
         constraint,
-        dimensionalLabel(constraint, constraintEntities, geometry, displayUnits, formatNumber),
+        constraintMeasurementLabel(
+          constraint,
+          constraintEntities,
+          geometry,
+          displayUnits,
+          formatNumber,
+        ),
         pointAnchor,
         geometryAnchor,
         ellipseAxisAnchor,
         projectedEntityIds,
       )
+      if (
+        glyph &&
+        (constraint.type === "distance" ||
+          constraint.type === "horizontal-distance" ||
+          constraint.type === "vertical-distance")
+      ) {
+        glyph = {
+          ...glyph,
+          linearDimension: {
+            kind: constraint.type,
+            witnesses: sketchDimensionWitnessPoints(
+              constraint.type,
+              createSketchDimensionGeometry(geometry, constraintEntities),
+            ),
+          },
+        }
+      }
       const coordinatePointId = sketchCoordinateDimensionPoint(constraint, entities, fixedPointIds)
       const coordinatePoint = coordinatePointId ? pointAnchor(coordinatePointId) : null
       if (!glyph || !coordinatePoint || !coordinatePointId) return glyph
       return {
         ...glyph,
+        linearDimension: null,
         point: coordinatePoint,
         coordinatePoint,
         coordinatePointId,
@@ -3740,6 +3778,12 @@ function useSketchViewportSize(svgRef: RefObject<SVGSVGElement | null>) {
   return size
 }
 
+type SketchDimensionLabelPositionChange = (
+  constraintId: SketchConstraintId,
+  point: SketchPoint2,
+  reference?: Readonly<{ origin?: SketchPoint2; sketch?: SketchRecord }>,
+) => void
+
 type ConstraintAnnotationDrag = Readonly<{
   clientX: number
   clientY: number
@@ -3788,6 +3832,7 @@ function constraintGlyphClassName(
       variant,
       pointerEventsClass,
       glyph.manuallyPositioned ? "z-10" : undefined,
+      selected ? "ring-2 ring-selection" : undefined,
       "absolute h-6 min-w-6 -translate-y-1/2 bg-background/90 px-1.5 py-0 font-mono text-[11px] shadow-xs",
       glyph.reference
         ? "border border-dashed border-muted-foreground/50 text-muted-foreground"
@@ -3797,6 +3842,7 @@ function constraintGlyphClassName(
   return cn(
     variant,
     pointerEventsClass,
+    selected ? "ring-2 ring-selection" : undefined,
     "absolute h-6 min-w-6 translate-x-3 -translate-y-1/2 gap-0.5 bg-background/85 px-1.5 py-0 font-mono text-[11px] font-semibold shadow-xs",
     glyph.external ? "text-sketch-reference-context" : "text-primary",
   )
@@ -3876,7 +3922,7 @@ function beginConstraintAnnotationDrag({
   dragRef: RefObject<ConstraintAnnotationDrag | null>
   event: PointerEvent<HTMLButtonElement>
   glyph: ConstraintGlyph
-  onPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onPositionChange: SketchDimensionLabelPositionChange
   scale: number
   suppressClickRef: RefObject<boolean>
 }>) {
@@ -3921,8 +3967,16 @@ function beginConstraintAnnotationDrag({
       lastClientX: moveEvent.clientX,
       lastClientY: moveEvent.clientY,
     }
-    drag.element.style.translate = `${deltaX}px ${deltaY}px`
-    moveLeader(deltaX, deltaY)
+    if (glyph.linearDimension && dragRef.current) {
+      onPositionChange(
+        drag.id,
+        constraintAnnotationDragPoint(dragRef.current, bounds, overlayRectangle),
+        { origin: glyph.geometryOrigin ?? glyph.point },
+      )
+    } else {
+      drag.element.style.translate = `${deltaX}px ${deltaY}px`
+      moveLeader(deltaX, deltaY)
+    }
   }
   const cleanup = () => {
     window.removeEventListener("pointermove", move)
@@ -3939,7 +3993,9 @@ function beginConstraintAnnotationDrag({
     dragRef.current = null
     drag.element.style.translate = ""
     if (Math.hypot(deltaX, deltaY) >= 3 && Number.isFinite(drag.scale) && drag.scale > 0) {
-      onPositionChange(drag.id, constraintAnnotationDragPoint(drag, bounds, overlayRectangle))
+      onPositionChange(drag.id, constraintAnnotationDragPoint(drag, bounds, overlayRectangle), {
+        origin: glyph.geometryOrigin ?? glyph.point,
+      })
     }
     cleanup()
   }
@@ -3967,7 +4023,7 @@ type ConstraintAnnotationInteraction = Readonly<{
   editDimensionLabel: (label: string) => string
   onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onDelete: (constraintId: SketchConstraintId) => void
-  onPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onPositionChange: SketchDimensionLabelPositionChange
   onRelatedEntitiesChange: ConstraintRelatedEntityChange
   onSelect: (constraintId: SketchConstraintId) => void
   pointerEventsClass: string
@@ -4000,6 +4056,92 @@ function numericAnnotationPosition(position: CSSProperties) {
     : null
 }
 
+function SketchLinearDimensionAnnotation({
+  anchor,
+  bounds,
+  constraintId,
+  kind,
+  viewport,
+  witnesses,
+}: Readonly<{
+  anchor: SketchPoint2
+  bounds: SketchBounds
+  constraintId?: SketchConstraintId
+  kind: SketchDimensionKind
+  viewport: SketchViewportSize
+  witnesses: readonly SketchPoint2[]
+}>) {
+  const lines = sketchLinearDimensionLines(kind, witnesses, anchor)
+  if (!lines) return null
+  const size = {
+    ...viewport,
+    width: viewport.width || 1000,
+    height: viewport.height || 1000,
+  }
+  const project = (point: SketchPoint2) => {
+    const position = numericAnnotationPosition(constraintAnnotationPosition(point, bounds, size))
+    return position ? { x: position.left, y: position.top } : { x: 0, y: 0 }
+  }
+  const start = project(lines.dimension[0])
+  const end = project(lines.dimension[1])
+  const length = Math.hypot(end.x - start.x, end.y - start.y)
+  if (length < 1e-6) return null
+  const direction = { x: (end.x - start.x) / length, y: (end.y - start.y) / length }
+  const tick = { x: (direction.x - direction.y) * 4, y: (direction.y + direction.x) * 4 }
+  const label = project(anchor)
+  const labelDistance = (label.x - start.x) * direction.x + (label.y - start.y) * direction.y
+  const lineStart = labelDistance < 0 ? label : start
+  const lineEnd = labelDistance > length ? label : end
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 size-full overflow-visible stroke-primary"
+      data-sketch-linear-dimension={constraintId ?? "preview"}
+      viewBox={`0 0 ${size.width} ${size.height}`}
+      fill="none"
+      strokeWidth={1.25}
+    >
+      {lines.extensions.map(([source, target], index) => {
+        const first = project(source)
+        const second = project(target)
+        const extent = Math.hypot(second.x - first.x, second.y - first.y)
+        const unit =
+          extent > 1e-6
+            ? { x: (second.x - first.x) / extent, y: (second.y - first.y) / extent }
+            : { x: -direction.y, y: direction.x }
+        const gap = Math.min(3, extent / 2)
+        return (
+          <line
+            key={index}
+            data-sketch-dimension-extension={index}
+            x1={first.x + unit.x * gap}
+            y1={first.y + unit.y * gap}
+            x2={second.x + unit.x * 5}
+            y2={second.y + unit.y * 5}
+          />
+        )
+      })}
+      <line
+        data-sketch-dimension-line
+        x1={lineStart.x}
+        y1={lineStart.y}
+        x2={lineEnd.x}
+        y2={lineEnd.y}
+      />
+      {[start, end].map((point, index) => (
+        <line
+          key={index}
+          data-sketch-dimension-tick={index}
+          x1={point.x - tick.x}
+          y1={point.y - tick.y}
+          x2={point.x + tick.x}
+          y2={point.y + tick.y}
+        />
+      ))}
+    </svg>
+  )
+}
+
 function CoordinateAnnotationLeader({
   glyph,
   placement,
@@ -4011,7 +4153,7 @@ function CoordinateAnnotationLeader({
   bounds: SketchBounds
   viewport: SketchViewportSize
 }>) {
-  if (!glyph.coordinatePoint) return null
+  if (!glyph.coordinatePoint || glyph.linearDimension) return null
   const anchor = numericAnnotationPosition(
     constraintAnnotationPosition(glyph.coordinatePoint, bounds, viewport),
   )
@@ -4071,6 +4213,16 @@ function ConstraintAnnotation({
   )
   return (
     <div className="pointer-events-none absolute inset-0">
+      {glyph.linearDimension ? (
+        <SketchLinearDimensionAnnotation
+          anchor={positionedGlyph.point}
+          bounds={bounds}
+          constraintId={glyph.id}
+          kind={glyph.linearDimension.kind}
+          viewport={viewport}
+          witnesses={glyph.linearDimension.witnesses}
+        />
+      ) : null}
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -4191,15 +4343,50 @@ function ConstraintAnnotationCollection({
 function useConstraintGlyphPresentation(
   sketch: SketchRecord,
   geometry: SketchGeometryPresentation,
-  dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>,
+  dimensionLabelOffsets: ReadonlyMap<SketchConstraintId, SketchPoint2>,
+  draggedGeometry: SketchGeometryPresentation,
+  draggedPointId: string | null,
 ) {
   const displayUnits = useDocumentDisplayUnits()
   const formatter = useFormatter()
-  return constraintGlyphs(sketch, geometry, displayUnits, (value) =>
-    formatter.number(value, { maximumFractionDigits: 6 }),
-  ).map((glyph) => {
-    const position = glyph.dimensional ? dimensionLabelPositions.get(glyph.id) : null
-    return position ? { ...glyph, point: position, manuallyPositioned: true } : glyph
+  const glyphs = useMemo(
+    () =>
+      constraintGlyphs(sketch, geometry, displayUnits, (value) =>
+        formatter.number(value, { maximumFractionDigits: 6 }),
+      ),
+    [sketch, geometry, displayUnits, formatter],
+  )
+  const draggedGlyphs = useMemo(() => {
+    if (!draggedPointId) return new Map<SketchConstraintId, ConstraintGlyph>()
+    const relatedIds = new Set<string>([
+      draggedPointId,
+      ...(geometry.curvesByPointId.get(draggedPointId) ?? []).map(({ id }) => id),
+    ])
+    const affected = {
+      ...sketch,
+      constraints: sketch.constraints.filter(
+        (constraint) =>
+          constraint.type === "fixed" ||
+          sketchConstraintEntityIds(constraint).some((id) => relatedIds.has(id)),
+      ),
+    }
+    return new Map(
+      constraintGlyphs(affected, draggedGeometry, displayUnits, (value) =>
+        formatter.number(value, { maximumFractionDigits: 6 }),
+      ).map((glyph) => [glyph.id, glyph]),
+    )
+  }, [draggedGeometry, draggedPointId, displayUnits, formatter, geometry.curvesByPointId, sketch])
+  return glyphs.map((original) => {
+    const glyph = draggedGlyphs.get(original.id) ?? original
+    const offset = glyph.dimensional ? dimensionLabelOffsets.get(glyph.id) : null
+    return offset
+      ? {
+          ...glyph,
+          geometryOrigin: glyph.point,
+          point: { x: glyph.point.x + offset.x, y: glyph.point.y + offset.y },
+          manuallyPositioned: true,
+        }
+      : { ...glyph, geometryOrigin: glyph.point }
   })
 }
 
@@ -4215,33 +4402,82 @@ type ConstraintAnnotationConfiguration = Pick<
   | "selectExternalConstraintLabel"
 >
 
-function ConstraintAnnotations({
+const orientationConstraintGlyphTypes = new Set([
+  "horizontal",
+  "vertical",
+  "horizontal-points",
+  "vertical-points",
+])
+
+type ConstraintGlyphActivity = Readonly<{
+  activeConstraintId: SketchConstraintId | null
+  selectedConstraintId: SketchConstraintId | null
+  activeEntityIds: readonly string[]
+  selectedEntityIds: readonly string[]
+  activePointIds: readonly string[]
+  showAllPointDimensions: boolean
+}>
+
+function visibleConstraintGlyphs(
+  glyphs: readonly ConstraintGlyph[],
+  activity: ConstraintGlyphActivity,
+) {
+  const activeConstraints = new Set([activity.activeConstraintId, activity.selectedConstraintId])
+  const relatedEntities = new Set([...activity.activeEntityIds, ...activity.selectedEntityIds])
+  const visiblePoints = new Set([...activity.activePointIds, ...activity.selectedEntityIds])
+  return glyphs.filter((glyph) => {
+    if (
+      orientationConstraintGlyphTypes.has(glyph.constraintType) &&
+      !activeConstraints.has(glyph.id) &&
+      !glyph.entityIds.some((id) => relatedEntities.has(id))
+    )
+      return false
+    return (
+      !glyph.coordinatePointId ||
+      activity.showAllPointDimensions ||
+      visiblePoints.has(glyph.coordinatePointId) ||
+      glyph.id === activity.selectedConstraintId
+    )
+  })
+}
+
+type ConstraintAnnotationsProps = Readonly<{
+  bounds: SketchBounds
+  activeConstraintId: SketchConstraintId | null
+  activeEntityIds: readonly string[]
+  activePointIds: readonly string[]
+  showAllPointDimensions: boolean
+  configuration: ConstraintAnnotationConfiguration
+  dimensionLabelOffsets: ReadonlyMap<SketchConstraintId, SketchPoint2>
+  geometry: SketchGeometryPresentation
+  draggedGeometry: SketchGeometryPresentation
+  draggedPointId: string | null
+  interactive: boolean
+  onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onDimensionPositionChange: SketchDimensionLabelPositionChange
+  onRelatedEntitiesChange: ConstraintRelatedEntityChange
+  sketch: SketchRecord
+  viewport: SketchViewportSize
+}>
+
+function useConstraintAnnotationInteraction({
   bounds,
-  activePointIds,
-  showAllPointDimensions,
   configuration,
-  dimensionLabelPositions,
-  geometry,
   interactive,
   onEditDimension,
   onDimensionPositionChange,
   onRelatedEntitiesChange,
-  sketch,
   viewport,
-}: {
-  bounds: SketchBounds
-  activePointIds: readonly string[]
-  showAllPointDimensions: boolean
-  configuration: ConstraintAnnotationConfiguration
-  dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
-  geometry: SketchGeometryPresentation
-  interactive: boolean
-  onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
-  onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
-  onRelatedEntitiesChange: ConstraintRelatedEntityChange
-  sketch: SketchRecord
-  viewport: SketchViewportSize
-}) {
+}: Pick<
+  ConstraintAnnotationsProps,
+  | "bounds"
+  | "configuration"
+  | "interactive"
+  | "onEditDimension"
+  | "onDimensionPositionChange"
+  | "onRelatedEntitiesChange"
+  | "viewport"
+>): ConstraintAnnotationInteraction {
   const pointerEventsClass = interactive ? "pointer-events-auto" : "pointer-events-none"
   const dragRef = useRef<ConstraintAnnotationDrag | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
@@ -4253,7 +4489,6 @@ function ConstraintAnnotations({
     },
     [],
   )
-  const glyphs = useConstraintGlyphPresentation(sketch, geometry, dimensionLabelPositions)
   const deleteConstraint = useCallback(
     (constraintId: SketchConstraintId) => {
       if (!configuration.draft) return
@@ -4262,7 +4497,7 @@ function ConstraintAnnotations({
     },
     [configuration.draft, configuration.onConstraintSelectionChange, configuration.onDraftChange],
   )
-  const interaction: ConstraintAnnotationInteraction = {
+  return {
     cleanupRef: dragCleanupRef,
     dragRef,
     editDimensionLabel: configuration.editDimensionLabel,
@@ -4277,17 +4512,53 @@ function ConstraintAnnotations({
     selectExternalConstraintLabel: configuration.selectExternalConstraintLabel,
     suppressClickRef,
   }
+}
+
+function ConstraintAnnotations({
+  bounds,
+  activeConstraintId,
+  activeEntityIds,
+  activePointIds,
+  showAllPointDimensions,
+  configuration,
+  dimensionLabelOffsets,
+  geometry,
+  draggedGeometry,
+  draggedPointId,
+  interactive,
+  onEditDimension,
+  onDimensionPositionChange,
+  onRelatedEntitiesChange,
+  sketch,
+  viewport,
+}: ConstraintAnnotationsProps) {
+  const interaction = useConstraintAnnotationInteraction({
+    bounds,
+    configuration,
+    interactive,
+    onEditDimension,
+    onDimensionPositionChange,
+    onRelatedEntitiesChange,
+    viewport,
+  })
+  const glyphs = useConstraintGlyphPresentation(
+    sketch,
+    geometry,
+    dimensionLabelOffsets,
+    draggedGeometry,
+    draggedPointId,
+  )
   return (
     <ConstraintAnnotationCollection
       bounds={bounds}
-      glyphs={glyphs.filter(
-        (glyph) =>
-          !glyph.coordinatePointId ||
-          showAllPointDimensions ||
-          activePointIds.includes(glyph.coordinatePointId) ||
-          configuration.selectedEntityIds.some((id) => id === glyph.coordinatePointId) ||
-          glyph.id === configuration.selectedConstraintId,
-      )}
+      glyphs={visibleConstraintGlyphs(glyphs, {
+        activeConstraintId,
+        selectedConstraintId: configuration.selectedConstraintId,
+        activeEntityIds,
+        selectedEntityIds: configuration.selectedEntityIds,
+        activePointIds,
+        showAllPointDimensions,
+      })}
       interaction={interaction}
       selectedConstraintId={configuration.selectedConstraintId}
       viewport={viewport}
@@ -4299,9 +4570,12 @@ const StableConstraintAnnotations = memo(ConstraintAnnotations)
 
 function SketchDrawingAnnotations({
   configuration,
+  activeConstraintId,
+  activeEntityIds,
   activePointIds,
   showAllPointDimensions,
-  dimensionLabelPositions,
+  dimensionLabelOffsets,
+  geometry,
   onEditDimension,
   onDimensionPositionChange,
   onRelatedEntitiesChange,
@@ -4310,10 +4584,13 @@ function SketchDrawingAnnotations({
 }: Pick<SketchDrawingViewProps, "configuration" | "sketch" | "state"> &
   Readonly<{
     activePointIds: readonly string[]
+    activeConstraintId: SketchConstraintId | null
+    activeEntityIds: readonly string[]
     showAllPointDimensions: boolean
-    dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
+    dimensionLabelOffsets: ReadonlyMap<SketchConstraintId, SketchPoint2>
+    geometry: SketchGeometryPresentation
     onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
-    onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+    onDimensionPositionChange: SketchDimensionLabelPositionChange
     onRelatedEntitiesChange: ConstraintRelatedEntityChange
   }>) {
   const annotationConfiguration = useMemo<ConstraintAnnotationConfiguration>(
@@ -4340,12 +4617,16 @@ function SketchDrawingAnnotations({
   )
   return (
     <StableConstraintAnnotations
+      activeConstraintId={activeConstraintId}
+      activeEntityIds={activeEntityIds}
       activePointIds={activePointIds}
       showAllPointDimensions={showAllPointDimensions}
       bounds={state.bounds}
       configuration={annotationConfiguration}
-      dimensionLabelPositions={dimensionLabelPositions}
+      dimensionLabelOffsets={dimensionLabelOffsets}
       geometry={state.geometry}
+      draggedGeometry={geometry}
+      draggedPointId={state.dragTarget?.entityId ?? null}
       interactive={state.editable && isSketchSelectionTool(configuration.editorTool)}
       onEditDimension={onEditDimension}
       onDimensionPositionChange={onDimensionPositionChange}
@@ -8990,7 +9271,7 @@ type SketchDrawingViewProps = Readonly<{
     onCircularPatternCancel: () => void
     onCircularPatternPreview: (value: CircularSketchPatternDefinition | null) => void
     onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
-    onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+    onDimensionPositionChange: SketchDimensionLabelPositionChange
     onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
     onKeyDown: (event: KeyboardEvent<SVGSVGElement>) => void
     onLinearPatternApply: (value: LinearSketchPatternDefinition) => void
@@ -9015,9 +9296,10 @@ type SketchDrawingViewProps = Readonly<{
     cursor: SketchPoint2 | null
     dragTarget: SketchDragTarget | null
     draggingPointId: SketchEntityId | null
-    dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
+    dimensionLabelOffsets: ReadonlyMap<SketchConstraintId, SketchPoint2>
     dimensionPreview: Readonly<{
       anchor: SketchPoint2
+      kind: SketchDimensionKind
       witnesses: readonly SketchPoint2[]
     }> | null
     editable: boolean
@@ -9182,39 +9464,46 @@ function SketchCircularPatternPresentation({
 }
 
 function SketchDimensionPlacementPreview({
+  bounds,
   value,
+  viewport,
 }: Readonly<{
+  bounds: SketchBounds
   value: SketchDrawingViewProps["state"]["dimensionPreview"]
+  viewport: SketchViewportSize
 }>) {
   if (!value) return null
-  return (
-    <g
-      className="pointer-events-none stroke-primary"
-      data-sketch-dimension-placement-preview
-      transform="scale(1 -1)"
-    >
-      {value.witnesses.map((point, index) => (
-        <line
-          key={`${point.x}:${point.y}:${index}`}
-          x1={point.x}
-          y1={point.y}
-          x2={value.anchor.x}
-          y2={value.anchor.y}
-          opacity={0.65}
-          strokeDasharray="4 3"
-          strokeWidth={1.25}
-          vectorEffect="non-scaling-stroke"
+  if (sketchLinearDimensionLines(value.kind, value.witnesses, value.anchor)) {
+    return (
+      <div
+        className="pointer-events-none absolute inset-0 z-10"
+        data-sketch-dimension-placement-preview
+      >
+        <SketchLinearDimensionAnnotation
+          anchor={value.anchor}
+          bounds={bounds}
+          kind={value.kind}
+          viewport={viewport}
+          witnesses={value.witnesses}
         />
-      ))}
-      <circle
-        cx={value.anchor.x}
-        cy={value.anchor.y}
-        fill="var(--color-viewport-background)"
-        r={3.5}
-        strokeWidth={1.5}
-        vectorEffect="non-scaling-stroke"
-      />
-    </g>
+      </div>
+    )
+  }
+  const size = { ...viewport, width: viewport.width || 1000, height: viewport.height || 1000 }
+  const source = value.witnesses[0]
+  if (!source) return null
+  const first = numericAnnotationPosition(constraintAnnotationPosition(source, bounds, size))
+  const second = numericAnnotationPosition(constraintAnnotationPosition(value.anchor, bounds, size))
+  if (!first || !second) return null
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 size-full overflow-visible stroke-primary"
+      data-sketch-dimension-placement-preview
+      viewBox={`0 0 ${size.width} ${size.height}`}
+    >
+      <line x1={first.left} y1={first.top} x2={second.left} y2={second.top} strokeWidth={1.25} />
+    </svg>
   )
 }
 
@@ -9369,19 +9658,41 @@ function consumeSecondaryContextMenu(input: {
   return true
 }
 
-function useConstraintRelatedEntityHighlight(sketch: SketchRecord) {
+function useConstraintRelatedEntityHighlight(
+  sketch: SketchRecord,
+  selectedConstraintId: SketchConstraintId | null,
+) {
   const [active, setActive] = useState<
     Readonly<Record<ConstraintRelatedEntityInteraction, SketchConstraintId | null>>
   >({ focus: null, hover: null })
-  const highlightedConstraintId = active.hover ?? active.focus
   const entityIds = useMemo(() => {
-    const constraint = sketch.constraints.find(({ id }) => id === highlightedConstraintId)
-    return new Set(constraint ? sketchConstraintEntityIds(constraint) : [])
-  }, [highlightedConstraintId, sketch.constraints])
+    const constraintIds = new Set([selectedConstraintId, active.hover ?? active.focus])
+    const highlightedIds = new Set(
+      sketch.constraints.flatMap((constraint) =>
+        constraintIds.has(constraint.id) ? sketchConstraintEntityIds(constraint) : [],
+      ),
+    )
+    const entities = [
+      ...sketch.entities,
+      ...projectedExternalSketchEntities(sketch.externalReferences ?? []),
+    ]
+    for (const entity of entities) {
+      if (entity.type === "point" || !highlightedIds.has(entity.id)) continue
+      for (const pointId of sketchCurvePointIds(entity)) highlightedIds.add(pointId)
+    }
+    return highlightedIds
+  }, [
+    active.focus,
+    active.hover,
+    selectedConstraintId,
+    sketch.constraints,
+    sketch.entities,
+    sketch.externalReferences,
+  ])
   const onChange = useCallback<ConstraintRelatedEntityChange>((interaction, glyph) => {
     setActive((current) => ({ ...current, [interaction]: glyph?.id ?? null }))
   }, [])
-  return { entityIds, onChange }
+  return { activeConstraintId: active.hover ?? active.focus, entityIds, onChange }
 }
 
 function useSketchContextMenu(
@@ -9522,13 +9833,30 @@ function SketchDrawingView({
 }: SketchDrawingViewProps) {
   const t = useTranslations("app.sketch.viewport")
   const pointDimensions = useSketchPointDimensionVisibility()
+  const annotationGeometry = useMemo(() => {
+    const target = state.dragTarget
+    const point = target ? state.geometry.pointsById.get(target.entityId) : null
+    if (!target || !point) return state.geometry
+    const draggedPoint = { ...point, x: target.x, y: target.y }
+    return {
+      ...state.geometry,
+      points: state.geometry.points.map((candidate) =>
+        candidate.id === target.entityId ? draggedPoint : candidate,
+      ),
+      pointsById: new Map(state.geometry.pointsById).set(target.entityId, draggedPoint),
+      localPointsById: new Map(state.geometry.localPointsById).set(target.entityId, draggedPoint),
+    }
+  }, [state.dragTarget, state.geometry])
   const planeUnavailable = state.bounds.cameraProjection === null
   const markerScale = sketchMarkerScale(state.bounds, state.viewportSize)
   const inferenceSources = useMemo(
     () => inferenceSourceEntityIds(state.inference),
     [state.inference],
   )
-  const constraintHighlight = useConstraintRelatedEntityHighlight(sketch)
+  const constraintHighlight = useConstraintRelatedEntityHighlight(
+    sketch,
+    configuration.selectedConstraintId,
+  )
   const {
     contextEntityIds,
     contextMenuOpen,
@@ -9633,7 +9961,7 @@ function SketchDrawingView({
               <SketchConstraintRelatedEntityHighlight
                 entityIds={constraintHighlight.entityIds}
                 markerScale={markerScale}
-                presentation={state.geometry}
+                presentation={annotationGeometry}
               />
               <DraggedSketchGeometry
                 dragTarget={state.dragTarget}
@@ -9659,7 +9987,6 @@ function SketchDrawingView({
                 geometry={state.geometry}
                 pattern={state.circularPattern}
               />
-              <SketchDimensionPlacementPreview value={state.dimensionPreview} />
               <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
               <InferenceGlyph bounds={state.bounds} inference={state.inference} />
             </g>
@@ -9674,6 +10001,11 @@ function SketchDrawingView({
           selectedEntityIds={configuration.selectedEntityIds}
         />
       </ContextMenu>
+      <SketchDimensionPlacementPreview
+        bounds={state.bounds}
+        value={planeUnavailable ? null : state.dimensionPreview}
+        viewport={state.viewportSize}
+      />
       {planeUnavailable ? (
         <p
           className={cn(
@@ -9686,10 +10018,13 @@ function SketchDrawingView({
         </p>
       ) : (
         <SketchDrawingAnnotations
+          geometry={annotationGeometry}
+          activeConstraintId={constraintHighlight.activeConstraintId}
+          activeEntityIds={pointDimensions.activeEntityIds}
           configuration={configuration}
           activePointIds={pointDimensions.activePointIds}
           showAllPointDimensions={pointDimensions.showAll}
-          dimensionLabelPositions={state.dimensionLabelPositions}
+          dimensionLabelOffsets={state.dimensionLabelOffsets}
           onEditDimension={handlers.onEditDimension}
           onDimensionPositionChange={handlers.onDimensionPositionChange}
           onRelatedEntitiesChange={constraintHighlight.onChange}
@@ -10804,7 +11139,7 @@ function useSketchDimensionPresentation({
             anchor,
           )
     return kind
-      ? { anchor, witnesses: sketchDimensionWitnessPoints(kind, dimensionGeometry) }
+      ? { anchor, kind, witnesses: sketchDimensionWitnessPoints(kind, dimensionGeometry) }
       : null
   }, [configuration.editorTool, cursor, dimensionGeometry, editor, options])
   return { dimensionGeometry, labels, options, preview }
@@ -10845,7 +11180,7 @@ function SketchDimensionEditorOverlay({
   configuration: SketchDrawingConfiguration
   editor: SketchDimensionEditorState
   labels: SketchDimensionLabels
-  moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  moveLabel: SketchDimensionLabelPositionChange
   onClose: () => void
   options: readonly SketchDimensionOption[]
   viewportSize: SketchViewportSize
@@ -10865,7 +11200,7 @@ function SketchDimensionEditorOverlay({
       )
       const previousIds = new Set(draft.constraints.map(({ id }) => id))
       const created = nextDraft.constraints.find(({ id }) => !previousIds.has(id))
-      if (created) moveLabel(created.id, editor.anchor)
+      if (created) moveLabel(created.id, editor.anchor, { sketch: nextDraft })
       configuration.onDraftChange(nextDraft)
       configuration.onSelectionChange([])
     } else if (editor.kind === "edit") {
@@ -10927,7 +11262,7 @@ function SketchCreationPrecisionOverlay({
   configuration: SketchDrawingConfiguration
   editing: boolean
   geometry: SketchGeometryPresentation
-  moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  moveLabel: SketchDimensionLabelPositionChange
   onActivate: () => void
   onAdvance: () => void
   onClose: () => void
@@ -10974,7 +11309,7 @@ function SketchCreationPrecisionOverlay({
     )
     const previousIds = new Set(draft.constraints.map(({ id }) => id))
     const created = nextDraft.constraints.find(({ id }) => !previousIds.has(id))
-    if (created) moveLabel(created.id, step.anchor)
+    if (created) moveLabel(created.id, step.anchor, { sketch: nextDraft })
     configuration.onDraftChange(nextDraft, "replace")
     if (request.activeStep + 1 < request.steps.length) onAdvance()
     else onClose()
@@ -11009,7 +11344,7 @@ function useSketchCreationPrecision({
   bounds: SketchBounds
   configuration: SketchDrawingConfiguration
   geometry: SketchGeometryPresentation
-  moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  moveLabel: SketchDimensionLabelPositionChange
   svgRef: RefObject<SVGSVGElement | null>
   viewportSize: SketchViewportSize
 }>) {
@@ -11075,10 +11410,11 @@ function useSketchDimensionInteraction({
   svgRef: RefObject<SVGSVGElement | null>
   viewportSize: SketchViewportSize
 }>) {
+  const displayUnits = useDocumentDisplayUnits()
   const [editor, setEditor] = useState<SketchDimensionEditorState | null>(null)
-  const [labelPositions, setLabelPositions] = useState<
-    ReadonlyMap<SketchConstraintId, SketchPoint2>
-  >(() => new Map())
+  const [labelOffsets, setLabelOffsets] = useState<ReadonlyMap<SketchConstraintId, SketchPoint2>>(
+    () => new Map(),
+  )
   const { dimensionGeometry, labels, options, preview } = useSketchDimensionPresentation({
     configuration,
     cursor,
@@ -11096,9 +11432,26 @@ function useSketchDimensionInteraction({
     },
     [configuration.draft, sketch],
   )
-  const moveLabel = useCallback((constraintId: SketchConstraintId, point: SketchPoint2) => {
-    setLabelPositions((current) => new Map(current).set(constraintId, point))
-  }, [])
+  const moveLabel = useCallback<SketchDimensionLabelPositionChange>(
+    (constraintId, point, reference) => {
+      const origin =
+        reference?.origin ??
+        constraintGlyphs(
+          reference?.sketch ?? configuration.draft ?? sketch,
+          geometry,
+          displayUnits,
+          String,
+        ).find(({ id }) => id === constraintId)?.point
+      if (!origin) return
+      setLabelOffsets((current) =>
+        new Map(current).set(constraintId, {
+          x: point.x - origin.x,
+          y: point.y - origin.y,
+        }),
+      )
+    },
+    [configuration.draft, displayUnits, geometry, sketch],
+  )
   const resetEditor = useCallback(() => setEditor(null), [])
   const place = useCallback(
     (anchor: SketchPoint2) => {
@@ -11155,7 +11508,7 @@ function useSketchDimensionInteraction({
   ) : null
   return {
     consumeEscape,
-    labelPositions,
+    labelOffsets,
     moveLabel,
     openEditor,
     options,
@@ -11362,10 +11715,10 @@ function useSketchDrawingCanvas(
   const cameraProjection = useSketchCameraProjection()
   const projectionStore = useSketchProjectionStoreApi()
   useLayoutEffect(() => {
-    if (!spatial || !projectionStore) return
+    if (!projectionStore) return
     projectionStore.getState().setNavigationElement(viewport.svgRef.current)
     return () => projectionStore.getState().setNavigationElement(null)
-  }, [projectionStore, spatial, viewport.svgRef])
+  }, [projectionStore, viewport.svgRef])
   usePublishSketchProjection(viewport.bounds, projectionFrame)
   const bounds = useMemo(
     () =>
@@ -11771,7 +12124,7 @@ function SketchDrawing({
           cursor,
           dragTarget,
           draggingPointId,
-          dimensionLabelPositions: dimensions.labelPositions,
+          dimensionLabelOffsets: dimensions.labelOffsets,
           dimensionPreview: dimensions.preview,
           editable,
           externalInferenceCandidate: inferencePresentation.externalInferenceCandidate,

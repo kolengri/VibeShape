@@ -576,6 +576,9 @@ describe("SketchEditorPanel", () => {
     const onDraftChange = renderPanel(constrained, [], vi.fn(), [], undefined, [], constraintId)
 
     await openConstraintManager(user)
+    expect(
+      screen.getByRole("button", { name: "Distance · 20 mm" }).getAttribute("aria-pressed"),
+    ).toBe("true")
     const expression = screen.getByRole("combobox", { name: "Driving expression" })
     expect((expression as HTMLInputElement).value).toBe("20 mm")
     await user.clear(expression)

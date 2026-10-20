@@ -48,6 +48,18 @@ describe("native assistant IPC boundary", () => {
     expect(calls).toBe(0)
     expect(await handler(owned, request)).toEqual({ ok: false, code: "stale-session" })
     expect(calls).toBe(1)
+    expect(
+      await handler(foreign, {
+        operation: "steer",
+        input: {
+          projectId: "project",
+          sessionToken: "token",
+          requestId: "queued",
+          text: "Direction",
+        },
+      }),
+    ).toEqual({ ok: false, code: "forbidden" })
+    expect(calls).toBe(1)
     unregister()
     expect(removed).toBe(ASSISTANT_REQUEST_CHANNEL)
   })
@@ -58,6 +70,7 @@ describe("native assistant IPC boundary", () => {
     let invoked = 0
     let removed = false
     let response: unknown = { secret: "malformed native response" }
+    let forwarded: unknown
     exposeAssistantBridge(
       {
         exposeInMainWorld(name, value) {
@@ -66,9 +79,10 @@ describe("native assistant IPC boundary", () => {
         },
       },
       {
-        async invoke(channel) {
+        async invoke(channel, payload) {
           expect(channel).toBe(ASSISTANT_REQUEST_CHANNEL)
           invoked += 1
+          forwarded = payload
           return response
         },
         on(channel, callback) {
@@ -95,6 +109,44 @@ describe("native assistant IPC boundary", () => {
       ok: false,
       code: "agent-busy",
     })
+    if (!bridge.steer) throw new Error("Missing steering bridge.")
+    const input = {
+      projectId: "project",
+      sessionToken: "token",
+      requestId: "queued",
+      text: "  Direction\n",
+      attachments: [],
+    }
+    const value = {
+      projectId: "project",
+      sessionToken: "token",
+      status: "prompting",
+      canResume: false,
+      canSteer: true,
+      attachmentCapabilities: { text: true, images: true },
+      authMethods: [],
+      modes: [],
+      models: [],
+      configOptions: [],
+      sessionId: "session",
+      currentModeId: null,
+      currentModelId: null,
+    }
+    const beforeInvalid = invoked
+    expect(await bridge.steer({ ...input, requestId: "" })).toEqual({
+      ok: false,
+      code: "invalid-request",
+    })
+    expect(invoked).toBe(beforeInvalid)
+    response = { ok: true, value }
+    expect(await bridge.steer(input)).toEqual({ ok: false, code: "protocol-error" })
+    response = { ok: true, value, steerOutcome: "startedNewTurn" }
+    expect(await bridge.steer(input)).toMatchObject({
+      ok: true,
+      value,
+      steerOutcome: "startedNewTurn",
+    })
+    expect(forwarded).toEqual({ operation: "steer", input })
     const events: AssistantEvent[] = []
     const unsubscribe = bridge.onEvent((event) => events.push(event))
     if (!listener) throw new Error("Missing registered listener.")

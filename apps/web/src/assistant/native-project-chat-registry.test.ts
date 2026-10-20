@@ -4,6 +4,7 @@ import type {
   AssistantEvent,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
+import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import { saveAssistantPreferences } from "./assistant-preferences"
 import { createNativeProjectChatRegistry } from "./native-project-chat-registry"
 
@@ -86,6 +87,46 @@ function fixture() {
 }
 
 describe("native project chat retention", () => {
+  it("keeps the project busy through accepted save settlement and the explicit checkpoint restore", async () => {
+    const f = fixture(),
+      model = checkpointFixture()
+    const registry = createNativeProjectChatRegistry(f.bridge, f.storage, () => model.host)
+    const chat = registry.get("checkpoint-project")
+    chat.start()
+    await chat.connect({ command: "/installed/agent", args: [] })
+    await chat.send("Save a model change")
+    model.save()
+    const save = model.deferSave()
+    await chat.cancel()
+    await new Promise<void>((resolve) => {
+      if (chat.getSnapshot().settlingCheckpoint) return resolve()
+      const release = chat.subscribe(() => {
+        if (chat.getSnapshot().settlingCheckpoint) {
+          release()
+          resolve()
+        }
+      })
+    })
+    expect(registry.isBusy()).toBe(true)
+    save()
+    await new Promise<void>((resolve) => {
+      if (chat.getSnapshot().canUndoAgentChanges) return resolve()
+      const release = chat.subscribe(() => {
+        if (chat.getSnapshot().canUndoAgentChanges) {
+          release()
+          resolve()
+        }
+      })
+    })
+    const resolve = model.deferRestore(),
+      pending = chat.undoAgentChanges()
+    expect(registry.isBusy()).toBe(true)
+    resolve(true)
+    expect(await pending).toBe(true)
+    expect(registry.isBusy()).toBe(false)
+    registry.dispose()
+  })
+
   it("makes the configured agent available per project and preserves background turns and queues", async () => {
     const f = fixture()
     saveAssistantPreferences(

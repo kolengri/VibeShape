@@ -58,4 +58,4 @@ panels on both themes; also inspect 16/24 px where used. Review new/revised sets
 labeled HTML under `artifacts/<task>/`. Structural checks do not establish visual quality.
 
 See [VibeShape Icon Design](../../.agents/skills/vibeshape-icon-design/SKILL.md) and
-[ADR-0116](../adr/0116-source-owned-colored-ui-icons.md).
+[ADR-0117](../adr/0117-source-owned-colored-ui-icons.md).

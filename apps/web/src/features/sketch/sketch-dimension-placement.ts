@@ -167,3 +167,38 @@ export function sketchDimensionWitnessPoints(
   }
   return []
 }
+
+export function sketchLinearDimensionLines(
+  kind: SketchDimensionKind,
+  witnesses: readonly SketchPoint2[],
+  anchor: SketchPoint2,
+) {
+  if (kind !== "distance" && kind !== "horizontal-distance" && kind !== "vertical-distance") {
+    return null
+  }
+  const [first, second] = witnesses
+  if (!first || !second) return null
+  const delta = { x: second.x - first.x, y: second.y - first.y }
+  const length = Math.hypot(delta.x, delta.y)
+  if (length < 1e-9) return null
+  const normal =
+    kind === "horizontal-distance"
+      ? { x: 0, y: 1 }
+      : kind === "vertical-distance"
+        ? { x: 1, y: 0 }
+        : { x: -delta.y / length, y: delta.x / length }
+  const project = (point: SketchPoint2) => {
+    const offset = (anchor.x - point.x) * normal.x + (anchor.y - point.y) * normal.y
+    return { x: point.x + normal.x * offset, y: point.y + normal.y * offset }
+  }
+  const start = project(first)
+  const end = project(second)
+  if (Math.hypot(end.x - start.x, end.y - start.y) < 1e-9) return null
+  return {
+    dimension: [start, end] as const,
+    extensions: [
+      [first, start],
+      [second, end],
+    ] as const,
+  }
+}

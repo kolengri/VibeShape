@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, isAbsolute, join } from "node:path"
 import { distributionHash } from "../../../scripts/local-distribution-files"
 import { createDmgImage } from "../dmg-presentation"
 import { withPackageOutput } from "../package-output"
@@ -15,6 +15,7 @@ afterEach(async () => {
 type Call = { command: string; args: string[] }
 function commandOperation(command: string, args: string[]) {
   if (command === "hdiutil") return args[0]
+  if (command === "diskutil") return args[0]
   if (command === "osascript") return args[1]
   return command
 }
@@ -28,10 +29,11 @@ function assertCommandSucceeds(
   if (phase && failures.includes(phase)) throw new Error(`fixture ${phase} failed`)
 }
 
-function writeFinderLayout(stagePath: string, failures: readonly string[]) {
+function writeFinderLayout(mountPoint: string | undefined, failures: readonly string[]) {
   if (failures.includes("missing-layout")) return
+  if (!mountPoint) throw new Error("Finder requires the attached mount path.")
   writeFileSync(
-    join(stagePath, "installer-mount/.DS_Store"),
+    join(mountPoint, ".DS_Store"),
     failures.includes("zero-layout") ? "" : "saved Finder layout",
   )
 }
@@ -56,7 +58,7 @@ async function fixture(failures: readonly string[] = []) {
     const operation = commandOperation(command, args)
     assertCommandSucceeds(operation, args, failures)
     if (command === "swift" && args[1]) writeFileSync(args[1], "background")
-    if (operation === "configure") writeFinderLayout(stagePath, failures)
+    if (operation === "configure") writeFinderLayout(args[2], failures)
     if (operation === "convert") writeCompressedImage(args)
     return ""
   }
@@ -79,6 +81,22 @@ async function fixture(failures: readonly string[] = []) {
 }
 const operations = (calls: Call[]) =>
   calls.map(({ command, args }) => commandOperation(command, args))
+function attachedMount(calls: Call[]) {
+  const args = calls.find(
+    ({ command, args }) => command === "hdiutil" && args[0] === "attach",
+  )?.args
+  const mount = args?.[args.indexOf("-mountpoint") + 1]
+  if (!mount) throw new Error("The image was not attached at an explicit mountpoint.")
+  return mount
+}
+function createdVolume(calls: Call[]) {
+  const args = calls.find(
+    ({ command, args }) => command === "hdiutil" && args[0] === "create",
+  )?.args
+  const volume = args?.[args.indexOf("-volname") + 1]
+  if (!volume) throw new Error("The image was not created with an explicit volume label.")
+  return volume
+}
 
 describe("owned macOS installer presentation", () => {
   it("publishes an integrity-checked image only after closing and detaching its own mount", async () => {
@@ -86,15 +104,30 @@ describe("owned macOS installer presentation", () => {
     const result = await f.build()
     expect(result.dmg).toBe(join(f.output, "VibeShape-1.2.3-mac-arm64.dmg"))
     const order = operations(f.calls)
-    expect(order.indexOf("close")).toBeLessThan(order.indexOf("detach"))
+    expect(order.indexOf("configure")).toBeLessThan(order.indexOf("close"))
+    expect(order.indexOf("close")).toBeLessThan(order.indexOf("renameVolume"))
+    expect(order.indexOf("renameVolume")).toBeLessThan(order.indexOf("detach"))
     expect(order.indexOf("detach")).toBeLessThan(order.indexOf("convert"))
     expect(order.indexOf("convert")).toBeLessThan(order.indexOf("verify"))
-    const mount = join(f.stage(), "installer-mount")
-    expect(f.calls.find(({ args }) => args[0] === "attach")?.args).toContain(mount)
+    const mount = attachedMount(f.calls)
+    expect(isAbsolute(mount)).toBe(true)
+    expect(dirname(mount)).toBe(f.stage())
+    expect(basename(mount)).toBe(createdVolume(f.calls))
+    expect(createdVolume(f.calls)).toMatch(/^VibeShape-layout-[0-9a-f-]{36}$/)
+    expect(f.calls.find(({ command }) => command === "diskutil")?.args).toEqual([
+      "renameVolume",
+      mount,
+      "VibeShape",
+    ])
+    const rename = f.calls.findIndex(({ command }) => command === "diskutil")
+    expect(f.calls.slice(rename + 1).some(({ command }) => command === "osascript")).toBe(false)
     expect(
       f.calls
         .filter(({ command }) => command === "osascript")
         .every(({ args }) => args[2] === mount),
+    ).toBe(true)
+    expect(
+      f.calls.filter(({ args }) => args[0] === "detach").every(({ args }) => args.at(-1) === mount),
     ).toBe(true)
     expect(result.digest).toBe(distributionHash(await readFile(result.dmg)))
     expect(await readFile(join(f.output, "SHA256SUMS"), "utf8")).toBe(
@@ -104,6 +137,15 @@ describe("owned macOS installer presentation", () => {
       "keep original application",
     )
     await expect(stat(f.stage())).rejects.toThrow()
+  })
+
+  it("gives separate builds distinct temporary volume and Finder mount identities", async () => {
+    const first = await fixture()
+    const second = await fixture()
+    await first.build()
+    await second.build()
+    expect(createdVolume(first.calls)).not.toBe(createdVolume(second.calls))
+    expect(basename(attachedMount(first.calls))).not.toBe(basename(attachedMount(second.calls)))
   })
 
   it("stages the real application and an Applications link before Finder configuration", async () => {
@@ -138,12 +180,20 @@ describe("owned macOS installer presentation", () => {
     expect(observedRuntime).toBe("keep original application")
   })
 
-  for (const failure of ["attach", "configure", "close", "missing-layout", "zero-layout"]) {
+  for (const failure of [
+    "attach",
+    "configure",
+    "close",
+    "missing-layout",
+    "zero-layout",
+    "renameVolume",
+  ]) {
     it(`attempts detachment and removes owned output after ${failure} failure`, async () => {
       const f = await fixture([failure])
       await expect(f.build()).rejects.toBeInstanceOf(AggregateError)
       expect(operations(f.calls)).toContain("detach")
       expect(operations(f.calls)).not.toContain("convert")
+      if (failure !== "renameVolume") expect(operations(f.calls)).not.toContain("renameVolume")
       await expect(stat(f.output)).rejects.toThrow()
       expect(await readFile(join(f.original, "signed-runtime"), "utf8")).toBe(
         "keep original application",

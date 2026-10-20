@@ -7,6 +7,11 @@ const modelBrowserRow = cn(
 )
 export const modelBrowserChildRow = cn(modelBrowserRow, "pl-8")
 export const modelBrowserGroupRow = cn(modelBrowserRow, "w-full pr-9")
-export const modelBrowserSelectedRow = "bg-accent text-accent-foreground"
+export const modelBrowserSelectedRow = "bg-accent text-accent-foreground hover:bg-accent"
+export const modelBrowserHighlightedRow =
+  "bg-accent hover:bg-accent after:pointer-events-none after:absolute after:inset-0 after:z-10 after:rounded-[inherit] after:ring-1 after:ring-primary after:ring-inset"
 export const modelBrowserCount = "ml-auto text-xs tabular-nums text-muted-foreground"
-export const modelBrowserItem = "flex min-w-0 items-center rounded-sm pr-1 hover:bg-accent/50"
+export const modelBrowserItem = cn(
+  "relative flex min-w-0 items-center rounded-sm pr-1 hover:bg-accent/50",
+  "[&>[role=treeitem]:hover]:bg-transparent",
+)

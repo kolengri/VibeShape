@@ -59,6 +59,7 @@ type PendingReview = {
 export function createAutomationReviewController() {
   let state: AutomationReviewState | null = null
   let pending: PendingReview | null = null
+  let draftPresentation: { owner: symbol; viewport: AutomationDraftViewport } | null = null
   const listeners = new Set<() => void>()
 
   function publish(next: AutomationReviewState | null) {
@@ -91,6 +92,7 @@ export function createAutomationReviewController() {
     draftViewport: AutomationDraftViewport | null = null,
   ): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
+    draftPresentation = null
     const expiresIn = hasReviewDeadline(input) ? Date.parse(expiresAt(input)) - Date.now() : null
     if (expiresIn !== null && (!Number.isFinite(expiresIn) || expiresIn <= 0))
       return Promise.resolve("cancelled")
@@ -163,9 +165,19 @@ export function createAutomationReviewController() {
     cancel,
     complete,
     clearDraftViewport(owner: symbol) {
+      if (draftPresentation?.owner === owner) {
+        draftPresentation = null
+        for (const listener of listeners) listener()
+      }
       if (pending?.owner === owner && state?.draftViewport)
         publish({ ...state, draftViewport: null })
     },
+    presentDraftViewport(owner: symbol, viewport: AutomationDraftViewport) {
+      if (pending) return
+      draftPresentation = { owner, viewport }
+      for (const listener of listeners) listener()
+    },
+    getDraftViewportSnapshot: () => draftPresentation?.viewport ?? null,
     dismiss(id: string) {
       if (state?.id === id && state.status === "error") publish(null)
     },

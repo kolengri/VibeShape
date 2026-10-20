@@ -1,8 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
-import type { ComponentType } from "react"
-import type { DocumentControllerState } from "../../document/document-controller"
+import { type ComponentType, useEffect } from "react"
+import { type DocumentControllerState, getProjectRuntime } from "../../document/document-controller"
 import { useReportApplicationError } from "../../shell/application-notices"
+import { assistantCheckpointForController } from "../../shell/assistant-checkpoint-display"
 import { ResponsiveTaskPanel } from "../../shell/responsive-task-panel"
 import { WorkspacePanels } from "../../shell/workspace-panels"
 import { AssemblyAsBuiltJointForm, AssemblyRigidGroupForm } from "./assembly-as-built-form"
@@ -267,6 +268,34 @@ function AssemblyPanel({
     </ResponsiveTaskPanel>
   )
 }
+function useAssemblyScenePresentation(
+  controller: DocumentControllerState,
+  view: AssemblyWorkspaceView,
+  motion: AssemblyMotionSession,
+  study: AssemblyMotionStudySession,
+) {
+  const preview = study.motion.inspection ?? motion.state.inspection
+  const checkpoint = assistantCheckpointForController(controller)
+  useEffect(() => {
+    if (checkpoint && (!view.idle || view.removal))
+      getProjectRuntime(checkpoint.documentId)?.clearAssistantCheckpointPreview()
+  }, [checkpoint, view.idle, view.removal])
+  if (checkpoint) {
+    return {
+      inspection: checkpoint.assembly,
+      selectedId: null,
+      readOnly: true,
+      showMotionPreview: false,
+    }
+  }
+  return {
+    inspection: preview ?? view.inspection.inspection,
+    selectedId: view.selected.activeId,
+    readOnly: false,
+    showMotionPreview: preview !== null,
+  }
+}
+
 export function AssemblyWorkspace({
   controller,
   selectedPartId,
@@ -277,7 +306,7 @@ export function AssemblyWorkspace({
   const view = useAssemblyWorkspace(controller)
   const motion = useAssemblyMotionSession(view)
   const study = useAssemblyMotionStudySession(view)
-  const preview = study.motion.inspection ?? motion.state.inspection
+  const presentation = useAssemblyScenePresentation(controller, view, motion, study)
   return (
     <>
       <WorkspacePanels
@@ -304,12 +333,13 @@ export function AssemblyWorkspace({
         }
       >
         <AssemblyViewport
-          inspection={preview ?? view.inspection.inspection}
-          selectedId={view.selected.activeId}
+          inspection={presentation.inspection}
+          selectedId={presentation.selectedId}
           onSelect={view.selectInstance}
           autoFit={!view.motionActive}
+          readOnly={presentation.readOnly}
         />
-        <AssemblyMotionPreviewBadge visible={preview !== null} />
+        <AssemblyMotionPreviewBadge visible={presentation.showMotionPreview} />
       </WorkspacePanels>
       {view.removal && (
         <AssemblyRemoveDialog

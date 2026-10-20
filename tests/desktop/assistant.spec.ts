@@ -88,16 +88,11 @@ async function ready(page: Page) {
   await expect(panel(page).getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
   await expect(panel(page).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
 }
-async function enableProjectAccess(page: Page) {
+async function waitForNativeProjectAccess(page: Page) {
   const paired = page.getByRole("button", { name: "AI connection and approval mode", exact: true })
-  await expect(async () => {
-    if (await paired.isVisible()) return
-    await page
-      .getByRole("button", { name: "Enable AI session", exact: true })
-      .click({ timeout: 1000 })
-  }).toPass({ timeout: 30_000 })
-  await expect(paired).toHaveText("AI access on · Approve each change")
+  await expect(paired).toHaveText("AI access on · Auto-apply on", { timeout: 30_000 })
 }
+
 async function chooseCustomAgent(page: Page) {
   await panel(page).getByRole("combobox", { name: "Agent", exact: true }).click()
   await page.getByRole("option", { name: "Custom ACP agent", exact: true }).click()
@@ -503,7 +498,7 @@ test("embedded agent reads its project automatically and preserves explicit Stop
     await expect(transcript(page)).toContainText(`MCP project identity: ${scope.projectId}`)
     await expect(
       page.getByRole("button", { name: "AI connection and approval mode", exact: true }),
-    ).toHaveText("AI access on · Approve each change")
+    ).toHaveText("AI access on · Auto-apply on")
     await ready(page)
     const { document } = localConnectRequestSchema.parse((await pairingRequest).postDataJSON())
     expect(document.id).toBe(scope.projectId)
@@ -555,7 +550,7 @@ test("native agent builds its own project in the background while another projec
     await watchSnapshots(page)
     await connectFixture(page, receipt, true)
     const first = await snapshot(page)
-    await enableProjectAccess(page)
+    await waitForNativeProjectAccess(page)
     await send(page, "mcp-background-box")
     await expect(transcript(page)).toContainText("Background box waiting")
     await tabs(page).getByRole("tab", { name: "Agent project B", exact: true }).click()
@@ -564,16 +559,16 @@ test("native agent builds its own project in the background while another projec
     const second = await snapshot(page, secondId ?? undefined)
     expect(second.projectId).toBe(secondId)
     expect(second.sessionToken).not.toBe(first.sessionToken)
-    await enableProjectAccess(page)
+    await waitForNativeProjectAccess(page)
     await send(page, "mcp-info")
     await expect(transcript(page)).toContainText(`MCP project identity: ${second.projectId}`)
     await ready(page)
     await writeFile(`${receipt}.${first.sessionId}.build`, "continue in background")
     await expect
       .poll(async () =>
-        (await agentRecords(receipt)).filter((entry) => entry.event === "draft-preview"),
+        (await agentRecords(receipt)).filter((entry) => entry.event === "draft-committed"),
       )
-      .toEqual([expect.objectContaining({ projectId: first.projectId, geometryStatus: "valid" })])
+      .toEqual([expect.objectContaining({ projectId: first.projectId })])
     await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
       "data-rendered-feature-count",
       "0",
@@ -591,18 +586,9 @@ test("native agent builds its own project in the background while another projec
     await tabs(page).getByRole("tab", { name: "Agent project A", exact: true }).click()
     await openChat(page)
     expect(await snapshot(page, first.projectId)).toEqual(first)
-    const review = page.getByRole("region", { name: "Review AI changes", exact: true })
-    await expect(review).toBeVisible()
-    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
-      "data-preview-status",
-      "ready",
+    await expect(page.getByRole("region", { name: "Review AI changes", exact: true })).toHaveCount(
+      0,
     )
-    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
-      "data-preview-feature-count",
-      "1",
-    )
-    await page.screenshot({ path: test.info().outputPath("native-project-a-exact-preview.png") })
-    await review.getByRole("button", { name: "Apply", exact: true }).click()
     await expect(transcript(page)).toContainText("Agent project A box saved in its own project.")
     await ready(page)
     await expect(
@@ -616,6 +602,33 @@ test("native agent builds its own project in the background while another projec
       "data-preview-feature-count",
       "0",
     )
+    await panel(page).getByRole("button", { name: "View before", exact: true }).click()
+    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
+      "data-rendered-feature-count",
+      "0",
+    )
+    await expect(
+      page.getByRole("treeitem", { name: "Agent project A box", exact: true }),
+    ).toBeVisible()
+    await panel(page).getByRole("button", { name: "View current", exact: true }).click()
+    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
+      "data-rendered-feature-count",
+      "1",
+    )
+    await panel(page).getByRole("button", { name: "Undo agent changes", exact: true }).click()
+    await expect(
+      page.getByRole("treeitem", { name: "Agent project A box", exact: true }),
+    ).toHaveCount(0)
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Redo", exact: true })
+      .click()
+    await expect(
+      page.getByRole("treeitem", { name: "Agent project A box", exact: true }),
+    ).toBeVisible()
+    await page.screenshot({
+      path: test.info().outputPath("native-project-a-saved-and-restored.png"),
+    })
     await tabs(page).getByRole("tab", { name: "Agent project B", exact: true }).click()
     await openChat(page)
     await ready(page)

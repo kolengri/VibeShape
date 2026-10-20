@@ -1,5 +1,9 @@
 import { openAuthorityDocumentSession } from "@vibeshape/application/authority-document-session"
 import { createAuthorityPersistenceAdapter } from "@vibeshape/application/authority-persistence-adapter"
+import {
+  createDisposableDocumentPreview,
+  type DisposableDocumentPreview,
+} from "@vibeshape/application/disposable-document-preview"
 import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
 import { createModelDiagnosticsEvidence } from "@vibeshape/application/model-diagnostics"
 import { createModelEdgeEvidence } from "@vibeshape/application/model-edges"
@@ -9,6 +13,8 @@ import {
 } from "@vibeshape/application/model-measurements"
 import {
   createPersistentDocumentSession,
+  type DocumentHistoryCheckpoint,
+  type DocumentHistoryPreview,
   type PersistentDocumentHistoryResult,
   type PersistentDocumentRepositoryPort,
   type PersistentDocumentSession,
@@ -156,6 +162,7 @@ import {
   isPlanarImportReview,
 } from "../automation/automation-review-state"
 import { createBinaryExportSession } from "../automation/binary-export-session"
+import { createConnectedAssistantReviews } from "../automation/connected-assistant-reviews"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import { createImportAutomationSession } from "../automation/import-automation-session"
@@ -176,6 +183,7 @@ import { createBrowserSurfaceTextureAutomationSession } from "../automation/surf
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { lightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
+import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-presentation"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { copyBrowserPortableProject, portableProjectFromArchive } from "./authored-project-file"
 import { createAutomationLibraryPort } from "./browser-library-repository"
@@ -193,6 +201,7 @@ type ControllerStatus = "idle" | "loading" | "library" | "ready" | "error"
 type SaveStatus = "saved" | "saving" | "save-error"
 
 export type DocumentControllerState = Readonly<{
+  assistantCheckpointPresentation?: AssistantCheckpointPresentation | null
   status: ControllerStatus
   report: PersistentDocumentSessionReport | null
   authoredSnapshot?: DocumentAuthoritySnapshot | null
@@ -313,6 +322,30 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   const listeners = new Set<() => void>()
   const projectActionGuard = createProjectActionGuard()
   const registerProjectActionGuard = projectActionGuard.register
+  let checkpointPreview: DisposableDocumentPreview | null = null
+  let checkpointPreviewAbort: AbortController | null = null
+  let checkpointPreviewEpoch = 0
+  let checkpointPreviewBase: {
+    documentId: string
+    revision: number
+    handle: DocumentHistoryCheckpoint
+    session: PersistentDocumentSession
+  } | null = null
+
+  function invalidateAssistantCheckpointPreview() {
+    checkpointPreviewEpoch += 1
+    checkpointPreview?.dispose()
+    checkpointPreview = null
+    checkpointPreviewAbort?.abort()
+    checkpointPreviewAbort = null
+    checkpointPreviewBase = null
+  }
+
+  function clearAssistantCheckpointPreview() {
+    invalidateAssistantCheckpointPreview()
+    if (state.assistantCheckpointPresentation)
+      publish({ ...state, assistantCheckpointPresentation: null })
+  }
 
   function dismissProjectNavigationError() {
     publish({ ...state, projectNavigationError: null })
@@ -390,7 +423,23 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     }
   }
 
+  function checkpointPreviewStale(next: DocumentControllerState) {
+    const base = checkpointPreviewBase
+    if (!base) return false
+    return (
+      session !== base.session ||
+      next.status !== "ready" ||
+      next.saveStatus === "saving" ||
+      next.report?.snapshot.id !== base.documentId ||
+      next.report.snapshot.revision !== base.revision
+    )
+  }
+
   function publish(next: DocumentControllerState) {
+    if (checkpointPreviewStale(next)) {
+      invalidateAssistantCheckpointPreview()
+      next = { ...next, assistantCheckpointPresentation: null }
+    }
     state = {
       ...next,
       historyInsertion: reconcileHistoryInsertion(state, next),
@@ -819,7 +868,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   }
 
   // Only trusted browser composition may create a handle; MCP pairing and review remain separate gates.
-  function createActiveDocumentAutomationSession() {
+  function createActiveDocumentAutomationSession(
+    options: Readonly<{ approvalPolicy?: "connected-assistant" }> = {},
+  ) {
     const active = session
     const repository = activeRepository
     if (!active || !repository || state.status !== "ready" || !state.report)
@@ -838,6 +889,12 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       activeRepository === capturedRepository &&
       state.status === "ready" &&
       capturedSession.snapshot.id === capturedDocumentId
+    // This trusted host policy is selected by the built-in chat, never by tool arguments.
+    // Exact validation, captured project authority, cancellation and persistence still run.
+    const reviews =
+      options.approvalPolicy === "connected-assistant"
+        ? createConnectedAssistantReviews(automationReviews, sourceSessionAvailable)
+        : automationReviews
     async function materializeAutomationSourceAssets(input: unknown) {
       const document = documentSnapshotSchema.parse(input)
       if (!sourceSessionAvailable() || document.id !== capturedDocumentId)
@@ -892,7 +949,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
             commitActiveAutomationDraft(active, draft, commands),
         },
       },
-      automationReviews,
+      reviews,
     )
     if (!factory.ok) return factory
     const queryDispatcher = createQueryDispatcher(
@@ -1062,7 +1119,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         isActive: () => currentReport() !== null,
         commit: (command, expected) => commitReviewedMetadata(active, command, expected),
       },
-      automationReviews,
+      reviews,
     )
     function readSourceContext() {
       const snapshot = currentReport() ? active?.authoredSnapshot : null
@@ -1082,15 +1139,15 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         createId: browserUuidV7,
         readContext: readSourceContext,
         async commit(input) {
-          if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
+          if (!sourceSessionAvailable() || !importReviewedInputMatches(input, reviews))
             return localFailure(
               "import-review-mismatch",
               "The captured import review no longer matches.",
             )
-          return commitReviewedImport(active, input)
+          return commitReviewedImport(active, input, reviews)
         },
       },
-      automationReviews,
+      reviews,
     )
     const lightweightingConfiguration = {
       documentId: capturedDocumentId,
@@ -1099,21 +1156,21 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       readContext: readSourceContext,
       readSource: (partId: string) => lightweightingSource(state, partId, "full"),
       async commit(input: ImportReviewedCommit) {
-        if (!sourceSessionAvailable() || !importReviewedInputMatches(input))
+        if (!sourceSessionAvailable() || !importReviewedInputMatches(input, reviews))
           return localFailure(
             "import-review-mismatch",
             "The captured lightweighting review no longer matches.",
           )
-        return commitReviewedImport(active, input)
+        return commitReviewedImport(active, input, reviews)
       },
     }
     const lightweighting = createBrowserLightweightingAutomationSession(
       lightweightingConfiguration,
-      automationReviews,
+      reviews,
     )
     const quickLightweighting = createBrowserQuickLightweightingAutomationSession(
       lightweightingConfiguration,
-      automationReviews,
+      reviews,
     )
     const planarImports = createPlanarImportAutomationSession(
       {
@@ -1122,15 +1179,15 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         createId: browserUuidV7,
         readContext: readSourceContext,
         async commit(input) {
-          if (!sourceSessionAvailable() || !planarImportReviewedInputMatches(input))
+          if (!sourceSessionAvailable() || !planarImportReviewedInputMatches(input, reviews))
             return localFailure(
               "planar-import-review-mismatch",
               "The captured planar import review no longer matches.",
             )
-          return commitReviewedPlanarImport(active, input)
+          return commitReviewedPlanarImport(active, input, reviews)
         },
       },
-      automationReviews,
+      reviews,
     )
     const assembly = createBrowserAssemblyAutomationSession(
       {
@@ -1198,9 +1255,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
               }
             : assemblyPortFailure(result.diagnostic)
         },
-        commit: (input) => commitReviewedAssembly(active, input),
+        commit: (input) => commitReviewedAssembly(active, input, reviews),
       },
-      automationReviews,
+      reviews,
     )
     const history = createBrowserHistoryAutomationSession(
       {
@@ -1243,9 +1300,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
               : {}),
           }
         },
-        commit: (input) => commitReviewedHistory(active, input),
+        commit: (input) => commitReviewedHistory(active, input, reviews),
       },
-      automationReviews,
+      reviews,
     )
     function texturePreviewAvailable(input: SurfaceTextureReviewedInput) {
       if (
@@ -1254,7 +1311,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         assemblyEditorDraftBlock()
       )
         return false
-      const review = automationReviews.getSnapshot()
+      const review = reviews.getSnapshot()
       return (
         !review || review.status === "error" || surfaceTextureReviewedInputMatches(review, input)
       )
@@ -1296,12 +1353,12 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         },
         commit: (input) =>
           sourceSessionAvailable()
-            ? commitReviewedSurfaceTexture(active, input)
+            ? commitReviewedSurfaceTexture(active, input, reviews)
             : Promise.resolve(
                 localFailure("session-revoked", "The texture source session is unavailable."),
               ),
       },
-      automationReviews,
+      reviews,
     )
     const exports = createBinaryExportSession({
       documentId: capturedDocumentId,
@@ -1514,10 +1571,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function publishHistoryNavigation(
     activeSession: PersistentDocumentSession,
     request: HistoryRequest,
+    checkpoint?: DocumentHistoryCheckpoint,
   ): Promise<PersistentDocumentHistoryResult> {
     publish({ ...state, saveStatus: "saving", diagnostic: null })
     try {
-      const result = await activeSession.navigateHistory(request)
+      const result = checkpoint
+        ? await activeSession.restoreHistoryCheckpoint(checkpoint, request)
+        : await activeSession.navigateHistory(request)
       if (!result.ok) {
         if (session === activeSession)
           publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
@@ -1552,6 +1612,147 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     return navigateDocumentHistory("undo", baseRevision)
   }
 
+  function createAssistantCheckpointPort() {
+    if (!session || !activeRepository || state.status !== "ready") return null
+    const active = session
+    const repository = activeRepository
+    const documentId = active.snapshot.id
+    const available = () =>
+      session === active && state.status === "ready" && active.snapshot.id === documentId
+    const matches = (handle: DocumentHistoryCheckpoint, revision: number) => {
+      const checkpoint = active.readHistoryCheckpoint(handle)
+      return checkpoint?.changed === true && checkpoint.revision === revision
+    }
+    function previewTarget(handle: DocumentHistoryCheckpoint, revision: number) {
+      if (!available() || state.saveStatus === "saving" || assemblySourceCaptureBlock()) return null
+      return matches(handle, revision) ? active.previewHistoryCheckpoint(handle) : null
+    }
+    function createCheckpointPreview(target: DocumentHistoryPreview, current: () => boolean) {
+      return createDisposableDocumentPreview({
+        mesh: PRODUCT_MESH_POLICY,
+        retainRebuild: true,
+        createRebuildPort: (id) =>
+          createDocumentWorkerSession(id, {
+            materializeSourceAssets: async () => {
+              if (!current()) throw new Error("The internal checkpoint source changed.")
+              const assets = await repository.materializeCapturedSourceAssets(target.authority)
+              if (!current()) throw new Error("The internal checkpoint source changed.")
+              return assets
+            },
+          }),
+      })
+    }
+    async function previewCheckpointAssembly(
+      target: DocumentHistoryPreview,
+      revision: number,
+      signal: AbortSignal,
+    ) {
+      const authority = target.authority
+      if (authority.schemaVersion !== 4 && authority.schemaVersion !== 5) return null
+      if (!authority.assembly.instances.length) return null
+      const result = await inspectCapturedAssembly(
+        { active, repository, authority: promoteDocumentSnapshotV4(authority) },
+        [],
+        [],
+        revision,
+        signal,
+      )
+      return result.inspection
+    }
+    function finishCheckpointPreview(preview: DisposableDocumentPreview, epoch: number) {
+      preview.dispose()
+      if (checkpointPreview === preview) checkpointPreview = null
+      if (epoch === checkpointPreviewEpoch && !state.assistantCheckpointPresentation)
+        clearAssistantCheckpointPreview()
+    }
+    return {
+      subscribe: subscribeDocumentController,
+      isSettled: () => available() && state.saveStatus !== "saving" && !active.hasPendingOperations,
+      settleAccepted: async () => {
+        const revision = await active.settleAcceptedOperations()
+        return available() ? revision : null
+      },
+      capture: (acceptsActor: (actor: CommandActor) => boolean) =>
+        available() && state.saveStatus !== "saving" && !active.hasPendingOperations
+          ? active.captureHistoryCheckpoint(acceptsActor)
+          : null,
+      read: (handle: DocumentHistoryCheckpoint) =>
+        available() ? active.readHistoryCheckpoint(handle) : null,
+      release: (handle: DocumentHistoryCheckpoint) => active.releaseHistoryCheckpoint(handle),
+      seal: (handle: DocumentHistoryCheckpoint, revision: number) =>
+        available() && active.sealHistoryCheckpoint(handle, revision),
+      clearPreview: clearAssistantCheckpointPreview,
+      isViewingBefore: (handle: DocumentHistoryCheckpoint) =>
+        checkpointPreviewBase?.handle === handle &&
+        state.assistantCheckpointPresentation !== null &&
+        state.assistantCheckpointPresentation !== undefined,
+      async viewBefore(handle: DocumentHistoryCheckpoint, revision: number) {
+        const target = previewTarget(handle, revision)
+        if (!target) return false
+        clearAssistantCheckpointPreview()
+        checkpointPreviewBase = { documentId, revision, handle, session: active }
+        const epoch = checkpointPreviewEpoch,
+          abort = new AbortController()
+        checkpointPreviewAbort = abort
+        const current = () =>
+          epoch === checkpointPreviewEpoch &&
+          available() &&
+          active.snapshot.revision === revision &&
+          matches(handle, revision)
+        const preview = createCheckpointPreview(target, current)
+        checkpointPreview = preview
+        try {
+          const result = await preview.preview(target.snapshot)
+          if (!result.ok || !result.valid || !result.rebuild || !current()) return false
+          const assembly = await previewCheckpointAssembly(target, revision, abort.signal)
+          if (!current()) return false
+          publish({
+            ...state,
+            assistantCheckpointPresentation: {
+              kind: "assistant-checkpoint",
+              documentId,
+              baseRevision: revision,
+              target,
+              rebuild: result.rebuild,
+              assembly,
+            },
+          })
+          return true
+        } catch {
+          return false
+        } finally {
+          finishCheckpointPreview(preview, epoch)
+        }
+      },
+      async restore(handle: DocumentHistoryCheckpoint, revision: number) {
+        const review = automationReviews.getSnapshot()
+        if (
+          !available() ||
+          state.saveStatus === "saving" ||
+          assemblyEditorDraftBlock() ||
+          (review && review.status !== "error")
+        )
+          return false
+        const checkpoint = active.readHistoryCheckpoint(handle)
+        if (!checkpoint?.changed || checkpoint.revision !== revision) return false
+        clearAssistantCheckpointPreview()
+        const result = await publishHistoryNavigation(
+          active,
+          historyRequestSchema.parse({
+            direction: "undo",
+            commandId: browserUuidV7(),
+            documentId,
+            baseRevision: revision,
+            issuedAt: new Date().toISOString(),
+            actor: { type: "user", userId: null },
+          }),
+          handle,
+        )
+        return result.ok
+      },
+    }
+  }
+
   function redoDocument(baseRevision: number) {
     return navigateDocumentHistory("redo", baseRevision)
   }
@@ -1581,8 +1782,11 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     return base && base.schemaVersion !== 1 && base.revision === baseRevision ? base : null
   }
 
-  function planarImportReviewedInputMatches(input: PlanarImportReviewedCommit) {
-    const review = automationReviews.getSnapshot()
+  function planarImportReviewedInputMatches(
+    input: PlanarImportReviewedCommit,
+    reviews = automationReviews,
+  ) {
+    const review = reviews.getSnapshot()
     if (review?.status !== "applying" || !isPlanarImportReview(review.input)) return false
     return (
       commandActorsEqual(review.input.actor, input.actor) &&
@@ -1601,12 +1805,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function commitReviewedPlanarImport(
     active: PersistentDocumentSession,
     input: PlanarImportReviewedCommit,
+    reviews = automationReviews,
   ) {
     if (
       !reviewedMetadataBase(active, input.draft.baseRevision) ||
       active.snapshot.id !== input.draft.documentId ||
       projectActionGuard.read((block) => block !== "automation-busy") ||
-      !planarImportReviewedInputMatches(input)
+      !planarImportReviewedInputMatches(input, reviews)
     )
       return localFailure(
         "stale-revision",
@@ -1624,8 +1829,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       : localFailure(result.diagnostic.code, result.diagnostic.message, result.diagnostic.retryable)
   }
 
-  function importReviewedInputMatches(input: ImportReviewedCommit) {
-    const review = automationReviews.getSnapshot()
+  function importReviewedInputMatches(input: ImportReviewedCommit, reviews = automationReviews) {
+    const review = reviews.getSnapshot()
     if (review?.status !== "applying" || !isImportReview(review.input)) return false
     const expected = review.input
     return (
@@ -1647,12 +1852,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function commitReviewedImport(
     active: PersistentDocumentSession,
     input: ImportReviewedCommit,
+    reviews = automationReviews,
   ) {
     if (
       !reviewedMetadataBase(active, input.draft.baseRevision) ||
       active.snapshot.id !== input.draft.documentId ||
       projectActionGuard.read((block) => block !== "automation-busy") ||
-      !importReviewedInputMatches(input)
+      !importReviewedInputMatches(input, reviews)
     )
       return localFailure(
         "stale-revision",
@@ -1989,8 +2195,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       request.documentId === active.snapshot.id
     )
   }
-  function historyReviewMatches(input: HistoryCommitInput) {
-    const visible = automationReviews.getSnapshot()
+  function historyReviewMatches(input: HistoryCommitInput, reviews = automationReviews) {
+    const visible = reviews.getSnapshot()
     if (
       visible?.status !== "applying" ||
       !("kind" in visible.input) ||
@@ -2005,9 +2211,10 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function commitReviewedHistory(
     active: PersistentDocumentSession,
     input: HistoryCommitInput,
+    reviews = automationReviews,
   ) {
     const request = input.review.request
-    if (!historyBaseWritable(active, request) || !historyReviewMatches(input))
+    if (!historyBaseWritable(active, request) || !historyReviewMatches(input, reviews))
       return {
         ok: false as const,
         diagnostic: {
@@ -2050,8 +2257,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   }
   function assemblyReviewedInputMatches(
     input: Parameters<AssemblySessionConfiguration["commit"]>[0],
+    reviews = automationReviews,
   ) {
-    const review = automationReviews.getSnapshot()
+    const review = reviews.getSnapshot()
     if (
       review?.status !== "applying" ||
       !("kind" in review.input) ||
@@ -2070,9 +2278,10 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function commitReviewedAssembly(
     active: PersistentDocumentSession,
     input: Parameters<AssemblySessionConfiguration["commit"]>[0],
+    reviews = automationReviews,
   ) {
     const base = reviewedMetadataBase(active, input.baseRevision)
-    if (!base || assemblyEditorDraftBlock() || !assemblyReviewedInputMatches(input))
+    if (!base || assemblyEditorDraftBlock() || !assemblyReviewedInputMatches(input, reviews))
       return assemblyPortFailure({
         code: "stale-revision",
         message: "The reviewed assembly base is no longer writable.",
@@ -2099,10 +2308,11 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   function reviewedSurfaceTextureBase(
     active: PersistentDocumentSession,
     input: SurfaceTextureReviewedInput,
+    reviews = automationReviews,
   ) {
     const base = reviewedMetadataBase(active, input.draft.baseRevision)
     if (!base || input.command.documentId !== base.id) return null
-    const review = automationReviews.getSnapshot()
+    const review = reviews.getSnapshot()
     return review?.status === "applying" &&
       !assemblyEditorDraftBlock() &&
       surfaceTextureReviewedInputMatches(review, input)
@@ -2112,8 +2322,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function commitReviewedSurfaceTexture(
     active: PersistentDocumentSession,
     input: SurfaceTextureReviewedInput,
+    reviews = automationReviews,
   ) {
-    const base = reviewedSurfaceTextureBase(active, input)
+    const base = reviewedSurfaceTextureBase(active, input, reviews)
     if (!base)
       return localFailure(
         "stale-revision",
@@ -3173,6 +3384,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     createBrowserSketchConstraintId,
     getDocumentControllerState,
     createActiveDocumentAutomationSession,
+    createAssistantCheckpointPort,
+    clearAssistantCheckpointPreview,
     applyVariableTable,
     undoDocument,
     redoDocument,

@@ -1,15 +1,19 @@
+import type { OrientationMarkerAxis } from "./orientation-marker"
+
 type InsetPlacement = Readonly<{ x: number; y: number; size: number }>
 type InsetPoint = Readonly<{ x: number; y: number }>
 
 type OrientationInsetInteractionOptions = Readonly<{
   canvas: HTMLCanvasElement
   placement: () => InsetPlacement
-  canInteract: () => boolean
+  inputElement?: () => HTMLElement | SVGSVGElement | null
   navigationEnabled: () => boolean
   setNavigationEnabled: (enabled: boolean) => void
   onStart: () => void
+  onNavigationStart: () => void
   rotate: (dx: number, dy: number) => void
-  activate: (point: InsetPoint) => void
+  axisAt: (point: InsetPoint) => OrientationMarkerAxis | null
+  activate: (axis: OrientationMarkerAxis) => void
 }>
 
 type InsetGesture = {
@@ -17,7 +21,7 @@ type InsetGesture = {
   start: InsetPoint
   previous: InsetPoint
   dragged: boolean
-  enabled: boolean
+  navigationEnabled: boolean
   cursor: string
 }
 
@@ -32,9 +36,9 @@ export class OrientationInsetInteraction {
     const window = options.canvas.ownerDocument.defaultView
     if (!window) throw new Error("Orientation navigation requires a connected browser window.")
     this.#window = window
-    options.canvas.addEventListener("pointerdown", this.#pointerDown, true)
-    options.canvas.addEventListener("pointermove", this.#pointerHover, true)
     options.canvas.addEventListener("lostpointercapture", this.#pointerCancel, true)
+    window.addEventListener("pointerdown", this.#pointerDown, true)
+    window.addEventListener("pointermove", this.#pointerHover, true)
     window.addEventListener("pointermove", this.#pointerMove, true)
     window.addEventListener("pointerup", this.#pointerUp, true)
     window.addEventListener("pointercancel", this.#pointerCancel, true)
@@ -64,12 +68,18 @@ export class OrientationInsetInteraction {
     event.stopImmediatePropagation()
   }
 
+  #isDrawingInput(event: PointerEvent) {
+    const path = event.composedPath()
+    const input = this.#options.inputElement?.()
+    return path.includes(this.#options.canvas) || (input != null && path.includes(input))
+  }
+
   #pointerDown = (event: PointerEvent) => {
     if (this.#gesture) {
       this.#consume(event)
       return
     }
-    if (!event.isPrimary || event.button !== 0) return
+    if (!event.isPrimary || event.button !== 0 || !this.#isDrawingInput(event)) return
     const point = this.#point(event)
     if (!this.#insetPoint(point)) return
     this.#consume(event)
@@ -80,34 +90,35 @@ export class OrientationInsetInteraction {
       // A pointer that already ended must not leave navigation locked.
       return
     }
-    const enabled = this.#options.canInteract() && this.#options.navigationEnabled()
-    this.#options.onStart()
     this.#gesture = {
       pointerId: event.pointerId,
       start: point,
       previous: point,
       dragged: false,
-      enabled,
+      navigationEnabled: this.#options.navigationEnabled(),
       cursor: canvas.style.cursor,
     }
-    if (enabled) {
-      this.#options.setNavigationEnabled(false)
-      canvas.style.cursor = "grabbing"
-    }
+    this.#options.setNavigationEnabled(false)
+    this.#options.onStart()
+    canvas.style.cursor = "grabbing"
   }
 
   #pointerHover = (event: PointerEvent) => {
-    if (!event.buttons && this.#insetPoint(this.#point(event))) this.#consume(event)
+    if (this.#gesture) return
+    if (!event.buttons && this.#isDrawingInput(event) && this.#insetPoint(this.#point(event))) {
+      this.#consume(event)
+    }
   }
 
   #move(event: PointerEvent) {
     const gesture = this.#gesture
     if (!gesture || event.pointerId !== gesture.pointerId) return
     const point = this.#point(event)
-    if (Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > 3) {
+    if (!gesture.dragged && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > 3) {
       gesture.dragged = true
+      this.#options.onNavigationStart()
     }
-    if (gesture.dragged && gesture.enabled) {
+    if (gesture.dragged) {
       this.#options.rotate(point.x - gesture.previous.x, point.y - gesture.previous.y)
       gesture.previous = point
     }
@@ -126,7 +137,11 @@ export class OrientationInsetInteraction {
     this.#move(event)
     const point = this.#insetPoint(this.#point(event))
     this.cancel()
-    if (gesture.enabled && !gesture.dragged && point) this.#options.activate(point)
+    if (gesture.dragged || !point) return
+    const axis = this.#options.axisAt(point)
+    if (!axis) return
+    this.#options.onNavigationStart()
+    this.#options.activate(axis)
   }
 
   #pointerCancel = (event: PointerEvent) => {
@@ -140,7 +155,7 @@ export class OrientationInsetInteraction {
     if (!gesture) return
     this.#gesture = null
     const { canvas } = this.#options
-    if (gesture.enabled) this.#options.setNavigationEnabled(true)
+    this.#options.setNavigationEnabled(gesture.navigationEnabled)
     canvas.style.cursor = gesture.cursor
     if (canvas.hasPointerCapture(gesture.pointerId)) canvas.releasePointerCapture(gesture.pointerId)
   }
@@ -148,9 +163,9 @@ export class OrientationInsetInteraction {
   dispose() {
     this.cancel()
     const { canvas } = this.#options
-    canvas.removeEventListener("pointerdown", this.#pointerDown, true)
-    canvas.removeEventListener("pointermove", this.#pointerHover, true)
     canvas.removeEventListener("lostpointercapture", this.#pointerCancel, true)
+    this.#window.removeEventListener("pointerdown", this.#pointerDown, true)
+    this.#window.removeEventListener("pointermove", this.#pointerHover, true)
     this.#window.removeEventListener("pointermove", this.#pointerMove, true)
     this.#window.removeEventListener("pointerup", this.#pointerUp, true)
     this.#window.removeEventListener("pointercancel", this.#pointerCancel, true)

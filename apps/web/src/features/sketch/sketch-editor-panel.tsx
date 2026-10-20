@@ -331,6 +331,7 @@ function AppliedConstraintRow({
           size="xs"
           variant="ghost"
           className="min-w-0 flex-1 justify-start truncate px-0 font-normal hover:bg-transparent"
+          aria-pressed={selected}
           onClick={onSelect}
         >
           {constraintName(constraint.type, copy)}

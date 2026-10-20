@@ -273,20 +273,19 @@ function FeatureTreeLabel({
   renameDisabled: boolean
   selectionKey?: string | undefined
 }) {
-  const { compact, describedBy, selectionDescription } = useHistoryRowLabel({
+  const { timeline, compact, describedBy, selectionDescription } = useHistoryRowLabel({
     kind: "feature",
     id: feature.id,
   })
+  const presentation = historyLabelPresentation(timeline, compact, active)
   return (
     <>
       <Button
         type="button"
         variant="ghost"
-        size={compact ? "icon-sm" : "xs"}
+        size={presentation.size}
         className={cn(
-          "min-w-0 flex-1 font-normal",
-          compact ? "flex-none" : "justify-start pl-2",
-          active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+          presentation.className,
           feature.suppressed && "text-muted-foreground line-through decoration-dotted",
         )}
         role="treeitem"
@@ -358,6 +357,39 @@ type FeatureTreeItemProps = {
   selectionKey?: string | undefined
 }
 
+function FeatureTreeRow({
+  active,
+  feature,
+  onPreselectionChange,
+  visibilityAction,
+  renameDialog,
+  children,
+}: Pick<FeatureTreeItemProps, "active" | "feature" | "onPreselectionChange"> & {
+  visibilityAction: ReactNode
+  renameDialog: ReactNode
+  children: ReactNode
+}) {
+  const { timeline } = useContext(HistoryPresentation)
+  return (
+    <div
+      className={cn(
+        "group/history-item data-[feature-suppressed=true]:opacity-60",
+        timeline ? "relative flex min-w-0 items-center gap-0.5" : modelBrowserItem,
+        !timeline && active && modelBrowserSelectedRow,
+      )}
+      data-feature-suppressed={feature.suppressed}
+      onPointerEnter={() => onPreselectionChange(feature.id)}
+      onPointerLeave={() => onPreselectionChange(null)}
+      onPointerCancel={() => onPreselectionChange(null)}
+    >
+      {timeline && visibilityAction}
+      {children}
+      {!timeline && visibilityAction}
+      {renameDialog}
+    </div>
+  )
+}
+
 function FeatureTreeItem({
   active,
   controller,
@@ -375,7 +407,6 @@ function FeatureTreeItem({
   selectionKey,
 }: FeatureTreeItemProps) {
   const [renameOpen, setRenameOpen] = useState(false)
-  const { timeline } = useContext(HistoryPresentation)
   const actionsTriggerRef = useRef<HTMLButtonElement>(null)
   const label = feature.label ?? unnamedFeature
   const renameDisabled = modelTreeWriteUnavailable(controller)
@@ -387,18 +418,29 @@ function FeatureTreeItem({
       onChange={() => onVisibilityChange(feature.id, !visible)}
     />
   )
-  const [leadingVisibilityAction, trailingVisibilityAction] = timeline
-    ? [visibilityAction, null]
-    : [null, visibilityAction]
   return (
-    <div
-      className="group/history-item relative flex min-w-0 items-center gap-0.5 data-[feature-suppressed=true]:opacity-60"
-      data-feature-suppressed={feature.suppressed}
-      onPointerEnter={() => onPreselectionChange(feature.id)}
-      onPointerLeave={() => onPreselectionChange(null)}
-      onPointerCancel={() => onPreselectionChange(null)}
+    <FeatureTreeRow
+      active={active}
+      feature={feature}
+      onPreselectionChange={onPreselectionChange}
+      visibilityAction={visibilityAction}
+      renameDialog={
+        <ModelTreeRenameDialog
+          showTrigger={false}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            actionsTriggerRef.current?.focus()
+          }}
+          controller={controller}
+          fallbackName={unnamedFeature}
+          onFeatureRename={onFeatureRename}
+          onOpenChange={setRenameOpen}
+          onSketchRename={onSketchRename}
+          open={renameOpen}
+          target={{ kind: "feature", record: feature }}
+        />
+      }
     >
-      {leadingVisibilityAction}
       <FeatureTreeLabel
         active={active}
         feature={feature}
@@ -425,22 +467,7 @@ function FeatureTreeItem({
           triggerRef={actionsTriggerRef}
         />
       </HistoryItemActions>
-      {trailingVisibilityAction}
-      <ModelTreeRenameDialog
-        showTrigger={false}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault()
-          actionsTriggerRef.current?.focus()
-        }}
-        controller={controller}
-        fallbackName={unnamedFeature}
-        onFeatureRename={onFeatureRename}
-        onOpenChange={setRenameOpen}
-        onSketchRename={onSketchRename}
-        open={renameOpen}
-        target={{ kind: "feature", record: feature }}
-      />
-    </div>
+    </FeatureTreeRow>
   )
 }
 
@@ -541,9 +568,15 @@ function SketchVisibilityAction({
   )
 }
 
-function sketchLabelSize(timeline: boolean, compact: boolean) {
-  if (compact) return "icon-sm"
-  return timeline ? "xs" : "sm"
+function historyLabelPresentation(timeline: boolean, compact: boolean, active: boolean) {
+  return {
+    size: compact ? ("icon-sm" as const) : timeline ? ("xs" as const) : ("sm" as const),
+    className: cn(
+      "min-w-0 flex-1 font-normal",
+      timeline ? (compact ? "flex-none" : "justify-start pl-2") : modelBrowserChildRow,
+      timeline && active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+    ),
+  }
 }
 
 function SketchTreeLabelButton({
@@ -568,17 +601,14 @@ function SketchTreeLabelButton({
     id: sketchId,
   })
   const t = useTranslations("app.shell.modelTree")
+  const presentation = historyLabelPresentation(timeline, compact, active)
   return (
     <>
       <Button
         type="button"
         variant="ghost"
-        size={sketchLabelSize(timeline, compact)}
-        className={cn(
-          "min-w-0 flex-1 font-normal",
-          timeline ? (compact ? "flex-none" : "justify-start pl-2") : modelBrowserChildRow,
-          timeline && active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-        )}
+        size={presentation.size}
+        className={presentation.className}
         role="treeitem"
         tabIndex={-1}
         aria-selected={active}
@@ -1020,7 +1050,7 @@ function DatumPlaneBrowserItem({
       data-highlighted={feature.id === props.highlightedFeatureId ? "true" : undefined}
       disabled={busy || rolledBack}
       className={cn(
-        "min-w-0 pl-6",
+        "min-w-0",
         rolledBack && "opacity-60",
         feature.id === props.highlightedFeatureId && "bg-accent/60",
       )}

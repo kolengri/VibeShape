@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { cp, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { distributionHash } from "../../scripts/local-distribution-files"
 import { desktopMessage as t } from "./src/messages"
 
@@ -59,6 +60,13 @@ async function configureImage(image: string, mountPoint: string, run: DmgTool) {
       } catch (error) {
         failures.push(error)
       }
+      if (failures.length === 0) {
+        try {
+          run("diskutil", ["renameVolume", mountPoint, "VibeShape"])
+        } catch (error) {
+          failures.push(error)
+        }
+      }
     }
     try {
       detachImage(mountPoint, run)
@@ -73,7 +81,8 @@ async function configureImage(image: string, mountPoint: string, run: DmgTool) {
 export async function createDmgImage(input: DmgInput, run: DmgTool = runDmgTool) {
   const image = join(input.stage, "image")
   const background = join(image, ".background")
-  const mountPoint = join(input.stage, "installer-mount")
+  const volumeName = `VibeShape-layout-${randomUUID()}`
+  const mountPoint = resolve(input.stage, volumeName)
   await mkdir(background, { recursive: true })
   await mkdir(mountPoint)
   await cp(input.appPath, join(image, "VibeShape.app"), { recursive: true, verbatimSymlinks: true })
@@ -90,7 +99,7 @@ export async function createDmgImage(input: DmgInput, run: DmgTool = runDmgTool)
   run("hdiutil", [
     "create",
     "-volname",
-    "VibeShape",
+    volumeName,
     "-fs",
     "HFS+",
     "-srcfolder",
