@@ -22,8 +22,9 @@ const text = value => update({sessionUpdate:"agent_message_chunk",content:{type:
 const threadStatus = type => update({sessionUpdate:"session_info_update",_meta:{codex:{threadStatus:{type}}}});
 const afterSignal = (name, action) => {
  const fs = require("node:fs"), path = require("node:path").join(__dirname,name);
- const check = () => { if (fs.existsSync(path)) { watcher.close(); action(); } };
- const watcher = fs.watch(__dirname,check);
+ let triggered = false;
+ const check = () => { if (!triggered && fs.existsSync(path)) { triggered = true; fs.unwatchFile(path,check); action(); } };
+ fs.watchFile(path,{interval:10},check);
  check();
 };
 const gatedFallback = prefix => afterSignal(prefix+"-start",()=>{

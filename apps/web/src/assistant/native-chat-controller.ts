@@ -30,12 +30,20 @@ type QueuedPrompt = {
   attachments: readonly AssistantAttachment[]
   started: boolean
 }
+type PromptTurn = {
+  queuedPrompt: QueuedPrompt | undefined
+  transcript: readonly ChatMessage[] | null
+  continued: boolean
+}
 type QueuedSteer = {
   item: QueuedPrompt
   token: symbol
   generation: number
   historyTailId: string | null
   checkpoint: symbol | null
+  prompt: PromptTurn | null
+  settled: Promise<void>
+  settle: () => void
 }
 type ChatState = Readonly<
   {
@@ -95,14 +103,15 @@ export function createNativeChatController({
   }
   let disposed = false
   let generation = 0
+  let snapshotEpoch = 0
   let agent: AssistantAgent | null = null
   let connecting: number | null = null
   let unsubscribe: (() => void) | undefined
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let promptInFlight = false
   let activeControl: symbol | null = null
-  let activeQueuedPrompt: QueuedPrompt | undefined
-  let activePromptTranscript: readonly ChatMessage[] | null = null
+  let activePrompt: PromptTurn | null = null
+  let terminalToolStatus: "cancelled" | "failed" | undefined
   const queued: QueuedPrompt[] = []
   let steering: QueuedSteer | null = null
   const questions = new Map<string, AssistantQuestion>()
@@ -151,17 +160,40 @@ export function createNativeChatController({
   }
   const scope = () =>
     state.snapshot ? { projectId, sessionToken: state.snapshot.sessionToken } : null
+  function snapshotToolStatus(
+    status: AssistantSnapshot["status"],
+  ): "cancelled" | "failed" | undefined {
+    switch (status) {
+      case "cancelling":
+      case "disconnected":
+        return "cancelled"
+      case "error":
+      case "authentication-required":
+        return "failed"
+      default:
+        return terminalToolStatus
+    }
+  }
+  function snapshotCurrent(snapshot: AssistantSnapshot, at: number, epoch: number) {
+    return isCurrent(at) && snapshotEpoch === epoch && state.snapshot === snapshot
+  }
   function acceptSnapshot(snapshot: AssistantSnapshot) {
+    const at = generation
+    const epoch = snapshotEpoch
+    const cleanup =
+      snapshot.status === "prompting" ? {} : clearTurnState(snapshotToolStatus(snapshot.status))
     publish({
+      ...cleanup,
       snapshot,
-      busy: ["prompting", "cancelling"].includes(snapshot.status),
+      busy: hostTurnActive(snapshot),
       supportsActiveSteer: snapshot.canSteer === true && typeof bridge.steer === "function",
     })
+    if (!snapshotCurrent(snapshot, at, epoch)) return
     if (agent && snapshot.canResume && snapshot.sessionId) {
       agentSession = { agent, sessionId: snapshot.sessionId }
       save()
     }
-    if (snapshot.status === "ready") {
+    if (snapshot.status === "ready" && snapshotCurrent(snapshot, at, epoch)) {
       settleCheckpoints()
       drainQueue()
     }
@@ -205,28 +237,41 @@ export function createNativeChatController({
     if (state.snapshot?.sessionToken === event.sessionToken) return true
     return state.connecting && event.type === "snapshot"
   }
-  function finishToolMessages(status?: "cancelled" | "failed") {
+  function finishToolState(status?: "cancelled" | "failed"): Partial<ChatState> {
+    let messages = state.messages
     if (status) {
       const owned = new Set([...toolMessages.values()].map(({ id }) => id))
-      const messages = state.messages.map((message) =>
+      messages = state.messages.map((message) =>
         owned.has(message.id) &&
         (message.tool?.status === "in_progress" || message.tool?.status === "pending")
           ? { ...message, tool: { ...message.tool, status } }
           : message,
       )
-      if (messages.some((message, index) => message !== state.messages[index]))
-        publish({ messages })
     }
     toolMessages.clear()
+    return messages.some((message, index) => message !== state.messages[index]) ? { messages } : {}
   }
-  function completeTurn(stopReason: string) {
+  function finishToolMessages(status?: "cancelled" | "failed") {
+    const patch = finishToolState(status)
+    if (patch.messages) publish(patch)
+  }
+  function hostTurnActive(snapshot = state.snapshot) {
+    return snapshot?.status === "prompting" || snapshot?.status === "cancelling"
+  }
+  function clearTurnState(status = terminalToolStatus): Partial<ChatState> {
     permissions.clear()
     questions.clear()
-    finishToolMessages(stopReason === "cancelled" ? "cancelled" : undefined)
+    const patch = finishToolState(status)
+    terminalToolStatus = undefined
+    return { ...patch, permission: null, question: null }
+  }
+  function completeTurn(stopReason: string) {
+    terminalToolStatus =
+      stopReason === "cancelled" ? "cancelled" : stopReason === "error" ? "failed" : undefined
+    // A predecessor RPC can complete while the same session still owns a continuation.
+    const active = hostTurnActive()
     publish({
-      busy: false,
-      permission: null,
-      question: null,
+      ...(!active ? { ...clearTurnState(), busy: false } : {}),
       ...(stopReason === "cancelled" ? { queuePaused: true } : {}),
     })
     save()
@@ -237,6 +282,15 @@ export function createNativeChatController({
     if (event.type === "question") questions.set(event.question.requestId, event.question)
     else questions.delete(event.requestId)
     publish({ question: questions.values().next().value ?? null })
+  }
+  function receiveError(code: AssistantErrorCode) {
+    if (!activePrompt?.continued) terminalToolStatus = "failed"
+    publish({
+      ...(!hostTurnActive() ? { ...clearTurnState(), busy: false } : {}),
+      error: code,
+      queuePaused: true,
+    })
+    save()
   }
   function dispatchEvent(event: AssistantEvent) {
     switch (event.type) {
@@ -263,22 +317,13 @@ export function createNativeChatController({
         completeTurn(event.stopReason)
         break
       case "error":
-        permissions.clear()
-        questions.clear()
-        finishToolMessages("failed")
-        publish({
-          error: event.code,
-          busy: false,
-          permission: null,
-          question: null,
-          queuePaused: true,
-        })
-        save()
+        receiveError(event.code)
         break
     }
   }
   function event(event: AssistantEvent) {
     if (!acceptsEvent(event)) return
+    if (event.type === "snapshot") snapshotEpoch += 1
     if (event.type === "question" || event.type === "question-resolved") receiveQuestion(event)
     else dispatchEvent(event)
   }
@@ -291,9 +336,10 @@ export function createNativeChatController({
   }
   async function run(action: () => Promise<AssistantResult>) {
     const at = generation
+    const snapshotAt = snapshotEpoch
     try {
       const result = await action()
-      if (isCurrent(at)) acceptResult(result)
+      if (isCurrent(at) && (!result.ok || snapshotEpoch === snapshotAt)) acceptResult(result)
       return result
     } catch {
       if (generation === at) publish({ error: "request-failed" })
@@ -306,7 +352,8 @@ export function createNativeChatController({
     const at = ++generation
     activeControl = null
     connecting = null
-    restoreQueued(activeQueuedPrompt)
+    if (!activePrompt?.continued) restoreQueued(activePrompt?.queuedPrompt)
+    steering?.settle()
     if (current) ignoredTokens.add(current.sessionToken)
     permissions.clear()
     questions.clear()
@@ -438,9 +485,9 @@ export function createNativeChatController({
     if (state.busy || state.settlingCheckpoint || state.queuePaused) return
     launchPrompt(next.text, next.attachments, next)
   }
-  function restoreQueued(item: QueuedPrompt | undefined) {
+  function restoreQueued(item: QueuedPrompt | undefined, transcript = activePrompt?.transcript) {
     if (!item || queued.includes(item)) return
-    if (activePromptTranscript) publish({ messages: activePromptTranscript })
+    if (transcript) publish({ messages: transcript })
     queued.unshift(item)
     publishQueue()
   }
@@ -470,6 +517,25 @@ export function createNativeChatController({
     if (queuedPrompt) queuedPrompt.started = true
     return message
   }
+  async function awaitSteerReceipt(turn: PromptTurn) {
+    const claim = steering
+    if (claim?.prompt === turn) await claim.settled
+  }
+  function recoverFailedPrompt(turn: PromptTurn) {
+    if (turn.continued) return
+    restoreQueued(turn.queuedPrompt, turn.transcript)
+    if (!hostTurnActive()) finishToolMessages("failed")
+  }
+  async function finishPrompt(turn: PromptTurn, at: number, result: AssistantResult) {
+    if (!result.ok) await awaitSteerReceipt(turn)
+    if (!isCurrent(at)) return
+    if (!result.ok) recoverFailedPrompt(turn)
+    publish({
+      busy: hostTurnActive(),
+      ...(!result.ok ? { queuePaused: true } : {}),
+    })
+    save()
+  }
   function launchPrompt(
     text: string,
     attachments: readonly AssistantAttachment[],
@@ -482,40 +548,33 @@ export function createNativeChatController({
       return false
     }
     const at = generation
+    const turn: PromptTurn = { queuedPrompt, transcript: null, continued: false }
+    activePrompt = turn
+    terminalToolStatus = undefined
     promptInFlight = true
-    activeQueuedPrompt = queuedPrompt
     if (queuedPrompt) removeQueuedPrompt(queuedPrompt)
     publish({ busy: true, error: null })
     toolMessages.clear()
     recordPrompt(text, attachments, queuedPrompt)
-    activePromptTranscript = state.messages
+    turn.transcript = state.messages
     const complete = async () => {
       const result = await run(() =>
         bridge.prompt({ ...current, text, attachments: [...attachments] }),
       )
-      if (!isCurrent(at)) return
-      if (!result.ok) {
-        restoreQueued(queuedPrompt)
-        finishToolMessages("failed")
-      }
-      publish({
-        busy: ["prompting", "cancelling"].includes(state.snapshot?.status ?? ""),
-        ...(!result.ok ? { queuePaused: true } : {}),
-      })
-      save()
+      await finishPrompt(turn, at, result)
     }
     void complete()
       .catch(() => {
         if (isCurrent(at)) {
-          finishToolMessages("failed")
-          publish({ error: "request-failed", busy: false, queuePaused: true })
+          if (!hostTurnActive()) finishToolMessages("failed")
+          publish({ error: "request-failed", busy: hostTurnActive(), queuePaused: true })
           save()
         }
       })
       .finally(() => {
+        if (activePrompt !== turn) return
         promptInFlight = false
-        activeQueuedPrompt = undefined
-        activePromptTranscript = null
+        activePrompt = null
         settleCheckpoints()
         drainQueue()
       })
@@ -542,24 +601,35 @@ export function createNativeChatController({
     if (accepted) checkpoints.acceptSteer(claim.checkpoint)
     else checkpoints.discardSteer(claim.checkpoint)
   }
+  function confirmContinuation(claim: QueuedSteer) {
+    const prompt = claim.prompt
+    if (!prompt) return
+    prompt.continued = true
+    // Disconnect may have provisionally restored this exact original before the receipt arrived.
+    if (prompt.queuedPrompt) removeQueuedPrompt(prompt.queuedPrompt)
+  }
+  function recordSteerDelivery(claim: QueuedSteer, outcome: "injected" | "startedNewTurn") {
+    if (outcome === "startedNewTurn") confirmContinuation(claim)
+    settleSteerCheckpoint(claim, true)
+    const { item } = claim
+    const message = recordPrompt(item.text, item.attachments, item, claim.historyTailId)
+    if (message && claim.prompt?.transcript)
+      claim.prompt.transcript = retainChatMessages([...claim.prompt.transcript, message])
+    removeQueuedPrompt(item)
+    if (isCurrent(claim.generation)) publish({ steerStartedNewTurn: outcome === "startedNewTurn" })
+    save()
+  }
   function receiveQueuedSteer(claim: QueuedSteer, result: AssistantResult) {
     if (disposed || steering !== claim) return false
     if (!result.ok || !result.steerOutcome) {
       settleSteerCheckpoint(claim, false)
       return failQueuedSteer(claim.generation, result.ok ? "protocol-error" : result.code)
     }
-    settleSteerCheckpoint(claim, true)
-    const { item } = claim
-    const message = recordPrompt(item.text, item.attachments, item, claim.historyTailId)
-    if (message && activePromptTranscript)
-      activePromptTranscript = retainChatMessages([...activePromptTranscript, message])
-    removeQueuedPrompt(item)
-    if (isCurrent(claim.generation))
-      publish({ steerStartedNewTurn: result.steerOutcome === "startedNewTurn" })
-    save()
+    recordSteerDelivery(claim, result.steerOutcome)
     return true
   }
   function releaseQueuedSteer(claim: QueuedSteer) {
+    claim.settle()
     if (steering !== claim) return
     steering = null
     if (activeControl === claim.token) activeControl = null
@@ -573,12 +643,19 @@ export function createNativeChatController({
     const { item, parsed, request } = prepared
     const checkpoint = checkpoints?.begin(item.id, "steer") ?? null
     if (checkpoints && !checkpoint) return false
+    let settle = () => {}
+    const settled = new Promise<void>((resolve) => {
+      settle = resolve
+    })
     const claim = {
       item,
       token: Symbol("queued-steering"),
       generation,
       historyTailId: state.messages.at(-1)?.id ?? null,
       checkpoint,
+      prompt: activePrompt,
+      settled,
+      settle,
     }
     steering = claim
     activeControl = claim.token
@@ -693,6 +770,7 @@ export function createNativeChatController({
         question = state.question
       if (!current || !question) return false
       const at = generation
+      const snapshotAt = snapshotEpoch
       try {
         const result = await bridge.respondQuestion({
           ...current,
@@ -700,7 +778,7 @@ export function createNativeChatController({
           answers,
         })
         if (!isCurrent(at) || !result.ok) return false
-        acceptSnapshot(result.value)
+        if (snapshotEpoch === snapshotAt) acceptSnapshot(result.value)
         questions.delete(question.requestId)
         publish({ question: questions.values().next().value ?? null })
         return true
@@ -727,6 +805,7 @@ export function createNativeChatController({
     dispose() {
       if (disposed) return
       const current = scope()
+      steering?.settle()
       finishToolMessages("cancelled")
       save()
       checkpoints?.clear()
