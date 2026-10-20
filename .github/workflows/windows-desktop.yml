@@ -37,4 +37,14 @@ jobs:
           bun run build
           bun run desktop:build
       - name: Exercise Windows native CAD and persistence
+        env:
+          DEBUG: pw:browser,pw:api
         run: bun run --bun playwright test --config playwright.desktop.config.ts windows.spec.ts
+      - name: Preserve Windows native failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-failure
+          path: artifacts/windows-desktop/browser/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -103,6 +103,44 @@ describe("native private files", () => {
     ).toBeGreaterThan(0)
   }, 60_000)
 
+  it.skipIf(!windows)(
+    "registers only EXE custom slicers and filters stale non-EXE entries",
+    async () => {
+      const root = await directory()
+      const options = { directory: root, resolve: async () => null }
+      const applications = createNativeSlicerApplications(options)
+      const registry = join(root, "slicer-applications.json")
+      for (const extension of ["cmd", "bat", "txt"]) {
+        const path = join(root, `Slicer.${extension}`)
+        await writeFile(path, "not a native executable")
+        expect(await applications.choose(path)).toBeNull()
+      }
+      await expect(readFile(registry)).rejects.toThrow()
+      await writePrivateFile(
+        registry,
+        JSON.stringify([
+          {
+            id: "custom-12345678-1234-4123-8123-123456789abc",
+            name: "Old script",
+            path: join(root, "Slicer.cmd"),
+            kind: "executable",
+          },
+        ]),
+      )
+      expect(await applications.list()).toEqual([])
+      const executable = join(root, "Custom slicer.EXE")
+      await writeFile(executable, "fixture executable")
+      const chosen = await applications.choose(executable)
+      expect(chosen).toMatchObject({ name: "Custom slicer" })
+      if (!chosen) throw new Error("Expected an EXE custom slicer.")
+      expect(await createNativeSlicerApplications(options).resolve(chosen.id)).toMatchObject({
+        path: executable,
+        kind: "executable",
+      })
+    },
+    120_000,
+  )
+
   it.skipIf(windows)(
     "keeps POSIX directory ownership and 0700 policy, without following symlinks",
     async () => {

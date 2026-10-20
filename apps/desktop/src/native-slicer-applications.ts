@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { constants } from "node:fs"
 import { access, realpath, rename, rm, stat } from "node:fs/promises"
-import { basename, dirname, isAbsolute, join } from "node:path"
+import { basename, dirname, extname, isAbsolute, join } from "node:path"
 import { resolveSlicerExecutable, slicerNames } from "@vibeshape/slicer-bridge/native"
 import {
   nativeCustomSlicerIdSchema,
@@ -36,6 +36,8 @@ async function inspectSlicerApplication(path: string) {
   if (!isAbsolute(path)) return null
   const canonical = await realpath(path).catch(() => null)
   if (!canonical) return null
+  // Windows X_OK checks existence; shell-free launches require an executable target.
+  if (process.platform === "win32" && extname(canonical).toLowerCase() !== ".exe") return null
   const metadata = await stat(canonical)
   if (canonical.endsWith(".app") && metadata.isDirectory()) {
     if (!(await stat(join(canonical, "Contents/Info.plist")).catch(() => null))?.isFile())
