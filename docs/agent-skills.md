@@ -29,8 +29,9 @@ Each folder contains a `SKILL.md`, Codex UI metadata, and references only where 
 The modeling entrypoint separates common CAD intent from [mechanical design](../.agents/skills/vibeshape-modeling/references/mechanical-design.md) and [3D-printing design](../.agents/skills/vibeshape-modeling/references/3d-printing.md). Load the applicable categories together for a printed functional part. Printing guidance distinguishes FDM/FFF from resin and other processes; it does not alter visualization or exact-reconstruction geometry by default.
 
 For printed insert lids and covers, [lid fits and compliant retention](../.agents/skills/vibeshape-modeling/references/lid-fits.md)
-adapts the Slant 3D demonstration into three construction strategies: corner
-contact relief, flexible corner segments, and perimeter grip fins. It distinguishes
+provides self-contained instructions for corner clearance relief, integral corner
+flexure tabs, and distributed cantilever grip fins. It covers strategy selection,
+editable geometry, and a minimum/maximum opening travel budget. It distinguishes
 existing MCP features from sketch-driven construction and requires physical
 calibration before claiming a verified compliant fit.
 
